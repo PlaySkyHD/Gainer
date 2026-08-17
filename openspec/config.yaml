@@ -1,0 +1,52 @@
+schema: spec-driven
+
+context: |
+  Schreibe alle OpenSpec-Artefakte auf Deutsch.
+
+  Projekt: AI Body & Training Tracker.
+  Tech Stack: Next.js, TypeScript, React, Supabase, PostgreSQL, pgvector, OpenAI API.
+  UI: Tailwind CSS + shadcn/ui.
+
+  Strukturierte Daten wie Gewicht, Ernährung und Training liegen in PostgreSQL.
+  RAG wird nur für unstrukturierte Dokumente verwendet.
+  Analytics werden deterministisch im Backend berechnet.
+  Die AI nutzt kontrollierte Tools und erhält keinen direkten SQL-Zugriff.
+
+  Der Trainingsbereich orientiert sich funktional an RepCount:
+  Exercise Library, wiederverwendbare Workout Templates, Previous Performance,
+  Set Logging, Workout History und Rest Timer.
+
+  Nutzer- und Fitnessdaten müssen strikt voneinander isoliert sein.
+  Verwende Supabase RLS für nutzerbezogene Daten.
+
+  Lies README.md und passende Regeln aus .github/instructions/ vor Änderungen.
+  Halte den Scope auf den MVP begrenzt und erfinde keine bestehenden APIs oder Features.
+
+rules:
+  proposal:
+    - Nenne Non-Goals, Security-Auswirkungen und Breaking Changes.
+    - Nenne betroffene APIs, Datenmodelle und Backend-Komponenten.
+  specs:
+    - Verwende Given/When/Then.
+    - Formuliere Anforderungen eindeutig und testbar.
+    - Berücksichtige Nutzerisolation, historische Workout-Daten und Fehlerfälle.
+  design:
+    - Trenne UI, Persistenz, Analytics, RAG und AI-Integration.
+    - Die AI interpretiert Daten; das Backend berechnet Kennzahlen.
+    - Begründe neue Dependencies.
+  tasks:
+    - Verknüpfe neues Verhalten mit Tests.
+    - Bevorzuge Integrationstests.
+    - Halte Build und Tests nach jedem Task erfolgreich.
+    - Verwende Conventional Commits.
+
+operations:
+  apply:
+    guidance:
+      - Führe zuerst fokussierte Tests aus.
+  archive:
+    guidance:
+      - Halte die Abschlusszusammenfassung kurz.
+
+githubCopilot:
+  cloudAgent: false
