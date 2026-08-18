@@ -4,20 +4,71 @@ context: |
   Schreibe alle OpenSpec-Artefakte auf Deutsch.
 
   Projekt: AI Body & Training Tracker.
-  Tech Stack: Next.js, TypeScript, React, Supabase, PostgreSQL, pgvector, OpenAI API.
-  UI: Tailwind CSS + shadcn/ui.
+  Das Projekt startet als private, einladungsbasierte Mehrbenutzer-App für den
+  Betreiber und ausgewählte Kollegen. Eine öffentliche Veröffentlichung,
+  Selbstregistrierung, Bezahlfunktionen, soziale Funktionen und Coach-Zugriffe
+  sind zunächst nicht vorgesehen.
+
+  Frontend: Next.js, TypeScript und React als installierbare Offline-First-PWA.
+  UI: Tailwind CSS und shadcn/ui.
+
+  Backend: ASP.NET Core auf .NET 10 als modularer Monolith. Das Frontend greift
+  ausschließlich über die HTTP-API auf Backend-Funktionen zu. Verwende EF Core
+  mit Npgsql für den Datenzugriff.
+
+  Orchestrierung: Aspire beschreibt lokal Frontend, API und Infrastruktur im
+  AppHost und stellt Service Discovery, Health Checks und OpenTelemetry bereit.
+  Aspire ist kein Produktions-Runtime-Orchestrator. Das MVP läuft mittels von
+  Aspire veröffentlichtem Docker Compose hinter einem HTTPS-Reverse-Proxy auf
+  einem einzelnen Linux-V-Server.
+
+  Datenbank: selbst gehostetes PostgreSQL. PostgreSQL ist nur im internen
+  Container-Netz erreichbar. pgvector wird erst mit RAG benötigt. Supabase wird
+  nicht verwendet. Persistente Volumes ersetzen keine externen Backups.
+
+  Authentifizierung: ASP.NET Core Identity mit getrenntem Konto pro Nutzer.
+  Konten werden eingeladen oder administrativ angelegt; öffentliche
+  Registrierung ist deaktiviert.
+
+  Jeder Nutzer darf über die Anwendung ausschließlich seine eigenen Daten
+  sehen und verändern. Es gibt keine Betreiber-, Admin-, Coach-, Sharing- oder
+  Impersonation-Funktion für fremde Fitnessdaten. Der Betreiber kann als
+  Infrastruktur- und Datenbankadministrator technisch auf die Datenbank und
+  Backups zugreifen. Ende-zu-Ende-Verschlüsselung und ein Zero-Knowledge-Modell
+  sind ausdrücklich nicht Bestandteil des Projekts.
+
+  Jede nutzerbezogene Entität trägt eine UserId. Die API leitet den Nutzer aus
+  der authentifizierten Sitzung ab und vertraut weder einer UserId aus dem
+  Request noch aus einem LLM-Tool-Aufruf. PostgreSQL-RLS ist für die private
+  Beta keine MVP-Voraussetzung, weil nur das Backend Datenbankzugriff erhält;
+  strikte Isolation im Backend und Cross-User-Integrationstests sind zwingend.
+
+  Offline-First: Strukturierte Trackingdaten liegen auf dem Gerät in IndexedDB.
+  Fachänderung und Outbox-Eintrag werden atomar gespeichert und über einen
+  idempotenten Sync-Vertrag mit PostgreSQL synchronisiert. Der MVP unterstützt
+  zunächst ein aktiv schreibendes Hauptgerät pro Nutzer und verspricht auf iOS
+  keinen garantierten Hintergrund-Sync. Lokale Daten und Caches werden pro
+  Nutzer getrennt.
 
   Strukturierte Daten wie Gewicht, Ernährung und Training liegen in PostgreSQL.
-  RAG wird nur für unstrukturierte Dokumente verwendet.
+  Workout-Historie basiert auf Snapshots und darf durch spätere Änderungen an
+  Templates oder Übungen nicht verändert werden.
+
+  RAG wird nur für unstrukturierte Dokumente verwendet und ist gegenüber der
+  strukturierten Kernjourney nachrangig. Embeddings und Dokument-Chunks werden
+  später nutzerbezogen in PostgreSQL/pgvector gespeichert.
+
   Analytics werden deterministisch im Backend berechnet.
-  Die AI nutzt kontrollierte Tools und erhält keinen direkten SQL-Zugriff.
+  Die AI verwendet die OpenAI Responses API mit kontrollierten, vorzugsweise
+  rein lesenden Function Calls. Der OpenAI API-Key bleibt im Backend. Die AI
+  erhält keinen direkten SQL-Zugriff, keine frei wählbare UserId und nur die für
+  eine Antwort erforderlichen Kennzahlen oder Dokumentausschnitte. Requests
+  sollen mit store=false gesendet werden; Prompt- und Response-Inhalte gehören
+  nicht in normale Application-Logs.
 
   Der Trainingsbereich orientiert sich funktional an RepCount:
   Exercise Library, wiederverwendbare Workout Templates, Previous Performance,
   Set Logging, Workout History und Rest Timer.
-
-  Nutzer- und Fitnessdaten müssen strikt voneinander isoliert sein.
-  Verwende Supabase RLS für nutzerbezogene Daten.
 
   Lies README.md und passende Regeln aus .github/instructions/ vor Änderungen.
   Halte den Scope auf den MVP begrenzt und erfinde keine bestehenden APIs oder Features.
@@ -26,17 +77,24 @@ rules:
   proposal:
     - Nenne Non-Goals, Security-Auswirkungen und Breaking Changes.
     - Nenne betroffene APIs, Datenmodelle und Backend-Komponenten.
+    - Ordne neue Funktionen der privaten Kernjourney oder einer späteren Phase zu.
   specs:
     - Verwende Given/When/Then.
     - Formuliere Anforderungen eindeutig und testbar.
     - Berücksichtige Nutzerisolation, historische Workout-Daten und Fehlerfälle.
+    - Beschreibe bei Offline-Funktionen Abbruch, Retry, Duplikate und abgelaufene Sitzungen.
   design:
-    - Trenne UI, Persistenz, Analytics, RAG und AI-Integration.
+    - Trenne UI, lokale Persistenz, Sync, API, Fachdaten, Analytics, RAG und AI-Integration.
+    - Bevorzuge einen modularen Monolithen; neue Prozesse oder Services müssen begründet werden.
+    - Behandle den Aspire AppHost als Entwicklungs- und Deployment-Modell und Docker Compose als Produktions-Orchestrator.
     - Die AI interpretiert Daten; das Backend berechnet Kennzahlen.
+    - Binde alle Datenzugriffe und AI-Tools serverseitig an den authentifizierten Nutzer.
     - Begründe neue Dependencies.
   tasks:
     - Verknüpfe neues Verhalten mit Tests.
     - Bevorzuge Integrationstests.
+    - Prüfe Nutzerisolation mit mindestens zwei Testnutzern.
+    - Prüfe Offline- und Sync-Verhalten auf einem physischen iPhone, wenn es betroffen ist.
     - Halte Build und Tests nach jedem Task erfolgreich.
     - Verwende Conventional Commits.
 
