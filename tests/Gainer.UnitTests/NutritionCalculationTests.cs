@@ -1,0 +1,77 @@
+using Gainer.Core.Nutrition;
+
+namespace Gainer.UnitTests;
+
+[TestClass]
+public sealed class NutritionCalculationTests
+{
+    [TestMethod]
+    public void CalculateScalesPerHundredGramValuesAndRoundsAwayFromZero()
+    {
+        NutritionTotals result = NutritionCalculator.Calculate(
+            amountGrams: 33.33m,
+            new NutritionPer100Grams(250.55m, 20.25m, 10.15m, 3.05m));
+
+        Assert.AreEqual(83.51m, result.Kilocalories);
+        Assert.AreEqual(6.75m, result.ProteinGrams);
+        Assert.AreEqual(3.38m, result.CarbohydrateGrams);
+        Assert.AreEqual(1.02m, result.FatGrams);
+    }
+
+    [TestMethod]
+    public void CalculateKeepsMissingMacrosMissing()
+    {
+        NutritionTotals result = NutritionCalculator.Calculate(
+            150m,
+            new NutritionPer100Grams(250m, 20m, null, null));
+
+        Assert.AreEqual(375m, result.Kilocalories);
+        Assert.AreEqual(30m, result.ProteinGrams);
+        Assert.IsNull(result.CarbohydrateGrams);
+        Assert.IsNull(result.FatGrams);
+    }
+
+    [TestMethod]
+    [DataRow("amount", "0", "100")]
+    [DataRow("amount", "-1", "100")]
+    [DataRow("energy", "100", "0")]
+    [DataRow("energy", "100", "-1")]
+    [DataRow("protein", "100", "100")]
+    public void CalculateRejectsInvalidValues(string invalidField, string amountText, string energyText)
+    {
+        decimal? protein = invalidField == "protein" ? -1m : 10m;
+
+        NutritionValidationException exception = Assert.Throws<NutritionValidationException>(() =>
+            NutritionCalculator.Calculate(
+                decimal.Parse(amountText, System.Globalization.CultureInfo.InvariantCulture),
+                new NutritionPer100Grams(
+                    decimal.Parse(energyText, System.Globalization.CultureInfo.InvariantCulture),
+                    protein,
+                    10m,
+                    10m)));
+
+        Assert.IsTrue(exception.Errors.ContainsKey(invalidField switch
+        {
+            "amount" => "AmountGrams",
+            "energy" => "KilocaloriesPer100Grams",
+            _ => "ProteinGramsPer100Grams",
+        }));
+    }
+
+    [TestMethod]
+    public void EntryInputValidatesIdentityTextMealAndPosition()
+    {
+        NutritionValidationException exception = Assert.Throws<NutritionValidationException>(() =>
+            NutritionEntryInput.Create(
+                Guid.Empty,
+                (MealType)999,
+                -1,
+                " ",
+                100m,
+                new NutritionPer100Grams(100m, null, null, null)));
+
+        CollectionAssert.AreEquivalent(
+            new[] { "EntryId", "Meal", "Position", "ProductName" },
+            exception.Errors.Keys.ToArray());
+    }
+}

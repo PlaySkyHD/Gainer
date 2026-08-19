@@ -1,0 +1,136 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit, tag, or branch to deploy
+        required: true
+        default: main
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_NAMESPACE: playskyhd
+
+jobs:
+  build:
+    name: Build ${{ matrix.component }} image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - component: api
+            dockerfile: deploy/Dockerfile.api
+          - component: migrator
+            dockerfile: deploy/Dockerfile.migrator
+          - component: edge
+            dockerfile: deploy/Dockerfile.edge
+          - component: backup
+            dockerfile: deploy/Dockerfile.backup
+
+    steps:
+      - name: Check out requested revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve immutable revision
+        id: revision
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/gainer-${{ matrix.component }}:sha-${{ steps.revision.outputs.sha }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+
+  deploy:
+    name: Roll out to gainer.markfort.xyz
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://gainer.markfort.xyz
+
+    steps:
+      - name: Check out requested revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve immutable revision
+        id: revision
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/gainer_deploy
+          chmod 0600 ~/.ssh/gainer_deploy
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+
+      - name: Upload immutable deployment files
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          SHA: ${{ steps.revision.outputs.sha }}
+        run: |
+          ssh -i ~/.ssh/gainer_deploy "$VPS_USER@$VPS_HOST" "install -d -m 0755 /srv/gainer/releases/$SHA/deploy/scripts"
+          scp -i ~/.ssh/gainer_deploy deploy/compose.yaml "$VPS_USER@$VPS_HOST:/srv/gainer/releases/$SHA/deploy/compose.yaml"
+          scp -i ~/.ssh/gainer_deploy deploy/scripts/deploy-release.sh "$VPS_USER@$VPS_HOST:/srv/gainer/releases/$SHA/deploy/scripts/deploy-release.sh"
+
+      - name: Authenticate server to GHCR
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/gainer_deploy "$VPS_USER@$VPS_HOST" "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+
+      - name: Deploy and verify health
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          SHA: ${{ steps.revision.outputs.sha }}
+        run: ssh -i ~/.ssh/gainer_deploy "$VPS_USER@$VPS_HOST" "bash /srv/gainer/releases/$SHA/deploy/scripts/deploy-release.sh '$SHA' '${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}'"
+
+      - name: Verify public endpoint
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://gainer.markfort.xyz/health/live
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://gainer.markfort.xyz/health/ready

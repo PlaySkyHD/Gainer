@@ -61,6 +61,16 @@ public sealed class SyncContractTests
         Assert.IsTrue(response.Batches[0].Changes[0].IsTombstone);
     }
 
+    [TestMethod]
+    public void NutritionExtensionKeepsExistingProtocolWindowCompatible()
+    {
+        CollectionAssert.AreEqual(
+            new[] { 1, 2 },
+            new[] { SyncProtocol.PreviousVersion, SyncProtocol.CurrentVersion });
+        var nutrition = new ResourceVersionRequest("NutritionDay", Guid.NewGuid(), 0);
+        Assert.HasCount(0, Validate(nutrition));
+    }
+
     private static List<ValidationResult> Validate(object value)
     {
         var results = new List<ValidationResult>();

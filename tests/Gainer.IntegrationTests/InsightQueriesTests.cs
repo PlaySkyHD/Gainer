@@ -1,5 +1,6 @@
 using Gainer.Core.BodyTracking;
 using Gainer.Core.Insights;
+using Gainer.Core.Nutrition;
 using Gainer.Core.Security;
 using Gainer.Core.Training;
 using Gainer.Infrastructure.Persistence;
@@ -49,6 +50,58 @@ public sealed class InsightQueriesTests
             .DashboardAsync(new DateOnly(2026, 8, 18), 7);
         Assert.AreEqual(0, isolated.Weight.ObservedDays);
         Assert.AreEqual(0, isolated.Training.WorkoutCount);
+    }
+
+    [TestMethod]
+    public async Task DashboardPrefersMealDiaryWithoutAddingLegacyAndPreservesMissingMacros()
+    {
+        (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
+        await using (AppDbContext seed = Fixture.CreateContext(connectionString, firstUser))
+        {
+            seed.DailyCheckIns.AddRange(
+                CheckIn(new DateOnly(2026, 8, 17), 80m),
+                CheckIn(new DateOnly(2026, 8, 18), 81m));
+            var day = new NutritionDay
+            {
+                Id = Guid.NewGuid(),
+                LocalDate = new DateOnly(2026, 8, 18),
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow,
+                Version = 1,
+            };
+            day.Entries.Add(new NutritionEntry
+            {
+                Id = Guid.NewGuid(),
+                NutritionDayId = day.Id,
+                Meal = MealType.Dinner,
+                Position = 0,
+                ProductName = "Meal",
+                AmountGrams = 300m,
+                Kilocalories = 600m,
+                ProteinGrams = null,
+                CarbohydrateGrams = 50m,
+                FatGrams = null,
+                BasisGrams = 100m,
+                KilocaloriesPerBasis = 200m,
+            });
+            seed.NutritionDays.Add(day);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext first = Fixture.CreateContext(connectionString, firstUser);
+        DashboardInsightSnapshot dashboard = await new InsightQueries(first)
+            .DashboardAsync(new DateOnly(2026, 8, 18), 2);
+        Assert.AreEqual(1550m, dashboard.Nutrition.CaloriesKcal.Value);
+        Assert.AreEqual(180m, dashboard.Nutrition.ProteinGrams.Value);
+        Assert.AreEqual(1, dashboard.Nutrition.ProteinGrams.ObservedDays);
+        Assert.AreEqual(1, dashboard.Nutrition.MealDiaryDays);
+        Assert.AreEqual(1, dashboard.Nutrition.LegacyCheckInDays);
+
+        await using AppDbContext second = Fixture.CreateContext(connectionString, secondUser);
+        DashboardInsightSnapshot isolated = await new InsightQueries(second)
+            .DashboardAsync(new DateOnly(2026, 8, 18), 2);
+        Assert.AreEqual(0, isolated.Nutrition.ObservedDays);
+        Assert.AreEqual(0, isolated.Nutrition.MealDiaryDays);
     }
 
     [TestMethod]

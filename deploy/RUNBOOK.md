@@ -22,6 +22,7 @@ Do not publish container port 443 and do not add a UFW rule for 8081. The existi
 4. Create a private Azure Blob container. Disable anonymous access and issue a container-scoped SAS with only the Restic permissions required for listing, reading, creating, writing, and pruning blobs. Record and rotate its expiry.
 5. Create `/etc/gainer/secrets` owned by root with mode `0700`. Keep the secret files root-owned with mode `0444`: the root-only parent directory prevents host users from traversing to them, while Docker's non-root application UID can read the individual bind-mounted secret. Never put their values in the repository, image, Compose output, logs, or shell history.
 6. Copy `deploy/.env.example` to `/etc/gainer/deployment.env`, make it root-readable, and set the Azure account/repository and immutable image tags. Keep `GAINER_PUBLIC_ORIGIN=https://gainer.markfort.xyz`, `GAINER_SITE_ADDRESS=:80`, and `GAINER_EDGE_PORT=8081`.
+7. Set `OPENFOODFACTS_CONTACT_EMAIL` to a monitored technical address. Keep the default HTTPS base URL unless a deliberate compatible mirror is used. The shipped limits (12 barcode and 8 search requests/minute), 8-second timeout and 1 MB response cap stay below the provider budgets; reduce them if the provider requests it.
 
 The account operator file has this shape and is consumed only by the explicit one-time provision command:
 
@@ -60,6 +61,17 @@ docker compose --env-file /etc/gainer/deployment.env -f deploy/compose.yaml up -
 ```
 
 The one-shot migrator must finish successfully before the API starts. Never bypass it: the API stays unready until the schema problem is understood.
+
+### GitHub Actions deployment
+
+The manually dispatched `Deploy production` workflow builds immutable API, migrator, edge and backup images in GHCR and rolls the selected commit out through `/srv/gainer/releases/<commit>`. Configure these repository or `production` environment secrets before its first run:
+
+- `VPS_HOST`: the VPS hostname or address.
+- `VPS_USER`: an unprivileged deployment user with permission to run the scoped Docker deployment commands.
+- `VPS_SSH_KEY`: a dedicated Ed25519 private key used only by this workflow.
+- `VPS_KNOWN_HOSTS`: the verified OpenSSH host-key line for the VPS; never obtain it with `StrictHostKeyChecking=no` inside the workflow.
+
+Install the matching public key on the VPS only after verifying its fingerprint. Prefer a dedicated deployment account and a narrowly scoped sudoers rule over unrestricted root SSH. The workflow uses GitHub's short-lived token to authenticate the server to GHCR during the rollout; no long-lived registry password is required. Production values such as `OPENFOODFACTS_CONTACT_EMAIL` remain in `/etc/gainer/deployment.env` and are never copied into GitHub Actions.
 
 Before reloading host Caddy, smoke-test the loopback edge while preserving the public Host header:
 
@@ -116,7 +128,22 @@ For the local drill use `RESTIC_REPOSITORY=rclone::azureblob:<container>/<path>`
 ## Monitoring, incidents, and rollback
 
 - Alert on `/health/ready`, restart loops, disk capacity, certificate renewal, backup age, and restore failures. PostgreSQL or schema failure makes readiness fail; OpenAI failure degrades only Coach.
+- `/health/ready` also validates the Open Food Facts URL, required contact identity and bounded request settings. It intentionally does not issue a product request, so a transient provider outage degrades lookup/search while manual and offline diary entry remain available.
 - Keep structured logs at `Information`. Never enable request-body logging. Configure OTLP only to an internal endpoint.
+- Do not add outbound URL paths or query strings to logging or tracing: they may contain food search text or a barcode. The application exports only the provider authority for outbound HTTP spans.
 - Before deployment, record current API, migrator, and edge image digests. On a failed health check, restore all three previous immutable references in `/etc/gainer/deployment.env` and run `docker compose up -d --wait` again.
 - Follow expand/contract migrations: deploy additive schema before new code and remove old columns only after every rollback candidate no longer uses them.
 - Never run `docker compose down -v` in production. Rollbacks change image references, not volumes.
+
+## Physical iPhone nutrition acceptance
+
+Before declaring the nutrition change complete, test the installed PWA on a physical iPhone (Safari alone is not sufficient for the install-path check):
+
+1. Sign in, open **Essen**, switch to airplane mode and add a manual item to each meal section.
+2. Close the PWA from the app switcher, reopen it offline and verify the same date, entries, amounts, order and pending-sync state.
+3. Restore connectivity while the PWA is foregrounded and verify that pending changes synchronize exactly once. iOS background execution is not required or assumed.
+4. Expire the server session, create another offline change, reconnect and verify it stays local until the same account signs in again.
+5. Sign out and sign in as a different account; verify that neither entries nor pending mutations from the first account appear.
+6. Test denied camera permission and an unavailable `BarcodeDetector`; manual barcode input and manual food entry must remain usable.
+
+Record iOS version, device model, installed-PWA status, date/time and results for reload, later sync, expired session, camera fallback and account isolation. The automated Chromium suites cover the corresponding browser paths but do not substitute for this device check.

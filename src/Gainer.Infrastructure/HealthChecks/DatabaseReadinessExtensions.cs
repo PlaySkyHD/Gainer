@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Gainer.Infrastructure.Persistence;
+using Gainer.Infrastructure.Catalog;
 using Npgsql;
 
 namespace Gainer.Infrastructure.HealthChecks;
@@ -30,9 +31,37 @@ public static class DatabaseReadinessExtensions
                 tags: [readinessTag])
             .AddCheck<DatabaseSchemaReadinessHealthCheck>(
                 "database-schema",
+                tags: [readinessTag])
+            .AddCheck<OpenFoodFactsConfigurationHealthCheck>(
+                "open-food-facts-configuration",
                 tags: [readinessTag]);
 
         return services;
+    }
+}
+
+internal sealed class OpenFoodFactsConfigurationHealthCheck(IConfiguration configuration) : IHealthCheck
+{
+    public Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
+    {
+        _ = context;
+        _ = cancellationToken;
+        OpenFoodFactsOptions options = configuration
+            .GetSection(OpenFoodFactsOptions.SectionName)
+            .Get<OpenFoodFactsOptions>() ?? new OpenFoodFactsOptions();
+        bool validUrl = Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out Uri? uri) && uri.Scheme == Uri.UriSchemeHttps;
+        bool validIdentity = !string.IsNullOrWhiteSpace(options.ApplicationName) &&
+            !string.IsNullOrWhiteSpace(options.ApplicationVersion) &&
+            !string.IsNullOrWhiteSpace(options.ContactEmail);
+        bool validLimits = options.TimeoutSeconds is >= 1 and <= 30 &&
+            options.MaximumResponseBytes is >= 1_024 and <= 5_000_000 &&
+            options.BarcodeRequestsPerMinute is >= 1 and < 15 &&
+            options.SearchRequestsPerMinute is >= 1 and < 10;
+        return Task.FromResult(validUrl && validIdentity && validLimits
+            ? HealthCheckResult.Healthy("Open Food Facts adapter configuration is valid.")
+            : HealthCheckResult.Unhealthy("Open Food Facts adapter configuration is invalid."));
     }
 }
 

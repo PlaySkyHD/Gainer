@@ -19,6 +19,8 @@ public sealed record NutritionInsightsResponse(
     int ExpectedDays,
     int ObservedDays,
     decimal Coverage,
+    int MealDiaryDays,
+    int LegacyCheckInDays,
     MetricAverageResponse CaloriesKcal,
     MetricAverageResponse ProteinGrams,
     MetricAverageResponse CarbohydrateGrams,

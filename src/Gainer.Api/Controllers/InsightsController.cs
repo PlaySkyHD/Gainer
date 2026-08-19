@@ -78,7 +78,8 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
         Weight(result.Weight),
         new NutritionInsightsResponse(
             result.Nutrition.AlgorithmVersion, result.Nutrition.ExpectedDays, result.Nutrition.ObservedDays,
-            result.Nutrition.Coverage, Metric(result.Nutrition.CaloriesKcal), Metric(result.Nutrition.ProteinGrams),
+            result.Nutrition.Coverage, result.Nutrition.MealDiaryDays, result.Nutrition.LegacyCheckInDays,
+            Metric(result.Nutrition.CaloriesKcal), Metric(result.Nutrition.ProteinGrams),
             Metric(result.Nutrition.CarbohydrateGrams), Metric(result.Nutrition.FatGrams)),
         new TrainingInsightsResponse(
             result.Training.VolumeAlgorithmVersion, result.Training.EstimatedOneRepMaxAlgorithmVersion,

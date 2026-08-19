@@ -76,6 +76,22 @@ public sealed class CoachServiceTests
         Assert.AreEqual(5, answer.AsOfRevision);
     }
 
+    [TestMethod]
+    public async Task NutritionToolExposesTraceableProjectionSources()
+    {
+        var provider = new FakeProvider(
+            Response(FunctionCall("call_1", "get_nutrition_summary", "{\"days\":30}")),
+            Response(Message("""
+                {"summary":"ErnÃ¤hrungsdaten vorhanden.","observations":[],"dataGaps":[],"suggestions":[]}
+                """)));
+        CoachAnswer answer = await new CoachService(
+            provider, new NutritionInsightsStub(), new FakeHistory(), new FakeExercises(), new FixedTimeProvider())
+            .AnswerAsync("Wie sieht meine ErnÃ¤hrung aus?");
+
+        Assert.IsTrue(answer.Facts.Any(item => item.TextValue == NutritionSources.MealDiary));
+        Assert.IsTrue(answer.Facts.Any(item => item.TextValue == NutritionSources.LegacyCheckIn));
+    }
+
     private static CoachService Service(FakeProvider provider) => new(
         provider,
         new FakeInsights(),
@@ -143,6 +159,26 @@ public sealed class CoachServiceTests
 
         public Task<ExerciseProgressSnapshot> ExerciseProgressAsync(Guid exerciseId, int? windowDays, DateTime throughUtc, TimeZoneInfo timeZone, CancellationToken cancellationToken = default) =>
             Task.FromResult(new ExerciseProgressSnapshot(5, exerciseId, windowDays, DateTime.UnixEpoch, throughUtc, [], null));
+    }
+
+    private sealed class NutritionInsightsStub : IInsightQueries
+    {
+        public Task<DashboardInsightSnapshot> DashboardAsync(DateOnly through, int days, CancellationToken cancellationToken = default)
+        {
+            DateOnly from = through.AddDays(1 - days);
+            NutritionInsights nutrition = InsightAlgorithms.Nutrition([
+                new NutritionPoint(through.AddDays(-1), 2400m, 180m, null, null, NutritionSources.LegacyCheckIn),
+                new NutritionPoint(through, 2500m, 190m, 300m, 70m, NutritionSources.MealDiary),
+            ], from, through);
+            return Task.FromResult(new DashboardInsightSnapshot(
+                7, from, through, null, null, [],
+                InsightAlgorithms.Weight([], through.AddDays(-6), through),
+                InsightAlgorithms.Weight([], from, through), nutrition,
+                InsightAlgorithms.Training([], []), 0));
+        }
+
+        public Task<ExerciseProgressSnapshot> ExerciseProgressAsync(Guid exerciseId, int? windowDays, DateTime throughUtc, TimeZoneInfo timeZone, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ExerciseProgressSnapshot(7, exerciseId, windowDays, DateTime.UnixEpoch, throughUtc, [], null));
     }
 
     private sealed class FakeHistory : IWorkoutHistoryQueries

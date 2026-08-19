@@ -4,6 +4,7 @@ using Gainer.Core.Mutations;
 using Gainer.Core.Security;
 using Gainer.Core.Sync;
 using Gainer.Core.Training;
+using Gainer.Core.Nutrition;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -159,6 +160,38 @@ public sealed class SyncMutationExecutor(
                             Metadata(mutationId, content), payload.WorkoutId, payload.BaseVersion), cancellationToken);
                     return Result(collector, snapshot);
                 }
+            case "saveNutritionDay":
+                {
+                    SaveNutritionDayPayload payload = Deserialize<SaveNutritionDayPayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.NutritionDay, payload.NutritionDayId, payload.BaseVersion);
+                    NutritionEntryInput[] entries = payload.Entries.Select(item => NutritionEntryInput.Create(
+                        item.EntryId,
+                        ParseMeal(item.Meal),
+                        item.Position,
+                        item.ProductName,
+                        item.AmountGrams,
+                        new NutritionPer100Grams(
+                            item.KilocaloriesPer100Grams,
+                            item.ProteinGramsPer100Grams,
+                            item.CarbohydrateGramsPer100Grams,
+                            item.FatGramsPer100Grams),
+                        item.Brand,
+                        item.Source)).ToArray();
+                    NutritionDaySnapshot snapshot = await new NutritionDayMutationHandler(context, userContext, timeProvider, collector)
+                        .SaveAsync(SaveNutritionDayMutation.Create(
+                            Metadata(mutationId, content), payload.NutritionDayId, payload.LocalDate,
+                            payload.BaseVersion, entries), cancellationToken);
+                    return Result(collector, snapshot);
+                }
+            case "deleteNutritionDay":
+                {
+                    DeleteNutritionDayPayload payload = Deserialize<DeleteNutritionDayPayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.NutritionDay, payload.NutritionDayId, payload.BaseVersion);
+                    _ = await new NutritionDayMutationHandler(context, userContext, timeProvider, collector)
+                        .DeleteAsync(DeleteNutritionDayMutation.Create(
+                            Metadata(mutationId, content), payload.NutritionDayId, payload.BaseVersion), cancellationToken);
+                    return Result(collector);
+                }
             default:
                 throw new SyncMutationValidationException("unsupported_operation", "The mutation operation is not supported.");
         }
@@ -227,6 +260,19 @@ public sealed class SyncMutationExecutor(
         }).ToList());
     }
 
+    private static SyncMutationExecutionResult Result(ChangeCollector collector) =>
+        new(collector.Changes.Select(change => change switch
+        {
+            UpsertedResourceChange upsert => new ExecutedSyncChange(upsert.Resource, upsert.Version, upsert.Snapshot),
+            DeletedResourceChange deletion => new ExecutedSyncChange(deletion.Resource, deletion.Version, null, IsTombstone: true),
+            _ => throw new InvalidOperationException("Unknown captured change."),
+        }).ToList());
+
+    private static MealType ParseMeal(string value) =>
+        Enum.TryParse(value, ignoreCase: true, out MealType meal) && Enum.IsDefined(meal)
+            ? meal
+            : throw new SyncMutationValidationException("invalid_payload", "The meal type is invalid.");
+
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
     private sealed record CreateCheckInPayload(Guid CheckInId, DateOnly LocalDate, DailyCheckInValues Values);
@@ -264,4 +310,22 @@ public sealed class SyncMutationExecutor(
         Guid? RotationId,
         long? RotationBaseVersion);
     private sealed record DiscardWorkoutPayload(Guid WorkoutId, long BaseVersion);
+    private sealed record SaveNutritionDayPayload(
+        Guid NutritionDayId,
+        DateOnly LocalDate,
+        long BaseVersion,
+        IReadOnlyList<NutritionEntryPayload> Entries);
+    private sealed record DeleteNutritionDayPayload(Guid NutritionDayId, long BaseVersion);
+    private sealed record NutritionEntryPayload(
+        Guid EntryId,
+        string Meal,
+        int Position,
+        string ProductName,
+        string? Brand,
+        decimal AmountGrams,
+        decimal KilocaloriesPer100Grams,
+        decimal? ProteinGramsPer100Grams,
+        decimal? CarbohydrateGramsPer100Grams,
+        decimal? FatGramsPer100Grams,
+        NutritionSourceSnapshot? Source);
 }

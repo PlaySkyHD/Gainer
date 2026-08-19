@@ -401,6 +401,141 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/foods/barcode/{barcode}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    barcode: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["FoodCatalogProductResponse"];
+                        "application/json": components["schemas"]["FoodCatalogProductResponse"];
+                        "text/json": components["schemas"]["FoodCatalogProductResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/foods/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    query?: string;
+                    page?: number | string;
+                    pageSize?: number | string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["FoodCatalogSearchResponse"];
+                        "application/json": components["schemas"]["FoodCatalogSearchResponse"];
+                        "text/json": components["schemas"]["FoodCatalogSearchResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/insights/dashboard": {
         parameters: {
             query?: never;
@@ -525,6 +660,84 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nutrition/days/{localDate}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    localDate: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["NutritionDayResponse"];
+                        "application/json": components["schemas"]["NutritionDayResponse"];
+                        "text/json": components["schemas"]["NutritionDayResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nutrition/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number | string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RecentNutritionEntriesResponse"];
+                        "application/json": components["schemas"]["RecentNutritionEntriesResponse"];
+                        "text/json": components["schemas"]["RecentNutritionEntriesResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -918,6 +1131,32 @@ export interface components {
             points: components["schemas"]["ExerciseProgressPointResponse"][];
             bestSet: null | components["schemas"]["BestSetResponse"];
         };
+        FoodCatalogProductResponse: {
+            barcode: string;
+            productName: string;
+            brand: null | string;
+            /** Format: double */
+            basisGrams: number | string;
+            /** Format: double */
+            kilocaloriesPer100Grams: number | string;
+            /** Format: double */
+            proteinGramsPer100Grams: null | number | string;
+            /** Format: double */
+            carbohydrateGramsPer100Grams: null | number | string;
+            /** Format: double */
+            fatGramsPer100Grams: null | number | string;
+            qualityIndicators: string[];
+            /** Format: date-time */
+            retrievedAtUtc: string;
+            isStale: boolean;
+            source: string;
+        };
+        FoodCatalogSearchResponse: {
+            products: components["schemas"]["FoodCatalogProductResponse"][];
+            /** Format: int32 */
+            page: number | string;
+            hasMore: boolean;
+        };
         InvitationResponse: {
             activationPath: string;
             /** Format: date-time */
@@ -934,6 +1173,34 @@ export interface components {
             /** Format: int32 */
             observedDays: number | string;
         };
+        NutritionDayResponse: {
+            /** Format: uuid */
+            nutritionDayId: null | string;
+            /** Format: date */
+            localDate: string;
+            entries: components["schemas"]["NutritionEntryResponse"][];
+            totals: components["schemas"]["NutritionTotalsResponse"];
+            /** Format: date-time */
+            createdAtUtc: null | string;
+            /** Format: date-time */
+            updatedAtUtc: null | string;
+            /** Format: int64 */
+            version: number | string;
+        };
+        NutritionEntryResponse: {
+            /** Format: uuid */
+            entryId: string;
+            meal: string;
+            /** Format: int32 */
+            position: number | string;
+            productName: string;
+            brand: null | string;
+            /** Format: double */
+            amountGrams: number | string;
+            totals: components["schemas"]["NutritionTotalsResponse"];
+            per100Grams: components["schemas"]["NutritionTotalsResponse"];
+            source: null | components["schemas"]["NutritionSourceResponse"];
+        };
         NutritionInsightsResponse: {
             algorithmVersion: string;
             /** Format: int32 */
@@ -942,10 +1209,32 @@ export interface components {
             observedDays: number | string;
             /** Format: double */
             coverage: number | string;
+            /** Format: int32 */
+            mealDiaryDays: number | string;
+            /** Format: int32 */
+            legacyCheckInDays: number | string;
             caloriesKcal: components["schemas"]["MetricAverageResponse"];
             proteinGrams: components["schemas"]["MetricAverageResponse"];
             carbohydrateGrams: components["schemas"]["MetricAverageResponse"];
             fatGrams: components["schemas"]["MetricAverageResponse"];
+        };
+        NutritionSourceResponse: {
+            provider: null | string;
+            barcode: null | string;
+            /** Format: date-time */
+            retrievedAtUtc: null | string;
+            /** Format: double */
+            basisGrams: number | string;
+        };
+        NutritionTotalsResponse: {
+            /** Format: double */
+            kilocalories: number | string;
+            /** Format: double */
+            proteinGrams: null | number | string;
+            /** Format: double */
+            carbohydrateGrams: null | number | string;
+            /** Format: double */
+            fatGrams: null | number | string;
         };
         ProblemDetails: {
             type?: null | string;
@@ -983,6 +1272,9 @@ export interface components {
             /** Format: int64 */
             revision: number | string;
             resources: components["schemas"]["SyncResourceResult"][];
+        };
+        RecentNutritionEntriesResponse: {
+            entries: components["schemas"]["NutritionEntryResponse"][];
         };
         RegisterSyncClientRequest: {
             /** Format: uuid */

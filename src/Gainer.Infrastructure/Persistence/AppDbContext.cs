@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using Gainer.Core.Security;
 using Gainer.Core.BodyTracking;
+using Gainer.Core.Nutrition;
 using Gainer.Core.Training;
 using Gainer.Core.Sync;
 using Gainer.Infrastructure.Catalog;
@@ -22,6 +23,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     public DbSet<BodyGoal> BodyGoals => Set<BodyGoal>();
 
     public DbSet<DailyCheckIn> DailyCheckIns => Set<DailyCheckIn>();
+
+    public DbSet<NutritionDay> NutritionDays => Set<NutritionDay>();
+
+    public DbSet<NutritionEntry> NutritionEntries => Set<NutritionEntry>();
 
     public DbSet<Exercise> Exercises => Set<Exercise>();
 
@@ -57,6 +62,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         base.OnModelCreating(modelBuilder);
         ConfigureIdentity(modelBuilder);
         ConfigureBodyTracking(modelBuilder);
+        ConfigureNutrition(modelBuilder);
         ConfigureTraining(modelBuilder);
         ConfigureSync(modelBuilder);
         ApplyStorageConventions(modelBuilder.Model);
@@ -444,6 +450,65 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             checkIn.Property(item => item.Version).IsConcurrencyToken();
             checkIn.HasIndex(item => new { item.UserId, item.LocalDate }).IsUnique();
             checkIn.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureNutrition(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<NutritionDay>(day =>
+        {
+            day.ToTable("nutrition_days", DatabaseSchemas.Tracking);
+            day.HasKey(item => item.Id);
+            day.HasAlternateKey(item => new { item.UserId, item.Id });
+            day.Property(item => item.Version).IsConcurrencyToken();
+            day.HasIndex(item => new { item.UserId, item.LocalDate }).IsUnique();
+            day.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NutritionEntry>(entry =>
+        {
+            entry.ToTable("nutrition_entries", DatabaseSchemas.Tracking, table =>
+            {
+                table.HasCheckConstraint("CK_nutrition_entries_meal", "\"Meal\" IN ('Breakfast', 'Lunch', 'Dinner', 'Snacks')");
+                table.HasCheckConstraint("CK_nutrition_entries_position", "\"Position\" >= 0");
+                table.HasCheckConstraint("CK_nutrition_entries_name", "length(trim(\"ProductName\")) > 0");
+                table.HasCheckConstraint("CK_nutrition_entries_amount", "\"AmountGrams\" > 0");
+                table.HasCheckConstraint("CK_nutrition_entries_kcal", "\"Kilocalories\" > 0");
+                table.HasCheckConstraint("CK_nutrition_entries_macros", "(\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND (\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND (\"FatGrams\" IS NULL OR \"FatGrams\" >= 0)");
+                table.HasCheckConstraint("CK_nutrition_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" > 0");
+                table.HasCheckConstraint("CK_nutrition_entries_basis_macros", "(\"ProteinGramsPerBasis\" IS NULL OR \"ProteinGramsPerBasis\" >= 0) AND (\"CarbohydrateGramsPerBasis\" IS NULL OR \"CarbohydrateGramsPerBasis\" >= 0) AND (\"FatGramsPerBasis\" IS NULL OR \"FatGramsPerBasis\" >= 0)");
+            });
+            entry.HasKey(item => item.Id);
+            entry.Property(item => item.Meal).HasConversion<string>().HasMaxLength(16);
+            entry.Property(item => item.ProductName).HasMaxLength(200).IsRequired();
+            entry.Property(item => item.Brand).HasMaxLength(160);
+            entry.Property(item => item.AmountUnit).HasMaxLength(16).IsRequired();
+            entry.Property(item => item.Provider).HasMaxLength(64);
+            entry.Property(item => item.Barcode).HasMaxLength(64);
+            entry.Property(item => item.AmountGrams).HasPrecision(9, 2);
+            entry.Property(item => item.Kilocalories).HasPrecision(9, 2);
+            entry.Property(item => item.ProteinGrams).HasPrecision(9, 2);
+            entry.Property(item => item.CarbohydrateGrams).HasPrecision(9, 2);
+            entry.Property(item => item.FatGrams).HasPrecision(9, 2);
+            entry.Property(item => item.BasisGrams).HasPrecision(9, 2);
+            entry.Property(item => item.KilocaloriesPerBasis).HasPrecision(9, 2);
+            entry.Property(item => item.ProteinGramsPerBasis).HasPrecision(9, 2);
+            entry.Property(item => item.CarbohydrateGramsPerBasis).HasPrecision(9, 2);
+            entry.Property(item => item.FatGramsPerBasis).HasPrecision(9, 2);
+            entry.HasIndex(item => new { item.UserId, item.NutritionDayId, item.Meal, item.Position }).IsUnique();
+            entry.HasIndex(item => new { item.UserId, item.Barcode });
+            entry.HasOne(item => item.NutritionDay)
+                .WithMany(day => day.Entries)
+                .HasForeignKey(item => new { item.UserId, item.NutritionDayId })
+                .HasPrincipalKey(day => new { day.UserId, day.Id })
+                .OnDelete(DeleteBehavior.Cascade);
+            entry.HasOne<AppUser>()
                 .WithMany()
                 .HasForeignKey(item => item.UserId)
                 .OnDelete(DeleteBehavior.Cascade);

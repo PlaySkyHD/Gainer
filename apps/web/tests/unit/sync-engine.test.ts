@@ -15,6 +15,7 @@ import {
   type SyncTransport,
 } from "../../src/lib/offline/sync-engine.ts";
 import { withSyncLease } from "../../src/lib/offline/sync-scheduler.ts";
+import { createNutritionEntry, saveLocalNutritionDay } from "../../src/lib/offline/nutrition-tracking.ts";
 import {
   acceptConflictServerState,
   retryConflictOnCurrentServerVersion,
@@ -134,6 +135,79 @@ test("pull applies a whole batch with its cursor atomically and identical retry 
   assert.equal(await database.conflicts.count(), 0);
 });
 
+test("older clients ignore an unknown resource type while still advancing the batch cursor", async () => {
+  const database = await createDatabase();
+  const transport = new FakeTransport();
+  transport.pullResponses = [{
+    protocolVersion: 2,
+    nextCursor: 7,
+    hasMore: false,
+    batches: [{
+      batchId: crypto.randomUUID(),
+      revision: 7,
+      originMutationId: null,
+      changes: [{
+        resourceType: "FutureResource",
+        resourceId: crypto.randomUUID(),
+        version: 1,
+        isTombstone: false,
+        snapshot: { value: "unknown to this client" },
+      }],
+    }],
+  }];
+
+  const result = await runSync(database, transport);
+
+  assert.equal(result.pulledBatches, 1);
+  assert.equal((await database.syncMeta.get("pull-cursor"))?.value, 7);
+});
+
+test("nutrition days map to full snapshot mutations and pull atomically", async () => {
+  const database = await createDatabase();
+  const entry = createNutritionEntry({
+    meal: "Breakfast",
+    position: 0,
+    productName: "Oats",
+    amountGrams: 150,
+    per100Grams: { kilocalories: 370, proteinGrams: 13, carbohydrateGrams: 60, fatGrams: 7 },
+  });
+  const dayId = await saveLocalNutritionDay(database, "2026-08-19", [entry]);
+  const transport = new FakeTransport();
+  transport.pullResponses = [{
+    protocolVersion: 2,
+    nextCursor: 1,
+    hasMore: false,
+    batches: [{
+      batchId: crypto.randomUUID(), revision: 1, originMutationId: (await database.outbox.toArray())[0]!.mutationId,
+      changes: [{
+        resourceType: "NutritionDay", resourceId: dayId, version: 1, isTombstone: false,
+        snapshot: {
+          nutritionDayId: dayId,
+          localDate: "2026-08-19",
+          entries: [entry],
+          totals: entry.totals,
+          createdAtUtc: "2026-08-19T10:00:00.000Z",
+          updatedAtUtc: "2026-08-19T10:00:00.000Z",
+          version: 1,
+        },
+      }],
+    }],
+  }];
+
+  await runSync(database, transport);
+
+  const request = transport.pushRequests[0] as {
+    operation: string;
+    resources: { resourceType: string }[];
+    payload: { entries: { kilocaloriesPer100Grams: number }[] };
+  };
+  assert.equal(request.operation, "saveNutritionDay");
+  assert.equal(request.resources[0]?.resourceType, "NutritionDay");
+  assert.equal(request.payload.entries[0]?.kilocaloriesPer100Grams, 370);
+  assert.equal((await database.nutritionDays.get(dayId))?.envelope.serverVersion, 1);
+  assert.equal(await database.outbox.count(), 0);
+});
+
 test("pull storage failure rolls back every resource change and its cursor", async () => {
   const database = await createDatabase();
   const resourceId = crypto.randomUUID();
@@ -240,6 +314,7 @@ async function createDatabase(): Promise<AccountDatabase> {
 
 class FakeTransport implements SyncTransport {
   pushed: string[] = [];
+  pushRequests: unknown[] = [];
   pushErrors = new Map<string, Error>();
   pullResponses: PullResponse[] = [];
 
@@ -247,8 +322,9 @@ class FakeTransport implements SyncTransport {
     return Promise.resolve({ clientId, isActiveWriter: true });
   }
 
-  push(mutationId: string): Promise<PushResponse> {
+  push(mutationId: string, request: unknown): Promise<PushResponse> {
     this.pushed.push(mutationId);
+    this.pushRequests.push(request);
     const error = this.pushErrors.get(mutationId);
     return error
       ? Promise.reject(error)

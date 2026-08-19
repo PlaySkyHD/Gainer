@@ -94,7 +94,22 @@ public static class GainerServiceDefaultsExtensions
                             activity.SetTag("http.target", request.Path.Value);
                         };
                     })
-                    .AddHttpClientInstrumentation();
+                    .AddHttpClientInstrumentation(options =>
+                    {
+                        // Product searches and barcodes can occur in outbound URL paths or query strings.
+                        // Keep only the remote authority in exported spans; request-level content is private.
+                        options.EnrichWithHttpRequestMessage = static (activity, request) =>
+                        {
+                            Uri? uri = request.RequestUri;
+                            if (uri is null) return;
+                            string authority = uri.GetLeftPart(UriPartial.Authority) + "/";
+                            activity.SetTag("url.full", authority);
+                            activity.SetTag("http.url", authority);
+                            activity.SetTag("url.path", "/");
+                            activity.SetTag("url.query", null);
+                            activity.SetTag("http.target", "/");
+                        };
+                    });
             });
 
         if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))

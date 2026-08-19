@@ -1,4 +1,5 @@
 var builder = DistributedApplication.CreateBuilder(args);
+var openFoodFactsContactEmail = builder.AddParameter("openfoodfacts-contact-email");
 
 if (builder.ExecutionContext.IsPublishMode)
 {
@@ -14,6 +15,7 @@ if (builder.ExecutionContext.IsPublishMode)
     var productionApi = builder
         .AddDockerfile("api", "../..", "deploy/Dockerfile.api")
         .WithHttpEndpoint(targetPort: 8080, name: "http")
+        .WithEnvironment("OpenFoodFacts__ContactEmail", openFoodFactsContactEmail)
         .WithHttpHealthCheck("/health/ready")
         .WithReference(productionDatabase)
         .WaitForCompletion(migrator);
@@ -46,6 +48,7 @@ var web = builder
 var api = builder
     .AddProject<Projects.Gainer_Api>("api")
     .WithReference(database)
+    .WithEnvironment("OpenFoodFacts__ContactEmail", openFoodFactsContactEmail)
     .WithEnvironment("Security__FrontendOrigin", web.GetEndpoint("http"))
     .WaitFor(database);
 

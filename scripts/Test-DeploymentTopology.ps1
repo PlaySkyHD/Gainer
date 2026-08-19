@@ -13,6 +13,7 @@ $temporaryEnvironment = @{
     GAINER_SECRETS_DIR = (Join-Path $repositoryRoot "deploy")
     AZURE_STORAGE_ACCOUNT_NAME = "topology-validation"
     RESTIC_REPOSITORY = "azure:topology-validation:/gainer"
+    OPENFOODFACTS_CONTACT_EMAIL = "topology@example.invalid"
 }
 $previousEnvironment = @{}
 
@@ -49,6 +50,10 @@ try {
 
     if ($configuration.services.edge.environment.GAINER_SITE_ADDRESS -ne ":80") {
         throw "The internal edge must serve plain HTTP on port 80."
+    }
+
+    if ($configuration.services.api.environment.OpenFoodFacts__ContactEmail -ne "topology@example.invalid") {
+        throw "The API must receive the required Open Food Facts contact identity."
     }
 
     $postgresDataVolume = @(

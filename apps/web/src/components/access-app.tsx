@@ -1,13 +1,14 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { ClipboardList, Dumbbell, HeartPulse, Home, LogOut, Monitor, Moon, Sparkles, Sun } from "lucide-react";
+import { ClipboardList, Dumbbell, HeartPulse, Home, LogOut, Monitor, Moon, Sparkles, Sun, Utensils } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BodyTrackingPanel } from "@/components/body-tracking-panel";
 import { TrainingPlanningPanel } from "@/components/training-planning-panel";
 import { WorkoutPanel } from "@/components/workout-panel";
 import { InsightsDashboard } from "@/components/insights-dashboard";
 import { CoachPanel } from "@/components/coach-panel";
+import { NutritionPanel } from "@/components/nutrition-panel";
 import {
   createInvitation, getSession, listAccounts, login, logout, setAccountStatus,
   type AccountSummary, type Session,
@@ -283,13 +284,14 @@ function AuthenticatedArea({ session, onLogout }: { session: AppSession; onLogou
               {session.isAccountOperator && <OperatorPanel currentAccountId={session.userId} />}
             </div></div>
             <div className={panelClass("tracking")}>{database && <BodyTrackingPanel database={database} onPendingChange={pendingChanged} />}</div>
+            <div className={panelClass("nutrition")}>{database && <NutritionPanel database={database} online={online} onPendingChange={pendingChanged} />}</div>
             <div className={panelClass("workout")}>{database && <WorkoutPanel database={database} onPendingChange={pendingChanged} />}</div>
             <div className={panelClass("plans")}>{database && <TrainingPlanningPanel database={database} onPendingChange={pendingChanged} />}</div>
             <div className={panelClass("coach")}><CoachPanel online={online} /></div>
           </div>
         </div>
       </div>
-      <nav aria-label="Mobile Hauptnavigation" className="bottom-nav app-glass fixed inset-x-2 bottom-2 z-40 grid grid-cols-5 rounded-[1.6rem] border px-1.5 pt-1.5 md:hidden">
+      <nav aria-label="Mobile Hauptnavigation" className="bottom-nav app-glass fixed inset-x-2 bottom-2 z-40 grid grid-cols-6 rounded-[1.6rem] border px-1.5 pt-1.5 md:hidden">
         {navigationItems.map((item) => <button key={item.id} type="button" aria-current={activeTab === item.id ? "page" : undefined} onClick={() => { setActiveTab(item.id); window.scrollTo({ top: 0, behavior: "smooth" }); }} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[1.15rem] px-1 text-[0.68rem] font-semibold transition-[transform,background-color,color] active:scale-95 ${activeTab === item.id ? "bg-primary/12 text-primary" : "text-muted-foreground"}`}><item.icon className={`size-5 ${activeTab === item.id ? "stroke-[2.6]" : ""}`} aria-hidden="true" /><span className="truncate">{item.label}</span></button>)}
       </nav>
     </main>
@@ -299,6 +301,7 @@ function AuthenticatedArea({ session, onLogout }: { session: AppSession; onLogou
 const navigationItems = [
   { id: "home", target: "overview", label: "Heute", icon: Home },
   { id: "tracking", target: "check-in", label: "Check-in", icon: HeartPulse },
+  { id: "nutrition", target: "nutrition", label: "Essen", icon: Utensils },
   { id: "workout", target: "workout", label: "Training", icon: Dumbbell },
   { id: "plans", target: "training", label: "Pläne", icon: ClipboardList },
   { id: "coach", target: "coach", label: "Coach", icon: Sparkles },

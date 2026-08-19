@@ -58,6 +58,12 @@ services:
       Security__DataProtection__KeysPath: /var/lib/gainer/data-protection
       OpenAI__ApiKeyFile: /run/secrets/openai_api_key
       OpenAI__Model: ${OPENAI_MODEL:-gpt-5.4-mini}
+      OpenFoodFacts__ContactEmail: ${OPENFOODFACTS_CONTACT_EMAIL:?set OPENFOODFACTS_CONTACT_EMAIL}
+      OpenFoodFacts__BaseUrl: ${OPENFOODFACTS_BASE_URL:-https://world.openfoodfacts.org/}
+      OpenFoodFacts__TimeoutSeconds: ${OPENFOODFACTS_TIMEOUT_SECONDS:-8}
+      OpenFoodFacts__MaximumResponseBytes: ${OPENFOODFACTS_MAXIMUM_RESPONSE_BYTES:-1000000}
+      OpenFoodFacts__BarcodeRequestsPerMinute: ${OPENFOODFACTS_BARCODE_REQUESTS_PER_MINUTE:-12}
+      OpenFoodFacts__SearchRequestsPerMinute: ${OPENFOODFACTS_SEARCH_REQUESTS_PER_MINUTE:-8}
       Provisioning__AccountOperatorSecretPath: /run/secrets/account_operator
     secrets:
       - postgres_password
