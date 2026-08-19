@@ -97,6 +97,7 @@ jobs:
         run: aspire publish --project src/Gainer.AppHost/Gainer.AppHost.csproj --output-path artifacts/aspire --non-interactive
 
       - name: Validate hardened VPS Compose
+        shell: pwsh
         env:
           GAINER_PUBLIC_ORIGIN: https://gainer.markfort.xyz
           GAINER_EDGE_PORT: "8081"
