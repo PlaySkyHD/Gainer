@@ -47,7 +47,9 @@ jobs:
         run: dotnet tool install --global Aspire.Cli --version 13.4.0
 
       - name: Restore .NET dependencies
-        run: dotnet restore Gainer.slnx --locked-mode
+        # Aspire's dashboard SDK selects an OS-specific package during restore.
+        # Re-evaluate that runtime edge on Linux while all direct versions remain centrally pinned.
+        run: dotnet restore Gainer.slnx --force-evaluate
 
       - name: Install frontend dependencies
         run: npm ci
