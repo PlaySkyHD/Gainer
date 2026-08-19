@@ -33,6 +33,16 @@ try {
     $errors = [System.Collections.Generic.List[string]]::new()
     $httpMethods = @("get", "put", "post", "delete", "options", "head", "patch", "trace")
 
+    function ConvertTo-CanonicalJsonValue {
+        param([AllowNull()] $Value)
+
+        if ($null -eq $Value) {
+            return "null"
+        }
+
+        return ConvertTo-Json -InputObject $Value -Compress -Depth 20
+    }
+
     foreach ($path in $baseline.paths.Keys) {
         if (-not $current.paths.ContainsKey($path)) {
             $errors.Add("Removed path: $path")
@@ -90,7 +100,9 @@ try {
                 }
 
                 foreach ($shapeKey in @("type", "format", '$ref')) {
-                    if ($oldProperties[$propertyName][$shapeKey] -ne $newProperties[$propertyName][$shapeKey]) {
+                    $oldShape = ConvertTo-CanonicalJsonValue $oldProperties[$propertyName][$shapeKey]
+                    $newShape = ConvertTo-CanonicalJsonValue $newProperties[$propertyName][$shapeKey]
+                    if ($oldShape -cne $newShape) {
                         $errors.Add("Changed $shapeKey of property: $schemaName.$propertyName")
                     }
                 }
