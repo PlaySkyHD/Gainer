@@ -3,8 +3,18 @@ param()
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$packageRoot = Join-Path $env:USERPROFILE ".nuget/packages"
-$allowed = @("Apache-2.0", "BSD-3-Clause", "MIT", "PostgreSQL", "license.txt")
+$userProfile = $env:USERPROFILE
+if ([string]::IsNullOrWhiteSpace($userProfile)) { $userProfile = $env:HOME }
+if ([string]::IsNullOrWhiteSpace($userProfile)) { throw "A user profile directory is required." }
+$packageRoot = Join-Path $userProfile ".nuget/packages"
+$allowed = @(
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "MIT",
+    "PostgreSQL",
+    "license.txt",
+    "https://github.com/dotnet/corefx/blob/master/LICENSE.TXT"
+)
 $findings = [System.Collections.Generic.List[string]]::new()
 $checked = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
