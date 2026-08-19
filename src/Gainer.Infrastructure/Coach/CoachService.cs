@@ -146,6 +146,12 @@ public sealed partial class CoachService(
         var result = new List<CoachFact>();
         AddMetric(result, data, $"nutrition.calories.{days}", "Average calories", data.Nutrition.CaloriesKcal.Value, "kcal/day", days, data.Nutrition.AlgorithmVersion);
         AddMetric(result, data, $"nutrition.protein.{days}", "Average protein", data.Nutrition.ProteinGrams.Value, "g/day", days, data.Nutrition.AlgorithmVersion);
+        if (data.Nutrition.MealDiaryDays > 0)
+            result.Add(Fact(data, $"nutrition.source.diary.{days}", "nutrition-source", "Days sourced from meal diary",
+                data.Nutrition.MealDiaryDays, NutritionSources.MealDiary, "days", $"last {days} days", data.Nutrition.AlgorithmVersion));
+        if (data.Nutrition.LegacyCheckInDays > 0)
+            result.Add(Fact(data, $"nutrition.source.legacy.{days}", "nutrition-source", "Days sourced from legacy check-ins",
+                data.Nutrition.LegacyCheckInDays, NutritionSources.LegacyCheckIn, "days", $"last {days} days", data.Nutrition.AlgorithmVersion));
         return new ToolResult(data.AsOfRevision, result, result.Count == 0 ? ["No nutrition entries are available."] : []);
     }
 

@@ -7,7 +7,8 @@ export type MutableAggregateTable =
   | "customExercises"
   | "templates"
   | "rotation"
-  | "workouts";
+  | "workouts"
+  | "nutritionDays";
 
 export type MutationOperation = "create" | "update" | "delete" | "complete" | "discard";
 

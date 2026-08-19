@@ -190,7 +190,7 @@ async function applyChangeBatch(database: AccountDatabase, batch: SyncBatch): Pr
   const tables = [
     database.syncMeta, database.outbox, database.conflicts, database.tombstones,
     database.goals, database.checkIns, database.customExercises, database.templates,
-    database.rotation, database.workouts,
+    database.rotation, database.workouts, database.nutritionDays,
   ] as const;
   await database.transaction("rw", tables, async () => {
     for (const change of batch.changes) await applyChange(database, batch, change);
@@ -351,6 +351,7 @@ function serverOperation(type: string, operation: string, body: Record<string, u
     if (operation === "discard") return "discardWorkout";
     return "editWorkout";
   }
+  if (type === "nutrition-day") return operation === "delete" ? "deleteNutritionDay" : "saveNutritionDay";
   const suffix = type.split("-").map((part) => part[0]?.toUpperCase() + part.slice(1)).join("");
   return `${operation}${suffix}`;
 }
@@ -464,6 +465,30 @@ function serverPayload(
       })),
     };
   }
+  if (type === "nutrition-day") {
+    if (operation === "delete") return { nutritionDayId: id, baseVersion };
+    return {
+      nutritionDayId: id,
+      localDate: body.localDate,
+      baseVersion,
+      entries: (body.entries as Record<string, unknown>[]).map((entry) => {
+        const per100 = entry.per100Grams as Record<string, unknown>;
+        return {
+          entryId: entry.entryId,
+          meal: entry.meal,
+          position: entry.position,
+          productName: entry.productName,
+          brand: entry.brand,
+          amountGrams: entry.amountGrams,
+          kilocaloriesPer100Grams: per100.kilocalories,
+          proteinGramsPer100Grams: per100.proteinGrams,
+          carbohydrateGramsPer100Grams: per100.carbohydrateGrams,
+          fatGramsPer100Grams: per100.fatGrams,
+          source: entry.source,
+        };
+      }),
+    };
+  }
   return body;
 }
 
@@ -475,6 +500,7 @@ function resourceMapping(database: AccountDatabase, type: string) {
     WorkoutTemplate: { table: database.templates, aggregateType: "workout-template" },
     WorkoutRotation: { table: database.rotation, aggregateType: "workout-rotation" },
     Workout: { table: database.workouts, aggregateType: "workout" },
+    NutritionDay: { table: database.nutritionDays, aggregateType: "nutrition-day" },
   };
   return values[type];
 }
@@ -497,6 +523,12 @@ function normalizeSnapshot(type: string, value: unknown): unknown {
       updatedAtUtc: snapshot.updatedAtUtc,
     };
   }
+  if (type === "NutritionDay") {
+    const copy = { ...snapshot };
+    delete copy.version;
+    delete copy.nutritionDayId;
+    return copy;
+  }
   const copy = { ...snapshot };
   delete copy.version;
   delete copy.goalId;
@@ -518,6 +550,7 @@ function serverResourceType(type: string): string {
     "workout-template": "WorkoutTemplate",
     "workout-rotation": "WorkoutRotation",
     workout: "Workout",
+    "nutrition-day": "NutritionDay",
   };
   const result = mapping[type];
   if (!result) throw new Error(`Der Aggregattyp ${type} kann nicht synchronisiert werden.`);

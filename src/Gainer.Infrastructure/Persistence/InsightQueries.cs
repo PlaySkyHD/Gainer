@@ -1,6 +1,7 @@
 using System.Data;
 using Gainer.Core.BodyTracking;
 using Gainer.Core.Insights;
+using Gainer.Core.Nutrition;
 using Gainer.Core.Training;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,6 +21,12 @@ public sealed class InsightQueries(AppDbContext context) : IInsightQueries
         long revision = await CurrentRevisionAsync(cancellationToken);
         List<DailyCheckIn> checkIns = await context.DailyCheckIns.AsNoTracking()
             .Where(item => item.LocalDate >= from && item.LocalDate <= through)
+            .OrderBy(item => item.LocalDate)
+            .ToListAsync(cancellationToken);
+        List<NutritionDay> nutritionDays = await context.NutritionDays.AsNoTracking()
+            .Where(item => item.LocalDate >= from && item.LocalDate <= through)
+            .Include(item => item.Entries)
+            .AsSplitQuery()
             .OrderBy(item => item.LocalDate)
             .ToListAsync(cancellationToken);
         BodyGoal? goal = await context.BodyGoals.AsNoTracking()
@@ -43,10 +50,7 @@ public sealed class InsightQueries(AppDbContext context) : IInsightQueries
         WeightInsights sevenDayWeight = InsightAlgorithms.Weight(
             checkIns.Select(item => new WeightPoint(item.LocalDate, item.WeightKg)).ToArray(), sevenDayFrom, through);
         NutritionInsights nutrition = InsightAlgorithms.Nutrition(
-            checkIns.Select(item => new NutritionPoint(
-                item.LocalDate, item.CaloriesKcal, item.ProteinGrams, item.CarbohydrateGrams, item.FatGrams)).ToArray(),
-            from,
-            through);
+            ProjectNutrition(checkIns, nutritionDays), from, through);
         TrainingInsights training = InsightAlgorithms.Training(sets.Select(ToPerformance).ToArray(), workoutIds);
         DailyCheckIn? latest = checkIns.OrderByDescending(item => item.LocalDate).ThenByDescending(item => item.Id).FirstOrDefault();
         return new DashboardInsightSnapshot(
@@ -141,6 +145,34 @@ public sealed class InsightQueries(AppDbContext context) : IInsightQueries
 
     private static SetPerformance ToPerformance(SetRow row) => new(
         row.WorkoutId, row.ExerciseId, row.CompletedAtUtc, row.WeightKg, row.Repetitions, row.IsCompleted);
+
+    private static NutritionPoint[] ProjectNutrition(
+        IReadOnlyCollection<DailyCheckIn> checkIns,
+        IReadOnlyCollection<NutritionDay> nutritionDays)
+    {
+        Dictionary<DateOnly, DailyCheckIn> legacy = checkIns
+            .GroupBy(item => item.LocalDate)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.Id).First());
+        Dictionary<DateOnly, NutritionDay> diary = nutritionDays
+            .Where(item => item.Entries.Count > 0)
+            .GroupBy(item => item.LocalDate)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.Id).First());
+
+        return legacy.Keys.Concat(diary.Keys).Distinct().OrderBy(date => date).Select(date =>
+        {
+            if (diary.TryGetValue(date, out NutritionDay? day))
+            {
+                NutritionTotals total = NutritionCalculator.Sum(day.Entries.Select(item => new NutritionTotals(
+                    item.Kilocalories, item.ProteinGrams, item.CarbohydrateGrams, item.FatGrams)));
+                return new NutritionPoint(date, total.Kilocalories, total.ProteinGrams,
+                    total.CarbohydrateGrams, total.FatGrams, NutritionSources.MealDiary);
+            }
+
+            DailyCheckIn item = legacy[date];
+            return new NutritionPoint(date, item.CaloriesKcal, item.ProteinGrams,
+                item.CarbohydrateGrams, item.FatGrams, NutritionSources.LegacyCheckIn);
+        }).ToArray();
+    }
 
     private sealed record SetRow(
         Guid WorkoutId,

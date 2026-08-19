@@ -31,6 +31,11 @@ export const accountStoresV3 = {
   outbox: "&mutationId, aggregateKey, [aggregateKey+sequence], status, createdAtUtc, [status+createdAtUtc], &clientSequence, [status+nextAttemptAtUtc]",
 } as const;
 
+export const accountStoresV4 = {
+  ...accountStoresV3,
+  nutritionDays: "&id",
+} as const;
+
 export interface LocalMetadata {
   key: string;
   value: string;
@@ -119,6 +124,7 @@ export class AccountDatabase extends Dexie {
   templates!: EntityTable<LocalResourceRecord, "id">;
   rotation!: EntityTable<LocalResourceRecord, "id">;
   workouts!: EntityTable<LocalResourceRecord, "id">;
+  nutritionDays!: EntityTable<LocalResourceRecord, "id">;
   exerciseCatalog!: EntityTable<CatalogRecord, "id">;
   analyticsCache!: EntityTable<AnalyticsCacheRecord, "key">;
 
@@ -131,6 +137,7 @@ export class AccountDatabase extends Dexie {
     this.version(1).stores(accountStoresV1);
     this.version(2).stores(accountStoresV2);
     this.version(3).stores(accountStoresV3);
+    this.version(4).stores(accountStoresV4);
   }
 }
 

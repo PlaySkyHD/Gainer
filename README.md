@@ -10,6 +10,7 @@ Der MVP umfasst:
 
 - eingeladene oder administrativ angelegte Konten ohne öffentliche Registrierung,
 - Körperziele und tägliche Check-ins,
+- ein offline-fähiges Ernährungstagebuch mit vier Mahlzeiten, manueller Erfassung sowie optionaler Barcode- und Produktsuche über Open Food Facts,
 - Übungskatalog, Workout-Templates und eine einfache Rotation,
 - Offline-first Workout-Ausführung mit Previous Performance, Set Logging, Historie und Rest Timer,
 - deterministische Fortschrittskennzahlen,
@@ -75,6 +76,17 @@ ASP.NET OpenAPI ist die einzige HTTP-Vertragsquelle. Ein Backend-Build erzeugt
 `contracts/openapi/Gainer.Api.json`; `npm run generate:api` erzeugt daraus
 `apps/web/src/lib/api/generated.ts`. Beide Dateien werden eingecheckt und CI
 lehnt nicht regenerierte oder gegenüber dem Ziel-Branch inkompatible Änderungen ab.
+
+## Open Food Facts lokal
+
+Die externe Lebensmittelsuche ist read-only und benötigt keine API-Zugangsdaten. Open Food Facts verlangt jedoch einen identifizierenden User-Agent; deshalb ist eine erreichbare technische Kontaktadresse erforderlich. Für den Aspire AppHost wird sie lokal als Parameter gespeichert:
+
+```powershell
+dotnet user-secrets set "Parameters:openfoodfacts-contact-email" "operator@example.invalid" --project src/Gainer.AppHost
+dotnet run --project src/Gainer.AppHost
+```
+
+Direkt gestartete API-Prozesse verwenden stattdessen `OpenFoodFacts__ContactEmail`. Barcode und Suchtext werden weder durch den Adapter geloggt noch als URL-Pfad oder Query in OpenTelemetry exportiert. Produktdaten sind Community-Daten und werden vor dem Speichern als eigener Nährwert-Snapshot übernommen; Angaben sollten mit der Verpackung abgeglichen werden.
 
 ## Erstes Account-Operator-Konto
 

@@ -6,6 +6,19 @@ export type Invitation = components["schemas"]["InvitationResponse"];
 export type DashboardInsights = components["schemas"]["DashboardInsightsResponse"];
 export type ExerciseProgress = components["schemas"]["ExerciseProgressResponse"];
 export type CoachAnswer = components["schemas"]["CoachResponse"];
+export type FoodCatalogProduct = components["schemas"]["FoodCatalogProductResponse"];
+export type FoodCatalogSearch = components["schemas"]["FoodCatalogSearchResponse"];
+
+export class FoodCatalogApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "FoodCatalogApiError";
+  }
+}
 
 async function readError(response: Response): Promise<Error> {
   const problem = (await response.json().catch(() => null)) as components["schemas"]["ProblemDetails"] | null;
@@ -93,4 +106,24 @@ export async function getExerciseProgress(
 export async function askCoach(question: string): Promise<CoachAnswer> {
   const response = await mutate("/api/v1/coach/responses", "POST", { question });
   return (await response.json()) as CoachAnswer;
+}
+
+export async function lookupFoodBarcode(barcode: string): Promise<FoodCatalogProduct> {
+  return foodRequest<FoodCatalogProduct>(`/api/v1/foods/barcode/${encodeURIComponent(barcode)}`);
+}
+
+export async function searchFoods(query: string, page = 1, pageSize = 10): Promise<FoodCatalogSearch> {
+  const params = new URLSearchParams({ query, page: String(page), pageSize: String(pageSize) });
+  return foodRequest<FoodCatalogSearch>(`/api/v1/foods/search?${params}`);
+}
+
+async function foodRequest<T>(path: string): Promise<T> {
+  const response = await fetch(path, { credentials: "include", cache: "no-store" });
+  if (response.ok) return (await response.json()) as T;
+  const problem = await response.json().catch(() => null) as { title?: string; code?: string } | null;
+  throw new FoodCatalogApiError(
+    response.status,
+    problem?.code ?? `http_${response.status}`,
+    problem?.title ?? "Die Lebensmittelsuche ist fehlgeschlagen.",
+  );
 }

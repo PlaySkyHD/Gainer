@@ -4,7 +4,7 @@ public static class InsightAlgorithmVersions
 {
     public const string WeightAverage = "weight-average-v1";
     public const string WeightTrend = "weight-trend-ols-v1";
-    public const string NutritionAverage = "nutrition-average-v1";
+    public const string NutritionAverage = "nutrition-average-v2-diary-priority";
     public const string TrainingVolume = "training-volume-v1";
     public const string EstimatedOneRepMax = "e1rm-epley-v1";
 }
@@ -16,7 +16,14 @@ public sealed record NutritionPoint(
     decimal? CaloriesKcal,
     decimal? ProteinGrams,
     decimal? CarbohydrateGrams,
-    decimal? FatGrams);
+    decimal? FatGrams,
+    string Source = NutritionSources.LegacyCheckIn);
+
+public static class NutritionSources
+{
+    public const string MealDiary = "meal-diary";
+    public const string LegacyCheckIn = "legacy-check-in";
+}
 
 public sealed record MetricAverage(decimal? Value, int ObservedDays);
 
@@ -39,6 +46,8 @@ public sealed record NutritionInsights(
     int ExpectedDays,
     int ObservedDays,
     decimal Coverage,
+    int MealDiaryDays,
+    int LegacyCheckInDays,
     MetricAverage CaloriesKcal,
     MetricAverage ProteinGrams,
     MetricAverage CarbohydrateGrams,
@@ -120,6 +129,10 @@ public static class InsightAlgorithms
             expectedDays,
             observedDays,
             Coverage(observedDays, expectedDays),
+            points.Count(item => item.Source == NutritionSources.MealDiary),
+            points.Count(item => item.Source == NutritionSources.LegacyCheckIn &&
+                (item.CaloriesKcal is not null || item.ProteinGrams is not null ||
+                 item.CarbohydrateGrams is not null || item.FatGrams is not null)),
             Average(points.Select(item => item.CaloriesKcal)),
             Average(points.Select(item => item.ProteinGrams)),
             Average(points.Select(item => item.CarbohydrateGrams)),

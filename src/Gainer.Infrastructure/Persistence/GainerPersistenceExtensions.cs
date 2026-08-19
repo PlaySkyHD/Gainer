@@ -2,11 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Gainer.Core.Access;
 using Gainer.Core.BodyTracking;
 using Gainer.Core.Mutations;
+using Gainer.Core.Nutrition;
 using Gainer.Core.Training;
 using Gainer.Core.Sync;
 using Gainer.Core.Insights;
 using Gainer.Core.Coach;
 using Gainer.Infrastructure.Coach;
+using Gainer.Infrastructure.Catalog;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -32,6 +34,8 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<IBodyGoalMutationHandler, BodyGoalMutationHandler>();
         builder.Services.AddScoped<IDailyCheckInMutationHandler, DailyCheckInMutationHandler>();
         builder.Services.AddScoped<IBodyTrackingQueries, BodyTrackingQueries>();
+        builder.Services.AddScoped<INutritionDayMutationHandler, NutritionDayMutationHandler>();
+        builder.Services.AddScoped<INutritionQueries, NutritionQueries>();
         builder.Services.AddScoped<IExerciseCatalogQueries, ExerciseCatalogQueries>();
         builder.Services.AddScoped<IExerciseResolver, ExerciseCatalogQueries>();
         builder.Services.AddScoped<ICustomExerciseMutationHandler, CustomExerciseMutationHandler>();
@@ -49,6 +53,8 @@ public static class GainerPersistenceExtensions
         builder.Services.AddHttpClient<IOpenAiResponsesProvider, OpenAiResponsesProvider>(client =>
             client.BaseAddress = new Uri("https://api.openai.com/"));
         builder.Services.AddScoped<ICoachService, CoachService>();
+        builder.Services.Configure<OpenFoodFactsOptions>(builder.Configuration.GetSection(OpenFoodFactsOptions.SectionName));
+        builder.Services.AddHttpClient<IExternalFoodCatalog, OpenFoodFactsCatalog>();
         builder.Services.AddScoped<IChangeCollector, ChangeCollector>();
         builder.Services.AddDbContext<AppDbContext>((serviceProvider, options) =>
         {

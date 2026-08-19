@@ -9,6 +9,7 @@ import {
   accountStoresV1,
   accountStoresV2,
   accountStoresV3,
+  accountStoresV4,
   deleteLocalAccountData,
   listLocalProfiles,
   openAccountDatabase,
@@ -50,7 +51,8 @@ test("version two upgrade preserves aggregate and pending outbox data", async ()
     calories: 2_500,
   });
   assert.equal((await upgraded.outbox.get("mutation-before-upgrade"))?.status, "pending");
-  assert.equal(upgraded.verno, 3);
+  assert.equal(upgraded.verno, 4);
+  assert.equal(await upgraded.nutritionDays.count(), 0);
 });
 
 test("a failed upgrade leaves the previous schema and outbox usable", async () => {
@@ -75,7 +77,7 @@ test("a failed upgrade leaves the previous schema and outbox usable", async () =
 
   const reopened = track(new AccountDatabase(accountId));
   await reopened.open();
-  assert.equal(reopened.verno, 3);
+  assert.equal(reopened.verno, 4);
   assert.equal((await reopened.outbox.get("pending-before-failure"))?.status, "pending");
 });
 
@@ -116,7 +118,8 @@ class FailingUpgradeDatabase extends Dexie {
     this.version(1).stores(accountStoresV1);
     this.version(2).stores(accountStoresV2);
     this.version(3).stores(accountStoresV3);
-    this.version(4).stores(accountStoresV3).upgrade(() => {
+    this.version(4).stores(accountStoresV4);
+    this.version(5).stores(accountStoresV4).upgrade(() => {
       throw new Error("Simulated upgrade failure");
     });
   }

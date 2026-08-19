@@ -8,6 +8,7 @@ using Gainer.Core.Mutations;
 using Gainer.Core.Security;
 using Gainer.Core.Sync;
 using Gainer.Core.Training;
+using Gainer.Core.Nutrition;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -131,14 +132,19 @@ public sealed class SyncMutationProcessor(
             return new ProcessedSyncMutationResult(command.MutationId, false, revision, execution.Changes);
         }
         catch (Exception exception) when (exception is DailyCheckInConflictException or CustomExerciseConflictException or
-            BodyGoalConflictException or WorkoutTemplateConflictException or WorkoutRotationConflictException or WorkoutConflictException)
+            BodyGoalConflictException or WorkoutTemplateConflictException or WorkoutRotationConflictException or WorkoutConflictException or
+            NutritionDayConflictException)
         {
             throw new SyncMutationConflictException("stale_base_version", "The resource changed since the supplied base version.");
         }
         catch (Exception exception) when (exception is DailyCheckInNotFoundException or CustomExerciseNotFoundException or
-            WorkoutTemplateNotFoundException or WorkoutRotationNotFoundException or WorkoutNotFoundException)
+            WorkoutTemplateNotFoundException or WorkoutRotationNotFoundException or WorkoutNotFoundException or NutritionDayNotFoundException)
         {
             throw new SyncMutationConflictException("resource_not_found", "The resource is no longer available.");
+        }
+        catch (NutritionValidationException)
+        {
+            throw new SyncMutationValidationException("invalid_payload", "The nutrition payload is invalid.");
         }
         catch (Exception exception) when (IsRetryableConcurrency(exception))
         {

@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  OPENFOODFACTS_CONTACT_EMAIL: ci@example.invalid
+  Parameters__openfoodfacts-contact-email: ci@example.invalid
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -147,7 +151,7 @@ jobs:
         run: |
           docker run --rm -d --name gainer-edge-csp-test -p 127.0.0.1:18081:80 gainer-edge:local
           trap 'docker stop gainer-edge-csp-test' EXIT
-          for attempt in {1..20}; do
+          for _attempt in {1..20}; do
             curl --fail --silent http://127.0.0.1:18081/ >/dev/null && break
             sleep 1
           done
