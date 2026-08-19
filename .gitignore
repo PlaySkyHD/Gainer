@@ -1,0 +1,10 @@
+.npm-cache/
+.aspire/
+.env
+artifacts/
+**/bin/
+**/obj/
+**/TestResults/
+**/playwright-report/
+**/test-results/
+**/.data-protection-keys/

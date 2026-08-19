@@ -12,7 +12,7 @@ Der erste MVP soll diese Kernreise in einer privaten, installierbaren Anwendung 
 - Nutzer können Übungen verwalten, Trainingsvorlagen und Rotationen erstellen sowie Trainingseinheiten inklusive Sätzen, Wiederholungen, Gewicht, Notizen und Pausentimer protokollieren. Abgeschlossene Einheiten bleiben als unveränderliche historische Momentaufnahme erhalten.
 - Die Kernreise funktioniert ohne Netzverbindung. Lokale Änderungen werden nachvollziehbar und idempotent mit dem Server synchronisiert; der aktuelle Synchronisationszustand und behebbare Konflikte werden sichtbar gemacht.
 - Fortschrittskennzahlen für Gewicht, Ernährung und Kraft werden deterministisch aus strukturierten Daten berechnet. Die KI formuliert daraus verständliche, zurückhaltende Zusammenfassungen und darf nur freigegebene, nutzergebundene Leseoperationen verwenden.
-- Der Betrieb wird für einen einzelnen Linux-VPS vorbereitet: PostgreSQL bleibt intern erreichbar, HTTPS terminiert vor der Anwendung, Secrets liegen außerhalb des Quellcodes und Backups werden außerhalb des Servers abgelegt. .NET Aspire beschreibt und beobachtet die lokale Entwicklungs-Topologie; die Produktionsausführung erfolgt containerisiert, ohne den Aspire AppHost als Produktions-Runtime vorauszusetzen.
+- Der Betrieb wird für einen einzelnen Linux-VPS vorbereitet: PostgreSQL bleibt intern erreichbar, HTTPS terminiert vor der Anwendung, Secrets liegen außerhalb des Quellcodes und Restic legt clientseitig verschlüsselte Backups in einem privaten Azure-Blob-Container außerhalb des Servers ab. .NET Aspire beschreibt und beobachtet die lokale Entwicklungs-Topologie; die Produktionsausführung erfolgt containerisiert, ohne den Aspire AppHost als Produktions-Runtime vorauszusetzen.
 
 ### Non-Goals
 
@@ -28,7 +28,7 @@ Der erste MVP soll diese Kernreise in einer privaten, installierbaren Anwendung 
 - Jede nutzerbezogene Entität wird serverseitig an die authentifizierte Nutzer-ID gebunden; eine vom Client oder vom KI-Modell gelieferte Nutzer-ID ist niemals maßgeblich.
 - Autorisierungs- und Integrationstests mit mindestens zwei Nutzern müssen Cross-User-Zugriffe auf Lesen, Schreiben und Synchronisieren verhindern.
 - Die OpenAI-Integration läuft ausschließlich serverseitig, übermittelt nur die für die konkrete Antwort erforderlichen Daten, verwendet keine freien SQL-Werkzeuge und speichert Prompts oder Antworten nicht in normalen Anwendungslogs. API-Anfragen werden mit deaktivierter Speicherung ausgeführt.
-- Sensible Konfiguration, Datenbank, Backups und Transportwege werden für den privaten VPS-Betrieb abgesichert. Es wird nicht behauptet, dass der Betreiber die Rohdaten technisch nicht einsehen könne.
+- Sensible Konfiguration, Datenbank, Backups und Transportwege werden für den privaten VPS-Betrieb abgesichert. Das Azure-Zugriffssecret und das davon getrennte Restic-Passwort liegen außerhalb von Repository und Images. Es wird nicht behauptet, dass der Betreiber die Rohdaten technisch nicht einsehen könne.
 
 ### Breaking Changes
 
@@ -56,5 +56,5 @@ Keine; es bestehen noch keine Basisspezifikationen.
 - Neue modular-monolithische ASP.NET-Core-Anwendung auf .NET 10 mit EF Core/Npgsql, klar getrennten Domänenmodulen und HTTP-/Synchronisationsverträgen.
 - Neues PostgreSQL-Schema für Identität, Ziele, Check-ins, Übungen, Pläne, Trainingseinheiten, Synchronisationsmetadaten und KI-Nutzungsmetadaten.
 - Neue serverseitige OpenAI-Responses-API-Integration mit strukturierten, schreibgeschützten Werkzeugen und deaktivierter Anbieter-Speicherung.
-- Neue Aspire-Projekte für lokale Orchestrierung, Service Discovery, Health Checks und OpenTelemetry sowie Container- und Reverse-Proxy-Konfiguration für einen einzelnen Linux-VPS.
+- Neue Aspire-Projekte für lokale Orchestrierung, Service Discovery, Health Checks und OpenTelemetry sowie Container-, Reverse-Proxy- und Azure-Blob-Backup-Konfiguration für einen einzelnen Linux-VPS.
 - Neue automatisierte Tests für Domänenregeln, API-Verträge, Offline-Synchronisation und insbesondere die Isolation zweier Nutzer; zusätzlich reale PWA-Tests auf einem iPhone.

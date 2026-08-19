@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0.103 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet restore src/Gainer.Api/Gainer.Api.csproj --locked-mode
+RUN dotnet publish src/Gainer.Api/Gainer.Api.csproj --no-restore -c Release -o /out /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.3 AS runtime
+WORKDIR /app
+COPY --from=build /out .
+RUN mkdir -p /var/lib/gainer/data-protection \
+    && chown 1654:1654 /var/lib/gainer/data-protection
+USER 1654
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["dotnet", "Gainer.Api.dll", "--health-check"]
+ENTRYPOINT ["dotnet", "Gainer.Api.dll"]
