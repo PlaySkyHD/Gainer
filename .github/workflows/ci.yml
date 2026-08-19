@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install Aspire CLI
+        run: dotnet tool install --global Aspire.Cli --version 13.4.0
+
+      - name: Restore .NET dependencies
+        run: dotnet restore Gainer.slnx --locked-mode
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: apps/web
+
+      - name: Verify .NET formatting
+        run: dotnet format Gainer.slnx --verify-no-changes --no-restore
+
+      - name: Build backend
+        run: dotnet build Gainer.slnx --no-restore
+
+      - name: Generate TypeScript API contract
+        run: npm run generate:api
+        working-directory: apps/web
+
+      - name: Run backend tests
+        run: dotnet test Gainer.slnx --no-restore --no-build --logger trx --results-directory artifacts/test-results
+
+      - name: Typecheck frontend
+        run: npm run typecheck
+        working-directory: apps/web
+
+      - name: Lint frontend
+        run: npm run lint
+        working-directory: apps/web
+
+      - name: Build static frontend
+        run: npm run build
+        working-directory: apps/web
+
+      - name: Validate production script policy
+        run: node deploy/generate-edge-csp.mjs apps/web/out deploy/Caddyfile --check
+
+      - name: Publish production API artifact
+        run: dotnet publish src/Gainer.Api/Gainer.Api.csproj --no-restore --configuration Release --output artifacts/api
+
+      - name: Reject secrets, fixtures, unapproved media, and RAG dependencies
+        shell: pwsh
+        run: ./scripts/Test-ReleaseSafety.ps1 -ArtifactPaths artifacts/api,apps/web/out -CheckRepositoryPolicy
+
+      - name: Publish Aspire Docker Compose model
+        env:
+          MSBUILDDISABLENODEREUSE: "1"
+          DOTNET_CLI_USE_MSBUILD_SERVER: "0"
+        run: aspire publish --project src/Gainer.AppHost/Gainer.AppHost.csproj --output-path artifacts/aspire --non-interactive
+
+      - name: Validate hardened VPS Compose
+        env:
+          GAINER_PUBLIC_ORIGIN: https://gainer.markfort.xyz
+          GAINER_EDGE_PORT: "8081"
+          GAINER_SITE_ADDRESS: :80
+          GAINER_SECRETS_DIR: /tmp/gainer-secrets
+          AZURE_STORAGE_ACCOUNT_NAME: gainertest
+          RESTIC_REPOSITORY: azure:gainer-backups:/test
+        run: ./scripts/Test-DeploymentTopology.ps1
+
+      - name: Build production container images
+        env:
+          GAINER_PUBLIC_ORIGIN: https://gainer.example.test
+          GAINER_SECRETS_DIR: /tmp/gainer-secrets
+          AZURE_STORAGE_ACCOUNT_NAME: gainertest
+          RESTIC_REPOSITORY: azure:gainer-backups:/test
+        run: docker compose -f deploy/compose.yaml --profile operations build api migrator edge backup
+
+      - name: Verify non-root application images
+        run: |
+          test "$(docker image inspect gainer-api:local --format '{{.Config.User}}')" != "" 
+          test "$(docker image inspect gainer-api:local --format '{{.Config.User}}')" != "0"
+          test "$(docker image inspect gainer-migrator:local --format '{{.Config.User}}')" != ""
+          test "$(docker image inspect gainer-migrator:local --format '{{.Config.User}}')" != "0"
+
+      - name: Scan image metadata, history, and rendered Compose
+        shell: pwsh
+        env:
+          GAINER_PUBLIC_ORIGIN: https://gainer.example.test
+          GAINER_SECRETS_DIR: /tmp/gainer-secrets
+          AZURE_STORAGE_ACCOUNT_NAME: gainertest
+          RESTIC_REPOSITORY: azure:gainer-backups:/test
+        run: |
+          New-Item -ItemType Directory -Force artifacts/container-metadata | Out-Null
+          docker image inspect gainer-api:local gainer-migrator:local gainer-edge:local gainer-backup:local | Out-File artifacts/container-metadata/inspect.json
+          docker history --no-trunc gainer-api:local | Out-File artifacts/container-metadata/api-history.txt
+          docker history --no-trunc gainer-migrator:local | Out-File artifacts/container-metadata/migrator-history.txt
+          docker history --no-trunc gainer-edge:local | Out-File artifacts/container-metadata/edge-history.txt
+          docker compose -f deploy/compose.yaml config | Out-File artifacts/container-metadata/compose.yaml
+          ./scripts/Test-ReleaseSafety.ps1 -ArtifactPaths artifacts/container-metadata
+
+      - name: Enforce npm license allowlist
+        run: node scripts/check-npm-licenses.mjs
+
+      - name: Enforce NuGet license allowlist
+        shell: pwsh
+        run: ./scripts/Test-NuGetLicenses.ps1
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      - name: Verify frontend hydration behind production CSP
+        shell: bash
+        run: |
+          docker run --rm -d --name gainer-edge-csp-test -p 127.0.0.1:18081:80 gainer-edge:local
+          trap 'docker stop gainer-edge-csp-test' EXIT
+          for attempt in {1..20}; do
+            curl --fail --silent http://127.0.0.1:18081/ >/dev/null && break
+            sleep 1
+          done
+          npm run test:edge
+        working-directory: apps/web
+
+      - name: Run browser tests
+        run: npm run test:browser
+        working-directory: apps/web
+
+      - name: Reject generated contract drift
+        run: git diff --exit-code -- contracts/openapi apps/web/src/lib/api/generated.ts
+
+      - name: Reject incompatible OpenAPI changes
+        shell: pwsh
+        env:
+          OPENAPI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: ./scripts/Test-OpenApiCompatibility.ps1 -BaseRef $env:OPENAPI_BASE_SHA
+
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: test-reports
+          path: |
+            artifacts/test-results
+            apps/web/playwright-report
+          if-no-files-found: warn
+          retention-days: 14

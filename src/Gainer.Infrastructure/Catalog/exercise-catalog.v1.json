@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "2026.08.1",
+  "source": "Gainer original metadata",
+  "entries": [
+    { "id": "0159d8e1-ec7a-527a-9887-5cb4f70b1c83", "name": "Barbell Bench Press", "targetMuscle": "Pectoralis major", "muscleGroup": "Chest", "equipment": "Barbell" },
+    { "id": "07859f08-0fa6-5da4-882f-f5db0a7c310d", "name": "Back Squat", "targetMuscle": "Quadriceps", "muscleGroup": "Legs", "equipment": "Barbell" },
+    { "id": "173d2d47-c8a1-5967-8f5b-88de90a30659", "name": "Romanian Deadlift", "targetMuscle": "Hamstrings", "muscleGroup": "Legs", "equipment": "Barbell" },
+    { "id": "28d6db67-f2d0-5e15-a63b-759fc96e01cb", "name": "Lat Pulldown", "targetMuscle": "Latissimus dorsi", "muscleGroup": "Back", "equipment": "Cable" },
+    { "id": "42ce4803-05e3-5f07-92b6-326c9aa95658", "name": "Pull-Up", "targetMuscle": "Latissimus dorsi", "muscleGroup": "Back", "equipment": "Bodyweight" },
+    { "id": "4ec1e1c8-e2c9-56ac-bec1-4ba0936f6a97", "name": "Seated Cable Row", "targetMuscle": "Rhomboids", "muscleGroup": "Back", "equipment": "Cable" },
+    { "id": "66f8d486-cedf-54ee-8154-6b295371d2f7", "name": "Dumbbell Lateral Raise", "targetMuscle": "Lateral deltoid", "muscleGroup": "Shoulders", "equipment": "Dumbbell" },
+    { "id": "71f9157f-2cec-5517-a910-a3a8c6d82f07", "name": "Standing Overhead Press", "targetMuscle": "Anterior deltoid", "muscleGroup": "Shoulders", "equipment": "Barbell" },
+    { "id": "85c4145d-e045-5153-a18a-1934d16ad4de", "name": "Leg Curl", "targetMuscle": "Hamstrings", "muscleGroup": "Legs", "equipment": "Machine" },
+    { "id": "9a23aa0d-a43b-5d10-a25e-b22db398578e", "name": "Leg Extension", "targetMuscle": "Quadriceps", "muscleGroup": "Legs", "equipment": "Machine" },
+    { "id": "b33d40e4-e84e-5317-83e2-9df3ddb6bc4d", "name": "Dumbbell Biceps Curl", "targetMuscle": "Biceps brachii", "muscleGroup": "Arms", "equipment": "Dumbbell" },
+    { "id": "c6fb4053-2f69-597f-890e-e7bd58444a3e", "name": "Cable Triceps Pushdown", "targetMuscle": "Triceps brachii", "muscleGroup": "Arms", "equipment": "Cable" }
+  ]
+}

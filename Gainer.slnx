@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Gainer.Api/Gainer.Api.csproj" />
+    <Project Path="src/Gainer.AppHost/Gainer.AppHost.csproj" />
+    <Project Path="src/Gainer.Contracts/Gainer.Contracts.csproj" />
+    <Project Path="src/Gainer.Core/Gainer.Core.csproj" />
+    <Project Path="src/Gainer.Infrastructure/Gainer.Infrastructure.csproj" />
+    <Project Path="src/Gainer.Migrator/Gainer.Migrator.csproj" />
+    <Project Path="src/Gainer.ServiceDefaults/Gainer.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Gainer.ArchitectureTests/Gainer.ArchitectureTests.csproj" />
+    <Project Path="tests/Gainer.IntegrationTests/Gainer.IntegrationTests.csproj" />
+    <Project Path="tests/Gainer.UnitTests/Gainer.UnitTests.csproj" />
+  </Folder>
+</Solution>

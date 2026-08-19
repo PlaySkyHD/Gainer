@@ -1,0 +1,664 @@
+using Gainer.Core.Sync;
+using Gainer.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+using Gainer.Core.Security;
+using Gainer.Core.BodyTracking;
+using Gainer.Core.Training;
+
+namespace Gainer.IntegrationTests;
+
+[TestClass]
+[DoNotParallelize]
+public sealed class SyncPersistenceTests
+{
+    private static PostgreSqlTestFixture? fixture;
+    private static PostgreSqlTestFixture Fixture => fixture
+        ?? throw new InvalidOperationException("The PostgreSQL fixture has not started.");
+
+    [ClassInitialize]
+    public static async Task StartAsync(TestContext context)
+    {
+        _ = context;
+        fixture = new PostgreSqlTestFixture();
+        await fixture.StartAsync();
+    }
+
+    [ClassCleanup]
+    public static async Task StopAsync()
+    {
+        if (fixture is not null) await fixture.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task OneRevisionStoresAnUnsplitOrderedMultiResourceBatch()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid clientId = Guid.NewGuid();
+        Guid mutationId = Guid.NewGuid();
+        Guid batchId = Guid.NewGuid();
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        context.SyncClients.Add(Client(clientId));
+        context.UserSyncStates.Add(new UserSyncState
+        {
+            CurrentRevision = 1,
+            ActiveClientId = clientId,
+            UpdatedAtUtc = DateTime.UtcNow,
+            Version = 1,
+        });
+        context.ProcessedMutations.Add(new ProcessedMutation
+        {
+            MutationId = mutationId,
+            ClientId = clientId,
+            ClientSequence = 1,
+            ContentHash = Enumerable.Repeat((byte)7, 32).ToArray(),
+            ResultJson = "{\"status\":\"applied\"}",
+            Revision = 1,
+            AppliedAtUtc = DateTime.UtcNow,
+        });
+        context.ChangeBatches.Add(new ChangeBatch
+        {
+            Id = batchId,
+            Revision = 1,
+            MutationId = mutationId,
+            CreatedAtUtc = DateTime.UtcNow,
+        });
+        context.ChangeItems.AddRange(
+            new ChangeItem
+            {
+                Id = Guid.NewGuid(),
+                BatchId = batchId,
+                Position = 0,
+                ResourceType = "Workout",
+                ResourceId = Guid.NewGuid(),
+                ResourceVersion = 3,
+                SnapshotJson = "{\"version\":3}",
+            },
+            new ChangeItem
+            {
+                Id = Guid.NewGuid(),
+                BatchId = batchId,
+                Position = 1,
+                ResourceType = "WorkoutRotation",
+                ResourceId = Guid.NewGuid(),
+                ResourceVersion = 2,
+                SnapshotJson = "{\"version\":2}",
+            });
+        await context.SaveChangesAsync();
+
+        context.ChangeTracker.Clear();
+        ChangeBatch stored = await context.ChangeBatches.SingleAsync();
+        List<ChangeItem> items = await context.ChangeItems.OrderBy(item => item.Position).ToListAsync();
+        Assert.AreEqual(1, stored.Revision);
+        CollectionAssert.AreEqual(new[] { 0, 1 }, items.Select(item => item.Position).ToArray());
+        Assert.IsTrue(items.All(item => item.BatchId == stored.Id));
+    }
+
+    [TestMethod]
+    public async Task MutationAndRevisionKeysAreUniquePerUserButIndependentAcrossUsers()
+    {
+        (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
+        Guid mutationId = Guid.NewGuid();
+        await InsertReceiptAsync(connectionString, firstUser, mutationId, revision: 1);
+        await InsertReceiptAsync(connectionString, secondUser, mutationId, revision: 1);
+        await using AppDbContext duplicate = Fixture.CreateContext(connectionString, firstUser);
+        SyncClient client = await duplicate.SyncClients.SingleAsync();
+        duplicate.ProcessedMutations.Add(new ProcessedMutation
+        {
+            MutationId = mutationId,
+            ClientId = client.Id,
+            ClientSequence = 2,
+            ContentHash = new byte[32],
+            ResultJson = "{}",
+            Revision = 2,
+            AppliedAtUtc = DateTime.UtcNow,
+        });
+        await Assert.ThrowsAsync<DbUpdateException>(() => duplicate.SaveChangesAsync());
+    }
+
+    [TestMethod]
+    public async Task PostgreSqlRejectsInvalidHashPayloadAndDuplicateBatchPosition()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid clientId = Guid.NewGuid();
+        await using AppDbContext invalid = Fixture.CreateContext(connectionString, userId);
+        invalid.SyncClients.Add(Client(clientId));
+        invalid.ProcessedMutations.Add(new ProcessedMutation
+        {
+            MutationId = Guid.NewGuid(),
+            ClientId = clientId,
+            ClientSequence = 1,
+            ContentHash = [1, 2],
+            ResultJson = "{}",
+            Revision = 1,
+            AppliedAtUtc = DateTime.UtcNow,
+        });
+        await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
+
+        invalid.ChangeTracker.Clear();
+        Guid batchId = Guid.NewGuid();
+        invalid.ChangeBatches.Add(new ChangeBatch { Id = batchId, Revision = 1, CreatedAtUtc = DateTime.UtcNow });
+        invalid.ChangeItems.Add(new ChangeItem
+        {
+            Id = Guid.NewGuid(),
+            BatchId = batchId,
+            Position = 0,
+            ResourceType = "Goal",
+            ResourceId = Guid.NewGuid(),
+            ResourceVersion = 1,
+            IsTombstone = true,
+            SnapshotJson = "{\"must\":\"be-null\"}",
+        });
+        await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
+    }
+
+    [TestMethod]
+    public async Task ProcessorCommitsDomainReceiptRevisionAndBatchThenReplaysWithoutSideEffects()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid clientId = Guid.NewGuid();
+        await RegisterActiveClientAsync(connectionString, userId, clientId);
+        Guid mutationId = Guid.NewGuid();
+        Guid checkInId = Guid.NewGuid();
+        ProcessSyncMutationCommand command = CreateCheckInCommand(mutationId, clientId, checkInId, 82.5m);
+
+        await using (AppDbContext firstContext = Fixture.CreateContext(connectionString, userId))
+        {
+            var user = new UserContext(userId);
+            var processor = new SyncMutationProcessor(
+                firstContext, user, new SyncMutationExecutor(firstContext, user, TimeProvider.System), TimeProvider.System);
+            ProcessedSyncMutationResult applied = await processor.ProcessAsync(command);
+            Assert.IsFalse(applied.Replayed);
+            Assert.AreEqual(1, applied.Revision);
+            Assert.HasCount(1, applied.Changes);
+        }
+        await using (AppDbContext replayContext = Fixture.CreateContext(connectionString, userId))
+        {
+            var user = new UserContext(userId);
+            var processor = new SyncMutationProcessor(
+                replayContext, user, new SyncMutationExecutor(replayContext, user, TimeProvider.System), TimeProvider.System);
+            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(command);
+            Assert.IsTrue(replayed.Replayed);
+            Assert.AreEqual(1, replayed.Revision);
+            Assert.AreEqual(1, await replayContext.DailyCheckIns.CountAsync());
+            Assert.AreEqual(1, await replayContext.ProcessedMutations.CountAsync());
+            Assert.AreEqual(1, await replayContext.ChangeBatches.CountAsync());
+            Assert.AreEqual(1, (await replayContext.UserSyncStates.SingleAsync()).CurrentRevision);
+
+            ProcessSyncMutationCommand changed = CreateCheckInCommand(mutationId, clientId, checkInId, 90m);
+            SyncMutationConflictException conflict = await Assert.ThrowsAsync<SyncMutationConflictException>(
+                () => processor.ProcessAsync(changed));
+            Assert.AreEqual("mutation_id_reused", conflict.Code);
+            Assert.AreEqual(82.5m, (await replayContext.DailyCheckIns.SingleAsync()).WeightKg);
+        }
+    }
+
+    [TestMethod]
+    public async Task OfflineWorkoutCompletionReplaysAfterLostAcknowledgementAndRejectsChangedRetryAndForeignId()
+    {
+        (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
+        Guid firstClient = Guid.NewGuid();
+        Guid secondClient = Guid.NewGuid();
+        await RegisterActiveClientAsync(connectionString, firstUser, firstClient);
+        await RegisterActiveClientAsync(connectionString, secondUser, secondClient);
+
+        Guid exerciseId = Guid.NewGuid();
+        Guid templateId = Guid.NewGuid();
+        await using (AppDbContext seed = Fixture.CreateContext(connectionString, firstUser))
+        {
+            seed.Exercises.Add(new Exercise
+            {
+                Id = exerciseId,
+                OwnerUserId = firstUser,
+                Name = "Bench press",
+                TargetMuscle = "Chest",
+                MuscleGroup = "Chest",
+                Equipment = "Barbell",
+                CatalogVersion = null,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow,
+                Version = 1,
+            });
+            seed.WorkoutTemplates.Add(new WorkoutTemplate
+            {
+                Id = templateId,
+                Name = "Push",
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow,
+                Version = 1,
+            });
+            seed.WorkoutTemplateItems.Add(new WorkoutTemplateItem
+            {
+                Id = Guid.NewGuid(),
+                TemplateId = templateId,
+                ExerciseId = exerciseId,
+                Position = 0,
+                PlannedSets = 1,
+                MinimumRepetitions = 6,
+                MaximumRepetitions = 10,
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        Guid workoutId = Guid.NewGuid();
+        Guid startMutationId = Guid.NewGuid();
+        Guid editMutationId = Guid.NewGuid();
+        Guid completeMutationId = Guid.NewGuid();
+        ProcessSyncMutationCommand start = Command(
+            startMutationId, firstClient, 1, "startWorkout", "Workout", workoutId, 0,
+            new { workoutId, templateId });
+        Guid workoutExerciseId = Guid.NewGuid();
+        Guid setId = Guid.NewGuid();
+        ProcessSyncMutationCommand edit = Command(
+            editMutationId, firstClient, 2, "editWorkout", "Workout", workoutId, 1,
+            new
+            {
+                workoutId,
+                baseVersion = 1,
+                exercises = new[]
+                {
+                    new
+                    {
+                        workoutExerciseId,
+                        sourceExerciseId = exerciseId,
+                        exerciseNameSnapshot = "untrusted client name",
+                        plannedSets = 1,
+                        minimumRepetitions = 6,
+                        maximumRepetitions = 10,
+                        targetRir = (decimal?)2,
+                        restSeconds = (int?)120,
+                        notes = (string?)null,
+                        sets = new[]
+                        {
+                            new
+                            {
+                                setId,
+                                weightKg = (decimal?)100,
+                                repetitions = (int?)8,
+                                rir = (decimal?)2,
+                                notes = (string?)null,
+                                isCompleted = true,
+                                completedAtUtc = (DateTime?)null,
+                            },
+                        },
+                    },
+                },
+            },
+            startMutationId);
+        ProcessSyncMutationCommand complete = Command(
+            completeMutationId, firstClient, 3, "completeWorkout", "Workout", workoutId, 2,
+            new { workoutId, baseVersion = 2, rotationId = (Guid?)null, rotationBaseVersion = (long?)null },
+            editMutationId);
+
+        await using (AppDbContext apply = Fixture.CreateContext(connectionString, firstUser))
+        {
+            var user = new UserContext(firstUser);
+            var processor = new SyncMutationProcessor(
+                apply, user, new SyncMutationExecutor(apply, user, TimeProvider.System), TimeProvider.System);
+            await processor.ProcessAsync(start);
+            await processor.ProcessAsync(edit);
+            ProcessedSyncMutationResult applied = await processor.ProcessAsync(complete);
+            Assert.IsFalse(applied.Replayed);
+            Assert.AreEqual(3, applied.Revision);
+        }
+
+        await using (AppDbContext retry = Fixture.CreateContext(connectionString, firstUser))
+        {
+            var user = new UserContext(firstUser);
+            var processor = new SyncMutationProcessor(
+                retry, user, new SyncMutationExecutor(retry, user, TimeProvider.System), TimeProvider.System);
+            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(complete);
+            Assert.IsTrue(replayed.Replayed);
+            Assert.AreEqual(3, replayed.Revision);
+            Assert.AreEqual(WorkoutStatus.Completed, (await retry.Workouts.SingleAsync()).Status);
+            Assert.AreEqual(3, await retry.ProcessedMutations.CountAsync());
+
+            ProcessSyncMutationCommand changedRetry = Command(
+                completeMutationId, firstClient, 3, "completeWorkout", "Workout", workoutId, 1,
+                new { workoutId, baseVersion = 1, rotationId = (Guid?)null, rotationBaseVersion = (long?)null },
+                editMutationId);
+            SyncMutationConflictException changed = await Assert.ThrowsAsync<SyncMutationConflictException>(
+                () => processor.ProcessAsync(changedRetry));
+            Assert.AreEqual("mutation_id_reused", changed.Code);
+        }
+
+        await using (AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser))
+        {
+            var user = new UserContext(secondUser);
+            var processor = new SyncMutationProcessor(
+                foreign, user, new SyncMutationExecutor(foreign, user, TimeProvider.System), TimeProvider.System);
+            ProcessSyncMutationCommand foreignEdit = Command(
+                Guid.NewGuid(), secondClient, 1, "editWorkout", "Workout", workoutId, 3,
+                new { workoutId, baseVersion = 3, exercises = Array.Empty<object>() });
+            SyncMutationConflictException denied = await Assert.ThrowsAsync<SyncMutationConflictException>(
+                () => processor.ProcessAsync(foreignEdit));
+            Assert.AreEqual("resource_not_found", denied.Code);
+        }
+    }
+
+    [TestMethod]
+    public async Task UnsupportedOperationAndInactiveClientRollBackWithoutRevisionOrReceipt()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid activeClient = Guid.NewGuid();
+        Guid inactiveClient = Guid.NewGuid();
+        await RegisterActiveClientAsync(connectionString, userId, activeClient, inactiveClient);
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        var user = new UserContext(userId);
+        var processor = new SyncMutationProcessor(
+            context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
+        ProcessSyncMutationCommand inactive = CreateCheckInCommand(Guid.NewGuid(), inactiveClient, Guid.NewGuid(), 80m);
+        SyncMutationConflictException inactiveError = await Assert.ThrowsAsync<SyncMutationConflictException>(
+            () => processor.ProcessAsync(inactive));
+        Assert.AreEqual("inactive_client", inactiveError.Code);
+
+        ProcessSyncMutationCommand unsupported = new(
+            Guid.NewGuid(),
+            new CanonicalMutationContent(
+                2, activeClient, 1, "unknownOperation",
+                [new CanonicalResourceVersion("DailyCheckIn", Guid.NewGuid(), 0)],
+                null,
+                JsonDocument.Parse("{}").RootElement.Clone()));
+        SyncMutationValidationException invalid = await Assert.ThrowsAsync<SyncMutationValidationException>(
+            () => processor.ProcessAsync(unsupported));
+        Assert.AreEqual("unsupported_operation", invalid.Code);
+        context.ChangeTracker.Clear();
+        Assert.AreEqual(0, await context.ProcessedMutations.CountAsync());
+        Assert.AreEqual(0, await context.ChangeBatches.CountAsync());
+        Assert.AreEqual(0, await context.DailyCheckIns.CountAsync());
+        Assert.AreEqual(0, (await context.UserSyncStates.SingleAsync()).CurrentRevision);
+    }
+
+    [TestMethod]
+    public async Task ChangeFeedPagesWholeBatchesInRevisionOrderAndNeverLeaksAnotherUser()
+    {
+        (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
+        Guid firstResource = Guid.NewGuid();
+        Guid tombstonedResource = Guid.NewGuid();
+        await InsertFeedBatchAsync(connectionString, firstUser, 1,
+            ("Workout", firstResource, 1, false, "{\"version\":1}"),
+            ("WorkoutRotation", Guid.NewGuid(), 1, false, "{\"version\":1}"));
+        await InsertFeedBatchAsync(connectionString, firstUser, 2,
+            ("CustomExercise", tombstonedResource, 3, true, null));
+        await InsertFeedBatchAsync(connectionString, secondUser, 1,
+            ("DailyCheckIn", Guid.NewGuid(), 1, false, "{\"weightKg\":99}"));
+
+        await using AppDbContext firstContext = Fixture.CreateContext(connectionString, firstUser);
+        var feed = new SyncChangeFeed(firstContext);
+        SyncChangeFeedPage firstPage = await feed.GetAsync(0, 1);
+        Assert.AreEqual(1, firstPage.NextCursor);
+        Assert.IsTrue(firstPage.HasMore);
+        Assert.HasCount(1, firstPage.Batches);
+        Assert.HasCount(2, firstPage.Batches[0].Changes);
+        Assert.AreEqual(firstResource, firstPage.Batches[0].Changes[0].ResourceId);
+
+        SyncChangeFeedPage secondPage = await feed.GetAsync(firstPage.NextCursor, 1);
+        Assert.AreEqual(2, secondPage.NextCursor);
+        Assert.IsFalse(secondPage.HasMore);
+        Assert.HasCount(1, secondPage.Batches);
+        SyncFeedChange tombstone = secondPage.Batches[0].Changes.Single();
+        Assert.AreEqual(tombstonedResource, tombstone.ResourceId);
+        Assert.IsTrue(tombstone.IsTombstone);
+        Assert.IsNull(tombstone.Snapshot);
+
+        SyncChangeFeedPage replay = await feed.GetAsync(secondPage.NextCursor, 1);
+        Assert.AreEqual(2, replay.NextCursor);
+        Assert.IsFalse(replay.HasMore);
+        Assert.IsEmpty(replay.Batches);
+
+        await using AppDbContext secondContext = Fixture.CreateContext(connectionString, secondUser);
+        SyncChangeFeedPage secondUserPage = await new SyncChangeFeed(secondContext).GetAsync(0, 10);
+        Assert.HasCount(1, secondUserPage.Batches);
+        Assert.AreEqual("DailyCheckIn", secondUserPage.Batches[0].Changes.Single().ResourceType);
+    }
+
+    [TestMethod]
+    public async Task ClientRegistrationKeepsSecondDeviceReadOnlyUntilExplicitTakeover()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid firstId = Guid.NewGuid();
+        Guid secondId = Guid.NewGuid();
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
+
+        RegisteredSyncClient first = await registry.RegisterAsync(new RegisterSyncClientCommand(
+            firstId, "Phone", 1, false));
+        RegisteredSyncClient second = await registry.RegisterAsync(new RegisterSyncClientCommand(
+            secondId, "Laptop", 2, false));
+        Assert.IsTrue(first.IsActiveWriter);
+        Assert.IsFalse(second.IsActiveWriter);
+        Assert.AreEqual(firstId, (await context.UserSyncStates.SingleAsync()).ActiveClientId);
+
+        RegisteredSyncClient takeover = await registry.RegisterAsync(new RegisterSyncClientCommand(
+            secondId, "Laptop", 2, true));
+        Assert.IsTrue(takeover.IsActiveWriter);
+        UserSyncState state = await context.UserSyncStates.SingleAsync();
+        Assert.AreEqual(secondId, state.ActiveClientId);
+        Assert.AreEqual(2, state.Version);
+    }
+
+    [TestMethod]
+    public async Task UnsupportedClientProtocolRequiresUpgradeWithoutPersistingAnything()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
+        SyncUpgradeRequiredException error = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(() =>
+            registry.RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Old browser", 0, true)));
+        Assert.AreEqual("upgrade_required", error.Code);
+        Assert.AreEqual(0, await context.SyncClients.CountAsync());
+        Assert.AreEqual(0, await context.UserSyncStates.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task BlockedDependencyAndStaleBaseRollBackWhileIndependentMutationCanAdvance()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid clientId = Guid.NewGuid();
+        await RegisterActiveClientAsync(connectionString, userId, clientId);
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        var user = new UserContext(userId);
+        var processor = new SyncMutationProcessor(
+            context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
+
+        ProcessSyncMutationCommand blocked = CreateCheckInCommand(
+            Guid.NewGuid(), clientId, Guid.NewGuid(), 81m, sequence: 1, dependsOn: Guid.NewGuid());
+        SyncMutationConflictException dependencyError = await Assert.ThrowsAsync<SyncMutationConflictException>(
+            () => processor.ProcessAsync(blocked));
+        Assert.AreEqual("dependency_not_applied", dependencyError.Code);
+
+        Guid checkInId = Guid.NewGuid();
+        ProcessSyncMutationCommand independent = CreateCheckInCommand(
+            Guid.NewGuid(), clientId, checkInId, 82m, sequence: 2);
+        ProcessedSyncMutationResult applied = await processor.ProcessAsync(independent);
+        Assert.AreEqual(1, applied.Revision);
+
+        ProcessSyncMutationCommand stale = CorrectCheckInCommand(
+            Guid.NewGuid(), clientId, checkInId, 2, 83m, sequence: 3);
+        SyncMutationConflictException staleError = await Assert.ThrowsAsync<SyncMutationConflictException>(
+            () => processor.ProcessAsync(stale));
+        Assert.AreEqual("stale_base_version", staleError.Code);
+
+        context.ChangeTracker.Clear();
+        Assert.AreEqual(82m, (await context.DailyCheckIns.SingleAsync()).WeightKg);
+        Assert.AreEqual(1, await context.ProcessedMutations.CountAsync());
+        Assert.AreEqual(1, await context.ChangeBatches.CountAsync());
+        Assert.AreEqual(1, (await context.UserSyncStates.SingleAsync()).CurrentRevision);
+    }
+
+    private static async Task InsertReceiptAsync(string connectionString, Guid userId, Guid mutationId, long revision)
+    {
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        Guid clientId = Guid.NewGuid();
+        context.SyncClients.Add(Client(clientId));
+        context.ProcessedMutations.Add(new ProcessedMutation
+        {
+            MutationId = mutationId,
+            ClientId = clientId,
+            ClientSequence = 1,
+            ContentHash = new byte[32],
+            ResultJson = "{}",
+            Revision = revision,
+            AppliedAtUtc = DateTime.UtcNow,
+        });
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task InsertFeedBatchAsync(
+        string connectionString,
+        Guid userId,
+        long revision,
+        params (string Type, Guid Id, long Version, bool Tombstone, string? Snapshot)[] changes)
+    {
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        Guid batchId = Guid.NewGuid();
+        context.ChangeBatches.Add(new ChangeBatch
+        {
+            Id = batchId,
+            Revision = revision,
+            CreatedAtUtc = DateTime.UtcNow,
+        });
+        context.ChangeItems.AddRange(changes.Select((change, position) => new ChangeItem
+        {
+            Id = Guid.NewGuid(),
+            BatchId = batchId,
+            Position = position,
+            ResourceType = change.Type,
+            ResourceId = change.Id,
+            ResourceVersion = change.Version,
+            IsTombstone = change.Tombstone,
+            SnapshotJson = change.Snapshot,
+        }));
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task RegisterActiveClientAsync(
+        string connectionString,
+        Guid userId,
+        Guid activeClientId,
+        Guid? inactiveClientId = null)
+    {
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        context.SyncClients.Add(Client(activeClientId));
+        if (inactiveClientId is { } inactive) context.SyncClients.Add(Client(inactive));
+        context.UserSyncStates.Add(new UserSyncState
+        {
+            CurrentRevision = 0,
+            ActiveClientId = activeClientId,
+            UpdatedAtUtc = DateTime.UtcNow,
+            Version = 1,
+        });
+        await context.SaveChangesAsync();
+    }
+
+    private static ProcessSyncMutationCommand CreateCheckInCommand(
+        Guid mutationId,
+        Guid clientId,
+        Guid checkInId,
+        decimal weightKg,
+        long sequence = 1,
+        Guid? dependsOn = null)
+    {
+        JsonElement payload = JsonSerializer.SerializeToElement(new
+        {
+            checkInId,
+            localDate = new DateOnly(2026, 8, 18),
+            values = new DailyCheckInValues(weightKg),
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        return new ProcessSyncMutationCommand(
+            mutationId,
+            new CanonicalMutationContent(
+                2,
+                clientId,
+                sequence,
+                "createDailyCheckIn",
+                [new CanonicalResourceVersion("DailyCheckIn", checkInId, 0)],
+                dependsOn,
+                payload));
+    }
+
+    private static ProcessSyncMutationCommand CorrectCheckInCommand(
+        Guid mutationId,
+        Guid clientId,
+        Guid checkInId,
+        long baseVersion,
+        decimal weightKg,
+        long sequence)
+    {
+        JsonElement payload = JsonSerializer.SerializeToElement(new
+        {
+            checkInId,
+            baseVersion,
+            values = new DailyCheckInValues(weightKg),
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        return new ProcessSyncMutationCommand(
+            mutationId,
+            new CanonicalMutationContent(
+                2,
+                clientId,
+                sequence,
+                "correctDailyCheckIn",
+                [new CanonicalResourceVersion("DailyCheckIn", checkInId, baseVersion)],
+                null,
+                payload));
+    }
+
+    private static ProcessSyncMutationCommand Command(
+        Guid mutationId,
+        Guid clientId,
+        long sequence,
+        string operation,
+        string resourceType,
+        Guid resourceId,
+        long baseVersion,
+        object payload,
+        Guid? dependsOn = null) =>
+        new(
+            mutationId,
+            new CanonicalMutationContent(
+                2,
+                clientId,
+                sequence,
+                operation,
+                [new CanonicalResourceVersion(resourceType, resourceId, baseVersion)],
+                dependsOn,
+                JsonSerializer.SerializeToElement(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web))));
+
+    private static SyncClient Client(Guid id) => new()
+    {
+        Id = id,
+        DisplayName = "Test browser",
+        ProtocolVersion = 1,
+        RegisteredAtUtc = DateTime.UtcNow,
+        LastSeenAtUtc = DateTime.UtcNow,
+    };
+
+    private static async Task<(string ConnectionString, Guid FirstUser, Guid SecondUser)> CreateDatabaseAsync()
+    {
+        string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
+        Guid first = Guid.NewGuid();
+        Guid second = Guid.NewGuid();
+        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+        context.Users.AddRange(User(first), User(second));
+        await context.SaveChangesAsync();
+        return (connectionString, first, second);
+    }
+
+    private static AppUser User(Guid id) => new()
+    {
+        Id = id,
+        UserName = $"{id:N}@example.test",
+        NormalizedUserName = $"{id:N}@EXAMPLE.TEST",
+        Email = $"{id:N}@example.test",
+        NormalizedEmail = $"{id:N}@EXAMPLE.TEST",
+        IsActive = true,
+        SecurityStamp = Guid.NewGuid().ToString("N"),
+        ConcurrencyStamp = Guid.NewGuid().ToString("N"),
+    };
+
+    private sealed record UserContext(Guid Value) : IUserContext
+    {
+        Guid? IUserContext.UserId => Value;
+    }
+}

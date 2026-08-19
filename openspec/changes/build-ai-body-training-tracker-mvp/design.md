@@ -35,13 +35,16 @@ Die Produktionsform besteht aus drei dauerhaft laufenden Containern:
 Browser / installierte PWA
           │ HTTPS, eine Origin
           ▼
-   Caddy + statische PWA ── /api/v1/* ──► ASP.NET Core API ──► OpenAI
-                                                   │
-                                                   ▼
-                                              PostgreSQL
+ Host-Caddy (TLS, 80/443)
+          │ 127.0.0.1:8081
+          ▼
+ Gainer Edge (statische PWA, /api/v1/*) ──► ASP.NET Core API ──► OpenAI
+                                                        │
+                                                        ▼
+                                                   PostgreSQL
 ```
 
-Caddy terminiert TLS, liefert den statischen Frontend-Build aus und leitet `/api/v1/*` an die API weiter. PostgreSQL bleibt ausschließlich im internen Compose-Netz. Eine gemeinsame Origin vermeidet produktives CORS und erlaubt sichere Cookie-Sitzungen.
+Der bereits auf dem VPS betriebene Host-Caddy terminiert TLS für `gainer.markfort.xyz` und leitet ausschließlich an den auf `127.0.0.1:8081` gebundenen Gainer-Edge-Container weiter. Der Edge-Container liefert den statischen Frontend-Build aus und leitet `/api/v1/*` an die API weiter. PostgreSQL bleibt ausschließlich im internen Compose-Netz. Eine gemeinsame Origin vermeidet produktives CORS und erlaubt sichere Cookie-Sitzungen. Die API verarbeitet Forwarded Headers nur innerhalb dieser privaten Zwei-Proxy-Grenze; Clientwerte erreichen sie nicht direkt.
 
 Das Repository erhält folgende grobe Struktur:
 
@@ -221,9 +224,11 @@ Health Checks werden getrennt:
 
 OpenTelemetry instrumentiert HTTP, EF/Npgsql und OpenAI-Aufrufmetadaten, aber keine Bodies, Fitnessrohwerte, Prompts oder Antworten. Lokal gehen Signale an das Aspire Dashboard. Produktion schreibt strukturierte Logs nach stdout und kann optional einen internen OTLP-Endpunkt erhalten; kein Telemetrie- oder Dashboard-Port wird öffentlich exponiert.
 
-Caddy ist Traefik für diesen festen Ein-VPS-Aufbau vorzuziehen, weil Routing und automatische TLS-Verwaltung mit weniger beweglichen Teilen auskommen. Nur Ports 80/443 und ein eingeschränkter SSH-Zugang sind öffentlich. Forwarded Headers werden nur vom bekannten Proxy akzeptiert und HSTS wird nach erfolgreichem TLS-Test aktiviert.
+Der vorhandene Host-Caddy bleibt alleiniger Eigentümer der öffentlichen Ports 80/443 und der Zertifikate. Der Gainer-Edge-Container bindet unverschlüsseltes HTTP ausschließlich an `127.0.0.1:8081`; für diesen Port wird keine UFW-Regel geöffnet. Der bestehende virtuelle Host einer anderen Anwendung bleibt unverändert, während `gainer.markfort.xyz` separat auf den lokalen Edge geroutet wird. Host-Caddy und Edge erhalten die Forwarded-Header-Kette, die API akzeptiert höchstens die zwei internen Proxy-Hops. HSTS wird erst nach erfolgreichem externem TLS-Test aktiviert.
 
-Secrets liegen als root-lesbare Dateien außerhalb von Repository, Images und generiertem unbefüllten Environment-Artefakt. Dazu zählen Datenbankpasswort, OpenAI-Key und Provisionierungssecret. Persistente Volumes existieren für PostgreSQL, Data Protection und Caddy-Zertifikate; sie ersetzen keine Backups.
+Secrets liegen als root-lesbare Dateien außerhalb von Repository, Images und generiertem unbefüllten Environment-Artefakt. Dazu zählen Datenbankpasswort, OpenAI-Key, Provisionierungssecret, Restic-Passwort und ein auf den privaten Backup-Container begrenztes Azure-SAS. Gainer-eigene persistente Volumes existieren für PostgreSQL und Data Protection; die Zertifikate verwaltet der bereits vorhandene Host-Caddy außerhalb des Gainer-Stacks. Volumes ersetzen keine Backups.
+
+Ein expliziter, kurzlebiger Backup-Job erzeugt mit `pg_dump` einen Datenbankexport und nimmt die für Sitzungen und TLS erforderlichen persistenten Schlüssel in ein Restic-Repository auf. Als einziges externes Backupziel des MVP wird Azure Blob Storage verwendet; `RESTIC_REPOSITORY` folgt dem Schema `azure:<container>:/<path>`. Restic verschlüsselt die Inhalte clientseitig mit einem getrennten Passwort. Nur der Backup-Job erhält neben dem internen PostgreSQL-Netz ausgehenden Netzwerkzugriff, veröffentlicht jedoch keinen Port. Das Azure-SAS wird als externe Secret-Datei eingebunden, auf den privaten Container und die für Backup, Restore und Pruning erforderlichen Rechte begrenzt und vor Ablauf rotiert.
 
 ### 11. Gezielt wenige Dependencies und reale Integrationstests
 
@@ -236,7 +241,7 @@ Runtime-Dependencies bleiben auf die bereits vorgegebenen Frameworks sowie folge
 - offizieller OpenAI-.NET-Client hinter einem eigenen Adapter
 - OpenTelemetry-Integrationen aus `ServiceDefaults`
 
-MediatR, AutoMapper, FluentValidation, Redis, Message Bus und generische Repository-Frameworks werden nicht vorsorglich eingeführt. Fachhandler, explizite Mappings und Validierung bleiben zunächst normaler Anwendungscode. Versionen werden zentral beziehungsweise über Lockfiles fixiert und automatisiert aktualisiert.
+MediatR, AutoMapper, FluentValidation, Redis, Message Bus und generische Repository-Frameworks werden nicht vorsorglich eingeführt. Fachhandler, explizite Mappings und Validierung bleiben zunächst normaler Anwendungscode. Versionen werden zentral beziehungsweise über Lockfiles fixiert und kontrolliert aktualisiert. Lizenz-Allowlisten, der Ausschluss nicht freigegebener Übungsmedien und das Verbot unbeabsichtigter RAG-/pgvector-Abhängigkeiten bleiben automatisierte Release-Gates. Automatisierte CVE-Scans von Dependencies und Container-Images sind für diesen privaten MVP nach Betreiberentscheidung ausdrücklich kein Release-Gate.
 
 Unit Tests decken Domänenregeln und Analytics-Golden-Vektoren ab. API-Integrationstests laufen gegen echtes PostgreSQL und mindestens zwei Nutzer. Sync-Tests prüfen verlorene Bestätigungen, gleiche Mutation mit anderem Hash, Abbruch zwischen Pull und lokalem Commit, Tombstones, Konflikte, Konto- und Gerätewechsel sowie Protokoll-Upgrades. Browser-E2E-Tests prüfen Installation, Offline-Schalter, Reload, Service-Worker-Update und IndexedDB-Migration. Die Kernreise wird zusätzlich auf einem physischen iPhone getestet. Der OpenAI-Adapter wird standardmäßig gefakt; eine kleine opt-in Eval-Suite prüft typische, datenarme, manipulative und medizinische Fragen ohne Bestandteil des normalen CI-Geheimnisses zu sein.
 
@@ -253,6 +258,7 @@ Unit Tests decken Domänenregeln und Analytics-Golden-Vektoren ab. API-Integrati
 - **OpenAI halluziniert oder ist nicht erreichbar** → serverseitige Fakten, strukturierte Ausgabe, nur Read-only-Tools, harte Tool-/Zeitlimits und vollständige Entkopplung der Kernfunktionen.
 - **`store=false` wird als vollständige Nichtaufbewahrung missverstanden** → Datenschutzhinweis benennt die tatsächliche Grenze und Daten werden weiterhin minimiert.
 - **Ein VPS ist Single Point of Failure** → Restart Policies, Health Monitoring, verschlüsselte Offsite-Backups und geprobter Restore; Hochverfügbarkeit bleibt außerhalb des MVP.
+- **Ohne automatisiertes CVE-Gate können bekannte Schwachstellen später auffallen** → Abhängigkeiten und Basis-Images bleiben fest versioniert und werden kontrolliert aktualisiert; dieses akzeptierte Restrisiko wird vor einer öffentlichen Veröffentlichung oder Ausweitung des Nutzerkreises erneut bewertet.
 - **Schema-Migration verhindert Anwendungsrollback** → expliziter Migrator, Expand/Contract, Backup vor Migration und unveränderliche Image-Tags.
 - **Exercise-Dataset oder Medien dürfen nicht verwendet werden** → Lizenz-Gate vor Import, keine Medien und eigener kleiner Metadaten-Snapshot als Fallback.
 
@@ -262,15 +268,15 @@ Es gibt keine bestehenden Produktionsdaten zu migrieren. Der erste Rollout erfol
 
 1. AppHost, Images, Compose-Artefakt und Datenbankmigration in CI bauen; Unit-, Integrations-, Architektur- und Browser-Smoke-Tests ausführen.
 2. Basiskatalog-Metadaten nach dokumentierter Lizenzprüfung als versionierten Seed in die Migration aufnehmen.
-3. VPS mit Docker, Firewall, DNS, root-lesbaren Secrets, persistenten Volumes und verschlüsseltem Offsite-Backupziel vorbereiten.
+3. VPS mit Docker, Firewall, dem vorhandenen Host-Caddy, DNS für `gainer.markfort.xyz`, dem nur an `127.0.0.1:8081` gebundenen Edge, root-lesbaren Secrets, persistenten Volumes sowie einem privaten Azure-Blob-Container mit begrenztem SAS und getrenntem Restic-Passwort vorbereiten.
 4. Vor dem Schemawechsel ein Backup erstellen und anschließend einen einmaligen EF-Migrator aus dem API-Image ausführen; Migrationen laufen nicht konkurrierend beim API-Start.
 5. Neue unveränderliche Image-Tags mit Compose starten und Live-/Ready-, Login-, Sync-, Isolation- und Restore-Smoke-Tests durchführen.
 6. Zuerst nur das Betreiberkonto provisionieren und die vollständige iPhone-/Offline-Kernreise testen; erst danach Kollegen einladen.
 
-Für ein Anwendungsrollback werden die vorherigen Image-Tags reaktiviert. Migrationen folgen Expand/Contract, damit die vorige Anwendungsversion möglichst weiterarbeiten kann. Ist ein Schema nicht rückwärtskompatibel, wird vor dem Rollback das geprüfte Backup wiederhergestellt; der mögliche Datenverlust seit diesem Backup muss dabei ausdrücklich akzeptiert werden. Regelmäßige `pg_dump`-Backups werden zusätzlich verschlüsselt offsite übertragen und Restore-Tests schließen Data-Protection-Schlüssel sowie notwendige Konfiguration ein.
+Für ein Anwendungsrollback werden die vorherigen Image-Tags reaktiviert. Migrationen folgen Expand/Contract, damit die vorige Anwendungsversion möglichst weiterarbeiten kann. Ist ein Schema nicht rückwärtskompatibel, wird vor dem Rollback das geprüfte Backup wiederhergestellt; der mögliche Datenverlust seit diesem Backup muss dabei ausdrücklich akzeptiert werden. Regelmäßige `pg_dump`-Backups und persistente Schlüssel werden mit Restic clientseitig verschlüsselt in Azure Blob Storage übertragen. Restore-Tests erfolgen gegen eine isolierte Datenbank und schließen Data-Protection-Schlüssel sowie notwendige Konfiguration ein.
 
 ## Open Questions
 
-- Welcher Domainname und welches S3-kompatible Offsite-Ziel werden für den ersten VPS verwendet? Beides sind Deploymentparameter ohne Einfluss auf Verträge oder Modulstruktur.
+- Welcher Azure-Storage-Account und private Blob-Container werden für den ersten VPS verwendet? Die Domain ist mit `gainer.markfort.xyz` festgelegt; die Azure-Werte bleiben Deploymentparameter ohne Einfluss auf Verträge oder Modulstruktur.
 - Welches OpenAI-Modell und welche konkreten Nutzer-/Kostenlimits werden nach einer kleinen Qualität-, Latenz- und Kosten-Evaluation konfiguriert? Der Adapter und die Tests bleiben modellunabhängig.
 - Soll Produktion zunächst nur strukturierte Containerlogs nutzen oder zusätzlich an einen vorhandenen internen OTLP-Empfänger senden? Die Instrumentierung ist in beiden Fällen identisch.

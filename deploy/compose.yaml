@@ -1,0 +1,140 @@
+name: gainer
+
+services:
+  postgres:
+    image: postgres:18.3-alpine3.22
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gainer
+      POSTGRES_USER: gainer
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gainer -d gainer"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+    security_opt: [no-new-privileges:true]
+
+  migrator:
+    image: ${GAINER_MIGRATOR_IMAGE:-gainer-migrator:local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.migrator
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &database_environment
+      Database__Host: postgres
+      Database__Port: 5432
+      Database__Name: gainer
+      Database__Username: gainer
+      Database__PasswordFile: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    networks: [backend]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  api:
+    image: ${GAINER_API_IMAGE:-gainer-api:local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      <<: *database_environment
+      ASPNETCORE_ENVIRONMENT: Production
+      Security__FrontendOrigin: ${GAINER_PUBLIC_ORIGIN:?set GAINER_PUBLIC_ORIGIN}
+      Security__DataProtection__KeysPath: /var/lib/gainer/data-protection
+      OpenAI__ApiKeyFile: /run/secrets/openai_api_key
+      OpenAI__Model: ${OPENAI_MODEL:-gpt-5.4-mini}
+      Provisioning__AccountOperatorSecretPath: /run/secrets/account_operator
+    secrets:
+      - postgres_password
+      - openai_api_key
+      - account_operator
+    volumes:
+      - data-protection:/var/lib/gainer/data-protection
+    networks: [backend, public]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  edge:
+    image: ${GAINER_EDGE_IMAGE:-gainer-edge:local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.edge
+    restart: unless-stopped
+    environment:
+      GAINER_SITE_ADDRESS: ${GAINER_SITE_ADDRESS:-:80}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${GAINER_EDGE_PORT:-8081}:80"
+    networks: [backend, public]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  backup:
+    profiles: [operations]
+    image: ${GAINER_BACKUP_IMAGE:-gainer-backup:local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: gainer
+      PGUSER: gainer
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:?set RESTIC_REPOSITORY}
+      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+      AZURE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT_NAME:?set AZURE_STORAGE_ACCOUNT_NAME}
+      AZURE_ACCOUNT_SAS_FILE: /run/secrets/azure_storage_sas
+    secrets:
+      - postgres_password
+      - restic_password
+      - azure_storage_sas
+    volumes:
+      - data-protection:/source/data-protection:ro
+    networks: [backend, public]
+    read_only: true
+    tmpfs: [/tmp, /work, /restore]
+    security_opt: [no-new-privileges:true]
+
+secrets:
+  postgres_password:
+    file: ${GAINER_SECRETS_DIR:?set GAINER_SECRETS_DIR}/postgres_password
+  openai_api_key:
+    file: ${GAINER_SECRETS_DIR:?set GAINER_SECRETS_DIR}/openai_api_key
+  account_operator:
+    file: ${GAINER_SECRETS_DIR:?set GAINER_SECRETS_DIR}/account_operator.json
+  restic_password:
+    file: ${GAINER_SECRETS_DIR:?set GAINER_SECRETS_DIR}/restic_password
+  azure_storage_sas:
+    file: ${GAINER_SECRETS_DIR:?set GAINER_SECRETS_DIR}/azure_storage_sas
+
+volumes:
+  postgres-data:
+  data-protection:
+
+networks:
+  backend:
+    internal: true
+  public:

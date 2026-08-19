@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Gainer.Api\Gainer.Api.csproj" />
+    <ProjectReference Include="..\..\src\Gainer.Core\Gainer.Core.csproj" />
+    <ProjectReference Include="..\..\src\Gainer.Infrastructure\Gainer.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Gainer.Contracts\Gainer.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
