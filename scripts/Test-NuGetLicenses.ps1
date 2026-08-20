@@ -15,6 +15,9 @@ $allowed = @(
     "license.txt",
     "https://github.com/dotnet/corefx/blob/master/LICENSE.TXT"
 )
+$packageSpecificLicenses = @{
+    "SixLabors.ImageSharp" = "LICENSE"
+}
 $findings = [System.Collections.Generic.List[string]]::new()
 $checked = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
@@ -36,7 +39,8 @@ Get-ChildItem -LiteralPath $repositoryRoot -Recurse -Filter "project.assets.json
         [xml] $metadata = Get-Content -LiteralPath $nuspec
         $license = $metadata.package.metadata.license.'#text'
         if (-not $license) { $license = $metadata.package.metadata.licenseUrl }
-        if (-not $license -or $allowed -notcontains $license) {
+        $packageSpecificLicense = $packageSpecificLicenses[$parts[0]]
+        if (-not $license -or (($allowed -notcontains $license) -and $packageSpecificLicense -ne $license)) {
             $findings.Add("$($library.Name): unapproved or missing license '$license'")
         }
     }

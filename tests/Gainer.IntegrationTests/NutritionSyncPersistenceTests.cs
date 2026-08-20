@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Gainer.Core.Nutrition;
+using Gainer.Core.Mutations;
 using Gainer.Core.Security;
 using Gainer.Core.Sync;
 using Gainer.Infrastructure.Persistence;
@@ -132,6 +133,133 @@ public sealed class NutritionSyncPersistenceTests
         Assert.AreEqual(0, await other.NutritionDays.CountAsync());
     }
 
+    [TestMethod]
+    public async Task SmartNutritionMutationsAreIdempotentConflictAwareAndUserScoped()
+    {
+        (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
+        Guid firstClient = Guid.NewGuid();
+        Guid secondClient = Guid.NewGuid();
+        await RegisterAsync(connectionString, firstUser, firstClient);
+        await RegisterAsync(connectionString, secondUser, secondClient);
+        Guid mealId = Guid.NewGuid();
+        Guid componentId = Guid.NewGuid();
+        ProcessSyncMutationCommand save = SmartCommand(
+            Guid.NewGuid(), firstClient, 1, "saveReusableMeal", "ReusableMeal", mealId, 0,
+            new
+            {
+                reusableMealId = mealId,
+                baseVersion = 0,
+                name = "Rice bowl",
+                description = (string?)null,
+                standardPortion = 1m,
+                components = new[]
+                {
+                    new
+                    {
+                        componentId,
+                        position = 0,
+                        name = "Rice",
+                        brand = (string?)null,
+                        amountGrams = 200m,
+                        kilocaloriesPer100Grams = 130m,
+                        proteinGramsPer100Grams = (decimal?)3m,
+                        carbohydrateGramsPer100Grams = (decimal?)28m,
+                        fatGramsPer100Grams = (decimal?)0.3m,
+                        source = (NutritionSourceSnapshot?)null,
+                    },
+                },
+            });
+
+        await using (AppDbContext owner = Fixture.CreateContext(connectionString, firstUser))
+        {
+            ProcessedSyncMutationResult applied = await Processor(owner, firstUser).ProcessAsync(save);
+            Assert.AreEqual(ResourceKind.ReusableMeal, applied.Changes.Single().Resource.Kind);
+        }
+        await using (AppDbContext owner = Fixture.CreateContext(connectionString, firstUser))
+        {
+            ProcessedSyncMutationResult replay = await Processor(owner, firstUser).ProcessAsync(save);
+            Assert.IsTrue(replay.Replayed);
+            Assert.AreEqual(1, await owner.ReusableMeals.CountAsync());
+            Assert.AreEqual(1, await owner.ReusableMealComponents.CountAsync());
+        }
+        await using (AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser))
+        {
+            ProcessSyncMutationCommand archive = SmartCommand(
+                Guid.NewGuid(), secondClient, 1, "archiveReusableMeal", "ReusableMeal", mealId, 1,
+                new { reusableMealId = mealId, baseVersion = 1 });
+            SyncMutationConflictException denied = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
+                Processor(foreign, secondUser).ProcessAsync(archive));
+            Assert.AreEqual("resource_not_found", denied.Code);
+        }
+        await using (AppDbContext owner = Fixture.CreateContext(connectionString, firstUser))
+        {
+            ProcessSyncMutationCommand stale = SmartCommand(
+                Guid.NewGuid(), firstClient, 2, "archiveReusableMeal", "ReusableMeal", mealId, 2,
+                new { reusableMealId = mealId, baseVersion = 2 });
+            SyncMutationConflictException conflict = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
+                Processor(owner, firstUser).ProcessAsync(stale));
+            Assert.AreEqual("stale_base_version", conflict.Code);
+        }
+    }
+
+    [TestMethod]
+    public async Task LegacyTargetSchedulePayloadIsNormalizedIdempotentlyAndRemainsUserScoped()
+    {
+        (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
+        Guid firstClient = Guid.NewGuid();
+        Guid secondClient = Guid.NewGuid();
+        await RegisterAsync(connectionString, firstUser, firstClient);
+        await RegisterAsync(connectionString, secondUser, secondClient);
+        Guid scheduleId = Guid.NewGuid();
+        Guid firstTargetId = Guid.NewGuid();
+        Guid secondTargetId = Guid.NewGuid();
+        ProcessSyncMutationCommand legacy = SmartCommand(
+            Guid.NewGuid(), firstClient, 1, "saveNutritionTargetSchedule", "NutritionTargetSchedule", scheduleId, 0,
+            new
+            {
+                nutritionTargetScheduleId = scheduleId,
+                baseVersion = 0,
+                versions = new[]
+                {
+                    new { targetVersionId = firstTargetId, effectiveFrom = new DateOnly(2026, 8, 1), kilocalories = 2500m, proteinGrams = 180m, carbohydrateGrams = 260m, fatGrams = 80m, origin = "Manual", algorithmVersion = (string?)null, reason = (string?)null },
+                    new { targetVersionId = secondTargetId, effectiveFrom = new DateOnly(2026, 9, 1), kilocalories = 2700m, proteinGrams = 190m, carbohydrateGrams = 300m, fatGrams = 80m, origin = "Manual", algorithmVersion = (string?)null, reason = (string?)null },
+                },
+            });
+
+        await using (AppDbContext owner = Fixture.CreateContext(connectionString, firstUser))
+        {
+            ProcessedSyncMutationResult applied = await Processor(owner, firstUser).ProcessAsync(legacy);
+            Assert.IsFalse(applied.Replayed);
+            NutritionTargetScheduleSnapshot schedule = await new SmartNutritionQueries(owner)
+                .GetNutritionTargetScheduleAsync() ?? throw new AssertFailedException();
+            Assert.AreEqual(new DateOnly(2026, 8, 31), schedule.Versions[0].EffectiveUntil);
+            Assert.AreEqual(NutritionGoalCategory.Custom, schedule.Versions[0].Category);
+            Assert.AreEqual(NutritionTargetInputMode.Grams, schedule.Versions[0].InputMode);
+        }
+        await using (AppDbContext owner = Fixture.CreateContext(connectionString, firstUser))
+        {
+            Assert.IsTrue((await Processor(owner, firstUser).ProcessAsync(legacy)).Replayed);
+            Assert.AreEqual(2, await owner.NutritionTargetVersions.CountAsync());
+        }
+        await using (AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser))
+        {
+            ProcessSyncMutationCommand denied = SmartCommand(
+                Guid.NewGuid(), secondClient, 1, "saveNutritionTargetSchedule", "NutritionTargetSchedule", scheduleId, 1,
+                new
+                {
+                    nutritionTargetScheduleId = scheduleId,
+                    baseVersion = 1,
+                    versions = new[]
+                    {
+                        new { targetVersionId = firstTargetId, effectiveFrom = new DateOnly(2026, 8, 1), kilocalories = 2500m, proteinGrams = 180m, carbohydrateGrams = 260m, fatGrams = 80m, origin = "Manual", algorithmVersion = (string?)null, reason = (string?)null },
+                    },
+                });
+            SyncMutationConflictException conflict = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
+                Processor(foreign, secondUser).ProcessAsync(denied));
+            Assert.AreEqual("resource_not_found", conflict.Code);
+        }
+    }
+
     private static SyncMutationProcessor Processor(AppDbContext context, Guid userId)
     {
         var user = new UserContext(userId);
@@ -155,6 +283,25 @@ public sealed class NutritionSyncPersistenceTests
                 operation,
                 [new CanonicalResourceVersion("NutritionDay", dayId, baseVersion)],
                 dependsOn,
+                JsonSerializer.SerializeToElement(payload, JsonOptions)));
+
+    private static ProcessSyncMutationCommand SmartCommand(
+        Guid mutationId,
+        Guid clientId,
+        long sequence,
+        string operation,
+        string resourceType,
+        Guid resourceId,
+        long baseVersion,
+        object payload) => new(
+            mutationId,
+            new CanonicalMutationContent(
+                2,
+                clientId,
+                sequence,
+                operation,
+                [new CanonicalResourceVersion(resourceType, resourceId, baseVersion)],
+                null,
                 JsonSerializer.SerializeToElement(payload, JsonOptions)));
 
     private static async Task RegisterAsync(string connectionString, Guid userId, Guid clientId)

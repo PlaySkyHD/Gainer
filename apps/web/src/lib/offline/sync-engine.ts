@@ -191,6 +191,7 @@ async function applyChangeBatch(database: AccountDatabase, batch: SyncBatch): Pr
     database.syncMeta, database.outbox, database.conflicts, database.tombstones,
     database.goals, database.checkIns, database.customExercises, database.templates,
     database.rotation, database.workouts, database.nutritionDays,
+    database.reusableMeals, database.nutritionTargetSchedules,
   ] as const;
   await database.transaction("rw", tables, async () => {
     for (const change of batch.changes) await applyChange(database, batch, change);
@@ -352,6 +353,8 @@ function serverOperation(type: string, operation: string, body: Record<string, u
     return "editWorkout";
   }
   if (type === "nutrition-day") return operation === "delete" ? "deleteNutritionDay" : "saveNutritionDay";
+  if (type === "reusable-meal") return body.status === "Archived" ? "archiveReusableMeal" : "saveReusableMeal";
+  if (type === "nutrition-target-schedule") return "saveNutritionTargetSchedule";
   const suffix = type.split("-").map((part) => part[0]?.toUpperCase() + part.slice(1)).join("");
   return `${operation}${suffix}`;
 }
@@ -489,6 +492,55 @@ function serverPayload(
       }),
     };
   }
+  if (type === "reusable-meal") {
+    if (body.status === "Archived") return { reusableMealId: id, baseVersion };
+    return {
+      reusableMealId: id,
+      baseVersion,
+      name: body.name,
+      description: body.description,
+      standardPortion: body.standardPortion,
+      components: (body.components as Record<string, unknown>[]).map((component) => {
+        const per100 = component.per100Grams as Record<string, unknown>;
+        return {
+          componentId: component.componentId,
+          position: component.position,
+          name: component.name,
+          brand: component.brand,
+          amountGrams: component.amountGrams,
+          kilocaloriesPer100Grams: per100.kilocalories,
+          proteinGramsPer100Grams: per100.proteinGrams,
+          carbohydrateGramsPer100Grams: per100.carbohydrateGrams,
+          fatGramsPer100Grams: per100.fatGrams,
+          source: component.source,
+        };
+      }),
+    };
+  }
+  if (type === "nutrition-target-schedule") {
+    return {
+      nutritionTargetScheduleId: id,
+      baseVersion,
+      versions: (body.versions as Record<string, unknown>[]).map((version) => ({
+        targetVersionId: version.targetVersionId,
+        name: version.name,
+        category: version.category,
+        effectiveFrom: version.effectiveFrom,
+        effectiveUntil: version.effectiveUntil,
+        inputMode: version.inputMode,
+        kilocalories: version.kilocalories,
+        proteinGrams: version.proteinGrams,
+        carbohydrateGrams: version.carbohydrateGrams,
+        fatGrams: version.fatGrams,
+        proteinPercent: version.proteinPercent,
+        carbohydratePercent: version.carbohydratePercent,
+        fatPercent: version.fatPercent,
+        origin: version.origin,
+        algorithmVersion: version.algorithmVersion,
+        reason: version.reason,
+      })),
+    };
+  }
   return body;
 }
 
@@ -501,6 +553,8 @@ function resourceMapping(database: AccountDatabase, type: string) {
     WorkoutRotation: { table: database.rotation, aggregateType: "workout-rotation" },
     Workout: { table: database.workouts, aggregateType: "workout" },
     NutritionDay: { table: database.nutritionDays, aggregateType: "nutrition-day" },
+    ReusableMeal: { table: database.reusableMeals, aggregateType: "reusable-meal" },
+    NutritionTargetSchedule: { table: database.nutritionTargetSchedules, aggregateType: "nutrition-target-schedule" },
   };
   return values[type];
 }
@@ -529,6 +583,18 @@ function normalizeSnapshot(type: string, value: unknown): unknown {
     delete copy.nutritionDayId;
     return copy;
   }
+  if (type === "ReusableMeal") {
+    const copy = { ...snapshot };
+    delete copy.version;
+    delete copy.reusableMealId;
+    return copy;
+  }
+  if (type === "NutritionTargetSchedule") {
+    const copy = { ...snapshot };
+    delete copy.version;
+    delete copy.nutritionTargetScheduleId;
+    return copy;
+  }
   const copy = { ...snapshot };
   delete copy.version;
   delete copy.goalId;
@@ -551,6 +617,8 @@ function serverResourceType(type: string): string {
     "workout-rotation": "WorkoutRotation",
     workout: "Workout",
     "nutrition-day": "NutritionDay",
+    "reusable-meal": "ReusableMeal",
+    "nutrition-target-schedule": "NutritionTargetSchedule",
   };
   const result = mapping[type];
   if (!result) throw new Error(`Der Aggregattyp ${type} kann nicht synchronisiert werden.`);

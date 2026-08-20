@@ -66,7 +66,9 @@ Der vollständige Tages-Snapshot ist gegenüber feingranularen Entry-Mutationen 
 
 ### 7. Mobile UI mit bewusster externer Aktion
 
-Die PWA erhält eine Tagesansicht mit Datumsnavigation, kompakter Tagesleiste und vier aufklappbaren Mahlzeiten. „Hinzufügen“ öffnet eine mobile Sheet-Interaktion mit `Zuletzt`, `Barcode`, `Suchen` und `Manuell`. Barcode verwendet nach Nutzeraktion `BarcodeDetector`, sofern verfügbar, und bietet stets manuelle Codeeingabe. Eine Bibliothek wird nur ergänzt, wenn der Browser-Fallback ohne sie nicht zuverlässig erreichbar ist.
+Die PWA erhält eine Tagesansicht mit Datumsnavigation, kompakter Tagesleiste und vier aufklappbaren Mahlzeiten. „Hinzufügen“ öffnet eine mobile Sheet-Interaktion mit `Zuletzt`, `Barcode`, `Suchen` und `Manuell`. Barcode verwendet nach Nutzeraktion die native `BarcodeDetector`-API als Fast Path. Fehlt sie trotz sicher verfügbarem `getUserMedia`, lädt die PWA erst beim Öffnen des Scanners einen gebündelten Decoder-Fallback für EAN-8, EAN-13, UPC-A und UPC-E. Dadurch bleibt die initiale PWA klein, während insbesondere iOS- und Desktop-Browser ohne native API weiterhin per Kamera scannen können.
+
+Der Scanner fordert bevorzugt die rückwärtige Kamera an, verhindert parallele Decode-Schleifen und beendet alle Media-Tracks bei Erfolg, Abbruch, Navigation, Sheet-Schließung und Fehler. Native und Fallback-Decodierung führen in denselben normalisierten Barcode-Lookup; doppelte Treffer werden während eines laufenden Lookups unterdrückt. Manuelle Codeeingabe bleibt unabhängig von Berechtigung, Hardware und Decoderzustand jederzeit verfügbar. Die Fallback-Dependency wird anhand Browserabdeckung, Bundle-Größe, Wartungszustand und Lizenz ausgewählt und zentral gepinnt.
 
 Produktsuche beginnt ausschließlich über Submit. Treffer zeigen Text, Marke, Bezugsbasis und verfügbare Nährwerte, keine Bilder. Nach Auswahl bestätigt der Nutzer Menge und Mahlzeit, bevor eine lokale Mutation entsteht.
 
@@ -77,7 +79,8 @@ Produktsuche beginnt ausschließlich über Submit. Treffer zeigen Text, Marke, B
 - [Legacy-Check-in und Tagebuch könnten doppelt zählen] → Tagebuch hat pro Tag explizite Priorität; Quelle wird in Analytics ausgegeben; niemals summieren.
 - [Ein großer Nutrition-Day-Snapshot erzeugt Konflikte] → MVP-Grenze „ein aktives Schreibgerät“ beibehalten, Konflikt sichtbar machen und Größenlimit pro Tag/Eintrag setzen.
 - [ODbL-/Attributionspflicht wird übersehen] → Quellenhinweis in UI und Drittanbieterhinweisen; keine Bilder im ersten Slice.
-- [BarcodeDetector fehlt insbesondere in einzelnen iOS-Versionen] → manuelle Barcodeeingabe und Produktsuche sind gleichwertige Fallbacks; Kamera niemals Voraussetzung.
+- [BarcodeDetector fehlt insbesondere auf iOS und in einzelnen Desktop-Browsern] → lazy geladenen Decoder-Fallback über `getUserMedia` verwenden und native sowie Fallback-Pfade auf realen Geräten prüfen; manuelle Barcodeeingabe und Produktsuche bleiben zusätzliche Alternativen.
+- [Kamera bleibt nach Scan oder Navigation aktiv] → Media-Tracks in allen Erfolgs-, Abbruch-, Fehler- und Unmount-Pfaden idempotent stoppen und dies automatisiert sowie auf realen Geräten prüfen.
 
 ## Migration Plan
 

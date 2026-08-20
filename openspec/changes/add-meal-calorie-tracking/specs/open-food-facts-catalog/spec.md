@@ -6,7 +6,7 @@ Diese Capability stellt einen begrenzten, rein lesenden Lebensmittelkatalog aus 
 
 ### Requirement: Barcode-Lookup mit manuellem Fallback
 
-Die Anwendung SHALL einen Barcode per Kamera erfassen oder manuell eingeben und online über den Backend-Adapter nachschlagen können. Kamera-Zugriff MUST erst nach einer Nutzeraktion angefordert werden; eine verweigerte Berechtigung DARF die manuelle Eingabe nicht blockieren.
+Die Anwendung SHALL einen Barcode per Kamera erfassen oder manuell eingeben und online über den Backend-Adapter nachschlagen können. Ist ein sicherer Kamerazugriff verfügbar und erteilt der Nutzer die Berechtigung, MUST die Anwendung einen funktionsfähigen Scanner über die native `BarcodeDetector`-API oder einen gebündelten Decoder-Fallback bereitstellen. Der Fallback MUST mindestens EAN-8, EAN-13, UPC-A und UPC-E unterstützen und DARF nicht allein wegen einer fehlenden nativen `BarcodeDetector`-API als nicht unterstützt gelten. Kamera-Zugriff MUST erst nach einer Nutzeraktion angefordert werden; eine verweigerte oder technisch unmögliche Kameranutzung DARF die manuelle Eingabe nicht blockieren.
 
 #### Scenario: Bekannten Barcode scannen
 
@@ -14,9 +14,15 @@ Die Anwendung SHALL einen Barcode per Kamera erfassen oder manuell eingeben und 
 - **WHEN** der Scan abgeschlossen ist
 - **THEN** zeigt die Anwendung einen normalisierten Produktvorschlag mit Quelle und verfügbaren Nährwerten zur ausdrücklichen Übernahme an
 
+#### Scenario: Native BarcodeDetector-API fehlt
+
+- **GIVEN** der Browser unterstützt sicheren Kamerazugriff, aber keine native `BarcodeDetector`-API
+- **WHEN** der Nutzer den Kamerascan öffnet und die Berechtigung erteilt
+- **THEN** lädt die Anwendung den Decoder-Fallback und kann einen unterstützten EAN- oder UPC-Barcode erfassen, ohne den Nutzer sofort auf manuelle Eingabe zu verweisen
+
 #### Scenario: Kamera wird abgelehnt
 
-- **GIVEN** der Nutzer verweigert oder das Gerät unterstützt keinen Kamerazugriff
+- **GIVEN** der Nutzer verweigert den Kamerazugriff oder der Browser stellt keinen sicheren Kamerazugriff bereit
 - **WHEN** er ein Produkt hinzufügen möchte
 - **THEN** bleiben manuelle Barcodeeingabe, explizite Produktsuche und manueller Lebensmitteleintrag verfügbar
 
@@ -99,4 +105,3 @@ Die UI MUST Open Food Facts als Quelle benennen, auf mögliche Unvollständigkei
 - **GIVEN** ein normalisierter Open-Food-Facts-Treffer wird angezeigt
 - **WHEN** der Nutzer dessen Details öffnet
 - **THEN** sieht er Quelle, Datenstand und einen Hinweis, Nährwerte bei Bedarf mit der Verpackung abzugleichen
-

@@ -36,6 +36,12 @@ export const accountStoresV4 = {
   nutritionDays: "&id",
 } as const;
 
+export const accountStoresV5 = {
+  ...accountStoresV4,
+  reusableMeals: "&id",
+  nutritionTargetSchedules: "&id",
+} as const;
+
 export interface LocalMetadata {
   key: string;
   value: string;
@@ -125,6 +131,8 @@ export class AccountDatabase extends Dexie {
   rotation!: EntityTable<LocalResourceRecord, "id">;
   workouts!: EntityTable<LocalResourceRecord, "id">;
   nutritionDays!: EntityTable<LocalResourceRecord, "id">;
+  reusableMeals!: EntityTable<LocalResourceRecord, "id">;
+  nutritionTargetSchedules!: EntityTable<LocalResourceRecord, "id">;
   exerciseCatalog!: EntityTable<CatalogRecord, "id">;
   analyticsCache!: EntityTable<AnalyticsCacheRecord, "key">;
 
@@ -138,6 +146,7 @@ export class AccountDatabase extends Dexie {
     this.version(2).stores(accountStoresV2);
     this.version(3).stores(accountStoresV3);
     this.version(4).stores(accountStoresV4);
+    this.version(5).stores(accountStoresV5);
   }
 }
 

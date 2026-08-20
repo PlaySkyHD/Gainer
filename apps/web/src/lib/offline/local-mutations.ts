@@ -8,7 +8,9 @@ export type MutableAggregateTable =
   | "templates"
   | "rotation"
   | "workouts"
-  | "nutritionDays";
+  | "nutritionDays"
+  | "reusableMeals"
+  | "nutritionTargetSchedules";
 
 export type MutationOperation = "create" | "update" | "delete" | "complete" | "discard";
 

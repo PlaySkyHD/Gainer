@@ -9,6 +9,7 @@ using Gainer.Core.Insights;
 using Gainer.Core.Coach;
 using Gainer.Infrastructure.Coach;
 using Gainer.Infrastructure.Catalog;
+using Gainer.Infrastructure.Nutrition;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -36,6 +37,9 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<IBodyTrackingQueries, BodyTrackingQueries>();
         builder.Services.AddScoped<INutritionDayMutationHandler, NutritionDayMutationHandler>();
         builder.Services.AddScoped<INutritionQueries, NutritionQueries>();
+        builder.Services.AddScoped<ISmartNutritionQueries, SmartNutritionQueries>();
+        builder.Services.AddScoped<IReusableMealMutationHandler, ReusableMealMutationHandler>();
+        builder.Services.AddScoped<INutritionTargetScheduleMutationHandler, NutritionTargetScheduleMutationHandler>();
         builder.Services.AddScoped<IExerciseCatalogQueries, ExerciseCatalogQueries>();
         builder.Services.AddScoped<IExerciseResolver, ExerciseCatalogQueries>();
         builder.Services.AddScoped<ICustomExerciseMutationHandler, CustomExerciseMutationHandler>();
@@ -53,6 +57,11 @@ public static class GainerPersistenceExtensions
         builder.Services.AddHttpClient<IOpenAiResponsesProvider, OpenAiResponsesProvider>(client =>
             client.BaseAddress = new Uri("https://api.openai.com/"));
         builder.Services.AddScoped<ICoachService, CoachService>();
+        builder.Services.Configure<MealEstimationOptions>(builder.Configuration.GetSection(MealEstimationOptions.SectionName));
+        builder.Services.Configure<MealImageOptions>(builder.Configuration.GetSection(MealImageOptions.SectionName));
+        builder.Services.AddSingleton<IMealEstimationQuota, MealEstimationQuota>();
+        builder.Services.AddScoped<IMealImageSanitizer, MealImageSanitizer>();
+        builder.Services.AddScoped<IMealEstimator, OpenAiMealEstimator>();
         builder.Services.Configure<OpenFoodFactsOptions>(builder.Configuration.GetSection(OpenFoodFactsOptions.SectionName));
         builder.Services.AddHttpClient<IExternalFoodCatalog, OpenFoodFactsCatalog>();
         builder.Services.AddScoped<IChangeCollector, ChangeCollector>();

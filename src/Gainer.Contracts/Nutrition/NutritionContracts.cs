@@ -30,6 +30,90 @@ public sealed record NutritionDayResponse(
     NutritionTotalsResponse Totals,
     DateTime? CreatedAtUtc,
     DateTime? UpdatedAtUtc,
-    long Version);
+    long Version,
+    NutritionProgressResponse? Progress);
+
+public sealed record NutrientProgressResponse(
+    decimal Consumed,
+    decimal Target,
+    decimal RemainingOrOver,
+    decimal Ratio,
+    bool IsComplete);
+
+public sealed record NutritionProgressResponse(
+    NutrientProgressResponse Kilocalories,
+    NutrientProgressResponse Protein,
+    NutrientProgressResponse Carbohydrates,
+    NutrientProgressResponse Fat);
 
 public sealed record RecentNutritionEntriesResponse(IReadOnlyList<NutritionEntryResponse> Entries);
+
+public sealed record ReusableMealComponentResponse(
+    Guid ComponentId,
+    int Position,
+    string Name,
+    string? Brand,
+    decimal AmountGrams,
+    NutritionTotalsResponse Totals,
+    NutritionTotalsResponse Per100Grams,
+    NutritionSourceResponse? Source);
+
+public sealed record ReusableMealResponse(
+    Guid ReusableMealId,
+    string Name,
+    string? Description,
+    decimal StandardPortion,
+    string Status,
+    IReadOnlyList<ReusableMealComponentResponse> Components,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc,
+    long Version);
+
+public sealed record ReusableMealsResponse(IReadOnlyList<ReusableMealResponse> Meals);
+
+public sealed record NutritionTargetVersionResponse(
+    Guid TargetVersionId,
+    string Name,
+    string Category,
+    DateOnly EffectiveFrom,
+    DateOnly? EffectiveUntil,
+    decimal Kilocalories,
+    string InputMode,
+    decimal ProteinGrams,
+    decimal CarbohydrateGrams,
+    decimal FatGrams,
+    decimal? ProteinPercent,
+    decimal? CarbohydratePercent,
+    decimal? FatPercent,
+    string Origin,
+    string? AlgorithmVersion,
+    string? Reason,
+    decimal MacroEnergyKilocalories,
+    bool RequiresEnergyMismatchConfirmation);
+
+public sealed record NutritionTargetScheduleResponse(
+    Guid? NutritionTargetScheduleId,
+    IReadOnlyList<NutritionTargetVersionResponse> Versions,
+    DateTime? CreatedAtUtc,
+    DateTime? UpdatedAtUtc,
+    long Version);
+
+public sealed record EffectiveNutritionTargetResponse(
+    DateOnly LocalDate,
+    NutritionTargetVersionResponse? Target);
+
+public sealed record MealEstimateComponentResponse(
+    string Name,
+    decimal AmountGrams,
+    decimal Kilocalories,
+    decimal? ProteinGrams,
+    decimal? CarbohydrateGrams,
+    decimal? FatGrams,
+    string Confidence,
+    IReadOnlyList<string> DataGaps);
+
+public sealed record MealEstimateResponse(
+    IReadOnlyList<MealEstimateComponentResponse> Components,
+    string Provider,
+    string SchemaVersion,
+    DateTime EstimatedAtUtc);

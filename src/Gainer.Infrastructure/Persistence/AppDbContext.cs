@@ -28,6 +28,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 
     public DbSet<NutritionEntry> NutritionEntries => Set<NutritionEntry>();
 
+    public DbSet<ReusableMeal> ReusableMeals => Set<ReusableMeal>();
+
+    public DbSet<ReusableMealComponent> ReusableMealComponents => Set<ReusableMealComponent>();
+
+    public DbSet<NutritionTargetSchedule> NutritionTargetSchedules => Set<NutritionTargetSchedule>();
+
+    public DbSet<NutritionTargetVersion> NutritionTargetVersions => Set<NutritionTargetVersion>();
+
     public DbSet<Exercise> Exercises => Set<Exercise>();
 
     public DbSet<WorkoutTemplate> WorkoutTemplates => Set<WorkoutTemplate>();
@@ -512,6 +520,106 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 .WithMany()
                 .HasForeignKey(item => item.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ReusableMeal>(meal =>
+        {
+            meal.ToTable("reusable_meals", DatabaseSchemas.Tracking, table =>
+            {
+                table.HasCheckConstraint("CK_reusable_meals_name", "length(trim(\"Name\")) > 0");
+                table.HasCheckConstraint("CK_reusable_meals_portion", "\"StandardPortion\" >= 0.01 AND \"StandardPortion\" <= 100");
+                table.HasCheckConstraint("CK_reusable_meals_status", "\"Status\" IN ('Active', 'Archived')");
+            });
+            meal.HasKey(item => item.Id);
+            meal.HasAlternateKey(item => new { item.UserId, item.Id });
+            meal.Property(item => item.Name).HasMaxLength(NutritionLimits.MaxReusableMealNameLength).IsRequired();
+            meal.Property(item => item.Description).HasMaxLength(NutritionLimits.MaxReusableMealDescriptionLength);
+            meal.Property(item => item.StandardPortion).HasPrecision(8, 2);
+            meal.Property(item => item.Status).HasConversion<string>().HasMaxLength(16);
+            meal.Property(item => item.Version).IsConcurrencyToken();
+            meal.HasIndex(item => new { item.UserId, item.Status, item.Name });
+            meal.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ReusableMealComponent>(component =>
+        {
+            component.ToTable("reusable_meal_components", DatabaseSchemas.Tracking, table =>
+            {
+                table.HasCheckConstraint("CK_reusable_meal_components_position", "\"Position\" >= 0");
+                table.HasCheckConstraint("CK_reusable_meal_components_name", "length(trim(\"Name\")) > 0");
+                table.HasCheckConstraint("CK_reusable_meal_components_amount", "\"AmountGrams\" >= 0.01 AND \"AmountGrams\" <= 100000");
+                table.HasCheckConstraint("CK_reusable_meal_components_kcal", "\"Kilocalories\" > 0 AND \"KilocaloriesPer100Grams\" > 0");
+                table.HasCheckConstraint("CK_reusable_meal_components_basis", "\"BasisGrams\" > 0");
+                table.HasCheckConstraint("CK_reusable_meal_components_macros", "(\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND (\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND (\"FatGrams\" IS NULL OR \"FatGrams\" >= 0)");
+                table.HasCheckConstraint("CK_reusable_meal_components_per100_macros", "(\"ProteinGramsPer100Grams\" IS NULL OR \"ProteinGramsPer100Grams\" >= 0) AND (\"CarbohydrateGramsPer100Grams\" IS NULL OR \"CarbohydrateGramsPer100Grams\" >= 0) AND (\"FatGramsPer100Grams\" IS NULL OR \"FatGramsPer100Grams\" >= 0)");
+            });
+            component.HasKey(item => item.Id);
+            component.Property(item => item.Name).HasMaxLength(NutritionLimits.MaxComponentNameLength).IsRequired();
+            component.Property(item => item.Brand).HasMaxLength(160);
+            component.Property(item => item.Provider).HasMaxLength(64);
+            component.Property(item => item.Barcode).HasMaxLength(64);
+            component.Property(item => item.AmountGrams).HasPrecision(10, 2);
+            component.Property(item => item.Kilocalories).HasPrecision(10, 2);
+            component.Property(item => item.ProteinGrams).HasPrecision(10, 2);
+            component.Property(item => item.CarbohydrateGrams).HasPrecision(10, 2);
+            component.Property(item => item.FatGrams).HasPrecision(10, 2);
+            component.Property(item => item.KilocaloriesPer100Grams).HasPrecision(10, 2);
+            component.Property(item => item.ProteinGramsPer100Grams).HasPrecision(10, 2);
+            component.Property(item => item.CarbohydrateGramsPer100Grams).HasPrecision(10, 2);
+            component.Property(item => item.FatGramsPer100Grams).HasPrecision(10, 2);
+            component.Property(item => item.BasisGrams).HasPrecision(10, 2);
+            component.HasIndex(item => new { item.UserId, item.ReusableMealId, item.Position }).IsUnique();
+            component.HasOne(item => item.ReusableMeal)
+                .WithMany(meal => meal.Components)
+                .HasForeignKey(item => new { item.UserId, item.ReusableMealId })
+                .HasPrincipalKey(meal => new { meal.UserId, meal.Id })
+                .OnDelete(DeleteBehavior.Cascade);
+            component.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NutritionTargetSchedule>(schedule =>
+        {
+            schedule.ToTable("nutrition_target_schedules", DatabaseSchemas.Tracking);
+            schedule.HasKey(item => item.Id);
+            schedule.HasAlternateKey(item => new { item.UserId, item.Id });
+            schedule.Property(item => item.Version).IsConcurrencyToken();
+            schedule.HasIndex(item => item.UserId).IsUnique();
+            schedule.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NutritionTargetVersion>(version =>
+        {
+            version.ToTable("nutrition_target_versions", DatabaseSchemas.Tracking, table =>
+            {
+                table.HasCheckConstraint("CK_nutrition_target_versions_kcal", "\"Kilocalories\" > 0 AND \"Kilocalories\" <= 20000");
+                table.HasCheckConstraint("CK_nutrition_target_versions_macros", "\"ProteinGrams\" > 0 AND \"ProteinGrams\" <= 2000 AND \"CarbohydrateGrams\" > 0 AND \"CarbohydrateGrams\" <= 2000 AND \"FatGrams\" > 0 AND \"FatGrams\" <= 2000");
+                table.HasCheckConstraint("CK_nutrition_target_versions_origin", "\"Origin\" = 'Manual'");
+                table.HasCheckConstraint("CK_nutrition_target_versions_name", "length(trim(\"Name\")) > 0");
+                table.HasCheckConstraint("CK_nutrition_target_versions_category", "\"Category\" IN ('Custom', 'Cut', 'Maintenance', 'Bulk')");
+                table.HasCheckConstraint("CK_nutrition_target_versions_dates", "\"EffectiveUntil\" IS NULL OR \"EffectiveUntil\" >= \"EffectiveFrom\"");
+                table.HasCheckConstraint("CK_nutrition_target_versions_input", "(\"InputMode\" = 'Grams' AND \"ProteinPercent\" IS NULL AND \"CarbohydratePercent\" IS NULL AND \"FatPercent\" IS NULL) OR (\"InputMode\" = 'Percent' AND \"ProteinPercent\" > 0 AND \"CarbohydratePercent\" > 0 AND \"FatPercent\" > 0 AND \"ProteinPercent\" + \"CarbohydratePercent\" + \"FatPercent\" = 100)");
+            });
+            version.HasKey(item => item.Id);
+            version.Property(item => item.Name).HasMaxLength(NutritionLimits.MaxTargetPhaseNameLength).HasDefaultValue("Ziel");
+            version.Property(item => item.Category).HasConversion<string>().HasMaxLength(24).HasDefaultValue(NutritionGoalCategory.Custom).HasSentinel((NutritionGoalCategory)(-1));
+            version.Property(item => item.InputMode).HasConversion<string>().HasMaxLength(16).HasDefaultValue(NutritionTargetInputMode.Grams).HasSentinel((NutritionTargetInputMode)(-1));
+            version.Property(item => item.Kilocalories).HasPrecision(10, 2);
+            version.Property(item => item.ProteinGrams).HasPrecision(10, 2);
+            version.Property(item => item.CarbohydrateGrams).HasPrecision(10, 2);
+            version.Property(item => item.FatGrams).HasPrecision(10, 2);
+            version.Property(item => item.ProteinPercent).HasPrecision(5, 2);
+            version.Property(item => item.CarbohydratePercent).HasPrecision(5, 2);
+            version.Property(item => item.FatPercent).HasPrecision(5, 2);
+            version.Property(item => item.Origin).HasConversion<string>().HasMaxLength(24);
+            version.Property(item => item.AlgorithmVersion).HasMaxLength(80);
+            version.Property(item => item.Reason).HasMaxLength(500);
+            version.HasIndex(item => new { item.UserId, item.NutritionTargetScheduleId, item.EffectiveFrom }).IsUnique();
+            version.HasOne(item => item.NutritionTargetSchedule)
+                .WithMany(schedule => schedule.Versions)
+                .HasForeignKey(item => new { item.UserId, item.NutritionTargetScheduleId })
+                .HasPrincipalKey(schedule => new { schedule.UserId, schedule.Id })
+                .OnDelete(DeleteBehavior.Cascade);
+            version.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 

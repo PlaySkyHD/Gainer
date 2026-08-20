@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Gainer.Infrastructure.Persistence;
 using Gainer.Infrastructure.Catalog;
+using Gainer.Infrastructure.Coach;
+using Gainer.Infrastructure.Nutrition;
 using Npgsql;
 
 namespace Gainer.Infrastructure.HealthChecks;
@@ -34,9 +36,36 @@ public static class DatabaseReadinessExtensions
                 tags: [readinessTag])
             .AddCheck<OpenFoodFactsConfigurationHealthCheck>(
                 "open-food-facts-configuration",
+                tags: [readinessTag])
+            .AddCheck<MealEstimationConfigurationHealthCheck>(
+                "meal-estimation-configuration",
                 tags: [readinessTag]);
 
         return services;
+    }
+}
+
+internal sealed class MealEstimationConfigurationHealthCheck(IConfiguration configuration) : IHealthCheck
+{
+    public Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
+    {
+        _ = context;
+        _ = cancellationToken;
+        OpenAiProviderOptions provider = configuration.GetSection(OpenAiProviderOptions.SectionName).Get<OpenAiProviderOptions>() ?? new();
+        MealEstimationOptions estimate = configuration.GetSection(MealEstimationOptions.SectionName).Get<MealEstimationOptions>() ?? new();
+        MealImageOptions image = configuration.GetSection(MealImageOptions.SectionName).Get<MealImageOptions>() ?? new();
+        bool keyAvailable = !string.IsNullOrWhiteSpace(provider.ApiKey) ||
+            (!string.IsNullOrWhiteSpace(provider.ApiKeyFile) && File.Exists(provider.ApiKeyFile));
+        bool valid = keyAvailable && !string.IsNullOrWhiteSpace(provider.Model) &&
+            provider.TimeoutSeconds is >= 1 and <= 120 && provider.MaxOutputTokens is >= 128 and <= 8_000 &&
+            estimate.DailyRequestsPerUser is >= 1 and <= 1_000 && estimate.MaximumConcurrentRequests is >= 1 and <= 32 &&
+            image.MaximumBytes is >= 100_000 and <= 20 * 1024 * 1024 && image.MaximumDimension is >= 256 and <= 8_192 &&
+            image.MaximumPixels is >= 65_536 and <= 40_000_000 && image.JpegQuality is >= 50 and <= 95;
+        return Task.FromResult(valid
+            ? HealthCheckResult.Healthy("Meal estimation configuration is valid.")
+            : HealthCheckResult.Unhealthy("Meal estimation configuration is invalid."));
     }
 }
 

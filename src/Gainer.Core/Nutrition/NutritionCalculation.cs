@@ -50,6 +50,79 @@ public static class NutritionCalculator
             SumOptional(items.Select(item => item.FatGrams)));
     }
 
+    public static NutritionTotals Scale(NutritionTotals values, decimal factor)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        if (factor is < NutritionLimits.MinPortionFactor or > NutritionLimits.MaxPortionFactor)
+        {
+            throw new NutritionValidationException(new Dictionary<string, string>
+            {
+                [nameof(factor)] = "Portion factor is outside the allowed range.",
+            });
+        }
+
+        return new NutritionTotals(
+            Round(values.Kilocalories * factor),
+            Scale(values.ProteinGrams, factor),
+            Scale(values.CarbohydrateGrams, factor),
+            Scale(values.FatGrams, factor));
+    }
+
+    public static decimal CalculateMacroEnergy(
+        decimal proteinGrams,
+        decimal carbohydrateGrams,
+        decimal fatGrams)
+    {
+        var errors = new Dictionary<string, string>(StringComparer.Ordinal);
+        ValidateNonNegative(proteinGrams, nameof(proteinGrams), errors);
+        ValidateNonNegative(carbohydrateGrams, nameof(carbohydrateGrams), errors);
+        ValidateNonNegative(fatGrams, nameof(fatGrams), errors);
+        if (errors.Count > 0) throw new NutritionValidationException(errors);
+        return Round((proteinGrams * 4m) + (carbohydrateGrams * 4m) + (fatGrams * 9m));
+    }
+
+    public static bool HasMacroEnergyMismatch(
+        decimal targetKilocalories,
+        decimal proteinGrams,
+        decimal carbohydrateGrams,
+        decimal fatGrams)
+    {
+        if (targetKilocalories <= 0m)
+        {
+            throw new NutritionValidationException(new Dictionary<string, string>
+            {
+                [nameof(targetKilocalories)] = "Target kilocalories must be positive.",
+            });
+        }
+
+        decimal macroEnergy = CalculateMacroEnergy(proteinGrams, carbohydrateGrams, fatGrams);
+        return decimal.Abs(macroEnergy - targetKilocalories) / targetKilocalories >
+               NutritionLimits.MacroEnergyMismatchThreshold;
+    }
+
+    public static NutritionTotals CalculateMacroTargetsFromPercent(
+        decimal targetKilocalories,
+        decimal proteinPercent,
+        decimal carbohydratePercent,
+        decimal fatPercent)
+    {
+        var errors = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (targetKilocalories <= 0m)
+            errors[nameof(targetKilocalories)] = "Target kilocalories must be positive.";
+        ValidatePercent(proteinPercent, nameof(proteinPercent), errors);
+        ValidatePercent(carbohydratePercent, nameof(carbohydratePercent), errors);
+        ValidatePercent(fatPercent, nameof(fatPercent), errors);
+        if (proteinPercent + carbohydratePercent + fatPercent != NutritionLimits.MacroDistributionTotalPercent)
+            errors["MacroDistribution"] = "Macro percentages must add up to exactly 100.";
+        if (errors.Count > 0) throw new NutritionValidationException(errors);
+
+        return new NutritionTotals(
+            Round(targetKilocalories),
+            Round(targetKilocalories * proteinPercent / 100m / 4m),
+            Round(targetKilocalories * carbohydratePercent / 100m / 4m),
+            Round(targetKilocalories * fatPercent / 100m / 9m));
+    }
+
     private static decimal? Scale(decimal? value, decimal factor) =>
         value is null ? null : Round(value.Value * factor);
 
@@ -83,6 +156,16 @@ public static class NutritionCalculator
         {
             errors[field] = $"{field} cannot be negative.";
         }
+    }
+
+    private static void ValidateNonNegative(decimal value, string field, IDictionary<string, string> errors)
+    {
+        if (value < 0m) errors[field] = $"{field} cannot be negative.";
+    }
+
+    private static void ValidatePercent(decimal value, string field, IDictionary<string, string> errors)
+    {
+        if (value is <= 0m or > 100m) errors[field] = $"{field} must be positive and no greater than 100.";
     }
 }
 

@@ -192,6 +192,82 @@ public sealed class SyncMutationExecutor(
                             Metadata(mutationId, content), payload.NutritionDayId, payload.BaseVersion), cancellationToken);
                     return Result(collector);
                 }
+            case "saveReusableMeal":
+                {
+                    SaveReusableMealPayload payload = Deserialize<SaveReusableMealPayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.ReusableMeal, payload.ReusableMealId, payload.BaseVersion);
+                    ReusableMealComponentDraft[] components = payload.Components.Select(item =>
+                        ReusableMealComponentDraft.Create(
+                            item.ComponentId,
+                            item.Position,
+                            item.Name,
+                            item.AmountGrams,
+                            new NutritionPer100Grams(
+                                item.KilocaloriesPer100Grams,
+                                item.ProteinGramsPer100Grams,
+                                item.CarbohydrateGramsPer100Grams,
+                                item.FatGramsPer100Grams),
+                            item.Brand,
+                            item.Source)).ToArray();
+                    ReusableMealDraft values = ReusableMealDraft.Create(
+                        payload.Name, payload.Description, payload.StandardPortion, components);
+                    ReusableMealSnapshot snapshot = await new ReusableMealMutationHandler(context, userContext, timeProvider, collector)
+                        .SaveAsync(SaveReusableMealMutation.Create(
+                            Metadata(mutationId, content), payload.ReusableMealId, payload.BaseVersion, values), cancellationToken);
+                    return Result(collector, snapshot);
+                }
+            case "archiveReusableMeal":
+                {
+                    ArchiveReusableMealPayload payload = Deserialize<ArchiveReusableMealPayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.ReusableMeal, payload.ReusableMealId, payload.BaseVersion);
+                    ReusableMealSnapshot snapshot = await new ReusableMealMutationHandler(context, userContext, timeProvider, collector)
+                        .ArchiveAsync(ArchiveReusableMealMutation.Create(
+                            Metadata(mutationId, content), payload.ReusableMealId, payload.BaseVersion), cancellationToken);
+                    return Result(collector, snapshot);
+                }
+            case "saveNutritionTargetSchedule":
+                {
+                    SaveNutritionTargetSchedulePayload payload = Deserialize<SaveNutritionTargetSchedulePayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.NutritionTargetSchedule, payload.NutritionTargetScheduleId, payload.BaseVersion);
+                    NutritionTargetVersionPayload[] orderedPayloads = payload.Versions
+                        .OrderBy(item => item.EffectiveFrom)
+                        .ToArray();
+                    NutritionTargetVersionDraft[] versions = orderedPayloads.Select((item, index) =>
+                    {
+                        bool legacy = string.IsNullOrWhiteSpace(item.Name) &&
+                            string.IsNullOrWhiteSpace(item.Category) &&
+                            string.IsNullOrWhiteSpace(item.InputMode);
+                        DateOnly? effectiveUntil = item.EffectiveUntil;
+                        if (legacy && effectiveUntil is null && index + 1 < orderedPayloads.Length)
+                            effectiveUntil = orderedPayloads[index + 1].EffectiveFrom.AddDays(-1);
+                        return NutritionTargetVersionDraft.Restore(
+                            item.TargetVersionId,
+                            string.IsNullOrWhiteSpace(item.Name) ? "Ziel" : item.Name,
+                            string.IsNullOrWhiteSpace(item.Category)
+                                ? NutritionGoalCategory.Custom
+                                : ParseGoalCategory(item.Category),
+                            item.EffectiveFrom,
+                            effectiveUntil,
+                            item.Kilocalories,
+                            string.IsNullOrWhiteSpace(item.InputMode)
+                                ? NutritionTargetInputMode.Grams
+                                : ParseTargetInputMode(item.InputMode),
+                            item.ProteinGrams,
+                            item.CarbohydrateGrams,
+                            item.FatGrams,
+                            item.ProteinPercent,
+                            item.CarbohydratePercent,
+                            item.FatPercent,
+                            ParseTargetOrigin(item.Origin),
+                            item.AlgorithmVersion,
+                            item.Reason);
+                    }).ToArray();
+                    NutritionTargetScheduleSnapshot snapshot = await new NutritionTargetScheduleMutationHandler(context, userContext, timeProvider, collector)
+                        .SaveAsync(SaveNutritionTargetScheduleMutation.Create(
+                            Metadata(mutationId, content), payload.NutritionTargetScheduleId, payload.BaseVersion,
+                            NutritionTargetScheduleDraft.Create(versions)), cancellationToken);
+                    return Result(collector, snapshot);
+                }
             default:
                 throw new SyncMutationValidationException("unsupported_operation", "The mutation operation is not supported.");
         }
@@ -273,6 +349,21 @@ public sealed class SyncMutationExecutor(
             ? meal
             : throw new SyncMutationValidationException("invalid_payload", "The meal type is invalid.");
 
+    private static NutritionTargetOrigin ParseTargetOrigin(string value) =>
+        Enum.TryParse(value, ignoreCase: true, out NutritionTargetOrigin origin) && Enum.IsDefined(origin)
+            ? origin
+            : throw new SyncMutationValidationException("invalid_payload", "The nutrition target origin is invalid.");
+
+    private static NutritionGoalCategory ParseGoalCategory(string value) =>
+        Enum.TryParse(value, ignoreCase: true, out NutritionGoalCategory category) && Enum.IsDefined(category)
+            ? category
+            : throw new SyncMutationValidationException("invalid_payload", "The nutrition goal category is invalid.");
+
+    private static NutritionTargetInputMode ParseTargetInputMode(string value) =>
+        Enum.TryParse(value, ignoreCase: true, out NutritionTargetInputMode inputMode) && Enum.IsDefined(inputMode)
+            ? inputMode
+            : throw new SyncMutationValidationException("invalid_payload", "The nutrition target input mode is invalid.");
+
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
     private sealed record CreateCheckInPayload(Guid CheckInId, DateOnly LocalDate, DailyCheckInValues Values);
@@ -316,6 +407,46 @@ public sealed class SyncMutationExecutor(
         long BaseVersion,
         IReadOnlyList<NutritionEntryPayload> Entries);
     private sealed record DeleteNutritionDayPayload(Guid NutritionDayId, long BaseVersion);
+    private sealed record SaveReusableMealPayload(
+        Guid ReusableMealId,
+        long BaseVersion,
+        string Name,
+        string? Description,
+        decimal StandardPortion,
+        IReadOnlyList<ReusableMealComponentPayload> Components);
+    private sealed record ArchiveReusableMealPayload(Guid ReusableMealId, long BaseVersion);
+    private sealed record ReusableMealComponentPayload(
+        Guid ComponentId,
+        int Position,
+        string Name,
+        string? Brand,
+        decimal AmountGrams,
+        decimal KilocaloriesPer100Grams,
+        decimal? ProteinGramsPer100Grams,
+        decimal? CarbohydrateGramsPer100Grams,
+        decimal? FatGramsPer100Grams,
+        NutritionSourceSnapshot? Source);
+    private sealed record SaveNutritionTargetSchedulePayload(
+        Guid NutritionTargetScheduleId,
+        long BaseVersion,
+        IReadOnlyList<NutritionTargetVersionPayload> Versions);
+    private sealed record NutritionTargetVersionPayload(
+        Guid TargetVersionId,
+        string? Name,
+        string? Category,
+        DateOnly EffectiveFrom,
+        DateOnly? EffectiveUntil,
+        decimal Kilocalories,
+        string? InputMode,
+        decimal ProteinGrams,
+        decimal CarbohydrateGrams,
+        decimal FatGrams,
+        decimal? ProteinPercent,
+        decimal? CarbohydratePercent,
+        decimal? FatPercent,
+        string Origin,
+        string? AlgorithmVersion,
+        string? Reason);
     private sealed record NutritionEntryPayload(
         Guid EntryId,
         string Meal,

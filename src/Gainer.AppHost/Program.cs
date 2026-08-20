@@ -16,6 +16,8 @@ if (builder.ExecutionContext.IsPublishMode)
         .AddDockerfile("api", "../..", "deploy/Dockerfile.api")
         .WithHttpEndpoint(targetPort: 8080, name: "http")
         .WithEnvironment("OpenFoodFacts__ContactEmail", openFoodFactsContactEmail)
+        .WithEnvironment("MealEstimation__DailyRequestsPerUser", "20")
+        .WithEnvironment("MealEstimation__MaximumConcurrentRequests", "2")
         .WithHttpHealthCheck("/health/ready")
         .WithReference(productionDatabase)
         .WaitForCompletion(migrator);
@@ -49,6 +51,8 @@ var api = builder
     .AddProject<Projects.Gainer_Api>("api")
     .WithReference(database)
     .WithEnvironment("OpenFoodFacts__ContactEmail", openFoodFactsContactEmail)
+    .WithEnvironment("MealEstimation__DailyRequestsPerUser", "20")
+    .WithEnvironment("MealEstimation__MaximumConcurrentRequests", "2")
     .WithEnvironment("Security__FrontendOrigin", web.GetEndpoint("http"))
     .WaitFor(database);
 

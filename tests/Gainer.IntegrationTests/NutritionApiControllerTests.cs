@@ -4,6 +4,7 @@ using Gainer.Core.Nutrition;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.TestHost;
@@ -15,6 +16,8 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Gainer.Api.Composition;
+using Gainer.Api.Security;
+using Gainer.Contracts.Security;
 
 namespace Gainer.IntegrationTests;
 
@@ -51,7 +54,7 @@ public sealed class NutritionApiControllerTests
     {
         Assert.IsNotNull(typeof(NutritionController).GetCustomAttributes(typeof(AuthorizeAttribute), true).SingleOrDefault());
         DateOnly date = new(2026, 8, 19);
-        var controller = new NutritionController(new StubNutritionQueries(null, []));
+        var controller = Controller(new StubNutritionQueries(null, []), StubSmartNutritionQueries.Empty);
 
         NutritionDayResponse empty = Value(await controller.Day(date));
 
@@ -74,7 +77,12 @@ public sealed class NutritionApiControllerTests
             new NutritionSourceSnapshot("Open Food Facts", "12345678", DateTime.UtcNow, 100m));
         var day = new NutritionDaySnapshot(
             Guid.NewGuid(), date, [entry], entry.Totals, DateTime.UtcNow, DateTime.UtcNow, 1);
-        var controller = new NutritionController(new StubNutritionQueries(day, [entry]));
+        var target = NutritionTargetVersionDraft.Create(
+            Guid.NewGuid(), date, 500m, 150m, 250m, 60m,
+            NutritionTargetOrigin.Manual, null, null);
+        var controller = Controller(
+            new StubNutritionQueries(day, [entry]),
+            new StubSmartNutritionQueries([], null, null, target));
 
         NutritionDayResponse response = Value(await controller.Day(date));
         RecentNutritionEntriesResponse recent = Value(await controller.Recent(10));
@@ -83,6 +91,38 @@ public sealed class NutritionApiControllerTests
         Assert.IsNull(response.Entries.Single().Totals.CarbohydrateGrams);
         Assert.AreEqual("Open Food Facts", response.Entries.Single().Source?.Provider);
         Assert.AreEqual(entry.EntryId, recent.Entries.Single().EntryId);
+        Assert.AreEqual(-55m, response.Progress?.Kilocalories.RemainingOrOver);
+        Assert.IsTrue(response.Progress?.Kilocalories.IsComplete);
+        Assert.IsFalse(response.Progress?.Carbohydrates.IsComplete);
+    }
+
+    [TestMethod]
+    public async Task SmartNutritionQueriesReturnStableEmptyStatesAndOrderedSnapshots()
+    {
+        Guid mealId = Guid.NewGuid();
+        var component = ReusableMealComponentDraft.Create(
+            Guid.NewGuid(), 0, "Oats", 100m,
+            new NutritionPer100Grams(370m, 13m, 60m, 7m));
+        var meal = new ReusableMealSnapshot(
+            mealId, "Breakfast", null, 1m, ReusableMealStatus.Active, [component],
+            DateTime.UtcNow, DateTime.UtcNow, 1);
+        var target = NutritionTargetVersionDraft.Create(
+            Guid.NewGuid(), new DateOnly(2026, 8, 1), 2500m, 180m, 300m, 65m,
+            NutritionTargetOrigin.Manual, null, null);
+        var smart = new StubSmartNutritionQueries([meal], meal, null, target);
+        var controller = Controller(new StubNutritionQueries(null, []), smart);
+
+        ReusableMealsResponse meals = Value(await controller.ReusableMeals());
+        ReusableMealResponse detail = Value(await controller.ReusableMealById(mealId));
+        NutritionTargetScheduleResponse schedule = Value(await controller.TargetSchedule());
+        EffectiveNutritionTargetResponse effective = Value(await controller.EffectiveTarget(new DateOnly(2026, 8, 19)));
+
+        Assert.AreEqual("Breakfast", meals.Meals.Single().Name);
+        Assert.AreEqual("Oats", detail.Components.Single().Name);
+        Assert.IsNull(schedule.NutritionTargetScheduleId);
+        Assert.HasCount(0, schedule.Versions);
+        Assert.AreEqual(2500m, effective.Target?.Kilocalories);
+        Assert.IsFalse(typeof(ReusableMealResponse).GetProperties().Any(property => property.Name == "UserId"));
     }
 
     [TestMethod]
@@ -106,6 +146,64 @@ public sealed class NutritionApiControllerTests
         Assert.AreEqual(secondUser.ToString(), second.Entries.Single().ProductName);
     }
 
+    [TestMethod]
+    public async Task MealEstimateHttpEndpointRequiresAuthenticationConsentAndBoundedSingleImage()
+    {
+        var estimator = new StubMealEstimator();
+        await using WebApplication app = await CreateApplicationAsync(estimator);
+        using HttpClient client = app.GetTestClient();
+        client.BaseAddress = new Uri("https://localhost");
+        using HttpResponseMessage tokenResponse = await client.GetAsync("/api/v1/auth/antiforgery");
+        AntiforgeryTokenResponse token = (await tokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenResponse>())!;
+        string cookie = tokenResponse.Headers.GetValues("Set-Cookie").Single().Split(';', 2)[0];
+
+        using var anonymous = new MultipartFormDataContent { { new StringContent("oats"), "text" } };
+        using var anonymousRequest = MealEstimateRequest(anonymous, token.RequestToken, cookie);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.SendAsync(anonymousRequest)).StatusCode);
+
+        client.DefaultRequestHeaders.Add("X-Test-User", Guid.NewGuid().ToString());
+        using HttpResponseMessage authenticatedTokenResponse = await client.GetAsync("/api/v1/auth/antiforgery");
+        token = (await authenticatedTokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenResponse>())!;
+        cookie = authenticatedTokenResponse.Headers.GetValues("Set-Cookie").Single().Split(';', 2)[0];
+        using var textOnly = new MultipartFormDataContent { { new StringContent("oats"), "text" } };
+        using HttpResponseMessage success = await client.SendAsync(MealEstimateRequest(textOnly, token.RequestToken, cookie));
+        Assert.AreEqual(HttpStatusCode.OK, success.StatusCode, await success.Content.ReadAsStringAsync());
+        Assert.IsTrue(success.Headers.CacheControl?.NoStore);
+        Assert.IsTrue(success.Headers.CacheControl?.Private);
+        Assert.AreEqual(1, estimator.Calls);
+
+        using var missingConsent = new MultipartFormDataContent();
+        missingConsent.Add(new ByteArrayContent([0x89, 0x50, 0x4E, 0x47]), "image", "meal.png");
+        using HttpResponseMessage consentFailure = await client.SendAsync(MealEstimateRequest(missingConsent, token.RequestToken, cookie));
+        Assert.AreEqual(HttpStatusCode.BadRequest, consentFailure.StatusCode);
+        Assert.AreEqual("image_consent_required", (await consentFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
+        Assert.AreEqual(1, estimator.Calls);
+
+        using var multipleImages = new MultipartFormDataContent();
+        multipleImages.Add(new ByteArrayContent([1]), "image", "first.png");
+        multipleImages.Add(new ByteArrayContent([2]), "otherImage", "second.png");
+        multipleImages.Add(new StringContent("true"), "imageConsent");
+        using HttpResponseMessage multipleFailure = await client.SendAsync(MealEstimateRequest(multipleImages, token.RequestToken, cookie));
+        Assert.AreEqual(HttpStatusCode.BadRequest, multipleFailure.StatusCode);
+        Assert.AreEqual("too_many_images", (await multipleFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
+
+        using var oversized = new MultipartFormDataContent();
+        oversized.Add(new ByteArrayContent(new byte[(8 * 1024 * 1024) + 1]), "image", "large.png");
+        oversized.Add(new StringContent("true"), "imageConsent");
+        using HttpResponseMessage sizeFailure = await client.SendAsync(MealEstimateRequest(oversized, token.RequestToken, cookie));
+        Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, sizeFailure.StatusCode);
+        Assert.AreEqual(1, estimator.Calls, "Rejected requests and returned drafts must not create persisted estimate state.");
+    }
+
+    private static HttpRequestMessage MealEstimateRequest(HttpContent content, string token, string cookie)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/nutrition/meal-estimates") { Content = content };
+        request.Headers.Add("Origin", "https://localhost");
+        request.Headers.Add("Cookie", cookie);
+        request.Headers.Add(GainerRequestSecurityOptions.AntiforgeryHeaderName, token);
+        return request;
+    }
+
     private static T Value<T>(ActionResult<T> action) => (T)((OkObjectResult)action.Result!).Value!;
 
     private static T WithHttpContext<T>(T controller) where T : ControllerBase
@@ -114,22 +212,67 @@ public sealed class NutritionApiControllerTests
         return controller;
     }
 
-    private static async Task<WebApplication> CreateApplicationAsync()
+    private static async Task<WebApplication> CreateApplicationAsync(IMealEstimator? estimator = null)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.Configuration[GainerRequestSecurityOptions.FrontendOriginConfigurationKey] = "https://localhost";
         builder.WebHost.UseTestServer();
         builder.AddGainerApi();
+        builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
         builder.Services.AddAuthentication(options =>
         {
             options.DefaultAuthenticateScheme = "test";
             options.DefaultChallengeScheme = "test";
         }).AddScheme<AuthenticationSchemeOptions, HeaderAuthenticationHandler>("test", _ => { });
         builder.Services.AddSingleton<INutritionQueries, RequestUserNutritionQueries>();
+        builder.Services.AddSingleton<ISmartNutritionQueries>(StubSmartNutritionQueries.Empty);
+        builder.Services.AddSingleton<IMealEstimator>(estimator ?? new StubMealEstimator());
         builder.Services.AddSingleton<IExternalFoodCatalog>(new StubCatalog(new FoodCatalogException("unused", "unused", false)));
         WebApplication app = builder.Build();
         app.MapGainerApi();
         await app.StartAsync();
         return app;
+    }
+
+    private static NutritionController Controller(
+        INutritionQueries queries,
+        ISmartNutritionQueries smart,
+        IMealEstimator? estimator = null) => WithHttpContext(new NutritionController(
+            queries, smart, estimator ?? new StubMealEstimator()));
+
+    private sealed class StubMealEstimator : IMealEstimator
+    {
+        public int Calls { get; private set; }
+
+        public Task<MealEstimateDraft> EstimateAsync(MealEstimationInput input, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(MealEstimateDraft.Create(
+                [MealEstimateComponentDraft.Create("Oats", 100m, 370m, 13m, 60m, 7m, MealEstimateConfidence.Medium, [])],
+                "test", "v1", DateTime.SpecifyKind(new DateTime(2026, 8, 19), DateTimeKind.Utc)));
+        }
+    }
+
+    private sealed class StubSmartNutritionQueries(
+        IReadOnlyList<ReusableMealSnapshot> meals,
+        ReusableMealSnapshot? meal,
+        NutritionTargetScheduleSnapshot? schedule,
+        NutritionTargetVersionDraft? effective) : ISmartNutritionQueries
+    {
+        public static StubSmartNutritionQueries Empty { get; } = new([], null, null, null);
+
+        public Task<IReadOnlyList<ReusableMealSnapshot>> GetReusableMealsAsync(bool includeArchived, CancellationToken cancellationToken = default) =>
+            Task.FromResult(meals);
+
+        public Task<ReusableMealSnapshot?> GetReusableMealAsync(Guid reusableMealId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(meal?.ReusableMealId == reusableMealId ? meal : null);
+
+        public Task<NutritionTargetScheduleSnapshot?> GetNutritionTargetScheduleAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(schedule);
+
+        public Task<NutritionTargetVersionDraft?> GetEffectiveNutritionTargetAsync(DateOnly localDate, CancellationToken cancellationToken = default) =>
+            Task.FromResult(effective);
     }
 
     private sealed class StubCatalog : IExternalFoodCatalog

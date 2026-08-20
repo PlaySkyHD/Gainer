@@ -127,7 +127,7 @@ For the local drill use `RESTIC_REPOSITORY=rclone::azureblob:<container>/<path>`
 
 ## Monitoring, incidents, and rollback
 
-- Alert on `/health/ready`, restart loops, disk capacity, certificate renewal, backup age, and restore failures. PostgreSQL or schema failure makes readiness fail; OpenAI failure degrades only Coach.
+- Alert on `/health/ready`, restart loops, disk capacity, certificate renewal, backup age, and restore failures. PostgreSQL or schema failure makes readiness fail. Invalid OpenAI, meal-estimation or image-limit configuration makes readiness fail; a transient OpenAI outage degrades Coach and online meal estimation while manual nutrition tracking and reusable meals remain available.
 - `/health/ready` also validates the Open Food Facts URL, required contact identity and bounded request settings. It intentionally does not issue a product request, so a transient provider outage degrades lookup/search while manual and offline diary entry remain available.
 - Keep structured logs at `Information`. Never enable request-body logging. Configure OTLP only to an internal endpoint.
 - Do not add outbound URL paths or query strings to logging or tracing: they may contain food search text or a barcode. The application exports only the provider authority for outbound HTTP spans.

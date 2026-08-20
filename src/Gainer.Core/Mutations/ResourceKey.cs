@@ -36,4 +36,6 @@ public enum ResourceKind
     WorkoutRotation = 5,
     Workout = 6,
     NutritionDay = 7,
+    ReusableMeal = 8,
+    NutritionTargetSchedule = 9,
 }

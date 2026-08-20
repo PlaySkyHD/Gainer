@@ -48,6 +48,10 @@
 - [x] 6.7 Offline-, Leer-, Nicht-gefunden-, Kamera-, Rate-Limit- und Providerfehlerzustände mit lokalen Alternativen verständlich gestalten.
 - [x] 6.8 Open Food Facts als Quelle mit Datenstand, Qualitätswarnung und ODbL-Attribution in Produktdetails und Drittanbieterhinweisen ergänzen.
 - [x] 6.9 Light Mode, Dark Mode, Safe Areas, Tastaturbedienung, Screenreader-Beschriftungen und reduzierte Bewegung für alle neuen Oberflächen prüfen.
+- [ ] 6.10 Eine gepflegte Browser-Decoder-Dependency für EAN-8, EAN-13, UPC-A und UPC-E anhand Browserabdeckung, Bundle-Größe und Lizenz auswählen, zentral pinnen und ausschließlich beim Öffnen des Scanners lazy laden.
+- [ ] 6.11 Den Kamera-Scanner hinter einer gemeinsamen Abstraktion so erweitern, dass er die native `BarcodeDetector`-API als Fast Path und bei fehlender API automatisch den Decoder-Fallback über sicheren `getUserMedia`-Zugriff verwendet.
+- [ ] 6.12 Bevorzugte Rückkamera, laufende Decode-Schleife, Deduplizierung wiederholter Treffer und Übergabe an denselben normalisierten Barcode-Lookup für beide Scannerpfade implementieren.
+- [ ] 6.13 Alle Media-Tracks bei Erfolg, Abbruch, Fehler, Navigation, Sheet-Schließung und Komponenten-Unmount idempotent stoppen; manuelle Codeeingabe muss während jedes Fehlerzustands erreichbar bleiben.
 
 ## 7. Analytics und Coach
 
@@ -62,3 +66,6 @@
 - [x] 8.3 Aspire-Konfiguration, Health Checks und Telemetrie für den externen Adapter ergänzen, ohne Suchtexte, Barcodes oder Ernährungsinhalte in Logs, Traces oder Metrics-Labels aufzunehmen.
 - [x] 8.4 Konfiguration und Deployment-Dokumentation für Open-Food-Facts-Basis-URL, Kontaktadresse, Limits und Timeouts auf dem Linux-V-Server aktualisieren.
 - [x] 8.5 Vollständigen Backend- und Frontend-Build, alle Unit-/Integrations-/Browser-Tests sowie eine Prüfung der Lizenz- und Datenschutzhinweise erfolgreich ausführen.
+- [ ] 8.6 Automatisierte Frontend- und Browser-Tests mit deaktivierter nativer `BarcodeDetector`-API, EAN-/UPC-Testbildern, verweigerter Berechtigung, doppelten Frames und überprüftem Media-Track-Cleanup ergänzen.
+- [ ] 8.7 Den produktiven HTTPS-Kamerascan auf einem PC-Browser ohne native API und einem physischen iPhone mit realen EAN-/UPC-Barcodes prüfen; erfolgreichen Lookup sowie manuelle Fallbacks dokumentieren.
+- [ ] 8.8 Nach der Scanner-Erweiterung Typecheck, Lint, Produktionsbuild, Unit-/Browser-/PWA-Tests und den Lizenzcheck der neuen Dependency erfolgreich ausführen.

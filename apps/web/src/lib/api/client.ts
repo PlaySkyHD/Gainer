@@ -8,6 +8,7 @@ export type ExerciseProgress = components["schemas"]["ExerciseProgressResponse"]
 export type CoachAnswer = components["schemas"]["CoachResponse"];
 export type FoodCatalogProduct = components["schemas"]["FoodCatalogProductResponse"];
 export type FoodCatalogSearch = components["schemas"]["FoodCatalogSearchResponse"];
+export type MealEstimate = components["schemas"]["MealEstimateResponse"];
 
 export class FoodCatalogApiError extends Error {
   constructor(
@@ -115,6 +116,29 @@ export async function lookupFoodBarcode(barcode: string): Promise<FoodCatalogPro
 export async function searchFoods(query: string, page = 1, pageSize = 10): Promise<FoodCatalogSearch> {
   const params = new URLSearchParams({ query, page: String(page), pageSize: String(pageSize) });
   return foodRequest<FoodCatalogSearch>(`/api/v1/foods/search?${params}`);
+}
+
+export async function estimateMeal(text: string, image: File | null, imageConsent: boolean, signal?: AbortSignal): Promise<MealEstimate> {
+  const token = await antiforgeryToken();
+  const body = new FormData();
+  if (text.trim()) body.set("text", text.trim());
+  if (image) body.set("image", image);
+  body.set("imageConsent", String(imageConsent));
+  const response = await fetch("/api/v1/nutrition/meal-estimates", {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
+    headers: { "X-CSRF-TOKEN": token },
+    body,
+    signal,
+  });
+  if (response.ok) return (await response.json()) as MealEstimate;
+  const problem = await response.json().catch(() => null) as { title?: string; detail?: string; code?: string } | null;
+  throw new FoodCatalogApiError(
+    response.status,
+    problem?.code ?? `http_${response.status}`,
+    problem?.detail ?? problem?.title ?? "Die AI-Schätzung ist fehlgeschlagen.",
+  );
 }
 
 async function foodRequest<T>(path: string): Promise<T> {

@@ -5,6 +5,7 @@ using Gainer.Infrastructure.Coach;
 using Gainer.Core.Coach;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Gainer.IntegrationTests;
 
@@ -16,13 +17,14 @@ public sealed class OpenAiResponsesProviderTests
     {
         var handler = new CaptureHandler();
         using var client = new HttpClient(handler) { BaseAddress = new Uri("https://api.openai.test/") };
+        var logger = new CaptureLogger<OpenAiResponsesProvider>();
         var provider = new OpenAiResponsesProvider(client, Options.Create(new OpenAiProviderOptions
         {
             ApiKey = "secret-test-key",
             Model = "configured-model",
             TimeoutSeconds = 1,
             MaxOutputTokens = 700,
-        }), NullLogger<OpenAiResponsesProvider>.Instance);
+        }), logger);
         JsonElement request = JsonSerializer.SerializeToElement(new
         {
             model = "untrusted-model",
@@ -30,7 +32,7 @@ public sealed class OpenAiResponsesProviderTests
             background = true,
             previous_response_id = "must-be-removed",
             conversation = "must-be-removed",
-            input = new[] { new { role = "user", content = "question" } },
+            input = new[] { new { role = "user", content = "private@example.test data:image/jpeg;base64,SECRET meal component" } },
             tools = new[] { new { type = "function", name = "get_progress" } },
         });
         _ = await provider.CreateResponseAsync(request);
@@ -46,6 +48,10 @@ public sealed class OpenAiResponsesProviderTests
         Assert.AreEqual("Bearer", handler.AuthorizationScheme);
         Assert.AreEqual("secret-test-key", handler.AuthorizationParameter);
         Assert.AreEqual("function", root.GetProperty("tools")[0].GetProperty("type").GetString());
+        string logs = string.Join("\n", logger.Messages);
+        Assert.IsFalse(logs.Contains("private@example.test", StringComparison.Ordinal));
+        Assert.IsFalse(logs.Contains("base64", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(logs.Contains("meal component", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -120,5 +126,14 @@ public sealed class OpenAiResponsesProviderTests
             await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
             return new HttpResponseMessage(HttpStatusCode.OK);
         }
+    }
+
+    private sealed class CaptureLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
     }
 }
