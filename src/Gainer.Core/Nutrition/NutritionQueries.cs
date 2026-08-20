@@ -8,3 +8,21 @@ public interface INutritionQueries
         int limit,
         CancellationToken cancellationToken = default);
 }
+
+public interface ISmartNutritionQueries
+{
+    Task<IReadOnlyList<ReusableMealSnapshot>> GetReusableMealsAsync(
+        bool includeArchived,
+        CancellationToken cancellationToken = default);
+
+    Task<ReusableMealSnapshot?> GetReusableMealAsync(
+        Guid reusableMealId,
+        CancellationToken cancellationToken = default);
+
+    Task<NutritionTargetScheduleSnapshot?> GetNutritionTargetScheduleAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<NutritionTargetVersionDraft?> GetEffectiveNutritionTargetAsync(
+        DateOnly localDate,
+        CancellationToken cancellationToken = default);
+}

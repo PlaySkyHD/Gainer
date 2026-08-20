@@ -4,8 +4,16 @@ The MVP accepts the permissive MIT, ISC, BSD, Apache-2.0, 0BSD, BlueOak, CC0, CC
 
 CI rejects packages with missing or newly introduced license expressions until this file and the explicit allowlists are reviewed. It also fails on RAG/pgvector dependencies and unapproved exercise media. Automated CVE scanning of dependencies and container images is intentionally not a release gate for this private MVP; dependency versions remain locked and updates are reviewed separately.
 
+`SixLabors.ImageSharp` 3.1.12 is a direct dependency used only to identify and re-encode uploaded meal images in the Linux API container. It is distributed under the Six Labors Split License 1.0. This private MVP qualifies for its Apache-2.0 grant only while the consuming individual/company remains below USD 1M annual gross revenue (or another listed qualifying condition applies); otherwise a Six Labors commercial license is required before deployment. Version 4 is intentionally not used because direct dependencies require build-time license enforcement.
+
 ## Open Food Facts data
 
 Barcode lookup and explicit product search use the Open Food Facts database as a read-only external source. Database contents are available under the Open Database License (ODbL); individual database contents are covered by the Database Contents License. The UI attributes Open Food Facts at the point of use, labels stale or incomplete community data, and does not retrieve or redistribute product images.
 
 The application stores only the user-confirmed product name, optional brand, barcode/provider provenance, retrieval time and a nutrient snapshot needed for that user's diary. Search queries, provider response bodies and barcodes are excluded from application logs and telemetry labels. Operators must keep the Open Food Facts contact address current and review the provider terms before materially expanding caching, redistribution or public availability.
+
+## OpenAI meal estimation
+
+Meal estimation is an explicit, online-only action. The selected text and at most one server-sanitized image are sent to the OpenAI Responses API with `store=false`, `background=false`, no tools and a bounded structured-output schema. Gainer does not persist the source image, prompt, provider response or editable draft in PostgreSQL, Blob Storage, IndexedDB, application logs, traces or metric labels. Only components reviewed and confirmed by the user become ordinary nutrition-entry snapshots marked with technical AI provenance.
+
+`store=false` disables Responses application-state storage but is not a promise of zero provider retention. Under OpenAI's default API data controls, request and response content may occur in abuse-monitoring logs retained for up to 30 days; approved Zero Data Retention or Modified Abuse Monitoring controls can alter this. The in-app consent text must state this distinction, identify OpenAI as recipient, describe the estimate as non-authoritative and remain aligned with the data controls configured for the production OpenAI project.

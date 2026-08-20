@@ -133,12 +133,13 @@ public sealed class SyncMutationProcessor(
         }
         catch (Exception exception) when (exception is DailyCheckInConflictException or CustomExerciseConflictException or
             BodyGoalConflictException or WorkoutTemplateConflictException or WorkoutRotationConflictException or WorkoutConflictException or
-            NutritionDayConflictException)
+            NutritionDayConflictException or ReusableMealConflictException or NutritionTargetScheduleConflictException)
         {
             throw new SyncMutationConflictException("stale_base_version", "The resource changed since the supplied base version.");
         }
         catch (Exception exception) when (exception is DailyCheckInNotFoundException or CustomExerciseNotFoundException or
-            WorkoutTemplateNotFoundException or WorkoutRotationNotFoundException or WorkoutNotFoundException or NutritionDayNotFoundException)
+            WorkoutTemplateNotFoundException or WorkoutRotationNotFoundException or WorkoutNotFoundException or NutritionDayNotFoundException or
+            ReusableMealNotFoundException or NutritionTargetScheduleNotFoundException)
         {
             throw new SyncMutationConflictException("resource_not_found", "The resource is no longer available.");
         }

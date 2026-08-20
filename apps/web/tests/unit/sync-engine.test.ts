@@ -16,6 +16,7 @@ import {
 } from "../../src/lib/offline/sync-engine.ts";
 import { withSyncLease } from "../../src/lib/offline/sync-scheduler.ts";
 import { createNutritionEntry, saveLocalNutritionDay } from "../../src/lib/offline/nutrition-tracking.ts";
+import { saveNutritionTargetVersion, saveReusableMeal } from "../../src/lib/offline/smart-nutrition.ts";
 import {
   acceptConflictServerState,
   retryConflictOnCurrentServerVersion,
@@ -206,6 +207,41 @@ test("nutrition days map to full snapshot mutations and pull atomically", async 
   assert.equal(request.payload.entries[0]?.kilocaloriesPer100Grams, 370);
   assert.equal((await database.nutritionDays.get(dayId))?.envelope.serverVersion, 1);
   assert.equal(await database.outbox.count(), 0);
+});
+
+test("reusable meals and target schedules map to additive typed sync operations", async () => {
+  const database = await createDatabase();
+  await saveReusableMeal(database, {
+    name: "Rice bowl", description: null, standardPortion: 1,
+    components: [{
+      componentId: crypto.randomUUID(), position: 0, name: "Rice", brand: null, amountGrams: 200,
+      totals: { kilocalories: 260, proteinGrams: 6, carbohydrateGrams: 56, fatGrams: 0.6 },
+      per100Grams: { kilocalories: 130, proteinGrams: 3, carbohydrateGrams: 28, fatGrams: 0.3 }, source: null,
+    }],
+  });
+  await saveNutritionTargetVersion(database, {
+    targetVersionId: crypto.randomUUID(), name: "Cut", category: "Cut",
+    effectiveFrom: "2026-09-01", effectiveUntil: null, inputMode: "Grams", kilocalories: 2500,
+    proteinGrams: 180, carbohydrateGrams: 300, fatGrams: 70,
+    proteinPercent: null, carbohydratePercent: null, fatPercent: null,
+    origin: "Manual", algorithmVersion: null, reason: null,
+  });
+  const transport = new FakeTransport();
+
+  await runSync(database, transport);
+
+  const requests = transport.pushRequests as Array<{
+    operation: string; resources: Array<{ resourceType: string }>;
+    payload: Record<string, unknown>;
+  }>;
+  const meal = requests.find((item) => item.operation === "saveReusableMeal")!;
+  const targets = requests.find((item) => item.operation === "saveNutritionTargetSchedule")!;
+  assert.equal(meal.resources[0]?.resourceType, "ReusableMeal");
+  assert.equal((meal.payload.components as Array<{ kilocaloriesPer100Grams: number }>)[0]?.kilocaloriesPer100Grams, 130);
+  assert.equal(targets.resources[0]?.resourceType, "NutritionTargetSchedule");
+  assert.equal((targets.payload.versions as Array<Record<string, unknown>>)[0]?.name, "Cut");
+  assert.equal((targets.payload.versions as Array<Record<string, unknown>>)[0]?.inputMode, "Grams");
+  assert.equal((targets.payload.versions as Array<{ kilocalories: number }>)[0]?.kilocalories, 2500);
 });
 
 test("pull storage failure rolls back every resource change and its cursor", async () => {

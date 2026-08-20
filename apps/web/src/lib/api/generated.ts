@@ -744,6 +744,260 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nutrition/reusable-meals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    includeArchived?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ReusableMealsResponse"];
+                        "application/json": components["schemas"]["ReusableMealsResponse"];
+                        "text/json": components["schemas"]["ReusableMealsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nutrition/reusable-meals/{reusableMealId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reusableMealId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ReusableMealResponse"];
+                        "application/json": components["schemas"]["ReusableMealResponse"];
+                        "text/json": components["schemas"]["ReusableMealResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nutrition/targets/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["NutritionTargetScheduleResponse"];
+                        "application/json": components["schemas"]["NutritionTargetScheduleResponse"];
+                        "text/json": components["schemas"]["NutritionTargetScheduleResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nutrition/targets/effective/{localDate}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    localDate: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["EffectiveNutritionTargetResponse"];
+                        "application/json": components["schemas"]["EffectiveNutritionTargetResponse"];
+                        "text/json": components["schemas"]["EffectiveNutritionTargetResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nutrition/meal-estimates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/x-www-form-urlencoded": {
+                        text?: string;
+                    } & {
+                        ContentType?: string;
+                        ContentDisposition?: string;
+                        Headers?: {
+                            [key: string]: string[];
+                        };
+                        /** Format: int64 */
+                        Length?: number | string;
+                        Name?: string;
+                        FileName?: string;
+                    } & {
+                        /** @default false */
+                        imageConsent?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MealEstimateResponse"];
+                        "application/json": components["schemas"]["MealEstimateResponse"];
+                        "text/json": components["schemas"]["MealEstimateResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/antiforgery": {
         parameters: {
             query?: never;
@@ -1081,6 +1335,11 @@ export interface components {
             /** Format: int32 */
             workoutsLast7Days: number | string;
         };
+        EffectiveNutritionTargetResponse: {
+            /** Format: date */
+            localDate: string;
+            target: null | components["schemas"]["NutritionTargetVersionResponse"];
+        };
         ExerciseCatalogItemResponse: {
             /** Format: uuid */
             id: string;
@@ -1167,11 +1426,44 @@ export interface components {
             email: string;
             password: string;
         };
+        MealEstimateComponentResponse: {
+            name: string;
+            /** Format: double */
+            amountGrams: number | string;
+            /** Format: double */
+            kilocalories: number | string;
+            /** Format: double */
+            proteinGrams: null | number | string;
+            /** Format: double */
+            carbohydrateGrams: null | number | string;
+            /** Format: double */
+            fatGrams: null | number | string;
+            confidence: string;
+            dataGaps: string[];
+        };
+        MealEstimateResponse: {
+            components: components["schemas"]["MealEstimateComponentResponse"][];
+            provider: string;
+            schemaVersion: string;
+            /** Format: date-time */
+            estimatedAtUtc: string;
+        };
         MetricAverageResponse: {
             /** Format: double */
             value: null | number | string;
             /** Format: int32 */
             observedDays: number | string;
+        };
+        NutrientProgressResponse: {
+            /** Format: double */
+            consumed: number | string;
+            /** Format: double */
+            target: number | string;
+            /** Format: double */
+            remainingOrOver: number | string;
+            /** Format: double */
+            ratio: number | string;
+            isComplete: boolean;
         };
         NutritionDayResponse: {
             /** Format: uuid */
@@ -1186,6 +1478,7 @@ export interface components {
             updatedAtUtc: null | string;
             /** Format: int64 */
             version: number | string;
+            progress: null | components["schemas"]["NutritionProgressResponse"];
         };
         NutritionEntryResponse: {
             /** Format: uuid */
@@ -1218,6 +1511,12 @@ export interface components {
             carbohydrateGrams: components["schemas"]["MetricAverageResponse"];
             fatGrams: components["schemas"]["MetricAverageResponse"];
         };
+        NutritionProgressResponse: {
+            kilocalories: components["schemas"]["NutrientProgressResponse"];
+            protein: components["schemas"]["NutrientProgressResponse"];
+            carbohydrates: components["schemas"]["NutrientProgressResponse"];
+            fat: components["schemas"]["NutrientProgressResponse"];
+        };
         NutritionSourceResponse: {
             provider: null | string;
             barcode: null | string;
@@ -1225,6 +1524,48 @@ export interface components {
             retrievedAtUtc: null | string;
             /** Format: double */
             basisGrams: number | string;
+        };
+        NutritionTargetScheduleResponse: {
+            /** Format: uuid */
+            nutritionTargetScheduleId: null | string;
+            versions: components["schemas"]["NutritionTargetVersionResponse"][];
+            /** Format: date-time */
+            createdAtUtc: null | string;
+            /** Format: date-time */
+            updatedAtUtc: null | string;
+            /** Format: int64 */
+            version: number | string;
+        };
+        NutritionTargetVersionResponse: {
+            /** Format: uuid */
+            targetVersionId: string;
+            name: string;
+            category: string;
+            /** Format: date */
+            effectiveFrom: string;
+            /** Format: date */
+            effectiveUntil: null | string;
+            /** Format: double */
+            kilocalories: number | string;
+            inputMode: string;
+            /** Format: double */
+            proteinGrams: number | string;
+            /** Format: double */
+            carbohydrateGrams: number | string;
+            /** Format: double */
+            fatGrams: number | string;
+            /** Format: double */
+            proteinPercent: null | number | string;
+            /** Format: double */
+            carbohydratePercent: null | number | string;
+            /** Format: double */
+            fatPercent: null | number | string;
+            origin: string;
+            algorithmVersion: null | string;
+            reason: null | string;
+            /** Format: double */
+            macroEnergyKilocalories: number | string;
+            requiresEnergyMismatchConfirmation: boolean;
         };
         NutritionTotalsResponse: {
             /** Format: double */
@@ -1290,6 +1631,38 @@ export interface components {
             resourceId: string;
             /** Format: int64 */
             baseVersion: number | string;
+        };
+        ReusableMealComponentResponse: {
+            /** Format: uuid */
+            componentId: string;
+            /** Format: int32 */
+            position: number | string;
+            name: string;
+            brand: null | string;
+            /** Format: double */
+            amountGrams: number | string;
+            totals: components["schemas"]["NutritionTotalsResponse"];
+            per100Grams: components["schemas"]["NutritionTotalsResponse"];
+            source: null | components["schemas"]["NutritionSourceResponse"];
+        };
+        ReusableMealResponse: {
+            /** Format: uuid */
+            reusableMealId: string;
+            name: string;
+            description: null | string;
+            /** Format: double */
+            standardPortion: number | string;
+            status: string;
+            components: components["schemas"]["ReusableMealComponentResponse"][];
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: date-time */
+            updatedAtUtc: string;
+            /** Format: int64 */
+            version: number | string;
+        };
+        ReusableMealsResponse: {
+            meals: components["schemas"]["ReusableMealResponse"][];
         };
         SessionResponse: {
             /** Format: uuid */

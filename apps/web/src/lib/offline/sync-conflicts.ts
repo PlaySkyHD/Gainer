@@ -8,7 +8,8 @@ export async function acceptConflictServerState(
   await database.transaction(
     "rw",
     [database.conflicts, database.outbox, database.goals, database.checkIns,
-      database.customExercises, database.templates, database.rotation, database.workouts],
+      database.customExercises, database.templates, database.rotation, database.workouts,
+      database.nutritionDays, database.reusableMeals, database.nutritionTargetSchedules],
     async () => {
       const conflict = await database.conflicts.get(conflictId);
       if (!conflict) throw new Error("Der Konflikt ist nicht mehr vorhanden.");
@@ -32,7 +33,8 @@ export async function retryConflictOnCurrentServerVersion(
   await database.transaction(
     "rw",
     [database.conflicts, database.outbox, database.tombstones, database.goals, database.checkIns,
-      database.customExercises, database.templates, database.rotation, database.workouts],
+      database.customExercises, database.templates, database.rotation, database.workouts,
+      database.nutritionDays, database.reusableMeals, database.nutritionTargetSchedules],
     async () => {
       const conflict = await database.conflicts.get(conflictId);
       if (!conflict) throw new Error("Der Konflikt ist nicht mehr vorhanden.");
@@ -89,6 +91,9 @@ function localMapping(database: AccountDatabase, aggregateKey: string) {
     "workout-rotation": database.rotation,
     workout: database.workouts,
     "workout-completion": database.workouts,
+    "nutrition-day": database.nutritionDays,
+    "reusable-meal": database.reusableMeals,
+    "nutrition-target-schedule": database.nutritionTargetSchedules,
   } as const;
   const table = tables[type as keyof typeof tables];
   if (!table || !id) throw new Error("Der Konflikt verweist auf ein unbekanntes Aggregat.");

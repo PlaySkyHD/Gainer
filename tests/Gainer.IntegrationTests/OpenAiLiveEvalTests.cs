@@ -1,8 +1,14 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Gainer.Core.Coach;
+using Gainer.Core.Nutrition;
+using Gainer.Core.Security;
 using Gainer.Infrastructure.Coach;
+using Gainer.Infrastructure.Nutrition;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace Gainer.IntegrationTests;
 
@@ -103,5 +109,92 @@ public sealed class OpenAiLiveEvalTests
         Assert.IsLessThan(TimeSpan.FromSeconds(60), stopwatch.Elapsed);
         Console.WriteLine(
             $"OpenAI live eval passed: model={model}, latencyMs={stopwatch.ElapsedMilliseconds}, inputTokens={inputTokens}, outputTokens={outputTokens}, maxOutputTokens={maxOutputTokens}.");
+    }
+
+    [TestMethod]
+    public async Task MealEstimatorHonorsMultimodalSchemaWithinLatencyAndTokenBudget()
+    {
+        if (!string.Equals(
+                Environment.GetEnvironmentVariable("RUN_OPENAI_MEAL_LIVE_EVAL"),
+                "true",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Inconclusive("Set RUN_OPENAI_MEAL_LIVE_EVAL=true to opt in to this paid meal evaluation.");
+        }
+
+        string? apiKey = Environment.GetEnvironmentVariable("OPENAI_KEY");
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            Assert.Inconclusive("OPENAI_KEY is required when the meal live evaluation is enabled.");
+        }
+
+        string model = Environment.GetEnvironmentVariable("OPENAI_MODEL") ?? "gpt-5.4-mini";
+        const int maxOutputTokens = 512;
+        using var client = new HttpClient { BaseAddress = new Uri("https://api.openai.com/") };
+        var transport = new OpenAiResponsesProvider(
+            client,
+            Options.Create(new OpenAiProviderOptions
+            {
+                ApiKey = apiKey,
+                Model = model,
+                TimeoutSeconds = 60,
+                MaxOutputTokens = maxOutputTokens,
+            }),
+            NullLogger<OpenAiResponsesProvider>.Instance);
+        var recordingProvider = new RecordingProvider(transport);
+        using var quota = new MealEstimationQuota(
+            Options.Create(new MealEstimationOptions { DailyRequestsPerUser = 1, MaximumConcurrentRequests = 1 }),
+            TimeProvider.System);
+        var estimator = new OpenAiMealEstimator(
+            recordingProvider,
+            new MealImageSanitizer(),
+            quota,
+            new LiveEvalUserContext(Guid.NewGuid()),
+            TimeProvider.System);
+
+        byte[] imageBytes;
+        using (var image = new Image<Rgb24>(64, 64, new Rgb24(235, 220, 180)))
+        await using (var stream = new MemoryStream())
+        {
+            await image.SaveAsPngAsync(stream);
+            imageBytes = stream.ToArray();
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        MealEstimateDraft result = await estimator.EstimateAsync(MealEstimationInput.Create(
+            "Synthetic test image representing one plain slice of wheat bread, approximately 40 g.",
+            new MealImageInput(imageBytes, "image/png"),
+            imageConsent: true));
+        stopwatch.Stop();
+
+        Assert.IsNotEmpty(result.Components);
+        Assert.AreEqual(OpenAiMealEstimator.SchemaVersion, result.SchemaVersion);
+        Assert.IsTrue(result.Components.All(component => component.Kilocalories > 0));
+        Assert.IsNotNull(recordingProvider.LastResponse);
+        int outputTokens = recordingProvider.LastResponse.Value
+            .GetProperty("usage")
+            .GetProperty("output_tokens")
+            .GetInt32();
+        Assert.IsLessThanOrEqualTo(maxOutputTokens, outputTokens);
+        Assert.IsLessThan(TimeSpan.FromSeconds(60), stopwatch.Elapsed);
+        Assert.IsTrue(imageBytes.All(value => value == 0), "The uploaded image buffer must be cleared after use.");
+        Console.WriteLine(
+            $"OpenAI meal live eval passed: model={model}, latencyMs={stopwatch.ElapsedMilliseconds}, outputTokens={outputTokens}, components={result.Components.Count}.");
+    }
+
+    private sealed class RecordingProvider(IOpenAiResponsesProvider inner) : IOpenAiResponsesProvider
+    {
+        public JsonElement? LastResponse { get; private set; }
+
+        public async Task<JsonElement> CreateResponseAsync(JsonElement request, CancellationToken cancellationToken = default)
+        {
+            LastResponse = await inner.CreateResponseAsync(request, cancellationToken);
+            return LastResponse.Value;
+        }
+    }
+
+    private sealed record LiveEvalUserContext(Guid Value) : IUserContext
+    {
+        Guid? IUserContext.UserId => Value;
     }
 }
