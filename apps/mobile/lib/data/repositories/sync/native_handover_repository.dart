@@ -159,23 +159,11 @@ class NativeHandoverRepository {
     await assertSessionMatchesStore();
     await store.freezeWritesIfOutboxEmpty();
     await _write(secureStore, record);
-    await api.registerSyncClient(
-      SyncClientRegistrationRequest(
-        clientId: clientId,
-        displayName: displayName,
-        protocolVersion: nativeHandoverSyncProtocolVersion,
-        takeOverWriting: false,
-      ),
-      expectedAccountId: accountId,
+    await _prepareVerifiedTarget(
+      clientId: clientId,
+      accountId: accountId,
+      frozenRevision: frozenRevision,
     );
-    await pullAll();
-    final cursor = await store.readSyncMetadata('pull-cursor');
-    final caughtUp = cursor is int ? cursor : 0;
-    if (caughtUp < frozenRevision) {
-      throw StateError(
-        'Target client has not reached the frozen server revision.',
-      );
-    }
     final response = await api.completeSyncHandover(
       handoverId: handoverId,
       request: CompleteSyncHandoverRequest(
@@ -218,14 +206,11 @@ class NativeHandoverRepository {
       throw StateError('No expired target handover can be recovered.');
     }
     await store.freezeWritesIfOutboxEmpty();
-    await _registerWithoutTakeover(clientId: clientId, accountId: accountId);
-    await pullAll();
-    final cursor = await store.readSyncMetadata('pull-cursor');
-    if ((cursor is int ? cursor : 0) < pending.frozenRevision!) {
-      throw StateError(
-        'Target client has not reached the frozen server revision.',
-      );
-    }
+    await _prepareVerifiedTarget(
+      clientId: clientId,
+      accountId: accountId,
+      frozenRevision: pending.frozenRevision!,
+    );
 
     CompleteSyncHandoverResponse response;
     try {
@@ -295,6 +280,21 @@ class NativeHandoverRepository {
       throw StateError('The server did not confirm this device registration.');
     }
     return registration;
+  }
+
+  Future<void> _prepareVerifiedTarget({
+    required String clientId,
+    required String accountId,
+    required int frozenRevision,
+  }) async {
+    await _registerWithoutTakeover(clientId: clientId, accountId: accountId);
+    await pullAll();
+    final cursor = await store.readSyncMetadata('pull-cursor');
+    if ((cursor is int ? cursor : 0) < frozenRevision) {
+      throw StateError(
+        'Target client has not reached the frozen server revision.',
+      );
+    }
   }
 
   Future<void> cancel({required String handoverId}) async {
