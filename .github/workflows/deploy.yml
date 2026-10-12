@@ -4,27 +4,66 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Commit, tag, or branch to deploy
+        description: Commit to deploy (must be reachable from main)
         required: true
         default: main
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: production-deployment
   cancel-in-progress: false
 
-env:
-  REGISTRY: ghcr.io
-  REGISTRY_NAMESPACE: playskyhd
-
 jobs:
+  resolve-ref:
+    name: Validate deployment revision
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.revision.outputs.sha }}
+    steps:
+      - name: Check out trusted main history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve and validate requested commit
+        id: revision
+        shell: bash
+        env:
+          REQUESTED_REF: ${{ inputs.ref }}
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$WORKFLOW_REF" != 'refs/heads/main' ]]; then
+            echo '::error::Production deployments can only be dispatched from main.'
+            exit 1
+          fi
+          if [[ "$REQUESTED_REF" == -* || -z "$REQUESTED_REF" ]]; then
+            echo '::error::The requested deployment revision is invalid.'
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          requested_sha="$(git rev-parse --verify --end-of-options "${REQUESTED_REF}^{commit}")"
+          if ! git merge-base --is-ancestor "$requested_sha" origin/main; then
+            echo '::error::The requested commit is not reachable from origin/main.'
+            exit 1
+          fi
+          printf 'sha=%s\n' "$requested_sha" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.component }} image
+    needs: resolve-ref
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: true
       matrix:
@@ -39,15 +78,11 @@ jobs:
             dockerfile: deploy/Dockerfile.backup
 
     steps:
-      - name: Check out requested revision
+      - name: Check out validated immutable revision
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ inputs.ref }}
-
-      - name: Resolve immutable revision
-        id: revision
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          ref: ${{ needs.resolve-ref.outputs.sha }}
+          fetch-depth: 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
@@ -55,7 +90,7 @@ jobs:
       - name: Sign in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -66,29 +101,28 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/gainer-${{ matrix.component }}:sha-${{ steps.revision.outputs.sha }}
+            ghcr.io/playskyhd/gainer-${{ matrix.component }}:sha-${{ needs.resolve-ref.outputs.sha }}
           cache-from: type=gha,scope=${{ matrix.component }}
           cache-to: type=gha,mode=max,scope=${{ matrix.component }}
 
   deploy:
     name: Roll out to gainer.markfort.xyz
-    needs: build
+    needs: [resolve-ref, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
       name: production
       url: https://gainer.markfort.xyz
+    permissions:
+      contents: read
+      packages: read
 
     steps:
-      - name: Check out requested revision
+      - name: Check out validated immutable revision
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ inputs.ref }}
-
-      - name: Resolve immutable revision
-        id: revision
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          ref: ${{ needs.resolve-ref.outputs.sha }}
+          fetch-depth: 1
 
       - name: Configure SSH
         shell: bash
@@ -107,7 +141,7 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
-          SHA: ${{ steps.revision.outputs.sha }}
+          SHA: ${{ needs.resolve-ref.outputs.sha }}
         run: |
           ssh -i ~/.ssh/gainer_deploy "$VPS_USER@$VPS_HOST" "install -d -m 0755 /srv/gainer/releases/$SHA/deploy/scripts"
           scp -i ~/.ssh/gainer_deploy deploy/compose.yaml "$VPS_USER@$VPS_HOST:/srv/gainer/releases/$SHA/deploy/compose.yaml"
@@ -126,8 +160,8 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
-          SHA: ${{ steps.revision.outputs.sha }}
-        run: ssh -i ~/.ssh/gainer_deploy "$VPS_USER@$VPS_HOST" "bash /srv/gainer/releases/$SHA/deploy/scripts/deploy-release.sh '$SHA' '${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}'"
+          SHA: ${{ needs.resolve-ref.outputs.sha }}
+        run: ssh -i ~/.ssh/gainer_deploy "$VPS_USER@$VPS_HOST" "bash /srv/gainer/releases/$SHA/deploy/scripts/deploy-release.sh '$SHA' 'ghcr.io/playskyhd'"
 
       - name: Verify public endpoint
         shell: bash
