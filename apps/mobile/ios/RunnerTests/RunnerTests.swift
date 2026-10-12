@@ -119,6 +119,43 @@ class RunnerTests: XCTestCase {
     try store.clearPendingRoute()
   }
 
+  @MainActor
+  func testNewRouteArrivingDuringDispatchIsRetainedAndDispatched() async throws {
+    let suiteName = "NativeRouteDispatcherTests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let store = NativeExtensionSnapshotStore(defaultsProvider: { _ in defaults })
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    let firstRoute = try XCTUnwrap(
+      GainerPendingRoute(
+        destination: "training",
+        source: "widget",
+        createdAtUtcEpochMilliseconds: now
+      )
+    )
+    let replacementRoute = try XCTUnwrap(
+      GainerPendingRoute(
+        destination: "checkIn",
+        source: "shortcut",
+        createdAtUtcEpochMilliseconds: now + 1
+      )
+    )
+    try store.recordRoute(firstRoute)
+    let flutterApi = BlockingMobileRouteFlutterApi()
+    let dispatcher = NativeRouteDispatcher(snapshotStore: store, flutterApi: flutterApi)
+    let firstDispatch = Task { await dispatcher.dispatchPendingRoute() }
+    await fulfillment(of: [flutterApi.firstDispatchStarted], timeout: 2)
+
+    try store.recordRoute(replacementRoute)
+    await dispatcher.dispatchPendingRoute()
+    flutterApi.resumeFirstDispatch()
+    await firstDispatch.value
+    await fulfillment(of: [flutterApi.secondDispatchStarted], timeout: 2)
+
+    XCTAssertEqual(flutterApi.routes.map(\.destination), ["training", "checkIn"])
+    XCTAssertNil(try store.readPendingRoute())
+  }
+
   func testHealthExportIdentifierIsStableOpaqueAndAccountScoped() throws {
     let accountId = "a1111111-1111-4111-8111-111111111111"
     let workoutId = "b2222222-2222-4222-8222-222222222222"
@@ -317,6 +354,31 @@ class RunnerTests: XCTestCase {
   private func notificationKey(for value: String) -> String {
     let digest = SHA256.hash(data: Data(value.utf8))
     return digest.map { String(format: "%02x", $0) }.joined()
+  }
+}
+
+@MainActor
+private final class BlockingMobileRouteFlutterApi: MobileRouteFlutterApiProtocol {
+  let firstDispatchStarted = XCTestExpectation(description: "first native route dispatched")
+  let secondDispatchStarted = XCTestExpectation(description: "replacement native route dispatched")
+  private(set) var routes: [PlatformRoute] = []
+  private var firstDispatchContinuation: CheckedContinuation<Void, Never>?
+
+  func dispatchRoute(route routeArg: PlatformRoute) async throws {
+    routes.append(routeArg)
+    if routes.count == 1 {
+      firstDispatchStarted.fulfill()
+      await withCheckedContinuation { continuation in
+        firstDispatchContinuation = continuation
+      }
+    } else if routes.count == 2 {
+      secondDispatchStarted.fulfill()
+    }
+  }
+
+  func resumeFirstDispatch() {
+    firstDispatchContinuation?.resume()
+    firstDispatchContinuation = nil
   }
 }
 

@@ -9,8 +9,10 @@ class CoachViewModel extends ChangeNotifier {
   ApiCoachResponse? response;
   bool isLoading = false;
   String? errorMessage;
+  bool _disposed = false;
 
   Future<void> ask(String question) async {
+    if (_disposed) return;
     if (question.trim().isEmpty || question.length > 1000) {
       errorMessage = 'Gib eine Frage mit höchstens 1000 Zeichen ein.';
       notifyListeners();
@@ -21,12 +23,23 @@ class CoachViewModel extends ChangeNotifier {
     response = null;
     notifyListeners();
     try {
-      response = await repository.ask(question.trim());
+      final result = await repository.ask(question.trim());
+      if (_disposed) return;
+      response = result;
     } catch (_) {
+      if (_disposed) return;
       errorMessage = 'Der Coach ist gerade nicht verfügbar. Deine Frage wurde nicht gespeichert.';
     } finally {
-      isLoading = false;
-      notifyListeners();
+      if (!_disposed) {
+        isLoading = false;
+        notifyListeners();
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

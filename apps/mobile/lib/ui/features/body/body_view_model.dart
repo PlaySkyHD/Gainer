@@ -11,9 +11,12 @@ class BodyViewModel extends ChangeNotifier {
   bool isLoading = false;
   bool isSaving = false;
   String? errorMessage;
+  bool _disposed = false;
 
   Future<void> load() => _run(() async {
-    snapshot = await repository.read();
+    final loaded = await repository.read();
+    if (_disposed) return;
+    snapshot = loaded;
   });
 
   Future<void> saveGoal({
@@ -23,8 +26,6 @@ class BodyViewModel extends ChangeNotifier {
     required String startDate,
     required String? targetDate,
   }) => _run(() async {
-    isSaving = true;
-    notifyListeners();
     await repository.activateGoal(
       kind: kind,
       startWeightKg: startWeightKg,
@@ -32,7 +33,10 @@ class BodyViewModel extends ChangeNotifier {
       startDate: startDate,
       targetDate: targetDate,
     );
-    snapshot = await repository.read();
+    if (_disposed) return;
+    final loaded = await repository.read();
+    if (_disposed) return;
+    snapshot = loaded;
   }, saving: true);
 
   Future<void> saveCheckIn({
@@ -55,25 +59,41 @@ class BodyViewModel extends ChangeNotifier {
       steps: steps,
       sleepMinutes: sleepMinutes,
     );
-    snapshot = await repository.read();
+    if (_disposed) return;
+    final loaded = await repository.read();
+    if (_disposed) return;
+    snapshot = loaded;
   }, saving: true);
 
   Future<void> _run(
     Future<void> Function() action, {
     bool saving = false,
   }) async {
+    if (_disposed) return;
     isLoading = !saving;
     isSaving = saving;
     errorMessage = null;
-    notifyListeners();
+    _notify();
     try {
       await action();
     } catch (error) {
-      errorMessage = error.toString();
+      if (!_disposed) errorMessage = error.toString();
     } finally {
-      isLoading = false;
-      isSaving = false;
-      notifyListeners();
+      if (!_disposed) {
+        isLoading = false;
+        isSaving = false;
+        _notify();
+      }
     }
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

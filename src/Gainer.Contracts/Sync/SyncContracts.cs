@@ -133,3 +133,28 @@ public sealed record SyncClientResponse(
     bool IsActiveWriter,
     DateTime RegisteredAtUtc,
     DateTime LastSeenAtUtc);
+
+public sealed record BeginSyncHandoverRequest(
+    Guid RequestId,
+    Guid SourceClientId,
+    long ExpectedRevision);
+
+public sealed record BeginSyncHandoverResponse(
+    Guid HandoverId,
+    string OneTimeCode,
+    long FrozenRevision,
+    DateTime ExpiresAtUtc);
+
+public sealed record CompleteSyncHandoverRequest(
+    [Required, StringLength(128, MinimumLength = 1)] string OneTimeCode,
+    Guid TargetClientId,
+    long CaughtUpRevision);
+
+public sealed record CompleteSyncHandoverResponse(
+    Guid HandoverId,
+    Guid TargetClientId,
+    long FrozenRevision,
+    bool IsActiveWriter,
+    DateTime CompletedAtUtc);
+
+public sealed record CancelSyncHandoverRequest(Guid SourceClientId);

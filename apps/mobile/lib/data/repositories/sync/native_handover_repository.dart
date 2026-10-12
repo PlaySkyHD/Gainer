@@ -126,17 +126,22 @@ class NativeHandoverRepository {
         'A handover code and nonnegative frozen revision are required.',
       );
     }
-    await assertSessionMatchesStore();
     final secureStore = _requireSecureStore();
-    final clientId = await installationIdentity.getOrCreateInstallationId();
     final origin = api.configuration.canonicalApiOrigin;
     final accountId = store.accountId;
     final prior = await readPendingHandover();
-    if (prior?.phase == 'targetCompletePending' &&
+    final isReplay = prior?.phase == 'targetCompletePending';
+    if (!isReplay && !expiresAtUtc.toUtc().isAfter(DateTime.now().toUtc())) {
+      throw StateError('The one-time handover code has expired.');
+    }
+    final clientId = await installationIdentity.getOrCreateInstallationId();
+    if (isReplay &&
         (prior!.handoverId != handoverId ||
             prior.frozenRevision != frozenRevision ||
             prior.targetClientId != clientId ||
-            prior.sourceClientId != sourceClientId)) {
+            prior.sourceClientId != sourceClientId ||
+            prior.oneTimeCode != oneTimeCode ||
+            prior.expiresAtUtc == null)) {
       throw StateError('A different handover completion is already pending.');
     }
     final record = PendingHandoverRecord(
@@ -148,12 +153,10 @@ class NativeHandoverRepository {
       targetClientId: clientId,
       frozenRevision: frozenRevision,
       phase: 'targetCompletePending',
-      expiresAtUtc: expiresAtUtc.toUtc(),
-      oneTimeCode: prior?.oneTimeCode ?? oneTimeCode,
+      expiresAtUtc: (isReplay ? prior!.expiresAtUtc! : expiresAtUtc).toUtc(),
+      oneTimeCode: isReplay ? prior!.oneTimeCode : oneTimeCode,
     );
-    if (record.expiresAtUtc!.isBefore(DateTime.now().toUtc())) {
-      throw StateError('The one-time handover code has expired.');
-    }
+    await assertSessionMatchesStore();
     await store.freezeWritesIfOutboxEmpty();
     await _write(secureStore, record);
     await api.registerSyncClient(
@@ -192,6 +195,106 @@ class NativeHandoverRepository {
     await store.unfreezeWrites();
     await secureStore.clear(apiOrigin: origin, accountId: accountId);
     return response;
+  }
+
+  /// Explicitly releases a stale target freeze only after the server confirms
+  /// that the stored handover is terminal or confirms this installation as the
+  /// completed target. Local clock expiry alone never clears recovery state.
+  Future<bool> recoverExpiredTargetHandover() async {
+    await assertSessionMatchesStore();
+    final secureStore = _requireSecureStore();
+    final clientId = await installationIdentity.getOrCreateInstallationId();
+    final origin = api.configuration.canonicalApiOrigin;
+    final accountId = store.accountId;
+    final pending = await readPendingHandover();
+    if (pending == null ||
+        pending.phase != 'targetCompletePending' ||
+        pending.targetClientId != clientId ||
+        pending.handoverId == null ||
+        pending.oneTimeCode == null ||
+        pending.frozenRevision == null ||
+        pending.expiresAtUtc == null ||
+        pending.expiresAtUtc!.isAfter(DateTime.now().toUtc())) {
+      throw StateError('No expired target handover can be recovered.');
+    }
+    await store.freezeWritesIfOutboxEmpty();
+    await _registerWithoutTakeover(clientId: clientId, accountId: accountId);
+    await pullAll();
+    final cursor = await store.readSyncMetadata('pull-cursor');
+    if ((cursor is int ? cursor : 0) < pending.frozenRevision!) {
+      throw StateError(
+        'Target client has not reached the frozen server revision.',
+      );
+    }
+
+    CompleteSyncHandoverResponse response;
+    try {
+      response = await api.completeSyncHandover(
+        handoverId: pending.handoverId!,
+        request: CompleteSyncHandoverRequest(
+          oneTimeCode: pending.oneTimeCode!,
+          targetClientId: clientId,
+          caughtUpRevision: pending.frozenRevision!,
+        ),
+        expectedAccountId: accountId,
+      );
+    } on ApiException catch (error) {
+      if (error.code != 'handover_expired' &&
+          error.code != 'handover_not_pending') {
+        rethrow;
+      }
+      await _registerWithoutTakeover(clientId: clientId, accountId: accountId);
+      await secureStore.clear(apiOrigin: origin, accountId: accountId);
+      // The server says this handover is terminal, but has not granted this
+      // client writer ownership. Keep local edits frozen until a later verified
+      // transfer or explicit server-confirmed completion.
+      return false;
+    }
+
+    if (response.handoverId != pending.handoverId ||
+        response.frozenRevision != pending.frozenRevision ||
+        response.targetClientId != clientId) {
+      throw StateError(
+        'The server response does not match the stored handover identity.',
+      );
+    }
+    if (response.isActiveWriter) {
+      await store.unfreezeWrites();
+      await secureStore.clear(apiOrigin: origin, accountId: accountId);
+      return true;
+    }
+
+    final registration = await _registerWithoutTakeover(
+      clientId: clientId,
+      accountId: accountId,
+    );
+    if (registration.isActiveWriter) {
+      throw StateError(
+        'Server handover and registration writer states do not match.',
+      );
+    }
+    await secureStore.clear(apiOrigin: origin, accountId: accountId);
+    return false;
+  }
+
+  Future<SyncClientRegistrationResponse> _registerWithoutTakeover({
+    required String clientId,
+    required String accountId,
+  }) async {
+    final registration = await api.registerSyncClient(
+      SyncClientRegistrationRequest(
+        clientId: clientId,
+        displayName: displayName,
+        protocolVersion: nativeHandoverSyncProtocolVersion,
+        takeOverWriting: false,
+      ),
+      expectedAccountId: accountId,
+    );
+    if (registration.clientId != clientId ||
+        registration.protocolVersion < nativeHandoverSyncProtocolVersion) {
+      throw StateError('The server did not confirm this device registration.');
+    }
+    return registration;
   }
 
   Future<void> cancel({required String handoverId}) async {

@@ -15,6 +15,12 @@ class PigeonNativeFeaturesPlatform
 
   final MobilePlatformApi _api;
 
+  Future<PlatformRoute?> readPendingRoute() => _api.readPendingRoute();
+
+  Future<void> clearPendingRoute() => _api.clearPendingRoute();
+
+  Future<void> retryPendingRoute() => _api.retryPendingRoute();
+
   @override
   Future<String?> scanBarcode() => _api.scanBarcode();
 

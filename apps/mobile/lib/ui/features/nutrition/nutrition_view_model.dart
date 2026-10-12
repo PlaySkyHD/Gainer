@@ -11,7 +11,7 @@ class NutritionViewModel extends ChangeNotifier {
   }
 
   final NutritionRepository repository;
-  final String localDate;
+  String localDate;
   NutritionMeal selectedMeal = NutritionMeal.breakfast;
   NutritionSnapshot? snapshot;
   NutritionLabelScanDraft? labelDraft;
@@ -23,19 +23,32 @@ class NutritionViewModel extends ChangeNotifier {
   bool isOnlineOperation = false;
   String? errorMessage;
   String? statusMessage;
+  bool _disposed = false;
 
   Future<void> load() => _run(() async {
     snapshot = await repository.read(localDate);
   });
 
+  Future<void> selectDate(String value) {
+    if (!isValidLocalDate(value)) {
+      reportInputError('Bitte ein gültiges Datum im Format JJJJ-MM-TT wählen.');
+      return Future.value();
+    }
+    return _run(() async {
+      localDate = value;
+      snapshot = await repository.read(value);
+    });
+  }
+
   void reportInputError(String message) {
+    if (_disposed) return;
     errorMessage = message;
-    notifyListeners();
+    _notify();
   }
 
   void selectMeal(NutritionMeal meal) {
     selectedMeal = meal;
-    notifyListeners();
+    _notify();
   }
 
   Future<void> addManualEntry({
@@ -84,6 +97,30 @@ class NutritionViewModel extends ChangeNotifier {
     statusMessage = 'Eintrag entfernt.';
   }, saving: true);
 
+  Future<void> updateEntry({
+    required NutritionEntry original,
+    required NutritionMeal meal,
+    required String productName,
+    String? brand,
+    required double amountGrams,
+    required NutritionTotals per100Grams,
+  }) => _run(() async {
+    await repository.saveEntry(
+      localDate,
+      original.copyWith(
+        meal: meal,
+        productName: productName,
+        brand: brand,
+        clearBrand: brand == null,
+        amountGrams: amountGrams,
+        per100Grams: per100Grams,
+      ),
+    );
+    snapshot = await repository.read(localDate);
+    statusMessage =
+        'Eintrag aktualisiert; Quelle und Nährwertsnapshot bleiben erhalten.';
+  }, saving: true);
+
   Future<void> moveEntry(String entryId, NutritionMeal meal, int position) =>
       _run(() async {
         await repository.moveEntry(localDate, entryId, meal, position);
@@ -103,6 +140,42 @@ class NutritionViewModel extends ChangeNotifier {
     );
     snapshot = await repository.read(localDate);
     statusMessage = 'Gericht als unabhängige Mahlzeit übernommen.';
+  }, saving: true);
+
+  Future<void> saveReusableMeal({String? id, required ReusableMeal meal}) =>
+      _run(() async {
+        await repository.saveReusableMeal(meal, id: id);
+        snapshot = await repository.read(localDate);
+        statusMessage = 'Gespeichertes Gericht lokal aktualisiert.';
+      }, saving: true);
+
+  Future<void> archiveReusableMeal(String id) => _run(() async {
+    await repository.archiveReusableMeal(id);
+    snapshot = await repository.read(localDate);
+    statusMessage = 'Gericht archiviert. Bereits gespeicherte Tages-Snapshots bleiben unverändert.';
+  }, saving: true);
+
+  Future<void> saveTargetPhase(
+    NutritionTargetVersion phase, {
+    required bool closeOpenPreviousPhase,
+    bool update = false,
+  }) => _run(() async {
+    if (update) {
+      await repository.updateTargetPhase(phase);
+    } else {
+      await repository.addTargetPhase(
+        phase,
+        closeOpenPreviousPhase: closeOpenPreviousPhase,
+      );
+    }
+    snapshot = await repository.read(localDate);
+    statusMessage = 'Zielphase lokal gespeichert.';
+  }, saving: true);
+
+  Future<void> removeTargetPhase(String id) => _run(() async {
+    await repository.removeTargetPhase(id);
+    snapshot = await repository.read(localDate);
+    statusMessage = 'Zielphase entfernt.';
   }, saving: true);
 
   Future<void> searchFoods(String query) => _run(() async {
@@ -228,14 +301,14 @@ class NutritionViewModel extends ChangeNotifier {
       snapshot = await repository.read(localDate);
       mealEstimateDraft = null;
       statusMessage = 'Geprüfte Schätzung als Eintrag gespeichert.';
-      notifyListeners();
+      _notify();
     }, saving: true);
   }
 
   void discardEstimate() {
     mealEstimateDraft = null;
     statusMessage = 'Schätzung verworfen; es wurde nichts gespeichert.';
-    notifyListeners();
+    _notify();
   }
 
   Future<void> scanLabel({
@@ -349,29 +422,40 @@ class NutritionViewModel extends ChangeNotifier {
   void discardLabelDraft() {
     labelDraft = null;
     statusMessage = 'Vorschlag verworfen; es wurde nichts gespeichert.';
-    notifyListeners();
+    _notify();
   }
 
   Future<void> _run(
     Future<void> Function() action, {
     bool saving = false,
   }) async {
+    if (_disposed) return;
     isLoading = !saving;
     isSaving = saving;
     isOnlineOperation = false;
     errorMessage = null;
     statusMessage = null;
-    notifyListeners();
+    _notify();
     try {
       await action();
     } catch (error) {
-      errorMessage = _messageFor(error);
+      if (!_disposed) errorMessage = _messageFor(error);
     } finally {
       isLoading = false;
       isSaving = false;
       isOnlineOperation = false;
-      notifyListeners();
+      _notify();
     }
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   String _messageFor(Object error) =>

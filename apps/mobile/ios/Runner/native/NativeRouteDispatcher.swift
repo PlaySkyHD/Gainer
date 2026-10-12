@@ -6,11 +6,16 @@ final class NativeRouteDispatcher {
   static let shared = NativeRouteDispatcher()
 
   private let snapshotStore: NativeExtensionSnapshotStore
-  private var flutterApi: MobileRouteFlutterApi?
+  private var flutterApi: MobileRouteFlutterApiProtocol?
   private var isDispatching = false
+  private var retryRequested = false
 
-  init(snapshotStore: NativeExtensionSnapshotStore = NativeExtensionSnapshotStore()) {
+  init(
+    snapshotStore: NativeExtensionSnapshotStore = NativeExtensionSnapshotStore(),
+    flutterApi: MobileRouteFlutterApiProtocol? = nil
+  ) {
     self.snapshotStore = snapshotStore
+    self.flutterApi = flutterApi
   }
 
   func attach(binaryMessenger: FlutterBinaryMessenger) {
@@ -30,9 +35,19 @@ final class NativeRouteDispatcher {
   }
 
   func dispatchPendingRoute() async {
-    guard !isDispatching, let flutterApi else { return }
+    guard let flutterApi else { return }
+    if isDispatching {
+      retryRequested = true
+      return
+    }
     isDispatching = true
-    defer { isDispatching = false }
+    defer {
+      isDispatching = false
+      if retryRequested {
+        retryRequested = false
+        Task { await dispatchPendingRoute() }
+      }
+    }
     do {
       guard let route = try snapshotStore.readPendingRoute() else {
         try snapshotStore.clearPendingRoute()
@@ -44,9 +59,7 @@ final class NativeRouteDispatcher {
         createdAtUtcEpochMilliseconds: route.createdAtUtcEpochMilliseconds
       )
       try await flutterApi.dispatchRoute(route: routeMessage)
-      if try snapshotStore.readPendingRoute() == route {
-        try snapshotStore.clearPendingRoute()
-      }
+      try snapshotStore.clearPendingRoute(ifMatching: route)
     } catch {
       // Keep the route queued. The app may not have installed its Dart handler
       // yet; another active-scene callback retries it.

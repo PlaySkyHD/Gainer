@@ -109,6 +109,8 @@ jobs:
       - name: Require signing configuration
         shell: bash
         env:
+          GAINER_API_ORIGIN: ${{ vars.GAINER_API_ORIGIN || 'https://gainer.markfort.xyz' }}
+          GAINER_TRUSTED_FRONTEND_ORIGIN: ${{ vars.GAINER_TRUSTED_FRONTEND_ORIGIN || 'https://gainer.markfort.xyz' }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
           IOS_WIDGET_BUNDLE_ID: ${{ secrets.IOS_WIDGET_BUNDLE_ID }}
@@ -122,6 +124,13 @@ jobs:
           for name in APPLE_TEAM_ID IOS_BUNDLE_ID IOS_WIDGET_BUNDLE_ID IOS_APP_GROUP_ID IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 IOS_DISTRIBUTION_CERTIFICATE_PASSWORD IOS_PROVISIONING_PROFILE_BASE64 IOS_WIDGET_PROVISIONING_PROFILE_BASE64; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required secret $name is not configured for the ios-beta environment."
+              exit 1
+            fi
+          done
+          for name in GAINER_API_ORIGIN GAINER_TRUSTED_FRONTEND_ORIGIN; do
+            value="${!name}"
+            if ! python3 -c 'import sys,urllib.parse; u=urllib.parse.urlsplit(sys.argv[1]); sys.exit(0 if u.scheme == "https" and u.hostname and not u.username and not u.password and u.path in ("", "/") and not u.query and not u.fragment else 1)' "$value"; then
+              echo "::error::$name must be an HTTPS origin without credentials, path, query, or fragment."
               exit 1
             fi
           done
@@ -239,6 +248,8 @@ jobs:
         shell: bash
         working-directory: apps/mobile
         env:
+          GAINER_API_ORIGIN: ${{ vars.GAINER_API_ORIGIN || 'https://gainer.markfort.xyz' }}
+          GAINER_TRUSTED_FRONTEND_ORIGIN: ${{ vars.GAINER_TRUSTED_FRONTEND_ORIGIN || 'https://gainer.markfort.xyz' }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
           IOS_WIDGET_BUNDLE_ID: ${{ secrets.IOS_WIDGET_BUNDLE_ID }}
@@ -247,7 +258,9 @@ jobs:
           set -euo pipefail
           profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
           widget_profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/widget-profile.plist")"
-          flutter build ios --config-only --release --no-codesign
+          flutter build ios --config-only --release --no-codesign \
+            --dart-define="GAINER_API_ORIGIN=$GAINER_API_ORIGIN" \
+            --dart-define="GAINER_TRUSTED_FRONTEND_ORIGIN=$GAINER_TRUSTED_FRONTEND_ORIGIN"
           xcodebuild \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \

@@ -19,6 +19,7 @@ class NativeFeatureLifecycleCoordinator with WidgetsBindingObserver {
     required this.snapshots,
     required this.activities,
     required this.haptics,
+    required this.notifications,
     required this.isSessionActive,
     DateTime Function()? clock,
   }) : clock = clock ?? DateTime.now {
@@ -35,6 +36,7 @@ class NativeFeatureLifecycleCoordinator with WidgetsBindingObserver {
   final ExtensionSnapshotPlatform snapshots;
   final LiveActivityPlatform activities;
   final HapticsPlatform haptics;
+  final TimerNotificationPlatform notifications;
   final bool Function() isSessionActive;
   final DateTime Function() clock;
   Future<void> _pending = Future<void>.value();
@@ -126,12 +128,15 @@ class NativeFeatureLifecycleCoordinator with WidgetsBindingObserver {
     if (!_active || !isSessionActive()) return;
     final now = clock().toUtc();
     final rest = workout.restTimer;
-    final restEnd = rest == null
+    final requestedRestEnd = rest == null
         ? null
         : DateTime.parse(rest.targetAtUtc).toUtc();
+    final restEnd = requestedRestEnd != null && requestedRestEnd.isAfter(now)
+        ? requestedRestEnd
+        : null;
     final state = LiveActivityState(
       sessionId: id,
-      status: rest == null
+      status: restEnd == null
           ? LiveActivityStatus.workout
           : LiveActivityStatus.rest,
       startedAtUtc: DateTime.parse(workout.startedAtUtc).toUtc(),
@@ -196,5 +201,11 @@ class NativeFeatureLifecycleCoordinator with WidgetsBindingObserver {
       await activities.endAll();
     } catch (_) {}
     _activitySessionId = null;
+    final workoutId = training.runningWorkoutId;
+    if (workoutId != null) {
+      try {
+        await notifications.cancel(workoutId);
+      } catch (_) {}
+    }
   }
 }

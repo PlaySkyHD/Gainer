@@ -97,6 +97,49 @@ void main() {
     },
   );
 
+  test('commit stream emits once only after a committed transaction', () async {
+    final database = open('commit-stream');
+    final store = LocalSyncStore(database: database, accountId: accountA);
+    final emitted = <LocalMutation>[];
+    final subscription = store.committedMutations.listen(emitted.add);
+    await expectLater(
+      store.commitMutation(
+        mutationId: 'c1234567-1234-4234-8234-123456789abc',
+        aggregateType: 'daily-check-in',
+        aggregateId: aggregateId,
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'weightKg': 81.5},
+        envelope: localEnvelope(
+          aggregateId: aggregateId,
+          workingCopy: {'weightKg': 81.5},
+        ),
+        afterEnvelopeWriteForTesting: () =>
+            throw StateError('simulated transaction rollback'),
+      ),
+      throwsStateError,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(emitted, isEmpty);
+
+    final committed = await store.commitMutation(
+      mutationId: 'd1234567-1234-4234-8234-123456789abc',
+      aggregateType: 'daily-check-in',
+      aggregateId: aggregateId,
+      operation: LocalMutationOperation.create,
+      baseVersion: null,
+      body: {'weightKg': 81.5},
+      envelope: localEnvelope(
+        aggregateId: aggregateId,
+        workingCopy: {'weightKg': 81.5},
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(emitted, [committed]);
+    await subscription.cancel();
+    await store.close();
+  });
+
   test('uses account scoped outbox reads and validates account ids', () async {
     final database = open('account-scope');
     final first = LocalSyncStore(database: database, accountId: accountA);

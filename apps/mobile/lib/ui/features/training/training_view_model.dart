@@ -17,12 +17,26 @@ class TrainingViewModel extends ChangeNotifier {
   bool isLoading = false;
   bool isSaving = false;
   String? errorMessage;
+  String? notificationNotice;
   Timer? _ticker;
+  bool _disposed = false;
 
   int? get remainingRestSeconds =>
       repository.remainingRestSeconds(runningWorkout?.restTimer);
 
-  Future<void> load() => _run(() async {
+  void reportNotificationUnavailable() {
+    if (_disposed) return;
+    notificationNotice = 'Die Pause-Benachrichtigung ist gerade nicht verfügbar. Der Timer läuft in der App weiter.';
+    notifyListeners();
+  }
+
+  Future<void> load() => _load(resumeTimerNotification: true);
+
+  /// Refreshes persisted state after a successful server pull without asking
+  /// for notification permission as a side effect of sync.
+  Future<void> refreshAfterSync() => _load(resumeTimerNotification: false);
+
+  Future<void> _load({required bool resumeTimerNotification}) => _run(() async {
     planning = await repository.readPlanning();
     final rows = await repository.store.readAggregates('workout');
     final running = rows.where((row) {
@@ -50,13 +64,25 @@ class TrainingViewModel extends ChangeNotifier {
     }
     previousByExerciseId = Map.unmodifiable(previous);
     _syncTicker();
-    await repository.resumeRestTimerNotification();
+    if (resumeTimerNotification) {
+      await repository.resumeRestTimerNotification();
+    }
   });
 
   Future<void> createExercise(String name) => _run(() async {
     await repository.createCustomExercise(ExerciseValues(name: name));
     planning = await repository.readPlanning();
   }, saving: true);
+
+  Future<void> saveExercise(String? id, ExerciseValues values) =>
+      _run(() async {
+        if (id == null) {
+          await repository.createCustomExercise(values);
+        } else {
+          await repository.updateCustomExercise(id, values);
+        }
+        planning = await repository.readPlanning();
+      }, saving: true);
 
   Future<void> archiveExercise(String id) => _run(() async {
     await repository.archiveCustomExercise(id);
@@ -73,27 +99,12 @@ class TrainingViewModel extends ChangeNotifier {
     planning = await repository.readPlanning();
   }, saving: true);
 
-  Future<void> createTemplate({
+  Future<void> saveTemplate({
+    String? id,
     required String name,
-    required String exerciseId,
-    required int sets,
-    required int repetitions,
+    required List<TrainingTemplateItem> items,
   }) => _run(() async {
-    await repository.saveTemplate(
-      name: name,
-      items: [
-        TrainingTemplateItem(
-          id: repository.ids(),
-          exerciseId: exerciseId,
-          plannedSets: sets,
-          minimumRepetitions: repetitions,
-          maximumRepetitions: repetitions,
-          targetRir: null,
-          restSeconds: 90,
-          notes: null,
-        ),
-      ],
-    );
+    await repository.saveTemplate(id: id, name: name, items: items);
     planning = await repository.readPlanning();
   }, saving: true);
 
@@ -107,6 +118,8 @@ class TrainingViewModel extends ChangeNotifier {
     required String setId,
     required double? weightKg,
     required int? repetitions,
+    required double? rir,
+    required String? notes,
     required bool complete,
   }) => _run(() async {
     runningWorkout = await repository.logSet(
@@ -115,8 +128,8 @@ class TrainingViewModel extends ChangeNotifier {
       setId: setId,
       weightKg: weightKg,
       repetitions: repetitions,
-      rir: null,
-      notes: null,
+      rir: rir,
+      notes: notes,
       complete: complete,
     );
     final sourceId = runningWorkout!.exercises
@@ -135,6 +148,14 @@ class TrainingViewModel extends ChangeNotifier {
     runningWorkout = await repository.addSet(
       workoutId: runningWorkoutId!,
       workoutExerciseId: exerciseId,
+    );
+  }, saving: true);
+
+  Future<void> removeSet(String exerciseId, String setId) => _run(() async {
+    runningWorkout = await repository.removeSet(
+      workoutId: runningWorkoutId!,
+      workoutExerciseId: exerciseId,
+      setId: setId,
     );
   }, saving: true);
 
@@ -201,8 +222,13 @@ class TrainingViewModel extends ChangeNotifier {
 
   void _syncTicker() {
     _ticker?.cancel();
+    if (_disposed) return;
     if (runningWorkout?.restTimer == null) return;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_disposed) {
+        _ticker?.cancel();
+        return;
+      }
       if (runningWorkout?.restTimer?.remainingSeconds(DateTime.now()) == 0) {
         _ticker?.cancel();
       }
@@ -214,9 +240,11 @@ class TrainingViewModel extends ChangeNotifier {
     Future<void> Function() action, {
     bool saving = false,
   }) async {
+    if (_disposed) return;
     isLoading = !saving;
     isSaving = saving;
     errorMessage = null;
+    notificationNotice = null;
     notifyListeners();
     try {
       await action();
@@ -225,12 +253,13 @@ class TrainingViewModel extends ChangeNotifier {
     } finally {
       isLoading = false;
       isSaving = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _ticker?.cancel();
     super.dispose();
   }

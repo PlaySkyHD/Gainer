@@ -180,9 +180,13 @@ abstract class MobilePlatformApi {
 
   @async
   void clearPendingRoute();
+
+  @async
+  void retryPendingRoute();
 }
 
 @FlutterApi()
 abstract class MobileRouteFlutterApi {
+  @async
   void dispatchRoute(PlatformRoute route);
 }

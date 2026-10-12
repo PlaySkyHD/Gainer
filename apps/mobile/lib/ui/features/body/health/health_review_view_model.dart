@@ -14,6 +14,7 @@ class HealthReviewViewModel extends ChangeNotifier {
   String? errorMessage;
   bool isLoading = false;
   bool serverSyncNoticeAccepted = false;
+  bool _disposed = false;
 
   Future<void> load() => _run(() async {
     completedWorkouts = await coordinator.completedWorkoutsForExport();
@@ -40,12 +41,12 @@ class HealthReviewViewModel extends ChangeNotifier {
     } else {
       selectedProbeIds.remove(uuid);
     }
-    notifyListeners();
+    _notify();
   }
 
   void acceptServerSyncNotice(bool accepted) {
     serverSyncNoticeAccepted = accepted;
-    notifyListeners();
+    _notify();
   }
 
   Future<List<HealthImportReviewResult>> confirmImport({
@@ -96,20 +97,31 @@ class HealthReviewViewModel extends ChangeNotifier {
     replaceCheckInProbeIds = {};
     serverSyncNoticeAccepted = false;
     lastResults = const [];
-    notifyListeners();
+    _notify();
   }
 
   Future<void> _run(Future<void> Function() action) async {
+    if (_disposed) return;
     errorMessage = null;
     isLoading = true;
-    notifyListeners();
+    _notify();
     try {
       await action();
     } catch (error) {
-      errorMessage = error.toString();
+      if (!_disposed) errorMessage = error.toString();
     } finally {
       isLoading = false;
-      notifyListeners();
+      _notify();
     }
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

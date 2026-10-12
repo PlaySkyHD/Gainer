@@ -10,6 +10,7 @@ import '../../../ui/features/nutrition/nutrition_view_model.dart';
 import '../../../ui/features/progress/progress_view_model.dart';
 import '../../../ui/features/training/training_view_model.dart';
 import '../../models/api/api_models.dart';
+import '../../models/local/local_mutation.dart';
 import '../../repositories/body/body_repository.dart';
 import '../../repositories/health/health_review_coordinator.dart';
 import '../../repositories/insights/insights_repository.dart';
@@ -23,11 +24,13 @@ import '../../services/api/api_client.dart';
 import '../../services/api/api_session_service.dart';
 import '../../services/local/local_database.dart';
 import '../../services/local/pending_handover_secret_store.dart';
+import '../../services/native/best_effort_rest_timer_notification_port.dart';
 import '../../services/native/native_feature_lifecycle_coordinator.dart';
 import '../../services/platform/pigeon_native_features_platform.dart';
 import '../../services/platform/platform_ports.dart';
 import '../platform/pigeon_pending_handover_secret_store.dart';
 import '../platform/pigeon_secure_session_platform.dart';
+import 'sync_foreground_scheduler.dart';
 
 class MobileAppConfiguration {
   const MobileAppConfiguration({
@@ -298,12 +301,27 @@ class MobileAuthController extends ChangeNotifier
 
   @override
   Future<void> onRouteRequested(NativeAppRouteRequest request) async {
-    if (account == null) return;
+    final routeScope = account;
+    final generation = _sessionGeneration;
+    if (routeScope == null || !await hasActiveAccountSession()) {
+      throw StateError('An active account is required for native routes.');
+    }
+    if (_disposed ||
+        !identical(account, routeScope) ||
+        generation != _sessionGeneration ||
+        !routeScope.isSessionActive()) {
+      throw StateError('The account changed before the native route opened.');
+    }
     final index = switch (request.destination) {
       NativeAppRoute.training => MobileArea.training.index,
       NativeAppRoute.checkIn => MobileArea.body.index,
       NativeAppRoute.nutrition => MobileArea.nutrition.index,
     };
+    if (_disposed ||
+        !identical(account, routeScope) ||
+        generation != _sessionGeneration) {
+      throw StateError('The account changed before the native route opened.');
+    }
     shell.selectTab(index);
   }
 
@@ -326,10 +344,16 @@ class MobileAuthController extends ChangeNotifier
       handoverSecrets: handoverSecrets,
     );
     final body = BodyRepository(store: store);
+    late final TrainingViewModel trainingViewModel;
     final training = TrainingRepository(
       store: store,
       catalog: ApiExerciseCatalogProvider(api),
-      notifications: _RestTimerPort(timerNotifications),
+      notifications: BestEffortRestTimerNotificationPort(
+        timerNotifications,
+        onUnavailable: () => trainingViewModel.reportNotificationUnavailable(),
+      ),
+      onNotificationUnavailable: () =>
+          trainingViewModel.reportNotificationUnavailable(),
     );
     final nutrition = NutritionRepository(
       store: store,
@@ -337,12 +361,17 @@ class MobileAuthController extends ChangeNotifier
       capture: capture,
     );
     final bodyViewModel = BodyViewModel(body);
-    final trainingViewModel = TrainingViewModel(training);
+    trainingViewModel = TrainingViewModel(training);
     final nutritionViewModel = NutritionViewModel(
       repository: nutrition,
       localDate: DateTime.now().toIso8601String().substring(0, 10),
     );
     late final AccountScope nextScope;
+    final syncScheduler = SyncForegroundScheduler(
+      synchronize: () => nextScope.synchronize(),
+      isActive: () =>
+          identical(account, nextScope) && _sessionGeneration == generation,
+    );
     final healthViewModel = HealthReviewViewModel(
       HealthReviewCoordinator(
         store: store,
@@ -370,6 +399,9 @@ class MobileAuthController extends ChangeNotifier
       database: db,
       store: store,
       sync: sync,
+      syncScheduler: syncScheduler,
+      isSessionActive: () =>
+          identical(account, nextScope) && _sessionGeneration == generation,
       online: online,
       bodyViewModel: bodyViewModel,
       trainingViewModel: trainingViewModel,
@@ -385,15 +417,55 @@ class MobileAuthController extends ChangeNotifier
         snapshots: snapshots,
         activities: activities,
         haptics: haptics,
+        notifications: timerNotifications,
         isSessionActive: () =>
             identical(account, nextScope) && _sessionGeneration == generation,
       ),
     );
     account = nextScope;
     nextScope.nativeLifecycle.activate();
+    unawaited(nextScope.syncScheduler.start());
     state = online
         ? MobileAuthState.signedIn
         : MobileAuthState.offlineKnownUser;
+    unawaited(_retryPendingNativeRoute(nextScope, generation));
+  }
+
+  Future<void> _retryPendingNativeRoute(
+    AccountScope scope,
+    int generation,
+  ) async {
+    try {
+      final route = await nativeFeatures.readPendingRoute();
+      if (route == null ||
+          _disposed ||
+          !identical(account, scope) ||
+          _sessionGeneration != generation ||
+          !scope.isSessionActive()) {
+        return;
+      }
+      final nowUtc = DateTime.now().toUtc();
+      final createdAtUtc = DateTime.fromMillisecondsSinceEpoch(
+        route.createdAtUtcEpochMilliseconds,
+        isUtc: true,
+      );
+      final age = nowUtc.difference(createdAtUtc);
+      if (age.isNegative || age > const Duration(minutes: 10)) {
+        // Ask Swift to validate the current stored value; a new route may have
+        // replaced this one since readPendingRoute completed.
+        await nativeFeatures.retryPendingRoute();
+        return;
+      }
+      if (_disposed ||
+          !identical(account, scope) ||
+          _sessionGeneration != generation ||
+          !scope.isSessionActive()) {
+        return;
+      }
+      await nativeFeatures.retryPendingRoute();
+    } catch (_) {
+      // Keep a valid route queued when the native bridge is temporarily unavailable.
+    }
   }
 
   ApiClient _newApi() => apiFactory(
@@ -451,6 +523,8 @@ class AccountScope {
     required this.database,
     required this.store,
     required this.sync,
+    required this.syncScheduler,
+    required this.isSessionActive,
     required this.online,
     required this.bodyViewModel,
     required this.trainingViewModel,
@@ -459,13 +533,21 @@ class AccountScope {
     required this.progressViewModel,
     required this.coachViewModel,
     required this.nativeLifecycle,
-  });
+  }) {
+    _localCommitSubscription = store.committedMutations.listen((mutation) {
+      if (mutation.accountId == session.userId && isSessionActive()) {
+        unawaited(syncScheduler.onLocalCommit());
+      }
+    });
+  }
   final ApiSession session;
   final int generation;
   final ApiClient api;
   final LocalDatabase database;
   final LocalSyncStore store;
   final SyncRepository sync;
+  final SyncForegroundScheduler syncScheduler;
+  final bool Function() isSessionActive;
   final bool online;
   final BodyViewModel bodyViewModel;
   final TrainingViewModel trainingViewModel;
@@ -475,20 +557,69 @@ class AccountScope {
   final CoachViewModel coachViewModel;
   final NativeFeatureLifecycleCoordinator nativeLifecycle;
   Future<SyncRunReport>? _syncInFlight;
+  late final StreamSubscription<LocalMutation> _localCommitSubscription;
 
   Future<SyncRunReport> synchronize() {
+    if (!isSessionActive()) {
+      throw StateError('This account scope is no longer active.');
+    }
+    return _synchronizeIfWritable();
+  }
+
+  Future<SyncRunReport> _synchronizeIfWritable() async {
+    final frozen = await store.readSyncMetadata('local-writes-frozen');
+    if (!isSessionActive()) {
+      throw StateError('This account scope is no longer active.');
+    }
+    if (frozen == true) {
+      syncScheduler.pause();
+      return const SyncRunReport(
+        state: SyncRunState.busy,
+        pushed: 0,
+        pulledBatches: 0,
+      );
+    }
+    syncScheduler.allow();
     final active = _syncInFlight;
     if (active != null) return active;
-    final run = sync.synchronize();
+    final run = _synchronizeAndRefresh();
     _syncInFlight = run;
     return run.whenComplete(() {
       if (identical(_syncInFlight, run)) _syncInFlight = null;
     });
   }
 
+  Future<void> onForeground() => syncScheduler.onForeground();
+
+  Future<SyncRunReport> _synchronizeAndRefresh() async {
+    final report = await sync.synchronize();
+    if (!isSessionActive()) return report;
+    if ({
+      SyncRunState.idle,
+      SyncRunState.synced,
+      SyncRunState.retryPending,
+      SyncRunState.inactiveClient,
+    }.contains(report.state)) {
+      await Future.wait([
+        bodyViewModel.load(),
+        trainingViewModel.refreshAfterSync(),
+        nutritionViewModel.load(),
+      ]);
+    }
+    return report;
+  }
+
   Future<void> dispose({bool closeApi = true}) async {
+    await _localCommitSubscription.cancel();
+    await syncScheduler.dispose();
     final syncRun = _syncInFlight;
-    if (syncRun != null) await syncRun;
+    if (syncRun != null) {
+      try {
+        await syncRun;
+      } catch (_) {
+        // Network failures do not prevent an old account scope from closing.
+      }
+    }
     await nativeLifecycle.disposeForSessionEnd();
     bodyViewModel.dispose();
     trainingViewModel.dispose();
@@ -497,28 +628,6 @@ class AccountScope {
     progressViewModel.dispose();
     coachViewModel.dispose();
     if (closeApi) api.close();
-    await database.close();
+    await store.close();
   }
-}
-
-class _RestTimerPort implements RestTimerNotificationPort {
-  const _RestTimerPort(this.platform);
-  final TimerNotificationPlatform platform;
-  @override
-  Future<void> schedule({
-    required String workoutId,
-    required DateTime targetUtc,
-  }) async {
-    final allowed = await platform.requestPermission();
-    if (!allowed) return;
-    await platform.schedule(
-      workoutId: workoutId,
-      generation: targetUtc.millisecondsSinceEpoch,
-      targetAtUtc: targetUtc,
-    );
-  }
-
-  @override
-  Future<void> cancel({required String workoutId}) =>
-      platform.cancel(workoutId);
 }

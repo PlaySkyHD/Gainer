@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,36 @@ import 'package:gainer_mobile/ui/features/body/body_view_model.dart';
 const accountId = '00000000-0000-4000-8000-000000000003';
 
 void main() {
+  test(
+    'BodyViewModel does not notify after disposal during a pending read',
+    () async {
+      final database = LocalDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final pendingRead = Completer<BodyTrackingSnapshot>();
+      final repository = _PendingBodyRepository(
+        store: LocalSyncStore(database: database, accountId: accountId),
+        pendingRead: pendingRead,
+      );
+      final model = BodyViewModel(repository);
+      var notifications = 0;
+      model.addListener(() => notifications++);
+
+      final load = model.load();
+      expect(notifications, 1);
+      model.dispose();
+      pendingRead.complete(
+        const BodyTrackingSnapshot(
+          activeGoal: null,
+          goalHistory: [],
+          checkIns: [],
+        ),
+      );
+      await load;
+
+      expect(notifications, 1);
+    },
+  );
+
   testWidgets(
     'Body screen renders persisted active goal and validation errors',
     (tester) async {
@@ -49,4 +81,13 @@ void main() {
       expect(find.byKey(const ValueKey('body-error')), findsOneWidget);
     },
   );
+}
+
+class _PendingBodyRepository extends BodyRepository {
+  _PendingBodyRepository({required super.store, required this.pendingRead});
+
+  final Completer<BodyTrackingSnapshot> pendingRead;
+
+  @override
+  Future<BodyTrackingSnapshot> read() => pendingRead.future;
 }

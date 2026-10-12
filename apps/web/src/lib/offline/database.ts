@@ -52,6 +52,7 @@ export interface LocalProfile {
   databaseName: string;
   email?: string;
   lastOpenedAtUtc: string;
+  recoveryDatabaseNames?: string[];
 }
 
 export interface SyncMetadata {
@@ -138,9 +139,9 @@ export class AccountDatabase extends Dexie {
 
   readonly accountId: string;
 
-  constructor(accountId: string) {
+  constructor(accountId: string, name = accountDatabaseName(accountId)) {
     const normalizedAccountId = normalizeAccountId(accountId);
-    super(accountDatabaseName(normalizedAccountId));
+    super(name);
     this.accountId = normalizedAccountId;
     this.version(1).stores(accountStoresV1);
     this.version(2).stores(accountStoresV2);
@@ -182,16 +183,39 @@ export async function getOrCreateInstallationId(): Promise<string> {
 export async function openAccountDatabase(accountId: string, email?: string): Promise<AccountDatabase> {
   const normalizedAccountId = normalizeAccountId(accountId);
   await getOrCreateInstallationId();
-  const database = new AccountDatabase(normalizedAccountId);
-  await database.open();
   const existingProfile = await profiles().profiles.get(normalizedAccountId);
+  const database = new AccountDatabase(normalizedAccountId, existingProfile?.databaseName ?? accountDatabaseName(normalizedAccountId));
+  await database.open();
   await profiles().profiles.put({
+    ...existingProfile,
     accountId: normalizedAccountId,
     databaseName: database.name,
     email: email ?? existingProfile?.email,
     lastOpenedAtUtc: new Date().toISOString(),
   });
   return database;
+}
+
+export async function activateStagedAccountDatabase(
+  accountId: string,
+  email: string | undefined,
+  databaseName: string,
+): Promise<void> {
+  const normalizedAccountId = normalizeAccountId(accountId);
+  await profiles().transaction("rw", profiles().profiles, async () => {
+    const existing = await profiles().profiles.get(normalizedAccountId);
+    if (!existing) throw new Error("Das lokale Konto wurde während der Übergabe geschlossen.");
+    const recoveryNames = new Set(existing.recoveryDatabaseNames ?? []);
+    if (existing.databaseName !== databaseName) recoveryNames.add(existing.databaseName);
+    recoveryNames.delete(databaseName);
+    await profiles().profiles.put({
+      accountId: normalizedAccountId,
+      databaseName,
+      email: email ?? existing.email,
+      lastOpenedAtUtc: new Date().toISOString(),
+      recoveryDatabaseNames: [...recoveryNames],
+    });
+  });
 }
 
 export async function listLocalProfiles(): Promise<LocalProfile[]> {
@@ -216,15 +240,23 @@ export async function clearActiveLocalProfile(): Promise<void> {
 
 export async function deleteLocalAccountData(accountId: string, allowPendingMutations = false): Promise<void> {
   const normalizedAccountId = normalizeAccountId(accountId);
-  const database = new AccountDatabase(normalizedAccountId);
-  await database.open();
-  const pendingCount = await database.outbox.count();
-  database.close();
+  const profile = await profiles().profiles.get(normalizedAccountId);
+  const databaseNames = new Set([
+    profile?.databaseName ?? accountDatabaseName(normalizedAccountId),
+    ...(profile?.recoveryDatabaseNames ?? []),
+  ]);
+  let pendingCount = 0;
+  for (const name of databaseNames) {
+    const database = new AccountDatabase(normalizedAccountId, name);
+    await database.open();
+    pendingCount += await database.outbox.count();
+    database.close();
+  }
   if (pendingCount > 0 && !allowPendingMutations) {
     throw new PendingLocalMutationsError(pendingCount);
   }
 
-  await Dexie.delete(database.name);
+  await Promise.all([...databaseNames].map((name) => Dexie.delete(name)));
   await profiles().profiles.delete(normalizedAccountId);
 }
 

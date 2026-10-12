@@ -11,6 +11,7 @@ import 'package:gainer_mobile/data/repositories/sync/local_conflict_recovery.dar
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/repositories/sync/sync_repository.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
+import 'package:gainer_mobile/data/services/auth/sync_foreground_scheduler.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/local/pending_handover_secret_store.dart';
 
@@ -28,6 +29,9 @@ void main() {
   late bool failMutation;
   late String? mutationFailureCode;
   late int mutationFailureStatus;
+  late String? pullFailureCode;
+  late int pullFailureStatus;
+  late bool switchAntiforgeryAfterRegistration;
   late int pullCursor;
   late int pullRevision;
   late String sessionUserId;
@@ -39,6 +43,13 @@ void main() {
   late List<Map<String, dynamic>> handoverCompleteRequests;
   late bool handoverCompleteActiveWriter;
   late int handoverCompleteRevision;
+  late int handoverCompleteStatus;
+  late String handoverCompleteFailureCode;
+  late int handoverCompleteSideEffects;
+  late bool serverHandoverAlreadyCompleted;
+  late List<Map<String, dynamic>> registrationRequests;
+  late Set<String> acceptedMutationIds;
+  late Completer<void>? acceptedMutation;
   _MemoryPendingHandoverSecretStore? activeHandoverSecretStore;
   Completer<void>? sessionGate;
   Completer<void>? sessionEntered;
@@ -51,6 +62,9 @@ void main() {
     failMutation = false;
     mutationFailureCode = null;
     mutationFailureStatus = 503;
+    pullFailureCode = null;
+    pullFailureStatus = 409;
+    switchAntiforgeryAfterRegistration = false;
     pullCursor = 0;
     pullRevision = 1;
     sessionUserId = accountId;
@@ -62,10 +76,18 @@ void main() {
     handoverCompleteRequests = [];
     handoverCompleteActiveWriter = true;
     handoverCompleteRevision = 1;
+    handoverCompleteStatus = 200;
+    handoverCompleteFailureCode = 'handover_expired';
+    handoverCompleteSideEffects = 0;
+    serverHandoverAlreadyCompleted = false;
+    registrationRequests = [];
+    acceptedMutationIds = <String>{};
+    acceptedMutation = null;
     activeHandoverSecretStore = null;
     sessionGate = null;
     sessionEntered = null;
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
     server.listen((request) async {
       received.add(request);
       final path = request.uri.path;
@@ -93,7 +115,9 @@ void main() {
         );
       } else if (path.startsWith('/api/v1/sync/clients/') &&
           request.method == 'PUT') {
-        await _readBody(request);
+        registrationRequests.add(
+          jsonDecode(await _readBody(request)) as Map<String, dynamic>,
+        );
         request.response.statusCode = registrationStatus;
         request.response.headers.contentType = ContentType.json;
         if (registrationStatus == 200) {
@@ -107,6 +131,10 @@ void main() {
               'lastSeenAtUtc': '2026-10-12T10:00:00Z',
             }),
           );
+          if (switchAntiforgeryAfterRegistration) {
+            antiforgeryUserId = 'f1234567-1234-4234-8234-123456789abc';
+            switchAntiforgeryAfterRegistration = false;
+          }
         } else {
           request.response.write(
             jsonEncode({
@@ -134,6 +162,8 @@ void main() {
           expect(body['resources'].single['resourceType'], 'DailyCheckIn');
           expect(body['operation'], 'createDailyCheckIn');
           expect(body['clientId'], clientId);
+          acceptedMutationIds.add(path.split('/').last);
+          acceptedMutation?.complete();
           request.response.headers.contentType = ContentType.json;
           request.response.write(
             jsonEncode({
@@ -147,7 +177,15 @@ void main() {
       } else if (path == '/api/v1/sync/changes' && request.method == 'GET') {
         final after = int.parse(request.uri.queryParameters['after']!);
         request.response.headers.contentType = ContentType.json;
-        if (!failMutation &&
+        if (pullFailureCode != null) {
+          request.response.statusCode = pullFailureStatus;
+          request.response.write(
+            jsonEncode({
+              'code': pullFailureCode,
+              'message': 'Account identity changed.',
+            }),
+          );
+        } else if (!failMutation &&
             (mutationFailureCode == null ||
                 mutationFailureCode == 'stale_version') &&
             after < 1 &&
@@ -231,15 +269,29 @@ void main() {
         expect(pending.phase, 'targetCompletePending');
         expect(pending.frozenRevision, handoverCompleteRevision);
         request.response.headers.contentType = ContentType.json;
-        request.response.write(
-          jsonEncode({
-            'handoverId': 'f1234567-1234-4234-8234-123456789abc',
-            'targetClientId': clientId,
-            'frozenRevision': handoverCompleteRevision,
-            'isActiveWriter': handoverCompleteActiveWriter,
-            'completedAtUtc': '2026-10-12T10:00:00Z',
-          }),
-        );
+        request.response.statusCode = handoverCompleteStatus;
+        if (handoverCompleteStatus == 200) {
+          if (!serverHandoverAlreadyCompleted) {
+            handoverCompleteSideEffects++;
+            serverHandoverAlreadyCompleted = true;
+          }
+          request.response.write(
+            jsonEncode({
+              'handoverId': 'f1234567-1234-4234-8234-123456789abc',
+              'targetClientId': clientId,
+              'frozenRevision': handoverCompleteRevision,
+              'isActiveWriter': handoverCompleteActiveWriter,
+              'completedAtUtc': '2026-10-12T10:00:00Z',
+            }),
+          );
+        } else {
+          request.response.write(
+            jsonEncode({
+              'code': handoverCompleteFailureCode,
+              'message': 'Handover is no longer pending.',
+            }),
+          );
+        }
       } else {
         request.response.statusCode = 404;
       }
@@ -248,7 +300,6 @@ void main() {
   });
 
   tearDown(() async {
-    await server.close(force: true);
     if (await directory.exists()) await directory.delete(recursive: true);
   });
 
@@ -407,7 +458,7 @@ void main() {
   });
 
   test(
-    'a different authenticated account cannot register or push this outbox',
+    'a different authenticated account pauses this outbox before registration',
     () async {
       sessionUserId = 'f1234567-1234-4234-8234-123456789abc';
       final (store, database, api, repository) = await fixture();
@@ -423,10 +474,11 @@ void main() {
           workingCopy: {'localDate': '2026-10-12'},
         ),
       );
-      await expectLater(repository.synchronize(), throwsStateError);
+      final report = await repository.synchronize();
+      expect(report.state, SyncRunState.authBlocked);
       expect(
         (await store.readOutbox()).single.status,
-        LocalMutationStatus.pending,
+        LocalMutationStatus.authBlocked,
       );
       expect(
         received.any(
@@ -445,27 +497,95 @@ void main() {
     },
   );
 
+  test('antiforgery identity mismatch pauses the outbox before client registration', () async {
+    antiforgeryUserId = 'f1234567-1234-4234-8234-123456789abc';
+    final (store, database, api, repository) = await fixture();
+    await store.commitMutation(
+      mutationId: mutationId,
+      aggregateType: 'daily-check-in',
+      aggregateId: checkInId,
+      operation: LocalMutationOperation.create,
+      baseVersion: null,
+      body: {'localDate': '2026-10-12'},
+      envelope: localEnvelope(
+        aggregateId: checkInId,
+        workingCopy: {'localDate': '2026-10-12'},
+      ),
+    );
+    final report = await repository.synchronize();
+    expect(report.state, SyncRunState.authBlocked);
+    expect(
+      (await store.readOutbox()).single.status,
+      LocalMutationStatus.authBlocked,
+    );
+    expect(
+      received.any(
+        (request) => request.uri.path.startsWith('/api/v1/sync/clients/'),
+      ),
+      isFalse,
+    );
+    api.close();
+    await database.close();
+  });
+
+  test('account_changed during push preserves the outbox without creating a conflict', () async {
+    switchAntiforgeryAfterRegistration = true;
+    final (store, database, api, repository) = await fixture();
+    await store.commitMutation(
+      mutationId: mutationId,
+      aggregateType: 'daily-check-in',
+      aggregateId: checkInId,
+      operation: LocalMutationOperation.create,
+      baseVersion: null,
+      body: {'localDate': '2026-10-12'},
+      envelope: localEnvelope(
+        aggregateId: checkInId,
+        workingCopy: {'localDate': '2026-10-12'},
+      ),
+    );
+
+    final report = await repository.synchronize();
+    expect(report.state, SyncRunState.authBlocked);
+    expect(
+      (await store.readOutbox()).single.status,
+      LocalMutationStatus.authBlocked,
+    );
+    expect(
+      received.any(
+        (request) => request.uri.path.startsWith('/api/v1/sync/mutations/'),
+      ),
+      isFalse,
+    );
+    api.close();
+    await database.close();
+  });
+
   test(
-    'antiforgery identity mismatch blocks sync before client registration',
+    'account_changed during pull pauses the outbox and keeps the cursor',
     () async {
-      antiforgeryUserId = 'f1234567-1234-4234-8234-123456789abc';
+      activeWriter = false;
+      pullFailureCode = 'account_changed';
       final (store, database, api, repository) = await fixture();
-      await expectLater(
-        repository.synchronize(),
-        throwsA(
-          isA<ApiException>().having(
-            (error) => error.code,
-            'code',
-            'account_changed',
-          ),
+      await store.commitMutation(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
+        aggregateId: checkInId,
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12'},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12'},
         ),
       );
+
+      final report = await repository.synchronize();
+      expect(report.state, SyncRunState.authBlocked);
       expect(
-        received.any(
-          (request) => request.uri.path.startsWith('/api/v1/sync/clients/'),
-        ),
-        isFalse,
+        (await store.readOutbox()).single.status,
+        LocalMutationStatus.authBlocked,
       );
+      expect(await store.readSyncMetadata('pull-cursor'), isNull);
       api.close();
       await database.close();
     },
@@ -500,6 +620,84 @@ void main() {
       mutationFailureCode = null;
       await repository.synchronize(now: DateTime.utc(2026, 10, 12, 0, 1));
       expect(await store.readOutbox(), isEmpty);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test(
+    'transient push retry resumes on its deadline and drains the same mutation',
+    () async {
+      mutationFailureCode = 'temporary_unavailable';
+      mutationFailureStatus = 503;
+      final (store, database, api, repository) = await fixture();
+      await store.commitMutation(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
+        aggregateId: checkInId,
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        ),
+      );
+      var now = DateTime.utc(2026, 10, 12, 10);
+      final timers = <_SyncTimerStub>[];
+      final scheduler = SyncForegroundScheduler(
+        observeLifecycle: false,
+        isActive: () => true,
+        clock: () => now,
+        timerFactory: (duration, callback) {
+          final timer = _SyncTimerStub(duration, callback);
+          timers.add(timer);
+          return timer;
+        },
+        synchronize: () => repository.synchronize(now: now),
+        retryDelays: const [Duration(seconds: 4)],
+      );
+
+      await scheduler.start();
+      expect(scheduler.lastReport?.state, SyncRunState.retryPending);
+      final retryAt = scheduler.lastReport!.nextRetryAtUtc!;
+      expect(retryAt, now.add(const Duration(seconds: 1)));
+      expect(timers.single.duration, const Duration(seconds: 1));
+      expect(
+        (await store.readOutbox()).single.status,
+        LocalMutationStatus.pending,
+      );
+      expect(acceptedMutationIds, isEmpty);
+      expect(
+        received.where(
+          (request) => request.uri.path.startsWith('/api/v1/sync/mutations/'),
+        ),
+        hasLength(1),
+      );
+
+      mutationFailureCode = null;
+      acceptedMutation = Completer<void>();
+      now = retryAt;
+      timers.single.fire();
+      await acceptedMutation!.future.timeout(const Duration(seconds: 5));
+      for (
+        var attempt = 0;
+        attempt < 50 && scheduler.lastReport?.state != SyncRunState.synced;
+        attempt++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      expect(scheduler.lastReport?.state, SyncRunState.synced);
+      expect(await store.readOutbox(), isEmpty);
+      expect(acceptedMutationIds, {mutationId});
+      expect(
+        received.where(
+          (request) => request.uri.path.startsWith('/api/v1/sync/mutations/'),
+        ),
+        hasLength(2),
+      );
+      await scheduler.dispose();
       api.close();
       await database.close();
     },
@@ -689,10 +887,265 @@ void main() {
       await database.close();
     },
   );
+
+  test(
+    'expired fresh handover is rejected before freeze or any HTTP request',
+    () async {
+      final secretStore = _MemoryPendingHandoverSecretStore();
+      final (store, database, api, repository) = await fixture(
+        handoverSecrets: secretStore,
+      );
+      final requestsBefore = received.length;
+      await expectLater(
+        repository.completeHandover(
+          handoverId: 'f1234567-1234-4234-8234-123456789abc',
+          oneTimeCode: 'target-one-time-code',
+          frozenRevision: 1,
+          sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+          expiresAtUtc: DateTime.now().toUtc().subtract(
+            const Duration(minutes: 1),
+          ),
+        ),
+        throwsStateError,
+      );
+      expect(received.length, requestsBefore);
+      expect(secretStore.value, isNull);
+      expect(await store.readSyncMetadata('local-writes-frozen'), isNull);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test('expired durable target completion replays and releases only on active confirmation', () async {
+    serverHandoverAlreadyCompleted = true;
+    handoverCompleteSideEffects = 1;
+    final secretStore = _MemoryPendingHandoverSecretStore();
+    final (store, database, api, repository) = await fixture(
+      handoverSecrets: secretStore,
+    );
+    final expiry = DateTime.now().toUtc().subtract(const Duration(minutes: 1));
+    secretStore.value = PendingHandoverRecord(
+      apiOrigin: api.configuration.canonicalApiOrigin,
+      accountId: accountId,
+      requestId: 'f1234567-1234-4234-8234-123456789abc',
+      sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+      targetClientId: clientId,
+      handoverId: 'f1234567-1234-4234-8234-123456789abc',
+      phase: 'targetCompletePending',
+      frozenRevision: 1,
+      expiresAtUtc: expiry,
+      oneTimeCode: 'target-one-time-code',
+    ).encode();
+    await store.freezeWritesIfOutboxEmpty();
+
+    final becameWriter = await repository.recoverExpiredTargetHandover();
+
+    expect(becameWriter, isTrue);
+    expect(handoverCompleteRequests, hasLength(1));
+    expect(handoverCompleteSideEffects, 1);
+    expect(
+      handoverCompleteRequests.single['oneTimeCode'],
+      'target-one-time-code',
+    );
+    expect(await store.readSyncMetadata('local-writes-frozen'), isFalse);
+    expect(secretStore.value, isNull);
+    api.close();
+    await database.close();
+  });
+
+  test(
+    'expired replay with inactive confirmation stays frozen and pending',
+    () async {
+      handoverCompleteActiveWriter = false;
+      activeWriter = false;
+      final secretStore = _MemoryPendingHandoverSecretStore();
+      final (store, database, api, repository) = await fixture(
+        handoverSecrets: secretStore,
+      );
+      final expiry = DateTime.now().toUtc().subtract(
+        const Duration(minutes: 1),
+      );
+      secretStore.value = PendingHandoverRecord(
+        apiOrigin: api.configuration.canonicalApiOrigin,
+        accountId: accountId,
+        requestId: 'f1234567-1234-4234-8234-123456789abc',
+        sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+        targetClientId: clientId,
+        handoverId: 'f1234567-1234-4234-8234-123456789abc',
+        phase: 'targetCompletePending',
+        frozenRevision: 1,
+        expiresAtUtc: expiry,
+        oneTimeCode: 'target-one-time-code',
+      ).encode();
+      await store.freezeWritesIfOutboxEmpty();
+
+      await expectLater(
+        repository.completeHandover(
+          handoverId: 'f1234567-1234-4234-8234-123456789abc',
+          oneTimeCode: 'target-one-time-code',
+          frozenRevision: 1,
+          sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+          expiresAtUtc: expiry,
+        ),
+        throwsStateError,
+      );
+      expect(handoverCompleteRequests, hasLength(1));
+      expect(await store.readSyncMetadata('local-writes-frozen'), isTrue);
+      expect(
+        PendingHandoverRecord.decode(secretStore.value!).phase,
+        'targetCompletePending',
+      );
+      api.close();
+      await database.close();
+    },
+  );
+
+  test('definitive 409 expiry clears only after non-takeover registration, and inactive target stays frozen', () async {
+    handoverCompleteStatus = 409;
+    activeWriter = false;
+    final secretStore = _MemoryPendingHandoverSecretStore();
+    final (store, database, api, repository) = await fixture(
+      handoverSecrets: secretStore,
+    );
+    final expiry = DateTime.now().toUtc().subtract(const Duration(minutes: 1));
+    secretStore.value = PendingHandoverRecord(
+      apiOrigin: api.configuration.canonicalApiOrigin,
+      accountId: accountId,
+      requestId: 'f1234567-1234-4234-8234-123456789abc',
+      sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+      targetClientId: clientId,
+      handoverId: 'f1234567-1234-4234-8234-123456789abc',
+      phase: 'targetCompletePending',
+      frozenRevision: 1,
+      expiresAtUtc: expiry,
+      oneTimeCode: 'target-one-time-code',
+    ).encode();
+    await store.freezeWritesIfOutboxEmpty();
+
+    final becameWriter = await repository.recoverExpiredTargetHandover();
+    expect(becameWriter, isFalse);
+    expect(registrationRequests, hasLength(2));
+    expect(
+      registrationRequests.every(
+        (request) => request['takeOverWriting'] == false,
+      ),
+      isTrue,
+    );
+    expect(await store.readSyncMetadata('local-writes-frozen'), isTrue);
+    expect(secretStore.value, isNull);
+    api.close();
+    await database.close();
+  });
+
+  test('completed inactive target clears obsolete secret after readonly registration', () async {
+    handoverCompleteActiveWriter = false;
+    activeWriter = false;
+    final secretStore = _MemoryPendingHandoverSecretStore();
+    final (store, database, api, repository) = await fixture(
+      handoverSecrets: secretStore,
+    );
+    final expiry = DateTime.now().toUtc().subtract(const Duration(minutes: 1));
+    secretStore.value = PendingHandoverRecord(
+      apiOrigin: api.configuration.canonicalApiOrigin,
+      accountId: accountId,
+      requestId: 'f1234567-1234-4234-8234-123456789abc',
+      sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+      targetClientId: clientId,
+      handoverId: 'f1234567-1234-4234-8234-123456789abc',
+      phase: 'targetCompletePending',
+      frozenRevision: 1,
+      expiresAtUtc: expiry,
+      oneTimeCode: 'target-one-time-code',
+    ).encode();
+    await store.freezeWritesIfOutboxEmpty();
+
+    final becameWriter = await repository.recoverExpiredTargetHandover();
+
+    expect(becameWriter, isFalse);
+    expect(handoverCompleteRequests, hasLength(1));
+    expect(registrationRequests, hasLength(2));
+    expect(
+      registrationRequests.every(
+        (request) => request['takeOverWriting'] == false,
+      ),
+      isTrue,
+    );
+    expect(secretStore.value, isNull);
+    expect(await store.readSyncMetadata('local-writes-frozen'), isTrue);
+    api.close();
+    await database.close();
+  });
+
+  test(
+    'ambiguous completion failure preserves secure identity and write freeze',
+    () async {
+      handoverCompleteStatus = 503;
+      handoverCompleteFailureCode = 'temporary_unavailable';
+      activeWriter = false;
+      final secretStore = _MemoryPendingHandoverSecretStore();
+      final (store, database, api, repository) = await fixture(
+        handoverSecrets: secretStore,
+      );
+      final expiry = DateTime.now().toUtc().subtract(
+        const Duration(minutes: 1),
+      );
+      secretStore.value = PendingHandoverRecord(
+        apiOrigin: api.configuration.canonicalApiOrigin,
+        accountId: accountId,
+        requestId: 'f1234567-1234-4234-8234-123456789abc',
+        sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+        targetClientId: clientId,
+        handoverId: 'f1234567-1234-4234-8234-123456789abc',
+        phase: 'targetCompletePending',
+        frozenRevision: 1,
+        expiresAtUtc: expiry,
+        oneTimeCode: 'target-one-time-code',
+      ).encode();
+      await store.freezeWritesIfOutboxEmpty();
+
+      await expectLater(
+        repository.recoverExpiredTargetHandover(),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.statusCode,
+            'status',
+            503,
+          ),
+        ),
+      );
+      expect(await store.readSyncMetadata('local-writes-frozen'), isTrue);
+      expect(secretStore.value, isNotNull);
+      api.close();
+      await database.close();
+    },
+  );
 }
 
 Future<String> _readBody(HttpRequest request) async =>
     await utf8.decoder.bind(request).join();
+
+class _SyncTimerStub implements Timer {
+  _SyncTimerStub(this.duration, this.callback);
+
+  final Duration duration;
+  final void Function() callback;
+  var _active = true;
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => 0;
+
+  @override
+  void cancel() => _active = false;
+
+  void fire() {
+    if (!_active) return;
+    _active = false;
+    callback();
+  }
+}
 
 class _MemoryPendingHandoverSecretStore implements PendingHandoverSecretStore {
   Uint8List? value;

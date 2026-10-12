@@ -34,13 +34,28 @@ Drift schemas use the pinned code generator. Regenerate their Dart bindings with
 `dart run build_runner build --delete-conflicting-outputs` from `apps/mobile`.
 
 The manual `Mobile CI` dispatch can produce a signed IPA for review without
-uploading it to Apple. It requires an `ios-beta` GitHub Environment with
-`APPLE_TEAM_ID`, `IOS_BUNDLE_ID`, `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64`,
-`IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` and
-`IOS_PROVISIONING_PROFILE_BASE64`. Missing or mismatched signing data fails
-before archiving. Configure environment reviewer protection in GitHub settings
-if the repository plan supports it; the workflow does not imply that such
-protection is enabled.
+uploading it to Apple. It requires the `ios-beta` GitHub Environment with
+`APPLE_TEAM_ID`, `IOS_BUNDLE_ID`, `IOS_WIDGET_BUNDLE_ID`, `IOS_APP_GROUP_ID`,
+`IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64`,
+`IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64`
+and `IOS_WIDGET_PROVISIONING_PROFILE_BASE64`. The non-secret GitHub variables
+`GAINER_API_ORIGIN` and `GAINER_TRUSTED_FRONTEND_ORIGIN` may override the
+documented deployment origin `https://gainer.markfort.xyz`; both values must
+be HTTPS origins without credentials, paths, queries or fragments. The
+workflow passes them as Dart defines, and missing or mismatched signing data
+fails before archiving. The `ios-beta` environment currently requires manual
+review by `PlaySkyHD` and is limited to `main`; no upload to TestFlight or App
+Store Connect occurs. The resulting Actions artifact is not a private
+distribution channel: repository readers may be able to download the signed
+IPA. Never put secrets, provisioning profiles or certificates in the artifact,
+and do not request a signed build until its audience and distribution method
+are intended.
+
+The app currently handles its private `gainer://` routes. Universal links are
+not configured yet. They require the final signed app identifier, an
+Associated Domains entitlement, a matching `apple-app-site-association` file
+on the existing HTTPS host, and a verified device install/open test before
+they can be claimed as supported.
 
 ## Architecture boundary
 

@@ -50,7 +50,7 @@ final class NativeTimerNotifications {
 
   func schedule(workoutId: String, generation: Int64, targetAtUtcEpochMilliseconds: Int64) async throws {
     guard !workoutId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, generation >= 0 else {
-      throw FlutterError(code: "invalid_timer_notification", message: "The pause timer notification has invalid identity or generation.", details: nil)
+      throw PigeonError(code: "invalid_timer_notification", message: "The pause timer notification has invalid identity or generation.", details: nil)
     }
     let workoutKey = key(for: workoutId)
     let generationKey = "\(identifierPrefix)generation.\(workoutKey)"

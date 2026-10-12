@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/services.dart';
 
 import 'generated/mobile_platform_api.dart';
@@ -18,16 +16,13 @@ class PigeonNativeRouteDispatcher extends MobileRouteFlutterApi {
 
   final NativeRouteConsumer _consumer;
   final DateTime Function() _now;
-  Future<void> _lastDispatch = Future<void>.value();
-
-  Future<void> get lastDispatch => _lastDispatch;
 
   void dispose({BinaryMessenger? binaryMessenger}) {
     MobileRouteFlutterApi.setUp(null, binaryMessenger: binaryMessenger);
   }
 
   @override
-  void dispatchRoute(PlatformRoute route) {
+  Future<void> dispatchRoute(PlatformRoute route) async {
     final destination = switch (route.destination) {
       'training' => NativeAppRoute.training,
       'checkIn' => NativeAppRoute.checkIn,
@@ -49,17 +44,15 @@ class PigeonNativeRouteDispatcher extends MobileRouteFlutterApi {
       throw PlatformException(code: 'expired_route');
     }
 
-    _lastDispatch = Future<void>.sync(() async {
-      if (!await _consumer.hasActiveAccountSession()) {
-        throw PlatformException(code: 'active_session_required');
-      }
-      await _consumer.onRouteRequested(
-        NativeAppRouteRequest(
-          destination: destination,
-          source: source,
-          createdAtUtc: createdAtUtc,
-        ),
-      );
-    });
+    if (!await _consumer.hasActiveAccountSession()) {
+      throw PlatformException(code: 'active_session_required');
+    }
+    await _consumer.onRouteRequested(
+      NativeAppRouteRequest(
+        destination: destination,
+        source: source,
+        createdAtUtc: createdAtUtc,
+      ),
+    );
   }
 }

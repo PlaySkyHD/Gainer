@@ -62,6 +62,7 @@ class TrainingRepository {
     this.notifications,
     TrainingIdFactory? ids,
     DateTime Function()? clock,
+    this.onNotificationUnavailable,
     this.transactionFaultForTesting,
   }) : ids = ids ?? _newUuidV4,
        clock = clock ?? DateTime.now;
@@ -72,6 +73,7 @@ class TrainingRepository {
   final TrainingIdFactory ids;
   final DateTime Function() clock;
   final void Function()? transactionFaultForTesting;
+  final void Function()? onNotificationUnavailable;
 
   Future<TrainingPlanningSnapshot> readPlanning() async {
     final available = await catalog.loadExercises();
@@ -539,7 +541,7 @@ class TrainingRepository {
       envelope: _pending(current, json),
     );
     if (timer case final value?) {
-      await notifications?.schedule(
+      await _scheduleTimerNotification(
         workoutId: workoutId,
         targetUtc: DateTime.parse(value['targetAtUtc'] as String).toUtc(),
       );
@@ -700,7 +702,7 @@ class TrainingRepository {
       envelope: _pending(current, changed),
       relatedEnvelopes: related,
     );
-    await notifications?.cancel(workoutId: workoutId);
+    await _cancelTimerNotification(workoutId);
   }
 
   Future<void> discardWorkout(String workoutId) async {
@@ -719,7 +721,7 @@ class TrainingRepository {
       body: changed,
       envelope: _pending(current, changed),
     );
-    await notifications?.cancel(workoutId: workoutId);
+    await _cancelTimerNotification(workoutId);
   }
 
   Future<WorkoutRecord> extendRestTimer(
@@ -749,7 +751,7 @@ class TrainingRepository {
 
   Future<WorkoutRecord> skipRestTimer(String workoutId) async {
     final result = await _changeTimer(workoutId, (_) {}, clear: true);
-    await notifications?.cancel(workoutId: workoutId);
+    await _cancelTimerNotification(workoutId);
     return result;
   }
 
@@ -782,10 +784,10 @@ class TrainingRepository {
       envelope: _pending(current, json),
     );
     if (clear) {
-      await notifications?.cancel(workoutId: workoutId);
+      await _cancelTimerNotification(workoutId);
     } else {
       final updatedTimer = json['restTimer'] as Map<String, dynamic>;
-      await notifications?.schedule(
+      await _scheduleTimerNotification(
         workoutId: workoutId,
         targetUtc: DateTime.parse(updatedTimer['targetAtUtc'] as String)
             .toUtc(),
@@ -800,10 +802,10 @@ class TrainingRepository {
     final timer = running?.value.restTimer;
     if (running == null || timer == null) return;
     if (timer.remainingSeconds(clock().toUtc()) == 0) {
-      await notifications?.cancel(workoutId: running.id);
+      await _cancelTimerNotification(running.id);
       return;
     }
-    await notifications?.schedule(
+    await _scheduleTimerNotification(
       workoutId: running.id,
       targetUtc: DateTime.parse(timer.targetAtUtc).toUtc(),
     );
@@ -815,6 +817,33 @@ class TrainingRepository {
   ) async =>
       await store.readAggregate(type, id) ??
       (throw StateError('The $type resource is unavailable.'));
+
+  Future<void> _scheduleTimerNotification({
+    required String workoutId,
+    required DateTime targetUtc,
+  }) async {
+    try {
+      await notifications?.schedule(workoutId: workoutId, targetUtc: targetUtc);
+    } catch (_) {
+      _reportNotificationUnavailable();
+    }
+  }
+
+  Future<void> _cancelTimerNotification(String workoutId) async {
+    try {
+      await notifications?.cancel(workoutId: workoutId);
+    } catch (_) {
+      _reportNotificationUnavailable();
+    }
+  }
+
+  void _reportNotificationUnavailable() {
+    try {
+      onNotificationUnavailable?.call();
+    } catch (_) {
+      // A status callback must never change the result of a durable workout write.
+    }
+  }
 
   Future<LocalAggregateEnvelope<Object?>> _requireRunningWorkout(
     String id,
