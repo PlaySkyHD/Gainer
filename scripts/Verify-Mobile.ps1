@@ -122,6 +122,38 @@ try {
         }
         Write-Host ($xcodeVersion -join "`n")
         Invoke-Checked $flutterCommand @('build', 'ios', '--simulator', '--no-codesign')
+
+        $simulatorOutput = & /usr/bin/xcrun simctl list devices available --json
+        if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate available iOS simulators.' }
+        $simulatorInventory = $simulatorOutput | ConvertFrom-Json
+        $availableIPhones = @(
+            $simulatorInventory.devices.PSObject.Properties |
+                ForEach-Object {
+                    if ($_.Name -match '\.iOS-(\d+)(?:-|$)' -and [int]$Matches[1] -ge 17) {
+                        $runtimeMajor = [int]$Matches[1]
+                        foreach ($device in $_.Value) {
+                            if ($device.isAvailable -and $device.name -like 'iPhone*') {
+                                [pscustomobject]@{ RuntimeMajor = $runtimeMajor; Device = $device }
+                            }
+                        }
+                    }
+                } |
+                Sort-Object RuntimeMajor -Descending
+        )
+        if ($availableIPhones.Count -eq 0) {
+            throw 'No available iPhone simulator is installed on this macOS runner.'
+        }
+        $selectedDevice = $availableIPhones[0].Device
+        $simulatorId = $selectedDevice.udid
+        Write-Host "Running native XCTest on iOS 17+ iPhone simulator $($selectedDevice.name) ($simulatorId)."
+        Invoke-Checked '/usr/bin/xcodebuild' @(
+            '-workspace', 'ios/Runner.xcworkspace',
+            '-scheme', 'Runner',
+            '-destination', "platform=iOS Simulator,id=$simulatorId",
+            'CODE_SIGNING_ALLOWED=NO',
+            'CODE_SIGNING_REQUIRED=NO',
+            'test'
+        )
     }
 }
 finally {

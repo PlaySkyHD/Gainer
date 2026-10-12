@@ -81,23 +81,45 @@ jobs:
 
   signed-ipa:
     name: Manually requested signed IPA (no Apple upload)
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_signed_ipa }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_signed_ipa && github.ref == 'refs/heads/main' }}
     needs: ios-simulator
     runs-on: macos-15
     timeout-minutes: 60
     environment: ios-beta
     steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Require main branch code before accessing signing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != 'refs/heads/main' ]]; then
+            echo '::error::Signed IPA generation is only allowed from main.'
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo '::error::The workflow commit is not reachable from origin/main.'
+            exit 1
+          fi
+
       - name: Require signing configuration
         shell: bash
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+          IOS_WIDGET_BUNDLE_ID: ${{ secrets.IOS_WIDGET_BUNDLE_ID }}
+          IOS_APP_GROUP_ID: ${{ secrets.IOS_APP_GROUP_ID }}
           IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
           IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_WIDGET_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
-          for name in APPLE_TEAM_ID IOS_BUNDLE_ID IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 IOS_DISTRIBUTION_CERTIFICATE_PASSWORD IOS_PROVISIONING_PROFILE_BASE64; do
+          for name in APPLE_TEAM_ID IOS_BUNDLE_ID IOS_WIDGET_BUNDLE_ID IOS_APP_GROUP_ID IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 IOS_DISTRIBUTION_CERTIFICATE_PASSWORD IOS_PROVISIONING_PROFILE_BASE64 IOS_WIDGET_PROVISIONING_PROFILE_BASE64; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required secret $name is not configured for the ios-beta environment."
               exit 1
@@ -107,9 +129,8 @@ jobs:
             echo '::error::APPLE_TEAM_ID must be the 10-character Apple Developer Team ID.'
             exit 1
           fi
-
-      - name: Check out repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+          [[ "$IOS_WIDGET_BUNDLE_ID" == "${IOS_BUNDLE_ID}.WidgetExtension" ]] || { echo '::error::IOS_WIDGET_BUNDLE_ID must be the app bundle ID plus .WidgetExtension.'; exit 1; }
+          [[ "$IOS_APP_GROUP_ID" == "group.${APPLE_TEAM_ID}."* ]] || { echo '::error::IOS_APP_GROUP_ID must use the Apple Team ID prefix.'; exit 1; }
 
       - name: Select and verify pinned Xcode
         shell: bash
@@ -142,19 +163,25 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+          IOS_WIDGET_BUNDLE_ID: ${{ secrets.IOS_WIDGET_BUNDLE_ID }}
+          IOS_APP_GROUP_ID: ${{ secrets.IOS_APP_GROUP_ID }}
           IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
           IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_WIDGET_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
           keychain="$RUNNER_TEMP/gainer-signing.keychain-db"
           p12="$RUNNER_TEMP/distribution.p12"
           profile="$RUNNER_TEMP/profile.mobileprovision"
           profile_plist="$RUNNER_TEMP/profile.plist"
+          widget_profile="$RUNNER_TEMP/widget-profile.mobileprovision"
+          widget_profile_plist="$RUNNER_TEMP/widget-profile.plist"
           export_options="$RUNNER_TEMP/ExportOptions.plist"
           keychain_password="$(openssl rand -hex 24)"
           printf '%s' "$IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64" | base64 --decode > "$p12"
           printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile"
+          printf '%s' "$IOS_WIDGET_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$widget_profile"
           security create-keychain -p "$keychain_password" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
@@ -162,14 +189,32 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
           security list-keychains -d user -s "$keychain"
           security cms -D -i "$profile" > "$profile_plist"
+          security cms -D -i "$widget_profile" > "$widget_profile_plist"
           profile_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$profile_plist")"
           profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$profile_plist")"
           profile_bundle="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$profile_plist" | sed "s/^${APPLE_TEAM_ID}\.//")"
+          widget_profile_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$widget_profile_plist")"
+          widget_profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$widget_profile_plist")"
+          widget_profile_bundle="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$widget_profile_plist" | sed "s/^${APPLE_TEAM_ID}\.//")"
           [[ "$profile_team" == "$APPLE_TEAM_ID" ]] || { echo '::error::Provisioning profile Team ID mismatch.'; exit 1; }
           [[ "$profile_bundle" == "$IOS_BUNDLE_ID" ]] || { echo '::error::Provisioning profile bundle ID mismatch.'; exit 1; }
+          [[ "$widget_profile_team" == "$APPLE_TEAM_ID" ]] || { echo '::error::Widget provisioning profile Team ID mismatch.'; exit 1; }
+          [[ "$widget_profile_bundle" == "$IOS_WIDGET_BUNDLE_ID" ]] || { echo '::error::Widget provisioning profile bundle ID mismatch.'; exit 1; }
+          for entitlement_plist in "$profile_plist" "$widget_profile_plist"; do
+            /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$entitlement_plist" | grep -Fqx "$IOS_APP_GROUP_ID" || {
+              echo '::error::Provisioning profile does not include the configured App Group.'
+              exit 1
+            }
+          done
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.healthkit' "$profile_plist" >/dev/null || {
+            echo '::error::App provisioning profile does not include HealthKit.'
+            exit 1
+          }
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")"
+          widget_profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$widget_profile_plist")"
           cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+          cp "$widget_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$widget_profile_uuid.mobileprovision"
           cat > "$export_options" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -177,7 +222,10 @@ jobs:
             <key>method</key><string>app-store-connect</string>
             <key>signingStyle</key><string>manual</string>
             <key>teamID</key><string>$APPLE_TEAM_ID</string>
-            <key>provisioningProfiles</key><dict><key>$IOS_BUNDLE_ID</key><string>$profile_name</string></dict>
+            <key>provisioningProfiles</key><dict>
+              <key>$IOS_BUNDLE_ID</key><string>$profile_name</string>
+              <key>$IOS_WIDGET_BUNDLE_ID</key><string>$widget_profile_name</string>
+            </dict>
           </dict></plist>
           EOF
 
@@ -193,9 +241,12 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+          IOS_WIDGET_BUNDLE_ID: ${{ secrets.IOS_WIDGET_BUNDLE_ID }}
+          IOS_APP_GROUP_ID: ${{ secrets.IOS_APP_GROUP_ID }}
         run: |
           set -euo pipefail
           profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
+          widget_profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/widget-profile.plist")"
           flutter build ios --config-only --release --no-codesign
           xcodebuild \
             -workspace ios/Runner.xcworkspace \
@@ -204,8 +255,11 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Gainer.xcarchive" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$profile_name" \
+            IOS_BUNDLE_ID="$IOS_BUNDLE_ID" \
+            IOS_WIDGET_BUNDLE_ID="$IOS_WIDGET_BUNDLE_ID" \
+            IOS_APP_GROUP_ID="$IOS_APP_GROUP_ID" \
+            IOS_APP_PROFILE_NAME="$profile_name" \
+            IOS_WIDGET_PROFILE_NAME="$widget_profile_name" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY='Apple Distribution' \
             archive
@@ -230,11 +284,19 @@ jobs:
           keychain="$RUNNER_TEMP/gainer-signing.keychain-db"
           security delete-keychain "$keychain" >/dev/null 2>&1
           profile_plist="$RUNNER_TEMP/profile.plist"
+          widget_profile_plist="$RUNNER_TEMP/widget-profile.plist"
           if [[ -f "$profile_plist" ]]; then
             profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist" 2>/dev/null)"
             if [[ -n "$profile_uuid" ]]; then
               rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
             fi
           fi
+          if [[ -f "$widget_profile_plist" ]]; then
+            widget_profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$widget_profile_plist" 2>/dev/null)"
+            if [[ -n "$widget_profile_uuid" ]]; then
+              rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$widget_profile_uuid.mobileprovision"
+            fi
+          fi
           rm -f "$RUNNER_TEMP/distribution.p12" "$RUNNER_TEMP/profile.mobileprovision" \
-            "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/ExportOptions.plist"
+            "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/widget-profile.mobileprovision" \
+            "$RUNNER_TEMP/widget-profile.plist" "$RUNNER_TEMP/ExportOptions.plist"

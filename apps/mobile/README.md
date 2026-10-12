@@ -49,5 +49,10 @@ Provider. Network, persistence and Apple system services belong in injected
 services/repositories. Typed platform ports live under
 `lib/data/services/platform`; Pigeon schema changes belong in
 `pigeons/mobile_platform_api.dart` and generated bindings must be regenerated
-with the pinned Pigeon version. No platform adapter or feature journey is
-implemented by this bootstrap.
+with the pinned Pigeon version. The secure-session port has an iOS Keychain
+adapter; other native ports and feature journeys remain in progress.
+
+The iOS bridge stores only opaque, API-origin-bound session checkpoints in the
+Keychain with `WhenUnlockedThisDeviceOnly` accessibility and iCloud
+synchronization disabled. A new app installation clears retained checkpoints.
+Passwords and CSRF request tokens are not stored by this bridge.

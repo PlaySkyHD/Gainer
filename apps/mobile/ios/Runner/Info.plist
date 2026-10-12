@@ -24,6 +24,27 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Gainer nutzt die Kamera, wenn du einen Barcode scannen oder ein Lebensmittelfoto aufnehmen möchtest.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Gainer liest Körpergewichtsproben nur auf deine ausdrückliche Anfrage, damit du sie prüfen und gezielt als Check-in übernehmen kannst.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Gainer schreibt ein abgeschlossenes Workout nur nach deiner ausdrücklichen Bestätigung in Apple Health.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>GainerAppGroupIdentifier</key>
+	<string>$(IOS_APP_GROUP_ID)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.example.gainerMobile.routes</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>gainer</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

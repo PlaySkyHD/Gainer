@@ -1,0 +1,252 @@
+import Flutter
+import Foundation
+
+@MainActor
+final class GainerMobilePlatform: MobilePlatformApi {
+  private let sessionKeychain: SecureSessionKeychain
+  private let capture = NativeCapture()
+  private let haptics = NativeHaptics()
+  private let timerNotifications = NativeTimerNotifications()
+  private let health = NativeHealthKit()
+  private let extensionSnapshots = NativeExtensionSnapshotStore()
+  private let routeStore = NativeExtensionSnapshotStore()
+  @available(iOS 17.0, *)
+  private let liveActivities = NativeLiveActivities()
+
+  init(sessionKeychain: SecureSessionKeychain = SecureSessionKeychain()) {
+    self.sessionKeychain = sessionKeychain
+  }
+
+  func getPlatformHealth() async throws -> PlatformHealthCheck {
+    PlatformHealthCheck(available: true)
+  }
+
+  func readSessionCheckpoint(apiOrigin: String) async throws -> FlutterStandardTypedData? {
+    guard let checkpoint = try sessionKeychain.readCheckpoint(apiOrigin: apiOrigin) else {
+      return nil
+    }
+    return FlutterStandardTypedData(bytes: checkpoint)
+  }
+
+  func writeSessionCheckpoint(
+    apiOrigin: String,
+    checkpoint: FlutterStandardTypedData
+  ) async throws {
+    try sessionKeychain.writeCheckpoint(checkpoint.data, apiOrigin: apiOrigin)
+  }
+
+  func clearSessionCheckpoint(apiOrigin: String) async throws {
+    try sessionKeychain.clearCheckpoint(apiOrigin: apiOrigin)
+  }
+
+  func readPendingHandover(apiOrigin: String, accountId: String) async throws -> FlutterStandardTypedData? {
+    guard let record = try sessionKeychain.readPendingHandover(
+      apiOrigin: apiOrigin,
+      accountId: accountId
+    ) else {
+      return nil
+    }
+    return FlutterStandardTypedData(bytes: record)
+  }
+
+  func writePendingHandover(
+    apiOrigin: String,
+    accountId: String,
+    record: FlutterStandardTypedData
+  ) async throws {
+    try sessionKeychain.writePendingHandover(
+      record.data,
+      apiOrigin: apiOrigin,
+      accountId: accountId
+    )
+  }
+
+  func clearPendingHandover(apiOrigin: String, accountId: String) async throws {
+    try sessionKeychain.clearPendingHandover(
+      apiOrigin: apiOrigin,
+      accountId: accountId
+    )
+  }
+
+  func scanBarcode() async throws -> String? {
+    try await capture.scanBarcode()
+  }
+
+  func capturePhoto() async throws -> PlatformCapturedImage? {
+    try await capture.capturePhoto()
+  }
+
+  func chooseImage() async throws -> PlatformCapturedImage? {
+    try await capture.chooseImage()
+  }
+
+  func performHaptic(intent: String) async throws {
+    await haptics.perform(intent: intent)
+  }
+
+  func requestNotificationPermission() async throws -> Bool {
+    try await timerNotifications.requestPermission()
+  }
+
+  func schedulePauseNotification(
+    workoutId: String,
+    generation: Int64,
+    targetAtUtcEpochMilliseconds: Int64
+  ) async throws {
+    try await timerNotifications.schedule(
+      workoutId: workoutId,
+      generation: generation,
+      targetAtUtcEpochMilliseconds: targetAtUtcEpochMilliseconds
+    )
+  }
+
+  func cancelPauseNotifications(workoutId: String) async throws {
+    await timerNotifications.cancel(workoutId: workoutId)
+  }
+
+  func isHealthDataAvailable() async throws -> Bool {
+    health.isAvailable()
+  }
+
+  func requestBodyMassReadAuthorization() async throws -> PlatformAuthorizationRequestResult {
+    try await handleHealthKitErrors { try await health.requestBodyMassReadAuthorization() }
+  }
+
+  func readBodyMassSamples(
+    fromUtcEpochMilliseconds: Int64,
+    toUtcEpochMilliseconds: Int64
+  ) async throws -> [PlatformBodyMassSample] {
+    let samples = try await handleHealthKitErrors {
+      try await health.readBodyMassSamples(
+        from: Date(timeIntervalSince1970: Double(fromUtcEpochMilliseconds) / 1000),
+        to: Date(timeIntervalSince1970: Double(toUtcEpochMilliseconds) / 1000)
+      )
+    }
+    return samples.map {
+      PlatformBodyMassSample(
+        uuid: $0.uuid,
+        measuredAtUtcEpochMilliseconds: $0.measuredAtUtcEpochMilliseconds,
+        weightKilograms: $0.weightKilograms,
+        sourceName: $0.sourceName
+      )
+    }
+  }
+
+  func requestWorkoutWriteAuthorization() async throws -> PlatformAuthorizationRequestResult {
+    try await handleHealthKitErrors { try await health.requestWorkoutWriteAuthorization() }
+  }
+
+  func exportCompletedWorkout(
+    accountId: String,
+    workoutId: String,
+    syncVersion: Int64,
+    startedAtUtcEpochMilliseconds: Int64,
+    completedAtUtcEpochMilliseconds: Int64
+  ) async throws -> PlatformWorkoutExportResult {
+    let result = try await handleHealthKitErrors {
+      try await health.exportCompletedWorkout(
+        accountId: accountId,
+        workoutId: workoutId,
+        syncVersion: syncVersion,
+        startedAt: Date(timeIntervalSince1970: Double(startedAtUtcEpochMilliseconds) / 1000),
+        completedAt: Date(timeIntervalSince1970: Double(completedAtUtcEpochMilliseconds) / 1000)
+      )
+    }
+    return PlatformWorkoutExportResult(
+      status: result.status,
+      syncIdentifier: result.syncIdentifier,
+      syncVersion: result.syncVersion
+    )
+  }
+
+  func publishNeutralExtensionSnapshot(
+    schemaVersion: Int64,
+    generation: Int64,
+    updatedAtUtcEpochMilliseconds: Int64,
+    availableRoutes: [String]
+  ) async throws {
+    guard schemaVersion <= Int64(Int.max), generation <= Int64(Int.max),
+      let snapshot = GainerNeutralExtensionSnapshot(
+        schemaVersion: Int(schemaVersion),
+        generation: Int(generation),
+        updatedAtUtcEpochMilliseconds: updatedAtUtcEpochMilliseconds,
+        availableRoutes: availableRoutes
+      )
+    else { throw NativeExtensionSnapshotError.invalidSnapshot }
+    try extensionSnapshots.publish(snapshot)
+  }
+
+  func clearExtensionSnapshot(minimumGeneration: Int64) async throws {
+    guard minimumGeneration <= Int64(Int.max), minimumGeneration >= 0 else {
+      throw NativeExtensionSnapshotError.invalidSnapshot
+    }
+    try extensionSnapshots.clear(minimumGeneration: Int(minimumGeneration))
+  }
+
+  func startLiveActivity(
+    sessionId: String,
+    status: String,
+    startedAtUtcEpochMilliseconds: Int64,
+    restEndsAtUtcEpochMilliseconds: Int64?,
+    staleAtUtcEpochMilliseconds: Int64
+  ) async throws -> Bool {
+    guard #available(iOS 17.0, *) else { return false }
+    return try await liveActivities.start(
+      sessionId: sessionId,
+      status: status,
+      startedAtUtcEpochMilliseconds: startedAtUtcEpochMilliseconds,
+      restEndsAtUtcEpochMilliseconds: restEndsAtUtcEpochMilliseconds,
+      staleAtUtcEpochMilliseconds: staleAtUtcEpochMilliseconds
+    )
+  }
+
+  func updateLiveActivity(
+    sessionId: String,
+    status: String,
+    startedAtUtcEpochMilliseconds: Int64,
+    restEndsAtUtcEpochMilliseconds: Int64?,
+    staleAtUtcEpochMilliseconds: Int64
+  ) async throws -> Bool {
+    guard #available(iOS 17.0, *) else { return false }
+    return try await liveActivities.update(
+      sessionId: sessionId,
+      status: status,
+      startedAtUtcEpochMilliseconds: startedAtUtcEpochMilliseconds,
+      restEndsAtUtcEpochMilliseconds: restEndsAtUtcEpochMilliseconds,
+      staleAtUtcEpochMilliseconds: staleAtUtcEpochMilliseconds
+    )
+  }
+
+  func endLiveActivity(sessionId: String) async throws {
+    guard #available(iOS 17.0, *) else { return }
+    await liveActivities.end(sessionId: sessionId)
+  }
+
+  func endAllLiveActivities() async throws {
+    guard #available(iOS 17.0, *) else { return }
+    await liveActivities.endAll()
+  }
+
+  func readPendingRoute() async throws -> PlatformRoute? {
+    guard let route = try routeStore.readPendingRoute() else { return nil }
+    return PlatformRoute(
+      destination: route.destination,
+      source: route.source,
+      createdAtUtcEpochMilliseconds: route.createdAtUtcEpochMilliseconds
+    )
+  }
+
+  func clearPendingRoute() async throws {
+    try routeStore.clearPendingRoute()
+  }
+
+  private func handleHealthKitErrors<T>(
+    _ operation: () async throws -> T
+  ) async throws -> T {
+    do {
+      return try await operation()
+    } catch let error as NativeHealthKitError {
+      throw FlutterError(code: error.flutterCode, message: error.safeMessage, details: nil)
+    }
+  }
+}
