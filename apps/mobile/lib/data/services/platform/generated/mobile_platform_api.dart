@@ -1051,12 +1051,30 @@ class MobilePlatformApi {
       isNullValid: true,
     );
   }
+
+  Future<void> retryPendingRoute() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.retryPendingRoute$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
 }
 
 abstract class MobileRouteFlutterApi {
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
 
-  void dispatchRoute(PlatformRoute route);
+  Future<void> dispatchRoute(PlatformRoute route);
 
   static void setUp(
     MobileRouteFlutterApi? api, {
@@ -1079,7 +1097,7 @@ abstract class MobileRouteFlutterApi {
           final List<Object?> args = message! as List<Object?>;
           final PlatformRoute arg_route = args[0]! as PlatformRoute;
           try {
-            api.dispatchRoute(arg_route);
+            await api.dispatchRoute(arg_route);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

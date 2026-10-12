@@ -106,6 +106,13 @@ final class NativeExtensionSnapshotStore {
     }
     defaults.removeObject(forKey: GainerNeutralExtensionSnapshot.pendingRouteDefaultsKey)
   }
+
+  @discardableResult
+  func clearPendingRoute(ifMatching route: GainerPendingRoute) throws -> Bool {
+    guard try readPendingRoute() == route else { return false }
+    try clearPendingRoute()
+    return true
+  }
 }
 
 enum NativeExtensionSnapshotError: Error, Equatable {

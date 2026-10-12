@@ -77,19 +77,20 @@ public sealed class SmartNutritionPersistenceTests
     {
         (string connectionString, Guid firstUser, _) = await CreateDatabaseAsync();
         Guid scheduleId = Guid.NewGuid();
+        var time = new FixedTimeProvider(new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero));
         NutritionTargetVersionDraft august = Target(new DateOnly(2026, 8, 1), 2500m);
         NutritionTargetVersionDraft september = Target(new DateOnly(2026, 9, 1), 2700m);
 
         await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
         {
-            var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), TimeProvider.System);
+            var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), time);
             NutritionTargetScheduleSnapshot created = await handler.SaveAsync(SaveTargets(scheduleId, 0, august));
             Assert.AreEqual(1, created.Version);
         }
 
         await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
         {
-            var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), TimeProvider.System);
+            var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), time);
             NutritionTargetVersionDraft closedAugust = august with { EffectiveUntil = new DateOnly(2026, 8, 31) };
             NutritionTargetScheduleSnapshot updated = await handler.SaveAsync(SaveTargets(scheduleId, 1, closedAugust, september));
             Assert.AreEqual(2, updated.Version);
@@ -101,7 +102,7 @@ public sealed class SmartNutritionPersistenceTests
 
         await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
         {
-            var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), TimeProvider.System);
+            var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), time);
             NutritionTargetVersionDraft changedAugust = NutritionTargetVersionDraft.Create(
                 august.TargetVersionId, august.EffectiveFrom, 2600m, august.ProteinGrams,
                 august.CarbohydrateGrams, august.FatGrams, august.Origin, august.AlgorithmVersion, august.Reason);

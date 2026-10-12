@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/local/local_aggregate.dart';
@@ -7,6 +9,7 @@ import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/ui/features/body/health/health_review_view_model.dart';
 
 const accountId = '00000000-0000-4000-8000-000000000001';
 String testId(int value) =>
@@ -22,6 +25,7 @@ class _HealthFake implements HealthPlatform {
   void Function()? onReadRequest;
   void Function()? onWriteRequest;
   CompletedWorkoutHealthExport? lastExport;
+  Completer<void>? readBarrier;
 
   @override
   Future<bool> isAvailable() async => available;
@@ -40,6 +44,7 @@ class _HealthFake implements HealthPlatform {
     required DateTime toUtc,
   }) async {
     readQueries++;
+    await readBarrier?.future;
     return samples;
   }
 
@@ -338,6 +343,38 @@ void main() {
         throwsStateError,
       );
       expect(health.exports, 0);
+    },
+  );
+
+  test(
+    'disposed Health ViewModel does not notify after a pending query',
+    () async {
+      health.samples = [sample('health-pending-query')];
+      health.readBarrier = Completer<void>();
+      final model = HealthReviewViewModel(coordinator());
+      var disposed = false;
+      var notificationsAfterDispose = 0;
+      model.addListener(() {
+        if (disposed) notificationsAfterDispose++;
+      });
+
+      final operation = model.prepareReview(
+        fromLocalDate: '2026-10-12',
+        toLocalDate: '2026-10-12',
+      );
+      for (
+        var attempt = 0;
+        attempt < 10 && health.readQueries == 0;
+        attempt++
+      ) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(health.readQueries, 1);
+      model.dispose();
+      disposed = true;
+      health.readBarrier!.complete();
+      await operation;
+      expect(notificationsAfterDispose, 0);
     },
   );
 }

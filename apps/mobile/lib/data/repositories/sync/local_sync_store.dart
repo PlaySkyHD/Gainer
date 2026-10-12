@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -33,6 +34,10 @@ class LocalSyncStore {
 
   final LocalDatabase database;
   final String accountId;
+  final StreamController<LocalMutation> _committedMutations =
+      StreamController<LocalMutation>.broadcast(sync: true);
+
+  Stream<LocalMutation> get committedMutations => _committedMutations.stream;
 
   Future<LocalAggregateEnvelope<Object?>?> readAggregate(
     String aggregateType,
@@ -140,7 +145,7 @@ class LocalSyncStore {
       relatedJson.add((entry.key, related, related.encode()));
     }
 
-    return database.transaction(() async {
+    final committed = await database.transaction(() async {
       await _bindAccountInTransaction();
       if (mutationGuard != null && !mutationGuard()) {
         throw StateError(
@@ -282,6 +287,8 @@ class LocalSyncStore {
         body: jsonDecode(payloadJson)['body'],
       );
     });
+    _committedMutations.add(committed);
+    return committed;
   }
 
   Future<List<LocalMutation>> readOutbox({String? aggregateType}) async {
@@ -509,7 +516,10 @@ class LocalSyncStore {
     }
   }
 
-  Future<void> close() => database.close();
+  Future<void> close() async {
+    await _committedMutations.close();
+    await database.close();
+  }
 
   LocalMutation _mutationFromRow(LocalOutboxData row) {
     final payload = jsonDecode(row.payloadJson) as Map<String, dynamic>;

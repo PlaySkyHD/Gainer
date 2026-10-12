@@ -21,7 +21,7 @@ final class NativeCapture: NSObject, PHPickerViewControllerDelegate, UIImagePick
       }
       guard let presenter = Self.topViewController() else {
         captureInProgress = false
-        continuation.resume(throwing: FlutterError(code: "capture_unavailable", message: "Camera presentation is unavailable.", details: nil))
+        continuation.resume(throwing: PigeonError(code: "capture_unavailable", message: "Camera presentation is unavailable.", details: nil))
         return
       }
       presenter.present(scanner, animated: true)
@@ -33,11 +33,11 @@ final class NativeCapture: NSObject, PHPickerViewControllerDelegate, UIImagePick
     try await ensureCameraPermission()
     guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
       captureInProgress = false
-      throw FlutterError(code: "camera_unavailable", message: "A camera is not available on this device.", details: nil)
+      throw PigeonError(code: "camera_unavailable", message: "A camera is not available on this device.", details: nil)
     }
     guard let presenter = Self.topViewController() else {
       captureInProgress = false
-      throw FlutterError(code: "capture_unavailable", message: "Camera presentation is unavailable.", details: nil)
+      throw PigeonError(code: "capture_unavailable", message: "Camera presentation is unavailable.", details: nil)
     }
     return try await withCheckedThrowingContinuation { continuation in
       let picker = UIImagePickerController()
@@ -54,7 +54,7 @@ final class NativeCapture: NSObject, PHPickerViewControllerDelegate, UIImagePick
     try beginCapture()
     guard let presenter = Self.topViewController() else {
       captureInProgress = false
-      throw FlutterError(code: "capture_unavailable", message: "Photo selection is unavailable.", details: nil)
+      throw PigeonError(code: "capture_unavailable", message: "Photo selection is unavailable.", details: nil)
     }
     return try await withCheckedThrowingContinuation { continuation in
       var configuration = PHPickerConfiguration(photoLibrary: .shared())
@@ -86,7 +86,7 @@ final class NativeCapture: NSObject, PHPickerViewControllerDelegate, UIImagePick
           self?.finishImage(Self.normalizedImage(data: data))
         } else {
           let mimeType = UTType(typeIdentifier)?.preferredMIMEType ?? "application/octet-stream"
-          self?.finishImage(.failure(FlutterError(code: "unsupported_image", message: "The selected item is not a supported image (\(mimeType)).", details: nil)))
+          self?.finishImage(.failure(PigeonError(code: "unsupported_image", message: "The selected item is not a supported image (\(mimeType)).", details: nil)))
         }
       }
     }
@@ -100,11 +100,11 @@ final class NativeCapture: NSObject, PHPickerViewControllerDelegate, UIImagePick
   func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
     picker.dismiss(animated: true)
     guard let image = info[.originalImage] as? UIImage else {
-      finishImage(.failure(FlutterError(code: "capture_failed", message: "The captured photo could not be read.", details: nil)))
+      finishImage(.failure(PigeonError(code: "capture_failed", message: "The captured photo could not be read.", details: nil)))
       return
     }
     guard let data = image.jpegData(compressionQuality: 0.95) else {
-      finishImage(.failure(FlutterError(code: "capture_failed", message: "The captured photo could not be encoded.", details: nil)))
+      finishImage(.failure(PigeonError(code: "capture_failed", message: "The captured photo could not be encoded.", details: nil)))
       return
     }
     finishImage(Self.normalizedImage(data: data))
@@ -119,7 +119,7 @@ final class NativeCapture: NSObject, PHPickerViewControllerDelegate, UIImagePick
 
   private func beginCapture() throws {
     guard !captureInProgress else {
-      throw FlutterError(code: "capture_in_progress", message: "Another capture flow is already active.", details: nil)
+      throw PigeonError(code: "capture_in_progress", message: "Another capture flow is already active.", details: nil)
     }
     captureInProgress = true
   }
@@ -131,12 +131,12 @@ final class NativeCapture: NSObject, PHPickerViewControllerDelegate, UIImagePick
         return
       case .notDetermined:
         guard await AVCaptureDevice.requestAccess(for: .video) else {
-          throw FlutterError(code: "camera_permission_denied", message: "Camera access was denied. Manual entry remains available.", details: nil)
+          throw PigeonError(code: "camera_permission_denied", message: "Camera access was denied. Manual entry remains available.", details: nil)
         }
       case .denied, .restricted:
-        throw FlutterError(code: "camera_permission_denied", message: "Camera access is unavailable. Manual entry remains available.", details: nil)
+        throw PigeonError(code: "camera_permission_denied", message: "Camera access is unavailable. Manual entry remains available.", details: nil)
       @unknown default:
-        throw FlutterError(code: "camera_permission_unavailable", message: "Camera permission status is unknown.", details: nil)
+        throw PigeonError(code: "camera_permission_unavailable", message: "Camera permission status is unknown.", details: nil)
       }
     } catch {
       captureInProgress = false
@@ -154,7 +154,7 @@ final class NativeCapture: NSObject, PHPickerViewControllerDelegate, UIImagePick
       sourceWidth > 0,
       sourceHeight > 0
     else {
-      return .failure(FlutterError(code: "unsupported_image", message: "The selected image could not be decoded.", details: nil))
+      return .failure(PigeonError(code: "unsupported_image", message: "The selected image could not be decoded.", details: nil))
     }
     let sourcePixelCount = Double(sourceWidth) * Double(sourceHeight)
     let sourceLongestSide = Double(max(sourceWidth, sourceHeight))
@@ -170,7 +170,7 @@ final class NativeCapture: NSObject, PHPickerViewControllerDelegate, UIImagePick
         kCGImageSourceShouldCacheImmediately: false,
       ]
       guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-        return .failure(FlutterError(code: "unsupported_image", message: "The selected image could not be decoded.", details: nil))
+        return .failure(PigeonError(code: "unsupported_image", message: "The selected image could not be decoded.", details: nil))
       }
       let normalized = UIImage(cgImage: thumbnail)
       for quality: CGFloat in [0.82, 0.76, 0.68] {
@@ -180,7 +180,7 @@ final class NativeCapture: NSObject, PHPickerViewControllerDelegate, UIImagePick
       }
       dimension = Int(Double(dimension) * 0.8)
     }
-    return .failure(FlutterError(code: "image_too_large", message: "The selected image could not be reduced below 8 MB.", details: nil))
+    return .failure(PigeonError(code: "image_too_large", message: "The selected image could not be reduced below 8 MB.", details: nil))
   }
 
   private static func topViewController() -> UIViewController? {

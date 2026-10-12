@@ -18,7 +18,7 @@ async function mockAccessApi(page: Page, operator: boolean) {
   await page.route("**/api/v1/auth/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/antiforgery")) {
-      await route.fulfill({ json: { requestToken: "test-antiforgery-token" } });
+      await route.fulfill({ json: { requestToken: "test-antiforgery-token", authenticatedUserId: authenticated ? identity.userId : null } });
       return;
     }
 
@@ -158,6 +158,61 @@ test("operator view is separate and creates a manually shareable invitation link
   await expect(page.getByLabel("Einladungslink")).toHaveValue(
     "http://127.0.0.1:3100/accept-invitation?token=manual-token",
   );
+});
+
+test("source handover retries a lost Begin response with the same request and revision", async ({ page }) => {
+  await mockAccessApi(page, false);
+  const beginBodies: Array<{ requestId: string; sourceClientId: string; expectedRevision: number }> = [];
+  let beginAttempt = 0;
+  await page.route("**/api/v1/sync/clients/**", async (route) => {
+    const body = route.request().postDataJSON() as { clientId: string };
+    await route.fulfill({ json: { clientId: body.clientId, isActiveWriter: true, protocolVersion: 2 } });
+  });
+  await page.route("**/api/v1/sync/changes?**", async (route) => {
+    const after = Number(new URL(route.request().url()).searchParams.get("after") ?? 0);
+    await route.fulfill({ json: { protocolVersion: 2, nextCursor: after, hasMore: false, batches: [] } });
+  });
+  await page.route("**/api/v1/sync/handovers", async (route) => {
+    beginBodies.push(route.request().postDataJSON() as typeof beginBodies[number]);
+    beginAttempt++;
+    if (beginAttempt === 1) {
+      await route.abort("failed");
+      return;
+    }
+    await route.fulfill({ status: 201, json: {
+      handoverId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      oneTimeCode: "single-use-test-code",
+      frozenRevision: beginBodies[1].expectedRevision,
+      expiresAtUtc: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    } });
+  });
+  await page.goto("/");
+  await page.getByLabel("E-Mail-Adresse").fill("member@example.test");
+  await page.getByLabel("Passwort").fill("correct-password");
+  await page.getByRole("button", { name: "Anmelden" }).click();
+  await expect(page.getByRole("heading", { name: "Dein Bereich" })).toBeVisible();
+
+  const handover = page.getByRole("region", { name: "Geräteübergabe" });
+  await handover.getByRole("button", { name: "Dieses PWA-Gerät sicher übergeben" }).click();
+  await expect(handover.getByRole("alert").getByText("Failed to fetch")).toBeVisible();
+  expect(beginBodies).toHaveLength(1);
+  await handover.getByRole("button", { name: "Übergabe fortsetzen" }).click();
+  await expect(handover.getByRole("button", { name: "Übergabepaket kopieren" })).toBeVisible();
+  await expect(handover.getByText(beginBodies[1].sourceClientId)).toBeVisible();
+  expect(beginBodies).toHaveLength(2);
+  expect(beginBodies[1]).toEqual(beginBodies[0]);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:3100" });
+  await handover.getByRole("button", { name: "Übergabepaket kopieren" }).click();
+  const bundle = await page.evaluate(async () => JSON.parse(await navigator.clipboard.readText()));
+  expect(bundle).toMatchObject({
+    kind: "gainer-sync-handover",
+    version: 1,
+    accountId: "796b2ab3-ff9c-4339-9455-b423f4722e8c",
+    sourceClientId: beginBodies[1].sourceClientId,
+    handoverId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    oneTimeCode: "single-use-test-code",
+    frozenRevision: beginBodies[1].expectedRevision,
+  });
 });
 
 test("account switch keeps A data out of B online and during an offline restart", async ({ page }) => {

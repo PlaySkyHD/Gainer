@@ -506,6 +506,7 @@ protocol MobilePlatformApi {
   func endAllLiveActivities() async throws
   func readPendingRoute() async throws -> PlatformRoute?
   func clearPendingRoute() async throws
+  func retryPendingRoute() async throws
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -976,6 +977,21 @@ class MobilePlatformApiSetup {
       }
     } else {
       clearPendingRouteChannel.setMessageHandler(nil)
+    }
+    let retryPendingRouteChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.retryPendingRoute\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      retryPendingRouteChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            try await api.retryPendingRoute()
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      retryPendingRouteChannel.setMessageHandler(nil)
     }
   }
 }

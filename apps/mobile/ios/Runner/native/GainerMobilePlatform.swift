@@ -240,13 +240,17 @@ final class GainerMobilePlatform: MobilePlatformApi {
     try routeStore.clearPendingRoute()
   }
 
+  func retryPendingRoute() async throws {
+    await NativeRouteDispatcher.shared.dispatchPendingRoute()
+  }
+
   private func handleHealthKitErrors<T>(
     _ operation: () async throws -> T
   ) async throws -> T {
     do {
       return try await operation()
     } catch let error as NativeHealthKitError {
-      throw FlutterError(code: error.flutterCode, message: error.safeMessage, details: nil)
+      throw PigeonError(code: error.flutterCode, message: error.safeMessage, details: nil)
     }
   }
 }

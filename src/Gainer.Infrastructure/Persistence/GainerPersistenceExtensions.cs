@@ -52,6 +52,7 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<ISyncMutationProcessor, SyncMutationProcessor>();
         builder.Services.AddScoped<ISyncChangeFeed, SyncChangeFeed>();
         builder.Services.AddScoped<ISyncClientRegistry, SyncClientRegistry>();
+        builder.Services.AddScoped<ISyncHandoverService, SyncHandoverService>();
         builder.Services.AddScoped<IInsightQueries, InsightQueries>();
         builder.Services.Configure<OpenAiProviderOptions>(builder.Configuration.GetSection(OpenAiProviderOptions.SectionName));
         builder.Services.AddHttpClient<IOpenAiResponsesProvider, OpenAiResponsesProvider>(client =>

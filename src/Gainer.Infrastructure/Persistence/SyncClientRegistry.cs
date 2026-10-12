@@ -3,6 +3,7 @@ using Gainer.Contracts.Sync;
 using Gainer.Core.Security;
 using Gainer.Core.Sync;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -11,9 +12,14 @@ public sealed class SyncClientRegistry(
     IUserContext userContext,
     TimeProvider timeProvider) : ISyncClientRegistry
 {
-    public async Task<RegisteredSyncClient> RegisterAsync(
+    public Task<RegisteredSyncClient> RegisterAsync(
         RegisterSyncClientCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        MapConcurrencyConflictAsync(RegisterCoreAsync(command, cancellationToken));
+
+    private async Task<RegisteredSyncClient> RegisterCoreAsync(
+        RegisterSyncClientCommand command,
+        CancellationToken cancellationToken)
     {
         Guid userId = userContext.UserId
             ?? throw new UnauthorizedAccessException("An authenticated user is required.");
@@ -30,9 +36,9 @@ public sealed class SyncClientRegistry(
         UserSyncState? state = await context.UserSyncStates
             .FromSqlInterpolated($"SELECT * FROM sync.user_state WHERE \"UserId\" = {userId} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
-        DateTime now = timeProvider.GetUtcNow().UtcDateTime;
         SyncClient? client = await context.SyncClients.SingleOrDefaultAsync(
             item => item.Id == command.ClientId, cancellationToken);
+        DateTime now = timeProvider.GetUtcNow().UtcDateTime;
         if (client is null)
         {
             client = new SyncClient
@@ -50,6 +56,24 @@ public sealed class SyncClientRegistry(
             client.DisplayName = displayName;
             client.ProtocolVersion = command.ProtocolVersion;
             client.LastSeenAtUtc = now;
+        }
+
+        if (state is not null)
+        {
+            await ExpirePendingHandoversAsync(userId, now, cancellationToken);
+            if (command.TakeOverWriting && state.ActiveClientId != command.ClientId)
+            {
+                if (state.HandoverRequired)
+                    throw new SyncMutationConflictException(
+                        "handover_required",
+                        "This account must use the verified device handover flow.");
+                if (await context.SyncHandovers.AnyAsync(
+                        item => item.Status == SyncHandoverStatuses.Pending && item.ExpiresAtUtc > now,
+                        cancellationToken))
+                    throw new SyncMutationConflictException(
+                        "handover_in_progress",
+                        "A device handover is in progress.");
+            }
         }
 
         if (state is null)
@@ -79,5 +103,44 @@ public sealed class SyncClientRegistry(
             state.ActiveClientId == client.Id,
             client.RegisteredAtUtc,
             client.LastSeenAtUtc);
+    }
+
+    private async Task ExpirePendingHandoversAsync(Guid userId, DateTime now, CancellationToken cancellationToken)
+    {
+        List<SyncHandover> expired = await context.SyncHandovers
+            .Where(item => item.UserId == userId
+                && item.Status == SyncHandoverStatuses.Pending
+                && item.ExpiresAtUtc <= now)
+            .ToListAsync(cancellationToken);
+        foreach (SyncHandover handover in expired)
+        {
+            handover.Status = SyncHandoverStatuses.Expired;
+            handover.ProtectedCode = null;
+        }
+    }
+
+    private static async Task<T> MapConcurrencyConflictAsync<T>(Task<T> operation)
+    {
+        try
+        {
+            return await operation;
+        }
+        catch (Exception exception) when (IsRetryableConcurrency(exception))
+        {
+            throw new SyncMutationConflictException(
+                "concurrent_mutation",
+                "The account changed concurrently. Retry the client registration.");
+        }
+    }
+
+    private static bool IsRetryableConcurrency(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException postgres && postgres.SqlState is
+                PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected)
+                return true;
+        }
+        return false;
     }
 }

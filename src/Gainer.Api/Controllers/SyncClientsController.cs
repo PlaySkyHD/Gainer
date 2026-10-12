@@ -1,5 +1,7 @@
 using Gainer.Api.Composition;
+using Gainer.Api.Security;
 using Gainer.Contracts.Sync;
+using Gainer.Core.Security;
 using Gainer.Core.Sync;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +12,7 @@ namespace Gainer.Api.Controllers;
 [Authorize]
 [Route(ApiConstants.Version1Route + "/sync/clients")]
 [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
-public sealed class SyncClientsController(ISyncClientRegistry registry) : ControllerBase
+public sealed class SyncClientsController(ISyncClientRegistry registry, IUserContext userContext) : ControllerBase
 {
     [HttpPut("{clientId:guid}")]
     [ProducesResponseType<SyncClientResponse>(StatusCodes.Status200OK)]
@@ -21,6 +23,9 @@ public sealed class SyncClientsController(ISyncClientRegistry registry) : Contro
         RegisterSyncClientRequest request,
         CancellationToken cancellationToken)
     {
+        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext) is { } identityProblem)
+            return identityProblem;
+
         if (clientId == Guid.Empty || request.ClientId != clientId)
             return Problem(StatusCodes.Status422UnprocessableEntity, "invalid_client_id", "Route and body client ids must match.");
         try
@@ -39,6 +44,10 @@ public sealed class SyncClientsController(ISyncClientRegistry registry) : Contro
                 client.LastSeenAtUtc));
         }
         catch (SyncUpgradeRequiredException exception)
+        {
+            return Problem(StatusCodes.Status409Conflict, exception.Code, exception.Message);
+        }
+        catch (SyncMutationConflictException exception)
         {
             return Problem(StatusCodes.Status409Conflict, exception.Code, exception.Message);
         }

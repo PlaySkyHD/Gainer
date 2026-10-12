@@ -101,6 +101,45 @@ public sealed class AuthenticationApiTests
     }
 
     [TestMethod]
+    public async Task AntiforgeryBootstrapIsBoundToAuthenticatedAccountAndRejectsCookieSwitch()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        Guid firstUserId = await CreateUserAsync(app, "first@example.test", Password);
+        Guid secondUserId = await CreateUserAsync(app, "second@example.test", Password);
+        using HttpClient client = CreateClient(app);
+        var firstCookies = new TestCookieJar();
+        var secondCookies = new TestCookieJar();
+
+        AntiforgeryTokenResponse firstAnonymousToken = await GetAntiforgeryTokenAsync(client, firstCookies);
+        Assert.IsNull(firstAnonymousToken.AuthenticatedUserId);
+        using HttpResponseMessage firstLogin = await SendMutationAsync(
+            client, firstCookies, "/api/v1/auth/login", new LoginRequest("first@example.test", Password), firstAnonymousToken.RequestToken);
+        Assert.AreEqual(HttpStatusCode.NoContent, firstLogin.StatusCode);
+        AntiforgeryTokenResponse firstToken = await GetAntiforgeryTokenAsync(client, firstCookies);
+        Assert.AreEqual(firstUserId, firstToken.AuthenticatedUserId);
+
+        AntiforgeryTokenResponse secondAnonymousToken = await GetAntiforgeryTokenAsync(client, secondCookies);
+        using HttpResponseMessage secondLogin = await SendMutationAsync(
+            client, secondCookies, "/api/v1/auth/login", new LoginRequest("second@example.test", Password), secondAnonymousToken.RequestToken);
+        Assert.AreEqual(HttpStatusCode.NoContent, secondLogin.StatusCode);
+        AntiforgeryTokenResponse secondToken = await GetAntiforgeryTokenAsync(client, secondCookies);
+        Assert.AreEqual(secondUserId, secondToken.AuthenticatedUserId);
+
+        using var switchedCookieRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout");
+        switchedCookieRequest.Headers.Add("Origin", TestOrigin);
+        switchedCookieRequest.Headers.Add(GainerRequestSecurityOptions.AntiforgeryHeaderName, firstToken.RequestToken);
+        firstCookies.ApplyWithAuthenticationFrom(switchedCookieRequest, secondCookies);
+        switchedCookieRequest.Content = JsonContent.Create(new { });
+        using HttpResponseMessage rejected = await client.SendAsync(switchedCookieRequest);
+        Assert.AreEqual(HttpStatusCode.BadRequest, rejected.StatusCode);
+
+        using HttpResponseMessage stillSecondAccount = await SendGetAsync(client, secondCookies, "/api/v1/auth/session");
+        SessionResponse? session = await stillSecondAccount.Content.ReadFromJsonAsync<SessionResponse>();
+        Assert.AreEqual(HttpStatusCode.OK, stillSecondAccount.StatusCode);
+        Assert.AreEqual(secondUserId, session?.UserId);
+    }
+
+    [TestMethod]
     public async Task UnknownAccountAndWrongPasswordReturnTheSameGenericFailure()
     {
         await using WebApplication app = await CreateApplicationAsync();
@@ -295,6 +334,18 @@ public sealed class AuthenticationApiTests
             {
                 request.Headers.Add("Cookie", string.Join("; ", values.Select(pair => $"{pair.Key}={pair.Value}")));
             }
+        }
+
+        public void ApplyWithAuthenticationFrom(HttpRequestMessage request, TestCookieJar authenticationCookies)
+        {
+            var combined = new Dictionary<string, string>(values, StringComparer.Ordinal);
+            if (!authenticationCookies.values.TryGetValue(GainerIdentityOptions.ApplicationCookieName, out string? authenticationCookie))
+            {
+                throw new InvalidOperationException("The authentication cookie was not captured.");
+            }
+
+            combined[GainerIdentityOptions.ApplicationCookieName] = authenticationCookie;
+            request.Headers.Add("Cookie", string.Join("; ", combined.Select(pair => $"{pair.Key}={pair.Value}")));
         }
     }
 

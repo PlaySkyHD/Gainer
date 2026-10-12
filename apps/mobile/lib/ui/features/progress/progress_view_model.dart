@@ -10,19 +10,32 @@ class ProgressViewModel extends ChangeNotifier {
   ApiDashboardInsights? dashboard;
   bool isLoading = false;
   String? errorMessage;
+  bool _disposed = false;
 
   Future<void> load() async {
+    if (_disposed) return;
     isLoading = true;
     errorMessage = null;
     notifyListeners();
     try {
-      dashboard = await repository.loadDashboard();
+      final result = await repository.loadDashboard();
+      if (_disposed) return;
+      dashboard = result;
     } catch (_) {
+      if (_disposed) return;
       errorMessage =
           'Fortschritt ist gerade nicht verfügbar. Bitte verbinde dich erneut.';
     } finally {
-      isLoading = false;
-      notifyListeners();
+      if (!_disposed) {
+        isLoading = false;
+        notifyListeners();
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

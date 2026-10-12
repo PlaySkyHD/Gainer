@@ -2,6 +2,7 @@ import type { AccountDatabase, LocalResourceRecord, OutboxRecord } from "./datab
 import { changeWorkingCopy, createLocalAggregate } from "./aggregate-envelope.ts";
 import type { SyncState } from "./aggregate-envelope.ts";
 import { commitLocalMutation, prepareLocalMutation } from "./local-mutations.ts";
+import { withLocalEditLock } from "./handover-locks.ts";
 
 export type MealType = "Breakfast" | "Lunch" | "Dinner" | "Snacks";
 
@@ -172,7 +173,7 @@ export async function deleteLocalNutritionDay(database: AccountDatabase, localDa
   const existing = records.find((record) => record.envelope.workingCopy.localDate === localDate);
   if (!existing) return;
   const aggregateKey = `nutrition-day:${existing.id}`;
-  await database.transaction("rw", database.nutritionDays, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", database.nutritionDays, database.outbox, async () => {
     await database.nutritionDays.delete(existing.id);
     if (existing.envelope.serverVersion === null) {
       await database.outbox.where("aggregateKey").equals(aggregateKey).delete();
@@ -195,7 +196,7 @@ export async function deleteLocalNutritionDay(database: AccountDatabase, localDa
       payload: { operation: mutation.operation, baseVersion: mutation.baseVersion, body: mutation.payload },
     };
     await database.outbox.add(outbox);
-  });
+  }));
 }
 
 export async function recentLocalNutritionEntries(

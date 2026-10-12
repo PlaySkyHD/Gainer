@@ -36,6 +36,56 @@ public interface ISyncMutationProcessor
         CancellationToken cancellationToken = default);
 }
 
+public sealed record BeginSyncHandoverCommand(
+    Guid RequestId,
+    Guid SourceClientId,
+    long ExpectedRevision);
+
+public sealed record BeginSyncHandoverResult(
+    Guid HandoverId,
+    string OneTimeCode,
+    long FrozenRevision,
+    DateTime ExpiresAtUtc);
+
+public sealed record CompleteSyncHandoverCommand(
+    Guid HandoverId,
+    string OneTimeCode,
+    Guid TargetClientId,
+    long CaughtUpRevision);
+
+public sealed record CompleteSyncHandoverResult(
+    Guid HandoverId,
+    Guid TargetClientId,
+    long FrozenRevision,
+    bool IsActiveWriter,
+    DateTime CompletedAtUtc);
+
+public sealed record CancelSyncHandoverCommand(
+    Guid HandoverId,
+    Guid SourceClientId);
+
+public interface ISyncHandoverService
+{
+    Task<BeginSyncHandoverResult> BeginAsync(
+        BeginSyncHandoverCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task<CompleteSyncHandoverResult> CompleteAsync(
+        CompleteSyncHandoverCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task CancelAsync(
+        CancelSyncHandoverCommand command,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class SyncHandoverException(string code, string message, int statusCode = 409)
+    : Exception(message)
+{
+    public string Code { get; } = code;
+    public int StatusCode { get; } = statusCode;
+}
+
 public abstract class SyncMutationException(string code, string message) : Exception(message)
 {
     public string Code { get; } = code;

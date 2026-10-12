@@ -9,6 +9,7 @@ import '../../models/local/local_mutation.dart';
 import '../../services/api/api_client.dart';
 import '../../services/local/local_database.dart';
 import '../../services/local/pending_handover_secret_store.dart';
+import 'local_conflict_recovery.dart';
 import 'local_sync_store.dart';
 import 'native_handover_repository.dart';
 import 'sync_payload_codec.dart';
@@ -19,6 +20,7 @@ enum SyncRunState {
   idle,
   busy,
   synced,
+  retryPending,
   authBlocked,
   inactiveClient,
   upgradeRequired,
@@ -29,17 +31,40 @@ class SyncRunReport {
     required this.state,
     required this.pushed,
     required this.pulledBatches,
+    this.nextRetryAtUtc,
   });
 
   final SyncRunState state;
   final int pushed;
   final int pulledBatches;
+  final DateTime? nextRetryAtUtc;
 }
 
 /// Sync v2 coordinator over the existing API client and durable SQLite store.
 /// The pull path is available to registered non-writers; only the active writer
 /// is allowed to push mutations.
-class SyncRepository {
+abstract interface class MobileSyncActions {
+  Future<PendingHandoverRecord?> readPendingHandover();
+  Future<BeginSyncHandoverResponse> beginHandover({required String requestId});
+  Future<CompleteSyncHandoverResponse> completeHandover({
+    required String handoverId,
+    required String oneTimeCode,
+    required int frozenRevision,
+    required String sourceClientId,
+    required DateTime expiresAtUtc,
+  });
+  Future<bool> recoverExpiredTargetHandover();
+  Future<void> cancelHandover({required String handoverId});
+  Future<List<LocalConflictRecord>> readConflicts();
+  Future<void> acceptConflictServerState(String conflictId);
+  Future<String> retryConflictOnCurrentServerVersion({
+    required String conflictId,
+    required String replacementMutationId,
+    required DateTime createdAtUtc,
+  });
+}
+
+class SyncRepository implements MobileSyncActions {
   SyncRepository({
     required this.store,
     required this.api,
@@ -71,15 +96,52 @@ class SyncRepository {
     final result = await synchronize();
     if (result.state == SyncRunState.authBlocked ||
         result.state == SyncRunState.upgradeRequired ||
-        result.state == SyncRunState.inactiveClient) {
+        result.state == SyncRunState.inactiveClient ||
+        result.state == SyncRunState.retryPending) {
       throw StateError(
         'The source client cannot begin handover in its current sync state.',
       );
     }
   }
 
+  @override
   Future<PendingHandoverRecord?> readPendingHandover() =>
       _handover.readPendingHandover();
+
+  @override
+  Future<List<LocalConflictRecord>> readConflicts() async {
+    await store.ensureAccountBound();
+    final rows = await (store.database.select(
+      store.database.localConflicts,
+    )..orderBy([(row) => OrderingTerm.desc(row.createdAtUtc)])).get();
+    return rows
+        .map(
+          (row) => LocalConflictRecord(
+            conflictId: row.conflictId,
+            aggregateType: row.aggregateType,
+            aggregateId: row.aggregateId,
+            createdAtUtc: DateTime.parse(row.createdAtUtc).toUtc(),
+            code: row.code,
+            detail: jsonDecode(row.detailJson),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  @override
+  Future<void> acceptConflictServerState(String conflictId) =>
+      store.acceptConflictServerState(conflictId);
+
+  @override
+  Future<String> retryConflictOnCurrentServerVersion({
+    required String conflictId,
+    required String replacementMutationId,
+    required DateTime createdAtUtc,
+  }) => store.retryConflictOnCurrentServerVersion(
+    conflictId: conflictId,
+    replacementMutationId: replacementMutationId,
+    createdAtUtc: createdAtUtc,
+  );
 
   Future<SyncRunReport> synchronize({
     bool takeOverWriting = false,
@@ -182,8 +244,15 @@ class SyncRepository {
       );
     }
     if (session.userId.toLowerCase() != store.accountId.toLowerCase()) {
-      throw StateError(
-        'Authenticated API session does not match the local account database.',
+      await _markStatuses(
+        {LocalMutationStatus.pending, LocalMutationStatus.syncing},
+        LocalMutationStatus.authBlocked,
+        'account_changed',
+      );
+      return const SyncRunReport(
+        state: SyncRunState.authBlocked,
+        pushed: 0,
+        pulledBatches: 0,
       );
     }
     final clientId = await installationIdentity.getOrCreateInstallationId();
@@ -205,6 +274,18 @@ class SyncRepository {
           {LocalMutationStatus.pending, LocalMutationStatus.syncing},
           LocalMutationStatus.authBlocked,
           'authentication_required',
+        );
+        return const SyncRunReport(
+          state: SyncRunState.authBlocked,
+          pushed: 0,
+          pulledBatches: 0,
+        );
+      }
+      if (error.code == 'account_changed') {
+        await _markStatuses(
+          {LocalMutationStatus.pending, LocalMutationStatus.syncing},
+          LocalMutationStatus.authBlocked,
+          error.code,
         );
         return const SyncRunReport(
           state: SyncRunState.authBlocked,
@@ -282,7 +363,15 @@ class SyncRepository {
     try {
       pulled = await _pullAll();
     } on ApiException catch (error) {
-      if (error.statusCode == 401) {
+      if (error.statusCode == 401 || error.code == 'account_changed') {
+        final code = error.code == 'account_changed'
+            ? error.code
+            : 'authentication_required';
+        await _markStatuses(
+          {LocalMutationStatus.pending, LocalMutationStatus.syncing},
+          LocalMutationStatus.authBlocked,
+          code,
+        );
         return SyncRunReport(
           state: SyncRunState.authBlocked,
           pushed: pushed,
@@ -291,9 +380,30 @@ class SyncRepository {
       }
       rethrow;
     }
-    final state = !registration.isActiveWriter
-        ? SyncRunState.inactiveClient
-        : (pushed > 0 || pulled > 0 ? SyncRunState.synced : SyncRunState.idle);
+    if (!registration.isActiveWriter) {
+      return SyncRunReport(
+        state: SyncRunState.inactiveClient,
+        pushed: pushed,
+        pulledBatches: pulled,
+      );
+    }
+    final pending = (await store.readOutbox()).where(
+      (mutation) => mutation.status == LocalMutationStatus.pending,
+    );
+    if (pending.isNotEmpty) {
+      final retryAt = pending
+          .map((mutation) => mutation.nextAttemptAtUtc ?? timestamp)
+          .reduce((left, right) => left.isBefore(right) ? left : right);
+      return SyncRunReport(
+        state: SyncRunState.retryPending,
+        pushed: pushed,
+        pulledBatches: pulled,
+        nextRetryAtUtc: retryAt,
+      );
+    }
+    final state = pushed > 0 || pulled > 0
+        ? SyncRunState.synced
+        : SyncRunState.idle;
     return SyncRunReport(state: state, pushed: pushed, pulledBatches: pulled);
   }
 
@@ -312,10 +422,12 @@ class SyncRepository {
     }
   }
 
+  @override
   Future<BeginSyncHandoverResponse> beginHandover({
     required String requestId,
   }) => _handover.begin(requestId: requestId);
 
+  @override
   Future<CompleteSyncHandoverResponse> completeHandover({
     required String handoverId,
     required String oneTimeCode,
@@ -330,17 +442,28 @@ class SyncRepository {
     expiresAtUtc: expiresAtUtc,
   );
 
+  @override
+  Future<bool> recoverExpiredTargetHandover() =>
+      _handover.recoverExpiredTargetHandover();
+
+  @override
   Future<void> cancelHandover({required String handoverId}) =>
       _handover.cancel(handoverId: handoverId);
   Future<void> _assertCurrentSessionMatchesStore() async {
     await store.ensureAccountBound();
     final session = await api.getSession();
     if (session == null) {
-      throw StateError('An authenticated session is required for handover.');
+      throw const ApiException(
+        statusCode: 401,
+        code: 'authentication_required',
+        message: 'An authenticated session is required for handover.',
+      );
     }
     if (session.userId.toLowerCase() != store.accountId.toLowerCase()) {
-      throw StateError(
-        'Authenticated API session does not match the local account database.',
+      throw const ApiException(
+        statusCode: 409,
+        code: 'account_changed',
+        message: 'Authenticated API session does not match the local account database.',
       );
     }
   }
@@ -423,11 +546,13 @@ class SyncRepository {
           expectedAccountId: store.accountId,
         );
       } on ApiException catch (error) {
-        if (error.statusCode == 401) {
+        if (error.statusCode == 401 || error.code == 'account_changed') {
           await _markStatuses(
             {LocalMutationStatus.pending, LocalMutationStatus.syncing},
             LocalMutationStatus.authBlocked,
-            'authentication_required',
+            error.code == 'account_changed'
+                ? error.code
+                : 'authentication_required',
           );
         }
         rethrow;
@@ -685,6 +810,14 @@ class SyncRepository {
     ApiException error,
     DateTime now,
   ) async {
+    if (error.code == 'account_changed') {
+      await _markStatuses(
+        {LocalMutationStatus.pending, LocalMutationStatus.syncing},
+        LocalMutationStatus.authBlocked,
+        error.code,
+      );
+      return SyncRunState.authBlocked;
+    }
     if (error.statusCode == 401) {
       await _markStatuses(
         {LocalMutationStatus.pending, LocalMutationStatus.syncing},

@@ -1,11 +1,12 @@
 import { restoreServerSnapshot } from "./aggregate-envelope.ts";
 import type { AccountDatabase, LocalResourceRecord, OutboxRecord } from "./database.ts";
+import { withLocalEditLock } from "./handover-locks.ts";
 
 export async function acceptConflictServerState(
   database: AccountDatabase,
   conflictId: string,
 ): Promise<void> {
-  await database.transaction(
+  await withLocalEditLock(database, () => database.transaction(
     "rw",
     [database.conflicts, database.outbox, database.goals, database.checkIns,
       database.customExercises, database.templates, database.rotation, database.workouts,
@@ -22,7 +23,7 @@ export async function acceptConflictServerState(
       await database.outbox.where("aggregateKey").equals(conflict.aggregateKey).delete();
       await database.conflicts.delete(conflictId);
     },
-  );
+  ));
 }
 
 export async function retryConflictOnCurrentServerVersion(
@@ -30,7 +31,7 @@ export async function retryConflictOnCurrentServerVersion(
   conflictId: string,
 ): Promise<string> {
   let replacementId = "";
-  await database.transaction(
+  await withLocalEditLock(database, () => database.transaction(
     "rw",
     [database.conflicts, database.outbox, database.tombstones, database.goals, database.checkIns,
       database.customExercises, database.templates, database.rotation, database.workouts,
@@ -75,7 +76,7 @@ export async function retryConflictOnCurrentServerVersion(
       });
       await database.conflicts.delete(conflictId);
     },
-  );
+  ));
   return replacementId;
 }
 

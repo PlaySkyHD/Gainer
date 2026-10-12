@@ -1,5 +1,6 @@
 import type { AccountDatabase } from "./database.ts";
 import { runSync, type SyncRunResult, type SyncTransport } from "./sync-engine.ts";
+import { syncLockName, withBrowserLock } from "./handover-locks.ts";
 
 const leaseKey = "sync-lease";
 
@@ -15,6 +16,27 @@ export async function withSyncLease<T>(
   now: Date = new Date(),
   durationMs = 30_000,
 ): Promise<T | undefined> {
+  return withBrowserLock(syncLockName(database), async () => {
+    const acquired = await acquireDexieLease(database, ownerId, now, durationMs);
+    if (!acquired) return undefined;
+    try {
+      return await action();
+    } finally {
+      await releaseDexieLease(database, ownerId);
+    }
+  }, { ifAvailable: true });
+}
+
+export async function withSyncLock<T>(database: AccountDatabase, action: () => Promise<T>): Promise<T> {
+  return withBrowserLock(syncLockName(database), action);
+}
+
+async function acquireDexieLease(
+  database: AccountDatabase,
+  ownerId: string,
+  now: Date,
+  durationMs: number,
+): Promise<boolean> {
   const acquired = await database.transaction("rw", database.syncMeta, async () => {
     const current = (await database.syncMeta.get(leaseKey))?.value as LeaseValue | undefined;
     if (current && current.ownerId !== ownerId && current.expiresAtUtc > now.toISOString()) return false;
@@ -24,15 +46,14 @@ export async function withSyncLease<T>(
     });
     return true;
   });
-  if (!acquired) return undefined;
-  try {
-    return await action();
-  } finally {
-    await database.transaction("rw", database.syncMeta, async () => {
-      const current = (await database.syncMeta.get(leaseKey))?.value as LeaseValue | undefined;
-      if (current?.ownerId === ownerId) await database.syncMeta.delete(leaseKey);
-    });
-  }
+  return acquired;
+}
+
+async function releaseDexieLease(database: AccountDatabase, ownerId: string): Promise<void> {
+  await database.transaction("rw", database.syncMeta, async () => {
+    const current = (await database.syncMeta.get(leaseKey))?.value as LeaseValue | undefined;
+    if (current?.ownerId === ownerId) await database.syncMeta.delete(leaseKey);
+  });
 }
 
 export class ForegroundSyncScheduler {

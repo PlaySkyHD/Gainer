@@ -9,6 +9,7 @@ import '../../features/body/health/health_review_screen.dart';
 import '../../features/coach/coach_screen.dart';
 import '../../features/nutrition/nutrition_screen.dart';
 import '../../features/progress/progress_screen.dart';
+import '../../features/sync/sync_screen.dart';
 import '../../features/training/training_screen.dart';
 import '../view_models/mobile_shell_view_model.dart';
 
@@ -90,6 +91,22 @@ class _MoreScreen extends StatelessWidget {
             CupertinoListSection.insetGrouped(
               children: [
                 CupertinoListTile(
+                  title: const Text('Sync & Gerätewechsel'),
+                  leading: const Icon(CupertinoIcons.arrow_2_squarepath),
+                  trailing: const CupertinoListTileChevron(),
+                  onTap: () => Navigator.of(context).push(
+                    CupertinoPageRoute<void>(
+                      builder: (_) => SyncScreen(
+                        sync: account.sync,
+                        isOnline: account.online,
+                        accountId: account.store.accountId,
+                        apiOrigin: account.api.configuration.canonicalApiOrigin,
+                        isScopeActive: account.isSessionActive,
+                      ),
+                    ),
+                  ),
+                ),
+                CupertinoListTile(
                   title: const Text('HealthKit-Prüfung'),
                   leading: const Icon(CupertinoIcons.heart),
                   trailing: const CupertinoListTileChevron(),
@@ -160,6 +177,8 @@ class _SyncButtonState extends State<_SyncButton> {
       setState(
         () => _status = switch (result.state) {
           SyncRunState.synced => 'Änderungen synchronisiert.',
+          SyncRunState.retryPending =>
+            'Änderungen warten auf einen erneuten Sync-Versuch.',
           SyncRunState.authBlocked => 'Bitte melde dich erneut an; lokale Änderungen bleiben gespeichert.',
           SyncRunState.upgradeRequired =>
             'Aktualisiere die App, um die Synchronisierung fortzusetzen.',

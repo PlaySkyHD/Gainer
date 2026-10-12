@@ -7,6 +7,7 @@ import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/repositories/training/training_repository.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/domain/models/training/training.dart';
+import 'package:gainer_mobile/ui/features/training/training_view_model.dart';
 
 const accountId = '00000000-0000-4000-8000-000000000002';
 
@@ -37,6 +38,21 @@ class RecordingTimerPort implements RestTimerNotificationPort {
     required DateTime targetUtc,
   }) async {
     scheduled.add(targetUtc);
+  }
+}
+
+class ThrowingTimerPort implements RestTimerNotificationPort {
+  @override
+  Future<void> cancel({required String workoutId}) async {
+    throw StateError('notification unavailable');
+  }
+
+  @override
+  Future<void> schedule({
+    required String workoutId,
+    required DateTime targetUtc,
+  }) async {
+    throw StateError('notification unavailable');
   }
 }
 
@@ -94,6 +110,74 @@ void main() {
       expect(planning.templates.single.value.items.single.plannedSets, 4);
     },
   );
+
+  test('OS timer failures do not undo or mask a completed set write', () async {
+    var notificationFailures = 0;
+    late final TrainingViewModel viewModel;
+    final timerRepository = TrainingRepository(
+      store: repository.store,
+      catalog: FixtureCatalog(),
+      notifications: ThrowingTimerPort(),
+      ids: () => testId(id++),
+      clock: () => now,
+      onNotificationUnavailable: () {
+        notificationFailures++;
+        viewModel.reportNotificationUnavailable();
+      },
+    );
+    viewModel = TrainingViewModel(timerRepository);
+    addTearDown(viewModel.dispose);
+    await viewModel.load();
+
+    final exerciseId = await timerRepository.createCustomExercise(
+      const ExerciseValues(name: 'Bankdrücken'),
+    );
+    final templateId = await timerRepository.saveTemplate(
+      name: 'Drücken',
+      items: [
+        TrainingTemplateItem(
+          id: testId(950),
+          exerciseId: exerciseId,
+          plannedSets: 1,
+          minimumRepetitions: 5,
+          maximumRepetitions: 8,
+          targetRir: 2,
+          restSeconds: 90,
+          notes: null,
+        ),
+      ],
+    );
+    await viewModel.start(templateId);
+    final workoutId = viewModel.runningWorkoutId!;
+    final exercise = viewModel.runningWorkout!.exercises.single;
+    final set = exercise.sets.single;
+
+    await viewModel.logSet(
+      exerciseId: exercise.id,
+      setId: set.id,
+      weightKg: 60,
+      repetitions: 6,
+      rir: 2,
+      notes: null,
+      complete: true,
+    );
+
+    expect(viewModel.errorMessage, isNull);
+    expect(viewModel.notificationNotice, contains('Benachrichtigung'));
+    expect(notificationFailures, 1);
+    final persisted = (await timerRepository.readRunningWorkout())!;
+    expect(persisted.isRunning, isTrue);
+    expect(persisted.exercises.single.sets.single.isCompleted, isTrue);
+    expect(
+      await repository.store.readOutbox(aggregateType: 'workout'),
+      isNotEmpty,
+    );
+
+    await viewModel.finish();
+    expect(viewModel.errorMessage, isNull);
+    expect(notificationFailures, 2);
+    expect((await timerRepository.readHistory()).single.id, workoutId);
+  });
 
   test('completed workout atomically updates rotation and remains immutable history', () async {
     final exerciseId = await repository.createCustomExercise(
