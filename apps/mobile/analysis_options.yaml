@@ -1,0 +1,12 @@
+analyzer:
+  exclude:
+    - build/**
+    - ios/**
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    always_declare_return_types: true
+    avoid_print: true
+    directives_ordering: true
+    prefer_single_quotes: true

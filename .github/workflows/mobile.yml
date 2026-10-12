@@ -1,0 +1,240 @@
+name: Mobile CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_signed_ipa:
+        description: Build and attach a signed IPA (does not upload to Apple)
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-simulator:
+    name: Stable Flutter checks and iOS Simulator build
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Select and verify pinned Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(python3 -c 'import json; print(json.load(open("apps/mobile/tool/toolchain.json"))["xcode"]["version"])')"
+          developer_dir="/Applications/Xcode_${expected}.app/Contents/Developer"
+          if [[ ! -d "$developer_dir" ]]; then
+            echo "::error::Pinned Xcode $expected was not found at $developer_dir"
+            ls -d /Applications/Xcode*.app 2>/dev/null || true
+            exit 1
+          fi
+          sudo xcode-select --switch "$developer_dir"
+          actual="$(xcodebuild -version | awk '/^Xcode / { print $2; exit }')"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::Expected Xcode $expected, found $actual"
+            exit 1
+          fi
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Install verified Flutter stable SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="$RUNNER_TEMP/flutter-sdk"
+          archive="$RUNNER_TEMP/flutter_macos_3.47.7-stable.zip"
+          mkdir -p "$sdk_root"
+          curl --fail --location --retry 3 \
+            'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.47.7-stable.zip' \
+            --output "$archive"
+          echo '17d39b000a5d0681e3f7b61a105a36f6f31dd41ab9073f625fd466f38035f901  '"$archive" | shasum -a 256 --check
+          unzip -q "$archive" -d "$sdk_root"
+          echo "$sdk_root/flutter/bin" >> "$GITHUB_PATH"
+          "$sdk_root/flutter/bin/flutter" --version --machine
+          "$sdk_root/flutter/bin/flutter" doctor --version
+
+      - name: Verify mobile package and build iOS Simulator app
+        shell: pwsh
+        env:
+          GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
+        run: ./scripts/Verify-Mobile.ps1 -BuildIosSimulator
+
+      - name: Upload shell preview for visual review
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mobile-shell-preview
+          path: artifacts/mobile-preview/mobile-shell-390x844.png
+          if-no-files-found: error
+          retention-days: 7
+
+  signed-ipa:
+    name: Manually requested signed IPA (no Apple upload)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_signed_ipa }}
+    needs: ios-simulator
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: ios-beta
+    steps:
+      - name: Require signing configuration
+        shell: bash
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+          IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_TEAM_ID IOS_BUNDLE_ID IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 IOS_DISTRIBUTION_CERTIFICATE_PASSWORD IOS_PROVISIONING_PROFILE_BASE64; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required secret $name is not configured for the ios-beta environment."
+              exit 1
+            fi
+          done
+          if [[ ! "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo '::error::APPLE_TEAM_ID must be the 10-character Apple Developer Team ID.'
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Select and verify pinned Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(python3 -c 'import json; print(json.load(open("apps/mobile/tool/toolchain.json"))["xcode"]["version"])')"
+          developer_dir="/Applications/Xcode_${expected}.app/Contents/Developer"
+          test -d "$developer_dir" || { echo "::error::Pinned Xcode $expected is unavailable."; exit 1; }
+          sudo xcode-select --switch "$developer_dir"
+          actual="$(xcodebuild -version | awk '/^Xcode / { print $2; exit }')"
+          [[ "$actual" == "$expected" ]] || { echo "::error::Expected Xcode $expected, found $actual"; exit 1; }
+          xcodebuild -version
+
+      - name: Install verified Flutter stable SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="$RUNNER_TEMP/flutter-sdk"
+          archive="$RUNNER_TEMP/flutter_macos_3.47.7-stable.zip"
+          mkdir -p "$sdk_root"
+          curl --fail --location --retry 3 \
+            'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.47.7-stable.zip' \
+            --output "$archive"
+          echo '17d39b000a5d0681e3f7b61a105a36f6f31dd41ab9073f625fd466f38035f901  '"$archive" | shasum -a 256 --check
+          unzip -q "$archive" -d "$sdk_root"
+          echo "$sdk_root/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Install signing certificate and provisioning profile
+        shell: bash
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+          IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/gainer-signing.keychain-db"
+          p12="$RUNNER_TEMP/distribution.p12"
+          profile="$RUNNER_TEMP/profile.mobileprovision"
+          profile_plist="$RUNNER_TEMP/profile.plist"
+          export_options="$RUNNER_TEMP/ExportOptions.plist"
+          keychain_password="$(openssl rand -hex 24)"
+          printf '%s' "$IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64" | base64 --decode > "$p12"
+          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$p12" -k "$keychain" -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security cms -D -i "$profile" > "$profile_plist"
+          profile_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$profile_plist")"
+          profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$profile_plist")"
+          profile_bundle="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$profile_plist" | sed "s/^${APPLE_TEAM_ID}\.//")"
+          [[ "$profile_team" == "$APPLE_TEAM_ID" ]] || { echo '::error::Provisioning profile Team ID mismatch.'; exit 1; }
+          [[ "$profile_bundle" == "$IOS_BUNDLE_ID" ]] || { echo '::error::Provisioning profile bundle ID mismatch.'; exit 1; }
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")"
+          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+          cat > "$export_options" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>provisioningProfiles</key><dict><key>$IOS_BUNDLE_ID</key><string>$profile_name</string></dict>
+          </dict></plist>
+          EOF
+
+      - name: Verify pinned Flutter package and generated bindings
+        shell: pwsh
+        env:
+          GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
+        run: ./scripts/Verify-Mobile.ps1
+
+      - name: Build and export signed IPA
+        shell: bash
+        working-directory: apps/mobile
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+        run: |
+          set -euo pipefail
+          profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
+          flutter build ios --config-only --release --no-codesign
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Gainer.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$profile_name" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY='Apple Distribution' \
+            archive
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Gainer.xcarchive" \
+            -exportPath "$RUNNER_TEMP/ipa" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Attach signed IPA for manual review
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: gainer-ios-signed-ipa
+          path: ${{ runner.temp }}/ipa/*.ipa
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove signing material
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          keychain="$RUNNER_TEMP/gainer-signing.keychain-db"
+          security delete-keychain "$keychain" >/dev/null 2>&1
+          profile_plist="$RUNNER_TEMP/profile.plist"
+          if [[ -f "$profile_plist" ]]; then
+            profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist" 2>/dev/null)"
+            if [[ -n "$profile_uuid" ]]; then
+              rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+            fi
+          fi
+          rm -f "$RUNNER_TEMP/distribution.p12" "$RUNNER_TEMP/profile.mobileprovision" \
+            "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/ExportOptions.plist"
