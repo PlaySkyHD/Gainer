@@ -4,7 +4,7 @@ The MVP accepts the permissive MIT, ISC, BSD, Apache-2.0, 0BSD, BlueOak, CC0, CC
 
 CI rejects packages with missing or newly introduced license expressions until this file and the explicit allowlists are reviewed. It also fails on RAG/pgvector dependencies and unapproved exercise media. Automated CVE scanning of dependencies and container images is intentionally not a release gate for this private MVP; dependency versions remain locked and updates are reviewed separately.
 
-`SixLabors.ImageSharp` 3.1.12 is a direct dependency used only to identify and re-encode uploaded meal images in the Linux API container. It is distributed under the Six Labors Split License 1.0. This private MVP qualifies for its Apache-2.0 grant only while the consuming individual/company remains below USD 1M annual gross revenue (or another listed qualifying condition applies); otherwise a Six Labors commercial license is required before deployment. Version 4 is intentionally not used because direct dependencies require build-time license enforcement.
+Uploaded meal images are identified, dimension-checked and re-encoded by `SkiaSharp` 4.153.1, under MIT. The API executable references `SkiaSharp.NativeAssets.Linux.NoDependencies` 4.153.1, also under MIT, for its Linux container; it bundles the required native Skia runtime and its third-party notices. Both packages are version-pinned and checked by the NuGet license policy. Raw, DNG and other unaccepted formats remain rejected; the accepted JPEG, PNG and WebP inputs are decoded to pixels and emitted as metadata-free JPEGs.
 
 ## Open Food Facts data
 
