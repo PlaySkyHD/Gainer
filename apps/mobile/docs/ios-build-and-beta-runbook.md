@@ -1,18 +1,18 @@
-# iOS-Build-, Device- und private Beta-Runbook
+# iOS-Build-, Device- und Beta-Runbook
 
 Stand: 12. Oktober 2026. Nutzer hat ein iPhone, keinen Mac und einen privaten Apple Developer Account. iOS-Builds laufen über GitHub CI/CD mit macOS Runner. Kein Upload oder Versand geschieht durch diese Vorbereitung.
 
-Repository: [PlaySkyHD/Gainer](https://github.com/PlaySkyHD/Gainer.git). Windows + iPhone ermöglicht keinen lokalen nativen iOS/Xcode-Build oder Codesign. Windows-Checks ersetzen keinen iOS-Nachweis.
+Repository: [PlaySkyHD/Gainer](https://github.com/PlaySkyHD/Gainer.git), öffentlich, MIT-lizenziert. Windows + iPhone ermöglicht keinen lokalen nativen iOS/Xcode-Build oder Codesign. Windows-Checks ersetzen keinen iOS-Nachweis.
 
-Bootstrap hat die CI-Zieltoolchain festgelegt: Flutter **3.47.7 stable**, Dart **3.13.5**, GitHub Runner **macos-15**, Xcode **26.3**. Der SDK-Pfad `artifacts/flutter-sdk/3.47.7/flutter` ist separat installiert; das globale Flutter-Master-SDK bleibt unverändert. Der Workflow prüft die Toolchain und baut den Simulator. Eine erfolgreiche macOS-Run-URL und physische iPhone-Nachweise sind noch offen.
+Die CI-Zieltoolchain ist Flutter **3.47.7 stable**, Dart **3.13.5**, GitHub Runner **macos-15**, Xcode **26.3**. Der SDK-Pfad `artifacts/flutter-sdk/3.47.7/flutter` ist separat installiert; das globale Flutter-Master-SDK bleibt unverändert. Der erste macOS-Simulatorlauf war erfolgreich: [GitHub Actions run 38270878066](https://github.com/PlaySkyHD/Gainer/actions/runs/38270878066). Er belegt den damaligen Bootstrapstand; die aktuelle Widget-Extension und die späteren Änderungen sind durch diesen Lauf nicht abgenommen. Physische iPhone-Nachweise sind offen.
 
 ## Workflowaufteilung
 
-1. **PR/Push CI, ohne Signatur:** macOS runner mit gepinnter Flutter Stable-/Dart-/Xcode-Toolchain, `flutter pub get --enforce-lockfile`, Format, Analyze, Unit-/Widget-Tests, Simulatorbuild und Backend-/PWA-Regressionchecks. Artefakte bleiben im CI, keine Verteilung.
-2. **Signierter Vorbereitungsbuild:** ausschließlich `workflow_dispatch`, GitHub Environment `ios-beta` falls verfügbar; Ref/Commit explizit wählen. Zertifikat/Profile importieren und signierte IPA als zugriffsbeschränktes CI-Artefakt exportieren. **Kein App Store Connect Upload.**
+1. **PR/Push CI, ohne Signatur:** macOS runner mit gepinnter Flutter Stable-/Dart-/Xcode-Toolchain, `flutter pub get --enforce-lockfile`, Format, Analyze, Unit-/Widget-Tests, Simulatorbuild und Backend-/PWA-Regressionchecks. Artefakte bleiben im CI; ein GitHub Actions-Artefakt ist nicht als privat zu behandeln.
+2. **Signierter Vorbereitungsbuild:** ausschließlich manueller `workflow_dispatch` im GitHub Environment `ios-beta`; Workflow verlangt `main` und prüft, dass der Commit von `origin/main` abstammt. Signing-Secrets erst nach Environment-Freigabe. Der Export ist eine IPA ohne Upload. Da das Repository öffentlich ist, kann ein IPA-Artefakt für Repository-Leser herunterladbar sein; Zugriffspolitik/Verteilung ist vor einem signierten Lauf festzulegen.
 3. **TestFlight:** separater Workflow/Schritt und gesonderte Freigabe. App Store Connect API-Key erst dafür erforderlich. IPA-Build darf keine Upload-Aktion enthalten.
 
-Private-Repos unterstützen Required Reviewers abhängig von GitHub-Plan/Org-Einstellungen; das darf nicht vorausgesetzt werden. Manueller Dispatch ist die Basis. Tatsächlich verfügbare Environment-Regeln vor Nutzung prüfen.
+Beobachtete GitHub-Einstellungen: Repository public/MIT; Environment `ios-beta` ist auf `main` beschränkt und verlangt manuelle Freigabe durch `PlaySkyHD`. Der manuelle Dispatch ist der Ausgangspunkt. Der öffentliche Artefaktzugriff bleibt vor einem signierten Lauf zu klären.
 
 ## Benötigte GitHub-Konfiguration
 
@@ -20,15 +20,14 @@ Werte fehlen und dürfen nicht geraten werden. GitHub Environment `ios-beta` ver
 
 | Name | Typ | Verwendung und offener Beschaffungsnachweis |
 |---|---|---|
-| `APPLE_TEAM_ID` | Variable/Secret | Teamkennung vom privaten Developer Account bestätigen; offen. |
-| `IOS_BUNDLE_ID` | Variable | App Bundle ID auswählen und im Developer Portal anlegen; offen. |
-| `IOS_WIDGET_BUNDLE_ID` | Variable | Extension Bundle ID passend zum App-Namespace festlegen; offen. |
-| `IOS_APP_GROUP_ID` | Variable | App Group auswählen, im Portal registrieren und Capability zuordnen; offen. |
+| `APPLE_TEAM_ID` | Secret | Teamkennung vom privaten Developer Account bestätigen; offen. |
+| `IOS_BUNDLE_ID` | Secret | App Bundle ID auswählen und im Developer Portal anlegen; offen. |
+| `IOS_WIDGET_BUNDLE_ID` | Secret | Extension Bundle ID passend zum App-Namespace festlegen; offen. |
+| `IOS_APP_GROUP_ID` | Secret | App Group auswählen, im Portal registrieren und Capability zuordnen; offen. |
 | `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64` | Secret | Canonical Workflowname für Apple Distribution `.p12` Base64; Zertifikat noch zu erzeugen/exportieren. |
 | `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` | Secret | Canonical Workflowname für P12-Passwort; nie echoen. |
 | `IOS_PROVISIONING_PROFILE_BASE64` | Secret | Canonical Workflowname für App-Profil, passend zu IDs, Entitlements und Beta-Verfahren. |
-| `IOS_WIDGET_PROVISION_PROFILE_BASE64` | Secret | Extension-Profil, soweit Signingweg separat erfordert. |
-| `IOS_EXPORT_OPTIONS_PLIST_BASE64` | optionales zukünftiges Secret; aktuelle CI erzeugt die Datei zur Laufzeit | Falls später als Input benötigt: Methode/Team/IDs/Profiles konsistent halten. Der aktuelle Workflow benötigt keinen Wert. |
+| `IOS_WIDGET_PROVISIONING_PROFILE_BASE64` | Secret | Provisioning-Profil für die Widget-Extension. |
 | `APP_STORE_CONNECT_KEY_ID` | später, Secret/Variable | Nur für separaten Upload, derzeit nicht benötigt. |
 | `APP_STORE_CONNECT_ISSUER_ID` | später, Secret/Variable | Nur für separaten Upload, derzeit nicht benötigt. |
 | `APP_STORE_CONNECT_PRIVATE_KEY` | später, Secret | `.p8` erst anlegen, wenn Upload ausdrücklich freigegeben ist. |
@@ -39,7 +38,8 @@ Bundle-/App-Group-IDs und Signiermaterial fehlen. HealthKit entitlement, Usage D
 
 | Gate | Umgebung | Nachweis | Status |
 |---|---|---|---|
-| Stable Flutter/Dart/Xcode festgelegt, Lockfile-Restore | GitHub macOS runner | Versionen, `flutter pub get --enforce-lockfile`, erfolgreiche Run-URL | Versionen sind gepinnt; erfolgreicher CI-Run bleibt offen. |
+| Bootstrap-Simulatorbuild | GitHub macOS runner | [Run 38270878066](https://github.com/PlaySkyHD/Gainer/actions/runs/38270878066) | Erfolgreich für den damaligen Bootstrapstand; aktuelle Extension/Änderungen offen. |
+| Stable Flutter/Dart/Xcode festgelegt, Lockfile-Restore | GitHub macOS runner | Versionen, `flutter pub get --enforce-lockfile`, erfolgreicher aktueller Run | Versionen sind gepinnt; aktueller vollständiger Run bleibt offen. |
 | Format/Analyze/Unit-/Widget-/API-Integrationstests | macOS runner + Backend/PWA jobs | Run-URL, Commit SHA, secret-free Reports | Offen. |
 | iOS Simulator build/test | macOS runner | xcodebuild/Flutter-Artefakt, Simulatorziel und SDK-Version | Offen; kein Gerätetest. |
 | Installation und Basisnavigation | Nutzer-iPhone | Modell/iOS-Version, Build SHA, Journey-Screens ohne Kontodaten | iPhone vorhanden; Modell/OS nicht dokumentiert. |
@@ -47,16 +47,16 @@ Bundle-/App-Group-IDs und Signiermaterial fehlen. HealthKit entitlement, Usage D
 | Kamera/Picker, Upload/Review, Notification Resume | iPhone | Permission-Fälle, synthetisches Testbild und Retry-Ergebnis | Offen. |
 | HealthKit getrennt Read/Write, Konto A/B, Crash-Retry | iPhone + synthetische Werte | Review/Consent und Testfälle; keine realen Gesundheitsdaten in Artefakten | Offen; erster iOS-Release erfordert dies. |
 | Widget, Live Activity, Shortcuts | iPhone, Dynamic-Island und Fallback soweit Hardware verfügbar | Routes, stale/logout/A→B, VoiceOver, neutrale Anzeige | Offen; erster iOS-Release erfordert dies. |
-| Signierte private IPA | manueller `workflow_dispatch` | Run-ID, Commit SHA, IPA SHA-256, Entitlements/Profile-Validierung ohne Secretwerte | Offen; Signierwerte fehlen. |
+| Signierte IPA | manueller `workflow_dispatch` | Run-ID, Commit SHA, IPA SHA-256, Entitlements/Profile-Validierung ohne Secretwerte | Offen; Signierwerte fehlen. Vor Lauf muss der mögliche Download durch Repository-Leser bewertet sein. |
 | TestFlight Upload | separater freigegebener Schritt | Upload-/Buildstatus und private Testergruppe | Nicht ausgeführt, kein Upload autorisiert. |
 
 Simulator beweist keine HealthKit-, Kamera-, Notification-, Widget-/Activity- oder Signierfunktion am Gerät. iOS 17+ ist Mindestmatrix; Gerät/OS je Nachweis protokollieren. Tests auf einem Gerät mit und ohne Dynamic Island soweit verfügbar.
 
 ## Private Beta vorbereiten (ohne Upload)
 
-1. Team, App-/Extension-Bundle-ID, App Group und Capabilities festlegen; nur dann GitHub `ios-beta` konfigurieren.
+1. Team, App-/Extension-Bundle-ID, App Group und Capabilities festlegen; danach GitHub `ios-beta` mit den beobachteten `main`-/Reviewer-Regeln nutzen.
 2. Erst unsignierte CI stabilisieren; dann Profile/Entitlements/ExportOptions gegen dieselben IDs prüfen. Secrets nicht als workflow_dispatch-Eingaben verwenden und nie loggen.
-3. Manuell IPA vorbereiten, eingeschränktes Artefakt mit kurzer Aufbewahrung; Run-ID, SHA, IPA-SHA256 dokumentieren.
+3. Einen signierten Lauf erst starten, wenn die Zugriffspolitik für IPA-Artefakte im öffentlichen Repository entschieden ist. Das Artefakt nicht als privat oder zugriffsbeschränkt bezeichnen; Run-ID, SHA und IPA-SHA256 dokumentieren.
 4. Privacy-/Permission-Texte für Kamera, HealthKit Read Body Mass, HealthKit Write Workouts und Notifications vorbereiten; Denied-State prüfen.
 5. TestFlight interne Beschreibung, Buildzweck, bekannte Einschränkungen, Support-/Recoveryhinweise vorbereiten. Keine Testergruppe/Verteilung bis Freigabe.
 6. App Store Connect API-Key und Upload erst nach gesonderter Freigabe. Bis dahin kein Upload-Schritt im Workflow.

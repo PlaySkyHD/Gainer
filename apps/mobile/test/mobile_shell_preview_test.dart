@@ -1,15 +1,13 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/ui/core/app.dart';
-import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
-import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('writes a 390 by 844 shell preview for visual review', (
+  testWidgets('writes a 390 by 844 startup configuration preview', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -21,12 +19,9 @@ void main() {
 
     final boundaryKey = GlobalKey();
     await tester.pumpWidget(
-      ChangeNotifierProvider<MobileShellViewModel>(
-        create: (_) => MobileShellViewModel(),
-        child: RepaintBoundary(
-          key: boundaryKey,
-          child: const GainerMobileApp(),
-        ),
+      RepaintBoundary(
+        key: boundaryKey,
+        child: const GainerMobileApp(configuration: null),
       ),
     );
     await tester.pumpAndSettle();

@@ -12,5 +12,12 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    MobilePlatformApiSetup.setUp(
+      binaryMessenger: engineBridge.applicationRegistrar.messenger(),
+      api: GainerMobilePlatform()
+    )
+    NativeRouteDispatcher.shared.attach(
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
   }
 }
