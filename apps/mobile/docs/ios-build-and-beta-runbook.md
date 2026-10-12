@@ -1,6 +1,6 @@
 # iOS-Build-, Device- und Beta-Runbook
 
-Stand: 12. Oktober 2026. Nutzer hat ein iPhone, keinen Mac und einen privaten Apple Developer Account. iOS-Builds laufen über GitHub CI/CD mit macOS Runner. Kein Upload oder Versand geschieht durch diese Vorbereitung.
+Stand: 12. Oktober 2026. Nutzer hat ein iPhone 15 Pro (iOS 26.6.2), keinen Mac und einen bezahlten individuellen Apple Developer Account; Team-ID `Q7GTYQ282F` wurde vom Nutzer genannt und muss im Portal verifiziert werden. iOS-Builds laufen über GitHub CI/CD mit macOS Runner. Kein Upload oder Versand geschieht durch diese Vorbereitung. Die Einrichtungsschritte für Zertifikat, Profile und GitHub-Secrets stehen in [Apple Developer Setup](apple-developer-setup.md).
 
 Repository: [PlaySkyHD/Gainer](https://github.com/PlaySkyHD/Gainer.git), öffentlich, MIT-lizenziert. Windows + iPhone ermöglicht keinen lokalen nativen iOS/Xcode-Build oder Codesign. Windows-Checks ersetzen keinen iOS-Nachweis.
 
@@ -20,10 +20,10 @@ Werte fehlen und dürfen nicht geraten werden. GitHub Environment `ios-beta` ver
 
 | Name | Typ | Verwendung und offener Beschaffungsnachweis |
 |---|---|---|
-| `APPLE_TEAM_ID` | Secret | Teamkennung vom privaten Developer Account bestätigen; offen. |
-| `IOS_BUNDLE_ID` | Secret | App Bundle ID auswählen und im Developer Portal anlegen; offen. |
-| `IOS_WIDGET_BUNDLE_ID` | Secret | Extension Bundle ID passend zum App-Namespace festlegen; offen. |
-| `IOS_APP_GROUP_ID` | Secret | App Group auswählen, im Portal registrieren und Capability zuordnen; offen. |
+| `APPLE_TEAM_ID` | Secret | `Q7GTYQ282F` (Nutzerangabe; im Portal verifizieren). |
+| `IOS_BUNDLE_ID` | Secret | Vorgeschlagen: `xyz.markfort.gainer`; noch nicht registriert/verifiziert. |
+| `IOS_WIDGET_BUNDLE_ID` | Secret | Vorgeschlagen: `xyz.markfort.gainer.Widgets`; noch nicht registriert/verifiziert. |
+| `IOS_APP_GROUP_ID` | Secret | Vorgeschlagen: `group.xyz.markfort.gainer`; noch nicht registriert/verifiziert. |
 | `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64` | Secret | Canonical Workflowname für Apple Distribution `.p12` Base64; Zertifikat noch zu erzeugen/exportieren. |
 | `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` | Secret | Canonical Workflowname für P12-Passwort; nie echoen. |
 | `IOS_PROVISIONING_PROFILE_BASE64` | Secret | Canonical Workflowname für App-Profil, passend zu IDs, Entitlements und Beta-Verfahren. |
@@ -42,7 +42,7 @@ Bundle-/App-Group-IDs und Signiermaterial fehlen. HealthKit entitlement, Usage D
 | Stable Flutter/Dart/Xcode festgelegt, Lockfile-Restore | GitHub macOS runner | Versionen, `flutter pub get --enforce-lockfile`, erfolgreicher aktueller Run | Versionen sind gepinnt; aktueller vollständiger Run bleibt offen. |
 | Format/Analyze/Unit-/Widget-/API-Integrationstests | macOS runner + Backend/PWA jobs | Run-URL, Commit SHA, secret-free Reports | Offen. |
 | iOS Simulator build/test | macOS runner | xcodebuild/Flutter-Artefakt, Simulatorziel und SDK-Version | Offen; kein Gerätetest. |
-| Installation und Basisnavigation | Nutzer-iPhone | Modell/iOS-Version, Build SHA, Journey-Screens ohne Kontodaten | iPhone vorhanden; Modell/OS nicht dokumentiert. |
+| Installation und Basisnavigation | Nutzer-iPhone | Modell/iOS-Version, Build SHA, Journey-Screens ohne Kontodaten | iPhone 15 Pro / iOS 26.6.2 gemeldet; Gerätetest offen. |
 | Offline, Kill/Resume, 401, Replay, Konflikt, Handover/Rückwechsel, 2 Konten | iPhone + kontrollierte Testkonten | Erwartet/Ist, Zeit, Build SHA, bereinigte Logs | Offen. |
 | Kamera/Picker, Upload/Review, Notification Resume | iPhone | Permission-Fälle, synthetisches Testbild und Retry-Ergebnis | Offen. |
 | HealthKit getrennt Read/Write, Konto A/B, Crash-Retry | iPhone + synthetische Werte | Review/Consent und Testfälle; keine realen Gesundheitsdaten in Artefakten | Offen; erster iOS-Release erfordert dies. |
@@ -64,7 +64,7 @@ Simulator beweist keine HealthKit-, Kamera-, Notification-, Widget-/Activity- od
 ## Manueller Vorbereitungs-Build
 
 1. Geprüften Commit mergen und SHA notieren; Simulator-/Dart-/Backend-/PWA-Gates müssen grün sein.
-2. GitHub Actions Signing-Workflow per `workflow_dispatch` für exakten Ref starten, Modus `prepare-only`. Niemals Upload wählen.
+2. GitHub Actions Signing-Workflow per `workflow_dispatch` für den geprüften `main`-Commit starten und `build_signed_ipa` auf `true` setzen. Der Workflow hat keinen Upload-Schritt.
 3. Bei fehlenden Secrets/Profiles abbrechen und fehlende Namen protokollieren. Keine Ersatzwerte oder Profile committen.
 4. Deployment Target, Signatur, App-/Extension-Entitlements, HealthKit, App Group und Profilzuordnung validieren. Run-ID, SHA, IPA SHA-256 notieren; Secretwerte bleiben verborgen.
 5. Gerätetest durch den Nutzer erst über vereinbarten geschützten Installationsweg. Kein TestFlight Upload hier.

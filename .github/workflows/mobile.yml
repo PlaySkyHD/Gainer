@@ -138,8 +138,9 @@ jobs:
             echo '::error::APPLE_TEAM_ID must be the 10-character Apple Developer Team ID.'
             exit 1
           fi
-          [[ "$IOS_WIDGET_BUNDLE_ID" == "${IOS_BUNDLE_ID}.WidgetExtension" ]] || { echo '::error::IOS_WIDGET_BUNDLE_ID must be the app bundle ID plus .WidgetExtension.'; exit 1; }
-          [[ "$IOS_APP_GROUP_ID" == "group.${APPLE_TEAM_ID}."* ]] || { echo '::error::IOS_APP_GROUP_ID must use the Apple Team ID prefix.'; exit 1; }
+          [[ "$IOS_WIDGET_BUNDLE_ID" == "${IOS_BUNDLE_ID}.Widgets" ]] || { echo '::error::IOS_WIDGET_BUNDLE_ID must be the app bundle ID plus .Widgets.'; exit 1; }
+          [[ "$IOS_BUNDLE_ID" =~ ^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$ ]] || { echo '::error::IOS_BUNDLE_ID must contain only valid bundle identifier components.'; exit 1; }
+          [[ "$IOS_APP_GROUP_ID" =~ ^group\.[A-Za-z0-9]+([.-][A-Za-z0-9]+)*$ ]] || { echo '::error::IOS_APP_GROUP_ID must be a valid group.<identifier> value.'; exit 1; }
 
       - name: Select and verify pinned Xcode
         shell: bash
@@ -199,26 +200,31 @@ jobs:
           security list-keychains -d user -s "$keychain"
           security cms -D -i "$profile" > "$profile_plist"
           security cms -D -i "$widget_profile" > "$widget_profile_plist"
-          profile_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$profile_plist")"
           profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$profile_plist")"
-          profile_bundle="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$profile_plist" | sed "s/^${APPLE_TEAM_ID}\.//")"
-          widget_profile_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$widget_profile_plist")"
           widget_profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$widget_profile_plist")"
-          widget_profile_bundle="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$widget_profile_plist" | sed "s/^${APPLE_TEAM_ID}\.//")"
-          [[ "$profile_team" == "$APPLE_TEAM_ID" ]] || { echo '::error::Provisioning profile Team ID mismatch.'; exit 1; }
-          [[ "$profile_bundle" == "$IOS_BUNDLE_ID" ]] || { echo '::error::Provisioning profile bundle ID mismatch.'; exit 1; }
-          [[ "$widget_profile_team" == "$APPLE_TEAM_ID" ]] || { echo '::error::Widget provisioning profile Team ID mismatch.'; exit 1; }
-          [[ "$widget_profile_bundle" == "$IOS_WIDGET_BUNDLE_ID" ]] || { echo '::error::Widget provisioning profile bundle ID mismatch.'; exit 1; }
-          for entitlement_plist in "$profile_plist" "$widget_profile_plist"; do
-            /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$entitlement_plist" | grep -Fqx "$IOS_APP_GROUP_ID" || {
-              echo '::error::Provisioning profile does not include the configured App Group.'
-              exit 1
-            }
-          done
-          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.healthkit' "$profile_plist" >/dev/null || {
-            echo '::error::App provisioning profile does not include HealthKit.'
-            exit 1
-          }
+          python3 - "$profile_plist" "$widget_profile_plist" "$APPLE_TEAM_ID" "$IOS_BUNDLE_ID" "$IOS_WIDGET_BUNDLE_ID" "$IOS_APP_GROUP_ID" <<'PY'
+          import plistlib, sys
+          app_path, widget_path, team, app_id, widget_id, group_id = sys.argv[1:]
+          def read_profile(path):
+              with open(path, "rb") as stream:
+                  return plistlib.load(stream)
+          app = read_profile(app_path)
+          widget = read_profile(widget_path)
+          def check(profile, bundle_id, label):
+              entitlements = profile.get("Entitlements", {})
+              app_identifier = entitlements.get("application-identifier", "")
+              if team not in profile.get("TeamIdentifier", []):
+                  raise SystemExit(f"{label} provisioning profile Team ID mismatch.")
+              if app_identifier != f"{team}.{bundle_id}":
+                  raise SystemExit(f"{label} provisioning profile bundle ID mismatch.")
+              groups = entitlements.get("com.apple.security.application-groups", [])
+              if not isinstance(groups, list) or group_id not in groups:
+                  raise SystemExit(f"{label} provisioning profile does not include the configured App Group.")
+          check(app, app_id, "App")
+          check(widget, widget_id, "Widget")
+          if app.get("Entitlements", {}).get("com.apple.developer.healthkit") is not True:
+              raise SystemExit("App provisioning profile does not enable HealthKit.")
+          PY
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")"
           widget_profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$widget_profile_plist")"

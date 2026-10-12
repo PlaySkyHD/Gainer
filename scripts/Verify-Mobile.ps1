@@ -123,6 +123,16 @@ try {
         Write-Host ($xcodeVersion -join "`n")
         Invoke-Checked $flutterCommand @('build', 'ios', '--simulator', '--no-codesign')
 
+        $widgetInfoPlist = Join-Path $mobileRoot 'build/ios/iphonesimulator/Runner.app/PlugIns/WidgetExtension.appex/Info.plist'
+        if (-not (Test-Path -LiteralPath $widgetInfoPlist -PathType Leaf)) {
+            throw "Built Widget extension Info.plist is missing: '$widgetInfoPlist'."
+        }
+        Invoke-Checked '/usr/bin/plutil' @('-lint', $widgetInfoPlist)
+        $extensionPoint = & /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' $widgetInfoPlist
+        if ($LASTEXITCODE -ne 0 -or $extensionPoint -ne 'com.apple.widgetkit-extension') {
+            throw "Built Widget extension has an invalid NSExtensionPointIdentifier: '$extensionPoint'."
+        }
+
         $simulatorOutput = & /usr/bin/xcrun simctl list devices available --json
         if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate available iOS simulators.' }
         $simulatorInventory = $simulatorOutput | ConvertFrom-Json
