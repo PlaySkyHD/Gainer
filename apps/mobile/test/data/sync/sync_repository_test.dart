@@ -917,6 +917,8 @@ void main() {
   );
 
   test('expired durable target completion replays and releases only on active confirmation', () async {
+    pullRevision = 7;
+    handoverCompleteRevision = 7;
     serverHandoverAlreadyCompleted = true;
     handoverCompleteSideEffects = 1;
     final secretStore = _MemoryPendingHandoverSecretStore();
@@ -932,7 +934,7 @@ void main() {
       targetClientId: clientId,
       handoverId: 'f1234567-1234-4234-8234-123456789abc',
       phase: 'targetCompletePending',
-      frozenRevision: 1,
+      frozenRevision: 7,
       expiresAtUtc: expiry,
       oneTimeCode: 'target-one-time-code',
     ).encode();
@@ -947,6 +949,15 @@ void main() {
       handoverCompleteRequests.single['oneTimeCode'],
       'target-one-time-code',
     );
+    expect(handoverCompleteRequests.single['caughtUpRevision'], 7);
+    final receivedPaths = received.map((request) => request.uri.path).toList();
+    final pullIndex = receivedPaths.indexOf('/api/v1/sync/changes');
+    final completeIndex = receivedPaths.indexOf(
+      '/api/v1/sync/handovers/f1234567-1234-4234-8234-123456789abc/complete',
+    );
+    expect(pullIndex, greaterThanOrEqualTo(0));
+    expect(completeIndex, greaterThan(pullIndex));
+    expect(await store.readSyncMetadata('pull-cursor'), 7);
     expect(await store.readSyncMetadata('local-writes-frozen'), isFalse);
     expect(secretStore.value, isNull);
     api.close();
@@ -1075,6 +1086,54 @@ void main() {
     api.close();
     await database.close();
   });
+
+  test(
+    'failed catch-up pull sends no completion and keeps expired target frozen',
+    () async {
+      pullFailureCode = 'temporary_unavailable';
+      pullFailureStatus = 503;
+      activeWriter = false;
+      final secretStore = _MemoryPendingHandoverSecretStore();
+      final (store, database, api, repository) = await fixture(
+        handoverSecrets: secretStore,
+      );
+      final expiry = DateTime.now().toUtc().subtract(
+        const Duration(minutes: 1),
+      );
+      secretStore.value = PendingHandoverRecord(
+        apiOrigin: api.configuration.canonicalApiOrigin,
+        accountId: accountId,
+        requestId: 'f1234567-1234-4234-8234-123456789abc',
+        sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+        targetClientId: clientId,
+        handoverId: 'f1234567-1234-4234-8234-123456789abc',
+        phase: 'targetCompletePending',
+        frozenRevision: 7,
+        expiresAtUtc: expiry,
+        oneTimeCode: 'target-one-time-code',
+      ).encode();
+      await store.freezeWritesIfOutboxEmpty();
+
+      await expectLater(
+        repository.recoverExpiredTargetHandover(),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.statusCode,
+            'status',
+            503,
+          ),
+        ),
+      );
+
+      expect(handoverCompleteRequests, isEmpty);
+      expect(await store.readSyncMetadata('pull-cursor'), isNull);
+      expect(await store.readSyncMetadata('local-writes-frozen'), isTrue);
+      expect(secretStore.value, isNotNull);
+      expect(registrationRequests.single['takeOverWriting'], isFalse);
+      api.close();
+      await database.close();
+    },
+  );
 
   test(
     'ambiguous completion failure preserves secure identity and write freeze',
