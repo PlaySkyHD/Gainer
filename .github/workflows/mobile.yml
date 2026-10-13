@@ -8,16 +8,26 @@ on:
   workflow_dispatch:
     inputs:
       build_signed_ipa:
-        description: Build and attach a signed IPA (does not upload to Apple)
+        description: Build and attach a signed IPA without uploading to Apple
         type: boolean
         required: true
         default: false
+      upload_testflight:
+        description: Build and upload the signed IPA to App Store Connect for TestFlight processing
+        type: boolean
+        required: true
+        default: false
+      build_number:
+        description: Optional CFBundleVersion override (1-3 numeric components; use when this app has a higher existing build)
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.build_signed_ipa && 'signed' || 'verify' }}
+  group: mobile-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && (inputs.build_signed_ipa || inputs.upload_testflight) && 'signed' || 'verify' }}
   cancel-in-progress: true
 
 jobs:
@@ -130,8 +140,8 @@ jobs:
           retention-days: 7
 
   signed-ipa:
-    name: Manually requested signed IPA (no Apple upload)
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_signed_ipa && github.ref == 'refs/heads/main' }}
+    name: Manually requested signed IPA / TestFlight upload
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.build_signed_ipa || inputs.upload_testflight) && github.ref == 'refs/heads/main' }}
     needs: ios-simulator
     runs-on: macos-15
     timeout-minutes: 60
@@ -157,6 +167,7 @@ jobs:
           fi
 
       - name: Require signing configuration
+        id: build-version
         shell: bash
         env:
           GAINER_API_ORIGIN: ${{ vars.GAINER_API_ORIGIN || 'https://gainer.markfort.xyz' }}
@@ -169,6 +180,7 @@ jobs:
           IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
           IOS_WIDGET_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}
+          BUILD_NUMBER_OVERRIDE: ${{ inputs.build_number }}
         run: |
           set -euo pipefail
           for name in APPLE_TEAM_ID IOS_BUNDLE_ID IOS_WIDGET_BUNDLE_ID IOS_APP_GROUP_ID; do
@@ -197,6 +209,52 @@ jobs:
           [[ "$IOS_WIDGET_BUNDLE_ID" == "${IOS_BUNDLE_ID}.Widgets" ]] || { echo '::error::IOS_WIDGET_BUNDLE_ID must be the app bundle ID plus .Widgets.'; exit 1; }
           [[ "$IOS_BUNDLE_ID" =~ ^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$ ]] || { echo '::error::IOS_BUNDLE_ID must contain only valid bundle identifier components.'; exit 1; }
           [[ "$IOS_APP_GROUP_ID" =~ ^group\.[A-Za-z0-9]+([.-][A-Za-z0-9]+)*$ ]] || { echo '::error::IOS_APP_GROUP_ID must be a valid group.<identifier> value.'; exit 1; }
+
+          marketing_version="$(python3 -c 'import re; s=open("apps/mobile/pubspec.yaml", encoding="utf-8").read(); m=re.search(r"(?m)^version:\s*([0-9]+\.[0-9]+\.[0-9]+)(?:\+[0-9]+)?\s*$", s); print(m.group(1) if m else "")')"
+          if [[ -z "$marketing_version" ]]; then
+            echo '::error::Could not read a numeric marketing version from apps/mobile/pubspec.yaml.'
+            exit 1
+          fi
+          candidate="${BUILD_NUMBER_OVERRIDE:-}"
+          if [[ -z "$candidate" ]]; then
+            candidate="$GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT"
+          fi
+          if ! python3 - "$candidate" <<'PY'
+          import re, sys
+          value = sys.argv[1]
+          if not re.fullmatch(r"[1-9][0-9]{0,3}(?:\.(?:0|[1-9][0-9]?)){0,2}", value):
+              raise SystemExit(1)
+          PY
+          then
+            echo '::error::CFBundleVersion is invalid. Set build_number to a canonical value with a major component 1-9999 and up to two minor/patch components 0-99; the automatic value is run_number.run_attempt.'
+            exit 1
+          fi
+          {
+            echo "marketing_version=$marketing_version"
+            echo "build_number=$candidate"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Require App Store Connect API key for requested TestFlight upload
+        if: ${{ inputs.upload_testflight }}
+        shell: bash
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ inputs.upload_testflight && secrets.APP_STORE_CONNECT_KEY_ID || '' }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          for name in APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_PRIVATE_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required secret $name is not configured in ios-beta for the requested TestFlight upload."
+              exit 1
+            fi
+          done
+          [[ "$APP_STORE_CONNECT_KEY_ID" =~ ^[A-Z0-9]{10}$ ]] || { echo '::error::APP_STORE_CONNECT_KEY_ID must contain 10 uppercase letters or digits.'; exit 1; }
+          [[ "$APP_STORE_CONNECT_ISSUER_ID" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]] || { echo '::error::APP_STORE_CONNECT_ISSUER_ID must be a UUID.'; exit 1; }
+          if [[ "$APP_STORE_CONNECT_PRIVATE_KEY" != *'-----BEGIN PRIVATE KEY-----'* || "$APP_STORE_CONNECT_PRIVATE_KEY" != *'-----END PRIVATE KEY-----'* ]]; then
+            echo '::error::APP_STORE_CONNECT_PRIVATE_KEY must be the raw PEM contents of the downloaded .p8 key.'
+            exit 1
+          fi
 
       - name: Select and verify pinned Xcode
         shell: bash
@@ -346,11 +404,15 @@ jobs:
           IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
           IOS_WIDGET_BUNDLE_ID: ${{ vars.IOS_WIDGET_BUNDLE_ID }}
           IOS_APP_GROUP_ID: ${{ vars.IOS_APP_GROUP_ID }}
+          APP_MARKETING_VERSION: ${{ steps.build-version.outputs.marketing_version }}
+          APP_BUILD_NUMBER: ${{ steps.build-version.outputs.build_number }}
         run: |
           set -euo pipefail
           profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
           widget_profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/widget-profile.plist")"
           flutter build ios --config-only --release --no-codesign \
+            --build-name="$APP_MARKETING_VERSION" \
+            --build-number="$APP_BUILD_NUMBER" \
             --dart-define="GAINER_API_ORIGIN=$GAINER_API_ORIGIN" \
             --dart-define="GAINER_TRUSTED_FRONTEND_ORIGIN=$GAINER_TRUSTED_FRONTEND_ORIGIN"
           xcodebuild \
@@ -365,6 +427,8 @@ jobs:
             IOS_APP_GROUP_ID="$IOS_APP_GROUP_ID" \
             IOS_APP_PROFILE_NAME="$profile_name" \
             IOS_WIDGET_PROFILE_NAME="$widget_profile_name" \
+            MARKETING_VERSION="$APP_MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$APP_BUILD_NUMBER" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY='Apple Distribution' \
             archive
@@ -373,7 +437,71 @@ jobs:
             -exportPath "$RUNNER_TEMP/ipa" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
+      - name: Validate and upload IPA to App Store Connect
+        if: ${{ inputs.upload_testflight }}
+        shell: bash
+        env:
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
+          IOS_WIDGET_BUNDLE_ID: ${{ vars.IOS_WIDGET_BUNDLE_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          APP_MARKETING_VERSION: ${{ steps.build-version.outputs.marketing_version }}
+          APP_BUILD_NUMBER: ${{ steps.build-version.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          ipa_files=( "$RUNNER_TEMP"/ipa/*.ipa )
+          if [[ "${#ipa_files[@]}" -ne 1 ]]; then
+            echo '::error::Expected exactly one exported IPA.'
+            exit 1
+          fi
+          ipa="${ipa_files[0]}"
+          extracted="$RUNNER_TEMP/ipa-identity-check"
+          rm -rf "$extracted"
+          mkdir -m 700 "$extracted"
+          ditto -x -k "$ipa" "$extracted"
+          app_path="$extracted/Payload/Runner.app"
+          widget_path="$app_path/PlugIns/WidgetExtension.appex"
+          [[ -d "$app_path" && -d "$widget_path" ]] || { echo '::error::Exported IPA is missing the expected app or widget extension.'; exit 1; }
+          app_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Info.plist")"
+          widget_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$widget_path/Info.plist")"
+          app_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Info.plist")"
+          widget_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$widget_path/Info.plist")"
+          app_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_path/Info.plist")"
+          widget_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$widget_path/Info.plist")"
+          [[ "$app_id" == "$IOS_BUNDLE_ID" && "$widget_id" == "$IOS_WIDGET_BUNDLE_ID" ]] || { echo '::error::IPA bundle identifiers do not match the configured app and widget IDs.'; exit 1; }
+          [[ "$app_version" == "$APP_MARKETING_VERSION" && "$widget_version" == "$APP_MARKETING_VERSION" ]] || { echo '::error::App and widget marketing versions do not match the configured release version.'; exit 1; }
+          [[ "$app_build" == "$APP_BUILD_NUMBER" && "$widget_build" == "$APP_BUILD_NUMBER" ]] || { echo '::error::App and widget build numbers do not match the selected build number.'; exit 1; }
+          codesign --verify --deep --strict "$app_path"
+          codesign --verify --strict "$widget_path"
+          app_signature="$(codesign -dv --verbose=4 "$app_path" 2>&1)"
+          widget_signature="$(codesign -dv --verbose=4 "$widget_path" 2>&1)"
+          [[ "$app_signature" == *"Identifier=$IOS_BUNDLE_ID"* && "$app_signature" == *"TeamIdentifier=$APPLE_TEAM_ID"* ]] || { echo '::error::IPA app signature identity does not match the configured app and team.'; exit 1; }
+          [[ "$widget_signature" == *"Identifier=$IOS_WIDGET_BUNDLE_ID"* && "$widget_signature" == *"TeamIdentifier=$APPLE_TEAM_ID"* ]] || { echo '::error::IPA widget signature identity does not match the configured widget and team.'; exit 1; }
+
+          key_dir="$HOME/.appstoreconnect/private_keys"
+          key_file="$key_dir/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          umask 077
+          install -d -m 700 "$key_dir"
+          trap 'rm -f "$key_file"; rmdir "$key_dir" 2>/dev/null || true' EXIT
+          printf '%s' "$APP_STORE_CONNECT_PRIVATE_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          unset APP_STORE_CONNECT_PRIVATE_KEY
+          xcrun altool --validate-app -f "$ipa" -t ios \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+          xcrun altool --upload-app -f "$ipa" -t ios \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+          {
+            echo '### TestFlight upload submitted'
+            echo "- Bundle: \`$IOS_BUNDLE_ID\`"
+            echo "- Version/build: \`$APP_MARKETING_VERSION ($APP_BUILD_NUMBER)\`"
+            echo '- App Store Connect accepted the upload command; Apple processing and TestFlight availability are separate pending states.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Attach signed IPA for manual review
+        if: ${{ !inputs.upload_testflight }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: gainer-ios-signed-ipa
@@ -384,6 +512,8 @@ jobs:
       - name: Remove signing material
         if: ${{ always() }}
         shell: bash
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ inputs.upload_testflight && secrets.APP_STORE_CONNECT_KEY_ID || '' }}
         run: |
           set +e
           keychain="$RUNNER_TEMP/gainer-signing.keychain-db"
@@ -405,3 +535,9 @@ jobs:
           rm -f "$RUNNER_TEMP/distribution.p12" "$RUNNER_TEMP/profile.mobileprovision" \
             "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/widget-profile.mobileprovision" \
             "$RUNNER_TEMP/widget-profile.plist" "$RUNNER_TEMP/ExportOptions.plist"
+          rm -rf "$RUNNER_TEMP/ipa-identity-check"
+          if [[ "${APP_STORE_CONNECT_KEY_ID:-}" =~ ^[A-Z0-9]{10}$ ]]; then
+            rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+            rmdir "$HOME/.appstoreconnect/private_keys" 2>/dev/null || true
+          fi
+          true
