@@ -187,6 +187,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final sync = _SyncActions();
+      final expiry = DateTime.now().toUtc().add(const Duration(hours: 1));
       await tester.pumpWidget(
         CupertinoApp(
           theme: GainerTheme.light,
@@ -203,7 +204,7 @@ void main() {
       expect(find.text('Dieses Gerät ablösen'), findsOneWidget);
       await tester.enterText(
         find.byType(CupertinoTextField).at(0),
-        '{"kind":"gainer-sync-handover","version":1,"accountId":"a1234567-1234-4234-8234-123456789abc","apiOrigin":"https://gainer.markfort.xyz","sourceClientId":"b1234567-1234-4234-8234-123456789abc","handoverId":"c1234567-1234-4234-8234-123456789abc","oneTimeCode":"one_time-code-123","frozenRevision":41,"expiresAtUtc":"2026-10-13T10:00:00Z"}',
+        '{"kind":"gainer-sync-handover","version":1,"accountId":"a1234567-1234-4234-8234-123456789abc","apiOrigin":"https://gainer.markfort.xyz","sourceClientId":"b1234567-1234-4234-8234-123456789abc","handoverId":"c1234567-1234-4234-8234-123456789abc","oneTimeCode":"one_time-code-123","frozenRevision":41,"expiresAtUtc":"${expiry.toIso8601String()}"}',
       );
       tester.testTextInput.hide();
       await tester.pump();
@@ -233,7 +234,7 @@ void main() {
         'b1234567-1234-4234-8234-123456789abc',
       );
       expect(sync.completed!.frozenRevision, 41);
-      expect(sync.completed!.expiresAtUtc, DateTime.utc(2026, 10, 13, 10));
+      expect(sync.completed!.expiresAtUtc, expiry);
     },
   );
 
@@ -313,13 +314,14 @@ class _SyncActions implements MobileSyncActions {
     beginCalls++;
     lastRequestId = requestId;
     if (beginGate != null) return beginGate!.future;
+    final expiresAtUtc = DateTime.now().toUtc().add(const Duration(hours: 1));
     pending = PendingHandoverRecord(
       apiOrigin: 'https://gainer.markfort.xyz',
       accountId: 'a1234567-1234-4234-8234-123456789abc',
       requestId: requestId,
       sourceClientId: 'b1234567-1234-4234-8234-123456789abc',
       phase: 'sourceBegan',
-      expiresAtUtc: DateTime.utc(2026, 10, 13),
+      expiresAtUtc: expiresAtUtc,
       handoverId: 'c1234567-1234-4234-8234-123456789abc',
       frozenRevision: 41,
       oneTimeCode: 'one_time-code-123',
@@ -328,7 +330,7 @@ class _SyncActions implements MobileSyncActions {
       handoverId: 'c1234567-1234-4234-8234-123456789abc',
       oneTimeCode: 'one_time-code-123',
       frozenRevision: 41,
-      expiresAtUtc: DateTime.utc(2026, 10, 13),
+      expiresAtUtc: expiresAtUtc,
     );
   }
 
