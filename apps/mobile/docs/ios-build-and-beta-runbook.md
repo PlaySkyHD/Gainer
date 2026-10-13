@@ -4,7 +4,7 @@ Stand: 13. Oktober 2026. Nutzer hat ein iPhone 15 Pro (iOS 26.6.2), keinen Mac u
 
 Repository: [PlaySkyHD/Gainer](https://github.com/PlaySkyHD/Gainer.git), öffentlich, MIT-lizenziert. Windows + iPhone ermöglicht keinen lokalen nativen iOS/Xcode-Build oder Codesign. Windows-Checks ersetzen keinen iOS-Nachweis.
 
-Die CI-Zieltoolchain ist Flutter **3.47.7 stable**, Dart **3.13.5**, GitHub Runner **macos-15**, Xcode **26.3**. Der SDK-Pfad `artifacts/flutter-sdk/3.47.7/flutter` ist separat installiert; das globale Flutter-Master-SDK bleibt unverändert. Der erste macOS-Simulatorlauf war erfolgreich: [GitHub Actions run 38270878066](https://github.com/PlaySkyHD/Gainer/actions/runs/38270878066). Er belegt den damaligen Bootstrapstand; die aktuelle Widget-Extension und die späteren Änderungen sind durch diesen Lauf nicht abgenommen. Physische iPhone-Nachweise sind offen.
+Die CI-Zieltoolchain ist Flutter **3.47.7 stable**, Dart **3.13.5**, GitHub Runner **macos-15** (ARM64-Image), Xcode **26.3**. CI nutzt das offizielle ARM64-Archiv derselben Flutter-Revision, damit Flutter nativ auf dem Apple-Silicon-Runner läuft; die SHA-256-Prüfung bleibt aktiv. Der SDK-Pfad `artifacts/flutter-sdk/3.47.7/flutter` ist separat installiert; das globale Flutter-Master-SDK bleibt unverändert. Der erste macOS-Simulatorlauf war erfolgreich: [GitHub Actions run 38270878066](https://github.com/PlaySkyHD/Gainer/actions/runs/38270878066). Er belegt den damaligen Bootstrapstand; die aktuelle Widget-Extension und die späteren Änderungen sind durch diesen Lauf nicht abgenommen. Physische iPhone-Nachweise sind offen.
 
 ## Workflowaufteilung
 

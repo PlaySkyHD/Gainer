@@ -65,17 +65,22 @@ jobs:
         timeout-minutes: 5
         continue-on-error: true
         with:
-          path: ${{ runner.temp }}/flutter-downloads/flutter_macos_3.47.7-stable.zip
+          path: ${{ runner.temp }}/flutter-downloads/flutter_macos_arm64_3.47.7-stable.zip
           key: ${{ runner.os }}-${{ runner.arch }}-flutter-sdk-${{ hashFiles('apps/mobile/tool/toolchain.json') }}
 
       - name: Install verified Flutter stable SDK
         shell: bash
         run: |
           set -euo pipefail
+          actual_arch="$(uname -m)"
+          if [[ "$actual_arch" != 'arm64' ]]; then
+            echo "::error::The pinned Flutter archive requires an arm64 runner; found $actual_arch."
+            exit 1
+          fi
           sdk_root="$RUNNER_TEMP/flutter-sdk"
           download_root="$RUNNER_TEMP/flutter-downloads"
-          archive="$download_root/flutter_macos_3.47.7-stable.zip"
-          expected_sha256='17d39b000a5d0681e3f7b61a105a36f6f31dd41ab9073f625fd466f38035f901'
+          archive="$download_root/flutter_macos_arm64_3.47.7-stable.zip"
+          expected_sha256='dd9da574c3168460550117eb0e8dd0313ae934fabf64a82a6d557fff5fd1422e'
           mkdir -p "$download_root"
           if [[ -f "$archive" ]] && printf '%s  %s\n' "$expected_sha256" "$archive" | shasum -a 256 --check --status; then
             echo 'Cached Flutter SDK archive passed SHA-256 verification.'
@@ -83,7 +88,7 @@ jobs:
             echo 'Flutter SDK archive cache is missing or invalid; downloading the pinned release.'
             rm -f "$archive"
             curl --fail --location --retry 3 \
-              'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.47.7-stable.zip' \
+              'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_arm64_3.47.7-stable.zip' \
               --output "$archive"
           fi
           printf '%s  %s\n' "$expected_sha256" "$archive" | shasum -a 256 --check
@@ -100,7 +105,7 @@ jobs:
         timeout-minutes: 5
         continue-on-error: true
         with:
-          path: ${{ runner.temp }}/flutter-downloads/flutter_macos_3.47.7-stable.zip
+          path: ${{ runner.temp }}/flutter-downloads/flutter_macos_arm64_3.47.7-stable.zip
           key: ${{ runner.os }}-${{ runner.arch }}-flutter-sdk-${{ hashFiles('apps/mobile/tool/toolchain.json') }}
 
       - name: Restore Dart package cache
@@ -283,17 +288,22 @@ jobs:
         timeout-minutes: 5
         continue-on-error: true
         with:
-          path: ${{ runner.temp }}/flutter-downloads/flutter_macos_3.47.7-stable.zip
+          path: ${{ runner.temp }}/flutter-downloads/flutter_macos_arm64_3.47.7-stable.zip
           key: ${{ runner.os }}-${{ runner.arch }}-flutter-sdk-${{ hashFiles('apps/mobile/tool/toolchain.json') }}
 
       - name: Install verified Flutter stable SDK
         shell: bash
         run: |
           set -euo pipefail
+          actual_arch="$(uname -m)"
+          if [[ "$actual_arch" != 'arm64' ]]; then
+            echo "::error::The pinned Flutter archive requires an arm64 runner; found $actual_arch."
+            exit 1
+          fi
           sdk_root="$RUNNER_TEMP/flutter-sdk"
           download_root="$RUNNER_TEMP/flutter-downloads"
-          archive="$download_root/flutter_macos_3.47.7-stable.zip"
-          expected_sha256='17d39b000a5d0681e3f7b61a105a36f6f31dd41ab9073f625fd466f38035f901'
+          archive="$download_root/flutter_macos_arm64_3.47.7-stable.zip"
+          expected_sha256='dd9da574c3168460550117eb0e8dd0313ae934fabf64a82a6d557fff5fd1422e'
           mkdir -p "$download_root"
           if [[ -f "$archive" ]] && printf '%s  %s\n' "$expected_sha256" "$archive" | shasum -a 256 --check --status; then
             echo 'Cached Flutter SDK archive passed SHA-256 verification.'
@@ -301,7 +311,7 @@ jobs:
             echo 'Flutter SDK archive cache is missing or invalid; downloading the pinned release.'
             rm -f "$archive"
             curl --fail --location --retry 3 \
-              'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.47.7-stable.zip' \
+              'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_arm64_3.47.7-stable.zip' \
               --output "$archive"
           fi
           printf '%s  %s\n' "$expected_sha256" "$archive" | shasum -a 256 --check

@@ -9,8 +9,12 @@ work-in-progress states; they do not represent completed PWA feature parity.
 archive SHA-256 values, iOS deployment target and pinned macOS/Xcode runner. The
 Windows SDK is cached under the repository's ignored `artifacts/flutter-sdk`
 directory and is deliberately separate from any preinstalled Flutter SDK.
-CI downloads the matching official macOS archive and verifies its SHA-256
-before use. `pubspec.lock` locks all Dart packages.
+CI runs on GitHub's `macos-15` runner, currently an Apple Silicon ARM64 image,
+and downloads the official ARM64 archive for the same Flutter 3.47.7 revision
+and Dart 3.13.5 used by the Windows SDK. It verifies the archive SHA-256 and
+checks the runner architecture before use, avoiding Rosetta translation. CI
+still runs the same doctor, analysis, tests, simulator build and native tests.
+`pubspec.lock` locks all Dart packages.
 
 On Windows, install or extract the pinned Flutter SDK to
 `artifacts/flutter-sdk/3.47.7/flutter`, then run:
