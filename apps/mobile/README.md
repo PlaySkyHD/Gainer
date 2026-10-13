@@ -44,6 +44,27 @@ speedup has been measured yet. Signed manual runs use a separate concurrency
 group from automatic verification runs, so a cache or verification update does
 not cancel an in-progress signed build.
 
+The simulator workflow creates a fresh, uniquely named iPhone simulator on
+GitHub Actions instead of reusing a pre-existing runner device. It writes the
+run token and ownership record before boot, prepares the selected runtime's
+dyld shared cache, then uses `simctl bootstatus` to start and wait for that
+device. An always-run cleanup step shuts down and deletes only the simulator
+whose recorded run token, ownership flag, name and UDID all match the current
+run; developer simulators are left alone. Cleanup is best-effort and bounded;
+if the runner cannot remove the simulator, GitHub's hosted-runner teardown is
+the fallback. The 45-minute run `38460768539`
+passed Flutter tests and the iOS app build, then stopped after simulator
+selection before XCTest began. This narrows the stall to simulator startup,
+though it does not establish the simulator service's internal cause. Apple's
+[Xcode 26.1.1 release notes](https://developer.apple.com/documentation/xcode-release-notes/xcode-26_1-release-notes)
+document a possible first-boot failure after a macOS upgrade and recommend
+generating the dyld shared cache before boot. For a single selected runtime,
+the CI mitigation uses the targeted update form also used by
+[Chromium's iOS simulator setup](https://chromium.googlesource.com/chromium/src/+/93b31d4424cb0fddb7cb5a901f21eb9859270658/ios/build/bots/scripts/iossim_util.py).
+It runs on pinned Xcode 26.3; applicability to this run is not confirmed. The
+change retains the full XCTest suite and uploads its result bundle when one is
+produced.
+
 The shell preview at `artifacts/mobile-preview/mobile-shell-390x844.png` comes
 from Flutter's widget-test renderer. Its Ahem test font makes text and icons
 appear as blocks, so it is useful only for checking basic layout and spacing;

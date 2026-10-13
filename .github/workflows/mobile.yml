@@ -119,11 +119,87 @@ jobs:
             ~/.pub-cache/hosted-hashes/pub.dev
           key: ${{ runner.os }}-${{ runner.arch }}-dart-pub-${{ hashFiles('apps/mobile/tool/toolchain.json', 'apps/mobile/pubspec.yaml', 'apps/mobile/pubspec.lock') }}
 
-      - name: Verify mobile package and build iOS Simulator app
+      - name: Toolchain and Flutter doctor
+        timeout-minutes: 8
         shell: pwsh
         env:
           GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
-        run: ./scripts/Verify-Mobile.ps1 -BuildIosSimulator
+        run: ./scripts/Verify-Mobile.ps1 -Phase Toolchain
+
+      - name: Flutter checks
+        timeout-minutes: 15
+        shell: pwsh
+        env:
+          GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
+        run: ./scripts/Verify-Mobile.ps1 -Phase FlutterChecks
+
+      - name: iOS Simulator app build
+        timeout-minutes: 12
+        shell: pwsh
+        env:
+          GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
+        run: ./scripts/Verify-Mobile.ps1 -Phase IosBuild
+
+      - name: Boot iOS 17+ Simulator
+        timeout-minutes: 5
+        shell: pwsh
+        env:
+          GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
+        run: ./scripts/Verify-Mobile.ps1 -Phase SimulatorBoot
+
+      - name: Run complete native XCTest suite
+        timeout-minutes: 12
+        shell: pwsh
+        env:
+          GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
+        run: ./scripts/Verify-Mobile.ps1 -Phase NativeTests
+
+      - name: Remove this run's CI-owned simulator
+        if: ${{ always() }}
+        timeout-minutes: 2
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $statePath = 'artifacts/mobile/phase-state/simulator-status.json'
+          if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
+            Write-Host 'No simulator state file; nothing to clean up.'
+            exit 0
+          }
+          $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+          $runToken = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $expectedName = "Gainer-CI-$runToken"
+          if ($state.runToken -ne $runToken -or $state.owned -ne $true -or
+              $state.simulatorName -ne $expectedName -or
+              [string]$state.simulatorId -notmatch '^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') {
+            Write-Host 'Simulator record is not an owned simulator for this workflow run; leaving devices untouched.'
+            exit 0
+          }
+          $udid = [string]$state.simulatorId
+          $inventoryOutput = & /usr/bin/xcrun simctl list devices --json
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'Could not list simulator devices during cleanup; leaving the owned device for runner teardown.'
+            exit 0
+          }
+          $device = $null
+          $inventory = $inventoryOutput | ConvertFrom-Json
+          foreach ($runtime in $inventory.devices.PSObject.Properties) {
+            foreach ($entry in $runtime.Value) {
+              if ($entry.udid -eq $udid) { $device = $entry; break }
+            }
+            if ($device) { break }
+          }
+          if (-not $device -or $device.name -ne $expectedName) {
+            Write-Host 'The recorded CI-owned simulator is absent or its name no longer matches; leaving all devices untouched.'
+            exit 0
+          }
+          Write-Host "Cleaning only run-owned simulator name=$expectedName udid=$udid state=$($device.state)."
+          if ($device.state -in @('Booted', 'Booting')) {
+            & /usr/bin/xcrun simctl shutdown $udid
+            if ($LASTEXITCODE -ne 0) { Write-Warning 'Targeted simulator shutdown failed; attempting targeted deletion.' }
+          }
+          & /usr/bin/xcrun simctl delete $udid
+          if ($LASTEXITCODE -ne 0) { Write-Warning 'Could not delete the run-owned simulator before runner teardown.' }
+          exit 0
 
       - name: Save Dart package cache
         if: ${{ success() && steps.dart-pub-cache.outputs.cache-hit != 'true' }}
