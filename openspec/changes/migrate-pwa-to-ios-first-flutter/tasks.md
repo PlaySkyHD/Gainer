@@ -6,7 +6,7 @@ Alle Implementierungstasks werden an GPT-6-Luna delegiert; der Hauptagent prüft
 - [x] 1.2 Konkrete Flutter-Stable-/Dart-/Xcode-Versionen und Dependencies prüfen und reproduzierbar pinnen; lokales Master-SDK nicht still umstellen. Ergebnis mit `flutter doctor`, Lockfiles und sauberem Restore prüfen.
 - [x] 1.3 macOS/Xcode-Runner, Signing-Verantwortung, physisches iPhone und iOS-17+-Gerätematrix dokumentieren; fehlende iOS-Nachweise ausdrücklich als offen ausweisen, niemals durch Windows ersetzen.
 - [x] 1.4 `apps/mobile` mit iOS-Target, MVVM/Repositories/Services, Provider-DI, Pigeon-Plattforminterfaces und Analyse-/Testkonfiguration anlegen; App-Smoke und Abhängigkeitsgrenzen prüfen.
-- [ ] 1.5 Mac-CI für iOS-Simulatorbuild und Dart-Checks sowie Backend-/PWA-Regressionchecks einrichten; Lockfiles und Stable-Pinning in sauberer CI verifizieren.
+- [x] 1.5 Mac-CI für iOS-Simulatorbuild und Dart-Checks sowie Backend-/PWA-Regressionchecks einrichten; Lockfiles und Stable-Pinning in sauberer CI verifizieren.
 
 ## 2. M1: API und sicherer nativer Zugang
 

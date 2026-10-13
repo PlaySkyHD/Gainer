@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mobile-${{ github.ref }}
+  group: mobile-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.build_signed_ipa && 'signed' || 'verify' }}
   cancel-in-progress: true
 
 jobs:
@@ -49,27 +49,77 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks
 
+      - name: Restore Flutter SDK archive cache
+        id: flutter-sdk-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/flutter-downloads/flutter_macos_3.47.7-stable.zip
+          key: ${{ runner.os }}-${{ runner.arch }}-flutter-sdk-${{ hashFiles('apps/mobile/tool/toolchain.json') }}
+
       - name: Install verified Flutter stable SDK
         shell: bash
         run: |
           set -euo pipefail
           sdk_root="$RUNNER_TEMP/flutter-sdk"
-          archive="$RUNNER_TEMP/flutter_macos_3.47.7-stable.zip"
+          download_root="$RUNNER_TEMP/flutter-downloads"
+          archive="$download_root/flutter_macos_3.47.7-stable.zip"
+          expected_sha256='17d39b000a5d0681e3f7b61a105a36f6f31dd41ab9073f625fd466f38035f901'
+          mkdir -p "$download_root"
+          if [[ -f "$archive" ]] && printf '%s  %s\n' "$expected_sha256" "$archive" | shasum -a 256 --check --status; then
+            echo 'Cached Flutter SDK archive passed SHA-256 verification.'
+          else
+            echo 'Flutter SDK archive cache is missing or invalid; downloading the pinned release.'
+            rm -f "$archive"
+            curl --fail --location --retry 3 \
+              'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.47.7-stable.zip' \
+              --output "$archive"
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$archive" | shasum -a 256 --check
+          rm -rf "$sdk_root/flutter"
           mkdir -p "$sdk_root"
-          curl --fail --location --retry 3 \
-            'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.47.7-stable.zip' \
-            --output "$archive"
-          echo '17d39b000a5d0681e3f7b61a105a36f6f31dd41ab9073f625fd466f38035f901  '"$archive" | shasum -a 256 --check
           unzip -q "$archive" -d "$sdk_root"
           echo "$sdk_root/flutter/bin" >> "$GITHUB_PATH"
           "$sdk_root/flutter/bin/flutter" --version --machine
           "$sdk_root/flutter/bin/flutter" doctor --version
+
+      - name: Save Flutter SDK archive cache
+        if: ${{ success() && steps.flutter-sdk-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/flutter-downloads/flutter_macos_3.47.7-stable.zip
+          key: ${{ runner.os }}-${{ runner.arch }}-flutter-sdk-${{ hashFiles('apps/mobile/tool/toolchain.json') }}
+
+      - name: Restore Dart package cache
+        id: dart-pub-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          path: |
+            ~/.pub-cache/hosted/pub.dev
+            ~/.pub-cache/hosted-hashes/pub.dev
+          key: ${{ runner.os }}-${{ runner.arch }}-dart-pub-${{ hashFiles('apps/mobile/tool/toolchain.json', 'apps/mobile/pubspec.yaml', 'apps/mobile/pubspec.lock') }}
 
       - name: Verify mobile package and build iOS Simulator app
         shell: pwsh
         env:
           GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
         run: ./scripts/Verify-Mobile.ps1 -BuildIosSimulator
+
+      - name: Save Dart package cache
+        if: ${{ success() && steps.dart-pub-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          path: |
+            ~/.pub-cache/hosted/pub.dev
+            ~/.pub-cache/hosted-hashes/pub.dev
+          key: ${{ runner.os }}-${{ runner.arch }}-dart-pub-${{ hashFiles('apps/mobile/tool/toolchain.json', 'apps/mobile/pubspec.yaml', 'apps/mobile/pubspec.lock') }}
 
       - name: Upload shell preview for visual review
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -160,19 +210,55 @@ jobs:
           [[ "$actual" == "$expected" ]] || { echo "::error::Expected Xcode $expected, found $actual"; exit 1; }
           xcodebuild -version
 
+      - name: Restore Flutter SDK archive cache
+        id: flutter-sdk-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/flutter-downloads/flutter_macos_3.47.7-stable.zip
+          key: ${{ runner.os }}-${{ runner.arch }}-flutter-sdk-${{ hashFiles('apps/mobile/tool/toolchain.json') }}
+
       - name: Install verified Flutter stable SDK
         shell: bash
         run: |
           set -euo pipefail
           sdk_root="$RUNNER_TEMP/flutter-sdk"
-          archive="$RUNNER_TEMP/flutter_macos_3.47.7-stable.zip"
+          download_root="$RUNNER_TEMP/flutter-downloads"
+          archive="$download_root/flutter_macos_3.47.7-stable.zip"
+          expected_sha256='17d39b000a5d0681e3f7b61a105a36f6f31dd41ab9073f625fd466f38035f901'
+          mkdir -p "$download_root"
+          if [[ -f "$archive" ]] && printf '%s  %s\n' "$expected_sha256" "$archive" | shasum -a 256 --check --status; then
+            echo 'Cached Flutter SDK archive passed SHA-256 verification.'
+          else
+            echo 'Flutter SDK archive cache is missing or invalid; downloading the pinned release.'
+            rm -f "$archive"
+            curl --fail --location --retry 3 \
+              'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.47.7-stable.zip' \
+              --output "$archive"
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$archive" | shasum -a 256 --check
+          rm -rf "$sdk_root/flutter"
           mkdir -p "$sdk_root"
-          curl --fail --location --retry 3 \
-            'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.47.7-stable.zip' \
-            --output "$archive"
-          echo '17d39b000a5d0681e3f7b61a105a36f6f31dd41ab9073f625fd466f38035f901  '"$archive" | shasum -a 256 --check
           unzip -q "$archive" -d "$sdk_root"
           echo "$sdk_root/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Restore Dart package cache
+        id: dart-pub-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          path: |
+            ~/.pub-cache/hosted/pub.dev
+            ~/.pub-cache/hosted-hashes/pub.dev
+          key: ${{ runner.os }}-${{ runner.arch }}-dart-pub-${{ hashFiles('apps/mobile/tool/toolchain.json', 'apps/mobile/pubspec.yaml', 'apps/mobile/pubspec.lock') }}
+
+      - name: Verify pinned Flutter package and generated bindings
+        shell: pwsh
+        env:
+          GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
+        run: ./scripts/Verify-Mobile.ps1
 
       - name: Install signing certificate and provisioning profile
         shell: bash
@@ -249,12 +335,6 @@ jobs:
             </dict>
           </dict></plist>
           EOF
-
-      - name: Verify pinned Flutter package and generated bindings
-        shell: pwsh
-        env:
-          GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
-        run: ./scripts/Verify-Mobile.ps1
 
       - name: Build and export signed IPA
         shell: bash

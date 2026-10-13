@@ -25,6 +25,21 @@ generation, analysis and widget tests. Add `-BuildIosSimulator` on macOS with
 the pinned Xcode installation to include an unsigned simulator build. Windows
 cannot build iOS targets.
 
+Mobile CI caches the official macOS Flutter SDK archive and only the public
+`pub.dev` package and hash directories. Cache keys include the runner OS and
+architecture plus the pinned toolchain; the Dart package key also includes the
+mobile manifest and lockfile. The SDK archive SHA-256 is checked whether it
+comes from cache or a fresh download, and `pub get --enforce-lockfile` plus all
+analysis, tests and builds still run. Cache restore/save is time-limited and
+non-blocking, so a miss or cache-service failure falls back to a normal clean
+download and dependency restore. This iOS project has no tracked CocoaPods or
+Swift Package lockfile, so CI does not cache Pods, derived data or build
+outputs. The simulator job populates these caches; the signed job restores them
+before loading signing materials and does not save cache entries. No runtime
+speedup has been measured yet. Signed manual runs use a separate concurrency
+group from automatic verification runs, so a cache or verification update does
+not cancel an in-progress signed build.
+
 The shell preview at `artifacts/mobile-preview/mobile-shell-390x844.png` comes
 from Flutter's widget-test renderer. Its Ahem test font makes text and icons
 appear as blocks, so it is useful only for checking basic layout and spacing;
