@@ -847,7 +847,7 @@ void main() {
       oneTimeCode: 'target-one-time-code',
       frozenRevision: 1,
       sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
-      expiresAtUtc: DateTime.utc(2026, 10, 13),
+      expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 10)),
     );
     expect(response.isActiveWriter, isTrue);
     expect(handoverCompleteRequests.single['caughtUpRevision'], 1);
@@ -876,7 +876,7 @@ void main() {
           oneTimeCode: 'target-one-time-code',
           frozenRevision: 1,
           sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
-          expiresAtUtc: DateTime.utc(2026, 10, 13),
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 10)),
         ),
         throwsStateError,
       );
