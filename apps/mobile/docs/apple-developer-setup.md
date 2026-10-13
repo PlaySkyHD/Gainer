@@ -204,24 +204,24 @@ App-Profil: `IOS_PROVISIONING_PROFILE_BASE64`; Widget-Profil:
 leeren.
 
 In GitHub **Settings → Environments → ios-beta** die vorhandene Beschränkung
-auf `main` und manuelle Freigabe durch `PlaySkyHD` beibehalten. Die Base64-Werte
-werden als Environment-Secrets eingetragen, nie als Workflow-Inputs. Mapping:
-P12 → `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64`, App-Profil →
-`IOS_PROVISIONING_PROFILE_BASE64`, Widget-Profil →
-`IOS_WIDGET_PROVISIONING_PROFILE_BASE64`; die P12-Passphrase kommt separat in
-`IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`. `ExportOptions.plist` erstellt CI aus
-den geprüften Profilnamen; dafür gibt es weder Secret noch Base64-Upload.
+auf `main` und manuelle Freigabe durch `PlaySkyHD` beibehalten. Die vier
+öffentlichen Kennungen sind Environment-Variablen; nur die vier
+Signiermaterialien werden als Environment-Secrets eingetragen. Nichts davon als
+Workflow-Input übermitteln.
 
-| Secret | Wert |
-|---|---|
-| `APPLE_TEAM_ID` | `Q7GTYQ282F` (vorher im Portal verifizieren) |
-| `IOS_BUNDLE_ID` | `xyz.markfort.gainer` |
-| `IOS_WIDGET_BUNDLE_ID` | `xyz.markfort.gainer.Widgets` |
-| `IOS_APP_GROUP_ID` | `group.xyz.markfort.gainer` |
-| `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64` | Base64 des geschützten P12 |
-| `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` | P12-Exportpassphrase |
-| `IOS_PROVISIONING_PROFILE_BASE64` | Base64 des App-Profils |
-| `IOS_WIDGET_PROVISIONING_PROFILE_BASE64` | Base64 des Widget-Profils |
+| Typ | Name | Wert |
+|---|---|---|
+| Variable | `APPLE_TEAM_ID` | `Q7GTYQ282F` |
+| Variable | `IOS_BUNDLE_ID` | `xyz.markfort.gainer` |
+| Variable | `IOS_WIDGET_BUNDLE_ID` | `xyz.markfort.gainer.Widgets` |
+| Variable | `IOS_APP_GROUP_ID` | `group.xyz.markfort.gainer` |
+| Secret | `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64` | Base64 des geschützten P12 |
+| Secret | `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` | Neue P12-Exportpassphrase |
+| Secret | `IOS_PROVISIONING_PROFILE_BASE64` | Base64 des App-Profils |
+| Secret | `IOS_WIDGET_PROVISIONING_PROFILE_BASE64` | Base64 des Widget-Profils |
+
+`ExportOptions.plist` erstellt CI aus den geprüften Profilnamen; dafür gibt es
+weder Secret noch Base64-Upload.
 
 Der Workflow prüft Team, Bundle-IDs, exakte App-Group-Mitgliedschaft in beiden
 Profilen und das aktivierte HealthKit-Entitlement der App vor dem Archivieren.

@@ -16,14 +16,14 @@ Beobachtete GitHub-Einstellungen: Repository public/MIT; Environment `ios-beta` 
 
 ## Benötigte GitHub-Konfiguration
 
-Werte fehlen und dürfen nicht geraten werden. GitHub Environment `ios-beta` verwenden; Zertifikat-/Profilwerte ausschließlich als Secrets. Nichts davon in Code/Logs/Chat ausgeben.
+Die vier Bezeichner liegen als nicht geheime Variablen im GitHub Environment `ios-beta`; nur Zertifikat, Passwort und Profile sind Secrets. Keine davon als Workflow-Input übergeben oder in Logs ausgeben.
 
 | Name | Typ | Verwendung und offener Beschaffungsnachweis |
 |---|---|---|
-| `APPLE_TEAM_ID` | Secret | `Q7GTYQ282F` (Nutzerangabe; im Portal verifizieren). |
-| `IOS_BUNDLE_ID` | Secret | Vorgeschlagen: `xyz.markfort.gainer`; noch nicht registriert/verifiziert. |
-| `IOS_WIDGET_BUNDLE_ID` | Secret | Vorgeschlagen: `xyz.markfort.gainer.Widgets`; noch nicht registriert/verifiziert. |
-| `IOS_APP_GROUP_ID` | Secret | Vorgeschlagen: `group.xyz.markfort.gainer`; noch nicht registriert/verifiziert. |
+| `APPLE_TEAM_ID` | Environment variable | `Q7GTYQ282F` (Nutzerangabe; Apple-Portal-Verknüpfung verifizieren). |
+| `IOS_BUNDLE_ID` | Environment variable | `xyz.markfort.gainer`; App-ID-Registrierung/Capabilities vor Signierung verifizieren. |
+| `IOS_WIDGET_BUNDLE_ID` | Environment variable | `xyz.markfort.gainer.Widgets`; App-ID-Registrierung vor Signierung verifizieren. |
+| `IOS_APP_GROUP_ID` | Environment variable | `group.xyz.markfort.gainer`; Registrierung und beide Profilzuweisungen verifizieren. |
 | `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64` | Secret | Canonical Workflowname für Apple Distribution `.p12` Base64; Zertifikat noch zu erzeugen/exportieren. |
 | `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` | Secret | Canonical Workflowname für P12-Passwort; nie echoen. |
 | `IOS_PROVISIONING_PROFILE_BASE64` | Secret | Canonical Workflowname für App-Profil, passend zu IDs, Entitlements und Beta-Verfahren. |

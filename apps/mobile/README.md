@@ -34,11 +34,14 @@ Drift schemas use the pinned code generator. Regenerate their Dart bindings with
 `dart run build_runner build --delete-conflicting-outputs` from `apps/mobile`.
 
 The manual `Mobile CI` dispatch can produce a signed IPA for review without
-uploading it to Apple. It requires the `ios-beta` GitHub Environment with
-`APPLE_TEAM_ID`, `IOS_BUNDLE_ID`, `IOS_WIDGET_BUNDLE_ID`, `IOS_APP_GROUP_ID`,
-`IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64`,
-`IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64`
-and `IOS_WIDGET_PROVISIONING_PROFILE_BASE64`. The non-secret GitHub variables
+uploading it to Apple. The `ios-beta` GitHub Environment holds four non-secret
+identifier variables: `APPLE_TEAM_ID`, `IOS_BUNDLE_ID`,
+`IOS_WIDGET_BUNDLE_ID`, and `IOS_APP_GROUP_ID`. It also requires exactly four
+signing secrets: `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64`,
+`IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64`,
+and `IOS_WIDGET_PROVISIONING_PROFILE_BASE64`. See the [Apple Developer setup
+guide](docs/apple-developer-setup.md) for profile and variable setup. The
+non-secret GitHub variables
 `GAINER_API_ORIGIN` and `GAINER_TRUSTED_FRONTEND_ORIGIN` may override the
 documented deployment origin `https://gainer.markfort.xyz`; both values must
 be HTTPS origins without credentials, paths, queries or fragments. The
