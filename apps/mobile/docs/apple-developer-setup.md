@@ -1,10 +1,10 @@
 # Apple Developer für Gainer Mobile einrichten
 
-Diese Anleitung richtet den manuellen Signier-Build `ios-beta` ein. Er lädt
-nichts zu App Store Connect oder TestFlight hoch. Das Repository ist öffentlich;
+Diese Anleitung richtet den manuellen Signier-Build `ios-beta` und den optionalen
+TestFlight-Upload ein. Ein Upload wird nur durch die zusätzliche manuelle
+`upload_testflight`-Auswahl auf `main` ausgelöst. Das Repository ist öffentlich;
 ein signiertes IPA-Artefakt kann deshalb für Repository-Leser herunterladbar
-sein. Vor einem signierten Lauf muss der mögliche Download des IPA durch
-Repository-Leser geklärt sein.
+sein. Der TestFlight-Pfad legt kein IPA-Artefakt ab.
 
 Der Nutzer meldet ein bezahltes individuelles Apple-Developer-Konto mit Team-ID
 `Q7GTYQ282F` sowie ein iPhone 15 Pro mit iOS 26.6.2. Team-ID und Gerätenachweis
@@ -36,16 +36,18 @@ Connect-App-Eintrag angelegt. Aktuelle Xcode-Simulatorwerte sind Beispiele.
    dieselbe Gruppe markieren und mit **Continue → Assign** speichern.
 4. Bei der Haupt-App-ID `xyz.markfort.gainer` **HealthKit** aktivieren. **Clinical Records**
    und **Background Delivery** ausgeschaltet lassen.
-5. Unter [App Store Connect → Apps](https://appstoreconnect.apple.com/apps) auf
-   **+ → New App** gehen: Plattform **iOS**, Name **Gainer**, Primärsprache
-   **German**, Bundle ID `xyz.markfort.gainer`, SKU `gainer-ios`. Das ist der
-   App-Eintrag; für das Widget keinen separaten Eintrag anlegen.
+5. Unter [App Store Connect → Apps](https://appstoreconnect.apple.com/apps)
+   prüfen, dass bereits ein App-Eintrag mit Bundle ID `xyz.markfort.gainer`
+   existiert. Nur falls er fehlt, **+ → New App** wählen: Plattform **iOS**,
+   Name **Gainer**, Primärsprache **German**, Bundle ID
+   `xyz.markfort.gainer`, SKU `gainer-ios`. Für das Widget keinen separaten
+   Eintrag anlegen.
 
 Die App nutzt HealthKit für Körpergewicht-Lesezugriff und ausdrücklich
 bestätigte Workout-Schreibvorgänge. **Clinical Records** und **Background
 Delivery** werden nicht benötigt. **Keychain Sharing** ist nicht nötig. Die aktuelle
 Live-Activity verwendet keinen zusätzlichen Push- oder Background-Mode-Schalter.
-Das Widget liest nur neutrale App-Group-Snapshots; HealthKit, Push, Background
+Das Widget zeigt neutrale Einstiege; die Haupt-App hält neutrale App-Group-Snapshots bereit. HealthKit, Push, Background
 Modes und Keychain Sharing bleiben beim Widget aus. Für Kamera/Fotoauswahl,
 lokale Mitteilungen und App Intents ist keine zusätzliche Portal-Capability nötig.
 
@@ -230,11 +232,89 @@ verwenden standardmäßig `https://gainer.markfort.xyz`; bei Änderung müssen e
 weiterhin reine HTTPS-Ursprünge ohne Pfad oder Zugangsdaten sein.
 
 Der signierte Lauf startet ausschließlich manuell von `main`, nachdem die
-unsignierte Simulator-CI erfolgreich war. Er erzeugt ein IPA-Artefakt, hat
-aber keinen Upload-Schritt. Ein App-Store-Connect-API-Key wird erst für einen
-separaten, später freizugebenden TestFlight-Upload benötigt. Ein App-Store-IPA
-ist kein direkter Installationsweg auf das iPhone; vor einem Gerätetest muss
-ein eigener Verteilungsweg wie TestFlight eingerichtet und freigegeben werden.
+unsignierte Simulator-CI erfolgreich war und `ios-beta` manuell freigegeben
+wurde. `build_signed_ipa` erzeugt ein IPA-Artefakt zur Prüfung. `upload_testflight`
+impliziert denselben Build und lädt ihn nach erfolgreicher lokaler
+Identitätsprüfung an App Store Connect hoch; in diesem Modus wird kein
+öffentliches IPA-Artefakt abgelegt. Keine Variante reicht die App zur
+öffentlichen Store-Prüfung ein oder lädt Tester ein.
+
+Die Marketing-Version kommt aus `apps/mobile/pubspec.yaml`. Ohne manuellen
+Override setzt CI die CFBundleVersion auf `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT`;
+Runner-App und Widget erhalten dieselben Werte. Wenn der App-Eintrag bereits
+eine höhere Buildnummer hat oder ein anderer Buildweg Nummern verbraucht hat,
+`build_number` im manuellen Dispatch auf eine bisher unbenutzte Apple-konforme
+Nummer setzen. GitHub kann keine von anderen Buildwegen verbrauchten Nummern
+erkennen; App Store Connect akzeptiert eine Buildnummer nicht erneut. Ein
+Upload-Erfolg bedeutet nur, dass Apple den Upload angenommen hat. Die
+Verarbeitung kann noch ausstehen, bevor der Build in TestFlight erscheint.
+
+## App Store Connect API-Schlüssel für TestFlight
+
+Der App-Eintrag `xyz.markfort.gainer` muss bereits in App Store Connect
+existieren. Erzeuge für diesen CI-Upload eine **Team API Key** mit Rolle
+**Developer**. Eine Team-Key-Erstellung erfordert laut Apple Account Holder
+oder Admin; bei einem individuellen Konto ist das der Account Holder. Die Rolle
+Developer genügt zum Upload und lässt die Rechte enger als Admin. Eine
+Individual API Key hat keine Issuer ID und passt deshalb nicht zum hier
+verwendeten Team-Key-Upload.
+
+1. Melde dich bei [App Store Connect](https://appstoreconnect.apple.com/) an.
+   Unter **Users and Access → Integrations → App Store Connect API** muss der
+   Account Holder den API-Zugang einmalig beantragen, falls er noch nicht
+   aktiviert wurde.
+2. Öffne **Users and Access → Integrations → App Store Connect API → Team Keys**.
+   Erzeuge einen Schlüssel namens `Gainer TestFlight CI` und wähle als Rolle
+   **Developer**.
+3. Notiere die angezeigte **Key ID** und die **Issuer ID** auf der API-Seite.
+   Lade die `.p8`-Datei genau einmal herunter und speichere sie vorübergehend
+   geschützt. Team Keys gelten kontoweit für alle Apps; die gewählte Rolle
+   begrenzt die erlaubten Aktionen, nicht den App-Umfang. Apple bewahrt den
+   privaten Teil nicht erneut zum Download auf.
+4. In GitHub **Settings → Environments → ios-beta** die drei Werte als
+   Environment-Secrets anlegen. `APP_STORE_CONNECT_PRIVATE_KEY` enthält den
+   unveränderten mehrzeiligen Inhalt der `.p8`-Datei, einschließlich PEM-
+   Kopf- und Fußzeile. Bewahre eine verschlüsselte Offline-Sicherung der
+   einmalig ladbaren Datei auf; entferne unnötige Arbeitskopien nach dem
+   Eintragen und Prüfen der Secrets. Die Datei gehört nie in Git oder Chat.
+
+| Secret | Wert |
+|---|---|
+| `APP_STORE_CONNECT_KEY_ID` | Team API Key ID |
+| `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID aus App Store Connect API |
+| `APP_STORE_CONNECT_PRIVATE_KEY` | Unveränderter PEM-Inhalt der einmalig heruntergeladenen `.p8`-Datei |
+
+Der Workflow prüft diese Eingaben nur, wenn `upload_testflight` gewählt ist.
+Vor dem Aufruf von `altool` prüft er die IDs, Version, Buildnummer und
+Signatur des IPA auf die erwartete App, Widget und Team-ID. Die `.p8`-Datei
+liegt nur während des Uploadschritts in einem zugriffsbeschränkten Verzeichnis
+des kurzlebigen macOS-Runners und wird dort bereinigt. Sie wird weder
+gecached noch als Artefakt hochgeladen oder ausgegeben.
+
+Zum Starten in GitHub **Actions → Mobile CI → Run workflow** auf `main`:
+
+- `upload_testflight = true` für Build und Upload; dadurch muss
+  `build_signed_ipa` nicht zusätzlich aktiviert werden.
+- `build_number` leer lassen für die CI-Nummer oder nur dann manuell setzen,
+  wenn App Store Connect bereits höhere/anderweitig verwendete Builds kennt.
+
+Der bestehende Environment-Schutz verlangt weiterhin die manuelle Freigabe
+durch `PlaySkyHD`. Der Upload startet keine App-Review und ändert keine
+TestFlight-Testergruppe. Nach dem Upload muss die Verarbeitung in App Store
+Connect abgeschlossen sein; anschließend kann der Kontoinhaber den Build
+manuell einer internen Testgruppe zuweisen. Tester-Einladung und Verteilung
+bleiben außerhalb dieses Workflows.
+
+Prüfe nach der Verarbeitung auch eventuell angezeigte Export-Compliance-
+Fragen und die Beta-Testinformationen in App Store Connect. Die mitgelieferten
+Privacy-Manifeste deklarieren die nachgewiesenen nativen API-Nutzungsgründe;
+sie ersetzen nicht die Angaben zu Konto-, Gesundheits- und Bilddaten oder die
+Prüfung der eingebundenen SDKs. Die physische iPhone-Abnahme bleibt offen.
+
+Apple-Referenzen: [API-Zugang und Team-/Individual-Schlüssel](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/),
+[API-Key-Erstellung und Schutz](https://developer.apple.com/documentation/AppStoreConnectAPI/creating-api-keys-for-app-store-connect-api),
+[Build hochladen und verarbeiten](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/),
+[CFBundleVersion-Regeln](https://developer.apple.com/documentation/BundleResources/Information-Property-List/CFBundleVersion).
 
 ## Android-Keystore für einen späteren Android-Build
 
