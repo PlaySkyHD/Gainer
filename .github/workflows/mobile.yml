@@ -51,7 +51,7 @@ jobs:
             exit 1
           fi
           sudo xcode-select --switch "$developer_dir"
-          actual="$(xcodebuild -version | awk '/^Xcode / { print $2; exit }')"
+          actual="$(xcodebuild -version | awk '/^Xcode / && !version { version = $2 } END { print version }')"
           if [[ "$actual" != "$expected" ]]; then
             echo "::error::Expected Xcode $expected, found $actual"
             exit 1
@@ -137,6 +137,15 @@ jobs:
           name: mobile-shell-preview
           path: artifacts/mobile-preview/mobile-shell-390x844.png
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload native XCTest diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mobile-native-xctest-diagnostics
+          path: artifacts/mobile/native-tests/RunnerTests.xcresult
+          if-no-files-found: ignore
           retention-days: 7
 
   signed-ipa:
@@ -264,7 +273,7 @@ jobs:
           developer_dir="/Applications/Xcode_${expected}.app/Contents/Developer"
           test -d "$developer_dir" || { echo "::error::Pinned Xcode $expected is unavailable."; exit 1; }
           sudo xcode-select --switch "$developer_dir"
-          actual="$(xcodebuild -version | awk '/^Xcode / { print $2; exit }')"
+          actual="$(xcodebuild -version | awk '/^Xcode / && !version { version = $2 } END { print version }')"
           [[ "$actual" == "$expected" ]] || { echo "::error::Expected Xcode $expected, found $actual"; exit 1; }
           xcodebuild -version
 

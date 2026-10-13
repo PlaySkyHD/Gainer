@@ -156,10 +156,25 @@ try {
         $selectedDevice = $availableIPhones[0].Device
         $simulatorId = $selectedDevice.udid
         Write-Host "Running native XCTest on iOS 17+ iPhone simulator $($selectedDevice.name) ($simulatorId)."
+        if ($selectedDevice.state -eq 'Shutdown') {
+            Invoke-Checked '/usr/bin/xcrun' @('simctl', 'boot', $simulatorId)
+        }
+        elseif ($selectedDevice.state -notin @('Booted', 'Booting')) {
+            throw "Selected iPhone simulator is in an unexpected state '$($selectedDevice.state)'."
+        }
+        Invoke-Checked '/usr/bin/xcrun' @('simctl', 'bootstatus', $simulatorId, '-b')
+        $nativeTestRoot = Join-Path $repositoryRoot 'artifacts/mobile/native-tests'
+        $resultBundlePath = Join-Path $nativeTestRoot 'RunnerTests.xcresult'
+        if (Test-Path -LiteralPath $resultBundlePath) {
+            Remove-Item -LiteralPath $resultBundlePath -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path $nativeTestRoot | Out-Null
         Invoke-Checked '/usr/bin/xcodebuild' @(
             '-workspace', 'ios/Runner.xcworkspace',
             '-scheme', 'Runner',
             '-destination', "platform=iOS Simulator,id=$simulatorId",
+            '-parallel-testing-enabled', 'NO',
+            '-resultBundlePath', $resultBundlePath,
             'CODE_SIGNING_ALLOWED=NO',
             'CODE_SIGNING_REQUIRED=NO',
             'test'
