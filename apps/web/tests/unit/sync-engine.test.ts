@@ -97,6 +97,24 @@ test("401 preserves every mutation and blocks further transport work", async () 
   assert.deepEqual(transport.pushed, ["first"]);
 });
 
+test("account identity change auth-blocks pending outbox without creating conflicts", async () => {
+  const database = await createDatabase();
+  await database.outbox.bulkAdd([
+    mutation("first", `daily-check-in:${crypto.randomUUID()}`, 1, "2026-08-18T10:00:00Z"),
+    mutation("second", `daily-check-in:${crypto.randomUUID()}`, 1, "2026-08-18T10:01:00Z"),
+  ]);
+  const transport = new FakeTransport();
+  transport.registerError = new SyncHttpError(409, "account_changed", "active cookie belongs to another profile");
+
+  const result = await runSync(database, transport);
+
+  assert.equal(result.state, "auth-blocked");
+  assert.deepEqual((await database.outbox.toArray()).map((item) => item.status), ["auth-blocked", "auth-blocked"]);
+  assert.deepEqual((await database.outbox.toArray()).map((item) => item.lastErrorCode), ["account_changed", "account_changed"]);
+  assert.equal(await database.conflicts.count(), 0);
+  assert.deepEqual(transport.pushed, []);
+});
+
 test("pull applies a whole batch with its cursor atomically and identical retry is harmless", async () => {
   const database = await createDatabase();
   const resourceId = crypto.randomUUID();
@@ -353,8 +371,10 @@ class FakeTransport implements SyncTransport {
   pushRequests: unknown[] = [];
   pushErrors = new Map<string, Error>();
   pullResponses: PullResponse[] = [];
+  registerError?: Error;
 
   register(clientId: string): Promise<ClientRegistration> {
+    if (this.registerError) return Promise.reject(this.registerError);
     return Promise.resolve({ clientId, isActiveWriter: true });
   }
 

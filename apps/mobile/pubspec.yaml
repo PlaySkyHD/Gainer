@@ -1,0 +1,30 @@
+name: gainer_mobile
+description: Private iOS-first native client for Gainer.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.13.5 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: 1.0.8
+  cookie_jar: 4.0.9
+  dio: 5.11.1
+  dio_cookie_manager: 3.5.0
+  drift: 2.35.0
+  path: 1.9.1
+  path_provider: 2.1.6
+  provider: 6.1.5+1
+  sqlite3: 3.7.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+  build_runner: 2.16.2
+  drift_dev: 2.35.0
+  pigeon: 29.0.8
+
+flutter:
+  uses-material-design: false

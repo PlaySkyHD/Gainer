@@ -54,6 +54,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 
     public DbSet<SyncClient> SyncClients => Set<SyncClient>();
 
+    public DbSet<SyncHandover> SyncHandovers => Set<SyncHandover>();
+
     public DbSet<UserSyncState> UserSyncStates => Set<UserSyncState>();
 
     public DbSet<ProcessedMutation> ProcessedMutations => Set<ProcessedMutation>();
@@ -104,6 +106,34 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             state.HasOne<AppUser>().WithOne().HasForeignKey<UserSyncState>(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
             state.HasOne<SyncClient>().WithMany()
                 .HasForeignKey(item => new { item.UserId, item.ActiveClientId })
+                .HasPrincipalKey(item => new { item.UserId, item.Id })
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SyncHandover>(handover =>
+        {
+            handover.ToTable("handovers", DatabaseSchemas.Sync, table =>
+            {
+                table.HasCheckConstraint("CK_sync_handovers_revision", "\"FrozenRevision\" >= 0");
+                table.HasCheckConstraint("CK_sync_handovers_code_hash", "octet_length(\"CodeHash\") = 32");
+                table.HasCheckConstraint("CK_sync_handovers_status", "\"Status\" IN ('Pending', 'Completed', 'Cancelled', 'Expired')");
+            });
+            handover.HasKey(item => new { item.UserId, item.Id });
+            handover.Property(item => item.UserId).ValueGeneratedNever();
+            handover.Property(item => item.Id).ValueGeneratedNever();
+            handover.Property(item => item.RequestId).ValueGeneratedNever();
+            handover.Property(item => item.CodeHash).HasColumnType("bytea").IsRequired();
+            handover.Property(item => item.ProtectedCode).HasMaxLength(4096);
+            handover.Property(item => item.Status).HasMaxLength(16).IsRequired();
+            handover.HasIndex(item => new { item.UserId, item.RequestId }).IsUnique();
+            handover.HasIndex(item => item.UserId).IsUnique().HasFilter("\"Status\" = 'Pending'");
+            handover.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+            handover.HasOne<SyncClient>().WithMany()
+                .HasForeignKey(item => new { item.UserId, item.SourceClientId })
+                .HasPrincipalKey(item => new { item.UserId, item.Id })
+                .OnDelete(DeleteBehavior.Restrict);
+            handover.HasOne<SyncClient>().WithMany()
+                .HasForeignKey(item => new { item.UserId, item.TargetClientId })
                 .HasPrincipalKey(item => new { item.UserId, item.Id })
                 .OnDelete(DeleteBehavior.Restrict);
         });

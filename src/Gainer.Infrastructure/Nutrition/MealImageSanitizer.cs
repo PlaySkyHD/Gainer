@@ -1,7 +1,5 @@
 using Gainer.Core.Nutrition;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.Formats.Jpeg;
+using SkiaSharp;
 using Microsoft.Extensions.Options;
 
 namespace Gainer.Infrastructure.Nutrition;
@@ -22,54 +20,55 @@ public sealed class MealImageSanitizer(IOptions<MealImageOptions>? options = nul
     public const long MaximumPixels = 16_000_000;
     private readonly MealImageOptions settings = Validate(options?.Value ?? new MealImageOptions());
 
-    public async Task<SanitizedMealImage> SanitizeAsync(
+    public Task<SanitizedMealImage> SanitizeAsync(
         MealImageInput input,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
         byte[] source = input.Bytes ?? throw new MealEstimationException("invalid_image", "The image is missing.");
-        if (source.Length == 0 || source.Length > settings.MaximumBytes)
-            throw new MealEstimationException("invalid_image_size", $"The image must be no larger than {settings.MaximumBytes} bytes.");
-
         try
         {
-            IImageFormat format;
-            ImageInfo info;
-            try
-            {
-                format = Image.DetectFormat(source);
-                info = Image.Identify(source);
-            }
-            catch (UnknownImageFormatException exception)
-            {
-                throw new MealEstimationException("invalid_image", "The file is not a supported image.", innerException: exception);
-            }
-            catch (InvalidImageContentException exception)
-            {
-                throw new MealEstimationException("invalid_image", "The image content is invalid.", innerException: exception);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (source.Length == 0 || source.Length > settings.MaximumBytes)
+                throw new MealEstimationException("invalid_image_size", $"The image must be no larger than {settings.MaximumBytes} bytes.");
 
-            string expectedContentType = format.Name switch
+            using var inputStream = new MemoryStream(source, writable: false);
+            using SKCodec? codec = SKCodec.Create(inputStream);
+            if (codec is null)
+                throw new MealEstimationException("invalid_image", "The file is not a supported image.");
+
+            string expectedContentType = codec.EncodedFormat switch
             {
-                "JPEG" => "image/jpeg",
-                "PNG" => "image/png",
-                "WEBP" => "image/webp",
+                SKEncodedImageFormat.Jpeg => "image/jpeg",
+                SKEncodedImageFormat.Png => "image/png",
+                SKEncodedImageFormat.Webp => "image/webp",
                 _ => throw new MealEstimationException("unsupported_image_format", "Only JPEG, PNG and WebP images are supported."),
             };
             if (!string.Equals(NormalizeContentType(input.ContentType), expectedContentType, StringComparison.Ordinal))
                 throw new MealEstimationException("image_type_mismatch", "The declared image type does not match its content.");
+            SKImageInfo info = codec.Info;
             if (info.Width < 1 || info.Width > settings.MaximumDimension || info.Height < 1 || info.Height > settings.MaximumDimension ||
                 (long)info.Width * info.Height > settings.MaximumPixels)
                 throw new MealEstimationException("invalid_image_dimensions", "The image dimensions exceed the allowed limit.");
 
-            await using var inputStream = new MemoryStream(source, writable: false);
-            using Image image = await Image.LoadAsync(inputStream, cancellationToken);
-            image.Metadata.ExifProfile = null;
-            image.Metadata.IccProfile = null;
-            image.Metadata.XmpProfile = null;
-            await using var output = new MemoryStream();
-            await image.SaveAsJpegAsync(output, new JpegEncoder { Quality = settings.JpegQuality }, cancellationToken);
-            return new SanitizedMealImage(output.ToArray(), "image/jpeg", image.Width, image.Height);
+            cancellationToken.ThrowIfCancellationRequested();
+            using SKBitmap bitmap = SKBitmap.Decode(codec)
+                ?? throw new MealEstimationException("invalid_image", "The image content is invalid.");
+            using SKData encoded = bitmap.Encode(SKEncodedImageFormat.Jpeg, settings.JpegQuality)
+                ?? throw new MealEstimationException("invalid_image", "The image could not be sanitized.");
+            return Task.FromResult(new SanitizedMealImage(encoded.ToArray(), "image/jpeg", info.Width, info.Height));
+        }
+        catch (MealEstimationException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            throw new MealEstimationException("invalid_image", "The image content is invalid.", innerException: exception);
         }
         finally
         {

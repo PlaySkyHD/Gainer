@@ -1,0 +1,39 @@
+{
+  "flutter": {
+    "channel": "stable",
+    "version": "3.47.7",
+    "revision": "abaf9c523780a608bd46686fd5e53740a07077f8",
+    "dartVersion": "3.13.5",
+    "releaseDateUtc": "2026-10-08T23:29:50.802542Z",
+    "windows": {
+      "archive": "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_3.47.7-stable.zip",
+      "sha256": "c2c875da25a1a1448d18ee4e8f398b2f6fce888b4775d8f9130538e16d826cb4"
+    },
+    "macos": {
+      "archive": "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.47.7-stable.zip",
+      "sha256": "17d39b000a5d0681e3f7b61a105a36f6f31dd41ab9073f625fd466f38035f901"
+    },
+    "manifest": "https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json"
+  },
+  "xcode": {
+    "version": "26.3",
+    "runner": "macos-15"
+  },
+  "minimumIos": "17.0",
+  "dependenciesVerifiedAgainst": "pub.dev",
+  "dependencies": {
+    "provider": "6.1.5+1",
+    "pigeon": "29.0.8",
+    "flutter_lints": "6.0.0",
+    "build_runner": "2.16.2",
+    "drift": "2.35.0",
+    "drift_dev": "2.35.0",
+    "dio": "5.11.1",
+    "cookie_jar": "4.0.9",
+    "dio_cookie_manager": "3.5.0",
+    "cupertino_icons": "1.0.8",
+    "path": "1.9.1",
+    "path_provider": "2.1.6",
+    "sqlite3": "3.7.0"
+  }
+}

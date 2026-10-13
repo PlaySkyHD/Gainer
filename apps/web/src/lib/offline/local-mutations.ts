@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { AccountDatabase, LocalResourceRecord, OutboxRecord } from "./database";
+import { withLocalEditLock } from "./handover-locks.ts";
 
 export type MutableAggregateTable =
   | "goals"
@@ -64,7 +65,7 @@ export async function commitLocalMutation<T>(
     "id"
   >;
 
-  return database.transaction("rw", table, database.outbox, async () => {
+  return withLocalEditLock(database, () => database.transaction("rw", table, database.outbox, async () => {
     const prior = await database.outbox.where("aggregateKey").equals(mutation.aggregateKey).toArray();
     const sequence = prior.reduce((highest, item) => Math.max(highest, item.sequence), 0) + 1;
     const outboxRecord: OutboxRecord = {
@@ -83,7 +84,7 @@ export async function commitLocalMutation<T>(
     await table.put(structuredClone(resource));
     await database.outbox.add(outboxRecord);
     return structuredClone(outboxRecord);
-  });
+  }));
 }
 
 export async function pendingMutationsForAggregate(

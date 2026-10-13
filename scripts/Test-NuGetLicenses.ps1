@@ -15,14 +15,14 @@ $allowed = @(
     "license.txt",
     "https://github.com/dotnet/corefx/blob/master/LICENSE.TXT"
 )
-$packageSpecificLicenses = @{
-    "SixLabors.ImageSharp" = "LICENSE"
-}
+$packageSpecificLicenses = @{}
 $findings = [System.Collections.Generic.List[string]]::new()
 $checked = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-Get-ChildItem -LiteralPath $repositoryRoot -Recurse -Filter "project.assets.json" -File | Where-Object {
-    $_.FullName -notmatch '[\\/]node_modules[\\/]'
+Get-ChildItem -LiteralPath $repositoryRoot -Recurse -Force -Filter "project.assets.json" -File | Where-Object {
+    $relativePath = [System.IO.Path]::GetRelativePath($repositoryRoot, $_.FullName)
+    $relativePath -notmatch '(^|[\\/])node_modules([\\/])' -and
+    $relativePath -notmatch '^artifacts([\\/])'
 } | ForEach-Object {
     $assets = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
     foreach ($library in $assets.libraries.PSObject.Properties) {

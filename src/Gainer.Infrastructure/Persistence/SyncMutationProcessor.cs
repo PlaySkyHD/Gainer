@@ -64,6 +64,27 @@ public sealed class SyncMutationProcessor(
             UserSyncState state = await context.UserSyncStates
                 .FromSqlInterpolated($"SELECT * FROM sync.user_state WHERE \"UserId\" = {userId} FOR UPDATE")
                 .SingleAsync(cancellationToken);
+            DateTime now = timeProvider.GetUtcNow().UtcDateTime;
+            List<SyncHandover> expiredHandovers = await context.SyncHandovers
+                .Where(item => item.UserId == userId
+                    && item.Status == SyncHandoverStatuses.Pending
+                    && item.ExpiresAtUtc <= now)
+                .ToListAsync(cancellationToken);
+            foreach (SyncHandover expired in expiredHandovers)
+            {
+                expired.Status = SyncHandoverStatuses.Expired;
+                expired.ProtectedCode = null;
+            }
+            if (await context.SyncHandovers.AnyAsync(
+                    item => item.UserId == userId
+                        && item.Status == SyncHandoverStatuses.Pending
+                        && item.ExpiresAtUtc > now,
+                    cancellationToken))
+            {
+                throw new SyncMutationConflictException(
+                    "handover_in_progress",
+                    "Writes are paused while a device handover is in progress.");
+            }
             if (state.ActiveClientId != client.Id)
             {
                 throw new SyncMutationConflictException("inactive_client", "This client is not the active writing device.");
@@ -82,7 +103,7 @@ public sealed class SyncMutationProcessor(
             }
             long revision = checked(state.CurrentRevision + 1);
             state.CurrentRevision = revision;
-            state.UpdatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+            state.UpdatedAtUtc = now;
             state.Version++;
             client.LastSeenAtUtc = state.UpdatedAtUtc;
 
@@ -173,15 +194,13 @@ public sealed class SyncMutationProcessor(
 
     private static bool IsRetryableConcurrency(Exception exception)
     {
-        PostgresException? postgres = exception switch
+        for (Exception? current = exception; current is not null; current = current.InnerException)
         {
-            PostgresException direct => direct,
-            DbUpdateException { InnerException: PostgresException inner } => inner,
-            _ => null,
-        };
-        return postgres?.SqlState is PostgresErrorCodes.UniqueViolation
-            or PostgresErrorCodes.SerializationFailure
-            or PostgresErrorCodes.DeadlockDetected;
+            if (current is PostgresException postgres && postgres.SqlState is
+                PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected)
+                return true;
+        }
+        return false;
     }
 
     private static JsonSerializerOptions CreateJsonOptions()

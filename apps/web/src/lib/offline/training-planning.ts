@@ -1,6 +1,7 @@
 import type { AccountDatabase, CatalogRecord, LocalResourceRecord, OutboxRecord } from "./database";
 import { changeWorkingCopy, createLocalAggregate } from "./aggregate-envelope.ts";
 import { prepareLocalMutation, type MutationOperation, type PreparedLocalMutation } from "./local-mutations.ts";
+import { withLocalEditLock } from "./handover-locks.ts";
 
 export interface ExerciseValues {
   name: string;
@@ -126,7 +127,7 @@ export async function updateLocalCustomExercise(
   values: ExerciseValues,
 ): Promise<void> {
   const normalized = validateExercise(values);
-  await database.transaction("rw", database.customExercises, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", database.customExercises, database.outbox, async () => {
     const record = await database.customExercises.get(exerciseId) as LocalResourceRecord<LocalCustomExercise> | undefined;
     if (!record || record.envelope.workingCopy.isArchived) throw new Error("Die eigene Übung ist nicht verfügbar.");
     const changed = { ...record, envelope: changeWorkingCopy(record.envelope, (draft) => {
@@ -134,11 +135,11 @@ export async function updateLocalCustomExercise(
     }) };
     await database.customExercises.put(changed);
     await database.outbox.add(await outboxRecord(database, mutationFor("custom-exercise", exerciseId, "update", record, changed.envelope.workingCopy)));
-  });
+  }));
 }
 
 export async function archiveLocalCustomExercise(database: AccountDatabase, exerciseId: string): Promise<void> {
-  await database.transaction("rw", database.customExercises, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", database.customExercises, database.outbox, async () => {
     const record = await database.customExercises.get(exerciseId) as LocalResourceRecord<LocalCustomExercise> | undefined;
     if (!record || record.envelope.workingCopy.isArchived) throw new Error("Die eigene Übung ist nicht verfügbar.");
     const changed = { ...record, envelope: changeWorkingCopy(record.envelope, (draft) => {
@@ -147,7 +148,7 @@ export async function archiveLocalCustomExercise(database: AccountDatabase, exer
     }) };
     await database.customExercises.put(changed);
     await database.outbox.add(await outboxRecord(database, mutationFor("custom-exercise", exerciseId, "update", record, changed.envelope.workingCopy)));
-  });
+  }));
 }
 
 export async function saveLocalTemplate(
@@ -157,7 +158,7 @@ export async function saveLocalTemplate(
   const normalized = await validateTemplate(database, input);
   const id = input.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
-  await database.transaction("rw", database.templates, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", database.templates, database.outbox, async () => {
     const existing = await database.templates.get(id) as LocalResourceRecord<LocalWorkoutTemplate> | undefined;
     if (existing?.envelope.workingCopy.isArchived) throw new Error("Das archivierte Template kann nicht geändert werden.");
     const value: LocalWorkoutTemplate = {
@@ -178,12 +179,12 @@ export async function saveLocalTemplate(
       payload: value,
     });
     await database.outbox.add(await outboxRecord(database, mutation));
-  });
+  }));
   return id;
 }
 
 export async function archiveLocalTemplate(database: AccountDatabase, templateId: string): Promise<void> {
-  await database.transaction("rw", database.templates, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", database.templates, database.outbox, async () => {
     const record = await database.templates.get(templateId) as LocalResourceRecord<LocalWorkoutTemplate> | undefined;
     if (!record || record.envelope.workingCopy.isArchived) throw new Error("Das Template ist nicht verfügbar.");
     const changed = { ...record, envelope: changeWorkingCopy(record.envelope, (draft) => {
@@ -192,7 +193,7 @@ export async function archiveLocalTemplate(database: AccountDatabase, templateId
     }) };
     await database.templates.put(changed);
     await database.outbox.add(await outboxRecord(database, mutationFor("workout-template", templateId, "update", record, changed.envelope.workingCopy)));
-  });
+  }));
 }
 
 export async function saveLocalRotation(
@@ -214,7 +215,7 @@ export async function saveLocalRotation(
       ? existing.envelope.workingCopy.lastCompletedTemplateId : null,
     updatedAtUtc: new Date().toISOString(),
   };
-  await database.transaction("rw", database.rotation, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", database.rotation, database.outbox, async () => {
     const record = existing
       ? { ...existing, envelope: changeWorkingCopy(existing.envelope, (draft) => Object.assign(draft, value)) }
       : { id, envelope: createLocalAggregate(id, value) };
@@ -226,7 +227,7 @@ export async function saveLocalRotation(
       payload: value,
     });
     await database.outbox.add(await outboxRecord(database, mutation));
-  });
+  }));
   return id;
 }
 
@@ -299,10 +300,10 @@ async function writeAggregate<T>(
   value: T,
 ) {
   const mutation = prepareLocalMutation({ aggregateType, aggregateId: id, operation, baseVersion: null, payload: value });
-  await database.transaction("rw", table, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", table, database.outbox, async () => {
     await table.add({ id, envelope: createLocalAggregate(id, value) });
     await database.outbox.add(await outboxRecord(database, mutation));
-  });
+  }));
 }
 
 function mutationFor<T>(

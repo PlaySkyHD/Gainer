@@ -9,6 +9,7 @@ import { WorkoutPanel } from "@/components/workout-panel";
 import { InsightsDashboard } from "@/components/insights-dashboard";
 import { CoachPanel } from "@/components/coach-panel";
 import { NutritionPanel } from "@/components/nutrition-panel";
+import { SyncHandoverPanel } from "@/components/sync-handover-panel";
 import {
   createInvitation, getSession, listAccounts, login, logout, setAccountStatus,
   type AccountSummary, type Session,
@@ -25,7 +26,7 @@ import {
 } from "@/lib/offline/database";
 import type { ConflictRecord } from "@/lib/offline/database";
 import { BrowserSyncTransport } from "@/lib/api/sync-transport";
-import { resumeAfterAuthentication, type SyncRunResult } from "@/lib/offline/sync-engine";
+import { resumeAfterAuthentication, SyncHttpError, type SyncRunResult } from "@/lib/offline/sync-engine";
 import { ForegroundSyncScheduler } from "@/lib/offline/sync-scheduler";
 import { acceptConflictServerState, retryConflictOnCurrentServerVersion } from "@/lib/offline/sync-conflicts";
 
@@ -166,9 +167,13 @@ function AuthenticatedArea({ session, onLogout }: { session: AppSession; onLogou
           void refreshSyncStatus(database);
           if (!session.isOffline) {
             void resumeAfterAuthentication(database).then(() => refreshSyncStatus(database));
-            const scheduler = new ForegroundSyncScheduler(database, new BrowserSyncTransport(), (result, error) => {
+            const scheduler = new ForegroundSyncScheduler(database, new BrowserSyncTransport(database.accountId), (result, error) => {
               if (result) setSyncState(result.state);
-              if (error) setSyncError(message(error));
+              if (error instanceof SyncHttpError && error.code === "handover_required") {
+                setSyncError("Dieses Konto wurde auf ein anderes Gerät übergeben. Für die Rückkehr ist die gesicherte Geräteübergabe erforderlich.");
+              } else if (error instanceof SyncHttpError && error.code === "handover_in_progress") {
+                setSyncError("Geräteübergabe läuft. Lokale Änderungen sind pausiert, bis sie abgeschlossen oder abgebrochen wird.");
+              } else if (error) setSyncError(message(error));
               else setSyncError(undefined);
               void refreshSyncStatus(database);
             });
@@ -276,9 +281,10 @@ function AuthenticatedArea({ session, onLogout }: { session: AppSession; onLogou
                 <StatusValue label="Blockiert/Fehler" value={String(blockedCount)} />
                 {lastSyncAt && <p className="text-xs text-muted-foreground sm:col-span-4">Letzter erfolgreicher Abgleich: {new Date(lastSyncAt).toLocaleString("de-DE")}</p>}
                 {syncError && <p role="alert" className="text-xs text-destructive sm:col-span-4">{syncError}</p>}
-                <div className="flex flex-wrap gap-2 sm:col-span-4"><Button type="button" size="sm" variant="outline" disabled={!online} onClick={() => schedulerRef.current?.retryNow()}>Erneut synchronisieren</Button>{syncState === "inactive-client" && <Button type="button" size="sm" onClick={() => schedulerRef.current?.retryNow(true)}>Dieses Gerät als Schreibgerät übernehmen</Button>}</div>
+                <div className="flex flex-wrap gap-2 sm:col-span-4"><Button type="button" size="sm" variant="outline" disabled={!online} onClick={() => schedulerRef.current?.retryNow()}>Erneut synchronisieren</Button></div>
                 <p className="text-xs leading-5 text-muted-foreground sm:col-span-4">Lokaler Speicher ist kein Backup. Noch nicht synchronisierte Daten können bei Browser- oder Gerätespeicherverlust verloren gehen.</p>
               </section>
+              {database && <SyncHandoverPanel database={database} online={online} />}
               {conflicts.length > 0 && <section aria-label="Synchronisationskonflikte" className="space-y-3 rounded-2xl border border-amber-300 bg-card p-5"><h2 className="font-semibold">Konflikte prüfen</h2>{conflicts.map((conflict) => <div className="rounded-lg border p-3" key={conflict.conflictId}><p className="text-sm">{conflict.aggregateKey}</p><div className="mt-2 flex gap-2"><Button size="sm" variant="outline" onClick={() => void resolveConflict(conflict.conflictId, true)}>Serverstand übernehmen</Button><Button size="sm" onClick={() => void resolveConflict(conflict.conflictId, false)}>Lokale Änderung erneut anwenden</Button></div></div>)}</section>}
               <section className="rounded-2xl border bg-card p-6"><h2 className="text-lg font-semibold">Lokaler Speicher</h2><p className="mt-2 text-sm text-muted-foreground">Verwalte die nur auf diesem Gerät gespeicherten Kontodaten.</p><Button className="mt-4" type="button" variant="destructive" onClick={removeLocalData}>Lokale Daten löschen</Button></section>
               {session.isAccountOperator && <OperatorPanel currentAccountId={session.userId} />}

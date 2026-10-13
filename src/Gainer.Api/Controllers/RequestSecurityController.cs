@@ -1,5 +1,6 @@
 using Gainer.Api.Composition;
 using Gainer.Contracts.Security;
+using Gainer.Core.Security;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,7 +9,7 @@ namespace Gainer.Api.Controllers;
 /// <summary>Bootstraps the double-token protection used by browser mutations.</summary>
 [ApiController]
 [Route(ApiConstants.Version1Route + "/auth/antiforgery")]
-public sealed class RequestSecurityController(IAntiforgery antiforgery) : ControllerBase
+public sealed class RequestSecurityController(IAntiforgery antiforgery, IUserContext userContext) : ControllerBase
 {
     /// <summary>Issues a request token and its paired host-only cookie.</summary>
     [HttpGet]
@@ -19,6 +20,6 @@ public sealed class RequestSecurityController(IAntiforgery antiforgery) : Contro
         AntiforgeryTokenSet tokens = antiforgery.GetAndStoreTokens(HttpContext);
         string requestToken = tokens.RequestToken
             ?? throw new InvalidOperationException("The antiforgery system did not issue a request token.");
-        return Ok(new AntiforgeryTokenResponse(requestToken));
+        return Ok(new AntiforgeryTokenResponse(requestToken, userContext.UserId));
     }
 }

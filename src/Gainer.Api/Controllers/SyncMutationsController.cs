@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Gainer.Api.Composition;
+using Gainer.Api.Security;
 using Gainer.Contracts.Sync;
 using Gainer.Core.BodyTracking;
+using Gainer.Core.Security;
 using Gainer.Core.Sync;
 using Gainer.Core.Training;
 using Microsoft.AspNetCore.Authorization;
@@ -13,7 +15,7 @@ namespace Gainer.Api.Controllers;
 [Authorize]
 [Route(ApiConstants.Version1Route + "/sync/mutations")]
 [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
-public sealed class SyncMutationsController(ISyncMutationProcessor processor) : ControllerBase
+public sealed class SyncMutationsController(ISyncMutationProcessor processor, IUserContext userContext) : ControllerBase
 {
     [HttpPut("{mutationId:guid}")]
     [ProducesResponseType<PushMutationResponse>(StatusCodes.Status200OK)]
@@ -24,6 +26,9 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor) : 
         PushMutationRequest request,
         CancellationToken cancellationToken)
     {
+        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext) is { } identityProblem)
+            return identityProblem;
+
         if (mutationId == Guid.Empty)
         {
             return SyncProblem(StatusCodes.Status422UnprocessableEntity, "invalid_mutation_id", "Mutation id is required.");

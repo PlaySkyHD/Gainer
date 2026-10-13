@@ -10,6 +10,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
     <ProjectReference Include="..\Gainer.Core\Gainer.Core.csproj" />
     <ProjectReference Include="..\Gainer.Infrastructure\Gainer.Infrastructure.csproj" />
     <ProjectReference Include="..\Gainer.Contracts\Gainer.Contracts.csproj" />

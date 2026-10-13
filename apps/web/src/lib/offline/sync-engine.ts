@@ -78,12 +78,12 @@ export async function runSync(
   try {
     registration = await transport.register(clientId, options.takeOverWriting ?? false);
   } catch (error) {
-    if (error instanceof SyncHttpError && error.code === "upgrade_required") {
+    if (error instanceof SyncHttpError && ["upgrade_required", "api_upgrade_required"].includes(error.code)) {
       await markAll(database, "upgrade-required", error.code);
       return { state: "upgrade-required", pushed: 0, pulledBatches: 0 };
     }
-    if (error instanceof SyncHttpError && error.status === 401) {
-      await markAll(database, "auth-blocked", "authentication_required");
+    if (error instanceof SyncHttpError && (error.status === 401 || error.code === "account_changed")) {
+      await markAll(database, "auth-blocked", error.code === "account_changed" ? error.code : "authentication_required");
       return { state: "auth-blocked", pushed: 0, pulledBatches: 0 };
     }
     throw error;
@@ -123,8 +123,8 @@ export async function runSync(
     try {
       response = await transport.pull(cursor);
     } catch (error) {
-      if (error instanceof SyncHttpError && error.status === 401) {
-        await markAll(database, "auth-blocked", "authentication_required");
+      if (error instanceof SyncHttpError && (error.status === 401 || error.code === "account_changed")) {
+        await markAll(database, "auth-blocked", error.code === "account_changed" ? error.code : "authentication_required");
         return { state: "auth-blocked", pushed, pulledBatches };
       }
       throw error;
@@ -146,6 +146,35 @@ export async function runSync(
 export async function resumeAfterAuthentication(database: AccountDatabase): Promise<void> {
   const blocked = await database.outbox.where("status").equals("auth-blocked").toArray();
   await database.outbox.bulkPut(blocked.map((item) => ({ ...item, status: "pending", lastErrorCode: null })));
+}
+
+export async function pullReadOnlyToRevision(
+  database: AccountDatabase,
+  transport: Pick<SyncTransport, "pull">,
+  expectedRevision: number,
+): Promise<number> {
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    throw new RangeError("Der eingefrorene Revisionsstand ist ungültig.");
+  }
+  let hasMore = true;
+  while (hasMore) {
+    const cursor = Number((await database.syncMeta.get("pull-cursor"))?.value ?? 0);
+    if (cursor > expectedRevision) throw new Error("Die Staging-Datenbank liegt hinter dem eingefrorenen Stand.");
+    if (cursor === expectedRevision) break;
+    const response = await transport.pull(cursor);
+    if (response.nextCursor > expectedRevision) throw new Error("Der Serverstand änderte sich während des eingefrorenen Pulls.");
+    for (const batch of response.batches) await applyChangeBatch(database, batch);
+    if (response.batches.length === 0 && response.nextCursor !== cursor) {
+      await database.syncMeta.put({ key: "pull-cursor", value: response.nextCursor });
+    }
+    const updatedCursor = Number((await database.syncMeta.get("pull-cursor"))?.value ?? 0);
+    if (updatedCursor === cursor && response.hasMore) throw new Error("Der Read-only-Pull konnte seinen Cursor nicht fortsetzen.");
+    hasMore = response.hasMore && updatedCursor < expectedRevision;
+    if (response.batches.length === 0) break;
+  }
+  const finalCursor = Number((await database.syncMeta.get("pull-cursor"))?.value ?? 0);
+  if (finalCursor !== expectedRevision) throw new Error("Der vollständige eingefrorene Serverstand konnte nicht geladen werden.");
+  return finalCursor;
 }
 
 export async function preparePendingMutations(database: AccountDatabase): Promise<void> {
@@ -186,7 +215,7 @@ export async function oldestReadyMutationPerAggregate(
   });
 }
 
-async function applyChangeBatch(database: AccountDatabase, batch: SyncBatch): Promise<void> {
+export async function applyChangeBatch(database: AccountDatabase, batch: SyncBatch): Promise<void> {
   const tables = [
     database.syncMeta, database.outbox, database.conflicts, database.tombstones,
     database.goals, database.checkIns, database.customExercises, database.templates,
@@ -258,15 +287,15 @@ async function handlePushFailure(
   now: Date,
 ): Promise<"continue" | "stop-auth" | "stop-inactive" | "stop-upgrade"> {
   const http = error instanceof SyncHttpError ? error : null;
-  if (http?.status === 401) {
-    await markAll(database, "auth-blocked", "authentication_required");
+  if (http?.status === 401 || http?.code === "account_changed") {
+    await markAll(database, "auth-blocked", http.code === "account_changed" ? http.code : "authentication_required");
     return "stop-auth";
   }
   if (http?.code === "inactive_client") {
     await markAll(database, "inactive-client", http.code);
     return "stop-inactive";
   }
-  if (http?.code === "upgrade_required") {
+  if (http?.code === "upgrade_required" || http?.code === "api_upgrade_required") {
     await markAll(database, "upgrade-required", http.code);
     return "stop-upgrade";
   }

@@ -124,7 +124,7 @@ async function mockAuth(
   await context.route("**/api/v1/auth/**", async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (isUnavailable() && pathname.endsWith("/session")) { await route.abort("failed"); return; }
-    if (pathname.endsWith("/antiforgery")) await route.fulfill({ json: { requestToken: "sync-token" } });
+    if (pathname.endsWith("/antiforgery")) await route.fulfill({ json: { requestToken: "sync-token", authenticatedUserId: accountId } });
     else if (pathname.endsWith("/login")) { authenticate(); await route.fulfill({ status: 204 }); }
     else if (pathname.endsWith("/session") && isAuthenticated()) await route.fulfill({ json: {
       userId: accountId, email: "sync@example.test", isAccountOperator: false,
