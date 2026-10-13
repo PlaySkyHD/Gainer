@@ -7,8 +7,7 @@ using Gainer.Infrastructure.Coach;
 using Gainer.Infrastructure.Nutrition;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace Gainer.IntegrationTests;
 
@@ -152,13 +151,7 @@ public sealed class OpenAiLiveEvalTests
             new LiveEvalUserContext(Guid.NewGuid()),
             TimeProvider.System);
 
-        byte[] imageBytes;
-        using (var image = new Image<Rgb24>(64, 64, new Rgb24(235, 220, 180)))
-        await using (var stream = new MemoryStream())
-        {
-            await image.SaveAsPngAsync(stream);
-            imageBytes = stream.ToArray();
-        }
+        byte[] imageBytes = CreateSyntheticPng();
 
         var stopwatch = Stopwatch.StartNew();
         MealEstimateDraft result = await estimator.EstimateAsync(MealEstimationInput.Create(
@@ -191,6 +184,16 @@ public sealed class OpenAiLiveEvalTests
             LastResponse = await inner.CreateResponseAsync(request, cancellationToken);
             return LastResponse.Value;
         }
+    }
+
+    private static byte[] CreateSyntheticPng()
+    {
+        using var surface = SKSurface.Create(new SKImageInfo(64, 64, SKColorType.Rgba8888, SKAlphaType.Premul));
+        Assert.IsNotNull(surface);
+        surface.Canvas.Clear(new SKColor(235, 220, 180));
+        using SKImage image = surface.Snapshot();
+        using SKData encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+        return encoded.ToArray();
     }
 
     private sealed record LiveEvalUserContext(Guid Value) : IUserContext

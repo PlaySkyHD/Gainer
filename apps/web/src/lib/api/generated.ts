@@ -1065,6 +1065,15 @@ export interface paths {
                         "text/json": components["schemas"]["PullChangesResponse"];
                     };
                 };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
             };
         };
         put?: never;
@@ -1136,6 +1145,207 @@ export interface paths {
             };
         };
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sync/handovers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BeginSyncHandoverRequest"];
+                    "text/json": components["schemas"]["BeginSyncHandoverRequest"];
+                    "application/*+json": components["schemas"]["BeginSyncHandoverRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["BeginSyncHandoverResponse"];
+                        "application/json": components["schemas"]["BeginSyncHandoverResponse"];
+                        "text/json": components["schemas"]["BeginSyncHandoverResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unprocessable Entity */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sync/handovers/{handoverId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    handoverId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CompleteSyncHandoverRequest"];
+                    "text/json": components["schemas"]["CompleteSyncHandoverRequest"];
+                    "application/*+json": components["schemas"]["CompleteSyncHandoverRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CompleteSyncHandoverResponse"];
+                        "application/json": components["schemas"]["CompleteSyncHandoverResponse"];
+                        "text/json": components["schemas"]["CompleteSyncHandoverResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unprocessable Entity */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sync/handovers/{handoverId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    handoverId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CancelSyncHandoverRequest"];
+                    "text/json": components["schemas"]["CancelSyncHandoverRequest"];
+                    "application/*+json": components["schemas"]["CancelSyncHandoverRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unprocessable Entity */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -1273,6 +1483,25 @@ export interface components {
         };
         AntiforgeryTokenResponse: {
             requestToken: string;
+            /** Format: uuid */
+            authenticatedUserId?: null | string;
+        };
+        BeginSyncHandoverRequest: {
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            sourceClientId: string;
+            /** Format: int64 */
+            expectedRevision: number | string;
+        };
+        BeginSyncHandoverResponse: {
+            /** Format: uuid */
+            handoverId: string;
+            oneTimeCode: string;
+            /** Format: int64 */
+            frozenRevision: number | string;
+            /** Format: date-time */
+            expiresAtUtc: string;
         };
         BestSetResponse: {
             /** Format: uuid */
@@ -1287,6 +1516,10 @@ export interface components {
             repetitions: number | string;
             /** Format: double */
             estimatedOneRepMaxKg: number | string;
+        };
+        CancelSyncHandoverRequest: {
+            /** Format: uuid */
+            sourceClientId: string;
         };
         CoachFactResponse: {
             factId: string;
@@ -1314,6 +1547,24 @@ export interface components {
         };
         CoachResponseRequest: {
             question: string;
+        };
+        CompleteSyncHandoverRequest: {
+            oneTimeCode: string;
+            /** Format: uuid */
+            targetClientId: string;
+            /** Format: int64 */
+            caughtUpRevision: number | string;
+        };
+        CompleteSyncHandoverResponse: {
+            /** Format: uuid */
+            handoverId: string;
+            /** Format: uuid */
+            targetClientId: string;
+            /** Format: int64 */
+            frozenRevision: number | string;
+            isActiveWriter: boolean;
+            /** Format: date-time */
+            completedAtUtc: string;
         };
         CreateInvitationRequest: {
             email: string;

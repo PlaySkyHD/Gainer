@@ -735,6 +735,71 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Gainer.Core.Sync.SyncHandover", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("CodeHash")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("FrozenRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ProtectedCode")
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SourceClientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid?>("TargetClientId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("UserId", "Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 'Pending'");
+
+                    b.HasIndex("UserId", "RequestId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "SourceClientId");
+
+                    b.HasIndex("UserId", "TargetClientId");
+
+                    b.ToTable("handovers", "sync", t =>
+                        {
+                            t.HasCheckConstraint("CK_sync_handovers_code_hash", "octet_length(\"CodeHash\") = 32");
+
+                            t.HasCheckConstraint("CK_sync_handovers_revision", "\"FrozenRevision\" >= 0");
+
+                            t.HasCheckConstraint("CK_sync_handovers_status", "\"Status\" IN ('Pending', 'Completed', 'Cancelled', 'Expired')");
+                        });
+                });
+
             modelBuilder.Entity("Gainer.Core.Sync.UserSyncState", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -745,6 +810,9 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
                     b.Property<long>("CurrentRevision")
                         .HasColumnType("bigint");
+
+                    b.Property<bool>("HandoverRequired")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -1729,6 +1797,26 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Sync.SyncHandover", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Core.Sync.SyncClient", null)
+                        .WithMany()
+                        .HasForeignKey("UserId", "SourceClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Core.Sync.SyncClient", null)
+                        .WithMany()
+                        .HasForeignKey("UserId", "TargetClientId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Gainer.Core.Sync.UserSyncState", b =>

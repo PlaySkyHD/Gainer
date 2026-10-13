@@ -2,6 +2,7 @@ import type { AccountDatabase, LocalResourceRecord, OutboxRecord } from "./datab
 import { changeWorkingCopy, createLocalAggregate } from "./aggregate-envelope.ts";
 import type { LocalCustomExercise, LocalWorkoutRotation, LocalWorkoutTemplate } from "./training-planning.ts";
 import { prepareLocalMutation, type PreparedLocalMutation } from "./local-mutations.ts";
+import { withLocalEditLock } from "./handover-locks.ts";
 
 export type LocalWorkoutStatus = "running" | "completed" | "discarded";
 
@@ -108,10 +109,10 @@ export async function startLocalWorkout(database: AccountDatabase, templateId: s
   const mutation = prepareLocalMutation({
     aggregateType: "workout", aggregateId: workoutId, operation: "create", baseVersion: null, payload: workout,
   });
-  await database.transaction("rw", database.workouts, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", database.workouts, database.outbox, async () => {
     await database.workouts.add({ id: workoutId, envelope: createLocalAggregate(workoutId, workout) });
     await database.outbox.add(await outboxRecord(database, mutation));
-  });
+  }));
   return workoutId;
 }
 
@@ -445,7 +446,7 @@ export async function mutateLocalWorkout(
   mutate: (workout: LocalWorkout) => void,
 ): Promise<LocalWorkout> {
   let result: LocalWorkout | undefined;
-  await database.transaction("rw", database.workouts, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", database.workouts, database.outbox, async () => {
     const record = await database.workouts.get(workoutId) as LocalResourceRecord<LocalWorkout> | undefined;
     if (!record) throw new WorkoutExecutionError("Das Workout ist nicht verfügbar.");
     if (record.envelope.workingCopy.status !== "running") throw new WorkoutExecutionError("Historische Workouts sind unveränderlich.");
@@ -460,6 +461,6 @@ export async function mutateLocalWorkout(
     await database.workouts.put(changed);
     await database.outbox.add(await outboxRecord(database, mutation));
     result = changed.envelope.workingCopy;
-  });
+  }));
   return result as LocalWorkout;
 }

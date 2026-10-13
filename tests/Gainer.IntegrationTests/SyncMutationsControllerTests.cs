@@ -2,6 +2,7 @@ using System.Text.Json;
 using Gainer.Api.Controllers;
 using Gainer.Contracts.Sync;
 using Gainer.Core.Mutations;
+using Gainer.Core.Security;
 using Gainer.Core.Sync;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -62,10 +63,12 @@ public sealed class SyncMutationsControllerTests
         Assert.AreEqual(code, problem.Extensions["code"]);
     }
 
-    private static SyncMutationsController Controller(ISyncMutationProcessor processor) => new(processor)
+    private static SyncMutationsController Controller(ISyncMutationProcessor processor) => new(processor, new TestUserContext(Guid.NewGuid()))
     {
         ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
     };
+
+    private sealed record TestUserContext(Guid? UserId) : IUserContext;
 
     private static PushMutationRequest Request(Guid resourceId) => new(
         2,

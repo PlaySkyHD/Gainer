@@ -1,6 +1,7 @@
 import type { AccountDatabase, LocalResourceRecord, OutboxRecord } from "./database";
 import { changeWorkingCopy, createLocalAggregate } from "./aggregate-envelope.ts";
 import { prepareLocalMutation, type PreparedLocalMutation } from "./local-mutations.ts";
+import { withLocalEditLock } from "./handover-locks.ts";
 
 export type GoalKind = "Bulk" | "Maintain" | "Cut";
 
@@ -59,7 +60,7 @@ export async function activateLocalGoal(
   validateGoal(input);
   const goalId = crypto.randomUUID();
   const createdAtUtc = new Date().toISOString();
-  await database.transaction("rw", database.goals, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", database.goals, database.outbox, async () => {
     const records = await database.goals.toArray() as LocalResourceRecord<LocalBodyGoal>[];
     const active = records.find((record) => record.envelope.workingCopy.endedAtUtc === null);
     const pendingActive = active
@@ -88,7 +89,7 @@ export async function activateLocalGoal(
     await database.goals.add({ id: goalId, envelope: createLocalAggregate(goalId, value) });
     const outbox = await outboxRecord(database, createMutation);
     await database.outbox.add({ ...outbox, dependsOnMutationId: pendingActive?.mutationId });
-  });
+  }));
 }
 
 export async function saveLocalCheckIn(
@@ -97,7 +98,7 @@ export async function saveLocalCheckIn(
 ): Promise<void> {
   validateCheckIn(input);
   const now = new Date().toISOString();
-  await database.transaction("rw", database.checkIns, database.outbox, async () => {
+  await withLocalEditLock(database, () => database.transaction("rw", database.checkIns, database.outbox, async () => {
     const records = await database.checkIns.toArray() as LocalResourceRecord<LocalDailyCheckIn>[];
     const existing = records.find((record) => record.envelope.workingCopy.localDate === input.localDate);
     if (existing) {
@@ -128,7 +129,7 @@ export async function saveLocalCheckIn(
     });
     await database.checkIns.add({ id, envelope: createLocalAggregate(id, value) });
     await database.outbox.add(await outboxRecord(database, mutation));
-  });
+  }));
 }
 
 function validateGoal(input: Omit<LocalBodyGoal, "createdAtUtc" | "endedAtUtc">) {
