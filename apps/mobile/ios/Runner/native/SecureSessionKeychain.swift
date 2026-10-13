@@ -155,14 +155,22 @@ final class SecureSessionKeychain {
     guard
       let components = URLComponents(string: apiOrigin),
       let scheme = components.scheme?.lowercased(),
-      let host = components.host?.lowercased(),
-      !host.isEmpty,
+      let parsedHost = components.host?.lowercased(),
       components.user == nil,
       components.password == nil,
       components.path.isEmpty || components.path == "/",
       components.query == nil,
       components.fragment == nil
     else {
+      throw SecureSessionKeychainError.invalidAPIOrigin
+    }
+
+    // URLComponents.host preserves brackets around IPv6 literals, unlike the
+    // unbracketed host used for loopback checks and canonical formatting.
+    let host = parsedHost.hasPrefix("[") && parsedHost.hasSuffix("]")
+      ? String(parsedHost.dropFirst().dropLast())
+      : parsedHost
+    guard !host.isEmpty else {
       throw SecureSessionKeychainError.invalidAPIOrigin
     }
 

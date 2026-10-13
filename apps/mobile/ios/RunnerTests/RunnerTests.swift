@@ -130,14 +130,14 @@ class RunnerTests: XCTestCase {
       GainerPendingRoute(
         destination: "training",
         source: "widget",
-        createdAtUtcEpochMilliseconds: now
+        createdAtUtcEpochMilliseconds: now - 1
       )
     )
     let replacementRoute = try XCTUnwrap(
       GainerPendingRoute(
         destination: "checkIn",
         source: "shortcut",
-        createdAtUtcEpochMilliseconds: now + 1
+        createdAtUtcEpochMilliseconds: now
       )
     )
     try store.recordRoute(firstRoute)
@@ -232,6 +232,11 @@ class RunnerTests: XCTestCase {
       try session.readCheckpoint(apiOrigin: "https://API.EXAMPLE.TEST:443"),
       checkpoint
     )
+    try session.writeCheckpoint(Data([7]), apiOrigin: "https://[2001:db8::1]")
+    XCTAssertEqual(
+      try session.readCheckpoint(apiOrigin: "https://[2001:db8::1]:443"),
+      Data([7])
+    )
     XCTAssertNil(try session.readCheckpoint(apiOrigin: "https://other.example.test"))
     XCTAssertEqual(keychain.lastAccessibility, .whenUnlockedThisDeviceOnly)
     XCTAssertEqual(keychain.lastAccount?.hasPrefix("checkpoint."), true)
@@ -247,6 +252,7 @@ class RunnerTests: XCTestCase {
     )
 
     XCTAssertThrowsError(try session.readCheckpoint(apiOrigin: "http://api.example.test"))
+    XCTAssertThrowsError(try session.readCheckpoint(apiOrigin: "http://[2001:db8::1]"))
     XCTAssertThrowsError(try session.readCheckpoint(apiOrigin: "https://api.example.test/path"))
     XCTAssertThrowsError(try session.readCheckpoint(apiOrigin: "https://user:pass@example.test"))
   }
