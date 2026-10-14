@@ -149,7 +149,9 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
             const SizedBox(height: 8),
             Text(
               message,
-              style: const TextStyle(color: CupertinoColors.systemRed),
+              style: TextStyle(
+                color: CupertinoColors.systemRed.resolveFrom(context),
+              ),
             ),
           ],
           const SizedBox(height: 26),

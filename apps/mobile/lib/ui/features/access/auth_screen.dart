@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/services/auth/mobile_auth_controller.dart';
+import '../../core/theme.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({required this.controller, super.key});
@@ -122,7 +123,9 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: Text(
                     message,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: CupertinoColors.systemRed),
+                    style: TextStyle(
+                      color: CupertinoColors.systemRed.resolveFrom(context),
+                    ),
                   ),
                 ),
               if (widget.controller.statusMessage case final message?)
@@ -131,9 +134,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: Text(
                     message,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: CupertinoColors.secondaryLabel,
-                    ),
+                    style: TextStyle(color: GainerTheme.secondaryText(context)),
                   ),
                 ),
               const SizedBox(height: 20),
@@ -148,10 +149,10 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
               ),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'Deine Trainings- und Ernährungseinträge werden pro Konto lokal gespeichert und bleiben bei einem Verbindungsabbruch erhalten.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: CupertinoColors.secondaryLabel),
+                style: TextStyle(color: GainerTheme.secondaryText(context)),
               ),
             ],
           ),

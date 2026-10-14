@@ -338,6 +338,7 @@ class ApiDashboardInsights {
     required this.nutrition,
     required this.training,
     required this.workoutsLast7Days,
+    this.rawJson,
     this.activeGoal,
     this.latestWeight,
   });
@@ -351,6 +352,7 @@ class ApiDashboardInsights {
   final ApiNutritionInsights nutrition;
   final ApiTrainingInsights training;
   final int workoutsLast7Days;
+  final Map<String, dynamic>? rawJson;
   final ApiActiveGoalInsight? activeGoal;
   final ApiWeightPoint? latestWeight;
 
@@ -364,6 +366,7 @@ class ApiDashboardInsights {
     final latest = json['latestWeight'];
     return ApiDashboardInsights(
       asOfRevision: _requiredInt(json, 'asOfRevision'),
+      rawJson: Map<String, dynamic>.unmodifiable(json),
       from: _requiredString(json, 'from'),
       through: _requiredString(json, 'through'),
       activeGoal: active == null
@@ -387,6 +390,141 @@ class ApiDashboardInsights {
       workoutsLast7Days: _requiredInt(json, 'workoutsLast7Days'),
     );
   }
+
+  Map<String, dynamic>? toCacheJson() => rawJson;
+}
+
+class ApiExerciseProgress {
+  const ApiExerciseProgress({
+    required this.asOfRevision,
+    required this.exerciseId,
+    required this.windowDays,
+    required this.fromUtc,
+    required this.throughUtc,
+    required this.points,
+    required this.bestSet,
+  });
+
+  final int asOfRevision;
+  final String exerciseId;
+  final int? windowDays;
+  final DateTime fromUtc;
+  final DateTime throughUtc;
+  final List<ApiExerciseProgressPoint> points;
+  final ApiBestSetInsight? bestSet;
+
+  factory ApiExerciseProgress.fromJson(Map<String, dynamic> json) {
+    final rawPoints = json['points'];
+    if (rawPoints is! List ||
+        rawPoints.any((item) => item is! Map<String, dynamic>)) {
+      throw const FormatException('Invalid exercise progress points.');
+    }
+    final rawWindow = json['windowDays'];
+    return ApiExerciseProgress(
+      asOfRevision: _requiredInt(json, 'asOfRevision'),
+      exerciseId: _requiredString(json, 'exerciseId'),
+      windowDays: rawWindow == null ? null : _intValue(rawWindow, 'windowDays'),
+      fromUtc: DateTime.parse(_requiredString(json, 'fromUtc')).toUtc(),
+      throughUtc: DateTime.parse(_requiredString(json, 'throughUtc')).toUtc(),
+      points: rawPoints
+          .cast<Map<String, dynamic>>()
+          .map(ApiExerciseProgressPoint.fromJson)
+          .toList(growable: false),
+      bestSet: json['bestSet'] == null
+          ? null
+          : ApiBestSetInsight.fromJson(
+              _objectValue(json['bestSet'], 'bestSet'),
+            ),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'asOfRevision': asOfRevision,
+    'exerciseId': exerciseId,
+    'windowDays': windowDays,
+    'fromUtc': fromUtc.toIso8601String(),
+    'throughUtc': throughUtc.toIso8601String(),
+    'points': points.map((point) => point.toJson()).toList(growable: false),
+    'bestSet': bestSet?.toJson(),
+  };
+}
+
+class ApiExerciseProgressPoint {
+  const ApiExerciseProgressPoint({
+    required this.workoutId,
+    required this.completedAtUtc,
+    required this.volumeKgRepetitions,
+    required this.bestWeightKg,
+    required this.bestRepetitions,
+    required this.estimatedOneRepMaxKg,
+  });
+
+  final String workoutId;
+  final DateTime completedAtUtc;
+  final double volumeKgRepetitions;
+  final double? bestWeightKg;
+  final int? bestRepetitions;
+  final double? estimatedOneRepMaxKg;
+
+  factory ApiExerciseProgressPoint.fromJson(Map<String, dynamic> json) =>
+      ApiExerciseProgressPoint(
+        workoutId: _requiredString(json, 'workoutId'),
+        completedAtUtc: DateTime.parse(_requiredString(json, 'completedAtUtc'))
+            .toUtc(),
+        volumeKgRepetitions: _requiredDouble(json, 'volumeKgRepetitions'),
+        bestWeightKg: _nullableDouble(json, 'bestWeightKg'),
+        bestRepetitions: json['bestRepetitions'] == null
+            ? null
+            : _intValue(json['bestRepetitions'], 'bestRepetitions'),
+        estimatedOneRepMaxKg: _nullableDouble(json, 'estimatedOneRepMaxKg'),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'workoutId': workoutId,
+    'completedAtUtc': completedAtUtc.toIso8601String(),
+    'volumeKgRepetitions': volumeKgRepetitions,
+    'bestWeightKg': bestWeightKg,
+    'bestRepetitions': bestRepetitions,
+    'estimatedOneRepMaxKg': estimatedOneRepMaxKg,
+  };
+}
+
+class ApiBestSetInsight {
+  const ApiBestSetInsight({
+    required this.workoutId,
+    required this.exerciseId,
+    required this.completedAtUtc,
+    required this.weightKg,
+    required this.repetitions,
+    required this.estimatedOneRepMaxKg,
+  });
+
+  final String workoutId;
+  final String exerciseId;
+  final DateTime completedAtUtc;
+  final double weightKg;
+  final int repetitions;
+  final double estimatedOneRepMaxKg;
+
+  factory ApiBestSetInsight.fromJson(Map<String, dynamic> json) =>
+      ApiBestSetInsight(
+        workoutId: _requiredString(json, 'workoutId'),
+        exerciseId: _requiredString(json, 'exerciseId'),
+        completedAtUtc: DateTime.parse(_requiredString(json, 'completedAtUtc'))
+            .toUtc(),
+        weightKg: _requiredDouble(json, 'weightKg'),
+        repetitions: _requiredInt(json, 'repetitions'),
+        estimatedOneRepMaxKg: _requiredDouble(json, 'estimatedOneRepMaxKg'),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'workoutId': workoutId,
+    'exerciseId': exerciseId,
+    'completedAtUtc': completedAtUtc.toIso8601String(),
+    'weightKg': weightKg,
+    'repetitions': repetitions,
+    'estimatedOneRepMaxKg': estimatedOneRepMaxKg,
+  };
 }
 
 class ApiWeightPoint {
@@ -642,6 +780,15 @@ bool _requiredBool(Map<String, dynamic> json, String name) {
 
 int _requiredInt(Map<String, dynamic> json, String name) {
   final value = json[name];
+  if (value is int) return value;
+  if (value is String) {
+    final parsed = int.tryParse(value);
+    if (parsed != null) return parsed;
+  }
+  throw FormatException('Missing or invalid "$name".');
+}
+
+int _intValue(Object? value, String name) {
   if (value is int) return value;
   if (value is String) {
     final parsed = int.tryParse(value);
