@@ -11,6 +11,7 @@ import '../../features/nutrition/nutrition_screen.dart';
 import '../../features/progress/progress_screen.dart';
 import '../../features/sync/sync_screen.dart';
 import '../../features/training/training_screen.dart';
+import '../theme.dart';
 import '../view_models/mobile_shell_view_model.dart';
 
 class MobileShell extends StatelessWidget {
@@ -29,8 +30,10 @@ class MobileShell extends StatelessWidget {
       value: controller.shell,
       child: Consumer<MobileShellViewModel>(
         builder: (context, model, _) => CupertinoTabScaffold(
+          controller: model.tabController,
           tabBar: CupertinoTabBar(
             currentIndex: model.selectedIndex,
+            inactiveColor: GainerTheme.secondaryText(context),
             onTap: model.selectTab,
             items: [
               for (final area in MobileArea.values)
@@ -41,22 +44,24 @@ class MobileShell extends StatelessWidget {
                 ),
             ],
           ),
-          tabBuilder: (context, index) => switch (MobileArea.values[index]) {
-            MobileArea.training => TrainingScreen(
-              viewModel: account.trainingViewModel,
-            ),
-            MobileArea.nutrition => NutritionScreen(
-              viewModel: account.nutritionViewModel,
-            ),
-            MobileArea.body => BodyScreen(viewModel: account.bodyViewModel),
-            MobileArea.progress => ProgressScreen(
-              viewModel: account.progressViewModel,
-            ),
-            MobileArea.more => _MoreScreen(
-              controller: controller,
-              account: account,
-            ),
-          },
+          tabBuilder: (context, index) => CupertinoTabView(
+            builder: (context) => switch (MobileArea.values[index]) {
+              MobileArea.training => TrainingScreen(
+                viewModel: account.trainingViewModel,
+              ),
+              MobileArea.nutrition => NutritionScreen(
+                viewModel: account.nutritionViewModel,
+              ),
+              MobileArea.body => BodyScreen(viewModel: account.bodyViewModel),
+              MobileArea.progress => ProgressScreen(
+                viewModel: account.progressViewModel,
+              ),
+              MobileArea.more => _MoreScreen(
+                controller: controller,
+                account: account,
+              ),
+            },
+          ),
         ),
       ),
     );
@@ -73,83 +78,151 @@ class _MoreScreen extends StatelessWidget {
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(middle: Text('Mehr')),
       child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Text(
-              account.session.email,
-              style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              account.online
-                  ? 'Konto synchronisiert mit der Gainer API'
-                  : 'Offline-Profil · Änderungen bleiben lokal vorgemerkt',
-              style: const TextStyle(color: CupertinoColors.secondaryLabel),
-            ),
-            const SizedBox(height: 24),
-            CupertinoListSection.insetGrouped(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
               children: [
-                CupertinoListTile(
-                  title: const Text('Sync & Gerätewechsel'),
-                  leading: const Icon(CupertinoIcons.arrow_2_squarepath),
-                  trailing: const CupertinoListTileChevron(),
-                  onTap: () => Navigator.of(context).push(
-                    CupertinoPageRoute<void>(
-                      builder: (_) => SyncScreen(
-                        sync: account.sync,
-                        isOnline: account.online,
-                        accountId: account.store.accountId,
-                        apiOrigin: account.api.configuration.canonicalApiOrigin,
-                        isScopeActive: account.isSessionActive,
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: CupertinoColors.secondarySystemGroupedBackground
+                        .resolveFrom(context),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: const BoxDecoration(
+                          color: GainerTheme.actionColor,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          CupertinoIcons.person_fill,
+                          color: CupertinoColors.white,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              account.session.email,
+                              style: CupertinoTheme.of(context)
+                                  .textTheme
+                                  .navTitleTextStyle,
+                              softWrap: true,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              account.online
+                                  ? 'Angemeldetes Konto'
+                                  : 'Lokales Profil',
+                              style: TextStyle(
+                                color: GainerTheme.secondaryText(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                CupertinoListTile(
-                  title: const Text('HealthKit-Prüfung'),
-                  leading: const Icon(CupertinoIcons.heart),
-                  trailing: const CupertinoListTileChevron(),
-                  onTap: () => Navigator.of(context).push(
-                    CupertinoPageRoute<void>(
-                      builder: (_) => HealthReviewScreen(
-                        viewModel: account.healthViewModel,
+                const SizedBox(height: 24),
+                CupertinoListSection.insetGrouped(
+                  backgroundColor: CupertinoTheme.of(context)
+                      .scaffoldBackgroundColor,
+                  header: Text(
+                    'KONTO & GERÄTE',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: GainerTheme.secondaryText(context),
+                    ),
+                  ),
+                  children: [
+                    CupertinoListTile(
+                      title: const Text('Sync & Gerätewechsel'),
+                      leading: const Icon(CupertinoIcons.arrow_2_squarepath),
+                      trailing: const CupertinoListTileChevron(),
+                      onTap: () => Navigator.of(context).push(
+                        CupertinoPageRoute<void>(
+                          builder: (_) => SyncScreen(
+                            sync: account.sync,
+                            isOnline: account.online,
+                            accountId: account.store.accountId,
+                            apiOrigin:
+                                account.api.configuration.canonicalApiOrigin,
+                            isScopeActive: account.isSessionActive,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                CupertinoListTile(
-                  title: const Text('Coach'),
-                  leading: const Icon(CupertinoIcons.chat_bubble_2),
-                  trailing: const CupertinoListTileChevron(),
-                  onTap: () => Navigator.of(context).push(
-                    CupertinoPageRoute<void>(
-                      builder: (_) =>
-                          CoachScreen(viewModel: account.coachViewModel),
-                    ),
-                  ),
-                ),
-                if (account.session.isAccountOperator)
-                  CupertinoListTile(
-                    title: const Text('Kontoverwaltung'),
-                    leading: const Icon(CupertinoIcons.person_2),
-                    trailing: const CupertinoListTileChevron(),
-                    onTap: () => Navigator.of(context).push(
-                      CupertinoPageRoute<void>(
-                        builder: (_) =>
-                            AccountOperatorScreen(controller: controller),
+                    CupertinoListTile(
+                      title: const Text('Apple Health'),
+                      leading: const Icon(CupertinoIcons.heart),
+                      trailing: const CupertinoListTileChevron(),
+                      onTap: () => Navigator.of(context).push(
+                        CupertinoPageRoute<void>(
+                          builder: (_) => HealthReviewScreen(
+                            viewModel: account.healthViewModel,
+                          ),
+                        ),
                       ),
                     ),
+                  ],
+                ),
+                CupertinoListSection.insetGrouped(
+                  backgroundColor: CupertinoTheme.of(context)
+                      .scaffoldBackgroundColor,
+                  header: Text(
+                    'WEITERE BEREICHE',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: GainerTheme.secondaryText(context),
+                    ),
                   ),
+                  children: [
+                    CupertinoListTile(
+                      title: const Text('Coach'),
+                      leading: const Icon(CupertinoIcons.chat_bubble_2),
+                      trailing: const CupertinoListTileChevron(),
+                      onTap: () => Navigator.of(context).push(
+                        CupertinoPageRoute<void>(
+                          builder: (_) =>
+                              CoachScreen(viewModel: account.coachViewModel),
+                        ),
+                      ),
+                    ),
+                    if (account.session.isAccountOperator)
+                      CupertinoListTile(
+                        title: const Text('Kontoverwaltung'),
+                        leading: const Icon(CupertinoIcons.person_2),
+                        trailing: const CupertinoListTileChevron(),
+                        onTap: () => Navigator.of(context).push(
+                          CupertinoPageRoute<void>(
+                            builder: (_) =>
+                                AccountOperatorScreen(controller: controller),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                _SyncButton(account: account),
+                CupertinoButton(
+                  minimumSize: const Size(double.infinity, 48),
+                  onPressed: controller.logout,
+                  child: const Text('Abmelden'),
+                ),
               ],
             ),
-            const SizedBox(height: 18),
-            _SyncButton(account: account),
-            CupertinoButton(
-              onPressed: controller.logout,
-              child: const Text('Abmelden'),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -173,7 +246,9 @@ class _SyncButtonState extends State<_SyncButton> {
     });
     try {
       final result = await widget.account.synchronize();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(
         () => _status = switch (result.state) {
           SyncRunState.synced => 'Änderungen synchronisiert.',
@@ -200,20 +275,31 @@ class _SyncButtonState extends State<_SyncButton> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      CupertinoButton.filled(
-        onPressed: !widget.account.online || _busy ? null : _sync,
-        child: _busy
-            ? const CupertinoActivityIndicator()
-            : const Text('Jetzt synchronisieren'),
-      ),
-      if (_status case final value?)
-        Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: Text(value, textAlign: TextAlign.center),
+  Widget build(BuildContext context) {
+    final enabled = widget.account.online && !_busy;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        CupertinoButton.filled(
+          minimumSize: const Size(double.infinity, 48),
+          onPressed: enabled ? _sync : null,
+          child: _busy
+              ? const CupertinoActivityIndicator()
+              : Text(
+                  'Jetzt synchronisieren',
+                  style: TextStyle(
+                    color: enabled
+                        ? CupertinoColors.white
+                        : GainerTheme.secondaryText(context),
+                  ),
+                ),
         ),
-    ],
-  );
+        if (_status case final value?)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(value, textAlign: TextAlign.center),
+          ),
+      ],
+    );
+  }
 }

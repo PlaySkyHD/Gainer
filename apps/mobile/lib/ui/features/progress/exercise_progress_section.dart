@@ -1,0 +1,521 @@
+import 'package:flutter/cupertino.dart';
+
+import '../../../data/models/api/api_models.dart';
+import '../../core/theme.dart';
+import 'progress_view_model.dart';
+
+class ExerciseProgressSection extends StatefulWidget {
+  const ExerciseProgressSection({required this.viewModel, super.key});
+  final ProgressViewModel viewModel;
+
+  @override
+  State<ExerciseProgressSection> createState() =>
+      _ExerciseProgressSectionState();
+}
+
+class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => widget.viewModel.loadExerciseOptions(),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant ExerciseProgressSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.viewModel != widget.viewModel) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => widget.viewModel.loadExerciseOptions(),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: widget.viewModel,
+    builder: (context, _) {
+      final model = widget.viewModel;
+      final selected = model.exerciseOptions.where(
+        (item) => item.id == model.selectedExerciseId,
+      );
+      final selectedName = selected.isEmpty ? null : selected.first.name;
+      final data = model.exerciseProgress;
+      final points =
+          data?.points
+              .where((item) => item.estimatedOneRepMaxKg != null)
+              .toList(growable: false) ??
+          const <ApiExerciseProgressPoint>[];
+      final bestEstimate = points.isEmpty
+          ? null
+          : points
+                .map((item) => item.estimatedOneRepMaxKg!)
+                .reduce((a, b) => a > b ? a : b);
+      final minimumEstimate = points.isEmpty
+          ? null
+          : points
+                .map((item) => item.estimatedOneRepMaxKg!)
+                .reduce((a, b) => a < b ? a : b);
+      return Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+            context,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: CupertinoColors.separator
+                .resolveFrom(context)
+                .withValues(alpha: .25),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Übungsfortschritt',
+              style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Geschätztes 1RM aus deinen abgeschlossenen Sätzen',
+              style: TextStyle(color: GainerTheme.secondaryText(context)),
+            ),
+            const SizedBox(height: 14),
+            Semantics(
+              button: true,
+              label: selectedName == null
+                  ? 'Übung auswählen'
+                  : 'Übung: $selectedName. Übung auswählen',
+              child: CupertinoButton(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                minimumSize: const Size(double.infinity, 48),
+                color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
+                onPressed:
+                    model.isLoadingExerciseOptions ||
+                        model.exerciseOptions.isEmpty
+                    ? null
+                    : _chooseExercise,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        model.isLoadingExerciseOptions
+                            ? 'Übungen laden …'
+                            : selectedName ?? 'Übung auswählen',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: CupertinoTheme.of(context).textTheme.textStyle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(CupertinoIcons.chevron_down, size: 14),
+                  ],
+                ),
+              ),
+            ),
+            if (model.isExerciseCatalogStale ||
+                model.exerciseOptionsErrorMessage != null) ...[
+              const SizedBox(height: 8),
+              _StatusLine(
+                text:
+                    model.exerciseOptionsErrorMessage ??
+                    'Gespeicherte Übungsliste · möglicherweise veraltet',
+              ),
+              if (model.exerciseOptionsErrorMessage != null)
+                CupertinoButton(
+                  minimumSize: const Size(double.infinity, 48),
+                  onPressed: model.isLoadingExerciseOptions
+                      ? null
+                      : () => model.loadExerciseOptions(refresh: true),
+                  child: const Text('Übungsliste erneut laden'),
+                ),
+            ],
+            const SizedBox(height: 12),
+            _WindowPicker(
+              selected: model.selectedProgressWindow,
+              onChanged: model.selectProgressWindow,
+            ),
+            const SizedBox(height: 14),
+            if (model.isExerciseProgressStale)
+              _StatusLine(
+                text: model.exerciseProgressCachedAtUtc == null
+                    ? 'Gespeicherter Stand · möglicherweise veraltet'
+                    : 'Gespeicherter Stand vom ${_formatDate(model.exerciseProgressCachedAtUtc!)} · möglicherweise veraltet',
+              ),
+            if (model.exerciseProgressErrorMessage case final error?)
+              _StatusLine(text: error),
+            if (model.isLoadingExerciseProgress && data == null)
+              const SizedBox(
+                height: 132,
+                child: Center(child: CupertinoActivityIndicator()),
+              )
+            else if (data == null &&
+                model.exerciseProgressErrorMessage == null &&
+                model.selectedExerciseId == null)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Text('Wähle eine Übung aus, um den Verlauf zu sehen.'),
+              )
+            else if (data != null &&
+                points.isNotEmpty &&
+                minimumEstimate != null &&
+                bestEstimate != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Min. ${minimumEstimate.toStringAsFixed(1)} kg',
+                      softWrap: true,
+                      style: TextStyle(
+                        color: GainerTheme.secondaryText(context),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Max. ${bestEstimate.toStringAsFixed(1)} kg',
+                      softWrap: true,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: GainerTheme.secondaryText(context),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Semantics(
+                label: _chartDescription(points),
+                child: SizedBox(
+                  height: 136,
+                  width: double.infinity,
+                  child: CustomPaint(
+                    painter: _OneRepMaxChartPainter(
+                      points,
+                      CupertinoTheme.of(context).primaryColor,
+                      GainerTheme.secondaryText(context),
+                    ),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _formatDate(points.first.completedAtUtc),
+                      softWrap: true,
+                      style: TextStyle(
+                        color: GainerTheme.secondaryText(context),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      _formatDate(points.last.completedAtUtc),
+                      softWrap: true,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: GainerTheme.secondaryText(context),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Bestes geschätztes 1RM · ${bestEstimate.toStringAsFixed(1)} kg',
+                style: CupertinoTheme.of(context).textTheme.textStyle
+                    .copyWith(fontWeight: FontWeight.w600),
+              ),
+              if (data.bestSet case final best?)
+                Text(
+                  'Bestleistung am ${_formatDate(best.completedAtUtc)} · ${best.weightKg.toStringAsFixed(1)} kg × ${best.repetitions}',
+                  style: TextStyle(color: GainerTheme.secondaryText(context)),
+                ),
+            ] else if (data != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Text(
+                  'Für ${selectedName ?? 'diese Übung'} gibt es in diesem Zeitraum noch keine berechenbaren 1RM-Werte.',
+                ),
+              )
+            else if (model.exerciseProgressErrorMessage != null)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Text('Verlauf ist offline nicht gespeichert.'),
+              ),
+            if (model.isLoadingExerciseProgress && data != null)
+              const Align(
+                alignment: Alignment.centerRight,
+                child: CupertinoActivityIndicator(),
+              ),
+          ],
+        ),
+      );
+    },
+  );
+
+  Future<void> _chooseExercise() async {
+    final chosen = await Navigator.of(context).push<String>(
+      CupertinoPageRoute<String>(
+        builder: (_) => _ExercisePickerPage(
+          options: widget.viewModel.exerciseOptions,
+          selectedId: widget.viewModel.selectedExerciseId,
+        ),
+      ),
+    );
+    if (chosen != null && mounted) {
+      await widget.viewModel.selectExercise(chosen);
+    }
+  }
+}
+
+class _ExercisePickerPage extends StatefulWidget {
+  const _ExercisePickerPage({required this.options, required this.selectedId});
+  final List<ExerciseProgressOption> options;
+  final String? selectedId;
+  @override
+  State<_ExercisePickerPage> createState() => _ExercisePickerPageState();
+}
+
+class _ExercisePickerPageState extends State<_ExercisePickerPage> {
+  final _search = TextEditingController();
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _search.text.trim().toLowerCase();
+    final options = widget.options
+        .where((item) => item.name.toLowerCase().contains(query))
+        .toList(growable: false);
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text('Übung auswählen'),
+        trailing: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Abbrechen'),
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: CupertinoSearchTextField(
+                controller: _search,
+                placeholder: 'Übung suchen',
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final option = options[index];
+                  return CupertinoButton(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    minimumSize: const Size(double.infinity, 48),
+                    onPressed: () => Navigator.of(context).pop(option.id),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            option.name,
+                            textAlign: TextAlign.left,
+                            style: CupertinoTheme.of(context)
+                                .textTheme
+                                .textStyle,
+                          ),
+                        ),
+                        if (option.isCustom)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Text(
+                              'Eigene',
+                              style: TextStyle(
+                                color: GainerTheme.secondaryText(context),
+                              ),
+                            ),
+                          ),
+                        if (option.id == widget.selectedId)
+                          Icon(
+                            CupertinoIcons.check_mark,
+                            color: CupertinoTheme.of(context).primaryColor,
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            if (options.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Keine passende Übung gefunden.'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WindowPicker extends StatelessWidget {
+  const _WindowPicker({required this.selected, required this.onChanged});
+  final String selected;
+  final ValueChanged<String> onChanged;
+  static const _labels = <String, String>{
+    '7': '7 T.',
+    '30': '30 T.',
+    '90': '90 T.',
+    'all': 'Gesamt',
+  };
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final compact =
+          constraints.maxWidth < 360 ||
+          MediaQuery.textScalerOf(context).scale(14) > 19;
+      if (compact) {
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final entry in _labels.entries)
+              CupertinoButton(
+                minimumSize: const Size(48, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                color: selected == entry.key
+                    ? GainerTheme.actionColor
+                    : CupertinoColors.tertiarySystemFill.resolveFrom(context),
+                onPressed: () => onChanged(entry.key),
+                child: Text(
+                  entry.value,
+                  style: TextStyle(
+                    color: selected == entry.key
+                        ? CupertinoColors.white
+                        : CupertinoColors.label.resolveFrom(context),
+                    fontWeight: selected == entry.key ? FontWeight.w600 : null,
+                  ),
+                ),
+              ),
+          ],
+        );
+      }
+      return CupertinoSlidingSegmentedControl<String>(
+        groupValue: selected,
+        children: {
+          for (final entry in _labels.entries)
+            entry.key: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Text(entry.value, maxLines: 1),
+            ),
+        },
+        onValueChanged: (value) {
+          if (value != null) onChanged(value);
+        },
+      );
+    },
+  );
+}
+
+class _StatusLine extends StatelessWidget {
+  const _StatusLine({required this.text});
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      text,
+      style: TextStyle(color: GainerTheme.secondaryText(context), fontSize: 13),
+      semanticsLabel: text,
+    ),
+  );
+}
+
+class _OneRepMaxChartPainter extends CustomPainter {
+  const _OneRepMaxChartPainter(this.points, this.color, this.labelColor);
+  final List<ApiExerciseProgressPoint> points;
+  final Color color;
+  final Color labelColor;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final values = points
+        .map((point) => point.estimatedOneRepMaxKg!)
+        .toList(growable: false);
+    if (values.isEmpty || size.isEmpty) return;
+    const inset = 12.0;
+    final minValue = values.reduce((a, b) => a < b ? a : b);
+    final maxValue = values.reduce((a, b) => a > b ? a : b);
+    final range = maxValue - minValue;
+    final height = size.height - inset * 2;
+    final offsets = <Offset>[
+      for (var i = 0; i < values.length; i++)
+        Offset(
+          values.length == 1
+              ? size.width / 2
+              : size.width * i / (values.length - 1),
+          inset +
+              height * (range == 0 ? .5 : 1 - (values[i] - minValue) / range),
+        ),
+    ];
+    final grid = Paint()
+      ..color = labelColor.withValues(alpha: .16)
+      ..strokeWidth = 1;
+    for (final fraction in [.25, .5, .75]) {
+      final y = size.height * fraction;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    }
+    final line = Paint()
+      ..color = color
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    final dot = Paint()..color = color;
+    if (offsets.length == 1) {
+      canvas.drawCircle(offsets.single, 4, dot);
+      return;
+    }
+    final path = Path()..moveTo(offsets.first.dx, offsets.first.dy);
+    for (final point in offsets.skip(1)) {
+      path.lineTo(point.dx, point.dy);
+    }
+    canvas.drawPath(path, line);
+    for (final point in offsets) {
+      canvas.drawCircle(point, 4, dot);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _OneRepMaxChartPainter old) =>
+      old.points != points ||
+      old.color != color ||
+      old.labelColor != labelColor;
+}
+
+String _chartDescription(List<ApiExerciseProgressPoint> points) =>
+    'Geschätzter Einwiederholungswert im Verlauf. ${points.map((point) => '${_formatDate(point.completedAtUtc)}: ${point.estimatedOneRepMaxKg!.toStringAsFixed(1)} kg').join(', ')}';
+String _formatDate(DateTime date) {
+  final localDate = date.toLocal();
+  return '${localDate.day.toString().padLeft(2, '0')}.${localDate.month.toString().padLeft(2, '0')}.${localDate.year}';
+}

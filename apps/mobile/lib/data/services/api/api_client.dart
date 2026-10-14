@@ -153,6 +153,30 @@ class ApiClient {
     return ApiDashboardInsights.fromJson(_asObject(response.data));
   }
 
+  Future<ApiExerciseProgress> getExerciseProgress({
+    required String exerciseId,
+    required String window,
+    String timeZone = 'Europe/Berlin',
+  }) async {
+    if (!RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    ).hasMatch(exerciseId)) {
+      throw ArgumentError.value(exerciseId, 'exerciseId', 'Expected a UUID.');
+    }
+    if (!const {'7', '30', '90', 'all'}.contains(window)) {
+      throw ArgumentError.value(window, 'window', 'Expected 7, 30, 90 or all.');
+    }
+    if (timeZone.trim().isEmpty || timeZone.length > 100) {
+      throw ArgumentError.value(timeZone, 'timeZone', 'Expected an IANA zone.');
+    }
+    final response = await _request(
+      'GET',
+      '/api/v1/insights/exercises/$exerciseId/progress',
+      queryParameters: {'window': window, 'timeZone': timeZone},
+    );
+    return ApiExerciseProgress.fromJson(_asObject(response.data));
+  }
+
   /// Coach answers are read-only, server-grounded suggestions. They do not
   /// write mutations or accept client-supplied facts.
   Future<ApiCoachResponse> askCoach(String question) async {

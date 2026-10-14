@@ -154,6 +154,23 @@ jobs:
           GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
         run: ./scripts/Verify-Mobile.ps1 -Phase NativeTests
 
+      - name: Capture fixture-backed iOS screens
+        timeout-minutes: 12
+        shell: pwsh
+        env:
+          GAINER_FLUTTER_SDK_ROOT: ${{ runner.temp }}/flutter-sdk/flutter
+        run: ./scripts/Verify-Mobile.ps1 -Phase UiCapture
+
+      - name: Upload native UI screenshots
+        if: ${{ always() }}
+        timeout-minutes: 2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: gainer-ios-ui-captures
+          path: artifacts/mobile/ui-captures/*.png
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Remove this run's CI-owned simulator
         if: ${{ always() }}
         timeout-minutes: 2
@@ -211,14 +228,6 @@ jobs:
             ~/.pub-cache/hosted/pub.dev
             ~/.pub-cache/hosted-hashes/pub.dev
           key: ${{ runner.os }}-${{ runner.arch }}-dart-pub-${{ hashFiles('apps/mobile/tool/toolchain.json', 'apps/mobile/pubspec.yaml', 'apps/mobile/pubspec.lock') }}
-
-      - name: Upload shell preview for visual review
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: mobile-shell-preview
-          path: artifacts/mobile-preview/mobile-shell-390x844.png
-          if-no-files-found: error
-          retention-days: 7
 
       - name: Upload native XCTest diagnostics
         if: ${{ always() }}

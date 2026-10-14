@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/nutrition/api_nutrition_online_provider.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
@@ -11,6 +14,180 @@ import 'package:gainer_mobile/ui/features/nutrition/nutrition_view_model.dart';
 const accountId = '00000000-0000-4000-8000-000000000004';
 
 void main() {
+  test(
+    'failed day selection keeps the previous matching snapshot and can retry',
+    () async {
+      final database = LocalDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final repository = _ControlledNutritionRepository(
+        store: LocalSyncStore(database: database, accountId: accountId),
+      );
+      final viewModel = NutritionViewModel(
+        repository: repository,
+        localDate: '2026-10-12',
+      );
+      await viewModel.load();
+      final oldSnapshot = viewModel.snapshot;
+      final pending = Completer<NutritionSnapshot>();
+      repository.pendingReads['2026-10-13'] = pending;
+
+      final selecting = viewModel.selectDate('2026-10-13');
+      pending.completeError(StateError('temporary read failure'));
+      await selecting;
+
+      expect(viewModel.snapshot, same(oldSnapshot));
+      expect(viewModel.localDate, '2026-10-12');
+      expect(viewModel.snapshot!.day.localDate, viewModel.localDate);
+      expect(viewModel.errorOperation, NutritionErrorOperation.day);
+      expect(viewModel.errorMessage, contains('temporary read failure'));
+
+      repository.pendingReads.remove('2026-10-13');
+      await viewModel.load();
+      expect(viewModel.localDate, '2026-10-13');
+      expect(viewModel.snapshot!.day.localDate, '2026-10-13');
+      expect(viewModel.errorMessage, isNull);
+      viewModel.dispose();
+    },
+  );
+
+  test('overlapping day reads only publish the latest selected date', () async {
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final repository = _ControlledNutritionRepository(
+      store: LocalSyncStore(database: database, accountId: accountId),
+    );
+    final viewModel = NutritionViewModel(
+      repository: repository,
+      localDate: '2026-10-12',
+    );
+    await viewModel.load();
+    final earlier = Completer<NutritionSnapshot>();
+    final latest = Completer<NutritionSnapshot>();
+    repository.pendingReads['2026-10-13'] = earlier;
+    repository.pendingReads['2026-10-14'] = latest;
+
+    final firstSelection = viewModel.selectDate('2026-10-13');
+    final secondSelection = viewModel.selectDate('2026-10-14');
+    latest.complete(_snapshotFor('2026-10-14'));
+    await secondSelection;
+    earlier.complete(_snapshotFor('2026-10-13'));
+    await firstSelection;
+
+    expect(viewModel.localDate, '2026-10-14');
+    expect(viewModel.snapshot!.day.localDate, '2026-10-14');
+    expect(viewModel.isLoading, isFalse);
+    viewModel.dispose();
+  });
+
+  testWidgets('failed diary removal remains visible on the day overview', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final repository = _ControlledNutritionRepository(
+      store: LocalSyncStore(database: database, accountId: accountId),
+    )..failRemoval = true;
+    const entryId = '00000000-0000-4000-8000-000000000099';
+    await repository.saveEntry(
+      '2026-10-12',
+      NutritionEntry(
+        entryId: entryId,
+        meal: NutritionMeal.breakfast,
+        position: 0,
+        productName: 'Joghurt',
+        brand: null,
+        amountGrams: 100,
+        per100Grams: const NutritionTotals(kilocalories: 60),
+        source: null,
+      ),
+    );
+    final viewModel = NutritionViewModel(
+      repository: repository,
+      localDate: '2026-10-12',
+    );
+    await tester.pumpWidget(
+      CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
+    );
+    await tester.pumpAndSettle();
+    final remove = find.byKey(ValueKey('nutrition-remove-$entryId'));
+    await tester.ensureVisible(remove);
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+
+    expect(viewModel.errorOperation, NutritionErrorOperation.diary);
+    expect(
+      find.text(viewModel.errorMessage!),
+      findsOneWidget,
+      reason:
+          '${viewModel.errorMessage} / ${tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).whereType<String>().join(' | ')}',
+    );
+    expect(viewModel.snapshot!.day.entries.single.entryId, entryId);
+    viewModel.dispose();
+  });
+
+  testWidgets(
+    'failed entry save stays in editor and remains visible after cancel',
+    (tester) async {
+      _usePhoneViewport(tester);
+      final database = LocalDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final repository = _ControlledNutritionRepository(
+        store: LocalSyncStore(database: database, accountId: accountId),
+      );
+      const entryId = '00000000-0000-4000-8000-000000000098';
+      await repository.saveEntry(
+        '2026-10-12',
+        NutritionEntry(
+          entryId: entryId,
+          meal: NutritionMeal.breakfast,
+          position: 0,
+          productName: 'Joghurt',
+          brand: null,
+          amountGrams: 100,
+          per100Grams: const NutritionTotals(kilocalories: 60),
+          source: null,
+        ),
+      );
+      repository.failSave = true;
+      final viewModel = NutritionViewModel(
+        repository: repository,
+        localDate: '2026-10-12',
+      );
+      await tester.pumpWidget(
+        CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(ValueKey('nutrition-entry-$entryId'));
+      await tester.ensureVisible(row);
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sichern'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Eintrag bearbeiten'), findsOneWidget);
+      expect(
+        find.text(viewModel.errorMessage!),
+        findsOneWidget,
+        reason:
+            '${viewModel.errorMessage} / ${tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).whereType<String>().join(' | ')}',
+      );
+      expect(viewModel.snapshot!.day.entries.single.productName, 'Joghurt');
+      expect(viewModel.errorOperation, NutritionErrorOperation.diary);
+      await tester.tap(find.byKey(const ValueKey('nutrition-edit-close')));
+      await tester.pumpAndSettle();
+      expect(viewModel.errorMessage, isNotNull);
+      expect(viewModel.errorOperation, NutritionErrorOperation.diary);
+      expect(
+        find.text(viewModel.errorMessage!),
+        findsOneWidget,
+        reason:
+            '${viewModel.errorMessage} / ${tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).whereType<String>().join(' | ')}',
+      );
+      viewModel.dispose();
+    },
+  );
+
   testWidgets('manual diary entry is persisted as one local sync mutation', (
     tester,
   ) async {
@@ -30,22 +207,31 @@ void main() {
       CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
     );
     await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Frühstück').first);
+    await tester.tap(find.text('Lebensmittel hinzufügen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mahlzeit'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mittagessen').last);
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byType(CupertinoTextField).at(0),
-      'Haferflocken',
-    );
-    await tester.enterText(find.byType(CupertinoTextField).at(2), '60');
-    await tester.enterText(find.byType(CupertinoTextField).at(3), '370');
+    await tester.tap(find.text('Manuell erfassen'));
+    await tester.pumpAndSettle();
+    final name = find.byKey(const ValueKey('nutrition-entry-name'));
+    final amount = find.byKey(const ValueKey('nutrition-entry-amount'));
+    final kcal = find.byKey(const ValueKey('nutrition-entry-kcal'));
+    await tester.ensureVisible(name);
+    await tester.enterText(name, 'Haferflocken');
+    await tester.ensureVisible(amount);
+    await tester.enterText(amount, '60');
+    await tester.ensureVisible(kcal);
+    await tester.enterText(kcal, '370');
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.text('Manuell speichern'),
       240,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: _verticalScrollable(),
     );
+    await tester.ensureVisible(find.text('Manuell speichern'));
     await tester.tap(find.text('Manuell speichern'));
     await tester.pumpAndSettle();
 
@@ -56,6 +242,115 @@ void main() {
       hasLength(1),
     );
     expect(viewModel.statusMessage, contains('lokal gespeichert'));
+  });
+
+  testWidgets('nutrition overview keeps forms behind contextual routes', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final store = LocalSyncStore(database: database, accountId: accountId);
+    final repository = NutritionRepository(
+      store: store,
+      clock: () => DateTime.utc(2026, 10, 12, 10),
+    );
+    final viewModel = NutritionViewModel(
+      repository: repository,
+      localDate: '2026-10-12',
+    );
+    await tester.pumpWidget(
+      CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Montag, 12. Oktober'), findsOneWidget);
+    expect(find.text('Lebensmittel hinzufügen'), findsOneWidget);
+    expect(find.text('Noch nichts eingetragen'), findsAtLeastNWidgets(1));
+    expect(find.byType(CupertinoTextField), findsNothing);
+    expect(find.byKey(const ValueKey('meal-add-breakfast')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('meal-add-breakfast')));
+    await tester.pumpAndSettle();
+    expect(viewModel.selectedMeal, NutritionMeal.breakfast);
+    expect(find.byType(CupertinoTextField), findsNothing);
+    await tester.tap(find.text('Manuell erfassen'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('nutrition-entry-name')), findsOneWidget);
+    expect(find.byKey(const ValueKey('nutrition-entry-kcal')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-entry-options')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-entry-close')));
+    await tester.pumpAndSettle();
+    expect(viewModel.snapshot!.day.entries, isEmpty);
+    expect(await store.readOutbox(aggregateType: 'nutrition-day'), isEmpty);
+    expect(find.byKey(const ValueKey('nutrition-entry-name')), findsNothing);
+  });
+
+  testWidgets('opening the diary is local and action errors stay contextual', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final store = LocalSyncStore(database: database, accountId: accountId);
+    final online = _FailingNutritionOnlineProvider();
+    final repository = NutritionRepository(
+      store: store,
+      online: online,
+      clock: () => DateTime.utc(2026, 10, 12, 10),
+    );
+    final viewModel = NutritionViewModel(
+      repository: repository,
+      localDate: '2026-10-12',
+    );
+    await tester.pumpWidget(
+      CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(online.searchCalls, 0);
+    expect(viewModel.snapshot!.day.localDate, '2026-10-12');
+
+    await tester.tap(find.text('Lebensmittel hinzufügen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lebensmittel suchen'));
+    await tester.pumpAndSettle();
+    final search = find.byKey(const ValueKey('nutrition-entry-search'));
+    await tester.scrollUntilVisible(
+      search,
+      220,
+      scrollable: _verticalScrollable(),
+    );
+    await tester.enterText(search, 'Haferdrink');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(online.searchCalls, 1);
+    expect(
+      find.textContaining('Fehlerkennung: nutrition_import_not_supported'),
+      findsOneWidget,
+    );
+    expect(viewModel.errorOperation, NutritionErrorOperation.search);
+
+    await tester.tap(find.text('Optionen'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('nutrition_import_not_supported'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('nutrition-entry-close')));
+    await tester.pumpAndSettle();
+    expect(viewModel.snapshot!.day.localDate, '2026-10-12');
+    expect(find.textContaining('nutrition_import_not_supported'), findsNothing);
+
+    final open = find.text('Lebensmittel hinzufügen');
+    await tester.scrollUntilVisible(
+      open,
+      220,
+      scrollable: _verticalScrollable(),
+    );
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('nutrition_import_not_supported'), findsNothing);
+    expect(viewModel.snapshot!.day.localDate, '2026-10-12');
   });
 
   testWidgets('day navigation and edit preserve food source provenance', (
@@ -108,25 +403,29 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.bySemanticsLabel('Eintrag bearbeiten'),
+      find.byKey(
+        const ValueKey('nutrition-entry-00000000-0000-4000-8000-000000000016'),
+      ),
       250,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: _verticalScrollable(),
     );
     await tester.drag(find.byType(ListView).first, const Offset(0, -320));
     await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('Eintrag bearbeiten'));
-    await tester.pumpAndSettle();
-    final fields = find.descendant(
-      of: find.byType(CupertinoAlertDialog),
-      matching: find.byType(CupertinoTextField),
+    await tester.tap(
+      find.byKey(
+        const ValueKey('nutrition-entry-00000000-0000-4000-8000-000000000016'),
+      ),
     );
-    await tester.enterText(fields.at(2), '175');
+    await tester.pumpAndSettle();
+    final amountField = find.byKey(const ValueKey('nutrition-edit-amount'));
+    expect(find.byType(CupertinoAlertDialog), findsNothing);
+    await tester.enterText(amountField, '175');
     expect(
-      tester.widget<CupertinoTextField>(fields.at(2)).controller!.text,
+      tester.widget<CupertinoTextField>(amountField).controller!.text,
       '175',
     );
-    await tester.ensureVisible(find.text('Änderungen speichern'));
-    await tester.tap(find.text('Änderungen speichern'));
+    await tester.ensureVisible(find.text('Sichern'));
+    await tester.tap(find.text('Sichern'));
     await tester.pumpAndSettle();
 
     expect(viewModel.errorMessage, isNull, reason: viewModel.errorMessage);
@@ -159,35 +458,60 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await _openPlanning(tester);
+
       await tester.scrollUntilVisible(
         find.text('Neues Gericht anlegen'),
         260,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: _verticalScrollable(),
       );
       await tester.ensureVisible(find.text('Neues Gericht anlegen'));
       await tester.tap(find.text('Neues Gericht anlegen'));
       await tester.pumpAndSettle();
-      var fields = find.descendant(
-        of: find.byType(CupertinoAlertDialog),
-        matching: find.byType(CupertinoTextField),
+      expect(find.byType(CupertinoAlertDialog), findsNothing);
+      await tester.enterText(find.byType(CupertinoTextField).at(0), 'Porridge');
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-recipe-component-0-name')),
+        'Hafer',
       );
-      await tester.enterText(fields.at(0), 'Porridge');
-      await tester.enterText(fields.at(3), 'Hafer');
-      await tester.enterText(fields.at(4), 'Bio');
-      await tester.enterText(fields.at(5), '50');
-      await tester.enterText(fields.at(6), '380');
-      await tester.ensureVisible(find.text('Bestandteil hinzufügen'));
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-recipe-component-0-brand')),
+        'Bio',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-recipe-component-0-amount')),
+        '50',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-recipe-component-0-kcal')),
+        '380',
+      );
+      await tester.scrollUntilVisible(
+        find.text('Bestandteil hinzufügen'),
+        220,
+        scrollable: _verticalScrollable(),
+      );
       await tester.tap(find.text('Bestandteil hinzufügen'));
       await tester.pumpAndSettle();
-      fields = find.descendant(
-        of: find.byType(CupertinoAlertDialog),
-        matching: find.byType(CupertinoTextField),
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('nutrition-recipe-component-1-name')),
       );
-      await tester.enterText(fields.at(10), 'Milch');
-      await tester.enterText(fields.at(12), '25');
-      await tester.enterText(fields.at(13), '60');
-      await tester.ensureVisible(find.text('Gericht speichern'));
-      await tester.tap(find.text('Gericht speichern'));
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-recipe-component-1-name')),
+        'Milch',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-recipe-component-1-amount')),
+        '25',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-recipe-component-1-kcal')),
+        '60',
+      );
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Sichern'));
+      await tester.tap(find.text('Sichern'));
       await tester.pumpAndSettle();
       expect(viewModel.snapshot!.meals.single.value.components, hasLength(2));
       expect(
@@ -195,8 +519,11 @@ void main() {
         'Bio',
       );
 
-      await tester.ensureVisible(find.text('Übernehmen'));
-      await tester.tap(find.text('Übernehmen'));
+      final addMeal = find.text('Übernehmen').first;
+      await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(addMeal);
+      await tester.tap(addMeal);
       await tester.pumpAndSettle();
       final scaleField = find.descendant(
         of: find.byType(CupertinoAlertDialog),
@@ -246,10 +573,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _openPlanning(tester);
+
     await tester.scrollUntilVisible(
       find.text('Zielphase hinzufügen'),
       260,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: _verticalScrollable(),
     );
     await tester.ensureVisible(find.text('Zielphase hinzufügen'));
     await tester.tap(find.text('Zielphase hinzufügen'));
@@ -263,14 +592,12 @@ void main() {
 
     await tester.tap(find.text('Zielphase hinzufügen'));
     await tester.pumpAndSettle();
-    final fields = find.descendant(
-      of: find.byType(CupertinoAlertDialog),
-      matching: find.byType(CupertinoTextField),
-    );
+    expect(find.byType(CupertinoAlertDialog), findsNothing);
+    final fields = find.byType(CupertinoTextField);
     await tester.enterText(fields.at(0), 'Aufbau');
     await tester.enterText(fields.at(1), '2026-10-13');
-    await tester.ensureVisible(find.text('Zielphase speichern'));
-    await tester.tap(find.text('Zielphase speichern'));
+    await tester.ensureVisible(find.text('Sichern'));
+    await tester.tap(find.text('Sichern'));
     await tester.pumpAndSettle();
     final phase = viewModel.snapshot!.targetSchedule!.versions.single;
     expect(phase.proteinGrams, 125);
@@ -314,10 +641,12 @@ void main() {
         CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
       );
       await tester.pumpAndSettle();
+      expect(find.text('Tagesziele · Aktuelles Ziel'), findsOneWidget);
+      await _openPlanning(tester);
       await tester.scrollUntilVisible(
         find.text('Aktuelles Ziel'),
         240,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: _verticalScrollable(),
       );
 
       final currentRow = find.byKey(
@@ -334,7 +663,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Künftiges Ziel'),
         180,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: _verticalScrollable(),
       );
       final futureRow = find.byKey(
         const ValueKey('target-phase-00000000-0000-4000-8000-000000000047'),
@@ -386,3 +715,72 @@ void _usePhoneViewport(WidgetTester tester) {
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 }
+
+NutritionSnapshot _snapshotFor(String date) => NutritionSnapshot(
+  day: NutritionDay(localDate: date, entries: const []),
+  meals: const [],
+  targetSchedule: null,
+  recentFoods: const [],
+);
+
+class _ControlledNutritionRepository extends NutritionRepository {
+  _ControlledNutritionRepository({required super.store});
+
+  final Map<String, Completer<NutritionSnapshot>> pendingReads = {};
+  bool failRemoval = false;
+  bool failSave = false;
+
+  @override
+  Future<NutritionSnapshot> read(String localDate) {
+    final pending = pendingReads[localDate];
+    return pending?.future ?? super.read(localDate);
+  }
+
+  @override
+  Future<void> removeEntry(String localDate, String entryId) {
+    if (failRemoval) throw StateError('remove failed');
+    return super.removeEntry(localDate, entryId);
+  }
+
+  @override
+  Future<void> saveEntry(String localDate, NutritionEntry entry) {
+    if (failSave) throw StateError('save failed');
+    return super.saveEntry(localDate, entry);
+  }
+}
+
+class _FailingNutritionOnlineProvider implements NutritionOnlineProvider {
+  int searchCalls = 0;
+
+  @override
+  Future<List<NutritionFood>> searchFoods(String query) async {
+    searchCalls++;
+    throw const NutritionOnlineException(
+      'Suche',
+      422,
+      'nutrition_import_not_supported',
+      'Der Dienst hat die Anfrage abgelehnt. Prüfe die Eingabe oder verwende '
+          'die manuelle Eingabe.',
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Future<void> _openPlanning(WidgetTester tester) async {
+  final toggle = find.text('Gerichte und Ziele verwalten');
+  await tester.scrollUntilVisible(
+    toggle,
+    240,
+    scrollable: _verticalScrollable(),
+  );
+  await tester.ensureVisible(toggle);
+  await tester.tap(toggle);
+  await tester.pumpAndSettle();
+}
+
+Finder _verticalScrollable() => find.byWidgetPredicate(
+  (widget) =>
+      widget is Scrollable && widget.axisDirection == AxisDirection.down,
+);

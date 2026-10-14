@@ -57,3 +57,13 @@ Alle Punkte sind **open**, verpflichtend für das erste iOS-Release. Android fol
 - Widget/Activity/Intent teilen nur neutrale Snapshots/Routen; keine Auth-Geheimnisse oder vollständigen Fitnessdaten. Activity-Details standardmäßig neutral.
 - Session-Cookies/Antiforgery-Token geschützt und hostgebunden; nie im Extension-Shared-Storage. Passwort nach Login verwerfen.
 - Kein HealthKit-Wert wird zum Server-Check-in, bevor der Nutzer das konkrete Review bestätigt.
+
+## Arbeitsstand 14. Oktober 2026
+
+Die Ernährung wurde in dieser Runde visuell und strukturell nachgebessert: Die Tagesübersicht bleibt kompakt; Lebensmittelaktionen führen in einen eigenen Ablauf mit kontextuellen Such-, manuellen und weiteren Erfassungswegen. Gerichte und Zielphasen liegen in einer getrennten Verwaltung. Lange Bearbeitungsformulare für Einträge, Gerichte, Zielphasen und Label-Reviews verwenden eigene scrollbare Cupertino-Routen. Die Aktionsfarbe wurde für ausreichenden Textkontrast im dunklen Modus angepasst. Fehler bleiben der auslösenden Aktion zugeordnet; ein fehlgeschlagener Tagesabruf erhält den bisherigen Snapshot und bietet einen Retry. Das belegt noch keine vollständige PWA-Parität.
+
+Der Root meldet: Formatierung über 100 Dateien ohne Änderungen, Analyse ohne Befunde und 175 bestandene Flutter-Tests; ein optionaler, lokaler Preview-Test wurde erwartungsgemäß übersprungen. Die separate lokale Vorschau mit 20 Screens endete erfolgreich und wurde visuell geprüft. Die frühere gezielte Nutrition-Suite hatte 11 bestandene Tests. Native macOS-CI und physische iPhone-/TestFlight-Abnahme stehen weiterhin aus; lokale Vorschauen belegen kein Geräteverhalten.
+
+Nutzer bestätigen, dass „The request cannot be processed.“ direkt beim Öffnen des Ernährungstabs erscheint, ohne vorherige Suche oder Scan. Der Nutrition-Tab liest beim Öffnen lokal aus SQLite. Der Text entspricht dem generischen 422-Titel des Backends; der tatsächliche Request, HTTP-Status, Fehlercode und die Ursache wurden auf dem Gerät jedoch nicht erfasst oder nachgewiesen. Die vorhandene Fehlerzuordnung und Anzeige liefert Diagnosekontext, aber keinen Nachweis einer Ursachenbehebung.
+
+Training, Body und Progress einschließlich Übungsauswahl/-grafik und Account-Offline-Cache sind laut Agenten umgesetzt und ihre Tests grün. Für Progress bleibt bei Reisen die Abweichung zwischen der API-Zeitzone `Europe/Berlin` und der Geräte-Lokalzeit eine offene IANA-/Geräteabnahme. Physische Geräteprüfungen und vollständige PWA-Parität sind damit nicht belegt. OpenSpec-Aufgaben werden durch diesen Statusvermerk nicht als abgeschlossen markiert.
