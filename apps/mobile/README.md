@@ -9,8 +9,12 @@ work-in-progress states; they do not represent completed PWA feature parity.
 archive SHA-256 values, iOS deployment target and pinned macOS/Xcode runner. The
 Windows SDK is cached under the repository's ignored `artifacts/flutter-sdk`
 directory and is deliberately separate from any preinstalled Flutter SDK.
-CI downloads the matching official macOS archive and verifies its SHA-256
-before use. `pubspec.lock` locks all Dart packages.
+CI runs on GitHub's `macos-15` runner, currently an Apple Silicon ARM64 image,
+and downloads the official ARM64 archive for the same Flutter 3.47.7 revision
+and Dart 3.13.5 used by the Windows SDK. It verifies the archive SHA-256 and
+checks the runner architecture before use, avoiding Rosetta translation. CI
+still runs the same doctor, analysis, tests, simulator build and native tests.
+`pubspec.lock` locks all Dart packages.
 
 On Windows, install or extract the pinned Flutter SDK to
 `artifacts/flutter-sdk/3.47.7/flutter`, then run:
@@ -39,6 +43,27 @@ before loading signing materials and does not save cache entries. No runtime
 speedup has been measured yet. Signed manual runs use a separate concurrency
 group from automatic verification runs, so a cache or verification update does
 not cancel an in-progress signed build.
+
+The simulator workflow creates a fresh, uniquely named iPhone simulator on
+GitHub Actions instead of reusing a pre-existing runner device. It writes the
+run token and ownership record before boot, prepares the selected runtime's
+dyld shared cache, then uses `simctl bootstatus` to start and wait for that
+device. An always-run cleanup step shuts down and deletes only the simulator
+whose recorded run token, ownership flag, name and UDID all match the current
+run; developer simulators are left alone. Cleanup is best-effort and bounded;
+if the runner cannot remove the simulator, GitHub's hosted-runner teardown is
+the fallback. The 45-minute run `38460768539`
+passed Flutter tests and the iOS app build, then stopped after simulator
+selection before XCTest began. This narrows the stall to simulator startup,
+though it does not establish the simulator service's internal cause. Apple's
+[Xcode 26.1.1 release notes](https://developer.apple.com/documentation/xcode-release-notes/xcode-26_1-release-notes)
+document a possible first-boot failure after a macOS upgrade and recommend
+generating the dyld shared cache before boot. For a single selected runtime,
+the CI mitigation uses the targeted update form also used by
+[Chromium's iOS simulator setup](https://chromium.googlesource.com/chromium/src/+/93b31d4424cb0fddb7cb5a901f21eb9859270658/ios/build/bots/scripts/iossim_util.py).
+It runs on pinned Xcode 26.3; applicability to this run is not confirmed. The
+change retains the full XCTest suite and uploads its result bundle when one is
+produced.
 
 The shell preview at `artifacts/mobile-preview/mobile-shell-390x844.png` comes
 from Flutter's widget-test renderer. Its Ahem test font makes text and icons
