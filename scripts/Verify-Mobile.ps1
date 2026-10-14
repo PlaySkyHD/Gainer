@@ -86,6 +86,168 @@ function Invoke-Checked {
     }
 }
 
+function Stop-ManagedProcessTree {
+    param([Parameter(Mandatory)][System.Diagnostics.Process] $Process)
+    try { $Process.Kill($true) } catch { return $false }
+    return $Process.WaitForExit(5000) -and $Process.HasExited
+}
+
+function Wait-ManagedOutputDrain {
+    param([Parameter(Mandatory)][System.Threading.Tasks.Task[]] $Tasks, [int] $TimeoutMilliseconds = 3000)
+    try { return [System.Threading.Tasks.Task]::WaitAll($Tasks, $TimeoutMilliseconds) }
+    catch { return $false }
+}
+
+function Invoke-ManagedProcess {
+    param(
+        [Parameter(Mandatory)][string] $Executable,
+        [Parameter(Mandatory)][string[]] $Arguments,
+        [Parameter(Mandatory)][int] $TimeoutSeconds,
+        [Parameter(Mandatory)][string] $Label
+    )
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $Executable
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add($argument) }
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+    Write-Host "MANAGED COMMAND START utc=$([DateTime]::UtcNow.ToString('o')) label=$Label timeout_seconds=$TimeoutSeconds"
+    try {
+        if (-not $process.Start()) { throw "Could not start managed command '$Label'." }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $completed = $process.WaitForExit($TimeoutSeconds * 1000)
+        $timedOut = -not $completed
+        $terminationConfirmed = $true
+        if ($timedOut) {
+            Write-Warning "Managed command timed out; terminating only its process tree: $Label"
+            $terminationConfirmed = Stop-ManagedProcessTree $process
+        }
+        $exited = $process.HasExited
+        if ($exited) { [void]$process.WaitForExit(1000) }
+        $drainConfirmed = Wait-ManagedOutputDrain @($stdoutTask, $stderrTask) 3000
+        $timer.Stop()
+        $outText = if ($stdoutTask.IsCompleted) { $stdoutTask.GetAwaiter().GetResult() } else { '' }
+        $errText = if ($stderrTask.IsCompleted) { $stderrTask.GetAwaiter().GetResult() } else { '' }
+        if ($outText) { Write-Host "MANAGED STDOUT BEGIN label=$Label`n$outText`nMANAGED STDOUT END label=$Label" }
+        if ($errText) { Write-Host "MANAGED STDERR BEGIN label=$Label`n$errText`nMANAGED STDERR END label=$Label" }
+        $exitCode = if ($exited) { $process.ExitCode } else { $null }
+        Write-Host "MANAGED COMMAND END utc=$([DateTime]::UtcNow.ToString('o')) label=$Label elapsed_seconds=$([Math]::Round($timer.Elapsed.TotalSeconds, 2)) timed_out=$timedOut exit_code=$exitCode termination_confirmed=$terminationConfirmed output_drained=$drainConfirmed"
+        return [pscustomobject]@{ TimedOut = $timedOut; ExitCode = $exitCode; TerminationConfirmed = $terminationConfirmed; OutputDrained = $drainConfirmed; Stdout = $outText; Stderr = $errText }
+    }
+    finally { $process.Dispose() }
+}
+
+function Get-VerifiedSimulatorInventoryEntry {
+    param(
+        [Parameter(Mandatory)][string] $XcrunPath,
+        [Parameter(Mandatory)][string] $SimulatorId,
+        [Parameter(Mandatory)][int] $TimeoutSeconds,
+        [Parameter(Mandatory)][string] $Label,
+        [string[]] $ExecutablePrefixArguments = @()
+    )
+    $inventoryArguments = @($ExecutablePrefixArguments) + @('simctl', 'list', 'devices', 'available', '--json')
+    $query = Invoke-ManagedProcess $XcrunPath $inventoryArguments $TimeoutSeconds $Label
+    if ($query.TimedOut -or -not $query.TerminationConfirmed -or -not $query.OutputDrained -or $query.ExitCode -ne 0) { throw "Could not obtain simulator inventory ($Label)." }
+    try { $inventory = $query.Stdout | ConvertFrom-Json } catch { throw "Simulator inventory was invalid JSON ($Label)." }
+    foreach ($runtime in $inventory.devices.PSObject.Properties) {
+        foreach ($device in $runtime.Value) {
+            if ([string]$device.udid -eq $SimulatorId) {
+                return [pscustomobject]@{ RuntimeIdentifier = [string]$runtime.Name; Device = $device }
+            }
+        }
+    }
+    return $null
+}
+
+function Assert-OwnedSimulatorRecord {
+    param(
+        [Parameter(Mandatory)][string] $StatePath,
+        [Parameter(Mandatory)][string] $RunToken,
+        [Parameter(Mandatory)][string] $SimulatorId,
+        [Parameter(Mandatory)][string] $SimulatorName,
+        [Parameter(Mandatory)][string] $RuntimeIdentifier
+    )
+    if (-not (Test-Path -LiteralPath $StatePath -PathType Leaf)) { throw 'Owned simulator state record is missing; refusing boot retry.' }
+    $record = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
+    if ($record.runToken -ne $RunToken -or $record.owned -ne $true -or
+        $record.simulatorId -ne $SimulatorId -or $record.simulatorName -ne $SimulatorName -or
+        $record.runtimeIdentifier -ne $RuntimeIdentifier -or $SimulatorName -ne "Gainer-CI-$RunToken" -or
+        $SimulatorId -notmatch '^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') {
+        throw 'Simulator ownership record does not match this workflow run; refusing boot retry.'
+    }
+}
+
+function Invoke-CiSimulatorBootStatus {
+    param(
+        [Parameter(Mandatory)][string] $XcrunPath,
+        [Parameter(Mandatory)][string] $RunToken,
+        [Parameter(Mandatory)][string] $StatePath,
+        [Parameter(Mandatory)][string] $SimulatorId,
+        [Parameter(Mandatory)][string] $SimulatorName,
+        [Parameter(Mandatory)][string] $RuntimeIdentifier,
+        [int] $FirstAttemptSeconds = 180,
+        [int] $RetryMaximumSeconds = 60,
+        [int] $InternalBudgetSeconds = 270,
+        [int] $InventoryTimeoutSeconds = 10,
+        [string[]] $ExecutablePrefixArguments = @(),
+        [int] $MinimumRetrySeconds = 10,
+        [int] $MinimumFirstAttemptSeconds = 30
+    )
+    $phaseClock = [System.Diagnostics.Stopwatch]::StartNew()
+    # Each timed-out client may use up to 5s to confirm process-tree termination
+    # and 3s to drain redirected streams. Reserve that cleanup time per client.
+    $processCleanupReserve = 8
+    $inventoryWorstCase = $InventoryTimeoutSeconds + $processCleanupReserve
+    $firstReserve = (2 * $inventoryWorstCase) + $MinimumRetrySeconds + (2 * $processCleanupReserve)
+    $firstLimit = [Math]::Min($FirstAttemptSeconds, $InternalBudgetSeconds - $firstReserve)
+    Write-Host "SIMULATOR BOOT BUDGET available_seconds=$InternalBudgetSeconds first_timeout_seconds=$firstLimit"
+    if ($firstLimit -lt $MinimumFirstAttemptSeconds) { throw 'Insufficient simulator boot phase budget remains to start bootstatus safely.' }
+    $bootArguments = @($ExecutablePrefixArguments) + @('simctl', 'bootstatus', $SimulatorId, '-b')
+    $first = Invoke-ManagedProcess $XcrunPath $bootArguments $firstLimit 'simctl bootstatus attempt=1'
+    if (-not $first.TerminationConfirmed -or -not $first.OutputDrained) { throw 'The bootstatus client did not terminate and drain its output safely; refusing retry/readiness.' }
+    if (-not $first.TimedOut) {
+        if ($first.ExitCode -ne 0) { throw "simctl bootstatus failed on first attempt with exit code $($first.ExitCode)." }
+    }
+    else {
+        if (-not $first.TerminationConfirmed) { throw 'The first bootstatus process tree could not be confirmed terminated; refusing retry.' }
+        Assert-OwnedSimulatorRecord $StatePath $RunToken $SimulatorId $SimulatorName $RuntimeIdentifier
+        $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
+        $preRetryReserve = (2 * $processCleanupReserve) + $MinimumRetrySeconds + $inventoryWorstCase
+        $preRetryTimeout = [Math]::Min($InventoryTimeoutSeconds, $remaining - $preRetryReserve)
+        if ($preRetryTimeout -lt 1) { throw 'Insufficient internal boot phase budget remains for a safe ownership check and retry.' }
+        $entry = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $preRetryTimeout 'simctl inventory before retry' $ExecutablePrefixArguments
+        if (-not $entry -or $entry.RuntimeIdentifier -ne $RuntimeIdentifier -or $entry.Device.name -ne $SimulatorName -or
+            $entry.Device.state -notin @('Created', 'Shutdown', 'Booting', 'Booted')) {
+            throw 'The exact run-owned simulator is absent or has unexpected identity/state; refusing boot retry.'
+        }
+        Assert-OwnedSimulatorRecord $StatePath $RunToken $SimulatorId $SimulatorName $RuntimeIdentifier
+        $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
+        $retryLimit = [Math]::Min($RetryMaximumSeconds, $remaining - ($inventoryWorstCase + $processCleanupReserve))
+        if ($retryLimit -lt $MinimumRetrySeconds) { throw 'Insufficient internal boot phase budget remains for a second bootstatus client.' }
+        Write-Host "SIMULATOR BOOTSTATUS RETRY utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId timeout_seconds=$retryLimit"
+        $second = Invoke-ManagedProcess $XcrunPath $bootArguments $retryLimit 'simctl bootstatus attempt=2'
+        if (-not $second.TerminationConfirmed -or -not $second.OutputDrained) { throw 'The retry bootstatus client did not terminate and drain its output safely.' }
+        if ($second.TimedOut) { throw 'The fresh bootstatus client timed out; no further retry is permitted.' }
+        if ($second.ExitCode -ne 0) { throw "simctl bootstatus failed on retry with exit code $($second.ExitCode)." }
+    }
+    $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
+    $finalInventoryTimeout = [Math]::Min($InventoryTimeoutSeconds, $remaining - $processCleanupReserve)
+    if ($finalInventoryTimeout -lt 1) { throw 'Internal simulator boot phase deadline was exceeded.' }
+    $ready = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $finalInventoryTimeout 'simctl final readiness inventory' $ExecutablePrefixArguments
+    if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) {
+        throw 'Internal simulator boot phase deadline was exceeded while checking final readiness.'
+    }
+    if (-not $ready -or $ready.RuntimeIdentifier -ne $RuntimeIdentifier -or $ready.Device.name -ne $SimulatorName -or $ready.Device.state -ne 'Booted') {
+        throw "Simulator $SimulatorId did not pass bootstatus and exact Booted inventory verification."
+    }
+    Write-Host "SIMULATOR BOOTSTATUS VERIFIED utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId state=$($ready.Device.state)"
+    return $ready.Device
+}
+
 function Assert-PinnedFlutter {
     Write-Host "SDK CHECK START utc=$([DateTime]::UtcNow.ToString('o'))"
     if (-not (Test-Path -LiteralPath $flutterCommand -PathType Leaf)) {
@@ -330,20 +492,22 @@ function Invoke-SimulatorBootPhase {
         Write-Host "SIMULATOR DYLD CACHE PREPARE END utc=$([DateTime]::UtcNow.ToString('o')) runtime=$($selected.RuntimeIdentifier)"
     }
     Write-Host "SIMULATOR BOOTSTATUS START utc=$([DateTime]::UtcNow.ToString('o')) udid=$simulatorId"
-    Invoke-Checked '/usr/bin/xcrun' @('simctl', 'bootstatus', $simulatorId, '-b')
-    Write-Host "SIMULATOR BOOTSTATUS END utc=$([DateTime]::UtcNow.ToString('o')) udid=$simulatorId"
-    $deviceOutput = & /usr/bin/xcrun simctl list devices available --json
-    if ($LASTEXITCODE -ne 0) { throw 'Could not re-check simulator state after boot.' }
-    $deviceAfterBoot = $null
-    $devicesAfterBoot = ($deviceOutput | ConvertFrom-Json).devices
-    foreach ($runtime in $devicesAfterBoot.PSObject.Properties) {
-        foreach ($candidateDevice in $runtime.Value) {
-            if ($candidateDevice.udid -eq $simulatorId) {
-                $deviceAfterBoot = $candidateDevice
-                break
+    if ($isGitHubActions) {
+        $availableBootBudget = 270 - [int][Math]::Ceiling($script:PhaseTimer.Elapsed.TotalSeconds)
+        $deviceAfterBoot = Invoke-CiSimulatorBootStatus '/usr/bin/xcrun' $runToken $simulatorStatePath $simulatorId $simulatorName $selected.RuntimeIdentifier -InternalBudgetSeconds $availableBootBudget
+    }
+    else {
+        Invoke-Checked '/usr/bin/xcrun' @('simctl', 'bootstatus', $simulatorId, '-b')
+        $deviceOutput = & /usr/bin/xcrun simctl list devices available --json
+        if ($LASTEXITCODE -ne 0) { throw 'Could not re-check simulator state after boot.' }
+        $deviceAfterBoot = $null
+        $devicesAfterBoot = ($deviceOutput | ConvertFrom-Json).devices
+        foreach ($runtime in $devicesAfterBoot.PSObject.Properties) {
+            foreach ($candidateDevice in $runtime.Value) {
+                if ($candidateDevice.udid -eq $simulatorId) { $deviceAfterBoot = $candidateDevice; break }
             }
+            if ($deviceAfterBoot) { break }
         }
-        if ($deviceAfterBoot) { break }
     }
     if (-not $deviceAfterBoot -or $deviceAfterBoot.state -ne 'Booted') {
         throw "Simulator $simulatorId did not reach Booted state after bootstatus."
