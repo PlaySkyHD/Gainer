@@ -162,11 +162,15 @@ function Get-VerifiedSimulatorInventoryEntry {
         [string[]] $ExecutablePrefixArguments = @(),
         [Parameter(Mandatory)][string] $ExpectedRuntimeIdentifier,
         [Parameter(Mandatory)][string] $ExpectedName,
-        [switch] $RequireBooted
+        [switch] $RequireBooted,
+        [switch] $ReturnConfirmedTimeout
     )
     $inventoryArguments = @($ExecutablePrefixArguments) + @('simctl', 'list', 'devices', '--json')
     $commandLabel = "$Label command=xcrun simctl list devices --json"
     $query = Invoke-ManagedProcess $XcrunPath $inventoryArguments $TimeoutSeconds $commandLabel -SuppressOutputPreview
+    if ($query.TimedOut -and $ReturnConfirmedTimeout -and $query.TerminationConfirmed -and $query.OutputDrained) {
+        return [pscustomobject]@{ InventoryTimedOut = $true }
+    }
     if ($query.TimedOut -or -not $query.TerminationConfirmed -or -not $query.OutputDrained -or $query.ExitCode -ne 0) { throw "Could not obtain simulator inventory ($Label)." }
     try { $inventory = $query.Stdout | ConvertFrom-Json } catch { throw "Simulator inventory was invalid JSON ($Label)." }
     foreach ($runtime in $inventory.devices.PSObject.Properties) {
@@ -216,7 +220,8 @@ function Invoke-CiSimulatorBootStatus {
         [int] $InventoryTimeoutSeconds = 60,
         [string[]] $ExecutablePrefixArguments = @(),
         [int] $MinimumRetrySeconds = 10,
-        [int] $MinimumFirstAttemptSeconds = 30
+        [int] $MinimumFirstAttemptSeconds = 30,
+        [int] $MinimumInventoryRetrySeconds = 10
     )
     $phaseClock = [System.Diagnostics.Stopwatch]::StartNew()
     # Each timed-out client may use up to 5s to confirm process-tree termination
@@ -260,11 +265,28 @@ function Invoke-CiSimulatorBootStatus {
         if ($second.ExitCode -ne 0) { throw "simctl bootstatus failed on retry with exit code $($second.ExitCode)." }
     }
     $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
-    $finalInventoryTimeout = [Math]::Min($InventoryTimeoutSeconds, $remaining - $processCleanupReserve)
-    if ($finalInventoryTimeout -lt 1) { throw 'Internal simulator boot phase deadline was exceeded.' }
-    $ready = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $finalInventoryTimeout 'simctl final readiness inventory' $ExecutablePrefixArguments $RuntimeIdentifier $SimulatorName -RequireBooted
+    # Reserve enough time for one fresh inventory client if this first readiness
+    # query times out, including bounded process termination/output-drain time.
+    $finalRetryReserve = (2 * $processCleanupReserve) + $MinimumInventoryRetrySeconds
+    $finalInventoryTimeout = [Math]::Min($InventoryTimeoutSeconds, $remaining - $finalRetryReserve)
+    if ($finalInventoryTimeout -lt $MinimumInventoryRetrySeconds) { throw 'Insufficient internal simulator boot phase budget remains for readiness and one bounded inventory retry.' }
+    $ready = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $finalInventoryTimeout 'simctl final readiness inventory attempt=1' $ExecutablePrefixArguments $RuntimeIdentifier $SimulatorName -RequireBooted -ReturnConfirmedTimeout
     if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) {
         throw 'Internal simulator boot phase deadline was exceeded while checking final readiness.'
+    }
+    if ($ready -and $ready.PSObject.Properties['InventoryTimedOut']) {
+        Assert-OwnedSimulatorRecord $StatePath $RunToken $SimulatorId $SimulatorName $RuntimeIdentifier
+        $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
+        $inventoryRetryTimeout = [Math]::Min($InventoryTimeoutSeconds, $remaining - $processCleanupReserve)
+        if ($inventoryRetryTimeout -lt $MinimumInventoryRetrySeconds) {
+            throw 'Insufficient internal simulator boot phase budget remains for the one permitted fresh readiness inventory client.'
+        }
+        Assert-OwnedSimulatorRecord $StatePath $RunToken $SimulatorId $SimulatorName $RuntimeIdentifier
+        Write-Host "SIMULATOR INVENTORY RETRY utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId timeout_seconds=$inventoryRetryTimeout reason=first_client_timed_out_terminated_and_drained"
+        $ready = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $inventoryRetryTimeout 'simctl final readiness inventory attempt=2' $ExecutablePrefixArguments $RuntimeIdentifier $SimulatorName -RequireBooted
+        if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) {
+            throw 'Internal simulator boot phase deadline was exceeded after the one permitted readiness inventory retry.'
+        }
     }
     if (-not $ready -or $ready.RuntimeIdentifier -ne $RuntimeIdentifier -or $ready.Device.name -ne $SimulatorName -or $ready.Device.state -ne 'Booted') {
         throw "Simulator $SimulatorId did not pass bootstatus and exact Booted inventory verification."
