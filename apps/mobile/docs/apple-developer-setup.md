@@ -311,8 +311,38 @@ Connect abgeschlossen sein; anschließend kann der Kontoinhaber den Build
 manuell einer internen Testgruppe zuweisen. Tester-Einladung und Verteilung
 bleiben außerhalb dieses Workflows.
 
-Prüfe nach der Verarbeitung auch eventuell angezeigte Export-Compliance-
-Fragen und die Beta-Testinformationen in App Store Connect. Die mitgelieferten
+## Export-Compliance für den geprüften Build
+
+Der API-Transport läuft über Dio und `dart:io` mit der im Dart-SDK enthaltenen
+BoringSSL-TLS-Implementierung. `CryptoKit.SHA256` wird zusätzlich nur zum
+Hashen interner Kennungen verwendet; eine eigene Verschlüsselung von App- oder
+SQLite-Daten wurde im aktuellen Build nicht gefunden. Deshalb ist die Antwort
+nicht „keine Verschlüsselung“ oder „ausschließlich Apple-OS-Verschlüsselung“:
+der HTTPS-Pfad verwendet standardisiertes TLS aus einer Drittanbieter-
+Implementierung.
+
+Wähle im Export-Compliance-Dialog für den bereits hochgeladenen Build **34.1**
+die Kategorie für einen Standardalgorithmus außerhalb des Apple-Betriebssystems.
+Beantworte die Frage zur Verfügbarkeit in Frankreich entsprechend der
+bestätigten Vertriebsplanung; derzeit ist keine Veröffentlichung in Frankreich
+vorgesehen. Diese Dokumentation ändert weder die Store-Verfügbarkeit noch den
+bereits hochgeladenen Build 34.1. Das `Info.plist`-Kennzeichen
+`ITSAppUsesNonExemptEncryption = false` gilt für künftig erstellte Builds. Es
+bedeutet, dass für die aktuelle Verschlüsselungs- und Markt-Konfiguration keine
+nicht ausgenommene Verschlüsselung deklariert wird; es bedeutet nicht, dass die
+App gar keine Verschlüsselung nutzt. Bei zusätzlicher Kryptografie oder einer
+späteren Veröffentlichung in Frankreich die Einordnung in App Store Connect
+erneut prüfen, bevor der Build verteilt wird.
+
+Apple-Referenzen: [`ITSAppUsesNonExemptEncryption`](https://developer.apple.com/documentation/bundleresources/information-property-list/itsappusesnonexemptencryption),
+[Export-Compliance-Übersicht](https://developer.apple.com/help/app-store-connect/manage-app-information/overview-of-export-compliance),
+[Dokumente nach Algorithmus und Frankreich-Verfügbarkeit](https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption),
+[Dart 3.13.5 TLS-Implementierung](https://github.com/dart-lang/sdk/blob/3.13.5/runtime/bin/security_context.cc),
+[Dart-SDK-Abhängigkeiten](https://github.com/dart-lang/sdk/blob/3.13.5/DEPS),
+[Dio nativer HTTP-Adapter](https://pub.dev/documentation/dio/5.11.1/dio/).
+
+Prüfe nach der Verarbeitung auch die Beta-Testinformationen in App Store
+Connect. Die mitgelieferten
 Privacy-Manifeste deklarieren die nachgewiesenen nativen API-Nutzungsgründe;
 sie ersetzen nicht die Angaben zu Konto-, Gesundheits- und Bilddaten oder die
 Prüfung der eingebundenen SDKs. Die physische iPhone-Abnahme bleibt offen.
