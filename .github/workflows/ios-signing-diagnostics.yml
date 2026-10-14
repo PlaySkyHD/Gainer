@@ -1,0 +1,275 @@
+name: iOS Signing Diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-pkcs12:
+    name: Diagnose the iOS distribution P12
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    runs-on: macos-15
+    timeout-minutes: 5
+    environment: ios-beta
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require main branch code before accessing signing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != 'refs/heads/main' ]]; then
+            echo '::error::Signing diagnostics may only run from main.'
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo '::error::The diagnostic workflow commit is not reachable from origin/main.'
+            exit 1
+          fi
+
+      - name: Verify P12 integrity and test isolated Apple imports
+        timeout-minutes: 3
+        shell: bash
+        env:
+          IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          if [[ -z "${IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64:-}" || -z "${IOS_DISTRIBUTION_CERTIFICATE_PASSWORD:-}" ]]; then
+            echo '::error::The ios-beta P12 and password secrets are both required.'
+            exit 1
+          fi
+
+          openssl_bin="$(command -v openssl || true)"
+          if command -v brew >/dev/null 2>&1; then
+            openssl3_prefix="$(brew --prefix openssl@3 2>/dev/null || true)"
+            if [[ -n "$openssl3_prefix" && -x "$openssl3_prefix/bin/openssl" ]]; then
+              openssl_bin="$openssl3_prefix/bin/openssl"
+            fi
+          fi
+          if [[ -z "$openssl_bin" || ! -x "$openssl_bin" ]]; then
+            echo '::error::No usable OpenSSL executable was found.'
+            exit 1
+          fi
+          openssl_version="$("$openssl_bin" version 2>/dev/null | head -n 1)"
+          printf 'Using diagnostic tool: %s\n' "$openssl_version"
+
+          if [[ ! "$GITHUB_RUN_ID" =~ ^[0-9]+$ || ! "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
+            echo '::error::Invalid GitHub run identity for private diagnostics storage.'
+            exit 1
+          fi
+          diag_dir="$RUNNER_TEMP/gainer-ios-signing-diagnostics-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if [[ -e "$diag_dir" ]]; then
+            echo '::error::The private diagnostics directory already exists; refusing to reuse it.'
+            exit 1
+          fi
+          mkdir -m 700 "$diag_dir"
+          p12="$diag_dir/distribution.p12"
+          normalized_p12="$diag_dir/distribution-normalized.p12"
+          encrypted_pem="$diag_dir/distribution-encrypted.pem"
+          native_keychain="$diag_dir/native-import.keychain-db"
+          normalized_keychain="$diag_dir/normalized-import.keychain-db"
+          mac_info="$diag_dir/mac-info.log"
+          normalize_input_log="$diag_dir/normalize-input.log"
+          normalize_output_log="$diag_dir/normalize-output.log"
+
+          cleanup() {
+            local status=$?
+            set +e
+            unset IOS_NORMALIZED_PEM_PASSWORD IOS_DISTRIBUTION_CERTIFICATE_PASSWORD IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64
+            [[ ! -e "$native_keychain" ]] || security delete-keychain "$native_keychain" >/dev/null 2>&1
+            [[ ! -e "$normalized_keychain" ]] || security delete-keychain "$normalized_keychain" >/dev/null 2>&1
+            rm -f "$p12" "$normalized_p12" "$encrypted_pem" "$native_keychain" "$normalized_keychain" \
+              "$mac_info" "$normalize_input_log" "$normalize_output_log"
+            rmdir "$diag_dir" 2>/dev/null || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          native_keychain_password="$("$openssl_bin" rand -hex 24)"
+          normalized_keychain_password="$("$openssl_bin" rand -hex 24)"
+
+          printf '%s' "$IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64" | base64 --decode > "$p12"
+          chmod 600 "$p12"
+          unset IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64
+
+          verify_p12_mac() {
+            local legacy_flag=()
+            local mode='default'
+            if [[ "${1:-}" == 'legacy' ]]; then
+              legacy_flag=(-legacy)
+              mode='legacy-input'
+            fi
+            if "$openssl_bin" pkcs12 -in "$p12" -info -noout \
+                -passin env:IOS_DISTRIBUTION_CERTIFICATE_PASSWORD "${legacy_flag[@]}" \
+                >"$mac_info" 2>&1; then
+              if grep -Eq '^MAC: ' "$mac_info"; then
+                printf '%s' "$mode"
+                return 0
+              fi
+              return 2
+            fi
+            return 1
+          }
+
+          set +e
+          mac_mode="$(verify_p12_mac)"
+          mac_status=$?
+          if [[ "$mac_status" -eq 1 ]]; then
+            mac_mode="$(verify_p12_mac legacy)"
+            mac_status=$?
+          fi
+          set -e
+          if [[ "$mac_status" -eq 2 ]]; then
+            echo '::error::The PKCS#12 file has no verifiable integrity MAC. Refusing import and conversion.'
+            exit 1
+          fi
+          if [[ "$mac_status" -ne 0 ]]; then
+            echo '::error::PKCS#12 MAC verification failed. The P12/password pair may not match or the P12 may be damaged. No conversion or Apple import was attempted.'
+            exit 1
+          fi
+          printf 'P12 integrity MAC verified with OpenSSL %s input support.\n' "$mac_mode"
+
+          create_temp_keychain() {
+            local keychain="$1"
+            local password="$2"
+            if ! security create-keychain -p "$password" "$keychain" >/dev/null 2>&1; then return 1; fi
+            if ! security set-keychain-settings -lut 300 "$keychain" >/dev/null 2>&1; then return 1; fi
+            if ! security unlock-keychain -p "$password" "$keychain" >/dev/null 2>&1; then return 1; fi
+            return 0
+          }
+
+          if ! create_temp_keychain "$native_keychain" "$native_keychain_password"; then
+            echo '::error::Could not create and unlock the isolated native-import keychain. No import compatibility conclusion was made.'
+            exit 1
+          fi
+          native_import_ok=false
+          if security import "$p12" -k "$native_keychain" \
+                -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" \
+                -T /usr/bin/codesign >/dev/null 2>&1; then
+            native_import_ok=true
+          fi
+
+          if [[ "$native_import_ok" == true ]]; then
+            echo 'Apple Keychain accepted the original MAC-verified P12 in an isolated temporary keychain.'
+            {
+              echo '### P12 diagnostics passed'
+              echo '- OpenSSL verified the P12 MAC.'
+              echo '- macOS Keychain accepted the original P12 in a temporary keychain.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo 'OpenSSL verified the P12 MAC, but macOS Keychain did not import the original encoding. Trying an encrypted legacy-compatible re-export.'
+          normalized_pem_password="$("$openssl_bin" rand -hex 32)"
+          export IOS_NORMALIZED_PEM_PASSWORD="$normalized_pem_password"
+          unset normalized_pem_password
+          pkcs12_input_args=(-in "$p12" -out "$encrypted_pem" \
+            -passin env:IOS_DISTRIBUTION_CERTIFICATE_PASSWORD \
+            -passout env:IOS_NORMALIZED_PEM_PASSWORD)
+          if [[ "$mac_mode" == 'legacy-input' ]]; then
+            pkcs12_input_args+=(-legacy)
+          fi
+          set +e
+          "$openssl_bin" pkcs12 "${pkcs12_input_args[@]}" 2>"$normalize_input_log"
+          pem_status=$?
+          set -e
+          if [[ "$pem_status" -ne 0 || ! -s "$encrypted_pem" ]]; then
+            echo '::error::Could not create the encrypted temporary PEM container. No unencrypted private key was written.'
+            exit 1
+          fi
+          chmod 600 "$encrypted_pem"
+          if ! grep -q '^-----BEGIN ENCRYPTED PRIVATE KEY-----$' "$encrypted_pem" || \
+              grep -Eq '^-----BEGIN (PRIVATE KEY|RSA PRIVATE KEY|EC PRIVATE KEY)-----$' "$encrypted_pem"; then
+            echo '::error::The temporary PEM container is not explicitly encrypted. Refusing re-export.'
+            exit 1
+          fi
+          if ! "$openssl_bin" pkey -in "$encrypted_pem" \
+              -passin env:IOS_NORMALIZED_PEM_PASSWORD -noout >/dev/null 2>&1; then
+            echo '::error::The temporary PEM container was not encrypted and readable with its private passphrase. Refusing re-export.'
+            exit 1
+          fi
+          set +e
+          "$openssl_bin" pkcs12 -export -in "$encrypted_pem" -out "$normalized_p12" \
+              -passin env:IOS_NORMALIZED_PEM_PASSWORD \
+              -passout env:IOS_DISTRIBUTION_CERTIFICATE_PASSWORD \
+              -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
+              2>"$normalize_output_log"
+          normalize_status=$?
+          set -e
+          unset IOS_NORMALIZED_PEM_PASSWORD
+          if [[ "$normalize_status" -ne 0 || ! -s "$normalized_p12" ]]; then
+            echo '::error::The MAC-verified P12 could not be re-exported in the requested compatibility format. No unencrypted private key was written.'
+            exit 1
+          fi
+          chmod 600 "$normalized_p12"
+          if ! "$openssl_bin" pkcs12 -in "$normalized_p12" -info -noout \
+              -passin env:IOS_DISTRIBUTION_CERTIFICATE_PASSWORD >"$mac_info" 2>&1 || \
+              ! grep -Eq '^MAC: ' "$mac_info"; then
+            echo '::error::The normalized P12 failed its own MAC verification; refusing Apple import.'
+            exit 1
+          fi
+
+          if ! create_temp_keychain "$normalized_keychain" "$normalized_keychain_password"; then
+            echo '::error::Could not create and unlock the isolated normalized-import keychain. No import compatibility conclusion was made.'
+            exit 1
+          fi
+          normalized_import_ok=false
+          if security import "$normalized_p12" -k "$normalized_keychain" \
+                -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" \
+                -T /usr/bin/codesign >/dev/null 2>&1; then
+            normalized_import_ok=true
+          fi
+          if [[ "$normalized_import_ok" == true ]]; then
+            echo 'P12 is intact. Apple Keychain rejected the original encoding but accepted the 3DES/SHA-1 normalized export; the failure is format compatibility, not a P12/password mismatch.'
+            {
+              echo '### P12 diagnostics: format compatibility issue'
+              echo '- OpenSSL verified the source P12 MAC.'
+              echo '- Keychain rejected the source encoding but accepted the normalized legacy-compatible export.'
+              echo '- Re-export the original P12 using an Apple-compatible PKCS#12 profile before updating the production secret.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo '::error::OpenSSL verified the source P12 MAC, but Keychain rejected both the original and normalized P12. This is not evidence of a wrong password; inspect the certificate/key structure and Apple import requirements.'
+          exit 1
+
+      - name: Clean up the diagnostic keychains and private files
+        if: ${{ always() && runner.os == 'macOS' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set +e
+          if [[ ! "$GITHUB_RUN_ID" =~ ^[0-9]+$ || ! "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
+            exit 0
+          fi
+          runner_temp="$(cd "$RUNNER_TEMP" 2>/dev/null && pwd -P)"
+          diag_dir="$runner_temp/gainer-ios-signing-diagnostics-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if [[ -z "$runner_temp" || "$diag_dir" != "$runner_temp"/* || -L "$diag_dir" || ! -d "$diag_dir" ]]; then
+            exit 0
+          fi
+          actual_diag_dir="$(cd "$diag_dir" 2>/dev/null && pwd -P)"
+          if [[ "$actual_diag_dir" != "$diag_dir" ]]; then
+            exit 0
+          fi
+          for keychain in "$diag_dir/native-import.keychain-db" "$diag_dir/normalized-import.keychain-db"; do
+            if [[ -e "$keychain" ]]; then
+              security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            fi
+          done
+          rm -f "$diag_dir/distribution.p12" "$diag_dir/distribution-normalized.p12" \
+            "$diag_dir/distribution-encrypted.pem" "$diag_dir/native-import.keychain-db" \
+            "$diag_dir/normalized-import.keychain-db" "$diag_dir/mac-info.log" \
+            "$diag_dir/normalize-input.log" "$diag_dir/normalize-output.log"
+          rmdir "$diag_dir" 2>/dev/null || true
+          exit 0
