@@ -248,6 +248,68 @@ function Invoke-CiSimulatorBootStatus {
     return $ready.Device
 }
 
+function Get-EligibleIphoneSimulatorCandidates {
+    param(
+        [Parameter(Mandatory)] $DeviceInventory,
+        [Parameter(Mandatory)][object[]] $RuntimeMetadata
+    )
+    $runtimeByIdentifier = @{}
+    foreach ($runtime in $RuntimeMetadata) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$runtime.identifier)) {
+            $runtimeByIdentifier[[string]$runtime.identifier] = $runtime
+        }
+    }
+    $candidates = @(
+        foreach ($runtimeGroup in $DeviceInventory.devices.PSObject.Properties) {
+            $identifierMatch = [regex]::Match([string]$runtimeGroup.Name, '^com\.apple\.CoreSimulator\.SimRuntime\.iOS-(\d+)-(\d+)(?:-(\d+))?$')
+            if (-not $identifierMatch.Success) { continue }
+            $identifierMajor = [int]$identifierMatch.Groups[1].Value
+            $identifierMinor = [int]$identifierMatch.Groups[2].Value
+            $identifierHasPatch = $identifierMatch.Groups[3].Success
+            $identifierPatch = if ($identifierHasPatch) { [int]$identifierMatch.Groups[3].Value } else { 0 }
+            $identifierVersion = [version]::new($identifierMajor, $identifierMinor, $identifierPatch)
+            $metadata = $runtimeByIdentifier[[string]$runtimeGroup.Name]
+            if (-not $metadata -or $metadata.isAvailable -ne $true) { continue }
+            $versionText = [string]$metadata.version
+            $versionSource = 'simctl-runtime-metadata.version'
+            if ([string]::IsNullOrWhiteSpace($versionText)) {
+                $runtimeNameMatch = [regex]::Match([string]$metadata.name, '^iOS\s+(\d+\.\d+(?:\.\d+)?)$')
+                if ($runtimeNameMatch.Success) {
+                    $versionText = $runtimeNameMatch.Groups[1].Value
+                    $versionSource = 'simctl-runtime-metadata.name'
+                }
+            }
+            if ([string]::IsNullOrWhiteSpace($versionText)) {
+                $versionText = [string]$metadata.SimulatorVersion
+                if (-not [string]::IsNullOrWhiteSpace($versionText)) { $versionSource = 'simctl-runtime-metadata.SimulatorVersion' }
+            }
+            if ([string]::IsNullOrWhiteSpace($versionText)) { continue }
+            $versionMatch = [regex]::Match($versionText, '^(\d+)\.(\d+)(?:\.(\d+))?$')
+            if (-not $versionMatch.Success) { continue }
+            $metadataPatch = if ($versionMatch.Groups[3].Success) { [int]$versionMatch.Groups[3].Value } else { 0 }
+            $runtimeVersion = [version]::new([int]$versionMatch.Groups[1].Value, [int]$versionMatch.Groups[2].Value, $metadataPatch)
+            if ($runtimeVersion.Major -ne $identifierVersion.Major -or $runtimeVersion.Minor -ne $identifierVersion.Minor) { continue }
+            if ($identifierHasPatch -and $identifierPatch -ne $runtimeVersion.Build) { continue }
+            if ($runtimeVersion -lt [version]'17.0') { continue }
+            foreach ($device in $runtimeGroup.Value) {
+                if ($device.isAvailable -ne $true -or [string]$device.name -notlike 'iPhone*') { continue }
+                [pscustomobject]@{
+                    RuntimeVersion = $runtimeVersion
+                    RuntimeVersionSource = $versionSource
+                    RuntimeIdentifier = [string]$runtimeGroup.Name
+                    RuntimeMajor = $runtimeVersion.Major
+                    Device = $device
+                }
+            }
+        }
+    )
+    @($candidates | Sort-Object `
+        @{ Expression = 'RuntimeVersion'; Descending = $true }, `
+        @{ Expression = 'RuntimeIdentifier'; Descending = $false }, `
+        @{ Expression = { [string]$_.Device.name }; Descending = $false }, `
+        @{ Expression = { [string]$_.Device.udid }; Descending = $false })
+}
+
 function Assert-PinnedFlutter {
     Write-Host "SDK CHECK START utc=$([DateTime]::UtcNow.ToString('o'))"
     if (-not (Test-Path -LiteralPath $flutterCommand -PathType Leaf)) {
@@ -410,27 +472,13 @@ function Invoke-SimulatorBootPhase {
     $simulatorOutput = & /usr/bin/xcrun simctl list devices available --json
     if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate available iOS simulators.' }
     $simulatorInventory = $simulatorOutput | ConvertFrom-Json
-    $availableIPhones = @(
-        $simulatorInventory.devices.PSObject.Properties |
-            ForEach-Object {
-                if ($_.Name -match '\.iOS-(\d+)(?:-|$)' -and [int]$Matches[1] -ge 17) {
-                    $runtimeMajor = [int]$Matches[1]
-                    $runtimeIdentifier = [string]$_.Name
-                    foreach ($device in $_.Value) {
-                        if ($device.isAvailable -and $device.name -like 'iPhone*') {
-                            [pscustomobject]@{
-                                RuntimeMajor = $runtimeMajor
-                                RuntimeIdentifier = $runtimeIdentifier
-                                Device = $device
-                            }
-                        }
-                    }
-                }
-            } |
-            Sort-Object RuntimeMajor -Descending
-    )
+    $runtimeOutput = & /usr/bin/xcrun simctl list runtimes --json
+    if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate iOS Simulator runtime metadata from the pinned Xcode.' }
+    $runtimeInventory = $runtimeOutput | ConvertFrom-Json
+    if (-not $runtimeInventory.runtimes) { throw 'Pinned Xcode returned no Simulator runtime metadata.' }
+    $availableIPhones = @(Get-EligibleIphoneSimulatorCandidates $simulatorInventory ([object[]]$runtimeInventory.runtimes))
     if ($availableIPhones.Count -eq 0) {
-        throw 'No available iPhone simulator is installed on this macOS runner.'
+        throw 'No available iPhone simulator for iOS 17+ matched the pinned Xcode runtime metadata.'
     }
     $selected = $availableIPhones[0]
     $device = $selected.Device
@@ -485,7 +533,7 @@ function Invoke-SimulatorBootPhase {
     }
     New-Item -ItemType Directory -Force -Path $runStateRoot | Out-Null
     $simulatorState | ConvertTo-Json | Set-Content -LiteralPath $simulatorStatePath -Encoding utf8
-    Write-Host "SIMULATOR SELECTED utc=$([DateTime]::UtcNow.ToString('o')) name=$simulatorName runtimeMajor=$($selected.RuntimeMajor) runtime=$($selected.RuntimeIdentifier) udid=$simulatorId owned=$simulatorOwned initialState=$initialState"
+    Write-Host "SIMULATOR SELECTED utc=$([DateTime]::UtcNow.ToString('o')) name=$simulatorName ios_version=$($selected.RuntimeVersion) version_source=$($selected.RuntimeVersionSource) xcode=$($toolchain.xcode.version) runtime=$($selected.RuntimeIdentifier) udid=$simulatorId owned=$simulatorOwned initialState=$initialState"
     if ($isGitHubActions) {
         Write-Host "SIMULATOR DYLD CACHE PREPARE START utc=$([DateTime]::UtcNow.ToString('o')) runtime=$($selected.RuntimeIdentifier)"
         Invoke-Checked '/usr/bin/xcrun' @('simctl', 'runtime', 'dyld_shared_cache', 'update', $selected.RuntimeIdentifier)
