@@ -159,16 +159,24 @@ function Get-VerifiedSimulatorInventoryEntry {
         [Parameter(Mandatory)][string] $SimulatorId,
         [Parameter(Mandatory)][int] $TimeoutSeconds,
         [Parameter(Mandatory)][string] $Label,
-        [string[]] $ExecutablePrefixArguments = @()
+        [string[]] $ExecutablePrefixArguments = @(),
+        [Parameter(Mandatory)][string] $ExpectedRuntimeIdentifier,
+        [Parameter(Mandatory)][string] $ExpectedName,
+        [switch] $RequireBooted
     )
-    $inventoryArguments = @($ExecutablePrefixArguments) + @('simctl', 'list', 'devices', 'available', '--json')
-    $query = Invoke-ManagedProcess $XcrunPath $inventoryArguments $TimeoutSeconds $Label -SuppressOutputPreview
+    $inventoryArguments = @($ExecutablePrefixArguments) + @('simctl', 'list', 'devices', '--json')
+    $commandLabel = "$Label command=xcrun simctl list devices --json"
+    $query = Invoke-ManagedProcess $XcrunPath $inventoryArguments $TimeoutSeconds $commandLabel -SuppressOutputPreview
     if ($query.TimedOut -or -not $query.TerminationConfirmed -or -not $query.OutputDrained -or $query.ExitCode -ne 0) { throw "Could not obtain simulator inventory ($Label)." }
     try { $inventory = $query.Stdout | ConvertFrom-Json } catch { throw "Simulator inventory was invalid JSON ($Label)." }
     foreach ($runtime in $inventory.devices.PSObject.Properties) {
         foreach ($device in $runtime.Value) {
             if ([string]$device.udid -eq $SimulatorId) {
-                Write-Host "SIMULATOR INVENTORY MATCH label=$Label runtime=$($runtime.Name) name=$($device.name) udid=$($device.udid) state=$($device.state)"
+                Write-Host "SIMULATOR INVENTORY MATCH label=$Label runtime=$($runtime.Name) name=$($device.name) udid=$($device.udid) state=$($device.state) is_available=$($device.isAvailable)"
+                if ([string]$runtime.Name -ne $ExpectedRuntimeIdentifier -or [string]$device.name -ne $ExpectedName -or $device.isAvailable -ne $true) {
+                    throw "Exact simulator identity/availability check failed ($Label)."
+                }
+                if ($RequireBooted -and [string]$device.state -ne 'Booted') { throw "Exact simulator is not Booted ($Label)." }
                 return [pscustomobject]@{ RuntimeIdentifier = [string]$runtime.Name; Device = $device }
             }
         }
@@ -234,7 +242,7 @@ function Invoke-CiSimulatorBootStatus {
         $preRetryReserve = (3 * $processCleanupReserve) + $MinimumRetrySeconds + $minimumInventoryTimeout
         $preRetryTimeout = [Math]::Min($InventoryTimeoutSeconds, $remaining - $preRetryReserve)
         if ($preRetryTimeout -lt 1) { throw 'Insufficient internal boot phase budget remains for a safe ownership check and retry.' }
-        $entry = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $preRetryTimeout 'simctl inventory before retry' $ExecutablePrefixArguments
+        $entry = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $preRetryTimeout 'simctl inventory before retry' $ExecutablePrefixArguments $RuntimeIdentifier $SimulatorName
         if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) { throw 'Simulator boot phase deadline was exceeded while checking ownership before retry.' }
         if (-not $entry -or $entry.RuntimeIdentifier -ne $RuntimeIdentifier -or $entry.Device.name -ne $SimulatorName -or
             $entry.Device.state -notin @('Created', 'Shutdown', 'Booting', 'Booted')) {
@@ -254,7 +262,7 @@ function Invoke-CiSimulatorBootStatus {
     $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
     $finalInventoryTimeout = [Math]::Min($InventoryTimeoutSeconds, $remaining - $processCleanupReserve)
     if ($finalInventoryTimeout -lt 1) { throw 'Internal simulator boot phase deadline was exceeded.' }
-    $ready = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $finalInventoryTimeout 'simctl final readiness inventory' $ExecutablePrefixArguments
+    $ready = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $finalInventoryTimeout 'simctl final readiness inventory' $ExecutablePrefixArguments $RuntimeIdentifier $SimulatorName -RequireBooted
     if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) {
         throw 'Internal simulator boot phase deadline was exceeded while checking final readiness.'
     }
