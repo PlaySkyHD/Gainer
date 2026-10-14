@@ -171,6 +171,12 @@ OpenSSL fragt beim P12-Export interaktiv nach dem neuen Passwort. Zwischenablage
 direkt als `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64` speichern und leeren. Das
 Passwort muss zugleich das Secret `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` sein.
 
+CI prüft vor dem Import die P12-Integritäts-MAC. Für Apples Keychain wird eine
+kompatible Kopie mit 3DES/SHA-1 erstellt; der private Schlüssel liegt dafür nur
+verschlüsselt in einer kurzlebigen Datei mit restriktiven Rechten. Eine fehlende
+oder ungültige MAC führt zum Abbruch. Die GitHub-Secrets werden dabei nicht
+umgeschrieben; eine gültige Quelle muss nicht manuell neu exportiert werden.
+
 ## Zwei App-Store-Profile und GitHub-Environment
 
 Unter **Profiles → +** zwei neue **App Store Connect**-Profile mit dem Apple
