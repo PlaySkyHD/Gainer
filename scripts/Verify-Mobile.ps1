@@ -147,7 +147,13 @@ function Invoke-ManagedProcess {
                 if ($stream.Text) {
                     $preview = [string]$stream.Text
                     $wasTruncated = $preview.Length -gt $OutputPreviewLimit
-                    if ($wasTruncated) { $preview = $preview.Substring(0, $OutputPreviewLimit) }
+                    if ($wasTruncated) {
+                        $headLength = [int][Math]::Min(4000, [Math]::Floor($OutputPreviewLimit / 3))
+                        $tailLength = $OutputPreviewLimit - $headLength
+                        $preview = $preview.Substring(0, $headLength) +
+                            "`n... output omitted; final process output follows ...`n" +
+                            $preview.Substring($preview.Length - $tailLength)
+                    }
                     Write-Host "MANAGED $($stream.Name) BEGIN label=$Label`n$preview"
                     if ($wasTruncated) { Write-Host "MANAGED $($stream.Name) TRUNCATED label=$Label original_characters=$($stream.Text.Length) limit=$OutputPreviewLimit" }
                     Write-Host "MANAGED $($stream.Name) END label=$Label"
@@ -721,6 +727,39 @@ function Invoke-UiCapturePhase {
             Remove-Item -LiteralPath $path -Force
         }
     }
+
+    # Native XCTest uses Runner.app as its test host on this same simulator.
+    # A surviving host process can make `simctl launch` reuse an app that was
+    # started without the integration-test entrypoint, leaving Flutter's VM
+    # service discovery waiting forever. Terminate only this app on the exact
+    # workflow-owned simulator, after confirming its built bundle identity.
+    $runnerInfoPlist = Join-Path $mobileRoot 'build/ios/iphonesimulator/Runner.app/Info.plist'
+    if (-not (Test-Path -LiteralPath $runnerInfoPlist -PathType Leaf)) {
+        throw "Built Runner app Info.plist is missing: '$runnerInfoPlist'."
+    }
+    $appBundleId = (& '/usr/libexec/PlistBuddy' -c 'Print :CFBundleIdentifier' $runnerInfoPlist | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($appBundleId) -or
+        $appBundleId -notmatch '^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$') {
+        throw "Built Runner app has an invalid CFBundleIdentifier '$appBundleId'."
+    }
+    Write-Host "SIMULATOR APP TERMINATE START utc=$([DateTime]::UtcNow.ToString('o')) udid=$($simulatorState.simulatorId) bundle=$appBundleId"
+    $terminateResult = Invoke-ManagedProcess '/usr/bin/xcrun' @(
+        'simctl', 'terminate', $simulatorState.simulatorId, $appBundleId
+    ) 20 'terminate prior Runner test-host process' -OutputPreviewLimit 2000
+    if ($terminateResult.TimedOut -or -not $terminateResult.TerminationConfirmed -or
+        -not $terminateResult.OutputDrained) {
+        throw 'Could not confirm bounded cleanup of the Runner test-host process.'
+    }
+    if ($terminateResult.ExitCode -eq 0) {
+        Write-Host 'SIMULATOR APP TERMINATE END result=terminated'
+    }
+    elseif (("$($terminateResult.Stdout)`n$($terminateResult.Stderr)") -match '(?i)no such process') {
+        Write-Host 'SIMULATOR APP TERMINATE END result=not_running'
+    }
+    else {
+        throw "Could not safely confirm the prior Runner process was absent: $($terminateResult.Stderr) $($terminateResult.Stdout)"
+    }
+
     Push-Location $mobileRoot
     try {
         $commandBudget = [int][Math]::Floor($phaseBudgetSeconds - $phaseClock.Elapsed.TotalSeconds - 15)
@@ -730,8 +769,9 @@ function Invoke-UiCapturePhase {
             '--driver=test_driver/ui_design_driver.dart',
             '--target=integration_test/ui_design_test.dart',
             '-d', $simulatorState.simulatorId,
-            '--no-pub'
-        ) $commandBudget 'fixture-backed native iOS UI capture' -WorkingDirectory $mobileRoot
+            '--no-pub',
+            '--verbose'
+        ) $commandBudget 'fixture-backed native iOS UI capture' -WorkingDirectory $mobileRoot -OutputPreviewLimit 20000
         if ($result.TimedOut -or -not $result.TerminationConfirmed -or -not $result.OutputDrained -or $result.ExitCode -ne 0) {
             throw 'Fixture-backed iOS UI capture failed or exceeded its remaining phase budget.'
         }
