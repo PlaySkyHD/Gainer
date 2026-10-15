@@ -142,6 +142,8 @@ void main() {
     await _capture(binding, 'editor-essen');
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    _resetActiveListScroll(tester);
+    await tester.pumpAndSettle();
     expect(find.text('Ernährungstagebuch'), findsOneWidget);
 
     await _tapTab(tester, 'Training');
@@ -166,6 +168,8 @@ void main() {
       findsOneWidget,
     );
     await tester.tap(find.byKey(const ValueKey('training-cancel-template')));
+    await tester.pumpAndSettle();
+    _resetActiveListScroll(tester);
     await tester.pumpAndSettle();
     expect(find.text('Dein Training'), findsOneWidget);
 
