@@ -126,6 +126,9 @@ void main() {
       await _savePreview(tester, boundaryKey, output, 'editor-essen');
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
+      _resetActiveListScroll(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Ernährungstagebuch'), findsOneWidget);
 
       await _tapTab(tester, 'Training');
       await _savePreview(tester, boundaryKey, output, 'tab-training');
@@ -140,6 +143,9 @@ void main() {
       await _savePreview(tester, boundaryKey, output, 'editor-training');
       await tester.tap(find.byKey(const ValueKey('training-cancel-template')));
       await tester.pumpAndSettle();
+      _resetActiveListScroll(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Dein Training'), findsOneWidget);
 
       await _tapTab(tester, 'Mehr');
       await _savePreview(tester, boundaryKey, output, 'tab-mehr');
