@@ -1,7 +1,55 @@
 import 'package:flutter/cupertino.dart';
 
+import '../../../data/repositories/nutrition/nutrition_repository.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
+import '../../core/theme.dart';
 import 'nutrition_view_model.dart';
+
+enum _NutritionEntryMode {
+  choices,
+  recent,
+  meals,
+  manual,
+  search,
+  barcode,
+  estimate,
+  label,
+}
+
+extension on _NutritionEntryMode {
+  String get title => switch (this) {
+    _NutritionEntryMode.choices => 'Lebensmittel hinzufügen',
+    _NutritionEntryMode.recent => 'Zuletzt verwendet',
+    _NutritionEntryMode.meals => 'Gespeicherte Gerichte',
+    _NutritionEntryMode.manual => 'Manuell erfassen',
+    _NutritionEntryMode.search => 'Lebensmittel suchen',
+    _NutritionEntryMode.barcode => 'Barcode',
+    _NutritionEntryMode.estimate => 'Mahlzeit schätzen',
+    _NutritionEntryMode.label => 'Etikett erfassen',
+  };
+
+  String get description => switch (this) {
+    _NutritionEntryMode.choices => 'Erfassungsart auswählen',
+    _NutritionEntryMode.recent => 'Lebensmittel von früheren Einträgen',
+    _NutritionEntryMode.meals => 'Ein gespeichertes Gericht übernehmen',
+    _NutritionEntryMode.manual => 'Nährwerte selbst eingeben',
+    _NutritionEntryMode.search => 'Online nach Produkt oder Marke suchen',
+    _NutritionEntryMode.barcode => 'Produkt über den Barcode finden',
+    _NutritionEntryMode.estimate => 'Text oder Foto als Vorschlag prüfen',
+    _NutritionEntryMode.label => 'Nährwertetikett fotografieren und prüfen',
+  };
+
+  IconData get icon => switch (this) {
+    _NutritionEntryMode.choices => CupertinoIcons.add,
+    _NutritionEntryMode.recent => CupertinoIcons.clock,
+    _NutritionEntryMode.meals => CupertinoIcons.book,
+    _NutritionEntryMode.manual => CupertinoIcons.pencil,
+    _NutritionEntryMode.search => CupertinoIcons.search,
+    _NutritionEntryMode.barcode => CupertinoIcons.barcode_viewfinder,
+    _NutritionEntryMode.estimate => CupertinoIcons.sparkles,
+    _NutritionEntryMode.label => CupertinoIcons.doc_text_viewfinder,
+  };
+}
 
 class NutritionScreen extends StatefulWidget {
   const NutritionScreen({super.key, required this.viewModel});
@@ -55,260 +103,504 @@ class _NutritionScreenState extends State<NutritionScreen> {
       return CupertinoPageScaffold(
         navigationBar: const CupertinoNavigationBar(middle: Text('Ernährung')),
         child: SafeArea(
-          child: vm.isLoading && snapshot == null
-              ? const Center(child: CupertinoActivityIndicator())
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                  children: [
-                    _heading(context, 'Tagesübersicht · ${vm.localDate}'),
-                    Row(
+          child: Column(
+            children: [
+              if (vm.errorMessage != null &&
+                  vm.errorOperation == NutritionErrorOperation.diary)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: _notice(context, vm.errorMessage!, isError: true),
+                  ),
+                ),
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                       children: [
-                        CupertinoButton(
-                          onPressed: () => _shiftDay(-1),
-                          child: const Icon(CupertinoIcons.chevron_left),
-                        ),
-                        Expanded(
-                          child: Center(
-                            child: Text(
-                              vm.localDate,
-                              style: CupertinoTheme.of(context)
-                                  .textTheme
-                                  .textStyle,
+                        _heading(context, _friendlyDate(vm.localDate)),
+                        Row(
+                          children: [
+                            CupertinoButton(
+                              minimumSize: const Size(48, 48),
+                              onPressed: () => _shiftDay(-1),
+                              child: const Icon(CupertinoIcons.chevron_left),
                             ),
+                            const Expanded(
+                              child: Center(child: Text('Ernährungstagebuch')),
+                            ),
+                            CupertinoButton(
+                              minimumSize: const Size(48, 48),
+                              onPressed: () => _shiftDay(1),
+                              child: const Icon(CupertinoIcons.chevron_right),
+                            ),
+                            CupertinoButton(
+                              minimumSize: const Size(48, 48),
+                              onPressed: () => _pickDay(context),
+                              child: const Icon(CupertinoIcons.calendar),
+                            ),
+                          ],
+                        ),
+                        if (vm.errorMessage != null &&
+                            vm.errorOperation ==
+                                NutritionErrorOperation.day) ...[
+                          _notice(context, vm.errorMessage!, isError: true),
+                          _button(
+                            'Tagebuch erneut laden',
+                            vm.load,
+                            icon: CupertinoIcons.refresh,
                           ),
-                        ),
-                        CupertinoButton(
-                          onPressed: () => _shiftDay(1),
-                          child: const Icon(CupertinoIcons.chevron_right),
-                        ),
-                        CupertinoButton(
-                          onPressed: () => _pickDay(context),
-                          child: const Icon(CupertinoIcons.calendar),
-                        ),
+                        ],
+                        if (snapshot == null && vm.isLoading)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 18),
+                            child: Center(child: CupertinoActivityIndicator()),
+                          ),
+                        if (snapshot != null) ...[
+                          _TotalsCard(totals: snapshot.day.totals),
+                          const SizedBox(height: 10),
+                          _MacroSummary(totals: snapshot.day.totals),
+                          const SizedBox(height: 10),
+                          _TargetProgress(
+                            date: vm.localDate,
+                            totals: snapshot.day.totals,
+                            schedule: snapshot.targetSchedule,
+                            onManage: _openPlanning,
+                          ),
+                          const SizedBox(height: 10),
+                          _button(
+                            'Lebensmittel hinzufügen',
+                            _openEntry,
+                            key: const ValueKey('nutrition-add-food'),
+                            filled: true,
+                            icon: CupertinoIcons.add,
+                          ),
+                          if (vm.statusMessage != null)
+                            Semantics(
+                              liveRegion: true,
+                              child: _notice(context, vm.statusMessage!),
+                            ),
+                          const SizedBox(height: 8),
+                          _heading(context, 'Mahlzeiten'),
+                          for (final meal in NutritionMeal.values)
+                            _MealSection(
+                              key: ValueKey('meal-${meal.name}'),
+                              meal: meal,
+                              entries: snapshot.day.entries
+                                  .where((entry) => entry.meal == meal)
+                                  .toList(),
+                              onAdd: () {
+                                vm.selectMeal(meal);
+                                _openEntry();
+                              },
+                              onEdit: _editEntry,
+                              onRemove: (entry) =>
+                                  vm.removeEntry(entry.entryId),
+                              onMove: (entry, targetPosition) => vm.moveEntry(
+                                entry.entryId,
+                                entry.meal,
+                                targetPosition,
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                          _button(
+                            'Gerichte und Ziele verwalten',
+                            _openPlanning,
+                            key: const ValueKey('nutrition-open-planning'),
+                            icon: CupertinoIcons.slider_horizontal_3,
+                          ),
+                        ],
+                        if (vm.isSaving || vm.isOnlineOperation)
+                          const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Center(child: CupertinoActivityIndicator()),
+                          ),
                       ],
                     ),
-                    if (snapshot != null)
-                      _TotalsCard(totals: snapshot.day.totals),
-                    if (vm.errorMessage != null)
-                      _notice(context, vm.errorMessage!, isError: true),
-                    if (vm.statusMessage != null)
-                      Semantics(
-                        liveRegion: true,
-                        child: _notice(context, vm.statusMessage!),
-                      ),
-                    _heading(context, 'Eintrag hinzufügen'),
-                    _rowButton(
-                      context,
-                      title: 'Mahlzeit',
-                      value: _mealName(vm.selectedMeal),
-                      onPressed: _chooseMeal,
-                    ),
-                    _field(
-                      context,
-                      _name,
-                      'Lebensmittel *',
-                      action: TextInputAction.next,
-                    ),
-                    _field(
-                      context,
-                      _brand,
-                      'Marke (optional)',
-                      action: TextInputAction.next,
-                    ),
-                    _field(context, _amount, 'Menge (g) *', numeric: true),
-                    _field(context, _kcal, 'kcal / 100 g *', numeric: true),
-                    _field(
-                      context,
-                      _protein,
-                      'Protein g / 100 g',
-                      numeric: true,
-                    ),
-                    _field(
-                      context,
-                      _carbs,
-                      'Kohlenhydrate g / 100 g',
-                      numeric: true,
-                    ),
-                    _field(context, _fat, 'Fett g / 100 g', numeric: true),
-                    _button(
-                      'Manuell speichern',
-                      _addManual,
-                      filled: true,
-                      icon: CupertinoIcons.add,
-                      enabled: !vm.isSaving,
-                    ),
-                    const SizedBox(height: 12),
-                    _field(
-                      context,
-                      _search,
-                      'Online-Lebensmittelsuche',
-                      action: TextInputAction.search,
-                      helper: 'Online-Ergebnisse vor dem Übernehmen prüfen.',
-                      onSubmitted: vm.searchFoods,
-                    ),
-                    for (final food in vm.searchResults)
-                      _dataRow(
-                        context,
-                        title: food.name,
-                        detail:
-                            '${food.brand ?? food.source.provider ?? 'Lebensmittel'} · ${food.per100Grams.kilocalories} kcal / 100 g',
-                        actionLabel: 'Lebensmittel mit Menge übernehmen',
-                        actionIcon: CupertinoIcons.add_circled,
-                        onAction: () => vm.addFood(
-                          food,
-                          amountGrams: _parse(_amount.text) ?? 100,
-                        ),
-                      ),
-                    _button(
-                      'Barcode scannen',
-                      vm.lookupBarcode,
-                      icon: CupertinoIcons.barcode_viewfinder,
-                      enabled: !vm.isOnlineOperation,
-                    ),
-                    if (vm.barcodeFood case final food?)
-                      _dataRow(
-                        context,
-                        title: food.name,
-                        detail:
-                            '${food.brand ?? food.source.provider ?? 'Barcode'} · ${food.per100Grams.kilocalories} kcal / 100 g',
-                        actionLabel: 'Barcode-Produkt übernehmen',
-                        actionIcon: CupertinoIcons.add_circled,
-                        onAction: () => vm.addFood(
-                          food,
-                          amountGrams: _parse(_amount.text) ?? 100,
-                        ),
-                      ),
-                    _field(
-                      context,
-                      _estimateText,
-                      'Mahlzeit beschreiben',
-                      helper: 'Vorschläge werden erst nach deiner Bestätigung gespeichert.',
-                    ),
-                    _button(
-                      'Mahlzeit schätzen',
-                      () => vm.estimateMeal(_estimateText.text),
-                      icon: CupertinoIcons.sparkles,
-                      enabled:
-                          !vm.isOnlineOperation &&
-                          _estimateText.text.trim().isNotEmpty,
-                    ),
-                    if (vm.mealEstimateDraft case final estimate?) ...[
-                      _heading(
-                        context,
-                        'Vorschlag prüfen · ${estimate.provider}',
-                      ),
-                      for (
-                        var index = 0;
-                        index < estimate.components.length;
-                        index++
-                      )
-                        _dataRow(
-                          context,
-                          title: estimate.components[index].name,
-                          detail:
-                              '${estimate.components[index].amountGrams} g · ${estimate.components[index].totals.kilocalories} kcal · ${estimate.components[index].confidence}',
-                          actionLabel: 'Schätzwert prüfen und übernehmen',
-                          actionIcon: CupertinoIcons.add_circled,
-                          onAction: () => vm.confirmEstimatedComponent(index),
-                        ),
-                      _button('Schätzung verwerfen', vm.discardEstimate),
-                    ],
-                    _button(
-                      'Nährwertetikett erfassen',
-                      _scanLabel,
-                      icon: CupertinoIcons.doc_text_viewfinder,
-                      enabled: !vm.isOnlineOperation,
-                    ),
-                    _button(
-                      'Mahlzeit fotografieren und schätzen',
-                      _captureMealEstimate,
-                      icon: CupertinoIcons.camera,
-                      enabled: !vm.isOnlineOperation,
-                    ),
-                    _heading(context, 'Gespeicherte Gerichte'),
-                    _button(
-                      'Neues Gericht anlegen',
-                      () => _editReusableMeal(),
-                      icon: CupertinoIcons.add,
-                    ),
-                    for (final meal in snapshot?.meals ?? const [])
-                      _ReusableMealRow(
-                        meal: meal.value,
-                        onAdd: () => _addReusableMeal(meal.id, meal.value),
-                        onEdit: meal.value.status == 'Active'
-                            ? () => _editReusableMeal(
-                                id: meal.id,
-                                existing: meal.value,
-                              )
-                            : null,
-                        onArchive: meal.value.status == 'Active'
-                            ? () => vm.archiveReusableMeal(meal.id)
-                            : null,
-                      ),
-                    _heading(context, 'Zielphasen'),
-                    _button(
-                      'Zielphase hinzufügen',
-                      () => _editTargetPhase(),
-                      icon: CupertinoIcons.add,
-                    ),
-                    for (final phase
-                        in snapshot?.targetSchedule?.versions ?? const [])
-                      _TargetPhaseRow(
-                        key: ValueKey('target-phase-${phase.targetVersionId}'),
-                        phase: phase,
-                        onEdit:
-                            phase.effectiveFrom.compareTo(
-                                  _dateString(vm.repository.clock()),
-                                ) >
-                                0
-                            ? () => _editTargetPhase(existing: phase)
-                            : null,
-                        onDelete:
-                            phase.effectiveFrom.compareTo(
-                                  _dateString(vm.repository.clock()),
-                                ) >
-                                0
-                            ? () => _removeTargetPhase(phase)
-                            : null,
-                      ),
-                    for (final meal in NutritionMeal.values) ...[
-                      _heading(context, _mealName(meal)),
-                      ...?snapshot?.day.entries
-                          .where((item) => item.meal == meal)
-                          .map(
-                            (entry) => _dataRow(
-                              context,
-                              title: entry.productName,
-                              detail:
-                                  '${_grams(entry.amountGrams)} g · ${_grams(entry.totals.kilocalories)} kcal${entry.totals.proteinGrams == null ? '' : ' · P ${_grams(entry.totals.proteinGrams!)} g'}',
-                              actionLabel: 'Eintrag bearbeiten',
-                              actionIcon: CupertinoIcons.pencil,
-                              onAction: () => _editEntry(entry),
-                            ),
-                          ),
-                    ],
-                    ...?snapshot?.day.entries.map(
-                      (entry) => Padding(
-                        padding: const EdgeInsets.only(left: 12),
-                        child: CupertinoButton(
-                          alignment: Alignment.centerLeft,
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          onPressed: () => vm.removeEntry(entry.entryId),
-                          child: const Text('Eintrag entfernen'),
-                        ),
-                      ),
-                    ),
-                    if (vm.isSaving || vm.isOnlineOperation)
-                      const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: Center(child: CupertinoActivityIndicator()),
-                      ),
-                  ],
+                  ),
                 ),
+              ),
+            ],
+          ),
         ),
       );
     },
   );
+
+  Future<void> _openEntry() {
+    final vm = widget.viewModel;
+    vm.dismissActionError();
+    var mode = _NutritionEntryMode.choices;
+    return Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
+        builder: (routeContext) => StatefulBuilder(
+          builder: (routeContext, setRouteState) => CupertinoPageScaffold(
+            navigationBar: CupertinoNavigationBar(
+              middle: Text(mode.title),
+              leading: CupertinoButton(
+                key: ValueKey(
+                  mode == _NutritionEntryMode.choices
+                      ? 'nutrition-entry-close'
+                      : 'nutrition-entry-options',
+                ),
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(48, 48),
+                onPressed: mode == _NutritionEntryMode.choices
+                    ? () => Navigator.pop(routeContext)
+                    : () => setRouteState(() {
+                        vm.dismissActionError();
+                        mode = _NutritionEntryMode.choices;
+                      }),
+                child: Text(
+                  mode == _NutritionEntryMode.choices
+                      ? 'Abbrechen'
+                      : 'Optionen',
+                ),
+              ),
+            ),
+            child: SafeArea(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: AnimatedBuilder(
+                    animation: vm,
+                    builder: (context, _) => ListView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                      children: [
+                        if (mode == _NutritionEntryMode.choices) ...[
+                          _heading(context, _mealName(vm.selectedMeal)),
+                          _rowButton(
+                            context,
+                            title: 'Mahlzeit',
+                            value: _mealName(vm.selectedMeal),
+                            onPressed: _chooseMeal,
+                          ),
+                          for (final option in _NutritionEntryMode.values.where(
+                            (item) => item != _NutritionEntryMode.choices,
+                          ))
+                            CupertinoListTile(
+                              key: ValueKey('nutrition-mode-${option.name}'),
+                              leading: Icon(option.icon),
+                              title: Text(option.title),
+                              subtitle: Text(
+                                option.description,
+                                style: TextStyle(
+                                  color: GainerTheme.secondaryText(context),
+                                ),
+                              ),
+                              trailing: const CupertinoListTileChevron(),
+                              onTap: () => setRouteState(() => mode = option),
+                            ),
+                        ] else ...[
+                          if (vm.errorMessage != null &&
+                              vm.errorOperation != null &&
+                              vm.errorOperation != NutritionErrorOperation.day)
+                            _notice(context, vm.errorMessage!, isError: true),
+                          if (vm.statusMessage != null)
+                            Semantics(
+                              liveRegion: true,
+                              child: _notice(context, vm.statusMessage!),
+                            ),
+                          _rowButton(
+                            context,
+                            title: 'Mahlzeit',
+                            value: _mealName(vm.selectedMeal),
+                            onPressed: _chooseMeal,
+                          ),
+                          ..._entryTools(context, vm, mode),
+                          if (vm.isSaving || vm.isOnlineOperation)
+                            const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Center(
+                                child: CupertinoActivityIndicator(),
+                              ),
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _entryTools(
+    BuildContext context,
+    NutritionViewModel vm,
+    _NutritionEntryMode mode,
+  ) {
+    final amount = _field(
+      context,
+      _amount,
+      'Menge (g)',
+      numeric: true,
+      key: const ValueKey('nutrition-entry-amount'),
+    );
+    final manual = <Widget>[
+      _field(
+        context,
+        _name,
+        'Lebensmittel *',
+        action: TextInputAction.next,
+        key: const ValueKey('nutrition-entry-name'),
+      ),
+      _field(context, _brand, 'Marke (optional)', action: TextInputAction.next),
+      _field(
+        context,
+        _amount,
+        'Menge (g) *',
+        numeric: true,
+        key: const ValueKey('nutrition-entry-amount'),
+      ),
+      _field(
+        context,
+        _kcal,
+        'kcal / 100 g *',
+        numeric: true,
+        key: const ValueKey('nutrition-entry-kcal'),
+      ),
+      _field(context, _protein, 'Protein g / 100 g', numeric: true),
+      _field(context, _carbs, 'Kohlenhydrate g / 100 g', numeric: true),
+      _field(context, _fat, 'Fett g / 100 g', numeric: true),
+      _button(
+        'Manuell speichern',
+        _addManual,
+        key: const ValueKey('nutrition-entry-save'),
+        filled: true,
+        icon: CupertinoIcons.add,
+        enabled: !vm.isSaving,
+      ),
+    ];
+    return switch (mode) {
+      _NutritionEntryMode.manual => manual,
+      _NutritionEntryMode.recent => [
+        amount,
+        if (vm.snapshot?.recentFoods.isEmpty ?? true)
+          const Text('Noch keine zuletzt verwendeten Lebensmittel.'),
+        for (final food in vm.snapshot?.recentFoods ?? const <NutritionFood>[])
+          _dataRow(
+            context,
+            title: food.name,
+            detail:
+                '${food.brand ?? food.source.provider ?? 'Lebensmittel'} · ${_grams(food.per100Grams.kilocalories)} kcal / 100 g',
+            actionLabel: 'Zuletzt verwendetes Lebensmittel übernehmen',
+            actionIcon: CupertinoIcons.add_circled,
+            onAction: () =>
+                vm.addFood(food, amountGrams: _parse(_amount.text) ?? 100),
+          ),
+      ],
+      _NutritionEntryMode.meals => [
+        if (vm.snapshot?.meals
+                .where((item) => item.value.status == 'Active')
+                .isEmpty ??
+            true)
+          const Text('Noch keine gespeicherten Gerichte.'),
+        for (final meal in vm.snapshot?.meals ?? const [])
+          if (meal.value.status == 'Active')
+            _ReusableMealRow(
+              meal: meal.value,
+              onAdd: () => _addReusableMeal(meal.id, meal.value),
+              onEdit: null,
+              onArchive: null,
+            ),
+      ],
+      _NutritionEntryMode.search => [
+        amount,
+        _field(
+          context,
+          _search,
+          'Produkt oder Marke',
+          key: const ValueKey('nutrition-entry-search'),
+          action: TextInputAction.search,
+          helper: 'Online-Ergebnisse vor dem Übernehmen prüfen.',
+          onSubmitted: (query) => _searchFoods(vm, query),
+        ),
+        _button(
+          'Suchen',
+          () => _searchFoods(vm, _search.text),
+          icon: CupertinoIcons.search,
+          enabled: !vm.isOnlineOperation,
+        ),
+        for (final food in vm.searchResults)
+          _dataRow(
+            context,
+            title: food.name,
+            detail:
+                '${food.brand ?? food.source.provider ?? 'Lebensmittel'} · ${_grams(food.per100Grams.kilocalories)} kcal / 100 g',
+            actionLabel: 'Suchergebnis mit Menge übernehmen',
+            actionIcon: CupertinoIcons.add_circled,
+            onAction: () =>
+                vm.addFood(food, amountGrams: _parse(_amount.text) ?? 100),
+          ),
+      ],
+      _NutritionEntryMode.barcode => [
+        amount,
+        _button(
+          'Barcode scannen',
+          vm.lookupBarcode,
+          icon: CupertinoIcons.barcode_viewfinder,
+          enabled: !vm.isOnlineOperation,
+        ),
+        if (vm.barcodeFood case final food?)
+          _dataRow(
+            context,
+            title: food.name,
+            detail:
+                '${food.brand ?? food.source.provider ?? 'Barcode'} · ${_grams(food.per100Grams.kilocalories)} kcal / 100 g',
+            actionLabel: 'Barcode-Produkt mit Menge übernehmen',
+            actionIcon: CupertinoIcons.add_circled,
+            onAction: () =>
+                vm.addFood(food, amountGrams: _parse(_amount.text) ?? 100),
+          ),
+      ],
+      _NutritionEntryMode.estimate => [
+        _field(
+          context,
+          _estimateText,
+          'Mahlzeit beschreiben',
+          helper: 'Vorschläge werden erst nach deiner Bestätigung gespeichert.',
+        ),
+        _button(
+          'Mahlzeit schätzen',
+          () => vm.estimateMeal(_estimateText.text),
+          icon: CupertinoIcons.sparkles,
+          enabled:
+              !vm.isOnlineOperation && _estimateText.text.trim().isNotEmpty,
+        ),
+        _button(
+          'Mahlzeit fotografieren und schätzen',
+          _captureMealEstimate,
+          icon: CupertinoIcons.camera,
+          enabled: !vm.isOnlineOperation,
+        ),
+        if (vm.mealEstimateDraft case final estimate?) ...[
+          _heading(context, 'Vorschlag prüfen · ${estimate.provider}'),
+          for (var index = 0; index < estimate.components.length; index++)
+            _dataRow(
+              context,
+              title: estimate.components[index].name,
+              detail:
+                  '${estimate.components[index].amountGrams} g · ${estimate.components[index].totals.kilocalories} kcal · ${estimate.components[index].confidence}',
+              actionLabel: 'Schätzwert prüfen und übernehmen',
+              actionIcon: CupertinoIcons.add_circled,
+              onAction: () => vm.confirmEstimatedComponent(index),
+            ),
+          _button('Schätzung verwerfen', vm.discardEstimate),
+        ],
+      ],
+      _NutritionEntryMode.label => [
+        _button(
+          'Nährwertetikett erfassen',
+          _scanLabel,
+          icon: CupertinoIcons.doc_text_viewfinder,
+          enabled: !vm.isOnlineOperation,
+        ),
+      ],
+      _NutritionEntryMode.choices => const [],
+    };
+  }
+
+  void _searchFoods(NutritionViewModel vm, String query) {
+    final value = query.trim();
+    if (value.length < 2) {
+      vm.reportInputError(
+        'Bitte mindestens zwei Zeichen eingeben.',
+        operation: NutritionErrorOperation.search,
+      );
+      return;
+    }
+    vm.searchFoods(value);
+  }
+
+  Future<void> _openPlanning() {
+    final vm = widget.viewModel;
+    vm.dismissActionError();
+    return Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
+        builder: (_) => AnimatedBuilder(
+          animation: vm,
+          builder: (context, _) => CupertinoPageScaffold(
+            navigationBar: const CupertinoNavigationBar(
+              middle: Text('Gerichte und Ziele'),
+            ),
+            child: SafeArea(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                    children: [
+                      if (vm.errorMessage != null &&
+                          vm.errorOperation == NutritionErrorOperation.planning)
+                        _notice(context, vm.errorMessage!, isError: true),
+                      _heading(context, 'Gespeicherte Gerichte'),
+                      _button(
+                        'Neues Gericht anlegen',
+                        () => _editReusableMeal(),
+                        icon: CupertinoIcons.add,
+                      ),
+                      for (final meal in vm.snapshot?.meals ?? const [])
+                        _ReusableMealRow(
+                          meal: meal.value,
+                          onAdd: () => _addReusableMeal(meal.id, meal.value),
+                          onEdit: meal.value.status == 'Active'
+                              ? () => _editReusableMeal(
+                                  id: meal.id,
+                                  existing: meal.value,
+                                )
+                              : null,
+                          onArchive: meal.value.status == 'Active'
+                              ? () => vm.archiveReusableMeal(meal.id)
+                              : null,
+                        ),
+                      const SizedBox(height: 16),
+                      _heading(context, 'Zielphasen'),
+                      _button(
+                        'Zielphase hinzufügen',
+                        () => _editTargetPhase(),
+                        icon: CupertinoIcons.add,
+                      ),
+                      for (final phase
+                          in vm.snapshot?.targetSchedule?.versions ?? const [])
+                        _TargetPhaseRow(
+                          key: ValueKey(
+                            'target-phase-${phase.targetVersionId}',
+                          ),
+                          phase: phase,
+                          onEdit:
+                              phase.effectiveFrom.compareTo(
+                                    _dateString(vm.repository.clock()),
+                                  ) >
+                                  0
+                              ? () => _editTargetPhase(existing: phase)
+                              : null,
+                          onDelete:
+                              phase.effectiveFrom.compareTo(
+                                    _dateString(vm.repository.clock()),
+                                  ) >
+                                  0
+                              ? () => _removeTargetPhase(phase)
+                              : null,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> _shiftDay(int days) {
     final date = DateTime.parse(widget.viewModel.localDate)
@@ -374,80 +666,149 @@ class _NutritionScreenState extends State<NutritionScreen> {
     );
     var meal = entry.meal;
     try {
-      final values = await showCupertinoDialog<({NutritionMeal meal})>(
-        context: context,
-        builder: (context) => StatefulBuilder(
-          builder: (context, setDialogState) => CupertinoAlertDialog(
-            title: const Text('Tagebucheintrag bearbeiten'),
-            content: SingleChildScrollView(
-              child: Column(
-                children: [
-                  const SizedBox(height: 12),
-                  _field(context, name, 'Lebensmittel *'),
-                  _field(context, brand, 'Marke'),
-                  _field(context, amount, 'Menge (g) *', numeric: true),
-                  _field(context, kcal, 'kcal / 100 g *', numeric: true),
-                  _field(context, protein, 'Protein / 100 g', numeric: true),
-                  _field(
-                    context,
-                    carbs,
-                    'Kohlenhydrate / 100 g',
-                    numeric: true,
+      final values = await Navigator.of(context).push<({NutritionMeal meal})>(
+        CupertinoPageRoute<({NutritionMeal meal})>(
+          builder: (routeContext) => AnimatedBuilder(
+            animation: widget.viewModel,
+            builder: (routeContext, _) => StatefulBuilder(
+              builder: (routeContext, setRouteState) => CupertinoPageScaffold(
+                navigationBar: CupertinoNavigationBar(
+                  middle: const Text('Eintrag bearbeiten'),
+                  leading: CupertinoButton(
+                    key: const ValueKey('nutrition-edit-close'),
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(48, 48),
+                    onPressed: () => Navigator.pop(routeContext),
+                    child: const Text('Abbrechen'),
                   ),
-                  _field(context, fat, 'Fett / 100 g', numeric: true),
-                  _rowButton(
-                    context,
-                    title: 'Mahlzeit',
-                    value: _mealName(meal),
-                    onPressed: () async {
-                      final selected = await _chooseMealValue();
-                      if (selected != null) {
-                        setDialogState(() => meal = selected);
-                      }
-                    },
+                  trailing: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(48, 48),
+                    onPressed:
+                        _parse(amount.text) == null ||
+                            _parse(kcal.text) == null ||
+                            name.text.trim().isEmpty ||
+                            widget.viewModel.isSaving
+                        ? null
+                        : () async {
+                            await widget.viewModel.updateEntry(
+                              original: entry,
+                              meal: meal,
+                              productName: name.text,
+                              brand: brand.text.trim().isEmpty
+                                  ? null
+                                  : brand.text,
+                              amountGrams: _parse(amount.text)!,
+                              per100Grams: NutritionTotals(
+                                kilocalories: _parse(kcal.text)!,
+                                proteinGrams: _nullable(protein.text),
+                                carbohydrateGrams: _nullable(carbs.text),
+                                fatGrams: _nullable(fat.text),
+                              ),
+                            );
+                            if (widget.viewModel.errorMessage == null &&
+                                routeContext.mounted &&
+                                ModalRoute.of(routeContext)?.isCurrent ==
+                                    true) {
+                              Navigator.pop(routeContext, (meal: meal));
+                            }
+                          },
+                    child: const Text('Sichern'),
                   ),
-                  Text(
-                    entry.source == null
-                        ? 'Manueller Eintrag'
-                        : 'Quelle ${entry.source!.provider ?? entry.source!.barcode ?? 'Lebensmittelkatalog'} bleibt erhalten.',
+                ),
+                child: SafeArea(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 640),
+                      child: ListView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                        children: [
+                          if (widget.viewModel.errorMessage != null &&
+                              widget.viewModel.errorOperation ==
+                                  NutritionErrorOperation.diary)
+                            _notice(
+                              routeContext,
+                              widget.viewModel.errorMessage!,
+                              isError: true,
+                            ),
+                          if (widget.viewModel.isSaving)
+                            const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Center(
+                                child: CupertinoActivityIndicator(),
+                              ),
+                            ),
+                          _field(
+                            routeContext,
+                            name,
+                            'Lebensmittel *',
+                            key: const ValueKey('nutrition-edit-name'),
+                            onChanged: (_) => setRouteState(() {}),
+                          ),
+                          _field(routeContext, brand, 'Marke'),
+                          _field(
+                            routeContext,
+                            amount,
+                            'Menge (g) *',
+                            numeric: true,
+                            key: const ValueKey('nutrition-edit-amount'),
+                            onChanged: (_) => setRouteState(() {}),
+                          ),
+                          _field(
+                            routeContext,
+                            kcal,
+                            'kcal / 100 g *',
+                            numeric: true,
+                            key: const ValueKey('nutrition-edit-kcal'),
+                            onChanged: (_) => setRouteState(() {}),
+                          ),
+                          _field(
+                            routeContext,
+                            protein,
+                            'Protein / 100 g',
+                            numeric: true,
+                          ),
+                          _field(
+                            routeContext,
+                            carbs,
+                            'Kohlenhydrate / 100 g',
+                            numeric: true,
+                          ),
+                          _field(
+                            routeContext,
+                            fat,
+                            'Fett / 100 g',
+                            numeric: true,
+                          ),
+                          _rowButton(
+                            routeContext,
+                            title: 'Mahlzeit',
+                            value: _mealName(meal),
+                            onPressed: () async {
+                              final selected = await _chooseMealValue();
+                              if (selected != null) {
+                                setRouteState(() => meal = selected);
+                              }
+                            },
+                          ),
+                          Text(
+                            entry.source == null
+                                ? 'Manueller Eintrag'
+                                : 'Quelle ${entry.source!.provider ?? entry.source!.barcode ?? 'Lebensmittelkatalog'} bleibt erhalten.',
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Abbrechen'),
-              ),
-              CupertinoDialogAction(
-                isDefaultAction: true,
-                onPressed:
-                    _parse(amount.text) == null ||
-                        _parse(kcal.text) == null ||
-                        name.text.trim().isEmpty
-                    ? null
-                    : () => Navigator.pop(context, (meal: meal)),
-                child: const Text('Änderungen speichern'),
-              ),
-            ],
           ),
         ),
       );
-      if (values != null && mounted) {
-        await widget.viewModel.updateEntry(
-          original: entry,
-          meal: values.meal,
-          productName: name.text,
-          brand: brand.text.trim().isEmpty ? null : brand.text,
-          amountGrams: _parse(amount.text)!,
-          per100Grams: NutritionTotals(
-            kilocalories: _parse(kcal.text)!,
-            proteinGrams: _nullable(protein.text),
-            carbohydrateGrams: _nullable(carbs.text),
-            fatGrams: _nullable(fat.text),
-          ),
-        );
-      }
+      if (values == null) return;
     } finally {
       for (final controller in [
         name,
@@ -496,132 +857,149 @@ class _NutritionScreenState extends State<NutritionScreen> {
       if (existing == null) _IngredientControllers(),
     ];
     try {
-      final save = await showCupertinoDialog<bool>(
-        context: context,
-        builder: (context) => StatefulBuilder(
-          builder: (context, setDialogState) => CupertinoAlertDialog(
-            title: Text(
-              existing == null ? 'Neues Gericht' : 'Gericht bearbeiten',
-            ),
-            content: SizedBox(
-              width: 480,
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 10),
-                    _field(
-                      context,
-                      name,
-                      'Gerichtsname *',
-                      onChanged: (_) => setDialogState(() {}),
-                    ),
-                    _field(
-                      context,
-                      description,
-                      'Beschreibung',
-                      onChanged: (_) => setDialogState(() {}),
-                    ),
-                    _field(
-                      context,
-                      portion,
-                      'Standardportion (×)',
-                      numeric: true,
-                      onChanged: (_) => setDialogState(() {}),
-                    ),
-                    for (var i = 0; i < ingredients.length; i++) ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(child: Text('Bestandteil ${i + 1}')),
-                          CupertinoButton(
-                            padding: const EdgeInsets.all(4),
-                            onPressed: ingredients.length == 1
-                                ? null
-                                : () => setDialogState(
-                                    () => ingredients.removeAt(i).dispose(),
-                                  ),
-                            child: const Icon(CupertinoIcons.minus_circle),
+      final save = await Navigator.of(context).push<bool>(
+        CupertinoPageRoute<bool>(
+          builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) => CupertinoPageScaffold(
+              navigationBar: CupertinoNavigationBar(
+                middle: Text(
+                  existing == null ? 'Neues Gericht' : 'Gericht bearbeiten',
+                ),
+                leading: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(48, 48),
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Abbrechen'),
+                ),
+                trailing: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(48, 48),
+                  onPressed: _canSaveRecipe(name, portion, ingredients)
+                      ? () => Navigator.pop(context, true)
+                      : null,
+                  child: const Text('Sichern'),
+                ),
+              ),
+              child: SafeArea(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 640),
+                    child: ListView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                      children: [
+                        const SizedBox(height: 10),
+                        _field(
+                          context,
+                          name,
+                          'Gerichtsname *',
+                          onChanged: (_) => setDialogState(() {}),
+                        ),
+                        _field(
+                          context,
+                          description,
+                          'Beschreibung',
+                          onChanged: (_) => setDialogState(() {}),
+                        ),
+                        _field(
+                          context,
+                          portion,
+                          'Standardportion (×)',
+                          numeric: true,
+                          onChanged: (_) => setDialogState(() {}),
+                        ),
+                        for (var i = 0; i < ingredients.length; i++) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(child: Text('Bestandteil ${i + 1}')),
+                              CupertinoButton(
+                                padding: const EdgeInsets.all(4),
+                                onPressed: ingredients.length == 1
+                                    ? null
+                                    : () => setDialogState(
+                                        () => ingredients.removeAt(i).dispose(),
+                                      ),
+                                child: const Icon(CupertinoIcons.minus_circle),
+                              ),
+                            ],
+                          ),
+                          _field(
+                            context,
+                            ingredients[i].name,
+                            'Lebensmittel *',
+                            key: ValueKey('nutrition-recipe-component-$i-name'),
+                            onChanged: (_) => setDialogState(() {}),
+                          ),
+                          _field(
+                            context,
+                            ingredients[i].brand,
+                            'Marke (optional)',
+                            key: ValueKey(
+                              'nutrition-recipe-component-$i-brand',
+                            ),
+                            onChanged: (_) => setDialogState(() {}),
+                          ),
+                          _field(
+                            context,
+                            ingredients[i].amount,
+                            'Menge (g) *',
+                            numeric: true,
+                            key: ValueKey(
+                              'nutrition-recipe-component-$i-amount',
+                            ),
+                            onChanged: (_) => setDialogState(() {}),
+                          ),
+                          _field(
+                            context,
+                            ingredients[i].kcal,
+                            'kcal / 100 g *',
+                            numeric: true,
+                            key: ValueKey('nutrition-recipe-component-$i-kcal'),
+                            onChanged: (_) => setDialogState(() {}),
+                          ),
+                          _field(
+                            context,
+                            ingredients[i].protein,
+                            'Protein / 100 g',
+                            numeric: true,
+                            onChanged: (_) => setDialogState(() {}),
+                          ),
+                          _field(
+                            context,
+                            ingredients[i].carbs,
+                            'Kohlenhydrate / 100 g',
+                            numeric: true,
+                            onChanged: (_) => setDialogState(() {}),
+                          ),
+                          _field(
+                            context,
+                            ingredients[i].fat,
+                            'Fett / 100 g',
+                            numeric: true,
+                            onChanged: (_) => setDialogState(() {}),
                           ),
                         ],
-                      ),
-                      _field(
-                        context,
-                        ingredients[i].name,
-                        'Lebensmittel *',
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        ingredients[i].brand,
-                        'Marke (optional)',
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        ingredients[i].amount,
-                        'Menge (g) *',
-                        numeric: true,
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        ingredients[i].kcal,
-                        'kcal / 100 g *',
-                        numeric: true,
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        ingredients[i].protein,
-                        'Protein / 100 g',
-                        numeric: true,
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        ingredients[i].carbs,
-                        'Kohlenhydrate / 100 g',
-                        numeric: true,
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        ingredients[i].fat,
-                        'Fett / 100 g',
-                        numeric: true,
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                    ],
-                    CupertinoButton(
-                      onPressed: ingredients.length >= 50
-                          ? null
-                          : () => setDialogState(
-                              () => ingredients.add(_IngredientControllers()),
-                            ),
-                      child: const Text('Bestandteil hinzufügen'),
+                        CupertinoButton(
+                          minimumSize: const Size(double.infinity, 48),
+                          onPressed: ingredients.length >= 50
+                              ? null
+                              : () => setDialogState(
+                                  () =>
+                                      ingredients.add(_IngredientControllers()),
+                                ),
+                          child: const Text('Bestandteil hinzufügen'),
+                        ),
+                        const Text(
+                          'Änderungen am Rezept ändern keine bereits kopierten Tagebucheinträge.',
+                        ),
+                      ],
                     ),
-                    const Text(
-                      'Änderungen am Rezept ändern keine bereits kopierten Tagebucheinträge.',
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Abbrechen'),
-              ),
-              CupertinoDialogAction(
-                isDefaultAction: true,
-                onPressed: () {
-                  if (_canSaveRecipe(name, portion, ingredients)) {
-                    Navigator.pop(context, true);
-                  }
-                },
-                child: const Text('Gericht speichern'),
-              ),
-            ],
           ),
         ),
       );
@@ -656,9 +1034,16 @@ class _NutritionScreenState extends State<NutritionScreen> {
             ),
         ],
       );
-      await widget.viewModel.saveReusableMeal(id: id, meal: value);
+      await widget.viewModel.saveReusableMeal(
+        id: id,
+        meal: value,
+        operation: NutritionErrorOperation.planning,
+      );
     } catch (error) {
-      widget.viewModel.reportInputError(error.toString());
+      widget.viewModel.reportInputError(
+        error.toString(),
+        operation: NutritionErrorOperation.planning,
+      );
     } finally {
       name.dispose();
       description.dispose();
@@ -758,134 +1143,150 @@ class _NutritionScreenState extends State<NutritionScreen> {
     var category = existing?.category ?? NutritionTargetCategory.custom;
     var mode = existing?.inputMode ?? NutritionTargetInputMode.percent;
     try {
-      final fields =
-          await showCupertinoDialog<
+      final fields = await Navigator.of(context)
+          .push<
             ({NutritionTargetCategory category, NutritionTargetInputMode mode})
           >(
-            context: context,
-            builder: (context) => StatefulBuilder(
-              builder: (context, setDialogState) => CupertinoAlertDialog(
-                title: Text(
-                  existing == null
-                      ? 'Zielphase hinzufügen'
-                      : 'Zielphase bearbeiten',
-                ),
-                content: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 10),
-                      _field(
-                        context,
-                        name,
-                        'Name *',
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        from,
-                        'Gültig ab (JJJJ-MM-TT) *',
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        until,
-                        'Gültig bis (optional)',
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        kcal,
-                        'Kalorien pro Tag *',
-                        numeric: true,
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _rowButton(
-                        context,
-                        title: 'Kategorie',
-                        value: _categoryName(category),
-                        onPressed: () async {
-                          final selected = await _chooseCategory();
-                          if (selected != null) {
-                            setDialogState(() => category = selected);
-                          }
-                        },
-                      ),
-                      _rowButton(
-                        context,
-                        title: 'Makroeingabe',
-                        value: mode == NutritionTargetInputMode.percent
-                            ? 'Prozent (4/4/9)'
-                            : 'Gramm',
-                        onPressed: () async {
-                          setDialogState(
-                            () =>
-                                mode = mode == NutritionTargetInputMode.percent
-                                ? NutritionTargetInputMode.grams
-                                : NutritionTargetInputMode.percent,
-                          );
-                        },
-                      ),
-                      _field(
-                        context,
-                        protein,
-                        mode == NutritionTargetInputMode.percent
-                            ? 'Protein (%)'
-                            : 'Protein (g)',
-                        numeric: true,
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        carbs,
-                        mode == NutritionTargetInputMode.percent
-                            ? 'Kohlenhydrate (%)'
-                            : 'Kohlenhydrate (g)',
-                        numeric: true,
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      _field(
-                        context,
-                        fat,
-                        mode == NutritionTargetInputMode.percent
-                            ? 'Fett (%)'
-                            : 'Fett (g)',
-                        numeric: true,
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                      if (mode == NutritionTargetInputMode.percent)
-                        const Text(
-                          'Prozentanteile müssen zusammen 100 % ergeben; Gramm werden mit 4/4/9 kcal berechnet.',
+            CupertinoPageRoute<
+              ({
+                NutritionTargetCategory category,
+                NutritionTargetInputMode mode,
+              })
+            >(
+              builder: (context) => StatefulBuilder(
+                builder: (context, setDialogState) => CupertinoPageScaffold(
+                  navigationBar: CupertinoNavigationBar(
+                    middle: Text(
+                      existing == null
+                          ? 'Zielphase hinzufügen'
+                          : 'Zielphase bearbeiten',
+                    ),
+                    leading: CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(48, 48),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Abbrechen'),
+                    ),
+                    trailing: CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(48, 48),
+                      onPressed:
+                          _validTargetInput(
+                            name,
+                            from,
+                            until,
+                            kcal,
+                            protein,
+                            carbs,
+                            fat,
+                            mode,
+                          )
+                          ? () => Navigator.pop(context, (
+                              category: category,
+                              mode: mode,
+                            ))
+                          : null,
+                      child: const Text('Sichern'),
+                    ),
+                  ),
+                  child: SafeArea(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 640),
+                        child: ListView(
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                          children: [
+                            const SizedBox(height: 10),
+                            _field(
+                              context,
+                              name,
+                              'Name *',
+                              onChanged: (_) => setDialogState(() {}),
+                            ),
+                            _field(
+                              context,
+                              from,
+                              'Gültig ab (JJJJ-MM-TT) *',
+                              onChanged: (_) => setDialogState(() {}),
+                            ),
+                            _field(
+                              context,
+                              until,
+                              'Gültig bis (optional)',
+                              onChanged: (_) => setDialogState(() {}),
+                            ),
+                            _field(
+                              context,
+                              kcal,
+                              'Kalorien pro Tag *',
+                              numeric: true,
+                              onChanged: (_) => setDialogState(() {}),
+                            ),
+                            _rowButton(
+                              context,
+                              title: 'Kategorie',
+                              value: _categoryName(category),
+                              onPressed: () async {
+                                final selected = await _chooseCategory();
+                                if (selected != null) {
+                                  setDialogState(() => category = selected);
+                                }
+                              },
+                            ),
+                            _rowButton(
+                              context,
+                              title: 'Makroeingabe',
+                              value: mode == NutritionTargetInputMode.percent
+                                  ? 'Prozent (4/4/9)'
+                                  : 'Gramm',
+                              onPressed: () async {
+                                setDialogState(
+                                  () => mode =
+                                      mode == NutritionTargetInputMode.percent
+                                      ? NutritionTargetInputMode.grams
+                                      : NutritionTargetInputMode.percent,
+                                );
+                              },
+                            ),
+                            _field(
+                              context,
+                              protein,
+                              mode == NutritionTargetInputMode.percent
+                                  ? 'Protein (%)'
+                                  : 'Protein (g)',
+                              numeric: true,
+                              onChanged: (_) => setDialogState(() {}),
+                            ),
+                            _field(
+                              context,
+                              carbs,
+                              mode == NutritionTargetInputMode.percent
+                                  ? 'Kohlenhydrate (%)'
+                                  : 'Kohlenhydrate (g)',
+                              numeric: true,
+                              onChanged: (_) => setDialogState(() {}),
+                            ),
+                            _field(
+                              context,
+                              fat,
+                              mode == NutritionTargetInputMode.percent
+                                  ? 'Fett (%)'
+                                  : 'Fett (g)',
+                              numeric: true,
+                              onChanged: (_) => setDialogState(() {}),
+                            ),
+                            if (mode == NutritionTargetInputMode.percent)
+                              const Text(
+                                'Prozentanteile müssen zusammen 100 % ergeben; Gramm werden mit 4/4/9 kcal berechnet.',
+                              ),
+                          ],
                         ),
-                    ],
+                      ),
+                    ),
                   ),
                 ),
-                actions: [
-                  CupertinoDialogAction(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Abbrechen'),
-                  ),
-                  CupertinoDialogAction(
-                    isDefaultAction: true,
-                    onPressed: () {
-                      if (_validTargetInput(
-                        name,
-                        from,
-                        until,
-                        kcal,
-                        protein,
-                        carbs,
-                        fat,
-                        mode,
-                      )) {
-                        Navigator.pop(context, (
-                          category: category,
-                          mode: mode,
-                        ));
-                      }
-                    },
-                    child: const Text('Zielphase speichern'),
-                  ),
-                ],
               ),
             ),
           );
@@ -937,7 +1338,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
         update: existing != null,
       );
     } catch (error) {
-      widget.viewModel.reportInputError(error.toString());
+      widget.viewModel.reportInputError(
+        error.toString(),
+        operation: NutritionErrorOperation.planning,
+      );
     } finally {
       for (final controller in [name, from, until, kcal, protein, carbs, fat]) {
         controller.dispose();
@@ -1031,6 +1435,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     if (amount == null || kcal == null) {
       widget.viewModel.reportInputError(
         'Menge und Kalorien müssen gültige Zahlen sein.',
+        operation: NutritionErrorOperation.entry,
       );
       return;
     }
@@ -1081,70 +1486,96 @@ class _NutritionScreenState extends State<NutritionScreen> {
     final recipeName = TextEditingController();
     var target = 'diary';
     try {
-      final accepted = await showCupertinoDialog<String>(
-        context: context,
-        builder: (context) => StatefulBuilder(
-          builder: (context, setDialogState) => CupertinoAlertDialog(
-            title: const Text('Nährwertvorschlag prüfen'),
-            content: SingleChildScrollView(
-              child: Column(
-                children: [
-                  const SizedBox(height: 10),
-                  Text(
-                    'Basis: ${draft.basis}${draft.servingMassGrams == null ? '' : ' · ${draft.servingMassGrams} g pro Portion'}',
-                  ),
-                  Text(
-                    'kcal: ${draft.kilocalories.per100Grams ?? 'nicht erkannt'} / 100 g',
-                  ),
-                  Text(
-                    'Protein: ${draft.proteinGrams.per100Grams ?? 'nicht erkannt'} g',
-                  ),
-                  Text(
-                    'Kohlenhydrate: ${draft.carbohydrateGrams.per100Grams ?? 'nicht erkannt'} g',
-                  ),
-                  Text(
-                    'Fett: ${draft.fatGrams.per100Grams ?? 'nicht erkannt'} g',
-                  ),
-                  const SizedBox(height: 12),
-                  _field(context, name, 'Produktname *'),
-                  _field(context, amount, 'Menge (g) *', numeric: true),
-                  _rowButton(
-                    context,
-                    title: 'Speicherziel',
-                    value: target == 'diary'
-                        ? 'Tagebucheintrag'
-                        : 'Gespeichertes Gericht',
-                    onPressed: () async {
-                      final choice = await _chooseTarget();
-                      if (choice != null) setDialogState(() => target = choice);
-                    },
-                  ),
-                  if (target == 'meal')
-                    _field(context, recipeName, 'Gerichtsname (optional)'),
-                  const Text(
-                    'Prüfe alle Werte. Der Scan allein speichert nichts.',
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.pop(context, 'discard'),
-                child: const Text('Verwerfen'),
-              ),
-              CupertinoDialogAction(
-                isDefaultAction: true,
-                onPressed:
-                    draft.confirmedPer100Grams == null ||
-                        name.text.trim().isEmpty ||
-                        _parse(amount.text) == null
-                    ? null
-                    : () => Navigator.pop(context, target),
-                child: Text(
-                  target == 'meal' ? 'Gericht speichern' : 'Tagebuch speichern',
+      final accepted = await Navigator.of(context).push<String>(
+        CupertinoPageRoute<String>(
+          builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) => CupertinoPageScaffold(
+              navigationBar: CupertinoNavigationBar(
+                middle: const Text('Vorschlag prüfen'),
+                leading: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(48, 48),
+                  onPressed: () => Navigator.pop(context, 'discard'),
+                  child: const Text('Verwerfen'),
+                ),
+                trailing: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(48, 48),
+                  onPressed:
+                      draft.confirmedPer100Grams == null ||
+                          name.text.trim().isEmpty ||
+                          _parse(amount.text) == null
+                      ? null
+                      : () => Navigator.pop(context, target),
+                  child: const Text('Sichern'),
                 ),
               ),
-            ],
+              child: SafeArea(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 640),
+                    child: ListView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                      children: [
+                        Text(
+                          'Basis: ${draft.basis}${draft.servingMassGrams == null ? '' : ' · ${draft.servingMassGrams} g pro Portion'}',
+                        ),
+                        Text(
+                          'kcal: ${draft.kilocalories.per100Grams ?? 'nicht erkannt'} / 100 g',
+                        ),
+                        Text(
+                          'Protein: ${draft.proteinGrams.per100Grams ?? 'nicht erkannt'} g',
+                        ),
+                        Text(
+                          'Kohlenhydrate: ${draft.carbohydrateGrams.per100Grams ?? 'nicht erkannt'} g',
+                        ),
+                        Text(
+                          'Fett: ${draft.fatGrams.per100Grams ?? 'nicht erkannt'} g',
+                        ),
+                        const SizedBox(height: 12),
+                        _field(
+                          context,
+                          name,
+                          'Produktname *',
+                          onChanged: (_) => setDialogState(() {}),
+                        ),
+                        _field(
+                          context,
+                          amount,
+                          'Menge (g) *',
+                          numeric: true,
+                          onChanged: (_) => setDialogState(() {}),
+                        ),
+                        _rowButton(
+                          context,
+                          title: 'Speicherziel',
+                          value: target == 'diary'
+                              ? 'Tagebucheintrag'
+                              : 'Gespeichertes Gericht',
+                          onPressed: () async {
+                            final choice = await _chooseTarget();
+                            if (choice != null) {
+                              setDialogState(() => target = choice);
+                            }
+                          },
+                        ),
+                        if (target == 'meal')
+                          _field(
+                            context,
+                            recipeName,
+                            'Gerichtsname (optional)',
+                          ),
+                        const Text(
+                          'Prüfe alle Werte. Der Scan allein speichert nichts.',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       );
@@ -1296,6 +1727,7 @@ Widget _field(
   TextEditingController controller,
   String label, {
   bool numeric = false,
+  Key? key,
   String? helper,
   TextInputAction? action,
   ValueChanged<String>? onSubmitted,
@@ -1305,22 +1737,27 @@ Widget _field(
   child: Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(label),
+      ExcludeSemantics(child: Text(label)),
       const SizedBox(height: 5),
-      CupertinoTextField(
-        controller: controller,
-        keyboardType: numeric
-            ? const TextInputType.numberWithOptions(decimal: true)
-            : null,
-        textInputAction: action,
-        onSubmitted: onSubmitted,
-        onChanged: onChanged,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        decoration: BoxDecoration(
-          color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-            context,
+      Semantics(
+        label: label,
+        textField: true,
+        child: CupertinoTextField(
+          key: key,
+          controller: controller,
+          keyboardType: numeric
+              ? const TextInputType.numberWithOptions(decimal: true)
+              : null,
+          textInputAction: action,
+          onSubmitted: onSubmitted,
+          onChanged: onChanged,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+            color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+              context,
+            ),
+            borderRadius: BorderRadius.circular(10),
           ),
-          borderRadius: BorderRadius.circular(10),
         ),
       ),
       if (helper != null)
@@ -1332,20 +1769,34 @@ Widget _field(
 Widget _button(
   String title,
   VoidCallback? onPressed, {
+  Key? key,
   IconData? icon,
   bool filled = false,
   bool enabled = true,
 }) => Padding(
   padding: const EdgeInsets.symmetric(vertical: 4),
   child: CupertinoButton(
+    key: key,
+    minimumSize: const Size(0, 48),
     onPressed: enabled ? onPressed : null,
-    color: filled ? CupertinoColors.activeBlue : null,
+    color: filled ? GainerTheme.actionColor : null,
     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (icon != null) ...[Icon(icon, size: 19), const SizedBox(width: 8)],
-        Flexible(child: Text(title, textAlign: TextAlign.center)),
+        if (icon != null) ...[
+          Icon(icon, size: 19, color: filled ? CupertinoColors.white : null),
+          const SizedBox(width: 8),
+        ],
+        Flexible(
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: filled
+                ? const TextStyle(color: CupertinoColors.white)
+                : null,
+          ),
+        ),
       ],
     ),
   ),
@@ -1357,6 +1808,7 @@ Widget _rowButton(
   required String value,
   required VoidCallback onPressed,
 }) => CupertinoButton(
+  minimumSize: const Size(48, 48),
   padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
   onPressed: onPressed,
   child: Row(
@@ -1402,14 +1854,14 @@ Widget _dataRow(
             const SizedBox(height: 3),
             Text(
               detail,
-              style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
-                color: CupertinoColors.secondaryLabel.resolveFrom(context),
-              ),
+              style: CupertinoTheme.of(context).textTheme.textStyle
+                  .copyWith(color: GainerTheme.secondaryText(context)),
             ),
           ],
         ),
       ),
       CupertinoButton(
+        minimumSize: const Size(48, 48),
         padding: const EdgeInsets.all(8),
         onPressed: onAction,
         child: Semantics(
@@ -1428,30 +1880,449 @@ class _TotalsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(14),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     decoration: BoxDecoration(
-      color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
-      borderRadius: BorderRadius.circular(14),
+      color: CupertinoColors.activeBlue
+          .resolveFrom(context)
+          .withValues(alpha: .1),
+      borderRadius: BorderRadius.circular(16),
     ),
-    child: Wrap(
-      spacing: 16,
-      runSpacing: 8,
+    child: Semantics(
+      label: 'Tageskalorien ${_grams(totals.kilocalories)} Kilokalorien',
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            _grams(totals.kilocalories),
+            style: CupertinoTheme.of(context).textTheme.navLargeTitleTextStyle
+                .copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(width: 8),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Text(
+              'kcal heute',
+              style: TextStyle(color: GainerTheme.secondaryText(context)),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+String _friendlyDate(String value) {
+  final date = DateTime.parse(value);
+  const weekdays = [
+    'Montag',
+    'Dienstag',
+    'Mittwoch',
+    'Donnerstag',
+    'Freitag',
+    'Samstag',
+    'Sonntag',
+  ];
+  const months = [
+    'Januar',
+    'Februar',
+    'März',
+    'April',
+    'Mai',
+    'Juni',
+    'Juli',
+    'August',
+    'September',
+    'Oktober',
+    'November',
+    'Dezember',
+  ];
+  return '${weekdays[date.weekday - 1]}, ${date.day}. ${months[date.month - 1]}';
+}
+
+class _MacroSummary extends StatelessWidget {
+  const _MacroSummary({required this.totals});
+  final NutritionTotals totals;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = GainerTheme.secondaryText(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      decoration: BoxDecoration(
+        color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+          context,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          _macro(context, 'Protein', totals.proteinGrams, color),
+          _macro(context, 'Kohlenhydrate', totals.carbohydrateGrams, color),
+          _macro(context, 'Fett', totals.fatGrams, color),
+        ],
+      ),
+    );
+  }
+
+  Widget _macro(
+    BuildContext context,
+    String name,
+    double? value,
+    Color color,
+  ) => Expanded(
+    child: Column(
       children: [
-        Text('${_grams(totals.kilocalories)} kcal'),
         Text(
-          'Protein ${totals.proteinGrams == null ? '—' : '${_grams(totals.proteinGrams!)} g'}',
+          name,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: color, fontSize: 12),
         ),
+        const SizedBox(height: 4),
         Text(
-          'Kohlenhydrate ${totals.carbohydrateGrams == null ? '—' : '${_grams(totals.carbohydrateGrams!)} g'}',
-        ),
-        Text(
-          'Fett ${totals.fatGrams == null ? '—' : '${_grams(totals.fatGrams!)} g'}',
+          value == null ? '–' : '${_grams(value)} g',
+          style: CupertinoTheme.of(context).textTheme.textStyle
+              .copyWith(fontWeight: FontWeight.w600),
         ),
       ],
     ),
   );
+}
+
+class _TargetProgress extends StatelessWidget {
+  const _TargetProgress({
+    required this.date,
+    required this.totals,
+    required this.schedule,
+    required this.onManage,
+  });
+
+  final String date;
+  final NutritionTotals totals;
+  final NutritionTargetSchedule? schedule;
+  final VoidCallback onManage;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = schedule?.versions
+        .where(
+          (phase) =>
+              phase.effectiveFrom.compareTo(date) <= 0 &&
+              (phase.effectiveUntil == null ||
+                  phase.effectiveUntil!.compareTo(date) >= 0),
+        )
+        .lastOrNull;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+          context,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  target == null ? 'Tagesziele' : 'Tagesziele · ${target.name}',
+                  style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+                ),
+              ),
+              CupertinoButton(
+                minimumSize: const Size(48, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                onPressed: onManage,
+                child: Text(target == null ? 'Einrichten' : 'Verwalten'),
+              ),
+            ],
+          ),
+          if (target == null)
+            Text(
+              'Noch keine Ziele für diesen Tag. Deine Aufnahme wird trotzdem angezeigt.',
+              style: TextStyle(color: GainerTheme.secondaryText(context)),
+            )
+          else ...[
+            _targetLine(
+              context,
+              'Kalorien',
+              totals.kilocalories,
+              target.kilocalories,
+              'kcal',
+            ),
+            _targetLine(
+              context,
+              'Protein',
+              totals.proteinGrams,
+              target.proteinGrams,
+              'g',
+            ),
+            _targetLine(
+              context,
+              'Kohlenhydrate',
+              totals.carbohydrateGrams,
+              target.carbohydrateGrams,
+              'g',
+            ),
+            _targetLine(context, 'Fett', totals.fatGrams, target.fatGrams, 'g'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _targetLine(
+    BuildContext context,
+    String label,
+    double? consumed,
+    double target,
+    String unit,
+  ) {
+    final ratio = consumed == null || target <= 0
+        ? 0.0
+        : (consumed / target).clamp(0.0, 1.0);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Semantics(
+        label: consumed == null
+            ? '$label, noch keine Nährwertangaben, Ziel ${_grams(target)} $unit'
+            : '$label, ${_grams(consumed)} von ${_grams(target)} $unit',
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(label)),
+                Text(
+                  '${consumed == null ? '–' : _grams(consumed)} / ${_grams(target)} $unit',
+                  style: TextStyle(color: GainerTheme.secondaryText(context)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: SizedBox(
+                height: 6,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Stack(
+                    children: [
+                      Positioned.fill(
+                        child: ColoredBox(
+                          color: CupertinoColors.tertiarySystemFill.resolveFrom(
+                            context,
+                          ),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: constraints.maxWidth * ratio,
+                          child: ColoredBox(
+                            color: CupertinoColors.activeBlue.resolveFrom(
+                              context,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MealSection extends StatelessWidget {
+  const _MealSection({
+    super.key,
+    required this.meal,
+    required this.entries,
+    required this.onAdd,
+    required this.onEdit,
+    required this.onRemove,
+    required this.onMove,
+  });
+  final NutritionMeal meal;
+  final List<NutritionEntry> entries;
+  final VoidCallback onAdd;
+  final ValueChanged<NutritionEntry> onEdit;
+  final ValueChanged<NutritionEntry> onRemove;
+  final void Function(NutritionEntry entry, int targetPosition) onMove;
+
+  @override
+  Widget build(BuildContext context) {
+    final orderedEntries = [...entries]
+      ..sort((a, b) => a.position.compareTo(b.position));
+    final calories = entries.fold<double>(
+      0,
+      (sum, entry) => sum + entry.totals.kilocalories,
+    );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
+      decoration: BoxDecoration(
+        color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+          context,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _mealName(meal),
+                  style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+                ),
+              ),
+              Text(
+                '${_grams(calories)} kcal',
+                style: TextStyle(color: GainerTheme.secondaryText(context)),
+              ),
+            ],
+          ),
+          if (entries.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                'Noch nichts eingetragen',
+                style: TextStyle(color: GainerTheme.secondaryText(context)),
+              ),
+            )
+          else
+            for (var index = 0; index < orderedEntries.length; index++)
+              Builder(
+                builder: (context) {
+                  final entry = orderedEntries[index];
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Semantics(
+                        label:
+                            '${entry.productName}, ${_grams(entry.amountGrams)} Gramm, ${_grams(entry.totals.kilocalories)} Kilokalorien',
+                        button: true,
+                        child: CupertinoButton(
+                          key: ValueKey('nutrition-entry-${entry.entryId}'),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          minimumSize: const Size(0, 48),
+                          onPressed: () => onEdit(entry),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  entry.productName,
+                                  textAlign: TextAlign.left,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Text(
+                                '${_grams(entry.amountGrams)} g · ${_grams(entry.totals.kilocalories)} kcal',
+                                style: TextStyle(
+                                  color: GainerTheme.secondaryText(context),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (orderedEntries.length > 1)
+                        Wrap(
+                          spacing: 4,
+                          children: [
+                            CupertinoButton(
+                              key: ValueKey(
+                                'nutrition-move-up-${entry.entryId}',
+                              ),
+                              minimumSize: const Size(48, 48),
+                              onPressed: index == 0
+                                  ? null
+                                  : () => onMove(entry, index - 1),
+                              child: Semantics(
+                                label: '${entry.productName} nach oben',
+                                button: true,
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(CupertinoIcons.chevron_up),
+                                    Text('Nach oben'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            CupertinoButton(
+                              key: ValueKey(
+                                'nutrition-move-down-${entry.entryId}',
+                              ),
+                              minimumSize: const Size(48, 48),
+                              onPressed: index == orderedEntries.length - 1
+                                  ? null
+                                  : () => onMove(entry, index + 1),
+                              child: Semantics(
+                                label: '${entry.productName} nach unten',
+                                button: true,
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(CupertinoIcons.chevron_down),
+                                    Text('Nach unten'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  );
+                },
+              ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: CupertinoButton(
+              key: ValueKey('meal-add-${meal.name}'),
+              minimumSize: const Size(48, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              onPressed: onAdd,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(CupertinoIcons.add_circled, size: 18),
+                  SizedBox(width: 6),
+                  Text('Hinzufügen'),
+                ],
+              ),
+            ),
+          ),
+          if (entries.isNotEmpty)
+            Wrap(
+              spacing: 4,
+              children: [
+                for (final entry in entries)
+                  CupertinoButton(
+                    key: ValueKey('nutrition-remove-${entry.entryId}'),
+                    minimumSize: const Size(48, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    onPressed: () => onRemove(entry),
+                    child: Semantics(
+                      label: '${entry.productName} entfernen',
+                      button: true,
+                      child: const Text('Entfernen'),
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ReusableMealRow extends StatelessWidget {
@@ -1483,26 +2354,27 @@ class _ReusableMealRow extends StatelessWidget {
         Text(meal.name, style: CupertinoTheme.of(context).textTheme.textStyle),
         Text(
           '${meal.components.length} Bestandteile · Portion ${_grams(meal.standardPortion)}× · ${meal.status == 'Active' ? 'Aktiv' : 'Archiviert'}',
-          style: TextStyle(
-            color: CupertinoColors.secondaryLabel.resolveFrom(context),
-          ),
+          style: TextStyle(color: GainerTheme.secondaryText(context)),
         ),
         Wrap(
           spacing: 4,
           children: [
             CupertinoButton(
+              minimumSize: const Size(48, 48),
               padding: const EdgeInsets.symmetric(horizontal: 8),
               onPressed: meal.status == 'Active' ? onAdd : null,
               child: const Text('Übernehmen'),
             ),
             if (onEdit != null)
               CupertinoButton(
+                minimumSize: const Size(48, 48),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 onPressed: onEdit,
                 child: const Text('Bearbeiten'),
               ),
             if (onArchive != null)
               CupertinoButton(
+                minimumSize: const Size(48, 48),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 onPressed: onArchive,
                 child: const Text('Archivieren'),
@@ -1549,12 +2421,14 @@ class _TargetPhaseRow extends StatelessWidget {
             children: [
               if (onEdit != null)
                 CupertinoButton(
+                  minimumSize: const Size(48, 48),
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   onPressed: onEdit,
                   child: const Text('Bearbeiten'),
                 ),
               if (onDelete != null)
                 CupertinoButton(
+                  minimumSize: const Size(48, 48),
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   onPressed: onDelete,
                   child: const Text('Entfernen'),

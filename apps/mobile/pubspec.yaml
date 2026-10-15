@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: 1.0.8
   cookie_jar: 4.0.9
   dio: 5.11.1
@@ -19,6 +21,8 @@ dependencies:
   provider: 6.1.5+1
   sqlite3: 3.7.0
 dev_dependencies:
+  integration_test:
+    sdk: flutter
   flutter_test:
     sdk: flutter
   flutter_lints: 6.0.0

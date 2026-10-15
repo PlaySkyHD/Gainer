@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 import '../../../domain/models/training/training.dart';
+import '../../core/theme.dart';
+import 'training_planning_screens.dart';
 import 'training_view_model.dart';
 
 class TrainingScreen extends StatefulWidget {
@@ -14,22 +16,7 @@ class TrainingScreen extends StatefulWidget {
 }
 
 class _TrainingScreenState extends State<TrainingScreen> {
-  late final TextEditingController _exerciseName = TextEditingController();
-  late final TextEditingController _exerciseDescription =
-      TextEditingController();
-  late final TextEditingController _exerciseTargetMuscle =
-      TextEditingController();
-  late final TextEditingController _exerciseMuscleGroup =
-      TextEditingController();
-  late final TextEditingController _exerciseEquipment = TextEditingController();
-  late final TextEditingController _templateName = TextEditingController();
   final Map<String, _SetEditors> _setEditors = {};
-  final List<_TemplateDraftItem> _templateItems = [];
-  String? _selectedExerciseId;
-  String? _editingExerciseId;
-  String? _editingTemplateId;
-  String? _expandedHistoryId;
-  bool _exerciseEditorExpanded = false;
 
   @override
   void initState() {
@@ -41,15 +28,6 @@ class _TrainingScreenState extends State<TrainingScreen> {
 
   @override
   void dispose() {
-    _exerciseName.dispose();
-    _exerciseDescription.dispose();
-    _exerciseTargetMuscle.dispose();
-    _exerciseMuscleGroup.dispose();
-    _exerciseEquipment.dispose();
-    _templateName.dispose();
-    for (final item in _templateItems) {
-      item.dispose();
-    }
     for (final editor in _setEditors.values) {
       editor.dispose();
     }
@@ -63,586 +41,254 @@ class _TrainingScreenState extends State<TrainingScreen> {
       builder: (context, model, _) => CupertinoPageScaffold(
         navigationBar: const CupertinoNavigationBar(middle: Text('Training')),
         child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              if (model.isLoading && model.planning == null)
-                const Center(child: CupertinoActivityIndicator()),
-              if (model.errorMessage != null)
-                Text(
-                  model.errorMessage!,
-                  key: const ValueKey('training-error'),
-                  style: const TextStyle(color: CupertinoColors.systemRed),
-                ),
-              if (model.notificationNotice != null)
-                Text(
-                  model.notificationNotice!,
-                  key: const ValueKey('training-notification-notice'),
-                  style: TextStyle(
-                    color: CupertinoColors.secondaryLabel.resolveFrom(context),
-                  ),
-                ),
-              if (model.runningWorkout != null)
-                _runningWorkout(model)
-              else
-                _planning(model),
-              const SizedBox(height: 24),
-              const Text('Abgeschlossene Workouts'),
-              for (final item in model.history)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CupertinoButton(
-                      key: ValueKey('training-history-${item.id}'),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      onPressed: () => setState(() {
-                        _expandedHistoryId = _expandedHistoryId == item.id
-                            ? null
-                            : item.id;
-                      }),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '${item.value.templateNameSnapshot} · ${item.value.completedAtUtc ?? ''} · '
-                          '${item.value.exercises.fold<int>(0, (count, exercise) => count + exercise.sets.where((set) => set.isCompleted).length)} Sätze',
-                        ),
-                      ),
-                    ),
-                    if (_expandedHistoryId == item.id)
-                      _historyDetail(item.value),
-                  ],
-                ),
-            ],
-          ),
+          child:
+              model.planning == null &&
+                  (model.isLoading || model.errorMessage == null)
+              ? const Center(child: CupertinoActivityIndicator())
+              : _content(context, model),
         ),
       ),
     ),
   );
 
-  Widget _planning(TrainingViewModel model) {
+  Widget _content(BuildContext context, TrainingViewModel model) {
     final plan = model.planning;
-    final exercises = [
-      ...?plan?.exercises.map((entry) => (id: entry.id, name: entry.name)),
-      ...?plan?.customExercises
-          .where((entry) => !entry.isArchived)
-          .map((entry) => (id: entry.id, name: entry.value.name)),
-    ];
-    final templates =
-        plan?.templates.where((item) => !item.value.isArchived).toList() ??
-        const [];
-    if (_selectedExerciseId == null && exercises.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _selectedExerciseId == null) {
-          setState(() => _selectedExerciseId = exercises.first.id);
-        }
-      });
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Übungen',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-        ),
-        for (final item in exercises)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(item.name),
-              if (plan?.customExercises.any((entry) => entry.id == item.id) ??
-                  false)
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 2,
-                  children: [
-                    CupertinoButton(
-                      key: ValueKey('training-edit-exercise-${item.id}'),
-                      padding: EdgeInsets.zero,
-                      onPressed: () {
-                        final existing = plan!.customExercises.firstWhere(
-                          (entry) => entry.id == item.id,
-                        );
-                        setState(() {
-                          _exerciseEditorExpanded = true;
-                          _editingExerciseId = item.id;
-                          _exerciseName.text = existing.value.name;
-                          _exerciseDescription.text =
-                              existing.value.description ?? '';
-                          _exerciseTargetMuscle.text =
-                              existing.value.targetMuscle ?? '';
-                          _exerciseMuscleGroup.text =
-                              existing.value.muscleGroup ?? '';
-                          _exerciseEquipment.text =
-                              existing.value.equipment ?? '';
-                        });
-                      },
-                      child: const Text('Bearbeiten'),
-                    ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: model.isSaving
-                          ? null
-                          : () => model.archiveExercise(item.id),
-                      child: const Text('Archivieren'),
-                    ),
-                  ],
-                ),
-            ],
+    if (plan == null) {
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          const SizedBox(height: 24),
+          const Icon(CupertinoIcons.exclamationmark_circle, size: 36),
+          const SizedBox(height: 12),
+          Text(
+            model.errorMessage ??
+                'Trainingsdaten konnten nicht geladen werden.',
+            textAlign: TextAlign.center,
           ),
-        CupertinoButton(
-          key: const ValueKey('training-toggle-exercise-editor'),
-          padding: EdgeInsets.zero,
-          onPressed: () => setState(() {
-            _exerciseEditorExpanded = !_exerciseEditorExpanded;
-          }),
-          child: Text(
-            _exerciseEditorExpanded
-                ? 'Eigene Übung schließen'
-                : 'Eigene Übung anlegen oder bearbeiten',
-          ),
-        ),
-        if (_exerciseEditorExpanded) ...[
-          _field(
-            _editingExerciseId == null ? 'Neue eigene Übung' : 'Übungsname',
-            _exerciseName,
-          ),
-          _field('Beschreibung', _exerciseDescription),
-          _field('Zielmuskel', _exerciseTargetMuscle),
-          _field('Muskelgruppe', _exerciseMuscleGroup),
-          _field('Ausrüstung', _exerciseEquipment),
           CupertinoButton(
-            key: const ValueKey('training-create-exercise'),
-            onPressed: model.isSaving
-                ? null
-                : () async {
-                    await model.saveExercise(
-                      _editingExerciseId,
-                      ExerciseValues(
-                        name: _exerciseName.text,
-                        description: _exerciseDescription.text,
-                        targetMuscle: _exerciseTargetMuscle.text,
-                        muscleGroup: _exerciseMuscleGroup.text,
-                        equipment: _exerciseEquipment.text,
-                      ),
-                    );
-                    _clearExerciseEditor();
-                  },
-            child: Text(
-              _editingExerciseId == null ? 'Übung anlegen' : 'Übung speichern',
-            ),
+            onPressed: model.load,
+            child: const Text('Erneut versuchen'),
           ),
         ],
-        const SizedBox(height: 12),
-        const Text(
-          'Template erstellen und bearbeiten',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-        ),
-        _field('Template-Name', _templateName),
-        for (var index = 0; index < _templateItems.length; index++)
-          _templateItemEditor(exercises, index),
-        if (exercises.isNotEmpty)
-          CupertinoButton(
-            key: const ValueKey('training-add-template-exercise'),
-            onPressed: () => setState(() {
-              _templateItems.add(
-                _TemplateDraftItem(
-                  id: widget.viewModel.repository.ids(),
-                  exerciseId: _selectedExerciseId ?? exercises.first.id,
-                ),
-              );
-            }),
-            child: const Text('Übung zum Template hinzufügen'),
-          ),
-        CupertinoButton.filled(
-          key: const ValueKey('training-create-template'),
-          onPressed:
-              exercises.isEmpty || _templateItems.isEmpty || model.isSaving
-              ? null
-              : () async {
-                  await model.saveTemplate(
-                    id: _editingTemplateId,
-                    name: _templateName.text,
-                    items: [
-                      for (final item in _templateItems)
-                        TrainingTemplateItem(
-                          id: item.id,
-                          exerciseId: item.exerciseId,
-                          plannedSets: int.tryParse(item.sets.text) ?? 0,
-                          minimumRepetitions:
-                              int.tryParse(item.minimumRepetitions.text) ?? 0,
-                          maximumRepetitions:
-                              int.tryParse(item.maximumRepetitions.text) ?? 0,
-                          targetRir: double.tryParse(item.targetRir.text),
-                          restSeconds: int.tryParse(item.restSeconds.text),
-                          notes: item.notes.text,
-                        ),
-                    ],
-                  );
-                  _clearTemplateEditor();
-                },
-          child: Text(
-            _editingTemplateId == null
-                ? 'Template speichern'
-                : 'Template-Änderungen speichern',
-          ),
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          'Trainingsplan',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-        ),
-        for (var index = 0; index < templates.length; index++)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${templates[index].value.name} · ${templates[index].value.items.length} Übungen',
-              ),
-              Wrap(
-                spacing: 4,
-                runSpacing: 2,
-                children: [
-                  CupertinoButton(
-                    key: ValueKey(
-                      'training-template-edit-${templates[index].id}',
-                    ),
-                    padding: EdgeInsets.zero,
-                    onPressed: model.isSaving
-                        ? null
-                        : () => _editTemplate(templates[index]),
-                    child: const Text('Bearbeiten'),
-                  ),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    onPressed: model.isSaving
-                        ? null
-                        : () => model.archiveTemplate(templates[index].id),
-                    child: const Text('Archivieren'),
-                  ),
-                  CupertinoButton(
-                    key: ValueKey(
-                      'training-rotation-up-${templates[index].id}',
-                    ),
-                    padding: EdgeInsets.zero,
-                    onPressed: index == 0 || model.isSaving
-                        ? null
-                        : () => model.moveTemplateInRotation(
-                            templates.map((entry) => entry.id).toList(),
-                            index,
-                            index - 1,
-                          ),
-                    child: const Text('↑ Reihenfolge'),
-                  ),
-                  CupertinoButton(
-                    key: ValueKey(
-                      'training-rotation-down-${templates[index].id}',
-                    ),
-                    padding: EdgeInsets.zero,
-                    onPressed: index == templates.length - 1 || model.isSaving
-                        ? null
-                        : () => model.moveTemplateInRotation(
-                            templates.map((entry) => entry.id).toList(),
-                            index,
-                            index + 1,
-                          ),
-                    child: const Text('↓ Reihenfolge'),
-                  ),
-                  CupertinoButton(
-                    key: ValueKey('training-start-${templates[index].id}'),
-                    onPressed: model.isSaving
-                        ? null
-                        : () => model.start(templates[index].id),
-                    child: const Text('Start'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        if (templates.isNotEmpty)
-          CupertinoButton(
-            key: const ValueKey('training-save-rotation'),
-            onPressed: model.isSaving
-                ? null
-                : () => model.saveRotation(
-                    templates.map((entry) => entry.id).toList(),
-                  ),
-            child: const Text('Rotation speichern'),
-          ),
+      );
+    }
+    return ListView(
+      key: const ValueKey('training-overview-scroll'),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      children: [
+        if (model.errorMessage != null)
+          _Notice(model.errorMessage!, error: true),
+        if (model.notificationNotice != null)
+          _Notice(model.notificationNotice!),
+        if (model.runningWorkout != null)
+          _runningWorkout(model)
+        else
+          ..._overview(context, model),
       ],
     );
   }
 
-  Widget _templateItemEditor(
-    List<({String id, String name})> exercises,
-    int index,
-  ) {
-    final item = _templateItems[index];
-    final selected = exercises.where(
-      (exercise) => exercise.id == item.exerciseId,
+  List<Widget> _overview(BuildContext context, TrainingViewModel model) {
+    final plan = model.planning!;
+    final templates = plan.templates
+        .where((item) => !item.value.isArchived)
+        .toList();
+    final nextMatches = templates.where(
+      (item) => item.id == plan.nextTemplateId,
     );
-    final exerciseName = selected.isEmpty
-        ? 'Übung auswählen'
-        : selected.first.name;
-    return Container(
-      key: ValueKey('training-template-item-${item.id}'),
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(color: CupertinoColors.separator),
-        borderRadius: BorderRadius.circular(12),
+    final next = nextMatches.isEmpty ? null : nextMatches.first;
+    final last = model.history.isEmpty ? null : model.history.first;
+    return [
+      Text(
+        'Dein Training',
+        style: CupertinoTheme.of(context).textTheme.navLargeTitleTextStyle,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Template-Übung ${index + 1}',
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          Wrap(
-            spacing: 6,
-            children: [
-              CupertinoButton(
-                key: ValueKey('training-template-select-exercise-${item.id}'),
-                padding: EdgeInsets.zero,
-                onPressed: exercises.isEmpty
-                    ? null
-                    : () async {
-                        final id = await _chooseExercise(exercises);
-                        if (id != null && mounted) {
-                          setState(() => item.exerciseId = id);
-                        }
-                      },
-                child: Text(exerciseName),
-              ),
-              CupertinoButton(
-                key: ValueKey('training-template-up-${item.id}'),
-                padding: EdgeInsets.zero,
-                onPressed: index == 0
-                    ? null
-                    : () => setState(() {
-                        _templateItems.removeAt(index);
-                        _templateItems.insert(index - 1, item);
-                      }),
-                child: const Text('↑'),
-              ),
-              CupertinoButton(
-                key: ValueKey('training-template-down-${item.id}'),
-                padding: EdgeInsets.zero,
-                onPressed: index == _templateItems.length - 1
-                    ? null
-                    : () => setState(() {
-                        _templateItems.removeAt(index);
-                        _templateItems.insert(index + 1, item);
-                      }),
-                child: const Text('↓'),
-              ),
-              CupertinoButton(
-                key: ValueKey('training-template-remove-${item.id}'),
-                padding: EdgeInsets.zero,
-                onPressed: () => setState(() {
-                  _templateItems.removeAt(index).dispose();
-                }),
-                child: const Text('Entfernen'),
-              ),
-            ],
-          ),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final fieldWidth = (constraints.maxWidth - 8) / 2;
-              return Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  SizedBox(
-                    width: fieldWidth,
-                    child: _field(
-                      'Sätze',
-                      item.sets,
-                      key: ValueKey('training-item-sets-${item.id}'),
-                      numeric: true,
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: _field(
-                      'Wdh. min.',
-                      item.minimumRepetitions,
-                      key: ValueKey('training-item-min-${item.id}'),
-                      numeric: true,
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: _field(
-                      'Wdh. max.',
-                      item.maximumRepetitions,
-                      key: ValueKey('training-item-max-${item.id}'),
-                      numeric: true,
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: _field(
-                      'Ziel-RIR',
-                      item.targetRir,
-                      key: ValueKey('training-item-rir-${item.id}'),
-                      numeric: true,
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: _field(
-                      'Pause in Sekunden',
-                      item.restSeconds,
-                      key: ValueKey('training-item-rest-${item.id}'),
-                      numeric: true,
-                    ),
-                  ),
-                  SizedBox(
-                    width: constraints.maxWidth,
-                    child: _field(
-                      'Übungsnotiz',
-                      item.notes,
-                      key: ValueKey('training-item-notes-${item.id}'),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
+      const SizedBox(height: 4),
+      Text(
+        templates.isEmpty
+            ? 'Plane deine erste Einheit und baue daraus deine Rotation.'
+            : '${templates.length} aktive ${templates.length == 1 ? 'Vorlage' : 'Vorlagen'} · dein Plan bleibt offline verfügbar.',
+        style: TextStyle(color: GainerTheme.secondaryText(context)),
       ),
-    );
+      const SizedBox(height: 22),
+      _SectionHeading(title: 'Als Nächstes'),
+      if (next == null)
+        _TrainingCard(
+          icon: CupertinoIcons.arrow_2_circlepath,
+          title: 'Rotation einrichten',
+          subtitle: templates.isEmpty
+              ? 'Erstelle eine Vorlage, um dein nächstes Training festzulegen.'
+              : 'Lege eine Reihenfolge für deine Vorlagen fest.',
+          trailing: CupertinoButton(
+            key: const ValueKey('training-open-templates'),
+            minimumSize: const Size.square(48),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            onPressed: () =>
+                _push(context, TrainingTemplateLibraryScreen(viewModel: model)),
+            child: const Text('Vorlagen'),
+          ),
+        )
+      else
+        _TrainingCard(
+          key: const ValueKey('training-next-card'),
+          icon: CupertinoIcons.sportscourt,
+          title: next.value.name,
+          subtitle:
+              '${next.value.items.length} Übungen · nächste Einheit deiner Rotation',
+          trailing: CupertinoButton(
+            key: ValueKey('training-start-next-${next.id}'),
+            minimumSize: const Size.square(48),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            color: GainerTheme.actionColor,
+            onPressed: model.isSaving ? null : () => model.start(next.id),
+            child: Text(
+              'Start',
+              style: TextStyle(
+                color: model.isSaving
+                    ? GainerTheme.secondaryText(context)
+                    : CupertinoColors.white,
+              ),
+            ),
+          ),
+        ),
+      const SizedBox(height: 22),
+      _SectionHeading(
+        title: 'Deine Vorlagen',
+        action: CupertinoButton(
+          key: const ValueKey('training-create-template-route'),
+          minimumSize: const Size.square(48),
+          padding: EdgeInsets.zero,
+          onPressed: () =>
+              _push(context, TrainingTemplateEditorScreen(viewModel: model)),
+          child: const Text('Neu'),
+        ),
+      ),
+      if (templates.isEmpty)
+        _EmptyCard(
+          title: 'Noch keine Vorlagen',
+          subtitle: 'Stelle deine erste Einheit mit deinen Übungen zusammen.',
+          actionLabel: 'Vorlage erstellen',
+          onPressed: () =>
+              _push(context, TrainingTemplateEditorScreen(viewModel: model)),
+        )
+      else ...[
+        for (final template in templates.take(3))
+          _TrainingCard(
+            key: ValueKey('training-template-card-${template.id}'),
+            contentKey: ValueKey('training-template-edit-${template.id}'),
+            icon: CupertinoIcons.list_bullet,
+            title: template.value.name,
+            subtitle: '${template.value.items.length} Übungen',
+            trailing: CupertinoButton(
+              key: ValueKey('training-start-template-${template.id}'),
+              minimumSize: const Size.square(48),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              color: GainerTheme.actionColor,
+              onPressed: model.isSaving ? null : () => model.start(template.id),
+              child: Text(
+                'Start',
+                style: TextStyle(
+                  color: model.isSaving
+                      ? GainerTheme.secondaryText(context)
+                      : CupertinoColors.white,
+                ),
+              ),
+            ),
+            onPressed: () => _push(
+              context,
+              TrainingTemplateEditorScreen(
+                viewModel: model,
+                template: template,
+              ),
+            ),
+          ),
+      ],
+      const SizedBox(height: 16),
+      _SectionHeading(title: 'Training verwalten'),
+      _TrainingCard(
+        key: const ValueKey('training-open-exercises'),
+        icon: CupertinoIcons.search,
+        title: 'Übungsbibliothek',
+        subtitle:
+            '${plan.exercises.length + plan.customExercises.where((e) => !e.isArchived).length} Übungen · suchen und filtern',
+        trailing: const Icon(CupertinoIcons.chevron_right, size: 18),
+        onPressed: () =>
+            _push(context, TrainingExerciseLibraryScreen(viewModel: model)),
+      ),
+      _TrainingCard(
+        icon: CupertinoIcons.arrow_2_circlepath,
+        title: 'Vorlagen & Rotation',
+        subtitle: plan.rotation == null
+            ? 'Rotation noch nicht festgelegt'
+            : '${plan.rotation!.value.entries.length} Einheiten in deiner Reihenfolge',
+        trailing: const Icon(CupertinoIcons.chevron_right, size: 18),
+        onPressed: () =>
+            _push(context, TrainingTemplateLibraryScreen(viewModel: model)),
+      ),
+      const SizedBox(height: 16),
+      _SectionHeading(
+        title: 'Verlauf',
+        action: CupertinoButton(
+          key: const ValueKey('training-open-history'),
+          minimumSize: const Size.square(48),
+          padding: EdgeInsets.zero,
+          onPressed: () =>
+              _push(context, TrainingHistoryScreen(viewModel: model)),
+          child: const Text('Alle'),
+        ),
+      ),
+      if (last == null)
+        const _EmptyCard(
+          title: 'Noch kein Training abgeschlossen',
+          subtitle: 'Deine abgeschlossenen Einheiten erscheinen hier.',
+        )
+      else
+        _TrainingCard(
+          key: ValueKey('training-history-${last.id}'),
+          icon: CupertinoIcons.clock,
+          title: last.value.templateNameSnapshot,
+          subtitle: _historySummary(last.value),
+          trailing: const Icon(CupertinoIcons.chevron_right, size: 18),
+          onPressed: () =>
+              _push(context, TrainingHistoryDetailScreen(entry: last)),
+        ),
+    ];
   }
 
-  Future<String?> _chooseExercise(
-    List<({String id, String name})> exercises,
-  ) async {
-    final search = TextEditingController();
-    try {
-      return await showCupertinoModalPopup<String>(
+  void _push(BuildContext context, Widget page) {
+    Navigator.of(context).push(CupertinoPageRoute<void>(builder: (_) => page));
+  }
+
+  String _historySummary(WorkoutRecord workout) {
+    final completeSets = workout.exercises.fold<int>(
+      0,
+      (count, exercise) =>
+          count + exercise.sets.where((set) => set.isCompleted).length,
+    );
+    return '${_formatDate(workout.completedAtUtc)} · $completeSets Sätze';
+  }
+
+  Future<String?> _chooseExercise(List<({String id, String name})> exercises) =>
+      showCupertinoModalPopup<String>(
         context: context,
         builder: (context) => SafeArea(
-          child: CupertinoPopupSurface(
-            child: SizedBox(
-              height: MediaQuery.sizeOf(context).height * 0.75,
-              child: StatefulBuilder(
-                builder: (context, setSheetState) {
-                  final query = search.text.trim().toLowerCase();
-                  final matches = exercises
-                      .where((item) => item.name.toLowerCase().contains(query))
-                      .toList();
-                  return Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: CupertinoTextField(
-                          controller: search,
-                          placeholder: 'Übung suchen',
-                          prefix: const Padding(
-                            padding: EdgeInsets.only(left: 8),
-                            child: Icon(CupertinoIcons.search),
-                          ),
-                          onChanged: (_) => setSheetState(() {}),
-                        ),
-                      ),
-                      Expanded(
-                        child: ListView.builder(
-                          itemCount: matches.length,
-                          itemBuilder: (context, index) => CupertinoButton(
-                            key: ValueKey(
-                              'exercise-choice-${matches[index].id}',
-                            ),
-                            alignment: Alignment.centerLeft,
-                            onPressed: () =>
-                                Navigator.of(context).pop(matches[index].id),
-                            child: Text(matches[index].name),
-                          ),
-                        ),
-                      ),
-                      CupertinoButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Abbrechen'),
-                      ),
-                    ],
-                  );
-                },
-              ),
+          child: CupertinoActionSheet(
+            title: const Text('Übung hinzufügen'),
+            actions: [
+              for (final exercise in exercises)
+                CupertinoActionSheetAction(
+                  key: ValueKey('exercise-choice-${exercise.id}'),
+                  onPressed: () => Navigator.of(context).pop(exercise.id),
+                  child: Text(exercise.name),
+                ),
+            ],
+            cancelButton: CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Abbrechen'),
             ),
           ),
         ),
       );
-    } finally {
-      search.dispose();
-    }
-  }
-
-  void _editTemplate(({String id, TrainingTemplate value}) template) {
-    for (final item in _templateItems) {
-      item.dispose();
-    }
-    setState(() {
-      _editingTemplateId = template.id;
-      _templateName.text = template.value.name;
-      _templateItems
-        ..clear()
-        ..addAll(template.value.items.map(_TemplateDraftItem.fromRecord));
-    });
-  }
-
-  void _clearTemplateEditor() {
-    for (final item in _templateItems) {
-      item.dispose();
-    }
-    setState(() {
-      _templateItems.clear();
-      _templateName.clear();
-      _editingTemplateId = null;
-    });
-  }
-
-  void _clearExerciseEditor() {
-    setState(() {
-      _editingExerciseId = null;
-      _exerciseName.clear();
-      _exerciseDescription.clear();
-      _exerciseTargetMuscle.clear();
-      _exerciseMuscleGroup.clear();
-      _exerciseEquipment.clear();
-    });
-  }
-
-  Widget _historyDetail(WorkoutRecord workout) => Padding(
-    padding: const EdgeInsets.only(left: 12, bottom: 12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final exercise in workout.exercises)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  exercise.exerciseNameSnapshot,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  '${exercise.plannedSets} Sätze · ${exercise.minimumRepetitions}–${exercise.maximumRepetitions} Wdh. geplant',
-                ),
-                for (final set in exercise.sets.where(
-                  (entry) => entry.isCompleted,
-                ))
-                  Text(
-                    'Satz ${set.position + 1}: ${set.weightKg?.toStringAsFixed(1) ?? '–'} kg × ${set.repetitions ?? '–'} Wdh.'
-                    '${set.rir == null ? '' : ' · RIR ${set.rir}'}${set.notes == null || set.notes!.isEmpty ? '' : ' · ${set.notes}'}',
-                  ),
-              ],
-            ),
-          ),
-      ],
-    ),
-  );
 
   Widget _runningWorkout(TrainingViewModel model) {
     final workout = model.runningWorkout!;
@@ -658,13 +304,15 @@ class _TrainingScreenState extends State<TrainingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          workout.templateNameSnapshot,
-          key: const ValueKey('running-workout-title'),
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+        _TrainingCard(
+          icon: CupertinoIcons.sportscourt,
+          title: workout.templateNameSnapshot,
+          titleKey: const ValueKey('running-workout-title'),
+          subtitle: 'Workout läuft · Änderungen werden lokal gespeichert',
         ),
         CupertinoButton(
           key: const ValueKey('training-add-exercise'),
+          minimumSize: const Size.square(48),
           padding: EdgeInsets.zero,
           onPressed: model.isSaving
               ? null
@@ -704,6 +352,7 @@ class _TrainingScreenState extends State<TrainingScreen> {
                   alignment: Alignment.centerRight,
                   child: CupertinoButton(
                     key: ValueKey('training-remove-exercise-${exercise.id}'),
+                    minimumSize: const Size.square(48),
                     padding: EdgeInsets.zero,
                     onPressed: model.isSaving
                         ? null
@@ -717,6 +366,7 @@ class _TrainingScreenState extends State<TrainingScreen> {
                   children: [
                     CupertinoButton(
                       key: ValueKey('training-exercise-up-${exercise.id}'),
+                      minimumSize: const Size.square(48),
                       padding: EdgeInsets.zero,
                       onPressed: exercise.position == 0 || model.isSaving
                           ? null
@@ -728,6 +378,7 @@ class _TrainingScreenState extends State<TrainingScreen> {
                     ),
                     CupertinoButton(
                       key: ValueKey('training-exercise-down-${exercise.id}'),
+                      minimumSize: const Size.square(48),
                       padding: EdgeInsets.zero,
                       onPressed:
                           exercise.position == workout.exercises.length - 1 ||
@@ -753,60 +404,19 @@ class _TrainingScreenState extends State<TrainingScreen> {
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          border: Border.all(color: CupertinoColors.separator),
-                          borderRadius: BorderRadius.circular(10),
+                          color: CupertinoColors
+                              .secondarySystemGroupedBackground
+                              .resolveFrom(context),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text('Satz ${set.position + 1}'),
-                                ),
-                                CupertinoButton(
-                                  key: ValueKey('training-set-up-${set.id}'),
-                                  padding: EdgeInsets.zero,
-                                  onPressed: set.position == 0 || model.isSaving
-                                      ? null
-                                      : () => model.moveSet(
-                                          exercise.id,
-                                          set.id,
-                                          set.position - 1,
-                                        ),
-                                  child: const Text('↑'),
-                                ),
-                                CupertinoButton(
-                                  key: ValueKey('training-set-down-${set.id}'),
-                                  padding: EdgeInsets.zero,
-                                  onPressed:
-                                      set.position ==
-                                              exercise.sets.length - 1 ||
-                                          model.isSaving
-                                      ? null
-                                      : () => model.moveSet(
-                                          exercise.id,
-                                          set.id,
-                                          set.position + 1,
-                                        ),
-                                  child: const Text('↓'),
-                                ),
-                                CupertinoButton(
-                                  key: ValueKey(
-                                    'training-remove-set-${set.id}',
-                                  ),
-                                  padding: EdgeInsets.zero,
-                                  onPressed:
-                                      exercise.sets.length <= 1 ||
-                                          model.isSaving
-                                      ? null
-                                      : () => model.removeSet(
-                                          exercise.id,
-                                          set.id,
-                                        ),
-                                  child: const Text('Entfernen'),
-                                ),
-                              ],
+                            Text(
+                              'Satz ${set.position + 1}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             LayoutBuilder(
                               builder: (context, constraints) {
@@ -860,19 +470,20 @@ class _TrainingScreenState extends State<TrainingScreen> {
                             ),
                             CupertinoButton(
                               key: ValueKey('training-log-${set.id}'),
+                              minimumSize: const Size.square(48),
                               padding: EdgeInsets.zero,
                               onPressed: model.isSaving
                                   ? null
                                   : () => model.logSet(
                                       exerciseId: exercise.id,
                                       setId: set.id,
-                                      weightKg: double.tryParse(
+                                      weightKg: _parseDecimalInput(
                                         editors.weight.text,
                                       ),
                                       repetitions: int.tryParse(
                                         editors.repetitions.text,
                                       ),
-                                      rir: double.tryParse(editors.rir.text),
+                                      rir: _parseDecimalInput(editors.rir.text),
                                       notes: editors.notes.text.trim().isEmpty
                                           ? null
                                           : editors.notes.text.trim(),
@@ -884,6 +495,55 @@ class _TrainingScreenState extends State<TrainingScreen> {
                                     : 'Satz abschließen',
                               ),
                             ),
+                            Wrap(
+                              children: [
+                                CupertinoButton(
+                                  key: ValueKey('training-set-up-${set.id}'),
+                                  minimumSize: const Size.square(48),
+                                  padding: EdgeInsets.zero,
+                                  onPressed: set.position == 0 || model.isSaving
+                                      ? null
+                                      : () => model.moveSet(
+                                          exercise.id,
+                                          set.id,
+                                          set.position - 1,
+                                        ),
+                                  child: const Text('↑ Satz'),
+                                ),
+                                CupertinoButton(
+                                  key: ValueKey('training-set-down-${set.id}'),
+                                  minimumSize: const Size.square(48),
+                                  padding: EdgeInsets.zero,
+                                  onPressed:
+                                      set.position ==
+                                              exercise.sets.length - 1 ||
+                                          model.isSaving
+                                      ? null
+                                      : () => model.moveSet(
+                                          exercise.id,
+                                          set.id,
+                                          set.position + 1,
+                                        ),
+                                  child: const Text('↓ Satz'),
+                                ),
+                                CupertinoButton(
+                                  key: ValueKey(
+                                    'training-remove-set-${set.id}',
+                                  ),
+                                  minimumSize: const Size.square(48),
+                                  padding: EdgeInsets.zero,
+                                  onPressed:
+                                      exercise.sets.length <= 1 ||
+                                          model.isSaving
+                                      ? null
+                                      : () => model.removeSet(
+                                          exercise.id,
+                                          set.id,
+                                        ),
+                                  child: const Text('Satz entfernen'),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       );
@@ -891,6 +551,7 @@ class _TrainingScreenState extends State<TrainingScreen> {
                   ),
                 CupertinoButton(
                   key: ValueKey('training-add-set-${exercise.id}'),
+                  minimumSize: const Size.square(48),
                   padding: EdgeInsets.zero,
                   onPressed: model.isSaving
                       ? null
@@ -901,49 +562,100 @@ class _TrainingScreenState extends State<TrainingScreen> {
             ),
           ),
         if (workout.restTimer != null)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Pause: ${model.remainingRestSeconds ?? 0} s',
-                key: const ValueKey('training-rest-timer'),
-              ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  CupertinoButton(
-                    onPressed: () => model.timerAction(
-                      (id) => model.repository.extendRestTimer(id),
+          Container(
+            margin: const EdgeInsets.only(top: 8, bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: CupertinoColors.secondarySystemGroupedBackground
+                  .resolveFrom(context),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pause · ${model.remainingRestSeconds ?? 0} s',
+                  key: const ValueKey('training-rest-timer'),
+                  style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    CupertinoButton(
+                      minimumSize: const Size.square(48),
+                      onPressed: () => model.timerAction(
+                        (id) => model.repository.extendRestTimer(id),
+                      ),
+                      child: const Text('+30 s'),
                     ),
-                    child: const Text('+30 s'),
-                  ),
-                  CupertinoButton(
-                    onPressed: () =>
-                        model.timerAction(model.repository.restartRestTimer),
-                    child: const Text('Neu starten'),
-                  ),
-                  CupertinoButton(
-                    onPressed: () =>
-                        model.timerAction(model.repository.skipRestTimer),
-                    child: const Text('Überspringen'),
-                  ),
-                ],
-              ),
-            ],
+                    CupertinoButton(
+                      minimumSize: const Size.square(48),
+                      onPressed: () =>
+                          model.timerAction(model.repository.restartRestTimer),
+                      child: const Text('Neu starten'),
+                    ),
+                    CupertinoButton(
+                      minimumSize: const Size.square(48),
+                      onPressed: () =>
+                          model.timerAction(model.repository.skipRestTimer),
+                      child: const Text('Überspringen'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        CupertinoButton.filled(
+        CupertinoButton(
           key: const ValueKey('training-complete-workout'),
+          minimumSize: const Size.square(52),
+          color: GainerTheme.actionColor,
           onPressed: model.isSaving ? null : model.finish,
-          child: const Text('Workout abschließen'),
+          child: Text(
+            'Workout abschließen',
+            style: TextStyle(
+              color: model.isSaving
+                  ? GainerTheme.secondaryText(context)
+                  : CupertinoColors.white,
+            ),
+          ),
         ),
         CupertinoButton(
           key: const ValueKey('training-discard-workout'),
-          onPressed: model.isSaving ? null : model.discard,
-          child: const Text('Verwerfen'),
+          minimumSize: const Size.square(48),
+          onPressed: model.isSaving
+              ? null
+              : () => _confirmDiscard(context, model),
+          child: const Text('Workout verwerfen'),
         ),
       ],
     );
+  }
+
+  Future<void> _confirmDiscard(
+    BuildContext context,
+    TrainingViewModel model,
+  ) async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Workout verwerfen?'),
+        content: const Text(
+          'Diese laufende Einheit wird verworfen. Bereits abgeschlossene historische Trainings bleiben erhalten.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Weitertrainieren'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Verwerfen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await model.discard();
   }
 
   Widget _field(
@@ -961,7 +673,209 @@ class _TrainingScreenState extends State<TrainingScreen> {
       keyboardType: numeric
           ? const TextInputType.numberWithOptions(decimal: true)
           : TextInputType.text,
-      padding: compact ? const EdgeInsets.all(8) : const EdgeInsets.all(12),
+      padding: compact ? const EdgeInsets.all(12) : const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: CupertinoColors.systemBackground.resolveFrom(context),
+        borderRadius: BorderRadius.circular(10),
+      ),
+    ),
+  );
+}
+
+class _TrainingCard extends StatelessWidget {
+  const _TrainingCard({
+    super.key,
+    this.contentKey,
+    this.titleKey,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.trailing,
+    this.onPressed,
+  });
+
+  final IconData icon;
+  final Key? contentKey;
+  final Key? titleKey;
+  final String title;
+  final String subtitle;
+  final Widget? trailing;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final secondary = GainerTheme.secondaryText(context);
+    final content = CupertinoButton(
+      key: contentKey,
+      minimumSize: const Size.square(52),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      onPressed: onPressed,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 12),
+            child: Icon(
+              icon,
+              size: 21,
+              color: CupertinoTheme.of(context).primaryColor,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  key: titleKey,
+                  style: TextStyle(
+                    color: CupertinoColors.label.resolveFrom(context),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: TextStyle(color: secondary, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+          context,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final largeText = MediaQuery.textScalerOf(context).scale(14) > 17;
+          final stackTrailing =
+              trailing != null && (constraints.maxWidth < 360 || largeText);
+          if (trailing == null) return content;
+          if (stackTrailing) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                content,
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8, bottom: 4),
+                    child: trailing!,
+                  ),
+                ),
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: content),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: trailing!,
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({required this.title, this.action});
+  final String title;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+          ),
+        ),
+        ?action,
+      ],
+    ),
+  );
+}
+
+class _EmptyCard extends StatelessWidget {
+  const _EmptyCard({
+    required this.title,
+    required this.subtitle,
+    this.actionLabel,
+    this.onPressed,
+  });
+  final String title;
+  final String subtitle;
+  final String? actionLabel;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+        context,
+      ),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: TextStyle(color: GainerTheme.secondaryText(context)),
+        ),
+        if (actionLabel != null && onPressed != null) ...[
+          const SizedBox(height: 8),
+          CupertinoButton(
+            minimumSize: const Size.square(48),
+            color: GainerTheme.actionColor,
+            onPressed: onPressed,
+            child: Text(
+              actionLabel!,
+              style: const TextStyle(color: CupertinoColors.white),
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+class _Notice extends StatelessWidget {
+  const _Notice(this.message, {this.error = false});
+  final String message;
+  final bool error;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Text(
+      message,
+      key: ValueKey(error ? 'training-error' : 'training-notification-notice'),
+      style: TextStyle(
+        color: error
+            ? CupertinoColors.systemRed.resolveFrom(context)
+            : GainerTheme.secondaryText(context),
+      ),
     ),
   );
 }
@@ -994,33 +908,19 @@ class _SetEditors {
   }
 }
 
-class _TemplateDraftItem {
-  _TemplateDraftItem({required this.id, required this.exerciseId});
+String _formatDate(String? value) {
+  if (value == null) return 'Abgeschlossen';
+  final date = DateTime.tryParse(value)?.toLocal();
+  if (date == null) return value;
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final hour = date.hour.toString().padLeft(2, '0');
+  final minute = date.minute.toString().padLeft(2, '0');
+  return '$day.$month.${date.year} · $hour:$minute';
+}
 
-  factory _TemplateDraftItem.fromRecord(TrainingTemplateItem item) =>
-      _TemplateDraftItem(id: item.id, exerciseId: item.exerciseId)
-        ..sets.text = item.plannedSets.toString()
-        ..minimumRepetitions.text = item.minimumRepetitions.toString()
-        ..maximumRepetitions.text = item.maximumRepetitions.toString()
-        ..targetRir.text = item.targetRir?.toString() ?? ''
-        ..restSeconds.text = item.restSeconds?.toString() ?? ''
-        ..notes.text = item.notes ?? '';
-
-  final String id;
-  String exerciseId;
-  final TextEditingController sets = TextEditingController();
-  final TextEditingController minimumRepetitions = TextEditingController();
-  final TextEditingController maximumRepetitions = TextEditingController();
-  final TextEditingController targetRir = TextEditingController();
-  final TextEditingController restSeconds = TextEditingController();
-  final TextEditingController notes = TextEditingController();
-
-  void dispose() {
-    sets.dispose();
-    minimumRepetitions.dispose();
-    maximumRepetitions.dispose();
-    targetRir.dispose();
-    restSeconds.dispose();
-    notes.dispose();
-  }
+double? _parseDecimalInput(String value) {
+  final normalized = value.trim().replaceAll(',', '.');
+  if (normalized.isEmpty) return null;
+  return double.tryParse(normalized) ?? double.nan;
 }
