@@ -12,24 +12,36 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
 
   @override
   Future<List<NutritionFood>> searchFoods(String query) async {
-    final result = await client.searchFoods(
-      query: query,
-      page: 1,
-      pageSize: 20,
-    );
-    return List.unmodifiable(result.products.map(_food));
+    try {
+      final result = await client.searchFoods(
+        query: query,
+        page: 1,
+        pageSize: 20,
+      );
+      return List.unmodifiable(result.products.map(_food));
+    } on ApiException catch (error) {
+      throw mapNutritionApiException(error, operation: 'Suche');
+    }
   }
 
   @override
   Future<NutritionFood?> lookupBarcode(String barcode) async {
-    final value = await client.lookupFoodByBarcode(barcode);
-    return _food(value);
+    try {
+      final value = await client.lookupFoodByBarcode(barcode);
+      return _food(value);
+    } on ApiException catch (error) {
+      throw mapNutritionApiException(error, operation: 'Barcode-Abfrage');
+    }
   }
 
   @override
   Future<MealEstimateDraft> estimateMeal(String description) async {
-    final result = await client.estimateMeal(text: description);
-    return _estimate(result);
+    try {
+      final result = await client.estimateMeal(text: description);
+      return _estimate(result);
+    } on ApiException catch (error) {
+      throw mapNutritionApiException(error, operation: 'Mahlzeitenschätzung');
+    }
   }
 
   @override
@@ -37,12 +49,16 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
     required Uint8List image,
     required String mimeType,
   }) async {
-    final result = await client.estimateMeal(
-      imageBytes: image,
-      imageContentType: mimeType,
-      imageConsent: true,
-    );
-    return _estimate(result);
+    try {
+      final result = await client.estimateMeal(
+        imageBytes: image,
+        imageContentType: mimeType,
+        imageConsent: true,
+      );
+      return _estimate(result);
+    } on ApiException catch (error) {
+      throw mapNutritionApiException(error, operation: 'Bildanalyse');
+    }
   }
 
   MealEstimateDraft _estimate(ApiMealEstimateResponse result) =>
@@ -73,10 +89,15 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
     required Uint8List image,
     required String mimeType,
   }) async {
-    final result = await client.scanNutritionLabel(
-      imageBytes: image,
-      imageContentType: mimeType,
-    );
+    late final ApiNutritionLabelScanResponse result;
+    try {
+      result = await client.scanNutritionLabel(
+        imageBytes: image,
+        imageContentType: mimeType,
+      );
+    } on ApiException catch (error) {
+      throw mapNutritionApiException(error, operation: 'Etikettenanalyse');
+    }
     return NutritionLabelScanDraft(
       basis: result.basis,
       servingMassGrams: result.servingMassGrams,
@@ -116,4 +137,55 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
         status: value.status,
         evidence: value.evidence,
       );
+}
+
+NutritionOnlineException mapNutritionApiException(
+  ApiException error, {
+  required String operation,
+}) {
+  final detail = switch ((error.statusCode, error.code)) {
+    (400, 'validation_failed') =>
+      'Bitte prüfe die Eingabe und versuche es erneut.',
+    (_, 'product_not_found') =>
+      'Zu diesem Barcode wurde kein Produkt gefunden.',
+    (_, 'product_incomplete') => 'Für dieses Produkt fehlen verwertbare Nährwerte. Wähle ein anderes Produkt oder trage die Werte manuell ein.',
+    (_, 'daily_budget_exhausted') => 'Das Tageslimit für KI-Schätzungen ist erreicht. Versuche es morgen erneut.',
+    (_, 'invalid_input') => 'Bitte ergänze eine Beschreibung der Mahlzeit.',
+    (_, 'image_consent_required') =>
+      'Für die Bildanalyse ist eine ausdrückliche Zustimmung erforderlich.',
+    (_, 'invalid_image_size') => 'Das Bild ist leer oder größer als 8 MB.',
+    (_, 'unsupported_image_format') =>
+      'Verwende ein JPEG-, PNG- oder WebP-Bild.',
+    (_, 'provider_rate_limited') =>
+      'Der externe Dienst ist gerade ausgelastet. Versuche es später erneut.',
+    (_, 'provider_timeout') => 'Der externe Dienst hat nicht rechtzeitig geantwortet. Versuche es erneut.',
+    (401, _) => 'Deine Sitzung ist abgelaufen. Melde dich erneut an.',
+    (422, _) => 'Der Dienst hat die Anfrage abgelehnt. Prüfe die Eingabe oder verwende die manuelle Eingabe.',
+    (429, _) => 'Zu viele Anfragen. Bitte warte kurz und versuche es erneut.',
+    (503, _) || (504, _) => 'Der Dienst ist vorübergehend nicht erreichbar. Deine bisherigen Einträge bleiben erhalten; versuche es erneut.',
+    (_, _) => 'Die Online-Funktion ist fehlgeschlagen. Deine bisherigen Einträge bleiben erhalten; versuche es erneut.',
+  };
+  return NutritionOnlineException(
+    operation,
+    error.statusCode,
+    error.code,
+    detail,
+  );
+}
+
+class NutritionOnlineException implements Exception {
+  const NutritionOnlineException(
+    this.operation,
+    this.statusCode,
+    this.code,
+    this.detail,
+  );
+  final String operation;
+  final int? statusCode;
+  final String code;
+  final String detail;
+
+  @override
+  String toString() =>
+      '$operation: $detail (${statusCode == null ? '' : 'HTTP $statusCode · '}Fehlerkennung: $code)';
 }

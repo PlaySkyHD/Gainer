@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../../data/services/auth/mobile_auth_controller.dart';
 import '../../data/services/platform/pigeon_native_route_dispatcher.dart';
@@ -56,6 +57,12 @@ class _GainerMobileAppState extends State<GainerMobileApp>
     return CupertinoApp(
       title: 'Gainer',
       theme: GainerTheme.forBrightness(_brightness),
+      supportedLocales: const [Locale('de')],
+      localizationsDelegates: const [
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+      ],
       debugShowCheckedModeBanner: false,
       home: _auth == null
           ? const StartupConfigurationErrorScreen()
@@ -67,7 +74,13 @@ class _GainerMobileAppState extends State<GainerMobileApp>
                 }
                 final account = _auth!.account;
                 if (account == null) return AuthScreen(controller: _auth!);
-                return MobileShell(controller: _auth!, account: account);
+                return MobileShell(
+                  key: ValueKey(
+                    '${account.session.userId}:${account.generation}',
+                  ),
+                  controller: _auth!,
+                  account: account,
+                );
               },
             ),
     );

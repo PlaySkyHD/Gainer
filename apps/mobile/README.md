@@ -1,7 +1,8 @@
 # Gainer Mobile
 
-This is the iOS-first Flutter bootstrap. The tabs currently show clearly marked
-work-in-progress states; they do not represent completed PWA feature parity.
+This is the iOS-first Flutter app. Its training, nutrition, check-in and progress
+tabs use the account's persisted data and native Cupertino navigation; remaining
+PWA parity work is tracked in the OpenSpec change.
 
 ## Pinned toolchain
 
@@ -65,10 +66,21 @@ It runs on pinned Xcode 26.3; applicability to this run is not confirmed. The
 change retains the full XCTest suite and uploads its result bundle when one is
 produced.
 
-The shell preview at `artifacts/mobile-preview/mobile-shell-390x844.png` comes
-from Flutter's widget-test renderer. Its Ahem test font makes text and icons
-appear as blocks, so it is useful only for checking basic layout and spacing;
-typography and native appearance require a later simulator or device review.
+The iOS simulator gate captures the five fixture-backed tabs and exercise trend
+chart in light and dark appearance. It also captures check-in, nutrition, and
+training editors in both appearances, plus the goal editor and date picker in
+light appearance, at `artifacts/mobile/ui-captures/`.
+These PNGs use the simulator's native system font and are the visual-review
+artifacts; widget-test renderer previews are not used as evidence of native
+typography or appearance.
+
+For a readable local preview on Windows, set `GAINER_REVIEW_FONT` to a local
+Segoe UI or Arial `.ttf` file and run `flutter test --no-pub
+test/ui/core/ui_design_preview_test.dart` from `apps/mobile`. It writes a
+separate set of `*-windows-font-substitution.png` files under
+`artifacts/mobile/local-ui-preview/`. This substitutes a local typeface in the
+widget-test renderer; only the iOS simulator captures above represent native
+iOS typography and appearance.
 
 Drift schemas use the pinned code generator. Regenerate their Dart bindings with
 `dart run build_runner build --delete-conflicting-outputs` from `apps/mobile`.

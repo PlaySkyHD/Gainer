@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string] $FlutterSdkRoot,
-    [ValidateSet('All', 'Toolchain', 'FlutterChecks', 'IosBuild', 'SimulatorBoot', 'NativeTests')]
+    [ValidateSet('All', 'Toolchain', 'FlutterChecks', 'IosBuild', 'SimulatorBoot', 'NativeTests', 'UiCapture')]
     [string] $Phase = 'All',
     [string] $RepositoryRoot,
     [switch] $BuildIosSimulator
@@ -105,10 +105,18 @@ function Invoke-ManagedProcess {
         [Parameter(Mandatory)][int] $TimeoutSeconds,
         [Parameter(Mandatory)][string] $Label,
         [switch] $SuppressOutputPreview,
-        [int] $OutputPreviewLimit = 12000
+        [int] $OutputPreviewLimit = 12000,
+        [string] $WorkingDirectory
     )
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $Executable
+    if ($WorkingDirectory) {
+        if (-not [System.IO.Path]::IsPathFullyQualified($WorkingDirectory) -or
+            -not (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+            throw "Managed process working directory must be an existing absolute directory: $WorkingDirectory"
+        }
+        $startInfo.WorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path
+    }
     $startInfo.UseShellExecute = $false
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
@@ -139,7 +147,13 @@ function Invoke-ManagedProcess {
                 if ($stream.Text) {
                     $preview = [string]$stream.Text
                     $wasTruncated = $preview.Length -gt $OutputPreviewLimit
-                    if ($wasTruncated) { $preview = $preview.Substring(0, $OutputPreviewLimit) }
+                    if ($wasTruncated) {
+                        $headLength = [int][Math]::Min(4000, [Math]::Floor($OutputPreviewLimit / 3))
+                        $tailLength = $OutputPreviewLimit - $headLength
+                        $preview = $preview.Substring(0, $headLength) +
+                            "`n... output omitted; final process output follows ...`n" +
+                            $preview.Substring($preview.Length - $tailLength)
+                    }
                     Write-Host "MANAGED $($stream.Name) BEGIN label=$Label`n$preview"
                     if ($wasTruncated) { Write-Host "MANAGED $($stream.Name) TRUNCATED label=$Label original_characters=$($stream.Text.Length) limit=$OutputPreviewLimit" }
                     Write-Host "MANAGED $($stream.Name) END label=$Label"
@@ -650,12 +664,159 @@ function Invoke-NativeTestsPhase {
     }
 }
 
+function Invoke-UiCapturePhase {
+    Assert-PinnedFlutter
+    Assert-IosBuildPrerequisites
+    $phaseClock = [System.Diagnostics.Stopwatch]::StartNew()
+    $phaseBudgetSeconds = 690
+    if (-not (Test-Path -LiteralPath $simulatorStatePath -PathType Leaf)) {
+        throw "Missing simulator boot record '$simulatorStatePath'; run SimulatorBoot first."
+    }
+    $simulatorState = Get-Content -LiteralPath $simulatorStatePath -Raw | ConvertFrom-Json
+    if ($simulatorState.runToken -ne $runToken -or $simulatorState.owned -ne $true -or $simulatorState.state -ne 'Booted') {
+        throw 'UI capture requires the Booted simulator owned by this workflow run.'
+    }
+    Assert-OwnedSimulatorRecord -StatePath $simulatorStatePath -RunToken $runToken `
+        -SimulatorId $simulatorState.simulatorId -SimulatorName $simulatorState.simulatorName `
+        -RuntimeIdentifier $simulatorState.runtimeIdentifier
+    $inventory = $null
+    for ($attempt = 1; $attempt -le 2 -and $null -eq $inventory; $attempt++) {
+        $remaining = [int][Math]::Floor($phaseBudgetSeconds - $phaseClock.Elapsed.TotalSeconds - 20)
+        if ($remaining -lt 12) { throw 'UI capture ownership check exceeded its reserved phase budget.' }
+        $result = Invoke-ManagedProcess '/usr/bin/xcrun' @('simctl', 'list', 'devices', '--json') `
+            ([Math]::Min(25, $remaining)) "UI capture simulator inventory attempt $attempt" -SuppressOutputPreview
+        if ($result.TimedOut) {
+            if (-not $result.TerminationConfirmed -or -not $result.OutputDrained -or $attempt -eq 2) {
+                throw 'Simulator inventory timed out without confirmed cleanup; refusing UI capture.'
+            }
+            continue
+        }
+        if (-not $result.TerminationConfirmed -or -not $result.OutputDrained -or $result.ExitCode -ne 0) {
+            throw 'Simulator inventory failed; refusing UI capture.'
+        }
+        try { $inventory = $result.Stdout | ConvertFrom-Json }
+        catch { throw 'Simulator inventory was invalid JSON; refusing UI capture.' }
+    }
+    $deviceFound = $false
+    foreach ($runtime in $inventory.devices.PSObject.Properties) {
+        foreach ($device in $runtime.Value) {
+            if ([string]$device.udid -eq [string]$simulatorState.simulatorId -and
+                [string]$runtime.Name -eq [string]$simulatorState.runtimeIdentifier -and
+                [string]$device.name -eq [string]$simulatorState.simulatorName -and
+                $device.isAvailable -eq $true -and [string]$device.state -eq 'Booted') {
+                $deviceFound = $true
+            }
+        }
+    }
+    if (-not $deviceFound) { throw 'The exact workflow-owned simulator is unavailable or not Booted; refusing UI capture.' }
+
+    $expectedScreenshots = @(
+        'tab-heute', 'tab-checkin', 'tab-essen', 'tab-training', 'tab-mehr',
+        'tab-dark-heute', 'tab-dark-checkin', 'tab-dark-essen', 'tab-dark-training', 'tab-dark-mehr',
+        'sheet-checkin', 'sheet-goal', 'date-picker', 'editor-training', 'editor-essen',
+        'sheet-dark-checkin', 'editor-dark-essen', 'editor-dark-training',
+        'exercise-progress', 'exercise-dark-progress'
+    )
+    $captureRoot = Join-Path $repositoryRoot 'artifacts/mobile/ui-captures'
+    New-Item -ItemType Directory -Force -Path $captureRoot | Out-Null
+    # Remove only the named generated outputs; a prior run must never make a
+    # missing screenshot pass this verification phase.
+    foreach ($name in $expectedScreenshots) {
+        $path = Join-Path $captureRoot "$name.png"
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            Remove-Item -LiteralPath $path -Force
+        }
+    }
+
+    # Native XCTest uses Runner.app as its test host on this same simulator.
+    # A surviving host process can make `simctl launch` reuse an app that was
+    # started without the integration-test entrypoint, leaving Flutter's VM
+    # service discovery waiting forever. Terminate only this app on the exact
+    # workflow-owned simulator, after confirming its built bundle identity.
+    $runnerInfoPlist = Join-Path $mobileRoot 'build/ios/iphonesimulator/Runner.app/Info.plist'
+    if (-not (Test-Path -LiteralPath $runnerInfoPlist -PathType Leaf)) {
+        throw "Built Runner app Info.plist is missing: '$runnerInfoPlist'."
+    }
+    $appBundleId = (& '/usr/libexec/PlistBuddy' -c 'Print :CFBundleIdentifier' $runnerInfoPlist | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($appBundleId) -or
+        $appBundleId -notmatch '^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$') {
+        throw "Built Runner app has an invalid CFBundleIdentifier '$appBundleId'."
+    }
+    Write-Host "SIMULATOR APP TERMINATE START utc=$([DateTime]::UtcNow.ToString('o')) udid=$($simulatorState.simulatorId) bundle=$appBundleId"
+    $terminateResult = Invoke-ManagedProcess '/usr/bin/xcrun' @(
+        'simctl', 'terminate', $simulatorState.simulatorId, $appBundleId
+    ) 20 'terminate prior Runner test-host process' -OutputPreviewLimit 2000
+    if ($terminateResult.TimedOut -or -not $terminateResult.TerminationConfirmed -or
+        -not $terminateResult.OutputDrained) {
+        throw 'Could not confirm bounded cleanup of the Runner test-host process.'
+    }
+    $terminationMessage = "$($terminateResult.Stdout)`n$($terminateResult.Stderr)"
+    $knownNotRunningMessage =
+        $terminationMessage -match '(?i)domain=NSPOSIXErrorDomain,\s*code=3' -and
+        $terminationMessage -match '(?i)(?:no such process|found nothing to terminate)'
+    if ($terminateResult.ExitCode -eq 0) {
+        Write-Host 'SIMULATOR APP TERMINATE END result=terminated'
+    }
+    elseif ($terminateResult.ExitCode -eq 3 -and $knownNotRunningMessage) {
+        Write-Host 'SIMULATOR APP TERMINATE END result=not_running'
+    }
+    else {
+        throw "Could not safely confirm the prior Runner process was absent: $($terminateResult.Stderr) $($terminateResult.Stdout)"
+    }
+
+    Push-Location $mobileRoot
+    try {
+        $commandBudget = [int][Math]::Floor($phaseBudgetSeconds - $phaseClock.Elapsed.TotalSeconds - 15)
+        if ($commandBudget -lt 30) { throw 'UI capture has insufficient time remaining for the simulator test.' }
+        $result = Invoke-ManagedProcess $flutterCommand @(
+            'drive',
+            '--driver=test_driver/ui_design_driver.dart',
+            '--target=integration_test/ui_design_test.dart',
+            '-d', $simulatorState.simulatorId,
+            '--no-pub',
+            '--verbose'
+        ) $commandBudget 'fixture-backed native iOS UI capture' -WorkingDirectory $mobileRoot -OutputPreviewLimit 20000
+        if ($result.TimedOut -or -not $result.TerminationConfirmed -or -not $result.OutputDrained -or $result.ExitCode -ne 0) {
+            throw 'Fixture-backed iOS UI capture failed or exceeded its remaining phase budget.'
+        }
+    }
+    finally {
+        Pop-Location
+    }
+    foreach ($name in $expectedScreenshots) {
+        $path = Join-Path $captureRoot "$name.png"
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Required native UI screenshot '$name.png' is missing or empty."
+        }
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        if ($bytes.Length -lt 1000) {
+            throw "Required native UI screenshot '$name.png' is missing or empty."
+        }
+        $signature = [byte[]](137, 80, 78, 71, 13, 10, 26, 10)
+        for ($index = 0; $index -lt $signature.Length; $index++) {
+            if ($bytes[$index] -ne $signature[$index]) {
+                throw "Required native UI screenshot '$name.png' is not a PNG."
+            }
+        }
+        if ([System.Text.Encoding]::ASCII.GetString($bytes, 12, 4) -ne 'IHDR') {
+            throw "Required native UI screenshot '$name.png' has no PNG IHDR."
+        }
+        $width = [uint32]($bytes[16] * 16777216 + $bytes[17] * 65536 + $bytes[18] * 256 + $bytes[19])
+        $height = [uint32]($bytes[20] * 16777216 + $bytes[21] * 65536 + $bytes[22] * 256 + $bytes[23])
+        if ($width -lt 1 -or $height -lt 1 -or $width -gt 6000 -or $height -gt 12000) {
+            throw "Required native UI screenshot '$name.png' has unreasonable dimensions ${width}x${height}."
+        }
+    }
+    Write-Host "UI CAPTURES READY count=$($expectedScreenshots.Count) simulator=$($simulatorState.simulatorName) udid=$($simulatorState.simulatorId) elapsed_seconds=$([Math]::Round($phaseClock.Elapsed.TotalSeconds, 2))"
+}
+
 $phaseMap = [ordered]@{
     Toolchain = { Invoke-ToolchainPhase }
     FlutterChecks = { Invoke-FlutterChecksPhase }
     IosBuild = { Invoke-IosBuildPhase }
     SimulatorBoot = { Invoke-SimulatorBootPhase }
     NativeTests = { Invoke-NativeTestsPhase }
+    UiCapture = { Invoke-UiCapturePhase }
 }
 
 if ($Phase -eq 'All') {
@@ -663,7 +824,7 @@ if ($Phase -eq 'All') {
         Invoke-Phase $phaseName $phaseMap[$phaseName]
     }
     if ($BuildIosSimulator) {
-        foreach ($phaseName in @('IosBuild', 'SimulatorBoot', 'NativeTests')) {
+        foreach ($phaseName in @('IosBuild', 'SimulatorBoot', 'NativeTests', 'UiCapture')) {
             Invoke-Phase $phaseName $phaseMap[$phaseName]
         }
     }

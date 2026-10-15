@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/theme.dart';
 import 'coach_view_model.dart';
 
 class CoachScreen extends StatefulWidget {
@@ -62,8 +63,8 @@ class _CoachScreenState extends State<CoachScreen> {
                       padding: const EdgeInsets.only(top: 16),
                       child: Text(
                         error,
-                        style: const TextStyle(
-                          color: CupertinoColors.systemRed,
+                        style: TextStyle(
+                          color: CupertinoColors.systemRed.resolveFrom(context),
                         ),
                       ),
                     ),
@@ -97,8 +98,8 @@ class _CoachScreenState extends State<CoachScreen> {
                     ],
                     Text(
                       'Datengrundlage: Revision ${answer.asOfRevision}',
-                      style: const TextStyle(
-                        color: CupertinoColors.secondaryLabel,
+                      style: TextStyle(
+                        color: GainerTheme.secondaryText(context),
                       ),
                     ),
                   ],

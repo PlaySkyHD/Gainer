@@ -347,7 +347,7 @@ class MobileAuthController extends ChangeNotifier
     late final TrainingViewModel trainingViewModel;
     final training = TrainingRepository(
       store: store,
-      catalog: ApiExerciseCatalogProvider(api),
+      catalog: ApiExerciseCatalogProvider(api, store: store),
       notifications: BestEffortRestTimerNotificationPort(
         timerNotifications,
         onUnavailable: () => trainingViewModel.reportNotificationUnavailable(),
@@ -390,7 +390,10 @@ class MobileAuthController extends ChangeNotifier
         },
       ),
     );
-    final progressViewModel = ProgressViewModel(InsightsRepository(api));
+    final progressViewModel = ProgressViewModel(
+      InsightsRepository(api, store: store),
+      trainingRepository: training,
+    );
     final coachViewModel = CoachViewModel(CoachRepository(api));
     nextScope = AccountScope(
       session: session,
