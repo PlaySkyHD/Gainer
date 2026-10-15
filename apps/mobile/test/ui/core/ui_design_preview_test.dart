@@ -41,7 +41,7 @@ void main() {
     (tester) async {
       await tester.runAsync(() => _loadCupertinoFonts(fontPath!));
       tester.view.devicePixelRatio = 2;
-      tester.view.physicalSize = const Size(780, 1688);
+      tester.view.physicalSize = const Size(786, 1704);
       tester.view.viewPadding = const FakeViewPadding(top: 118, bottom: 68);
       addTearDown(tester.view.resetDevicePixelRatio);
       addTearDown(tester.view.resetPhysicalSize);
@@ -74,17 +74,31 @@ void main() {
       await tester.pumpAndSettle();
       await _waitForExerciseProgress(tester, fixture);
       await _savePreview(tester, boundaryKey, output, 'tab-heute');
-      await tester.ensureVisible(find.text('Übungsfortschritt'));
+      await _scrollProgressUntilVisible(
+        tester,
+        find.text('148 g Protein pro erfasstem Tag'),
+      );
+      expect(find.text('148 g Protein pro erfasstem Tag'), findsOneWidget);
+      _resetProgressScroll(tester);
       await tester.pumpAndSettle();
+      await _scrollProgressUntilVisible(tester, find.text('Übungsfortschritt'));
       await _savePreview(tester, boundaryKey, output, 'exercise-progress');
 
       await _tapTab(tester, 'Check-in');
       await _savePreview(tester, boundaryKey, output, 'tab-checkin');
+      await _scrollActiveListUntilVisible(
+        tester,
+        find.byKey(const ValueKey('body-open-checkin')),
+      );
       await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
       await tester.pumpAndSettle();
       await _savePreview(tester, boundaryKey, output, 'sheet-checkin');
       await tester.tap(find.text('Abbrechen'));
       await tester.pumpAndSettle();
+      await _scrollActiveListUntilVisible(
+        tester,
+        find.byKey(const ValueKey('body-open-goal')),
+      );
       await tester.tap(find.byKey(const ValueKey('body-open-goal')));
       await tester.pumpAndSettle();
       await _savePreview(tester, boundaryKey, output, 'sheet-goal');
@@ -98,6 +112,10 @@ void main() {
 
       await _tapTab(tester, 'Essen');
       await _savePreview(tester, boundaryKey, output, 'tab-essen');
+      await _scrollActiveListUntilVisible(
+        tester,
+        find.byKey(const ValueKey('nutrition-add-food')),
+      );
       await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('nutrition-mode-manual')));
@@ -111,6 +129,10 @@ void main() {
 
       await _tapTab(tester, 'Training');
       await _savePreview(tester, boundaryKey, output, 'tab-training');
+      await _scrollActiveListUntilVisible(
+        tester,
+        find.byKey(const ValueKey('training-create-template-route')),
+      );
       await tester.tap(
         find.byKey(const ValueKey('training-create-template-route')),
       );
@@ -134,9 +156,9 @@ void main() {
         ('Mehr', 'tab-dark-mehr'),
       ]) {
         await _tapTab(tester, tab.$1);
+        _resetActiveListScroll(tester);
+        await tester.pumpAndSettle();
         if (tab.$1 == 'Heute') {
-          _resetProgressScroll(tester);
-          await tester.pumpAndSettle();
           expect(
             find.text('Dein Fortschritt aus deinen Einträgen'),
             findsOneWidget,
@@ -145,10 +167,13 @@ void main() {
         await _savePreview(tester, boundaryKey, output, tab.$2);
       }
       await _tapTab(tester, 'Heute');
-      await tester.ensureVisible(find.text('Übungsfortschritt'));
-      await tester.pumpAndSettle();
+      await _scrollProgressUntilVisible(tester, find.text('Übungsfortschritt'));
       await _savePreview(tester, boundaryKey, output, 'exercise-dark-progress');
       await _tapTab(tester, 'Check-in');
+      await _scrollActiveListUntilVisible(
+        tester,
+        find.byKey(const ValueKey('body-open-checkin')),
+      );
       await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
       await tester.pumpAndSettle();
       await _savePreview(tester, boundaryKey, output, 'sheet-dark-checkin');
@@ -156,6 +181,10 @@ void main() {
       await tester.pumpAndSettle();
 
       await _tapTab(tester, 'Essen');
+      await _scrollActiveListUntilVisible(
+        tester,
+        find.byKey(const ValueKey('nutrition-add-food')),
+      );
       await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('nutrition-mode-manual')));
@@ -168,6 +197,10 @@ void main() {
       await tester.pumpAndSettle();
 
       await _tapTab(tester, 'Training');
+      await _scrollActiveListUntilVisible(
+        tester,
+        find.byKey(const ValueKey('training-create-template-route')),
+      );
       await tester.tap(
         find.byKey(const ValueKey('training-create-template-route')),
       );
@@ -250,6 +283,50 @@ bool _isPng(Uint8List bytes) {
 void _resetProgressScroll(WidgetTester tester) {
   final scrollable = find.descendant(
     of: find.byKey(const ValueKey('progress-overview-scroll')),
+    matching: find.byType(Scrollable),
+  );
+  tester.state<ScrollableState>(scrollable).position.jumpTo(0);
+}
+
+Future<void> _scrollProgressUntilVisible(
+  WidgetTester tester,
+  Finder target,
+) async {
+  final scrollable = find.descendant(
+    of: find.byKey(const ValueKey('progress-overview-scroll')),
+    matching: find.byType(Scrollable),
+  );
+  await tester.scrollUntilVisible(
+    target,
+    260,
+    scrollable: scrollable,
+    maxScrolls: 12,
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _scrollActiveListUntilVisible(
+  WidgetTester tester,
+  Finder target,
+) async {
+  final list = find.byType(ListView).hitTestable().first;
+  final scrollable = find.descendant(
+    of: list,
+    matching: find.byType(Scrollable),
+  );
+  await tester.scrollUntilVisible(
+    target,
+    240,
+    scrollable: scrollable,
+    maxScrolls: 12,
+  );
+  await tester.pumpAndSettle();
+}
+
+void _resetActiveListScroll(WidgetTester tester) {
+  final list = find.byType(ListView).hitTestable().first;
+  final scrollable = find.descendant(
+    of: list,
     matching: find.byType(Scrollable),
   );
   tester.state<ScrollableState>(scrollable).position.jumpTo(0);

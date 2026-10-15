@@ -78,9 +78,14 @@ void main() {
     expect(find.text('Dein Fortschritt aus deinen Einträgen'), findsOneWidget);
     expect(find.text('Letzter Eintrag · 14.10.2026'), findsOneWidget);
     expect(find.text('Ø 7 Tage · 82.7 kg'), findsOneWidget);
+    await _scrollProgressUntilVisible(
+      tester,
+      find.text('148 g Protein pro erfasstem Tag'),
+    );
     expect(find.text('148 g Protein pro erfasstem Tag'), findsOneWidget);
-    await tester.ensureVisible(find.text('Übungsfortschritt'));
+    _resetProgressScroll(tester);
     await tester.pumpAndSettle();
+    await _scrollProgressUntilVisible(tester, find.text('Übungsfortschritt'));
     await _capture(binding, 'exercise-progress');
     expect(
       fixture.account.progressViewModel.exerciseProgress!.points,
@@ -93,12 +98,20 @@ void main() {
       findsOneWidget,
     );
     await _capture(binding, 'tab-checkin');
+    await _scrollActiveListUntilVisible(
+      tester,
+      find.byKey(const ValueKey('body-open-checkin')),
+    );
     await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('body-save-checkin')), findsOneWidget);
     await _capture(binding, 'sheet-checkin');
     await tester.tap(find.text('Abbrechen'));
     await tester.pumpAndSettle();
+    await _scrollActiveListUntilVisible(
+      tester,
+      find.byKey(const ValueKey('body-open-goal')),
+    );
     await tester.tap(find.byKey(const ValueKey('body-open-goal')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('body-save-goal')), findsOneWidget);
@@ -114,6 +127,10 @@ void main() {
 
     await _tapTab(tester, 'Essen');
     await _capture(binding, 'tab-essen');
+    await _scrollActiveListUntilVisible(
+      tester,
+      find.byKey(const ValueKey('nutrition-add-food')),
+    );
     await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('nutrition-mode-manual')));
@@ -129,6 +146,10 @@ void main() {
 
     await _tapTab(tester, 'Training');
     await _capture(binding, 'tab-training');
+    await _scrollActiveListUntilVisible(
+      tester,
+      find.byKey(const ValueKey('training-create-template-route')),
+    );
     await tester.tap(
       find.byKey(const ValueKey('training-create-template-route')),
     );
@@ -150,6 +171,7 @@ void main() {
 
     await _tapTab(tester, 'Mehr');
     await _capture(binding, 'tab-mehr');
+    await _scrollActiveListUntilVisible(tester, find.text('Apple Health'));
     expect(find.text('Apple Health'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
@@ -164,9 +186,9 @@ void main() {
       ('Mehr', 'tab-dark-mehr'),
     ]) {
       await _tapTab(tester, tab.$1);
+      _resetActiveListScroll(tester);
+      await tester.pumpAndSettle();
       if (tab.$1 == 'Heute') {
-        _resetProgressScroll(tester);
-        await tester.pumpAndSettle();
         expect(
           find.text('Dein Fortschritt aus deinen Einträgen'),
           findsOneWidget,
@@ -175,14 +197,17 @@ void main() {
       await _capture(binding, tab.$2);
     }
     await _tapTab(tester, 'Heute');
-    await tester.ensureVisible(find.text('Übungsfortschritt'));
-    await tester.pumpAndSettle();
+    await _scrollProgressUntilVisible(tester, find.text('Übungsfortschritt'));
     await _capture(binding, 'exercise-dark-progress');
     expect(
       fixture.account.progressViewModel.exerciseProgress!.points,
       isNotEmpty,
     );
     await _tapTab(tester, 'Check-in');
+    await _scrollActiveListUntilVisible(
+      tester,
+      find.byKey(const ValueKey('body-open-checkin')),
+    );
     await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
     await tester.pumpAndSettle();
     await _capture(binding, 'sheet-dark-checkin');
@@ -190,6 +215,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await _tapTab(tester, 'Essen');
+    await _scrollActiveListUntilVisible(
+      tester,
+      find.byKey(const ValueKey('nutrition-add-food')),
+    );
     await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('nutrition-mode-manual')));
@@ -202,6 +231,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await _tapTab(tester, 'Training');
+    await _scrollActiveListUntilVisible(
+      tester,
+      find.byKey(const ValueKey('training-create-template-route')),
+    );
     await tester.tap(
       find.byKey(const ValueKey('training-create-template-route')),
     );
@@ -395,6 +428,50 @@ Future<void> _tapTab(WidgetTester tester, String label) async {
 void _resetProgressScroll(WidgetTester tester) {
   final scrollable = find.descendant(
     of: find.byKey(const ValueKey('progress-overview-scroll')),
+    matching: find.byType(Scrollable),
+  );
+  tester.state<ScrollableState>(scrollable).position.jumpTo(0);
+}
+
+Future<void> _scrollProgressUntilVisible(
+  WidgetTester tester,
+  Finder target,
+) async {
+  final scrollable = find.descendant(
+    of: find.byKey(const ValueKey('progress-overview-scroll')),
+    matching: find.byType(Scrollable),
+  );
+  await tester.scrollUntilVisible(
+    target,
+    260,
+    scrollable: scrollable,
+    maxScrolls: 12,
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _scrollActiveListUntilVisible(
+  WidgetTester tester,
+  Finder target,
+) async {
+  final list = find.byType(ListView).hitTestable().first;
+  final scrollable = find.descendant(
+    of: list,
+    matching: find.byType(Scrollable),
+  );
+  await tester.scrollUntilVisible(
+    target,
+    240,
+    scrollable: scrollable,
+    maxScrolls: 12,
+  );
+  await tester.pumpAndSettle();
+}
+
+void _resetActiveListScroll(WidgetTester tester) {
+  final list = find.byType(ListView).hitTestable().first;
+  final scrollable = find.descendant(
+    of: list,
     matching: find.byType(Scrollable),
   );
   tester.state<ScrollableState>(scrollable).position.jumpTo(0);
