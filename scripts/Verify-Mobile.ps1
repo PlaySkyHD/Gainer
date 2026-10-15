@@ -750,10 +750,14 @@ function Invoke-UiCapturePhase {
         -not $terminateResult.OutputDrained) {
         throw 'Could not confirm bounded cleanup of the Runner test-host process.'
     }
+    $terminationMessage = "$($terminateResult.Stdout)`n$($terminateResult.Stderr)"
+    $knownNotRunningMessage =
+        $terminationMessage -match '(?i)domain=NSPOSIXErrorDomain,\s*code=3' -and
+        $terminationMessage -match '(?i)(?:no such process|found nothing to terminate)'
     if ($terminateResult.ExitCode -eq 0) {
         Write-Host 'SIMULATOR APP TERMINATE END result=terminated'
     }
-    elseif (("$($terminateResult.Stdout)`n$($terminateResult.Stderr)") -match '(?i)no such process') {
+    elseif ($terminateResult.ExitCode -eq 3 -and $knownNotRunningMessage) {
         Write-Host 'SIMULATOR APP TERMINATE END result=not_running'
     }
     else {
