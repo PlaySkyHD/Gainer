@@ -44,11 +44,11 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
 
       - name: Install Aspire CLI
-        run: dotnet tool install --global Aspire.Cli --version 13.4.0
+        run: dotnet tool install --global Aspire.Cli --version 13.6.1
 
       - name: Restore .NET dependencies
-        # Aspire's dashboard SDK selects an OS-specific package during restore.
-        # Re-evaluate that runtime edge on Linux while all direct versions remain centrally pinned.
+        # The AppHost resolves DCP and the dashboard from the Aspire CLI bundle (AspireUseCliBundle),
+        # so no OS-specific package is restored. Direct versions remain centrally pinned.
         run: dotnet restore Gainer.slnx --force-evaluate
 
       - name: Install frontend dependencies
