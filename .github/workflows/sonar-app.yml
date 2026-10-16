@@ -45,7 +45,7 @@ jobs:
           fi
           archive="$RUNNER_TEMP/flutter_linux_${version}-stable.tar.xz"
           expected_sha256='af7455f540df951184c7953fbe3cf884766e7541dacf8571f9f582db03dd6230'
-          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+          curl --fail --location --retry 3 --proto '=https' --proto-redir '=https' --tlsv1.2 \
             "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${version}-stable.tar.xz" \
             --output "$archive"
           printf '%s  %s\n' "$expected_sha256" "$archive" | sha256sum --check
