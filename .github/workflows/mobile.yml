@@ -95,7 +95,7 @@ jobs:
           else
             echo 'Flutter SDK archive cache is missing or invalid; downloading the pinned release.'
             rm -f "$archive"
-            curl --fail --location --retry 3 \
+            curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
               'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_arm64_3.47.7-stable.zip' \
               --output "$archive"
           fi
@@ -403,7 +403,7 @@ jobs:
           else
             echo 'Flutter SDK archive cache is missing or invalid; downloading the pinned release.'
             rm -f "$archive"
-            curl --fail --location --retry 3 \
+            curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
               'https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_arm64_3.47.7-stable.zip' \
               --output "$archive"
           fi
