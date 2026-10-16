@@ -10,3 +10,4 @@ artifacts/
 **/test-results/
 **/.data-protection-keys/
 .gymapp/
+graphify-out/
