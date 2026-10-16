@@ -26,7 +26,7 @@ if (builder.ExecutionContext.IsPublishMode)
         .WithHttpEndpoint(targetPort: 80, name: "http")
         .WaitFor(productionApi)
         .WithExternalHttpEndpoints();
-    builder.Build().Run();
+    await builder.Build().RunAsync();
     return;
 }
 
@@ -64,4 +64,4 @@ web
     .WaitFor(api)
     .WithExternalHttpEndpoints();
 
-builder.Build().Run();
+await builder.Build().RunAsync();

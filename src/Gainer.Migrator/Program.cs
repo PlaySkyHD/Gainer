@@ -1,5 +1,6 @@
 using Gainer.Core.Security;
 using Gainer.Infrastructure.Persistence;
+using Gainer.Migrator;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -20,9 +21,15 @@ if (pending.Length > 0)
 {
     throw new InvalidOperationException("Database migration did not reach the required schema version.");
 }
-logger.LogInformation("Gainer database schema is current at {RequiredMigration}.", DatabaseSchemaVersion.RequiredMigration);
-
-internal sealed class MigrationUserContext : IUserContext
+if (logger.IsEnabled(LogLevel.Information))
 {
-    public Guid? UserId => null;
+    logger.LogInformation("Gainer database schema is current at {RequiredMigration}.", DatabaseSchemaVersion.RequiredMigration);
+}
+
+namespace Gainer.Migrator
+{
+    internal sealed class MigrationUserContext : IUserContext
+    {
+        public Guid? UserId => null;
+    }
 }
