@@ -167,23 +167,7 @@ public sealed class WorkoutMutationHandler(
             });
         }
 
-        WorkoutRotation? rotation = null;
-        if (mutation.RotationId is { } rotationId && mutation.RotationBaseVersion is { } rotationVersion)
-        {
-            rotation = await context.WorkoutRotations.SingleOrDefaultAsync(
-                item => item.Id == rotationId,
-                cancellationToken) ?? throw new WorkoutRotationNotFoundException();
-            bool sourceBelongsToRotation = workout.SourceTemplateId is { } templateId &&
-                await context.WorkoutRotationItems.AnyAsync(
-                    item => item.RotationId == rotationId && item.TemplateId == templateId,
-                    cancellationToken);
-            if (rotation.Version != rotationVersion || !sourceBelongsToRotation)
-            {
-                throw new WorkoutRotationConflictException("The rotation does not match the completed workout.");
-            }
-            rotation.LastCompletedTemplateId = workout.SourceTemplateId;
-            rotation.Version++;
-        }
+        WorkoutRotation? rotation = await CompleteRotationAsync(workout, mutation, cancellationToken);
 
         DateTime now = timeProvider.GetUtcNow().UtcDateTime;
         workout.Status = WorkoutStatus.Completed;
@@ -206,6 +190,28 @@ public sealed class WorkoutMutationHandler(
         changeCollector?.CaptureUpsert(workoutSnapshot);
         if (rotationSnapshot is not null) changeCollector?.CaptureUpsert(rotationSnapshot);
         return new CompleteWorkoutResult(workoutSnapshot, rotationSnapshot);
+    }
+
+    private async Task<WorkoutRotation?> CompleteRotationAsync(
+        Workout workout,
+        CompleteWorkoutMutation mutation,
+        CancellationToken cancellationToken)
+    {
+        if (mutation.RotationId is not { } rotationId || mutation.RotationBaseVersion is not { } rotationVersion) return null;
+        WorkoutRotation rotation = await context.WorkoutRotations.SingleOrDefaultAsync(
+            item => item.Id == rotationId,
+            cancellationToken) ?? throw new WorkoutRotationNotFoundException();
+        bool sourceBelongsToRotation = workout.SourceTemplateId is { } templateId &&
+            await context.WorkoutRotationItems.AnyAsync(
+                item => item.RotationId == rotationId && item.TemplateId == templateId,
+                cancellationToken);
+        if (rotation.Version != rotationVersion || !sourceBelongsToRotation)
+        {
+            throw new WorkoutRotationConflictException("The rotation does not match the completed workout.");
+        }
+        rotation.LastCompletedTemplateId = workout.SourceTemplateId;
+        rotation.Version++;
+        return rotation;
     }
 
     public async Task<WorkoutSnapshot> DiscardAsync(
@@ -245,11 +251,7 @@ public sealed class WorkoutMutationHandler(
     {
         ArgumentNullException.ThrowIfNull(exercises);
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (exercises.Count > 100 || exercises.Select(item => item.WorkoutExerciseId).Distinct().Count() != exercises.Count ||
-            exercises.Any(item => item.WorkoutExerciseId == Guid.Empty))
-        {
-            errors[nameof(exercises)] = "Workout exercise identifiers must be non-empty and unique.";
-        }
+        ValidateExerciseIdentifiers(exercises, errors);
         Dictionary<Guid, WorkoutExercise> existingById = existingExercises.ToDictionary(item => item.Id);
         Dictionary<Guid, WorkoutSet> existingSetsById = existingSets.ToDictionary(item => item.Id);
         Guid[] newSourceIds = exercises
@@ -271,37 +273,68 @@ public sealed class WorkoutMutationHandler(
             Guid? sourceId = existing?.SourceExerciseId ?? item.SourceExerciseId;
             string name = existing?.ExerciseNameSnapshot ??
                 (sourceId is { } id && newSourceNames.TryGetValue(id, out string? sourceName) ? sourceName : string.Empty);
-            if (existing is not null && item.SourceExerciseId != existing.SourceExerciseId)
-            {
-                errors[$"{prefix}.SourceExerciseId"] = "An existing snapshot origin cannot be changed.";
-            }
-            if (existing is null && (sourceId is null || !newSourceNames.ContainsKey(sourceId.Value)))
-            {
-                errors[$"{prefix}.SourceExerciseId"] = "A new exercise must reference an available own or base exercise.";
-            }
+            ValidateSourceOrigin(item, existing, sourceId, newSourceNames, prefix, errors);
             ValidateExerciseValues(item, prefix, errors);
-            var sets = new List<WorkoutSetSnapshotValues>(item.Sets.Count);
-            for (int setIndex = 0; setIndex < item.Sets.Count; setIndex++)
-            {
-                WorkoutSetSnapshotValues set = item.Sets[setIndex];
-                string setPrefix = $"{prefix}.Sets[{setIndex}]";
-                if (set.SetId == Guid.Empty || !allSetIds.Add(set.SetId)) errors[$"{setPrefix}.SetId"] = "Set identifiers must be non-empty and unique.";
-                ValidateSet(set, setPrefix, errors);
-                DateTime? completedAt = set.IsCompleted
-                    ? existingSetsById.GetValueOrDefault(set.SetId)?.CompletedAtUtc ?? timeProvider.GetUtcNow().UtcDateTime
-                    : null;
-                sets.Add(set with { Notes = Normalize(set.Notes), CompletedAtUtc = completedAt });
-            }
+            List<WorkoutSetSnapshotValues> sets = NormalizeSets(item, prefix, existingSetsById, allSetIds, errors);
             normalized.Add(item with { SourceExerciseId = sourceId, ExerciseNameSnapshot = name, Notes = Normalize(item.Notes), Sets = sets });
         }
         if (errors.Count > 0) throw new WorkoutValidationException(errors);
         return normalized;
     }
 
+    private static void ValidateExerciseIdentifiers(IReadOnlyList<WorkoutExerciseSnapshotValues> exercises, Dictionary<string, string> errors)
+    {
+        if (exercises.Count > 100 || exercises.Select(item => item.WorkoutExerciseId).Distinct().Count() != exercises.Count ||
+            exercises.Any(item => item.WorkoutExerciseId == Guid.Empty))
+        {
+            errors[nameof(exercises)] = "Workout exercise identifiers must be non-empty and unique.";
+        }
+    }
+
+    private static void ValidateSourceOrigin(
+        WorkoutExerciseSnapshotValues item,
+        WorkoutExercise? existing,
+        Guid? sourceId,
+        Dictionary<Guid, string> newSourceNames,
+        string prefix,
+        Dictionary<string, string> errors)
+    {
+        if (existing is not null && item.SourceExerciseId != existing.SourceExerciseId)
+        {
+            errors[$"{prefix}.SourceExerciseId"] = "An existing snapshot origin cannot be changed.";
+        }
+        if (existing is null && (sourceId is null || !newSourceNames.ContainsKey(sourceId.Value)))
+        {
+            errors[$"{prefix}.SourceExerciseId"] = "A new exercise must reference an available own or base exercise.";
+        }
+    }
+
+    private List<WorkoutSetSnapshotValues> NormalizeSets(
+        WorkoutExerciseSnapshotValues item,
+        string prefix,
+        Dictionary<Guid, WorkoutSet> existingSetsById,
+        HashSet<Guid> allSetIds,
+        Dictionary<string, string> errors)
+    {
+        var sets = new List<WorkoutSetSnapshotValues>(item.Sets.Count);
+        for (int setIndex = 0; setIndex < item.Sets.Count; setIndex++)
+        {
+            WorkoutSetSnapshotValues set = item.Sets[setIndex];
+            string setPrefix = $"{prefix}.Sets[{setIndex}]";
+            if (set.SetId == Guid.Empty || !allSetIds.Add(set.SetId)) errors[$"{setPrefix}.SetId"] = "Set identifiers must be non-empty and unique.";
+            ValidateSet(set, setPrefix, errors);
+            DateTime? completedAt = set.IsCompleted
+                ? existingSetsById.GetValueOrDefault(set.SetId)?.CompletedAtUtc ?? timeProvider.GetUtcNow().UtcDateTime
+                : null;
+            sets.Add(set with { Notes = Normalize(set.Notes), CompletedAtUtc = completedAt });
+        }
+        return sets;
+    }
+
     private static void ValidateExerciseValues(
         WorkoutExerciseSnapshotValues item,
         string prefix,
-        IDictionary<string, string> errors)
+        Dictionary<string, string> errors)
     {
         if (item.PlannedSets is < 1 or > 100) errors[$"{prefix}.PlannedSets"] = "Planned sets must be between 1 and 100.";
         if (item.MinimumRepetitions is < 1 or > 1_000 || item.MaximumRepetitions < item.MinimumRepetitions || item.MaximumRepetitions > 1_000) errors[$"{prefix}.Repetitions"] = "The repetition range is invalid.";
@@ -314,7 +347,7 @@ public sealed class WorkoutMutationHandler(
     private static void ValidateSet(
         WorkoutSetSnapshotValues set,
         string prefix,
-        IDictionary<string, string> errors)
+        Dictionary<string, string> errors)
     {
         if (set.WeightKg is { } weight && (weight < 0 || !Kilograms.TryCreate(weight, out _))) errors[$"{prefix}.WeightKg"] = "Weight cannot be negative.";
         if (set.Repetitions is { } repetitions && repetitions < 1) errors[$"{prefix}.Repetitions"] = "Repetitions must be positive.";
@@ -358,7 +391,7 @@ public sealed class WorkoutMutationHandler(
         }
     }
 
-    private static IReadOnlyList<WorkoutExerciseSnapshotValues> ToSnapshots(
+    private static List<WorkoutExerciseSnapshotValues> ToSnapshots(
         IReadOnlyList<WorkoutExercise> exercises,
         IReadOnlyList<WorkoutSet> sets)
     {

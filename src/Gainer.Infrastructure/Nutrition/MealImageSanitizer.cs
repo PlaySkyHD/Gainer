@@ -18,14 +18,15 @@ public sealed class MealImageSanitizer(IOptions<MealImageOptions>? options = nul
     public const int MaximumBytes = 8 * 1024 * 1024;
     public const int MaximumDimension = 4_096;
     public const long MaximumPixels = 16_000_000;
+    private const string InvalidImageCode = "invalid_image";
     private readonly MealImageOptions settings = Validate(options?.Value ?? new MealImageOptions());
 
     public Task<SanitizedMealImage> SanitizeAsync(
-        MealImageInput input,
+        MealImageInput image,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(input);
-        byte[] source = input.Bytes ?? throw new MealEstimationException("invalid_image", "The image is missing.");
+        ArgumentNullException.ThrowIfNull(image);
+        byte[] source = image.Bytes ?? throw new MealEstimationException(InvalidImageCode, "The image is missing.");
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -35,7 +36,7 @@ public sealed class MealImageSanitizer(IOptions<MealImageOptions>? options = nul
             using var inputStream = new MemoryStream(source, writable: false);
             using SKCodec? codec = SKCodec.Create(inputStream);
             if (codec is null)
-                throw new MealEstimationException("invalid_image", "The file is not a supported image.");
+                throw new MealEstimationException(InvalidImageCode, "The file is not a supported image.");
 
             string expectedContentType = codec.EncodedFormat switch
             {
@@ -44,7 +45,7 @@ public sealed class MealImageSanitizer(IOptions<MealImageOptions>? options = nul
                 SKEncodedImageFormat.Webp => "image/webp",
                 _ => throw new MealEstimationException("unsupported_image_format", "Only JPEG, PNG and WebP images are supported."),
             };
-            if (!string.Equals(NormalizeContentType(input.ContentType), expectedContentType, StringComparison.Ordinal))
+            if (!string.Equals(NormalizeContentType(image.ContentType), expectedContentType, StringComparison.Ordinal))
                 throw new MealEstimationException("image_type_mismatch", "The declared image type does not match its content.");
             SKImageInfo info = codec.Info;
             if (info.Width < 1 || info.Width > settings.MaximumDimension || info.Height < 1 || info.Height > settings.MaximumDimension ||
@@ -53,9 +54,9 @@ public sealed class MealImageSanitizer(IOptions<MealImageOptions>? options = nul
 
             cancellationToken.ThrowIfCancellationRequested();
             using SKBitmap bitmap = SKBitmap.Decode(codec)
-                ?? throw new MealEstimationException("invalid_image", "The image content is invalid.");
+                ?? throw new MealEstimationException(InvalidImageCode, "The image content is invalid.");
             using SKData encoded = bitmap.Encode(SKEncodedImageFormat.Jpeg, settings.JpegQuality)
-                ?? throw new MealEstimationException("invalid_image", "The image could not be sanitized.");
+                ?? throw new MealEstimationException(InvalidImageCode, "The image could not be sanitized.");
             return Task.FromResult(new SanitizedMealImage(encoded.ToArray(), "image/jpeg", info.Width, info.Height));
         }
         catch (MealEstimationException)
@@ -68,7 +69,7 @@ public sealed class MealImageSanitizer(IOptions<MealImageOptions>? options = nul
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            throw new MealEstimationException("invalid_image", "The image content is invalid.", innerException: exception);
+            throw new MealEstimationException(InvalidImageCode, "The image content is invalid.", innerException: exception);
         }
         finally
         {
@@ -76,12 +77,11 @@ public sealed class MealImageSanitizer(IOptions<MealImageOptions>? options = nul
         }
     }
 
-    private static string NormalizeContentType(string contentType) =>
-        contentType.Trim().ToLowerInvariant() switch
-        {
-            "image/jpg" => "image/jpeg",
-            string value => value,
-        };
+    private static string NormalizeContentType(string contentType)
+    {
+        string value = contentType.Trim().ToLowerInvariant();
+        return value is "image/jpg" ? "image/jpeg" : value;
+    }
 
     private static MealImageOptions Validate(MealImageOptions value)
     {

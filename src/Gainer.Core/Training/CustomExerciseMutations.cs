@@ -63,10 +63,15 @@ public sealed record UpdateCustomExerciseMutation : ITypedMutation<CustomExercis
         MutationMetadata metadata,
         Guid exerciseId,
         long baseVersion,
-        CustomExerciseValues values) =>
-        exerciseId == Guid.Empty ? throw new ArgumentException("The exercise identifier cannot be empty.", nameof(exerciseId)) :
-        baseVersion <= 0 ? throw new ArgumentOutOfRangeException(nameof(baseVersion)) :
-        new(metadata, exerciseId, baseVersion, values);
+        CustomExerciseValues values)
+    {
+        if (exerciseId == Guid.Empty)
+        {
+            throw new ArgumentException("The exercise identifier cannot be empty.", nameof(exerciseId));
+        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
+        return new(metadata, exerciseId, baseVersion, values);
+    }
 }
 
 public sealed record ArchiveCustomExerciseMutation : ITypedMutation<CustomExerciseSnapshot>
@@ -88,10 +93,15 @@ public sealed record ArchiveCustomExerciseMutation : ITypedMutation<CustomExerci
     public static ArchiveCustomExerciseMutation Create(
         MutationMetadata metadata,
         Guid exerciseId,
-        long baseVersion) =>
-        exerciseId == Guid.Empty ? throw new ArgumentException("The exercise identifier cannot be empty.", nameof(exerciseId)) :
-        baseVersion <= 0 ? throw new ArgumentOutOfRangeException(nameof(baseVersion)) :
-        new(metadata, exerciseId, baseVersion);
+        long baseVersion)
+    {
+        if (exerciseId == Guid.Empty)
+        {
+            throw new ArgumentException("The exercise identifier cannot be empty.", nameof(exerciseId));
+        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
+        return new(metadata, exerciseId, baseVersion);
+    }
 }
 
 public sealed record CustomExerciseSnapshot(

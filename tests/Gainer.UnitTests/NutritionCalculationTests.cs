@@ -5,6 +5,8 @@ namespace Gainer.UnitTests;
 [TestClass]
 public sealed class NutritionCalculationTests
 {
+    private static readonly string[] ExpectedEntryErrorFields = ["EntryId", "Meal", "Position", "ProductName"];
+
     [TestMethod]
     public void CalculateScalesPerHundredGramValuesAndRoundsAwayFromZero()
     {
@@ -71,7 +73,7 @@ public sealed class NutritionCalculationTests
                 new NutritionPer100Grams(100m, null, null, null)));
 
         CollectionAssert.AreEquivalent(
-            new[] { "EntryId", "Meal", "Position", "ProductName" },
+            ExpectedEntryErrorFields,
             exception.Errors.Keys.ToArray());
     }
 }

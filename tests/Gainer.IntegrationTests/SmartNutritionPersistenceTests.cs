@@ -12,6 +12,7 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class SmartNutritionPersistenceTests
 {
+    private static readonly string[] ExpectedComponentNames = ["Reis", "Hähnchen"];
     private static PostgreSqlTestFixture? fixture;
     private static PostgreSqlTestFixture Fixture => fixture ?? throw new InvalidOperationException("PostgreSQL is not started.");
 
@@ -44,7 +45,7 @@ public sealed class SmartNutritionPersistenceTests
                 Component(1, "Hähnchen", 150m, 165m),
                 Component(0, "Reis", 200m, 130m)));
             Assert.AreEqual(1, created.Version);
-            CollectionAssert.AreEqual(new[] { "Reis", "Hähnchen" }, created.Components.Select(item => item.Name).ToArray());
+            CollectionAssert.AreEqual(ExpectedComponentNames, created.Components.Select(item => item.Name).ToArray());
             Assert.HasCount(1, changes.Changes);
         }
 

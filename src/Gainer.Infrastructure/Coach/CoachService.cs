@@ -58,12 +58,7 @@ public sealed partial class CoachService(
                 string arguments = RequiredString(call, "arguments");
                 ToolResult result = await ExecuteToolAsync(name, arguments, cancellationToken);
                 asOfRevision = Math.Max(asOfRevision, result.AsOfRevision);
-                foreach (CoachFact fact in result.Facts)
-                {
-                    if (facts.Count >= 100 && !facts.ContainsKey(fact.FactId))
-                        throw new CoachResponseValidationException("The fact limit was exceeded.");
-                    facts[fact.FactId] = fact;
-                }
+                MergeFacts(facts, result.Facts);
                 inputs.Add(JsonSerializer.SerializeToElement(new
                 {
                     type = "function_call_output",
@@ -75,7 +70,17 @@ public sealed partial class CoachService(
         throw new CoachResponseValidationException("The tool round limit was exceeded.");
     }
 
-    private JsonElement Request(IReadOnlyList<JsonElement> inputs) => JsonSerializer.SerializeToElement(new
+    private static void MergeFacts(Dictionary<string, CoachFact> facts, IReadOnlyList<CoachFact> items)
+    {
+        foreach (CoachFact fact in items)
+        {
+            if (facts.Count >= 100 && !facts.ContainsKey(fact.FactId))
+                throw new CoachResponseValidationException("The fact limit was exceeded.");
+            facts[fact.FactId] = fact;
+        }
+    }
+
+    private static JsonElement Request(IReadOnlyList<JsonElement> inputs) => JsonSerializer.SerializeToElement(new
     {
         instructions = """
             You are a read-only fitness progress summarizer. Use only tool facts. Never diagnose, prescribe,

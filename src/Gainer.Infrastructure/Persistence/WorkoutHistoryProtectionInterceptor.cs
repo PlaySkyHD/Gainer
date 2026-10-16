@@ -11,7 +11,7 @@ internal sealed class WorkoutHistoryProtectionInterceptor : SaveChangesIntercept
         DbContextEventData eventData,
         InterceptionResult<int> result)
     {
-        Validate(eventData.Context, async: false).GetAwaiter().GetResult();
+        Validate(eventData.Context, isAsync: false).GetAwaiter().GetResult();
         return result;
     }
 
@@ -20,13 +20,13 @@ internal sealed class WorkoutHistoryProtectionInterceptor : SaveChangesIntercept
         InterceptionResult<int> result,
         CancellationToken cancellationToken = default)
     {
-        await Validate(eventData.Context, async: true, cancellationToken);
+        await Validate(eventData.Context, isAsync: true, cancellationToken);
         return result;
     }
 
     private static async Task Validate(
         DbContext? context,
-        bool async,
+        bool isAsync,
         CancellationToken cancellationToken = default)
     {
         if (context is null) return;
@@ -62,7 +62,7 @@ internal sealed class WorkoutHistoryProtectionInterceptor : SaveChangesIntercept
         {
             IQueryable<Workout> query = context.Set<Workout>().AsNoTracking().IgnoreQueryFilters()
                 .Where(item => unresolved.Contains(item.Id));
-            Dictionary<Guid, WorkoutStatus> stored = async
+            Dictionary<Guid, WorkoutStatus> stored = isAsync
                 ? await query.ToDictionaryAsync(item => item.Id, item => item.Status, cancellationToken)
                 : query.ToDictionary(item => item.Id, item => item.Status);
             foreach ((Guid id, WorkoutStatus status) in stored) trackedStatuses[id] = status;

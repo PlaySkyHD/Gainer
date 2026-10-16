@@ -218,36 +218,10 @@ public sealed record NutritionTargetVersionDraft(
         if (origin != NutritionTargetOrigin.Manual) errors[nameof(Origin)] = "Only manually entered nutrition targets are supported.";
         string? normalizedAlgorithmVersion = string.IsNullOrWhiteSpace(algorithmVersion) ? null : algorithmVersion.Trim();
         string? normalizedReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
-        if (normalizedAlgorithmVersion?.Length > 80) errors[nameof(AlgorithmVersion)] = "AlgorithmVersion is too long.";
-        if (normalizedReason?.Length > 500) errors[nameof(Reason)] = "Reason is too long.";
-        if (normalizedAlgorithmVersion is not null) errors[nameof(AlgorithmVersion)] = "Manual targets cannot have an algorithm version.";
-        if (normalizedReason is not null) errors[nameof(Reason)] = "Manual targets cannot have an automated reason.";
-        if (inputMode == NutritionTargetInputMode.Grams &&
-            (proteinPercent is not null || carbohydratePercent is not null || fatPercent is not null))
-            errors["MacroDistribution"] = "Gram targets cannot contain percentage values.";
-        if (inputMode == NutritionTargetInputMode.Percent)
-        {
-            if (proteinPercent is null || carbohydratePercent is null || fatPercent is null)
-            {
-                errors["MacroDistribution"] = "Percentage targets require all three macro percentages.";
-            }
-            else
-            {
-                try
-                {
-                    NutritionTotals derived = NutritionCalculator.CalculateMacroTargetsFromPercent(
-                        kilocalories, proteinPercent.Value, carbohydratePercent.Value, fatPercent.Value);
-                    if (derived.ProteinGrams != proteinGrams ||
-                        derived.CarbohydrateGrams != carbohydrateGrams ||
-                        derived.FatGrams != fatGrams)
-                        errors["MacroDistribution"] = "Derived gram targets do not match the percentage distribution.";
-                }
-                catch (NutritionValidationException exception)
-                {
-                    foreach ((string field, string error) in exception.Errors) errors[field] = error;
-                }
-            }
-        }
+        ValidateAutomationMetadata(normalizedAlgorithmVersion, normalizedReason, errors);
+        var macros = new MacroTargetInput(
+            kilocalories, proteinGrams, carbohydrateGrams, fatGrams, proteinPercent, carbohydratePercent, fatPercent);
+        ValidateMacroDistribution(inputMode, macros, errors);
         if (errors.Count > 0) throw new NutritionValidationException(errors);
 
         decimal macroEnergy = NutritionCalculator.CalculateMacroEnergy(proteinGrams, carbohydrateGrams, fatGrams);
@@ -258,7 +232,60 @@ public sealed record NutritionTargetVersionDraft(
             NutritionCalculator.HasMacroEnergyMismatch(kilocalories, proteinGrams, carbohydrateGrams, fatGrams));
     }
 
-    private static void ValidateTarget(decimal value, decimal max, string field, IDictionary<string, string> errors)
+    private static void ValidateAutomationMetadata(string? algorithmVersion, string? reason, Dictionary<string, string> errors)
+    {
+        if (algorithmVersion?.Length > 80) errors[nameof(AlgorithmVersion)] = "AlgorithmVersion is too long.";
+        if (reason?.Length > 500) errors[nameof(Reason)] = "Reason is too long.";
+        if (algorithmVersion is not null) errors[nameof(AlgorithmVersion)] = "Manual targets cannot have an algorithm version.";
+        if (reason is not null) errors[nameof(Reason)] = "Manual targets cannot have an automated reason.";
+    }
+
+    private readonly record struct MacroTargetInput(
+        decimal Kilocalories,
+        decimal ProteinGrams,
+        decimal CarbohydrateGrams,
+        decimal FatGrams,
+        decimal? ProteinPercent,
+        decimal? CarbohydratePercent,
+        decimal? FatPercent);
+
+    private static void ValidateMacroDistribution(
+        NutritionTargetInputMode inputMode,
+        MacroTargetInput macros,
+        Dictionary<string, string> errors)
+    {
+        if (inputMode == NutritionTargetInputMode.Grams &&
+            (macros.ProteinPercent is not null || macros.CarbohydratePercent is not null || macros.FatPercent is not null))
+            errors["MacroDistribution"] = "Gram targets cannot contain percentage values.";
+        if (inputMode == NutritionTargetInputMode.Percent)
+            ValidatePercentDistribution(macros, errors);
+    }
+
+    private static void ValidatePercentDistribution(MacroTargetInput macros, Dictionary<string, string> errors)
+    {
+        if (macros.ProteinPercent is null || macros.CarbohydratePercent is null || macros.FatPercent is null)
+        {
+            errors["MacroDistribution"] = "Percentage targets require all three macro percentages.";
+        }
+        else
+        {
+            try
+            {
+                NutritionTotals derived = NutritionCalculator.CalculateMacroTargetsFromPercent(
+                    macros.Kilocalories, macros.ProteinPercent.Value, macros.CarbohydratePercent.Value, macros.FatPercent.Value);
+                if (derived.ProteinGrams != macros.ProteinGrams ||
+                    derived.CarbohydrateGrams != macros.CarbohydrateGrams ||
+                    derived.FatGrams != macros.FatGrams)
+                    errors["MacroDistribution"] = "Derived gram targets do not match the percentage distribution.";
+            }
+            catch (NutritionValidationException exception)
+            {
+                foreach ((string field, string error) in exception.Errors) errors[field] = error;
+            }
+        }
+    }
+
+    private static void ValidateTarget(decimal value, decimal max, string field, Dictionary<string, string> errors)
     {
         if (value is <= 0m || value > max) errors[field] = $"{field} must be positive and no greater than {max}.";
     }
@@ -333,7 +360,7 @@ public sealed record SaveNutritionTargetScheduleMutation : ITypedMutation<Nutrit
         ArgumentNullException.ThrowIfNull(metadata);
         ArgumentNullException.ThrowIfNull(values);
         if (nutritionTargetScheduleId == Guid.Empty) throw new ArgumentException("Nutrition target schedule identifier cannot be empty.", nameof(nutritionTargetScheduleId));
-        if (baseVersion < 0) throw new ArgumentOutOfRangeException(nameof(baseVersion));
+        ArgumentOutOfRangeException.ThrowIfNegative(baseVersion);
         return new SaveNutritionTargetScheduleMutation(metadata, nutritionTargetScheduleId, baseVersion, values);
     }
 }

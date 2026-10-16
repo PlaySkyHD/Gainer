@@ -1,5 +1,4 @@
 using System.Linq.Expressions;
-using System.Reflection;
 using Gainer.Core.Security;
 using Gainer.Core.BodyTracking;
 using Gainer.Core.Nutrition;
@@ -17,6 +16,9 @@ namespace Gainer.Infrastructure.Persistence;
 public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext userContext)
     : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>(options)
 {
+    private const string PositionNonNegativeCheck = "\"Position\" >= 0";
+    private const string NameNotBlankCheck = "length(trim(\"Name\")) > 0";
+
     /// <summary>Hash-only metadata for pending account invitations.</summary>
     public DbSet<AccountInvitation> AccountInvitations => Set<AccountInvitation>();
 
@@ -67,16 +69,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     private Guid CurrentUserId => userContext.UserId ?? Guid.Empty;
 
     /// <inheritdoc />
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    protected override void OnModelCreating(ModelBuilder builder)
     {
-        base.OnModelCreating(modelBuilder);
-        ConfigureIdentity(modelBuilder);
-        ConfigureBodyTracking(modelBuilder);
-        ConfigureNutrition(modelBuilder);
-        ConfigureTraining(modelBuilder);
-        ConfigureSync(modelBuilder);
-        ApplyStorageConventions(modelBuilder.Model);
-        ApplyUserQueryFilters(modelBuilder);
+        base.OnModelCreating(builder);
+        ConfigureIdentity(builder);
+        ConfigureBodyTracking(builder);
+        ConfigureNutrition(builder);
+        ConfigureTraining(builder);
+        ConfigureSync(builder);
+        ApplyStorageConventions(builder.Model);
+        ApplyUserQueryFilters(builder);
     }
 
     private static void ConfigureSync(ModelBuilder modelBuilder)
@@ -178,7 +180,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         {
             item.ToTable("change_items", DatabaseSchemas.Sync, table =>
             {
-                table.HasCheckConstraint("CK_change_items_position", "\"Position\" >= 0");
+                table.HasCheckConstraint("CK_change_items_position", PositionNonNegativeCheck);
                 table.HasCheckConstraint("CK_change_items_resource_type", "length(trim(\"ResourceType\")) > 0");
                 table.HasCheckConstraint("CK_change_items_resource_version", "\"ResourceVersion\" > 0");
                 table.HasCheckConstraint(
@@ -206,7 +208,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         {
             exercise.ToTable("exercises", DatabaseSchemas.Training, table =>
             {
-                table.HasCheckConstraint("CK_exercises_name", "length(trim(\"Name\")) > 0");
+                table.HasCheckConstraint("CK_exercises_name", NameNotBlankCheck);
                 table.HasCheckConstraint(
                     "CK_exercises_catalog_ownership",
                     "(\"OwnerUserId\" IS NULL AND \"CatalogVersion\" IS NOT NULL AND \"IsArchived\" = FALSE) OR " +
@@ -247,7 +249,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         modelBuilder.Entity<WorkoutTemplate>(template =>
         {
             template.ToTable("workout_templates", DatabaseSchemas.Training, table =>
-                table.HasCheckConstraint("CK_workout_templates_name", "length(trim(\"Name\")) > 0"));
+                table.HasCheckConstraint("CK_workout_templates_name", NameNotBlankCheck));
             template.HasKey(item => item.Id);
             template.Property(item => item.Name).HasMaxLength(160).IsRequired();
             template.Property(item => item.Version).IsConcurrencyToken();
@@ -262,7 +264,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         {
             item.ToTable("workout_template_items", DatabaseSchemas.Training, table =>
             {
-                table.HasCheckConstraint("CK_workout_template_items_position", "\"Position\" >= 0");
+                table.HasCheckConstraint("CK_workout_template_items_position", PositionNonNegativeCheck);
                 table.HasCheckConstraint("CK_workout_template_items_sets", "\"PlannedSets\" > 0");
                 table.HasCheckConstraint(
                     "CK_workout_template_items_repetitions",
@@ -312,7 +314,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         modelBuilder.Entity<WorkoutRotationItem>(item =>
         {
             item.ToTable("workout_rotation_items", DatabaseSchemas.Training, table =>
-                table.HasCheckConstraint("CK_workout_rotation_items_position", "\"Position\" >= 0"));
+                table.HasCheckConstraint("CK_workout_rotation_items_position", PositionNonNegativeCheck));
             item.HasKey(value => value.Id);
             item.HasIndex(value => new { value.RotationId, value.Position }).IsUnique();
             item.HasIndex(value => new { value.RotationId, value.TemplateId }).IsUnique();
@@ -364,7 +366,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             exercise.ToTable("workout_exercises", DatabaseSchemas.Training, table =>
             {
                 table.HasCheckConstraint("CK_workout_exercises_name", "length(trim(\"ExerciseNameSnapshot\")) > 0");
-                table.HasCheckConstraint("CK_workout_exercises_position", "\"Position\" >= 0");
+                table.HasCheckConstraint("CK_workout_exercises_position", PositionNonNegativeCheck);
                 table.HasCheckConstraint("CK_workout_exercises_sets", "\"PlannedSets\" > 0");
                 table.HasCheckConstraint(
                     "CK_workout_exercises_repetitions",
@@ -404,7 +406,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         {
             set.ToTable("workout_sets", DatabaseSchemas.Training, table =>
             {
-                table.HasCheckConstraint("CK_workout_sets_position", "\"Position\" >= 0");
+                table.HasCheckConstraint("CK_workout_sets_position", PositionNonNegativeCheck);
                 table.HasCheckConstraint("CK_workout_sets_weight", "\"WeightKg\" IS NULL OR \"WeightKg\" >= 0");
                 table.HasCheckConstraint("CK_workout_sets_repetitions", "\"Repetitions\" IS NULL OR \"Repetitions\" > 0");
                 table.HasCheckConstraint("CK_workout_sets_rir", "\"Rir\" IS NULL OR (\"Rir\" >= 0 AND \"Rir\" <= 10)");
@@ -514,7 +516,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             entry.ToTable("nutrition_entries", DatabaseSchemas.Tracking, table =>
             {
                 table.HasCheckConstraint("CK_nutrition_entries_meal", "\"Meal\" IN ('Breakfast', 'Lunch', 'Dinner', 'Snacks')");
-                table.HasCheckConstraint("CK_nutrition_entries_position", "\"Position\" >= 0");
+                table.HasCheckConstraint("CK_nutrition_entries_position", PositionNonNegativeCheck);
                 table.HasCheckConstraint("CK_nutrition_entries_name", "length(trim(\"ProductName\")) > 0");
                 table.HasCheckConstraint("CK_nutrition_entries_amount", "\"AmountGrams\" > 0");
                 table.HasCheckConstraint("CK_nutrition_entries_kcal", "\"Kilocalories\" > 0");
@@ -556,7 +558,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         {
             meal.ToTable("reusable_meals", DatabaseSchemas.Tracking, table =>
             {
-                table.HasCheckConstraint("CK_reusable_meals_name", "length(trim(\"Name\")) > 0");
+                table.HasCheckConstraint("CK_reusable_meals_name", NameNotBlankCheck);
                 table.HasCheckConstraint("CK_reusable_meals_portion", "\"StandardPortion\" >= 0.01 AND \"StandardPortion\" <= 100");
                 table.HasCheckConstraint("CK_reusable_meals_status", "\"Status\" IN ('Active', 'Archived')");
             });
@@ -575,8 +577,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         {
             component.ToTable("reusable_meal_components", DatabaseSchemas.Tracking, table =>
             {
-                table.HasCheckConstraint("CK_reusable_meal_components_position", "\"Position\" >= 0");
-                table.HasCheckConstraint("CK_reusable_meal_components_name", "length(trim(\"Name\")) > 0");
+                table.HasCheckConstraint("CK_reusable_meal_components_position", PositionNonNegativeCheck);
+                table.HasCheckConstraint("CK_reusable_meal_components_name", NameNotBlankCheck);
                 table.HasCheckConstraint("CK_reusable_meal_components_amount", "\"AmountGrams\" >= 0.01 AND \"AmountGrams\" <= 100000");
                 table.HasCheckConstraint("CK_reusable_meal_components_kcal", "\"Kilocalories\" > 0 AND \"KilocaloriesPer100Grams\" > 0");
                 table.HasCheckConstraint("CK_reusable_meal_components_basis", "\"BasisGrams\" > 0");
@@ -624,7 +626,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_nutrition_target_versions_kcal", "\"Kilocalories\" > 0 AND \"Kilocalories\" <= 20000");
                 table.HasCheckConstraint("CK_nutrition_target_versions_macros", "\"ProteinGrams\" > 0 AND \"ProteinGrams\" <= 2000 AND \"CarbohydrateGrams\" > 0 AND \"CarbohydrateGrams\" <= 2000 AND \"FatGrams\" > 0 AND \"FatGrams\" <= 2000");
                 table.HasCheckConstraint("CK_nutrition_target_versions_origin", "\"Origin\" = 'Manual'");
-                table.HasCheckConstraint("CK_nutrition_target_versions_name", "length(trim(\"Name\")) > 0");
+                table.HasCheckConstraint("CK_nutrition_target_versions_name", NameNotBlankCheck);
                 table.HasCheckConstraint("CK_nutrition_target_versions_category", "\"Category\" IN ('Custom', 'Cut', 'Maintenance', 'Bulk')");
                 table.HasCheckConstraint("CK_nutrition_target_versions_dates", "\"EffectiveUntil\" IS NULL OR \"EffectiveUntil\" >= \"EffectiveFrom\"");
                 table.HasCheckConstraint("CK_nutrition_target_versions_input", "(\"InputMode\" = 'Grams' AND \"ProteinPercent\" IS NULL AND \"CarbohydratePercent\" IS NULL AND \"FatPercent\" IS NULL) OR (\"InputMode\" = 'Percent' AND \"ProteinPercent\" > 0 AND \"CarbohydratePercent\" > 0 AND \"FatPercent\" > 0 AND \"ProteinPercent\" + \"CarbohydratePercent\" + \"FatPercent\" = 100)");
@@ -725,19 +727,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 
     private void ApplyUserQueryFilters(ModelBuilder modelBuilder)
     {
-        PropertyInfo currentUserProperty = typeof(AppDbContext).GetProperty(
-            nameof(CurrentUserId),
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("The current-user model property is unavailable.");
+        Expression<Func<Guid>> currentUserId = () => CurrentUserId;
 
-        foreach (IMutableEntityType entityType in modelBuilder.Model.GetEntityTypes()
-                     .Where(entity => typeof(IUserOwnedEntity).IsAssignableFrom(entity.ClrType)))
+        foreach (Type clrType in modelBuilder.Model.GetEntityTypes()
+                     .Where(entity => typeof(IUserOwnedEntity).IsAssignableFrom(entity.ClrType))
+                     .Select(entityType => entityType.ClrType))
         {
-            ParameterExpression entity = Expression.Parameter(entityType.ClrType, "entity");
+            ParameterExpression entity = Expression.Parameter(clrType, "entity");
             MemberExpression owner = Expression.Property(entity, nameof(IUserOwnedEntity.UserId));
-            MemberExpression currentUser = Expression.Property(Expression.Constant(this), currentUserProperty);
-            LambdaExpression filter = Expression.Lambda(Expression.Equal(owner, currentUser), entity);
-            modelBuilder.Entity(entityType.ClrType).HasQueryFilter(filter);
+            LambdaExpression filter = Expression.Lambda(Expression.Equal(owner, currentUserId.Body), entity);
+            modelBuilder.Entity(clrType).HasQueryFilter(filter);
         }
     }
 }

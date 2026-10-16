@@ -67,10 +67,15 @@ public sealed record EditWorkoutMutation : ITypedMutation<WorkoutSnapshot>
         MutationMetadata metadata,
         Guid workoutId,
         long baseVersion,
-        IReadOnlyList<WorkoutExerciseSnapshotValues> exercises) =>
-        workoutId == Guid.Empty ? throw new ArgumentException("Workout identifier cannot be empty.", nameof(workoutId)) :
-        baseVersion <= 0 ? throw new ArgumentOutOfRangeException(nameof(baseVersion)) :
-        new(metadata, workoutId, baseVersion, exercises);
+        IReadOnlyList<WorkoutExerciseSnapshotValues> exercises)
+    {
+        if (workoutId == Guid.Empty)
+        {
+            throw new ArgumentException("Workout identifier cannot be empty.", nameof(workoutId));
+        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
+        return new(metadata, workoutId, baseVersion, exercises);
+    }
 }
 
 public sealed record WorkoutSnapshot(
@@ -127,7 +132,7 @@ public sealed record CompleteWorkoutMutation : ITypedMutation<CompleteWorkoutRes
         long? rotationBaseVersion = null)
     {
         if (workoutId == Guid.Empty) throw new ArgumentException("Workout identifier cannot be empty.", nameof(workoutId));
-        if (baseVersion <= 0) throw new ArgumentOutOfRangeException(nameof(baseVersion));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
         if ((rotationId is null) != (rotationBaseVersion is null) || rotationId == Guid.Empty || rotationBaseVersion is <= 0)
         {
             throw new ArgumentException("Rotation id and positive version must be supplied together.");
@@ -154,10 +159,15 @@ public sealed record DiscardWorkoutMutation : ITypedMutation<WorkoutSnapshot>
     public AtomicMutationScope Scope { get; }
     public Guid WorkoutId { get; }
     public long BaseVersion { get; }
-    public static DiscardWorkoutMutation Create(MutationMetadata metadata, Guid workoutId, long baseVersion) =>
-        workoutId == Guid.Empty ? throw new ArgumentException("Workout identifier cannot be empty.", nameof(workoutId)) :
-        baseVersion <= 0 ? throw new ArgumentOutOfRangeException(nameof(baseVersion)) :
-        new(metadata, workoutId, baseVersion);
+    public static DiscardWorkoutMutation Create(MutationMetadata metadata, Guid workoutId, long baseVersion)
+    {
+        if (workoutId == Guid.Empty)
+        {
+            throw new ArgumentException("Workout identifier cannot be empty.", nameof(workoutId));
+        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
+        return new(metadata, workoutId, baseVersion);
+    }
 }
 
 public interface IWorkoutMutationHandler

@@ -83,10 +83,7 @@ public sealed record CorrectDailyCheckInMutation : ITypedMutation<DailyCheckInSn
         {
             throw new ArgumentException("The check-in identifier cannot be empty.", nameof(checkInId));
         }
-        if (baseVersion <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(baseVersion));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
         return new CorrectDailyCheckInMutation(metadata, checkInId, baseVersion, values);
     }
 }

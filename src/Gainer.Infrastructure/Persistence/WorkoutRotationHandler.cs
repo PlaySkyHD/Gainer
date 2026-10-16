@@ -177,15 +177,15 @@ public sealed class WorkoutRotationHandler(
     }
 
     private async Task EnsureTemplatesAreSelectableAsync(
-        IReadOnlyCollection<Guid> templateIds,
-        IReadOnlySet<Guid> previouslyPresent,
+        Guid[] templateIds,
+        HashSet<Guid> previouslyPresent,
         CancellationToken cancellationToken)
     {
         List<WorkoutTemplate> templates = await context.WorkoutTemplates
             .AsNoTracking()
             .Where(item => templateIds.Contains(item.Id))
             .ToListAsync(cancellationToken);
-        if (templates.Count != templateIds.Count ||
+        if (templates.Count != templateIds.Length ||
             templates.Any(item => item.IsArchived && !previouslyPresent.Contains(item.Id)))
         {
             throw new WorkoutRotationValidationException(new Dictionary<string, string>

@@ -151,7 +151,7 @@ public sealed class CustomExerciseMutationHandler(
         string? value,
         int maximum,
         string name,
-        IDictionary<string, string> errors)
+        Dictionary<string, string> errors)
     {
         if (value?.Trim().Length > maximum)
         {

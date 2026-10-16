@@ -43,10 +43,10 @@ public sealed class RequestForgeryProtectionTests
         Assert.AreEqual(HttpStatusCode.OK, tokenResponse.StatusCode, tokenResponseBody);
         Assert.IsNotNull(token);
         string setCookie = tokenResponse.Headers.GetValues("Set-Cookie").Single();
-        StringAssert.StartsWith(setCookie, $"{GainerRequestSecurityOptions.AntiforgeryCookieName}=");
-        StringAssert.Contains(setCookie, "; secure", StringComparison.OrdinalIgnoreCase);
-        StringAssert.Contains(setCookie, "; httponly", StringComparison.OrdinalIgnoreCase);
-        StringAssert.Contains(setCookie, "; samesite=lax", StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith($"{GainerRequestSecurityOptions.AntiforgeryCookieName}=", setCookie);
+        Assert.Contains("; secure", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("; httponly", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("; samesite=lax", setCookie, StringComparison.OrdinalIgnoreCase);
         Assert.IsFalse(setCookie.Contains("domain=", StringComparison.OrdinalIgnoreCase));
         string cookie = setCookie.Split(';', 2)[0];
 

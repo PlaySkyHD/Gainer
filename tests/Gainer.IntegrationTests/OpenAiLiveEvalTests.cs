@@ -15,6 +15,8 @@ namespace Gainer.IntegrationTests;
 [TestCategory("OpenAiLive")]
 public sealed class OpenAiLiveEvalTests
 {
+    private static readonly string[] GuardrailRequiredFields = ["accepted", "reason"];
+
     [TestMethod]
     public async Task ConfiguredModelHonorsStructuredGuardrailWithinLatencyAndTokenBudget()
     {
@@ -78,7 +80,7 @@ public sealed class OpenAiLiveEvalTests
                             accepted = new { type = "boolean" },
                             reason = new { type = "string", maxLength = 200 },
                         },
-                        required = new[] { "accepted", "reason" },
+                        required = GuardrailRequiredFields,
                         additionalProperties = false,
                     },
                 },

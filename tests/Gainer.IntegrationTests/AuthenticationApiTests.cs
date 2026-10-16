@@ -73,9 +73,9 @@ public sealed class AuthenticationApiTests
         Assert.AreEqual(HttpStatusCode.NoContent, login.StatusCode);
         string authCookie = login.Headers.GetValues("Set-Cookie")
             .Single(value => value.StartsWith($"{GainerIdentityOptions.ApplicationCookieName}=", StringComparison.Ordinal));
-        StringAssert.Contains(authCookie, "; secure", StringComparison.OrdinalIgnoreCase);
-        StringAssert.Contains(authCookie, "; httponly", StringComparison.OrdinalIgnoreCase);
-        StringAssert.Contains(authCookie, "; samesite=lax", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("; secure", authCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("; httponly", authCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("; samesite=lax", authCookie, StringComparison.OrdinalIgnoreCase);
         Assert.IsFalse(authCookie.Contains("domain=", StringComparison.OrdinalIgnoreCase));
 
         using HttpResponseMessage session = await SendGetAsync(client, cookies, "/api/v1/auth/session");

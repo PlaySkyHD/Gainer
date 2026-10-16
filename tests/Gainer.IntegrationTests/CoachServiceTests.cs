@@ -23,7 +23,7 @@ public sealed class CoachServiceTests
         Assert.HasCount(2, answer.Facts);
         Assert.AreEqual(80m, answer.Facts.Single(item => item.FactId == "rev:5:weight.avg.30").NumericValue);
         Assert.AreEqual("rev:5:weight.avg.30", answer.Observations[0].FactIds[0]);
-        StringAssert.Contains(provider.Requests[1].GetRawText(), "function_call_output");
+        Assert.Contains("function_call_output", provider.Requests[1].GetRawText());
     }
 
     [TestMethod]
@@ -55,7 +55,7 @@ public sealed class CoachServiceTests
         var provider = new FakeProvider();
         CoachAnswer medical = await Service(provider).AnswerAsync("Diagnostiziere meine Knieschmerzen");
         Assert.HasCount(0, provider.Requests);
-        StringAssert.Contains(medical.Summary, "keine medizinische Diagnose");
+        Assert.Contains("keine medizinische Diagnose", medical.Summary);
     }
 
     [TestMethod]
