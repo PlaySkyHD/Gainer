@@ -1,6 +1,7 @@
 .npm-cache/
 .aspire/
 .env
+.apple/
 artifacts/
 **/bin/
 **/obj/
@@ -8,3 +9,4 @@ artifacts/
 **/playwright-report/
 **/test-results/
 **/.data-protection-keys/
+.gymapp/
