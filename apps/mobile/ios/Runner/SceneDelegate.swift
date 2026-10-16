@@ -14,9 +14,9 @@ class SceneDelegate: FlutterSceneDelegate {
     Task { await NativeRouteDispatcher.shared.dispatchPendingRoute() }
   }
 
-  override func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-    super.scene(scene, openURLContexts: URLContexts)
-    for context in URLContexts {
+  override func scene(_ scene: UIScene, openURLContexts urlContexts: Set<UIOpenURLContext>) {
+    super.scene(scene, openURLContexts: urlContexts)
+    for context in urlContexts {
       receive(context.url)
     }
   }

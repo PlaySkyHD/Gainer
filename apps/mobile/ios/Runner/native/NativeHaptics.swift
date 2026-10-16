@@ -8,11 +8,7 @@ final class NativeHaptics {
       let generator = UIImpactFeedbackGenerator(style: .rigid)
       generator.prepare()
       generator.impactOccurred()
-    case "timerComplete":
-      let generator = UINotificationFeedbackGenerator()
-      generator.prepare()
-      generator.notificationOccurred(.success)
-    case "success":
+    case "timerComplete", "success":
       let generator = UINotificationFeedbackGenerator()
       generator.prepare()
       generator.notificationOccurred(.success)
