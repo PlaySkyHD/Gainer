@@ -70,11 +70,14 @@ public sealed class OpenAiResponsesProvider(
             usage.TryGetProperty("input_tokens", out JsonElement input) ? input.GetInt32() : null;
         int? outputTokens = response.TryGetProperty("usage", out usage) &&
             usage.TryGetProperty("output_tokens", out JsonElement output) ? output.GetInt32() : null;
-        logger.LogInformation(
-            "OpenAI Responses call completed for model {Model}; input tokens {InputTokens}; output tokens {OutputTokens}",
-            settings.Model,
-            inputTokens,
-            outputTokens);
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation(
+                "OpenAI Responses call completed for model {Model}; input tokens {InputTokens}; output tokens {OutputTokens}",
+                settings.Model,
+                inputTokens,
+                outputTokens);
+        }
     }
 
     private JsonElement ForceSafeEnvelope(JsonElement request)

@@ -301,7 +301,7 @@ public sealed class WorkoutMutationHandler(
     private static void ValidateExerciseValues(
         WorkoutExerciseSnapshotValues item,
         string prefix,
-        IDictionary<string, string> errors)
+        Dictionary<string, string> errors)
     {
         if (item.PlannedSets is < 1 or > 100) errors[$"{prefix}.PlannedSets"] = "Planned sets must be between 1 and 100.";
         if (item.MinimumRepetitions is < 1 or > 1_000 || item.MaximumRepetitions < item.MinimumRepetitions || item.MaximumRepetitions > 1_000) errors[$"{prefix}.Repetitions"] = "The repetition range is invalid.";
@@ -314,7 +314,7 @@ public sealed class WorkoutMutationHandler(
     private static void ValidateSet(
         WorkoutSetSnapshotValues set,
         string prefix,
-        IDictionary<string, string> errors)
+        Dictionary<string, string> errors)
     {
         if (set.WeightKg is { } weight && (weight < 0 || !Kilograms.TryCreate(weight, out _))) errors[$"{prefix}.WeightKg"] = "Weight cannot be negative.";
         if (set.Repetitions is { } repetitions && repetitions < 1) errors[$"{prefix}.Repetitions"] = "Repetitions must be positive.";
@@ -358,7 +358,7 @@ public sealed class WorkoutMutationHandler(
         }
     }
 
-    private static IReadOnlyList<WorkoutExerciseSnapshotValues> ToSnapshots(
+    private static List<WorkoutExerciseSnapshotValues> ToSnapshots(
         IReadOnlyList<WorkoutExercise> exercises,
         IReadOnlyList<WorkoutSet> sets)
     {

@@ -13,6 +13,8 @@ public sealed class SyncMutationExecutor(
     IUserContext userContext,
     TimeProvider timeProvider) : ISyncMutationExecutor
 {
+    private const string InvalidPayloadCode = "invalid_payload";
+
     public async Task<SyncMutationExecutionResult> ExecuteAsync(
         Guid mutationId,
         CanonicalMutationContent content,
@@ -71,7 +73,7 @@ public sealed class SyncMutationExecutor(
                     ActivateBodyGoalPayload payload = Deserialize<ActivateBodyGoalPayload>(content.Payload);
                     BodyGoalKind kind = Enum.TryParse(payload.Kind, ignoreCase: true, out BodyGoalKind parsedKind)
                         ? parsedKind
-                        : throw new SyncMutationValidationException("invalid_payload", "The body goal kind is invalid.");
+                        : throw new SyncMutationValidationException(InvalidPayloadCode, "The body goal kind is invalid.");
                     ActiveBodyGoalExpectation? expected = payload.ExpectedActiveGoalId is { } activeId &&
                         payload.ExpectedActiveGoalVersion is { } activeVersion
                             ? new ActiveBodyGoalExpectation(activeId, activeVersion)
@@ -282,7 +284,7 @@ public sealed class SyncMutationExecutor(
         }
         catch (JsonException exception)
         {
-            throw new SyncMutationValidationException("invalid_payload", exception.Message);
+            throw new SyncMutationValidationException(InvalidPayloadCode, exception.Message);
         }
     }
 
@@ -309,7 +311,7 @@ public sealed class SyncMutationExecutor(
 
     private static void ValidateExpectations(
         CanonicalMutationContent content,
-        IReadOnlyCollection<(ResourceKind Kind, Guid Id, long Version)> expected)
+        List<(ResourceKind Kind, Guid Id, long Version)> expected)
     {
         bool matches = content.Resources.Count == expected.Count && expected.All(item =>
             content.Resources.Any(resource =>
@@ -347,22 +349,22 @@ public sealed class SyncMutationExecutor(
     private static MealType ParseMeal(string value) =>
         Enum.TryParse(value, ignoreCase: true, out MealType meal) && Enum.IsDefined(meal)
             ? meal
-            : throw new SyncMutationValidationException("invalid_payload", "The meal type is invalid.");
+            : throw new SyncMutationValidationException(InvalidPayloadCode, "The meal type is invalid.");
 
     private static NutritionTargetOrigin ParseTargetOrigin(string value) =>
         Enum.TryParse(value, ignoreCase: true, out NutritionTargetOrigin origin) && Enum.IsDefined(origin)
             ? origin
-            : throw new SyncMutationValidationException("invalid_payload", "The nutrition target origin is invalid.");
+            : throw new SyncMutationValidationException(InvalidPayloadCode, "The nutrition target origin is invalid.");
 
     private static NutritionGoalCategory ParseGoalCategory(string value) =>
         Enum.TryParse(value, ignoreCase: true, out NutritionGoalCategory category) && Enum.IsDefined(category)
             ? category
-            : throw new SyncMutationValidationException("invalid_payload", "The nutrition goal category is invalid.");
+            : throw new SyncMutationValidationException(InvalidPayloadCode, "The nutrition goal category is invalid.");
 
     private static NutritionTargetInputMode ParseTargetInputMode(string value) =>
         Enum.TryParse(value, ignoreCase: true, out NutritionTargetInputMode inputMode) && Enum.IsDefined(inputMode)
             ? inputMode
-            : throw new SyncMutationValidationException("invalid_payload", "The nutrition target input mode is invalid.");
+            : throw new SyncMutationValidationException(InvalidPayloadCode, "The nutrition target input mode is invalid.");
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 

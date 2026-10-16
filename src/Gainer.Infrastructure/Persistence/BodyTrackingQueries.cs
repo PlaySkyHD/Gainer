@@ -30,10 +30,7 @@ public sealed class BodyTrackingQueries(AppDbContext context) : IBodyTrackingQue
         int limit,
         CancellationToken cancellationToken = default)
     {
-        if (offset < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(offset));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
         if (limit is < 1 or > 200)
         {
             throw new ArgumentOutOfRangeException(nameof(limit));

@@ -16,6 +16,7 @@ public sealed class SyncHandoverService(
     IDataProtectionProvider protectionProvider,
     TimeProvider timeProvider) : ISyncHandoverService
 {
+    private const string InvalidHandoverRequestCode = "invalid_handover_request";
     private static readonly TimeSpan HandoverLifetime = TimeSpan.FromMinutes(15);
     private readonly ITimeLimitedDataProtector codeProtector = protectionProvider
         .CreateProtector("Gainer.SyncHandover.StartRetry.v1")
@@ -33,7 +34,7 @@ public sealed class SyncHandoverService(
         ArgumentNullException.ThrowIfNull(command);
         Guid userId = RequireUserId();
         if (command.RequestId == Guid.Empty || command.SourceClientId == Guid.Empty || command.ExpectedRevision < 0)
-            throw new SyncHandoverException("invalid_handover_request", "The handover request is invalid.", 422);
+            throw new SyncHandoverException(InvalidHandoverRequestCode, "The handover request is invalid.", 422);
 
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         UserSyncState state = await LockUserStateAsync(userId, cancellationToken);
@@ -121,7 +122,7 @@ public sealed class SyncHandoverService(
         Guid userId = RequireUserId();
         ValidateHandoverId(command.HandoverId);
         if (command.TargetClientId == Guid.Empty || command.CaughtUpRevision < 0 || string.IsNullOrWhiteSpace(command.OneTimeCode))
-            throw new SyncHandoverException("invalid_handover_request", "The handover request is invalid.", 422);
+            throw new SyncHandoverException(InvalidHandoverRequestCode, "The handover request is invalid.", 422);
 
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         UserSyncState state = await LockUserStateAsync(userId, cancellationToken);
@@ -195,7 +196,7 @@ public sealed class SyncHandoverService(
         Guid userId = RequireUserId();
         ValidateHandoverId(command.HandoverId);
         if (command.SourceClientId == Guid.Empty)
-            throw new SyncHandoverException("invalid_handover_request", "The handover request is invalid.", 422);
+            throw new SyncHandoverException(InvalidHandoverRequestCode, "The handover request is invalid.", 422);
 
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         UserSyncState state = await LockUserStateAsync(userId, cancellationToken);
@@ -254,7 +255,7 @@ public sealed class SyncHandoverService(
     private static void ValidateHandoverId(Guid handoverId)
     {
         if (handoverId == Guid.Empty)
-            throw new SyncHandoverException("invalid_handover_request", "The handover id is invalid.", 422);
+            throw new SyncHandoverException(InvalidHandoverRequestCode, "The handover id is invalid.", 422);
     }
 
     private static void ValidateCode(SyncHandover handover, string code)

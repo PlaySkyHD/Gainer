@@ -6,6 +6,7 @@ namespace Gainer.Infrastructure.Catalog;
 internal static class ExerciseCatalogSnapshot
 {
     private const string ResourceSuffix = "Catalog.exercise-catalog.v1.json";
+    private static readonly JsonSerializerOptions DeserializeOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly Lazy<ExerciseCatalogDocument> DocumentHolder = new(Load);
 
     public static ExerciseCatalogDocument Document => DocumentHolder.Value;
@@ -19,7 +20,7 @@ internal static class ExerciseCatalogSnapshot
             ?? throw new InvalidOperationException("The embedded exercise catalog is unavailable.");
         ExerciseCatalogDocument? document = JsonSerializer.Deserialize<ExerciseCatalogDocument>(
             stream,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            DeserializeOptions);
         if (document is null || document.SchemaVersion != 1 || document.Entries.Count == 0)
         {
             throw new InvalidOperationException("The embedded exercise catalog is invalid.");
