@@ -90,6 +90,7 @@ jobs:
           /o:"playskyhd"
           /d:sonar.token="$SONAR_TOKEN"
           /d:sonar.exclusions="**/Migrations/**,apps/**"
+          /d:sonar.test.exclusions="apps/**"
           /d:sonar.cs.vscoveragexml.reportsPaths="coverage.xml"
 
       - name: Build backend
