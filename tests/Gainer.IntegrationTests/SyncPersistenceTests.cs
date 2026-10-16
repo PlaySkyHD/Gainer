@@ -12,6 +12,8 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class SyncPersistenceTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly int[] ExpectedPositions = [0, 1];
     private static PostgreSqlTestFixture? fixture;
     private static PostgreSqlTestFixture Fixture => fixture
         ?? throw new InvalidOperationException("The PostgreSQL fixture has not started.");
@@ -90,7 +92,7 @@ public sealed class SyncPersistenceTests
         ChangeBatch stored = await context.ChangeBatches.SingleAsync();
         List<ChangeItem> items = await context.ChangeItems.OrderBy(item => item.Position).ToListAsync();
         Assert.AreEqual(1, stored.Revision);
-        CollectionAssert.AreEqual(new[] { 0, 1 }, items.Select(item => item.Position).ToArray());
+        CollectionAssert.AreEqual(ExpectedPositions, items.Select(item => item.Position).ToArray());
         Assert.IsTrue(items.All(item => item.BatchId == stored.Id));
     }
 
@@ -564,7 +566,7 @@ public sealed class SyncPersistenceTests
             checkInId,
             localDate = new DateOnly(2026, 8, 18),
             values = new DailyCheckInValues(weightKg),
-        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        }, JsonOptions);
         return new ProcessSyncMutationCommand(
             mutationId,
             new CanonicalMutationContent(
@@ -590,7 +592,7 @@ public sealed class SyncPersistenceTests
             checkInId,
             baseVersion,
             values = new DailyCheckInValues(weightKg),
-        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        }, JsonOptions);
         return new ProcessSyncMutationCommand(
             mutationId,
             new CanonicalMutationContent(
@@ -622,7 +624,7 @@ public sealed class SyncPersistenceTests
                 operation,
                 [new CanonicalResourceVersion(resourceType, resourceId, baseVersion)],
                 dependsOn,
-                JsonSerializer.SerializeToElement(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web))));
+                JsonSerializer.SerializeToElement(payload, JsonOptions)));
 
     private static SyncClient Client(Guid id) => new()
     {

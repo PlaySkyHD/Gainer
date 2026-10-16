@@ -7,6 +7,8 @@ namespace Gainer.IntegrationTests;
 [TestClass]
 public sealed class AppHostTopologyTests
 {
+    private static readonly string[] ExpectedResourceNames = ["postgres", "gainer-db", "backup-storage", "backup-blobs", "api", "web"];
+
     [TestMethod]
     public async Task AppHostDefinesPostgresAzuriteApiAndWebWithReferences()
     {
@@ -16,7 +18,7 @@ public sealed class AppHostTopologyTests
         var resources = appHost.Resources.ToDictionary(resource => resource.Name);
 
         CollectionAssert.IsSubsetOf(
-            new[] { "postgres", "gainer-db", "backup-storage", "backup-blobs", "api", "web" },
+            ExpectedResourceNames,
             resources.Keys.ToArray());
 
         Assert.IsInstanceOfType<PostgresServerResource>(resources["postgres"]);

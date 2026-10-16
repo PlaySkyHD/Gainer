@@ -25,6 +25,7 @@ public sealed class SyncHandoverApiTests
     private const string UserAEmail = "handover-a@example.test";
     private const string UserBEmail = "handover-b@example.test";
     private const string Password = "Handover-test-password-42!";
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static PostgreSqlTestFixture? fixture;
     private readonly List<string> keyRingPaths = [];
 
@@ -173,7 +174,7 @@ public sealed class SyncHandoverApiTests
                 checkInId,
                 localDate = new DateOnly(2026, 10, 12),
                 values = new { weightKg = 72m },
-            }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+            }, JsonOptions));
         using (HttpResponseMessage mutationMismatch = await SendMutationAsync(
             clientB,
             cookiesB,
@@ -270,7 +271,7 @@ public sealed class SyncHandoverApiTests
                 checkInId,
                 localDate = new DateOnly(2026, 10, 12),
                 values = new { weightKg = 70m },
-            }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+            }, JsonOptions));
         using HttpResponseMessage lateWrite = await SendMutationAsync(
             client,
             cookies,
@@ -367,7 +368,7 @@ public sealed class SyncHandoverApiTests
                 checkInId,
                 localDate = new DateOnly(2026, 10, 12),
                 values = new { weightKg = 71m },
-            }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+            }, JsonOptions));
 
         Task<HttpResponseMessage> beginTask = SendMutationAsync(
             beginClient, beginCookies, HttpMethod.Post, "/api/v1/sync/handovers", beginRequest);

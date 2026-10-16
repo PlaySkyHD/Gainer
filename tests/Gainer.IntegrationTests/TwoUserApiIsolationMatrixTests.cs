@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace Gainer.IntegrationTests;
 
 [TestClass]
-public sealed class TwoUserApiIsolationMatrixTests
+public sealed partial class TwoUserApiIsolationMatrixTests
 {
     [TestMethod]
     public async Task MatrixCoversEveryRequiredOperationAgainstTwoIndependentActors()
@@ -12,7 +12,7 @@ public sealed class TwoUserApiIsolationMatrixTests
         await TwoUserApiIsolationMatrix.VerifyAsync(new InMemoryScenario());
     }
 
-    private sealed class InMemoryScenario : ITwoUserApiIsolationScenario<string>
+    private sealed partial class InMemoryScenario : ITwoUserApiIsolationScenario<string>
     {
         private readonly Dictionary<Guid, Item> items = [];
 
@@ -20,9 +20,15 @@ public sealed class TwoUserApiIsolationMatrixTests
 
         public string SecondUser => "second-user";
 
-        public Regex FirstUserSecretPattern { get; } = new("first-(user|private)", RegexOptions.IgnoreCase);
+        public Regex FirstUserSecretPattern { get; } = FirstUserSecretRegex();
 
-        public Regex SecondUserSecretPattern { get; } = new("second-(user|private)", RegexOptions.IgnoreCase);
+        public Regex SecondUserSecretPattern { get; } = SecondUserSecretRegex();
+
+        [GeneratedRegex("first-(user|private)", RegexOptions.IgnoreCase)]
+        private static partial Regex FirstUserSecretRegex();
+
+        [GeneratedRegex("second-(user|private)", RegexOptions.IgnoreCase)]
+        private static partial Regex SecondUserSecretRegex();
 
         public Task<Guid> CreateAsync(string actor, string privateMarker)
         {
