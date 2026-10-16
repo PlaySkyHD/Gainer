@@ -10,6 +10,7 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class BodyTrackingPersistenceTests
 {
+    private static readonly string[] ExpectedInvalidGoalFields = ["Kind", "StartWeightKg", "TargetWeightKg", "TargetDate"];
     private static PostgreSqlTestFixture? fixture;
 
     private static PostgreSqlTestFixture Fixture =>
@@ -172,7 +173,7 @@ public sealed class BodyTrackingPersistenceTests
         BodyGoalValidationException exception = await Assert.ThrowsAsync<BodyGoalValidationException>(
             () => handler.ActivateAsync(invalid));
         CollectionAssert.AreEquivalent(
-            new[] { "Kind", "StartWeightKg", "TargetWeightKg", "TargetDate" },
+            ExpectedInvalidGoalFields,
             exception.Errors.Keys.ToArray());
         Assert.AreEqual(0, await context.BodyGoals.CountAsync());
     }

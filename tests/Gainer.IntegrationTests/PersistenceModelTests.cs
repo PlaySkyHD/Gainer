@@ -11,6 +11,8 @@ namespace Gainer.IntegrationTests;
 [TestClass]
 public sealed class PersistenceModelTests
 {
+    private static readonly string[] ExpectedSchemaNames = ["identity", "tracking", "training", "sync", "ai"];
+
     [TestMethod]
     public void IdentityModelUsesDedicatedPostgresSchemaAndGuidKeys()
     {
@@ -22,7 +24,7 @@ public sealed class PersistenceModelTests
         Assert.AreEqual("users", user.GetTableName());
         Assert.AreEqual("uuid", user.FindProperty(nameof(AppUser.Id))?.GetColumnType());
         CollectionAssert.AreEquivalent(
-            new[] { "identity", "tracking", "training", "sync", "ai" },
+            ExpectedSchemaNames,
             DatabaseSchemas.All.ToArray());
     }
 
@@ -71,7 +73,7 @@ public sealed class PersistenceModelTests
             context.SaveChanges();
         });
 
-        StringAssert.Contains(exception.Message, nameof(AppUser.LockoutEnd));
+        Assert.Contains(nameof(AppUser.LockoutEnd), exception.Message);
     }
 
     [TestMethod]
@@ -85,10 +87,10 @@ public sealed class PersistenceModelTests
         string firstQuery = firstContext.Set<PersistenceConventionProbe>().ToQueryString();
         string secondQuery = secondContext.Set<PersistenceConventionProbe>().ToQueryString();
 
-        StringAssert.Contains(firstQuery, firstUserId.ToString());
-        StringAssert.Contains(secondQuery, secondUserId.ToString());
-        StringAssert.Contains(firstQuery, "WHERE");
-        StringAssert.Contains(firstQuery, nameof(IUserOwnedEntity.UserId));
+        Assert.Contains(firstUserId.ToString(), firstQuery);
+        Assert.Contains(secondUserId.ToString(), secondQuery);
+        Assert.Contains("WHERE", firstQuery);
+        Assert.Contains(nameof(IUserOwnedEntity.UserId), firstQuery);
     }
 
     [TestMethod]

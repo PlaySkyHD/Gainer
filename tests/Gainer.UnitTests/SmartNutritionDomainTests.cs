@@ -5,6 +5,8 @@ namespace Gainer.UnitTests;
 [TestClass]
 public sealed class SmartNutritionDomainTests
 {
+    private static readonly string[] ExpectedPortionErrorFields = ["Name", "StandardPortion"];
+
     [TestMethod]
     public void ReusableMealDraftNormalizesAndOrdersComponents()
     {
@@ -221,6 +223,6 @@ public sealed class SmartNutritionDomainTests
 
         NutritionValidationException invalid = Assert.Throws<NutritionValidationException>(() =>
             ReusableMealDraft.Create(maxName + "x", null, NutritionLimits.MaxPortionFactor + 0.01m, [component]));
-        CollectionAssert.IsSubsetOf(new[] { "Name", "StandardPortion" }, invalid.Errors.Keys.ToArray());
+        CollectionAssert.IsSubsetOf(ExpectedPortionErrorFields, invalid.Errors.Keys.ToArray());
     }
 }

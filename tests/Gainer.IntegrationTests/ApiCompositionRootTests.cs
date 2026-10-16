@@ -17,6 +17,8 @@ namespace Gainer.IntegrationTests;
 [TestClass]
 public sealed class ApiCompositionRootTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     [TestMethod]
     public async Task VersionedStatusReturnsContractAndTracingHeaders()
     {
@@ -31,7 +33,7 @@ public sealed class ApiCompositionRootTests
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, responseBody);
         SystemStatusResponse? payload = JsonSerializer.Deserialize<SystemStatusResponse>(
             responseBody,
-            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            JsonOptions);
         Assert.IsNotNull(payload);
         Assert.AreEqual("ok", payload.Status);
         Assert.AreEqual("v1", payload.ApiVersion);

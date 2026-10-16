@@ -68,9 +68,9 @@ internal static class TwoUserApiIsolationMatrix
             firstIds[0],
             "first-private-updated");
         Assert.IsTrue(ownUpdate.IsSuccessStatusCode, "The matrix adapter did not permit an own update.");
-        StringAssert.Contains(
-            (await scenario.DetailAsync(scenario.FirstUser, firstIds[0])).Representation,
-            "first-private-updated");
+        Assert.Contains(
+            "first-private-updated",
+            (await scenario.DetailAsync(scenario.FirstUser, firstIds[0])).Representation);
 
         IsolationApiResponse ownDelete = await scenario.DeleteAsync(scenario.SecondUser, secondIds[1]);
         Assert.IsTrue(ownDelete.IsSuccessStatusCode, "The matrix adapter did not permit an own delete.");

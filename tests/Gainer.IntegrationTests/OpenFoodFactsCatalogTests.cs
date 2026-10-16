@@ -9,6 +9,8 @@ namespace Gainer.IntegrationTests;
 [TestClass]
 public sealed class OpenFoodFactsCatalogTests
 {
+    private static readonly string[] ExpectedProductNames = ["Valid", "Also valid"];
+
     [TestMethod]
     public async Task ProductLookupNormalizesNutrientsAndSendsIdentifyingUserAgent()
     {
@@ -22,8 +24,8 @@ public sealed class OpenFoodFactsCatalogTests
         Assert.AreEqual(250.5m, product.NutrientsPer100Grams.Kilocalories);
         Assert.IsNull(product.NutrientsPer100Grams.CarbohydrateGrams);
         CollectionAssert.Contains(product.QualityIndicators.ToArray(), "carbohydrates_missing");
-        StringAssert.Contains(handler.UserAgent!, "GainerTests/1.0");
-        StringAssert.Contains(handler.RequestUri!.AbsolutePath, "/api/v3/product/12345678.json");
+        Assert.Contains("GainerTests/1.0", handler.UserAgent!);
+        Assert.Contains("/api/v3/product/12345678.json", handler.RequestUri!.AbsolutePath);
     }
 
     [TestMethod]
@@ -85,10 +87,10 @@ public sealed class OpenFoodFactsCatalogTests
 
         FoodCatalogSearchResult result = await catalog.SearchAsync("Hafer & Milch", 1, 2);
 
-        CollectionAssert.AreEqual(new[] { "Valid", "Also valid" }, result.Products.Select(item => item.ProductName).ToArray());
+        CollectionAssert.AreEqual(ExpectedProductNames, result.Products.Select(item => item.ProductName).ToArray());
         Assert.IsTrue(result.HasMore);
-        StringAssert.Contains(handler.RequestUri!.Query, "search_terms=Hafer%20%26%20Milch");
-        StringAssert.Contains(handler.RequestUri.Query, "page_size=2");
+        Assert.Contains("search_terms=Hafer%20%26%20Milch", handler.RequestUri!.Query);
+        Assert.Contains("page_size=2", handler.RequestUri.Query);
     }
 
     [TestMethod]
