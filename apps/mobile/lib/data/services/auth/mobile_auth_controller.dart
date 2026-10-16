@@ -32,6 +32,10 @@ import '../platform/pigeon_pending_handover_secret_store.dart';
 import '../platform/pigeon_secure_session_platform.dart';
 import 'sync_foreground_scheduler.dart';
 
+const _operatorAccessRequiredMessage = 'Operator access is required.';
+const _operatorOnlineRequiredMessage =
+    'Operatoraktionen erfordern eine Online-Sitzung.';
+
 class MobileAppConfiguration {
   const MobileAppConfiguration({
     required this.api,
@@ -236,13 +240,13 @@ class MobileAuthController extends ChangeNotifier
   Future<List<ApiAccountSummary>> listOperatorAccounts() async {
     final scope = account;
     if (scope == null || !scope.session.isAccountOperator) {
-      throw StateError('Operator access is required.');
+      throw StateError(_operatorAccessRequiredMessage);
     }
     if (!scope.online) {
       throw const ApiException(
         statusCode: null,
         code: 'network_error',
-        message: 'Operatoraktionen erfordern eine Online-Sitzung.',
+        message: _operatorOnlineRequiredMessage,
       );
     }
     return scope.api.listAccounts();
@@ -251,13 +255,13 @@ class MobileAuthController extends ChangeNotifier
   Future<ApiInvitation> createOperatorInvitation(String email) async {
     final scope = account;
     if (scope == null || !scope.session.isAccountOperator) {
-      throw StateError('Operator access is required.');
+      throw StateError(_operatorAccessRequiredMessage);
     }
     if (!scope.online) {
       throw const ApiException(
         statusCode: null,
         code: 'network_error',
-        message: 'Operatoraktionen erfordern eine Online-Sitzung.',
+        message: _operatorOnlineRequiredMessage,
       );
     }
     return scope.api.createInvitation(email.trim());
@@ -266,13 +270,13 @@ class MobileAuthController extends ChangeNotifier
   Future<void> setOperatorAccountStatus(String accountId, bool isActive) async {
     final scope = account;
     if (scope == null || !scope.session.isAccountOperator) {
-      throw StateError('Operator access is required.');
+      throw StateError(_operatorAccessRequiredMessage);
     }
     if (!scope.online) {
       throw const ApiException(
         statusCode: null,
         code: 'network_error',
-        message: 'Operatoraktionen erfordern eine Online-Sitzung.',
+        message: _operatorOnlineRequiredMessage,
       );
     }
     await scope.api.setAccountStatus(accountId, isActive);
