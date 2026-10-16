@@ -8,6 +8,10 @@ import '../sync/local_sync_store.dart';
 
 typedef TrainingIdFactory = String Function();
 
+const _customExerciseType = 'custom-exercise';
+const _workoutTemplateType = 'workout-template';
+const _workoutRotationType = 'workout-rotation';
+
 abstract interface class ExerciseCatalogProvider {
   Future<List<ExerciseCatalogEntry>> loadExercises();
 }
@@ -77,9 +81,9 @@ class TrainingRepository {
 
   Future<TrainingPlanningSnapshot> readPlanning() async {
     final available = await catalog.loadExercises();
-    final customs = await store.readAggregates('custom-exercise');
-    final templates = await store.readAggregates('workout-template');
-    final rotations = await store.readAggregates('workout-rotation');
+    final customs = await store.readAggregates(_customExerciseType);
+    final templates = await store.readAggregates(_workoutTemplateType);
+    final rotations = await store.readAggregates(_workoutRotationType);
     final customValues = [
       for (final row in customs)
         (
@@ -131,7 +135,7 @@ class TrainingRepository {
       'updatedAtUtc': now,
     };
     await _commit(
-      type: 'custom-exercise',
+      type: _customExerciseType,
       id: id,
       operation: LocalMutationOperation.create,
       baseVersion: null,
@@ -142,7 +146,7 @@ class TrainingRepository {
   }
 
   Future<void> updateCustomExercise(String id, ExerciseValues input) async {
-    final old = await _requireAggregate('custom-exercise', id);
+    final old = await _requireAggregate(_customExerciseType, id);
     final prior = _map(old.workingCopy);
     if (prior['isArchived'] == true) {
       throw StateError('Archived exercises are immutable.');
@@ -154,7 +158,7 @@ class TrainingRepository {
       'updatedAtUtc': clock().toUtc().toIso8601String(),
     };
     await _commit(
-      type: 'custom-exercise',
+      type: _customExerciseType,
       id: id,
       operation: LocalMutationOperation.update,
       baseVersion: old.serverVersion,
@@ -164,7 +168,7 @@ class TrainingRepository {
   }
 
   Future<void> archiveCustomExercise(String id) async {
-    final old = await _requireAggregate('custom-exercise', id);
+    final old = await _requireAggregate(_customExerciseType, id);
     final value = _map(old.workingCopy);
     if (value['isArchived'] == true) {
       throw StateError('The exercise is already archived.');
@@ -175,7 +179,7 @@ class TrainingRepository {
       'updatedAtUtc': clock().toUtc().toIso8601String(),
     };
     await _commit(
-      type: 'custom-exercise',
+      type: _customExerciseType,
       id: id,
       operation: LocalMutationOperation.update,
       baseVersion: old.serverVersion,
@@ -184,12 +188,10 @@ class TrainingRepository {
     );
   }
 
-  Future<String> saveTemplate({
-    String? id,
-    required String name,
-    required List<TrainingTemplateItem> items,
-  }) async {
-    final trimmedName = name.trim();
+  Map<String, String> _templateInputErrors(
+    String trimmedName,
+    List<TrainingTemplateItem> items,
+  ) {
     final errors = <String, String>{};
     if (trimmedName.isEmpty || trimmedName.length > 120) {
       errors['name'] = 'Name erforderlich (maximal 120 Zeichen).';
@@ -210,6 +212,16 @@ class TrainingRepository {
         });
       }
     }
+    return errors;
+  }
+
+  Future<String> saveTemplate({
+    String? id,
+    required String name,
+    required List<TrainingTemplateItem> items,
+  }) async {
+    final trimmedName = name.trim();
+    final errors = _templateInputErrors(trimmedName, items);
     final plan = await readPlanning();
     final availableIds = {
       ...plan.exercises.map((item) => item.id),
@@ -227,7 +239,7 @@ class TrainingRepository {
     }
     final existing = id == null
         ? null
-        : await _requireAggregate('workout-template', id);
+        : await _requireAggregate(_workoutTemplateType, id);
     if (existing != null && _map(existing.workingCopy)['isArchived'] == true) {
       throw StateError('Archived templates are immutable.');
     }
@@ -242,7 +254,7 @@ class TrainingRepository {
       updatedAtUtc: now,
     ).toJson();
     await _commit(
-      type: 'workout-template',
+      type: _workoutTemplateType,
       id: aggregateId,
       operation: existing == null
           ? LocalMutationOperation.create
@@ -257,7 +269,7 @@ class TrainingRepository {
   }
 
   Future<void> archiveTemplate(String id) async {
-    final old = await _requireAggregate('workout-template', id);
+    final old = await _requireAggregate(_workoutTemplateType, id);
     final value = _map(old.workingCopy);
     if (value['isArchived'] == true) {
       throw StateError('The template is already archived.');
@@ -268,7 +280,7 @@ class TrainingRepository {
       'updatedAtUtc': clock().toUtc().toIso8601String(),
     };
     await _commit(
-      type: 'workout-template',
+      type: _workoutTemplateType,
       id: id,
       operation: LocalMutationOperation.update,
       baseVersion: old.serverVersion,
@@ -283,7 +295,7 @@ class TrainingRepository {
         'rotation': 'Jedes Template darf nur einmal vorkommen.',
       });
     }
-    final templates = await store.readAggregates('workout-template');
+    final templates = await store.readAggregates(_workoutTemplateType);
     final indexed = {for (final item in templates) item.aggregateId: item};
     for (final templateId in templateIds) {
       final item = indexed[templateId];
@@ -293,7 +305,7 @@ class TrainingRepository {
         });
       }
     }
-    final rows = await store.readAggregates('workout-rotation');
+    final rows = await store.readAggregates(_workoutRotationType);
     final old = rows.isEmpty ? null : rows.first;
     final prior = old == null
         ? null
@@ -315,7 +327,7 @@ class TrainingRepository {
       updatedAtUtc: now,
     ).toJson();
     await _commit(
-      type: 'workout-rotation',
+      type: _workoutRotationType,
       id: id,
       operation: old == null
           ? LocalMutationOperation.create
@@ -335,7 +347,7 @@ class TrainingRepository {
       throw StateError('Es läuft bereits ein Workout.');
     }
     final templateEnvelope = await _requireAggregate(
-      'workout-template',
+      _workoutTemplateType,
       templateId,
     );
     final templateMap = _map(templateEnvelope.workingCopy);
@@ -558,11 +570,12 @@ class TrainingRepository {
     final customEntry = plan.customExercises.where(
       (item) => item.id == exerciseId && !item.isArchived,
     );
-    final name = catalogEntry.isNotEmpty
-        ? catalogEntry.first.name
-        : customEntry.isNotEmpty
-        ? customEntry.first.value.name
-        : null;
+    String? name;
+    if (catalogEntry.isNotEmpty) {
+      name = catalogEntry.first.name;
+    } else if (customEntry.isNotEmpty) {
+      name = customEntry.first.value.name;
+    }
     if (name == null) {
       throw const TrainingValidationException({
         'exerciseId': 'Die Übung ist nicht verfügbar.',
@@ -664,7 +677,7 @@ class TrainingRepository {
       ..['completedAtUtc'] = now
       ..['updatedAtUtc'] = now
       ..['restTimer'] = null;
-    final rotationRows = await store.readAggregates('workout-rotation');
+    final rotationRows = await store.readAggregates(_workoutRotationType);
     final rotationEnvelope = rotationRows.isEmpty ? null : rotationRows.first;
     Map<String, LocalAggregateEnvelope<Object?>> related = const {};
     Map<String, Object?>? rotationBase;
@@ -677,7 +690,7 @@ class TrainingRepository {
         rotationBase['lastCompletedTemplateId'] = workout.sourceTemplateId;
         rotationBase['updatedAtUtc'] = now;
         related = {
-          'workout-rotation': _pending(rotationEnvelope, rotationBase),
+          _workoutRotationType: _pending(rotationEnvelope, rotationBase),
         };
       } else {
         rotationBase = null;

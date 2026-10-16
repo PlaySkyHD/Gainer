@@ -108,6 +108,45 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
     }
   }
 
+  List<Widget> _invitationChildren(Uri link) => [
+    const SizedBox(height: 8),
+    const Text('Diesen Link einmalig sicher an die Person weitergeben.'),
+    Text(link.toString()),
+    if (_invitationExpiresAt case final expires?)
+      Text('Gültig bis ${expires.toLocal()}'),
+    CupertinoButton(
+      onPressed: () => Clipboard.setData(ClipboardData(text: link.toString())),
+      child: const Text('Einladungslink kopieren'),
+    ),
+  ];
+
+  List<Widget> _accountChildren() {
+    if (_loading) {
+      return const [
+        Padding(
+          padding: EdgeInsets.all(20),
+          child: Center(child: CupertinoActivityIndicator()),
+        ),
+      ];
+    }
+    return [for (final account in _accounts) _accountTile(account)];
+  }
+
+  Widget _accountTile(ApiAccountSummary account) => CupertinoListTile(
+    title: Text(account.email),
+    subtitle: Text(account.isActive ? 'Aktiv' : 'Deaktiviert'),
+    trailing: CupertinoSwitch(
+      value: account.isActive,
+      onChanged: _isOwnAccount(account) || _busy
+          ? null
+          : (value) => _setStatus(account, value),
+    ),
+  );
+
+  bool _isOwnAccount(ApiAccountSummary account) =>
+      account.accountId.toLowerCase() ==
+      widget.controller.account?.session.userId.toLowerCase();
+
   @override
   Widget build(BuildContext context) => CupertinoPageScaffold(
     navigationBar: const CupertinoNavigationBar(
@@ -131,20 +170,7 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
             onPressed: _busy ? null : _createInvitation,
             child: const Text('Einladung erstellen'),
           ),
-          if (_issuedInvitation case final link?) ...[
-            const SizedBox(height: 8),
-            const Text(
-              'Diesen Link einmalig sicher an die Person weitergeben.',
-            ),
-            Text(link.toString()),
-            if (_invitationExpiresAt case final expires?)
-              Text('Gültig bis ${expires.toLocal()}'),
-            CupertinoButton(
-              onPressed: () =>
-                  Clipboard.setData(ClipboardData(text: link.toString())),
-              child: const Text('Einladungslink kopieren'),
-            ),
-          ],
+          if (_issuedInvitation case final link?) ..._invitationChildren(link),
           if (_error case final message?) ...[
             const SizedBox(height: 8),
             Text(
@@ -156,27 +182,7 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
           ],
           const SizedBox(height: 26),
           const Text('Konten', style: TextStyle(fontSize: 20)),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.all(20),
-              child: Center(child: CupertinoActivityIndicator()),
-            )
-          else
-            for (final account in _accounts)
-              CupertinoListTile(
-                title: Text(account.email),
-                subtitle: Text(account.isActive ? 'Aktiv' : 'Deaktiviert'),
-                trailing: CupertinoSwitch(
-                  value: account.isActive,
-                  onChanged:
-                      _busy ||
-                          account.accountId.toLowerCase() ==
-                              widget.controller.account?.session.userId
-                                  .toLowerCase()
-                      ? null
-                      : (value) => _setStatus(account, value),
-                ),
-              ),
+          ..._accountChildren(),
           CupertinoButton(
             onPressed: _loading || _busy ? null : _load,
             child: const Text('Liste aktualisieren'),

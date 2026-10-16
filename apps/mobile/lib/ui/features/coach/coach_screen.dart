@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
+import '../../../data/models/api/api_models.dart';
 import '../../core/theme.dart';
 import 'coach_view_model.dart';
 
@@ -70,38 +71,7 @@ class _CoachScreenState extends State<CoachScreen> {
                     ),
                   if (model.response case final answer?) ...[
                     const SizedBox(height: 24),
-                    Text(
-                      answer.summary,
-                      style: CupertinoTheme.of(context).textTheme.textStyle
-                          .copyWith(fontSize: 18, fontWeight: FontWeight.w600),
-                    ),
-                    for (final item in answer.observations)
-                      _AnswerItem(text: item),
-                    if (answer.suggestions.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        'Mögliche nächste Schritte',
-                        style: CupertinoTheme.of(context)
-                            .textTheme
-                            .navTitleTextStyle,
-                      ),
-                      for (final item in answer.suggestions)
-                        _AnswerItem(text: item),
-                    ],
-                    if (answer.dataGaps.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Für eine vollständigere Auswertung fehlen noch Daten:',
-                      ),
-                      for (final item in answer.dataGaps)
-                        _AnswerItem(text: item),
-                    ],
-                    Text(
-                      'Datengrundlage: Revision ${answer.asOfRevision}',
-                      style: TextStyle(
-                        color: GainerTheme.secondaryText(context),
-                      ),
-                    ),
+                    ..._answerChildren(context, answer),
                   ],
                 ],
               ),
@@ -111,6 +81,33 @@ class _CoachScreenState extends State<CoachScreen> {
       ),
     ),
   );
+
+  List<Widget> _answerChildren(BuildContext context, ApiCoachResponse answer) =>
+      [
+        Text(
+          answer.summary,
+          style: CupertinoTheme.of(context).textTheme.textStyle
+              .copyWith(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
+        for (final item in answer.observations) _AnswerItem(text: item),
+        if (answer.suggestions.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Mögliche nächste Schritte',
+            style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+          ),
+          for (final item in answer.suggestions) _AnswerItem(text: item),
+        ],
+        if (answer.dataGaps.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Text('Für eine vollständigere Auswertung fehlen noch Daten:'),
+          for (final item in answer.dataGaps) _AnswerItem(text: item),
+        ],
+        Text(
+          'Datengrundlage: Revision ${answer.asOfRevision}',
+          style: TextStyle(color: GainerTheme.secondaryText(context)),
+        ),
+      ];
 }
 
 class _AnswerItem extends StatelessWidget {

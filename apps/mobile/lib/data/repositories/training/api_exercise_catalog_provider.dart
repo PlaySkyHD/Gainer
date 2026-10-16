@@ -16,29 +16,8 @@ class ApiExerciseCatalogProvider implements ExerciseCatalogProvider {
 
   @override
   Future<List<ExerciseCatalogEntry>> loadExercises() async {
-    const pageSize = 100;
-    final items = <Map<String, dynamic>>[];
-    var offset = 0;
-    int? total;
     try {
-      while (true) {
-        final page = await api.getExercises(offset: offset, limit: pageSize);
-        if (page.offset != offset || (total != null && total != page.total)) {
-          throw const FormatException(
-            'Exercise catalog pages changed mid-read.',
-          );
-        }
-        total = page.total;
-        items.addAll(page.items.map(_serializeItem));
-        offset += page.items.length;
-        if (offset >= page.total) break;
-        if (page.items.isEmpty) {
-          throw const FormatException('Exercise catalog is incomplete.');
-        }
-      }
-      if (items.length != total) {
-        throw const FormatException('Exercise catalog is incomplete.');
-      }
+      final items = await _fetchAllItems();
       final exercises = _toDomain(items);
       lastLoadWasStale = false;
       lastLoadedAtUtc = DateTime.now().toUtc();
@@ -62,6 +41,30 @@ class ApiExerciseCatalogProvider implements ExerciseCatalogProvider {
       lastLoadedAtUtc = cached.$1;
       return List.unmodifiable(_toDomain(cached.$2));
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAllItems() async {
+    const pageSize = 100;
+    final items = <Map<String, dynamic>>[];
+    var offset = 0;
+    int? total;
+    while (true) {
+      final page = await api.getExercises(offset: offset, limit: pageSize);
+      if (page.offset != offset || (total != null && total != page.total)) {
+        throw const FormatException('Exercise catalog pages changed mid-read.');
+      }
+      total = page.total;
+      items.addAll(page.items.map(_serializeItem));
+      offset += page.items.length;
+      if (offset >= page.total) break;
+      if (page.items.isEmpty) {
+        throw const FormatException('Exercise catalog is incomplete.');
+      }
+    }
+    if (items.length != total) {
+      throw const FormatException('Exercise catalog is incomplete.');
+    }
+    return items;
   }
 
   Future<(DateTime, List<Map<String, dynamic>>)?> _readCache() async {

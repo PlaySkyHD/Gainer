@@ -87,13 +87,7 @@ class _SyncScreenState extends State<SyncScreen> {
             const SizedBox(height: 28),
             _sectionTitle(context, 'Sync-Konflikte'),
             const SizedBox(height: 8),
-            if (_model.isLoading)
-              const Center(child: CupertinoActivityIndicator())
-            else if (_model.conflicts.isEmpty)
-              const _CardText('Keine ungelösten Konflikte.')
-            else
-              for (final conflict in _model.conflicts)
-                _conflictCard(context, conflict),
+            ..._conflictChildren(context),
             const SizedBox(height: 24),
             CupertinoButton(
               onPressed: _model.isBusy || _model.isLoading ? null : _model.load,
@@ -121,100 +115,127 @@ class _SyncScreenState extends State<SyncScreen> {
                 : _confirmAndBegin,
             child: const Text('Dieses Gerät ablösen'),
           ),
-        ] else if (pending.phase == 'sourceBeginPending') ...[
-          const _CardText(
-            'Die Anfrage wird sicher fortgesetzt. Schreibzugriffe bleiben bis zum Abschluss angehalten.',
-          ),
-          CupertinoButton.filled(
-            onPressed: !_model.isOnline || _model.isBusy ? null : _begin,
-            child: const Text('Übergabe fortsetzen'),
-          ),
-        ] else if (pending.phase == 'sourceBegan') ...[
-          _handoverCodeCard(context, pending),
-          const SizedBox(height: 8),
-          CupertinoButton(
-            onPressed: !_model.isOnline || _model.isBusy
-                ? null
-                : _confirmAndCancel,
-            child: const Text('Übergabe abbrechen'),
-          ),
-        ] else if (pending.phase == 'targetCompletePending') ...[
-          _CardText(
-            pending.expiresAtUtc?.isBefore(DateTime.now().toUtc()) ?? false
-                ? 'Die gespeicherte Übernahme ist abgelaufen. Du kannst sie erneut mit denselben Daten abgleichen oder dieses Gerät nach einer Serverprüfung lokal freigeben.'
-                : 'Die Übernahme ist gespeichert und kann nach einem Abbruch oder Neustart wiederholt werden.',
-          ),
-          CupertinoButton.filled(
-            onPressed: !_model.isOnline || _model.isBusy
-                ? null
-                : _model.resumeTargetHandover,
-            child: const Text('Übernahme fortsetzen'),
-          ),
-          if (pending.expiresAtUtc?.isBefore(DateTime.now().toUtc()) ?? false)
-            CupertinoButton(
-              onPressed: !_model.isOnline || _model.isBusy
-                  ? null
-                  : _model.recoverExpiredTargetHandover,
-              child: const Text('Nach Serverprüfung lokal freigeben'),
-            ),
-        ] else ...[
-          const _CardText(
-            'Für dieses Gerät liegt ein Übergabeschritt vor, den die App nicht sicher zuordnen kann. Es wurden keine Schreibrechte geändert.',
-          ),
-        ],
-        if (pending == null) ...[
-          const SizedBox(height: 20),
-          _sectionTitle(context, 'Übergabe auf diesem Gerät annehmen'),
-          const SizedBox(height: 8),
-          const _CardText(
-            'Füge das Übergabepaket vom bisherigen Gerät ein. Es wird gegen dein angemeldetes Konto und diese API geprüft, bevor Schreibrechte wechseln.',
-          ),
-          const SizedBox(height: 8),
-          _bundlePasteField(),
-          const SizedBox(height: 8),
-          CupertinoButton(
-            onPressed: _model.isBusy ? null : _pasteAndParseTransferBundle,
-            child: const Text('Übergabedaten einfügen'),
-          ),
-          if (_parsedTransferBundle case final bundle?)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: _CardText(
-                'Quellgerät ${bundle.sourceClientId} · Revision ${bundle.frozenRevision} · Ablauf ${bundle.expiresAtUtc.toLocal()} · Einmalcode erkannt',
-              ),
-            ),
-          CupertinoButton(
-            onPressed: () => setState(
-              () => _showAdvancedHandoverFields = !_showAdvancedHandoverFields,
-            ),
-            child: Text(
-              _showAdvancedHandoverFields
-                  ? 'Manuelle Eingabe ausblenden'
-                  : 'Manuell eingeben (erweitert)',
-            ),
-          ),
-          if (_showAdvancedHandoverFields) ...[
-            _field(_handoverId, 'Übergabe-ID'),
-            _field(_oneTimeCode, 'Einmalcode', obscure: true),
-            _field(_sourceClientId, 'Quellgerät-ID'),
-            _field(
-              _revision,
-              'Eingefrorene Revision',
-              keyboard: TextInputType.number,
-            ),
-            _field(_expiresAtUtc, 'Ablaufzeit (UTC, ISO 8601)'),
-          ],
-          const SizedBox(height: 8),
-          CupertinoButton.filled(
-            onPressed: !_model.isOnline || _model.isBusy
-                ? null
-                : _confirmAndComplete,
-            child: const Text('Gerätewechsel bestätigen'),
-          ),
-        ],
+        ] else
+          ..._pendingHandoverChildren(context, pending),
+        if (pending == null) ..._receiveHandoverChildren(context),
       ],
     );
   }
+
+  List<Widget> _conflictChildren(BuildContext context) {
+    if (_model.isLoading) {
+      return const [Center(child: CupertinoActivityIndicator())];
+    }
+    if (_model.conflicts.isEmpty) {
+      return const [_CardText('Keine ungelösten Konflikte.')];
+    }
+    return [
+      for (final conflict in _model.conflicts) _conflictCard(context, conflict),
+    ];
+  }
+
+  List<Widget> _pendingHandoverChildren(
+    BuildContext context,
+    PendingHandoverRecord pending,
+  ) => switch (pending.phase) {
+    'sourceBeginPending' => [
+      const _CardText(
+        'Die Anfrage wird sicher fortgesetzt. Schreibzugriffe bleiben bis zum Abschluss angehalten.',
+      ),
+      CupertinoButton.filled(
+        onPressed: !_model.isOnline || _model.isBusy ? null : _begin,
+        child: const Text('Übergabe fortsetzen'),
+      ),
+    ],
+    'sourceBegan' => [
+      _handoverCodeCard(context, pending),
+      const SizedBox(height: 8),
+      CupertinoButton(
+        onPressed: !_model.isOnline || _model.isBusy ? null : _confirmAndCancel,
+        child: const Text('Übergabe abbrechen'),
+      ),
+    ],
+    'targetCompletePending' => _targetCompletePendingChildren(pending),
+    _ => [
+      const _CardText(
+        'Für dieses Gerät liegt ein Übergabeschritt vor, den die App nicht sicher zuordnen kann. Es wurden keine Schreibrechte geändert.',
+      ),
+    ],
+  };
+
+  List<Widget> _targetCompletePendingChildren(PendingHandoverRecord pending) {
+    final expired =
+        pending.expiresAtUtc?.isBefore(DateTime.now().toUtc()) ?? false;
+    return [
+      _CardText(
+        expired
+            ? 'Die gespeicherte Übernahme ist abgelaufen. Du kannst sie erneut mit denselben Daten abgleichen oder dieses Gerät nach einer Serverprüfung lokal freigeben.'
+            : 'Die Übernahme ist gespeichert und kann nach einem Abbruch oder Neustart wiederholt werden.',
+      ),
+      CupertinoButton.filled(
+        onPressed: !_model.isOnline || _model.isBusy
+            ? null
+            : _model.resumeTargetHandover,
+        child: const Text('Übernahme fortsetzen'),
+      ),
+      if (expired)
+        CupertinoButton(
+          onPressed: !_model.isOnline || _model.isBusy
+              ? null
+              : _model.recoverExpiredTargetHandover,
+          child: const Text('Nach Serverprüfung lokal freigeben'),
+        ),
+    ];
+  }
+
+  List<Widget> _receiveHandoverChildren(BuildContext context) => [
+    const SizedBox(height: 20),
+    _sectionTitle(context, 'Übergabe auf diesem Gerät annehmen'),
+    const SizedBox(height: 8),
+    const _CardText(
+      'Füge das Übergabepaket vom bisherigen Gerät ein. Es wird gegen dein angemeldetes Konto und diese API geprüft, bevor Schreibrechte wechseln.',
+    ),
+    const SizedBox(height: 8),
+    _bundlePasteField(),
+    const SizedBox(height: 8),
+    CupertinoButton(
+      onPressed: _model.isBusy ? null : _pasteAndParseTransferBundle,
+      child: const Text('Übergabedaten einfügen'),
+    ),
+    if (_parsedTransferBundle case final bundle?)
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: _CardText(
+          'Quellgerät ${bundle.sourceClientId} · Revision ${bundle.frozenRevision} · Ablauf ${bundle.expiresAtUtc.toLocal()} · Einmalcode erkannt',
+        ),
+      ),
+    CupertinoButton(
+      onPressed: () => setState(
+        () => _showAdvancedHandoverFields = !_showAdvancedHandoverFields,
+      ),
+      child: Text(
+        _showAdvancedHandoverFields
+            ? 'Manuelle Eingabe ausblenden'
+            : 'Manuell eingeben (erweitert)',
+      ),
+    ),
+    if (_showAdvancedHandoverFields) ...[
+      _field(_handoverId, 'Übergabe-ID'),
+      _field(_oneTimeCode, 'Einmalcode', obscure: true),
+      _field(_sourceClientId, 'Quellgerät-ID'),
+      _field(
+        _revision,
+        'Eingefrorene Revision',
+        keyboard: TextInputType.number,
+      ),
+      _field(_expiresAtUtc, 'Ablaufzeit (UTC, ISO 8601)'),
+    ],
+    const SizedBox(height: 8),
+    CupertinoButton.filled(
+      onPressed: !_model.isOnline || _model.isBusy ? null : _confirmAndComplete,
+      child: const Text('Gerätewechsel bestätigen'),
+    ),
+  ];
 
   Widget _handoverCodeCard(
     BuildContext context,
@@ -283,13 +304,7 @@ class _SyncScreenState extends State<SyncScreen> {
           children: [
             Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
-            Text(
-              value == null
-                  ? 'Nicht verfügbar'
-                  : secret
-                  ? '••••••••'
-                  : value,
-            ),
+            Text(_copyValueText(value, secret: secret)),
             if (secret && value != null)
               CupertinoButton(
                 padding: EdgeInsets.zero,
@@ -299,6 +314,11 @@ class _SyncScreenState extends State<SyncScreen> {
           ],
         ),
       );
+
+  String _copyValueText(String? value, {required bool secret}) {
+    if (value == null) return 'Nicht verfügbar';
+    return secret ? '••••••••' : value;
+  }
 
   Widget _conflictCard(BuildContext context, LocalConflictRecord conflict) {
     final detail = conflict.detail;
