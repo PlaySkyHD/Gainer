@@ -76,88 +76,12 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
                   ],
                 ),
               ),
-              if (review != null) ...[
-                _notice(
-                  context,
-                  'Prüfe Gewicht, Messzeit und Quelle. Erst bestätigte Einträge werden an den Gainer-Sync vorgemerkt.',
-                ),
-                if (review.samples.isEmpty)
-                  _dataCard(
-                    context,
-                    'Keine Werte im Zeitraum gefunden.',
-                    'Das bedeutet nicht automatisch, dass der Zugriff verweigert wurde.',
-                  ),
-                for (final sample in review.samples)
-                  _switchRow(
-                    context,
-                    title: '${sample.weightKilograms.toStringAsFixed(2)} kg',
-                    detail:
-                        '${_localTime(sample.measuredAtUtc)} · ${sample.sourceName}',
-                    value: vm.selectedProbeIds.contains(sample.uuid),
-                    onChanged: (value) => vm.selectSample(sample.uuid, value),
-                  ),
-                _switchRow(
-                  context,
-                  title: 'Ich bestätige, dass ausgewählte Check-ins zu meinem Gainer-Konto synchronisiert werden können.',
-                  value: vm.serverSyncNoticeAccepted,
-                  enabled: vm.selectedProbeIds.isNotEmpty,
-                  onChanged: vm.acceptServerSyncNotice,
-                ),
-                Row(
-                  children: [
-                    CupertinoButton(
-                      onPressed: vm.cancelReview,
-                      child: const Text('Prüfung abbrechen'),
-                    ),
-                    const Spacer(),
-                    Flexible(
-                      child: CupertinoButton.filled(
-                        onPressed:
-                            vm.isLoading ||
-                                !vm.serverSyncNoticeAccepted ||
-                                vm.selectedProbeIds.isEmpty
-                            ? null
-                            : _confirmImport,
-                        child: const Text(
-                          'Auswahl übernehmen',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              if (vm.lastResults.isNotEmpty) ...[
-                _heading(context, 'Importstatus'),
-                for (final result in vm.lastResults)
-                  _dataCard(
-                    context,
-                    _status(result.status),
-                    '${result.sample.weightKilograms.toStringAsFixed(2)} kg · ${_localTime(result.sample.measuredAtUtc)}',
-                  ),
-              ],
+              if (review != null) ..._reviewChildren(context, vm, review),
+              if (vm.lastResults.isNotEmpty)
+                ..._importStatusChildren(context, vm),
               if (vm.errorMessage != null)
                 _notice(context, vm.errorMessage!, isError: true),
-              _heading(context, 'Abgeschlossene Workouts exportieren'),
-              const Text(
-                'Nur serverbestätigte eigene Workouts werden angeboten. Es werden keine geschätzten Kalorien oder Pulswerte ergänzt.',
-              ),
-              if (vm.completedWorkouts.isEmpty)
-                _dataCard(
-                  context,
-                  'Keine serverbestätigten abgeschlossenen Workouts verfügbar.',
-                  '',
-                ),
-              for (final workout in vm.completedWorkouts)
-                _actionCard(
-                  context,
-                  title: workout.value.templateNameSnapshot,
-                  detail:
-                      '${_localTime(DateTime.parse(workout.value.startedAtUtc))} · ${_localTime(DateTime.parse(workout.value.completedAtUtc!))}',
-                  actionLabel: 'Workout nach Apple Health exportieren',
-                  icon: CupertinoIcons.arrow_up_doc,
-                  onPressed: vm.isLoading ? null : () => _export(workout),
-                ),
+              ..._workoutExportChildren(context, vm),
               if (vm.isLoading)
                 const Padding(
                   padding: EdgeInsets.all(12),
@@ -169,6 +93,100 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
       );
     },
   );
+
+  List<Widget> _reviewChildren(
+    BuildContext context,
+    HealthReviewViewModel vm,
+    HealthWeightReview review,
+  ) => [
+    _notice(
+      context,
+      'Prüfe Gewicht, Messzeit und Quelle. Erst bestätigte Einträge werden an den Gainer-Sync vorgemerkt.',
+    ),
+    if (review.samples.isEmpty)
+      _dataCard(
+        context,
+        'Keine Werte im Zeitraum gefunden.',
+        'Das bedeutet nicht automatisch, dass der Zugriff verweigert wurde.',
+      ),
+    for (final sample in review.samples)
+      _switchRow(
+        context,
+        title: '${sample.weightKilograms.toStringAsFixed(2)} kg',
+        detail: '${_localTime(sample.measuredAtUtc)} · ${sample.sourceName}',
+        value: vm.selectedProbeIds.contains(sample.uuid),
+        onChanged: (value) => vm.selectSample(sample.uuid, value),
+      ),
+    _switchRow(
+      context,
+      title: 'Ich bestätige, dass ausgewählte Check-ins zu meinem Gainer-Konto synchronisiert werden können.',
+      value: vm.serverSyncNoticeAccepted,
+      enabled: vm.selectedProbeIds.isNotEmpty,
+      onChanged: vm.acceptServerSyncNotice,
+    ),
+    Row(
+      children: [
+        CupertinoButton(
+          onPressed: vm.cancelReview,
+          child: const Text('Prüfung abbrechen'),
+        ),
+        const Spacer(),
+        Flexible(
+          child: CupertinoButton.filled(
+            onPressed:
+                vm.isLoading ||
+                    !vm.serverSyncNoticeAccepted ||
+                    vm.selectedProbeIds.isEmpty
+                ? null
+                : _confirmImport,
+            child: const Text(
+              'Auswahl übernehmen',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ],
+    ),
+  ];
+
+  List<Widget> _importStatusChildren(
+    BuildContext context,
+    HealthReviewViewModel vm,
+  ) => [
+    _heading(context, 'Importstatus'),
+    for (final result in vm.lastResults)
+      _dataCard(
+        context,
+        _status(result.status),
+        '${result.sample.weightKilograms.toStringAsFixed(2)} kg · ${_localTime(result.sample.measuredAtUtc)}',
+      ),
+  ];
+
+  List<Widget> _workoutExportChildren(
+    BuildContext context,
+    HealthReviewViewModel vm,
+  ) => [
+    _heading(context, 'Abgeschlossene Workouts exportieren'),
+    const Text(
+      'Nur serverbestätigte eigene Workouts werden angeboten. Es werden keine geschätzten Kalorien oder Pulswerte ergänzt.',
+    ),
+    if (vm.completedWorkouts.isEmpty)
+      _dataCard(
+        context,
+        'Keine serverbestätigten abgeschlossenen Workouts verfügbar.',
+        '',
+      ),
+    for (final workout in vm.completedWorkouts)
+      _actionCard(
+        context,
+        title: workout.value.templateNameSnapshot,
+        detail:
+            '${_localTime(DateTime.parse(workout.value.startedAtUtc))} · ${_localTime(DateTime.parse(workout.value.completedAtUtc!))}',
+        actionLabel: 'Workout nach Apple Health exportieren',
+        icon: CupertinoIcons.arrow_up_doc,
+        onPressed: vm.isLoading ? null : () => _export(workout),
+      ),
+  ];
 
   Future<void> _confirmImport() async {
     final results = await widget.viewModel.confirmImport();

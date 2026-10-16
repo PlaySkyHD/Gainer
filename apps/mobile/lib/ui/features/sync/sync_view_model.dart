@@ -90,14 +90,14 @@ class SyncViewModel extends ChangeNotifier {
 
   HandoverTransferBundle parseTransferBundle(String encoded) {
     if (encoded.length > 8192) {
-      throw const FormatException('Invalid transfer bundle.');
+      throw const FormatException(_invalidTransferBundleMessage);
     }
     final decoded = jsonDecode(encoded);
     if (decoded is! Map<String, dynamic> ||
         decoded.length != 9 ||
         decoded['kind'] != 'gainer-sync-handover' ||
         decoded['version'] != 1) {
-      throw const FormatException('Invalid transfer bundle.');
+      throw const FormatException(_invalidTransferBundleMessage);
     }
     final accountId = _bundleString(decoded, 'accountId', maxLength: 64);
     final apiOrigin = _bundleString(decoded, 'apiOrigin', maxLength: 512);
@@ -129,7 +129,7 @@ class SyncViewModel extends ChangeNotifier {
         !explicitUtc ||
         !expiry.isAfter(DateTime.now().toUtc()) ||
         expiry.difference(DateTime.now().toUtc()) > const Duration(hours: 24)) {
-      throw const FormatException('Invalid transfer bundle.');
+      throw const FormatException(_invalidTransferBundleMessage);
     }
     return HandoverTransferBundle(
       accountId: accountId,
@@ -315,6 +315,7 @@ class SyncViewModel extends ChangeNotifier {
 }
 
 const int _maxJavaScriptSafeInteger = 9007199254740991;
+const _invalidTransferBundleMessage = 'Invalid transfer bundle.';
 
 class HandoverTransferBundle {
   const HandoverTransferBundle({
@@ -343,7 +344,7 @@ String _bundleString(
 }) {
   final result = value[key];
   if (result is! String || result.isEmpty || result.length > maxLength) {
-    throw const FormatException('Invalid transfer bundle.');
+    throw const FormatException(_invalidTransferBundleMessage);
   }
   return result;
 }

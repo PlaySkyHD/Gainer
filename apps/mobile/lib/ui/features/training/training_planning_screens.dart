@@ -5,6 +5,8 @@ import '../../../domain/models/training/training.dart';
 import '../../core/theme.dart';
 import 'training_view_model.dart';
 
+const _customExerciseLabel = 'Eigene Übung';
+
 class TrainingExerciseLibraryScreen extends StatefulWidget {
   const TrainingExerciseLibraryScreen({required this.viewModel, super.key});
 
@@ -30,40 +32,9 @@ class _TrainingExerciseLibraryScreenState
   @override
   Widget build(BuildContext context) {
     final model = widget.viewModel;
-    final planning = model.planning;
-    final exercises = <TrainingExerciseSummary>[
-      for (final entry in planning?.exercises ?? const <ExerciseCatalogEntry>[])
-        TrainingExerciseSummary(id: entry.id, value: entry, isCustom: false),
-      for (final entry in planning?.customExercises ?? const [])
-        if (!entry.isArchived)
-          TrainingExerciseSummary(
-            id: entry.id,
-            value: entry.value,
-            isCustom: true,
-          ),
-    ];
-    final groups =
-        exercises
-            .map((item) => item.value.muscleGroup?.trim())
-            .whereType<String>()
-            .where((item) => item.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
-    final query = _search.text.trim().toLowerCase();
-    final matches = exercises.where((item) {
-      final value = item.value;
-      final text = [
-        value.name,
-        value.description,
-        value.targetMuscle,
-        value.muscleGroup,
-        value.equipment,
-      ].whereType<String>().join(' ').toLowerCase();
-      return (_source == 'all' || (_source == 'custom') == item.isCustom) &&
-          (_muscleGroup == null || value.muscleGroup == _muscleGroup) &&
-          (query.isEmpty || text.contains(query));
-    }).toList();
+    final exercises = _exerciseSummaries(model.planning);
+    final groups = _muscleGroups(exercises);
+    final matches = _matchingExercises(exercises);
 
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(
@@ -114,27 +85,7 @@ class _TrainingExerciseLibraryScreenState
                   ),
                   if (groups.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    SizedBox(
-                      height: 48,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          _FilterChip(
-                            label: 'Alle Muskelgruppen',
-                            selected: _muscleGroup == null,
-                            onPressed: () =>
-                                setState(() => _muscleGroup = null),
-                          ),
-                          for (final group in groups)
-                            _FilterChip(
-                              label: group,
-                              selected: _muscleGroup == group,
-                              onPressed: () =>
-                                  setState(() => _muscleGroup = group),
-                            ),
-                        ],
-                      ),
-                    ),
+                    _muscleGroupFilters(groups),
                   ],
                   const SizedBox(height: 18),
                   Row(
@@ -154,30 +105,14 @@ class _TrainingExerciseLibraryScreenState
                         color: GainerTheme.actionColor,
                         onPressed: () => _editExercise(context, null),
                         child: const Text(
-                          'Eigene Übung',
+                          _customExerciseLabel,
                           style: TextStyle(color: CupertinoColors.white),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  if (matches.isEmpty)
-                    const _PlanningEmptyCard(
-                      title: 'Keine passenden Übungen',
-                      subtitle: 'Ändere deine Suche oder wähle eine andere Muskelgruppe.',
-                    )
-                  else
-                    for (final item in matches)
-                      _ExerciseCard(
-                        key: ValueKey('training-exercise-${item.id}'),
-                        summary: item,
-                        onEdit: item.isCustom
-                            ? () => _editExercise(context, item)
-                            : null,
-                        onArchive: item.isCustom
-                            ? () => _archiveExercise(context, item)
-                            : null,
-                      ),
+                  ..._exerciseListChildren(context, matches),
                 ],
               ),
             ),
@@ -185,6 +120,79 @@ class _TrainingExerciseLibraryScreenState
         ),
       ),
     );
+  }
+
+  List<String> _muscleGroups(List<TrainingExerciseSummary> exercises) =>
+      exercises
+          .map((item) => item.value.muscleGroup?.trim())
+          .whereType<String>()
+          .where((item) => item.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
+
+  List<TrainingExerciseSummary> _matchingExercises(
+    List<TrainingExerciseSummary> exercises,
+  ) {
+    final query = _search.text.trim().toLowerCase();
+    return exercises.where((item) {
+      final value = item.value;
+      final text = [
+        value.name,
+        value.description,
+        value.targetMuscle,
+        value.muscleGroup,
+        value.equipment,
+      ].whereType<String>().join(' ').toLowerCase();
+      return (_source == 'all' || (_source == 'custom') == item.isCustom) &&
+          (_muscleGroup == null || value.muscleGroup == _muscleGroup) &&
+          (query.isEmpty || text.contains(query));
+    }).toList();
+  }
+
+  Widget _muscleGroupFilters(List<String> groups) => SizedBox(
+    height: 48,
+    child: ListView(
+      scrollDirection: Axis.horizontal,
+      children: [
+        _FilterChip(
+          label: 'Alle Muskelgruppen',
+          selected: _muscleGroup == null,
+          onPressed: () => setState(() => _muscleGroup = null),
+        ),
+        for (final group in groups)
+          _FilterChip(
+            label: group,
+            selected: _muscleGroup == group,
+            onPressed: () => setState(() => _muscleGroup = group),
+          ),
+      ],
+    ),
+  );
+
+  List<Widget> _exerciseListChildren(
+    BuildContext context,
+    List<TrainingExerciseSummary> matches,
+  ) {
+    if (matches.isEmpty) {
+      return const [
+        _PlanningEmptyCard(
+          title: 'Keine passenden Übungen',
+          subtitle: 'Ändere deine Suche oder wähle eine andere Muskelgruppe.',
+        ),
+      ];
+    }
+    return [
+      for (final item in matches)
+        _ExerciseCard(
+          key: ValueKey('training-exercise-${item.id}'),
+          summary: item,
+          onEdit: item.isCustom ? () => _editExercise(context, item) : null,
+          onArchive: item.isCustom
+              ? () => _archiveExercise(context, item)
+              : null,
+        ),
+    ];
   }
 
   Future<void> _editExercise(
@@ -278,7 +286,7 @@ class _TrainingExerciseEditorScreenState
   Widget build(BuildContext context) => CupertinoPageScaffold(
     navigationBar: CupertinoNavigationBar(
       middle: Text(
-        widget.exercise == null ? 'Eigene Übung' : 'Übung bearbeiten',
+        widget.exercise == null ? _customExerciseLabel : 'Übung bearbeiten',
       ),
       trailing: CupertinoButton(
         key: const ValueKey('training-cancel-exercise'),
@@ -453,32 +461,7 @@ class _TrainingTemplateLibraryScreenState
                       ),
                     ],
                   ),
-                  if (active.isEmpty)
-                    _PlanningEmptyCard(
-                      title: 'Noch keine Vorlagen',
-                      subtitle: 'Erstelle eine Einheit und füge passende Übungen hinzu.',
-                      actionLabel: 'Vorlage erstellen',
-                      onPressed: () => _openEditor(context, null),
-                    )
-                  else
-                    for (final template in active)
-                      _TemplateCard(
-                        key: ValueKey('training-template-${template.id}'),
-                        template: template,
-                        isNext: template.id == nextId,
-                        onEdit: () => _openEditor(context, template),
-                        onStart: model.isSaving
-                            ? null
-                            : () async {
-                                await model.start(template.id);
-                                if (context.mounted &&
-                                    model.runningWorkout != null) {
-                                  Navigator.of(context)
-                                      .popUntil((route) => route.isFirst);
-                                }
-                              },
-                        onArchive: () => _archiveTemplate(context, template),
-                      ),
+                  ..._templateListChildren(context, model, active, nextId),
                   const SizedBox(height: 18),
                   Text(
                     'Rotation',
@@ -491,26 +474,7 @@ class _TrainingTemplateLibraryScreenState
                     'Die Reihenfolge wechselt nach jeder abgeschlossenen Einheit weiter.',
                     style: TextStyle(color: GainerTheme.secondaryText(context)),
                   ),
-                  if (_rotationIds.isEmpty)
-                    const _PlanningEmptyCard(
-                      title: 'Rotation noch leer',
-                      subtitle: 'Füge unten Vorlagen hinzu. Ohne Rotation kannst du jede Vorlage direkt starten.',
-                    )
-                  else
-                    for (var index = 0; index < _rotationIds.length; index++)
-                      _RotationRow(
-                        key: ValueKey(
-                          'training-rotation-${_rotationIds[index]}',
-                        ),
-                        position: index + 1,
-                        name: _templateName(templates, _rotationIds[index]),
-                        canMoveUp: index > 0,
-                        canMoveDown: index < _rotationIds.length - 1,
-                        onUp: () => setState(() => _move(index, index - 1)),
-                        onDown: () => setState(() => _move(index, index + 1)),
-                        onRemove: () =>
-                            setState(() => _rotationIds.removeAt(index)),
-                      ),
+                  ..._rotationChildren(context, templates),
                   if (active.any((item) => !_rotationIds.contains(item.id)))
                     CupertinoButton(
                       key: const ValueKey('training-rotation-add'),
@@ -518,38 +482,10 @@ class _TrainingTemplateLibraryScreenState
                       onPressed: () => _addToRotation(context, active),
                       child: const Text('Vorlage zur Rotation hinzufügen'),
                     ),
-                  CupertinoButton(
-                    key: const ValueKey('training-save-rotation'),
-                    minimumSize: const Size.square(52),
-                    color: GainerTheme.actionColor,
-                    onPressed: model.isSaving ? null : _saveRotation,
-                    child: Text(
-                      'Rotation speichern',
-                      style: TextStyle(
-                        color: model.isSaving
-                            ? GainerTheme.secondaryText(context)
-                            : CupertinoColors.white,
-                      ),
-                    ),
-                  ),
+                  _saveRotationButton(context, model),
                   if (model.errorMessage case final message?)
                     _FormNotice(message: message),
-                  if (archived.isNotEmpty) ...[
-                    const SizedBox(height: 22),
-                    Text(
-                      'Archiviert',
-                      style: CupertinoTheme.of(context)
-                          .textTheme
-                          .navTitleTextStyle,
-                    ),
-                    for (final item in archived)
-                      _PlanningRow(
-                        title: item.value.name,
-                        subtitle:
-                            '${item.value.items.length} Übungen · archiviert',
-                        muted: true,
-                      ),
-                  ],
+                  if (archived.isNotEmpty) ..._archivedRows(context, archived),
                 ],
               ),
             ),
@@ -558,6 +494,108 @@ class _TrainingTemplateLibraryScreenState
       ),
     );
   }
+
+  List<Widget> _templateListChildren(
+    BuildContext context,
+    TrainingViewModel model,
+    List<({String id, TrainingTemplate value})> active,
+    String? nextId,
+  ) {
+    if (active.isEmpty) {
+      return [
+        _PlanningEmptyCard(
+          title: 'Noch keine Vorlagen',
+          subtitle: 'Erstelle eine Einheit und füge passende Übungen hinzu.',
+          actionLabel: 'Vorlage erstellen',
+          onPressed: () => _openEditor(context, null),
+        ),
+      ];
+    }
+    return [
+      for (final template in active)
+        _TemplateCard(
+          key: ValueKey('training-template-${template.id}'),
+          template: template,
+          isNext: template.id == nextId,
+          onEdit: () => _openEditor(context, template),
+          onStart: model.isSaving
+              ? null
+              : () => _startFromTemplate(context, model, template.id),
+          onArchive: () => _archiveTemplate(context, template),
+        ),
+    ];
+  }
+
+  Future<void> _startFromTemplate(
+    BuildContext context,
+    TrainingViewModel model,
+    String templateId,
+  ) async {
+    await model.start(templateId);
+    if (context.mounted && model.runningWorkout != null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  }
+
+  List<Widget> _rotationChildren(
+    BuildContext context,
+    List<({String id, TrainingTemplate value})> templates,
+  ) {
+    if (_rotationIds.isEmpty) {
+      return const [
+        _PlanningEmptyCard(
+          title: 'Rotation noch leer',
+          subtitle: 'Füge unten Vorlagen hinzu. Ohne Rotation kannst du jede Vorlage direkt starten.',
+        ),
+      ];
+    }
+    return [
+      for (var index = 0; index < _rotationIds.length; index++)
+        _RotationRow(
+          key: ValueKey('training-rotation-${_rotationIds[index]}'),
+          position: index + 1,
+          name: _templateName(templates, _rotationIds[index]),
+          canMoveUp: index > 0,
+          canMoveDown: index < _rotationIds.length - 1,
+          onUp: () => setState(() => _move(index, index - 1)),
+          onDown: () => setState(() => _move(index, index + 1)),
+          onRemove: () => setState(() => _rotationIds.removeAt(index)),
+        ),
+    ];
+  }
+
+  Widget _saveRotationButton(BuildContext context, TrainingViewModel model) =>
+      CupertinoButton(
+        key: const ValueKey('training-save-rotation'),
+        minimumSize: const Size.square(52),
+        color: GainerTheme.actionColor,
+        onPressed: model.isSaving ? null : _saveRotation,
+        child: Text(
+          'Rotation speichern',
+          style: TextStyle(
+            color: model.isSaving
+                ? GainerTheme.secondaryText(context)
+                : CupertinoColors.white,
+          ),
+        ),
+      );
+
+  List<Widget> _archivedRows(
+    BuildContext context,
+    List<({String id, TrainingTemplate value})> archived,
+  ) => [
+    const SizedBox(height: 22),
+    Text(
+      'Archiviert',
+      style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+    ),
+    for (final item in archived)
+      _PlanningRow(
+        title: item.value.name,
+        subtitle: '${item.value.items.length} Übungen · archiviert',
+        muted: true,
+      ),
+  ];
 
   Future<void> _openEditor(
     BuildContext context,
@@ -686,18 +724,7 @@ class _TrainingTemplateEditorScreenState
   @override
   Widget build(BuildContext context) {
     final model = widget.viewModel;
-    final planning = model.planning;
-    final exercises = <TrainingExerciseSummary>[
-      for (final entry in planning?.exercises ?? const <ExerciseCatalogEntry>[])
-        TrainingExerciseSummary(id: entry.id, value: entry, isCustom: false),
-      for (final entry in planning?.customExercises ?? const [])
-        if (!entry.isArchived)
-          TrainingExerciseSummary(
-            id: entry.id,
-            value: entry.value,
-            isCustom: true,
-          ),
-    ];
+    final exercises = _exerciseSummaries(model.planning);
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: Text(
@@ -751,38 +778,7 @@ class _TrainingTemplateEditorScreenState
                         .textTheme
                         .navTitleTextStyle,
                   ),
-                  if (_items.isEmpty)
-                    const _PlanningEmptyCard(
-                      title: 'Füge zuerst eine Übung hinzu',
-                      subtitle: 'Du kannst Reihenfolge, Sätze und Wiederholungsbereich jederzeit ändern.',
-                    ),
-                  for (var index = 0; index < _items.length; index++)
-                    _TemplateDraftCard(
-                      key: ValueKey(
-                        'training-template-item-${_items[index].id}',
-                      ),
-                      item: _items[index],
-                      position: index,
-                      exerciseName: _exerciseName(
-                        exercises,
-                        _items[index].exerciseId,
-                      ),
-                      onChooseExercise: exercises.isEmpty
-                          ? null
-                          : () => _chooseExercise(
-                              context,
-                              exercises,
-                              _items[index],
-                            ),
-                      onMoveUp: index == 0
-                          ? null
-                          : () => setState(() => _move(index, index - 1)),
-                      onMoveDown: index == _items.length - 1
-                          ? null
-                          : () => setState(() => _move(index, index + 1)),
-                      onRemove: () =>
-                          setState(() => _items.removeAt(index).dispose()),
-                    ),
+                  ..._itemCards(context, exercises),
                   CupertinoButton(
                     key: const ValueKey('training-add-template-exercise'),
                     minimumSize: const Size.square(48),
@@ -794,26 +790,7 @@ class _TrainingTemplateEditorScreenState
                   if (model.errorMessage case final message?)
                     _FormNotice(message: message),
                   const SizedBox(height: 12),
-                  CupertinoButton(
-                    key: const ValueKey('training-create-template'),
-                    minimumSize: const Size.square(52),
-                    color: GainerTheme.actionColor,
-                    onPressed: _saving || _items.isEmpty ? null : _save,
-                    child: _saving
-                        ? CupertinoActivityIndicator(
-                            color: GainerTheme.secondaryText(context),
-                          )
-                        : Text(
-                            widget.template == null
-                                ? 'Vorlage speichern'
-                                : 'Änderungen speichern',
-                            style: TextStyle(
-                              color: _items.isEmpty
-                                  ? GainerTheme.secondaryText(context)
-                                  : CupertinoColors.white,
-                            ),
-                          ),
-                  ),
+                  _saveButton(context),
                 ],
               ),
             ),
@@ -822,6 +799,53 @@ class _TrainingTemplateEditorScreenState
       ),
     );
   }
+
+  List<Widget> _itemCards(
+    BuildContext context,
+    List<TrainingExerciseSummary> exercises,
+  ) => [
+    if (_items.isEmpty)
+      const _PlanningEmptyCard(
+        title: 'Füge zuerst eine Übung hinzu',
+        subtitle: 'Du kannst Reihenfolge, Sätze und Wiederholungsbereich jederzeit ändern.',
+      ),
+    for (var index = 0; index < _items.length; index++)
+      _TemplateDraftCard(
+        key: ValueKey('training-template-item-${_items[index].id}'),
+        item: _items[index],
+        position: index,
+        exerciseName: _exerciseName(exercises, _items[index].exerciseId),
+        onChooseExercise: exercises.isEmpty
+            ? null
+            : () => _chooseExercise(context, exercises, _items[index]),
+        onMoveUp: index == 0
+            ? null
+            : () => setState(() => _move(index, index - 1)),
+        onMoveDown: index == _items.length - 1
+            ? null
+            : () => setState(() => _move(index, index + 1)),
+        onRemove: () => setState(() => _items.removeAt(index).dispose()),
+      ),
+  ];
+
+  Widget _saveButton(BuildContext context) => CupertinoButton(
+    key: const ValueKey('training-create-template'),
+    minimumSize: const Size.square(52),
+    color: GainerTheme.actionColor,
+    onPressed: _saving || _items.isEmpty ? null : _save,
+    child: _saving
+        ? CupertinoActivityIndicator(color: GainerTheme.secondaryText(context))
+        : Text(
+            widget.template == null
+                ? 'Vorlage speichern'
+                : 'Änderungen speichern',
+            style: TextStyle(
+              color: _items.isEmpty
+                  ? GainerTheme.secondaryText(context)
+                  : CupertinoColors.white,
+            ),
+          ),
+  );
 
   String _exerciseName(List<TrainingExerciseSummary> exercises, String id) =>
       _firstOrNull(
@@ -1227,6 +1251,16 @@ class TrainingExerciseSummary {
   final bool isCustom;
 }
 
+List<TrainingExerciseSummary> _exerciseSummaries(
+  TrainingPlanningSnapshot? planning,
+) => [
+  for (final entry in planning?.exercises ?? const <ExerciseCatalogEntry>[])
+    TrainingExerciseSummary(id: entry.id, value: entry, isCustom: false),
+  for (final entry in planning?.customExercises ?? const [])
+    if (!entry.isArchived)
+      TrainingExerciseSummary(id: entry.id, value: entry.value, isCustom: true),
+];
+
 T? _firstOrNull<T>(Iterable<T> values) {
   final iterator = values.iterator;
   return iterator.moveNext() ? iterator.current : null;
@@ -1286,7 +1320,7 @@ class _ExerciseCard extends StatelessWidget {
           [
                 summary.value.muscleGroup,
                 summary.value.equipment,
-                summary.isCustom ? 'Eigene Übung' : 'Katalog',
+                summary.isCustom ? _customExerciseLabel : 'Katalog',
               ]
               .whereType<String>()
               .where((item) => item.trim().isNotEmpty)
