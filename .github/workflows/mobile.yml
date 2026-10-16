@@ -3,8 +3,16 @@ name: Mobile CI
 on:
   push:
     branches: [main]
+    paths:
+      - apps/mobile/**
+      - scripts/Verify-Mobile.ps1
+      - .github/workflows/mobile.yml
   pull_request:
     branches: [main]
+    paths:
+      - apps/mobile/**
+      - scripts/Verify-Mobile.ps1
+      - .github/workflows/mobile.yml
   workflow_dispatch:
     inputs:
       build_signed_ipa:
