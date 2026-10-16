@@ -38,10 +38,7 @@ public sealed record SaveWorkoutRotationMutation : ITypedMutation<WorkoutRotatio
         {
             throw new ArgumentException("The rotation identifier cannot be empty.", nameof(rotationId));
         }
-        if (baseVersion < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(baseVersion));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(baseVersion);
         return new(metadata, rotationId, baseVersion, entries);
     }
 }
@@ -72,12 +69,15 @@ public sealed record AdvanceWorkoutRotationMutation : ITypedMutation<WorkoutRota
         MutationMetadata metadata,
         Guid rotationId,
         long baseVersion,
-        Guid completedTemplateId) =>
-        rotationId == Guid.Empty || completedTemplateId == Guid.Empty
-            ? throw new ArgumentException("Rotation and template identifiers cannot be empty.")
-            : baseVersion <= 0
-                ? throw new ArgumentOutOfRangeException(nameof(baseVersion))
-                : new(metadata, rotationId, baseVersion, completedTemplateId);
+        Guid completedTemplateId)
+    {
+        if (rotationId == Guid.Empty || completedTemplateId == Guid.Empty)
+        {
+            throw new ArgumentException("Rotation and template identifiers cannot be empty.");
+        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
+        return new(metadata, rotationId, baseVersion, completedTemplateId);
+    }
 }
 
 public sealed record WorkoutRotationSnapshot(

@@ -39,11 +39,11 @@ public sealed class IdentitySecurityTests
 
                 Assert.AreEqual(HttpStatusCode.NoContent, signInResponse.StatusCode);
                 string setCookie = signInResponse.Headers.GetValues("Set-Cookie").Single();
-                StringAssert.StartsWith(setCookie, $"{GainerIdentityOptions.ApplicationCookieName}=");
-                StringAssert.Contains(setCookie, "; path=/", StringComparison.OrdinalIgnoreCase);
-                StringAssert.Contains(setCookie, "; secure", StringComparison.OrdinalIgnoreCase);
-                StringAssert.Contains(setCookie, "; httponly", StringComparison.OrdinalIgnoreCase);
-                StringAssert.Contains(setCookie, "; samesite=lax", StringComparison.OrdinalIgnoreCase);
+                Assert.StartsWith($"{GainerIdentityOptions.ApplicationCookieName}=", setCookie);
+                Assert.Contains("; path=/", setCookie, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("; secure", setCookie, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("; httponly", setCookie, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("; samesite=lax", setCookie, StringComparison.OrdinalIgnoreCase);
                 Assert.IsFalse(setCookie.Contains("domain=", StringComparison.OrdinalIgnoreCase));
                 cookie = setCookie.Split(';', 2)[0];
 

@@ -6,9 +6,10 @@ using Gainer.ServiceDefaults;
 
 if (args.Contains("--health-check", StringComparer.Ordinal))
 {
+    const string defaultHealthCheckUrl = "http://127.0.0.1:8080/health/live";
     using var healthClient = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
     using HttpResponseMessage response = await healthClient.GetAsync(
-        Environment.GetEnvironmentVariable("GAINER_HEALTHCHECK_URL") ?? "http://127.0.0.1:8080/health/live");
+        Environment.GetEnvironmentVariable("GAINER_HEALTHCHECK_URL") ?? defaultHealthCheckUrl);
     Environment.ExitCode = response.IsSuccessStatusCode ? 0 : 1;
     return;
 }
@@ -27,13 +28,16 @@ if (InitialAccountOperatorProvisioning.IsRequested(args))
     IInitialAccountOperatorProvisioner provisioner = scope.ServiceProvider
         .GetRequiredService<IInitialAccountOperatorProvisioner>();
     InitialAccountOperatorProvisioningResult result = await provisioner.ProvisionAsync();
-    app.Logger.LogInformation("Initial account-operator provisioning completed with result {Result}.", result);
+    if (app.Logger.IsEnabled(LogLevel.Information))
+    {
+        app.Logger.LogInformation("Initial account-operator provisioning completed with result {Result}.", result);
+    }
     return;
 }
 
 app.MapGainerApi();
 app.MapGainerHealthEndpoints();
 
-app.Run();
+await app.RunAsync();
 
 public partial class Program;

@@ -107,7 +107,7 @@ public sealed class DailyCheckInMutationHandler(
         decimal? value,
         string field,
         TryCreateDecimal<T> tryCreate,
-        IDictionary<string, string> errors)
+        Dictionary<string, string> errors)
     {
         if (value is { } number && !tryCreate(number, out _))
         {

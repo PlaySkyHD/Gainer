@@ -8,6 +8,8 @@ namespace Gainer.UnitTests;
 [TestClass]
 public sealed class SyncContractTests
 {
+    private static readonly int[] ExpectedProtocolWindow = [1, 2];
+
     [TestMethod]
     public void ClientRequestsCannotSelectAUserIdentity()
     {
@@ -65,7 +67,7 @@ public sealed class SyncContractTests
     public void NutritionExtensionKeepsExistingProtocolWindowCompatible()
     {
         CollectionAssert.AreEqual(
-            new[] { 1, 2 },
+            ExpectedProtocolWindow,
             new[] { SyncProtocol.PreviousVersion, SyncProtocol.CurrentVersion });
         var nutrition = new ResourceVersionRequest("NutritionDay", Guid.NewGuid(), 0);
         Assert.HasCount(0, Validate(nutrition));

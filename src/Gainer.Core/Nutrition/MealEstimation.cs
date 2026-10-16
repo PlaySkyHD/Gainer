@@ -55,7 +55,7 @@ public sealed record MealEstimateComponentDraft(
             fatGrams, confidence, normalizedGaps);
     }
 
-    private static void ValidateOptional(decimal? value, string field, IDictionary<string, string> errors)
+    private static void ValidateOptional(decimal? value, string field, Dictionary<string, string> errors)
     {
         if (value is < 0m or > NutritionLimits.MaxDailyMacroGrams)
             errors[field] = $"{field} is outside the allowed range.";

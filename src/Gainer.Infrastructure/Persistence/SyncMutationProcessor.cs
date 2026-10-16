@@ -10,6 +10,7 @@ using Gainer.Core.Sync;
 using Gainer.Core.Training;
 using Gainer.Core.Nutrition;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
@@ -38,25 +39,7 @@ public sealed class SyncMutationProcessor(
         {
             ProcessedMutation? existing = await context.ProcessedMutations.AsNoTracking()
                 .SingleOrDefaultAsync(item => item.MutationId == command.MutationId, cancellationToken);
-            if (existing is not null)
-            {
-                if (!CryptographicOperations.FixedTimeEquals(existing.ContentHash, hash))
-                {
-                    throw new SyncMutationConflictException(
-                        "mutation_id_reused",
-                        "The mutation id was already used with different content.");
-                }
-                StoredMutationResult stored = JsonSerializer.Deserialize<StoredMutationResult>(existing.ResultJson, JsonOptions)
-                    ?? throw new InvalidOperationException("The stored mutation receipt is invalid.");
-                await transaction.RollbackAsync(cancellationToken);
-                return new ProcessedSyncMutationResult(
-                    command.MutationId, true, stored.Revision,
-                    stored.Changes.Select(change => new ExecutedSyncChange(
-                        ResourceKey.Create(Enum.Parse<ResourceKind>(change.ResourceType), change.ResourceId),
-                        change.Version,
-                        change.Snapshot,
-                        change.IsTombstone)).ToList());
-            }
+            if (existing is not null) return await ReplayAsync(command, existing, hash, transaction, cancellationToken);
 
             SyncClient client = await context.SyncClients.SingleOrDefaultAsync(
                 item => item.Id == command.Content.ClientId,
@@ -65,26 +48,7 @@ public sealed class SyncMutationProcessor(
                 .FromSqlInterpolated($"SELECT * FROM sync.user_state WHERE \"UserId\" = {userId} FOR UPDATE")
                 .SingleAsync(cancellationToken);
             DateTime now = timeProvider.GetUtcNow().UtcDateTime;
-            List<SyncHandover> expiredHandovers = await context.SyncHandovers
-                .Where(item => item.UserId == userId
-                    && item.Status == SyncHandoverStatuses.Pending
-                    && item.ExpiresAtUtc <= now)
-                .ToListAsync(cancellationToken);
-            foreach (SyncHandover expired in expiredHandovers)
-            {
-                expired.Status = SyncHandoverStatuses.Expired;
-                expired.ProtectedCode = null;
-            }
-            if (await context.SyncHandovers.AnyAsync(
-                    item => item.UserId == userId
-                        && item.Status == SyncHandoverStatuses.Pending
-                        && item.ExpiresAtUtc > now,
-                    cancellationToken))
-            {
-                throw new SyncMutationConflictException(
-                    "handover_in_progress",
-                    "Writes are paused while a device handover is in progress.");
-            }
+            await EnsureNoHandoverInProgressAsync(userId, now, cancellationToken);
             if (state.ActiveClientId != client.Id)
             {
                 throw new SyncMutationConflictException("inactive_client", "This client is not the active writing device.");
@@ -115,29 +79,8 @@ public sealed class SyncMutationProcessor(
                 MutationId = command.MutationId,
                 CreatedAtUtc = state.UpdatedAtUtc,
             });
-            for (int position = 0; position < execution.Changes.Count; position++)
-            {
-                ExecutedSyncChange change = execution.Changes[position];
-                context.ChangeItems.Add(new ChangeItem
-                {
-                    Id = Guid.NewGuid(),
-                    BatchId = batchId,
-                    Position = position,
-                    ResourceType = change.Resource.Kind.ToString(),
-                    ResourceId = change.Resource.ResourceId,
-                    ResourceVersion = change.Version,
-                    IsTombstone = change.IsTombstone,
-                    SnapshotJson = change.IsTombstone ? null : JsonSerializer.Serialize(change.Snapshot, JsonOptions),
-                });
-            }
-            var storedResult = new StoredMutationResult(
-                revision,
-                execution.Changes.Select(change => new StoredChange(
-                    change.Resource.Kind.ToString(),
-                    change.Resource.ResourceId,
-                    change.Version,
-                    change.IsTombstone ? null : JsonSerializer.SerializeToElement(change.Snapshot, JsonOptions),
-                    change.IsTombstone)).ToList());
+            AddChangeItems(batchId, execution.Changes);
+            var storedResult = new StoredMutationResult(revision, ToStoredChanges(execution.Changes));
             context.ProcessedMutations.Add(new ProcessedMutation
             {
                 MutationId = command.MutationId,
@@ -172,6 +115,82 @@ public sealed class SyncMutationProcessor(
         {
             throw new SyncMutationConflictException("concurrent_mutation", "Another mutation advanced the user state concurrently.");
         }
+    }
+
+    private async Task EnsureNoHandoverInProgressAsync(Guid userId, DateTime now, CancellationToken cancellationToken)
+    {
+        List<SyncHandover> expiredHandovers = await context.SyncHandovers
+            .Where(item => item.UserId == userId
+                && item.Status == SyncHandoverStatuses.Pending
+                && item.ExpiresAtUtc <= now)
+            .ToListAsync(cancellationToken);
+        foreach (SyncHandover expired in expiredHandovers)
+        {
+            expired.Status = SyncHandoverStatuses.Expired;
+            expired.ProtectedCode = null;
+        }
+        if (await context.SyncHandovers.AnyAsync(
+                item => item.UserId == userId
+                    && item.Status == SyncHandoverStatuses.Pending
+                    && item.ExpiresAtUtc > now,
+                cancellationToken))
+        {
+            throw new SyncMutationConflictException(
+                "handover_in_progress",
+                "Writes are paused while a device handover is in progress.");
+        }
+    }
+
+    private void AddChangeItems(Guid batchId, IReadOnlyList<ExecutedSyncChange> changes)
+    {
+        for (int position = 0; position < changes.Count; position++)
+        {
+            ExecutedSyncChange change = changes[position];
+            context.ChangeItems.Add(new ChangeItem
+            {
+                Id = Guid.NewGuid(),
+                BatchId = batchId,
+                Position = position,
+                ResourceType = change.Resource.Kind.ToString(),
+                ResourceId = change.Resource.ResourceId,
+                ResourceVersion = change.Version,
+                IsTombstone = change.IsTombstone,
+                SnapshotJson = change.IsTombstone ? null : JsonSerializer.Serialize(change.Snapshot, JsonOptions),
+            });
+        }
+    }
+
+    private static List<StoredChange> ToStoredChanges(IReadOnlyList<ExecutedSyncChange> changes) =>
+        changes.Select(change => new StoredChange(
+            change.Resource.Kind.ToString(),
+            change.Resource.ResourceId,
+            change.Version,
+            change.IsTombstone ? null : JsonSerializer.SerializeToElement(change.Snapshot, JsonOptions),
+            change.IsTombstone)).ToList();
+
+    private static async Task<ProcessedSyncMutationResult> ReplayAsync(
+        ProcessSyncMutationCommand command,
+        ProcessedMutation existing,
+        byte[] hash,
+        IDbContextTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (!CryptographicOperations.FixedTimeEquals(existing.ContentHash, hash))
+        {
+            throw new SyncMutationConflictException(
+                "mutation_id_reused",
+                "The mutation id was already used with different content.");
+        }
+        StoredMutationResult stored = JsonSerializer.Deserialize<StoredMutationResult>(existing.ResultJson, JsonOptions)
+            ?? throw new InvalidOperationException("The stored mutation receipt is invalid.");
+        await transaction.RollbackAsync(cancellationToken);
+        return new ProcessedSyncMutationResult(
+            command.MutationId, true, stored.Revision,
+            stored.Changes.Select(change => new ExecutedSyncChange(
+                ResourceKey.Create(Enum.Parse<ResourceKind>(change.ResourceType), change.ResourceId),
+                change.Version,
+                change.Snapshot,
+                change.IsTombstone)).ToList());
     }
 
     private static void ValidateCommand(ProcessSyncMutationCommand command)

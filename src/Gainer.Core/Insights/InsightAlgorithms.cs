@@ -172,12 +172,12 @@ public static class InsightAlgorithms
 
     public static decimal Epley(decimal weightKg, int repetitions)
     {
-        if (weightKg <= 0) throw new ArgumentOutOfRangeException(nameof(weightKg));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(weightKg);
         if (repetitions is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(repetitions));
         return weightKg * (1m + repetitions / 30m);
     }
 
-    private static decimal OlsSlopePerDay(IReadOnlyList<WeightPoint> points)
+    private static decimal OlsSlopePerDay(WeightPoint[] points)
     {
         DateOnly origin = points[0].Date;
         decimal averageX = points.Average(item => (decimal)item.Date.DayNumber - origin.DayNumber);

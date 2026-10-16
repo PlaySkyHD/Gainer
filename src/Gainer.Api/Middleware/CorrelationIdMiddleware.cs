@@ -26,13 +26,16 @@ internal sealed class CorrelationIdMiddleware(RequestDelegate next, ILogger<Corr
         }
         finally
         {
-            logger.RequestCompleted(
-                context.Request.Method,
-                context.Request.Path.Value ?? string.Empty,
-                context.Response.StatusCode,
-                Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds,
-                correlationId,
-                traceId);
+            if (logger.IsEnabled(LogLevel.Information))
+            {
+                logger.RequestCompleted(
+                    context.Request.Method,
+                    context.Request.Path.Value ?? string.Empty,
+                    context.Response.StatusCode,
+                    Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds,
+                    correlationId,
+                    traceId);
+            }
         }
     }
 

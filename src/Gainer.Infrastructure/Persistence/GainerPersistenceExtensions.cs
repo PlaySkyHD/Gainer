@@ -20,6 +20,7 @@ namespace Gainer.Infrastructure.Persistence;
 public static class GainerPersistenceExtensions
 {
     private const string DefaultConnectionName = "gainer-db";
+    private const string OpenAiBaseAddress = "https://api.openai.com/";
 
     /// <summary>Adds the shared application database context.</summary>
     public static IHostApplicationBuilder AddGainerPersistence(
@@ -56,7 +57,7 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<IInsightQueries, InsightQueries>();
         builder.Services.Configure<OpenAiProviderOptions>(builder.Configuration.GetSection(OpenAiProviderOptions.SectionName));
         builder.Services.AddHttpClient<IOpenAiResponsesProvider, OpenAiResponsesProvider>(client =>
-            client.BaseAddress = new Uri("https://api.openai.com/"));
+            client.BaseAddress = new Uri(OpenAiBaseAddress));
         builder.Services.AddScoped<ICoachService, CoachService>();
         builder.Services.Configure<MealEstimationOptions>(builder.Configuration.GetSection(MealEstimationOptions.SectionName));
         builder.Services.Configure<MealImageOptions>(builder.Configuration.GetSection(MealImageOptions.SectionName));

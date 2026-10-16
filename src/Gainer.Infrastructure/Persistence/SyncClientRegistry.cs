@@ -58,23 +58,7 @@ public sealed class SyncClientRegistry(
             client.LastSeenAtUtc = now;
         }
 
-        if (state is not null)
-        {
-            await ExpirePendingHandoversAsync(userId, now, cancellationToken);
-            if (command.TakeOverWriting && state.ActiveClientId != command.ClientId)
-            {
-                if (state.HandoverRequired)
-                    throw new SyncMutationConflictException(
-                        "handover_required",
-                        "This account must use the verified device handover flow.");
-                if (await context.SyncHandovers.AnyAsync(
-                        item => item.Status == SyncHandoverStatuses.Pending && item.ExpiresAtUtc > now,
-                        cancellationToken))
-                    throw new SyncMutationConflictException(
-                        "handover_in_progress",
-                        "A device handover is in progress.");
-            }
-        }
+        if (state is not null) await EnsureTakeOverAllowedAsync(userId, command, state, now, cancellationToken);
 
         if (state is null)
         {
@@ -103,6 +87,27 @@ public sealed class SyncClientRegistry(
             state.ActiveClientId == client.Id,
             client.RegisteredAtUtc,
             client.LastSeenAtUtc);
+    }
+
+    private async Task EnsureTakeOverAllowedAsync(
+        Guid userId,
+        RegisterSyncClientCommand command,
+        UserSyncState state,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        await ExpirePendingHandoversAsync(userId, now, cancellationToken);
+        if (!command.TakeOverWriting || state.ActiveClientId == command.ClientId) return;
+        if (state.HandoverRequired)
+            throw new SyncMutationConflictException(
+                "handover_required",
+                "This account must use the verified device handover flow.");
+        if (await context.SyncHandovers.AnyAsync(
+                item => item.Status == SyncHandoverStatuses.Pending && item.ExpiresAtUtc > now,
+                cancellationToken))
+            throw new SyncMutationConflictException(
+                "handover_in_progress",
+                "A device handover is in progress.");
     }
 
     private async Task ExpirePendingHandoversAsync(Guid userId, DateTime now, CancellationToken cancellationToken)

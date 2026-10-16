@@ -46,6 +46,12 @@ public sealed class InitialAccountOperatorProvisioner(
 {
     private const long MaximumSecretFileBytes = 16 * 1024;
 
+    private static readonly JsonSerializerOptions SecretJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
+    };
+
     /// <inheritdoc />
     public async Task<InitialAccountOperatorProvisioningResult> ProvisionAsync(
         CancellationToken cancellationToken = default)
@@ -138,11 +144,7 @@ public sealed class InitialAccountOperatorProvisioner(
         {
             ProvisioningSecret? secret = await JsonSerializer.DeserializeAsync<ProvisioningSecret>(
                 stream,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
-                },
+                SecretJsonOptions,
                 cancellationToken);
             if (secret is null
                 || !new EmailAddressAttribute().IsValid(secret.Email)
