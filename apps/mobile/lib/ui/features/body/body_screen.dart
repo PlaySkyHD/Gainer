@@ -6,6 +6,8 @@ import '../../../domain/models/body/body_tracking.dart';
 import '../../core/theme.dart';
 import 'body_view_model.dart';
 
+const _checkInTitle = 'Check-in';
+
 class BodyScreen extends StatefulWidget {
   const BodyScreen({required this.viewModel, super.key});
 
@@ -62,7 +64,9 @@ class _BodyScreenState extends State<BodyScreen> {
     value: widget.viewModel,
     child: Consumer<BodyViewModel>(
       builder: (context, model, _) => CupertinoPageScaffold(
-        navigationBar: const CupertinoNavigationBar(middle: Text('Check-in')),
+        navigationBar: const CupertinoNavigationBar(
+          middle: Text(_checkInTitle),
+        ),
         child: SafeArea(
           bottom: false,
           child: Center(
@@ -81,7 +85,7 @@ class _BodyScreenState extends State<BodyScreen> {
                       message: model.errorMessage!,
                     ),
                   Text(
-                    'Check-in',
+                    _checkInTitle,
                     style: CupertinoTheme.of(context)
                         .textTheme
                         .navLargeTitleTextStyle,
@@ -92,29 +96,9 @@ class _BodyScreenState extends State<BodyScreen> {
                     style: TextStyle(color: GainerTheme.secondaryText(context)),
                   ),
                   const SizedBox(height: 20),
-                  _OverviewCard(
-                    title: 'Aktives Ziel',
-                    icon: CupertinoIcons.scope,
-                    child: model.snapshot == null
-                        ? Text(
-                            model.isLoading
-                                ? 'Zieldaten werden geladen …'
-                                : 'Zieldaten sind nicht verfügbar.',
-                          )
-                        : _activeGoal(model.snapshot!.activeGoal),
-                  ),
+                  _goalCard(model),
                   const SizedBox(height: 12),
-                  _OverviewCard(
-                    title: 'Heute',
-                    icon: CupertinoIcons.calendar,
-                    child: model.snapshot == null
-                        ? Text(
-                            model.isLoading
-                                ? 'Check-in wird geladen …'
-                                : 'Check-in konnte nicht geladen werden.',
-                          )
-                        : _todaySummary(model.snapshot!.checkIns),
-                  ),
+                  _todayCard(model),
                   const SizedBox(height: 12),
                   ConstrainedBox(
                     constraints: const BoxConstraints(minHeight: 52),
@@ -155,6 +139,30 @@ class _BodyScreenState extends State<BodyScreen> {
         ),
       ),
     ),
+  );
+
+  Widget _goalCard(BodyViewModel model) => _OverviewCard(
+    title: 'Aktives Ziel',
+    icon: CupertinoIcons.scope,
+    child: model.snapshot == null
+        ? Text(
+            model.isLoading
+                ? 'Zieldaten werden geladen …'
+                : 'Zieldaten sind nicht verfügbar.',
+          )
+        : _activeGoal(model.snapshot!.activeGoal),
+  );
+
+  Widget _todayCard(BodyViewModel model) => _OverviewCard(
+    title: 'Heute',
+    icon: CupertinoIcons.calendar,
+    child: model.snapshot == null
+        ? Text(
+            model.isLoading
+                ? 'Check-in wird geladen …'
+                : 'Check-in konnte nicht geladen werden.',
+          )
+        : _todaySummary(model.snapshot!.checkIns),
   );
 
   /* old editor fields are presented in focused native sheets below */
@@ -291,169 +299,177 @@ class _BodyScreenState extends State<BodyScreen> {
     _sleep.text = existing?.sleepMinutes?.toString() ?? '';
   }
 
-  Future<void> _showEditor(
-    BodyViewModel model, {
-    required bool goal,
-  }) => showCupertinoModalPopup<void>(
-    context: context,
-    builder: (sheetContext) => ChangeNotifierProvider.value(
-      value: model,
-      child: Consumer<BodyViewModel>(
-        builder: (sheetContext, liveModel, _) => StatefulBuilder(
-          builder: (sheetContext, setSheetState) {
-            final media = MediaQuery.of(sheetContext);
-            return Padding(
-              padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
-              child: Container(
-                height: (media.size.height - media.viewInsets.bottom) * .94,
-                decoration: BoxDecoration(
-                  color: CupertinoColors.systemBackground.resolveFrom(
-                    sheetContext,
-                  ),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(22),
-                  ),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: CupertinoButton(
-                                minimumSize: const Size(64, 48),
-                                onPressed: liveModel.isSaving
-                                    ? null
-                                    : () => Navigator.of(sheetContext).pop(),
-                                child: const Text(
-                                  'Abbrechen',
-                                  textAlign: TextAlign.center,
-                                  softWrap: true,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                goal ? 'Körperziel' : 'Check-in',
-                                textAlign: TextAlign.center,
-                                softWrap: true,
-                                style: CupertinoTheme.of(sheetContext)
-                                    .textTheme
-                                    .navTitleTextStyle,
-                              ),
-                            ),
-                            Expanded(
-                              child: CupertinoButton(
-                                key: ValueKey(
-                                  goal ? 'body-save-goal' : 'body-save-checkin',
-                                ),
-                                minimumSize: const Size(64, 48),
-                                onPressed: liveModel.isSaving
-                                    ? null
-                                    : () async {
-                                        if (goal) {
-                                          await _saveGoal(liveModel);
-                                        } else {
-                                          await _saveCheckIn(liveModel);
-                                        }
-                                        if (mounted &&
-                                            liveModel.errorMessage == null &&
-                                            sheetContext.mounted &&
-                                            ModalRoute.of(sheetContext)
-                                                    ?.isCurrent ==
-                                                true) {
-                                          Navigator.of(sheetContext).pop();
-                                        }
-                                      },
-                                child: liveModel.isSaving
-                                    ? const CupertinoActivityIndicator()
-                                    : const Text(
-                                        'Sichern',
-                                        textAlign: TextAlign.center,
-                                        softWrap: true,
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
+  Future<void> _showEditor(BodyViewModel model, {required bool goal}) =>
+      showCupertinoModalPopup<void>(
+        context: context,
+        builder: (sheetContext) => ChangeNotifierProvider.value(
+          value: model,
+          child: Consumer<BodyViewModel>(
+            builder: (sheetContext, liveModel, _) => StatefulBuilder(
+              builder: (sheetContext, setSheetState) {
+                final media = MediaQuery.of(sheetContext);
+                return Padding(
+                  padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+                  child: Container(
+                    height: (media.size.height - media.viewInsets.bottom) * .94,
+                    decoration: BoxDecoration(
+                      color: CupertinoColors.systemBackground.resolveFrom(
+                        sheetContext,
                       ),
-                      Expanded(
-                        child: ListView(
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                          children: [
-                            if (liveModel.errorMessage case final error?)
-                              _NoticeCard(message: error),
-                            if (!goal) ...[
-                              CupertinoButton(
-                                key: const ValueKey('body-checkin-date'),
-                                minimumSize: const Size(double.infinity, 48),
-                                padding: EdgeInsets.zero,
-                                onPressed: liveModel.isSaving
-                                    ? null
-                                    : () => _pickCheckInDate(
-                                        liveModel,
-                                        setSheetState,
-                                      ),
-                                child: Row(
-                                  children: [
-                                    const Icon(CupertinoIcons.calendar),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Datum · ${_prettyDate(_dateOnly(_checkInDate))}',
-                                        softWrap: true,
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    const CupertinoListTileChevron(),
-                                  ],
-                                ),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(22),
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Column(
+                        children: [
+                          _editorToolbar(sheetContext, liveModel, goal: goal),
+                          Expanded(
+                            child: ListView(
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                12,
+                                20,
+                                28,
                               ),
-                              Text(
-                                'Check-in für ${_prettyDate(_dateOnly(_checkInDate))}',
-                                style: CupertinoTheme.of(sheetContext)
-                                    .textTheme
-                                    .navTitleTextStyle,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Gewicht ist erforderlich. Weitere Angaben sind optional.',
-                                style: TextStyle(
-                                  color: GainerTheme.secondaryText(
+                              children: [
+                                if (liveModel.errorMessage case final error?)
+                                  _NoticeCard(message: error),
+                                if (!goal)
+                                  ..._checkInHeaderChildren(
                                     sheetContext,
+                                    liveModel,
+                                    setSheetState,
                                   ),
+                                const SizedBox(height: 16),
+                                _editorFields(
+                                  sheetContext,
+                                  liveModel,
+                                  goal: goal,
+                                  rebuild: setSheetState,
                                 ),
-                              ),
-                            ],
-                            const SizedBox(height: 16),
-                            _editorFields(
-                              sheetContext,
-                              liveModel,
-                              goal: goal,
-                              rebuild: setSheetState,
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            );
-          },
+                );
+              },
+            ),
+          ),
         ),
-      ),
+      );
+
+  Widget _editorToolbar(
+    BuildContext sheetContext,
+    BodyViewModel liveModel, {
+    required bool goal,
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: CupertinoButton(
+            minimumSize: const Size(64, 48),
+            onPressed: liveModel.isSaving
+                ? null
+                : () => Navigator.of(sheetContext).pop(),
+            child: const Text(
+              'Abbrechen',
+              textAlign: TextAlign.center,
+              softWrap: true,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            goal ? 'Körperziel' : _checkInTitle,
+            textAlign: TextAlign.center,
+            softWrap: true,
+            style: CupertinoTheme.of(sheetContext).textTheme.navTitleTextStyle,
+          ),
+        ),
+        Expanded(
+          child: CupertinoButton(
+            key: ValueKey(goal ? 'body-save-goal' : 'body-save-checkin'),
+            minimumSize: const Size(64, 48),
+            onPressed: liveModel.isSaving
+                ? null
+                : () => _saveFromSheet(sheetContext, liveModel, goal: goal),
+            child: liveModel.isSaving
+                ? const CupertinoActivityIndicator()
+                : const Text(
+                    'Sichern',
+                    textAlign: TextAlign.center,
+                    softWrap: true,
+                  ),
+          ),
+        ),
+      ],
     ),
   );
+
+  Future<void> _saveFromSheet(
+    BuildContext sheetContext,
+    BodyViewModel liveModel, {
+    required bool goal,
+  }) async {
+    if (goal) {
+      await _saveGoal(liveModel);
+    } else {
+      await _saveCheckIn(liveModel);
+    }
+    if (mounted &&
+        liveModel.errorMessage == null &&
+        sheetContext.mounted &&
+        ModalRoute.of(sheetContext)?.isCurrent == true) {
+      Navigator.of(sheetContext).pop();
+    }
+  }
+
+  List<Widget> _checkInHeaderChildren(
+    BuildContext sheetContext,
+    BodyViewModel liveModel,
+    StateSetter setSheetState,
+  ) => [
+    CupertinoButton(
+      key: const ValueKey('body-checkin-date'),
+      minimumSize: const Size(double.infinity, 48),
+      padding: EdgeInsets.zero,
+      onPressed: liveModel.isSaving
+          ? null
+          : () => _pickCheckInDate(liveModel, setSheetState),
+      child: Row(
+        children: [
+          const Icon(CupertinoIcons.calendar),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Datum · ${_prettyDate(_dateOnly(_checkInDate))}',
+              softWrap: true,
+            ),
+          ),
+          const Spacer(),
+          const CupertinoListTileChevron(),
+        ],
+      ),
+    ),
+    Text(
+      'Check-in für ${_prettyDate(_dateOnly(_checkInDate))}',
+      style: CupertinoTheme.of(sheetContext).textTheme.navTitleTextStyle,
+    ),
+    const SizedBox(height: 8),
+    Text(
+      'Gewicht ist erforderlich. Weitere Angaben sind optional.',
+      style: TextStyle(color: GainerTheme.secondaryText(sheetContext)),
+    ),
+  ];
 
   Widget _todaySummary(List<({String id, DailyCheckIn value})> checkIns) {
     final today = _dateOnly(DateTime.now());

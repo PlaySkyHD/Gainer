@@ -55,13 +55,8 @@ class ProgressViewModel extends ChangeNotifier {
     isLoading = true;
     errorMessage = null;
     notifyListeners();
-    CachedDashboardInsights? cached;
-    try {
-      cached = await repository.readCachedDashboard();
-    } on Object {
-      // A cache read failure does not block the server request.
-    }
-    if (_disposed || request != _dashboardRequest) return;
+    final cached = await _readCachedDashboard();
+    if (!_isCurrentDashboardRequest(request)) return;
     if (cached != null) {
       dashboard = cached.value;
       dashboardCachedAtUtc = cached.cachedAtUtc;
@@ -70,25 +65,17 @@ class ProgressViewModel extends ChangeNotifier {
     }
     try {
       final result = await repository.loadDashboard();
-      if (_disposed || request != _dashboardRequest) return;
+      if (!_isCurrentDashboardRequest(request)) return;
       dashboard = result;
       dashboardCachedAtUtc = DateTime.now().toUtc();
       dashboardIsStale = false;
-      try {
-        await repository.cacheDashboard(value: result);
-      } on Object {
-        // A cache-write failure must not discard a valid server response.
-      }
+      await _cacheDashboardQuietly(result);
     } catch (_) {
-      if (_disposed || request != _dashboardRequest) return;
+      if (!_isCurrentDashboardRequest(request)) return;
       if (dashboard != null) dashboardIsStale = true;
-      if (cached == null && dashboard == null) {
-        errorMessage = 'Fortschritt ist gerade nicht verfügbar. Bitte verbinde dich erneut.';
-      } else {
-        errorMessage = 'Fortschritt konnte nicht aktualisiert werden; gespeicherte Werte bleiben sichtbar.';
-      }
+      errorMessage = _dashboardErrorMessage(cached);
     } finally {
-      if (!_disposed && request == _dashboardRequest) {
+      if (_isCurrentDashboardRequest(request)) {
         isLoading = false;
         notifyListeners();
       }
@@ -100,7 +87,7 @@ class ProgressViewModel extends ChangeNotifier {
     final training = trainingRepository;
     if (_disposed ||
         training == null ||
-        (isLoadingExerciseOptions || (_hasLoadedExerciseOptions && !refresh))) {
+        _isExerciseOptionsLoadRedundant(refresh)) {
       return;
     }
     final request = ++_exerciseOptionsRequest;
@@ -109,48 +96,25 @@ class ProgressViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       final planning = await training.readPlanning();
-      if (_disposed || request != _exerciseOptionsRequest) return;
-      final options = <ExerciseProgressOption>[
-        for (final exercise in planning.exercises)
-          ExerciseProgressOption(id: exercise.id, name: exercise.name),
-        for (final exercise in planning.customExercises)
-          if (!exercise.isArchived)
-            ExerciseProgressOption(
-              id: exercise.id,
-              name: exercise.value.name,
-              isCustom: true,
-            ),
-      ];
-      final byId = <String, ExerciseProgressOption>{};
-      for (final option in options) {
-        byId.putIfAbsent(option.id.toLowerCase(), () => option);
-      }
-      exerciseOptions = List.unmodifiable(byId.values);
-      isExerciseCatalogStale =
-          training.catalog is ApiExerciseCatalogProvider &&
-          (training.catalog as ApiExerciseCatalogProvider).lastLoadWasStale;
+      if (!_isCurrentExerciseOptionsRequest(request)) return;
+      exerciseOptions = _uniqueExerciseOptions(planning);
+      isExerciseCatalogStale = _catalogIsStale(training);
       _hasLoadedExerciseOptions = true;
       final oldSelection = selectedExerciseId;
-      final selectionExists =
-          oldSelection != null &&
-          exerciseOptions.any((item) => item.id == oldSelection);
-      selectedExerciseId = selectionExists
-          ? oldSelection
-          : (exerciseOptions.isEmpty ? null : exerciseOptions.first.id);
+      selectedExerciseId = _selectionAfterOptionsLoad(oldSelection);
       if (selectedExerciseId != oldSelection) {
         _clearExerciseProgress();
       }
       notifyListeners();
-      if (selectedExerciseId != null &&
-          (selectedExerciseId != oldSelection || exerciseProgress == null)) {
+      if (_shouldLoadSelectedProgress(oldSelection)) {
         unawaited(loadSelectedExerciseProgress());
       }
     } catch (_) {
-      if (_disposed || request != _exerciseOptionsRequest) return;
+      if (!_isCurrentExerciseOptionsRequest(request)) return;
       exerciseOptionsErrorMessage =
           'Übungen sind gerade nicht verfügbar. Bitte verbinde dich erneut.';
     } finally {
-      if (!_disposed && request == _exerciseOptionsRequest) {
+      if (_isCurrentExerciseOptionsRequest(request)) {
         isLoadingExerciseOptions = false;
         notifyListeners();
       }
@@ -190,62 +154,171 @@ class ProgressViewModel extends ChangeNotifier {
     exerciseProgressErrorMessage = null;
     notifyListeners();
 
-    CachedExerciseProgress? cached;
-    if (!refresh) {
-      try {
-        cached = await repository.readCachedExerciseProgress(
-          exerciseId: exerciseId,
-          window: window,
-        );
-      } on Object {
-        // An unavailable local cache does not block a fresh request.
-      }
-    }
-    if (_disposed || request != _exerciseProgressRequest) return;
+    final cached = refresh
+        ? null
+        : await _readCachedExerciseProgress(exerciseId, window);
+    if (!_isCurrentExerciseProgressRequest(request)) return;
     if (cached != null) {
       exerciseProgress = cached.value;
       exerciseProgressCachedAtUtc = cached.cachedAtUtc;
       isExerciseProgressStale = true;
       notifyListeners();
     }
+    await _fetchExerciseProgress(
+      exerciseId: exerciseId,
+      window: window,
+      request: request,
+      cached: cached,
+    );
+  }
 
+  Future<CachedDashboardInsights?> _readCachedDashboard() async {
+    try {
+      return await repository.readCachedDashboard();
+    } on Object {
+      // A cache read failure does not block the server request.
+      return null;
+    }
+  }
+
+  Future<void> _cacheDashboardQuietly(ApiDashboardInsights value) async {
+    try {
+      await repository.cacheDashboard(value: value);
+    } on Object {
+      // A cache-write failure must not discard a valid server response.
+    }
+  }
+
+  String _dashboardErrorMessage(CachedDashboardInsights? cached) =>
+      cached == null && dashboard == null
+      ? 'Fortschritt ist gerade nicht verfügbar. Bitte verbinde dich erneut.'
+      : 'Fortschritt konnte nicht aktualisiert werden; gespeicherte Werte bleiben sichtbar.';
+
+  bool _isCurrentDashboardRequest(int request) =>
+      !_disposed && request == _dashboardRequest;
+
+  bool _isExerciseOptionsLoadRedundant(bool refresh) =>
+      isLoadingExerciseOptions || (_hasLoadedExerciseOptions && !refresh);
+
+  bool _isCurrentExerciseOptionsRequest(int request) =>
+      !_disposed && request == _exerciseOptionsRequest;
+
+  List<ExerciseProgressOption> _uniqueExerciseOptions(
+    TrainingPlanningSnapshot planning,
+  ) {
+    final options = <ExerciseProgressOption>[
+      for (final exercise in planning.exercises)
+        ExerciseProgressOption(id: exercise.id, name: exercise.name),
+      for (final exercise in planning.customExercises)
+        if (!exercise.isArchived)
+          ExerciseProgressOption(
+            id: exercise.id,
+            name: exercise.value.name,
+            isCustom: true,
+          ),
+    ];
+    final byId = <String, ExerciseProgressOption>{};
+    for (final option in options) {
+      byId.putIfAbsent(option.id.toLowerCase(), () => option);
+    }
+    return List.unmodifiable(byId.values);
+  }
+
+  bool _catalogIsStale(TrainingRepository training) =>
+      training.catalog is ApiExerciseCatalogProvider &&
+      (training.catalog as ApiExerciseCatalogProvider).lastLoadWasStale;
+
+  String? _selectionAfterOptionsLoad(String? oldSelection) {
+    final selectionExists =
+        oldSelection != null &&
+        exerciseOptions.any((item) => item.id == oldSelection);
+    if (selectionExists) return oldSelection;
+    return exerciseOptions.isEmpty ? null : exerciseOptions.first.id;
+  }
+
+  bool _shouldLoadSelectedProgress(String? oldSelection) =>
+      selectedExerciseId != null &&
+      (selectedExerciseId != oldSelection || exerciseProgress == null);
+
+  Future<CachedExerciseProgress?> _readCachedExerciseProgress(
+    String exerciseId,
+    String window,
+  ) async {
+    try {
+      return await repository.readCachedExerciseProgress(
+        exerciseId: exerciseId,
+        window: window,
+      );
+    } on Object {
+      // An unavailable local cache does not block a fresh request.
+      return null;
+    }
+  }
+
+  Future<void> _fetchExerciseProgress({
+    required String exerciseId,
+    required String window,
+    required int request,
+    required CachedExerciseProgress? cached,
+  }) async {
     try {
       final fresh = await repository.loadExerciseProgress(
         exerciseId: exerciseId,
         window: window,
       );
-      if (_disposed || request != _exerciseProgressRequest) return;
-      if (fresh.exerciseId.toLowerCase() != exerciseId.toLowerCase() ||
-          !_responseMatchesWindow(fresh.windowDays, window)) {
+      if (!_isCurrentExerciseProgressRequest(request)) return;
+      if (_isMismatchedExerciseProgress(fresh, exerciseId, window)) {
         throw const FormatException('Exercise progress response mismatch.');
       }
-      if (_disposed || request != _exerciseProgressRequest) return;
       exerciseProgress = fresh;
       exerciseProgressCachedAtUtc = DateTime.now().toUtc();
       isExerciseProgressStale = false;
-      try {
-        await repository.cacheExerciseProgress(
-          exerciseId: exerciseId,
-          window: window,
-          value: fresh,
-        );
-      } on Object {
-        // A local cache-write failure must not hide a valid server response.
-      }
+      await _cacheExerciseProgressQuietly(exerciseId, window, fresh);
     } catch (_) {
-      if (_disposed || request != _exerciseProgressRequest) return;
-      if (exerciseProgress != null) {
-        isExerciseProgressStale = true;
-      } else if (cached == null) {
-        exerciseProgressErrorMessage = 'Übungsfortschritt ist gerade nicht verfügbar. Bitte verbinde dich erneut.';
-      }
+      if (!_isCurrentExerciseProgressRequest(request)) return;
+      _markExerciseProgressFailure(cached);
     } finally {
-      if (!_disposed && request == _exerciseProgressRequest) {
+      if (_isCurrentExerciseProgressRequest(request)) {
         isLoadingExerciseProgress = false;
         notifyListeners();
       }
     }
   }
+
+  Future<void> _cacheExerciseProgressQuietly(
+    String exerciseId,
+    String window,
+    ApiExerciseProgress value,
+  ) async {
+    try {
+      await repository.cacheExerciseProgress(
+        exerciseId: exerciseId,
+        window: window,
+        value: value,
+      );
+    } on Object {
+      // A local cache-write failure must not hide a valid server response.
+    }
+  }
+
+  void _markExerciseProgressFailure(CachedExerciseProgress? cached) {
+    if (exerciseProgress != null) {
+      isExerciseProgressStale = true;
+    } else if (cached == null) {
+      exerciseProgressErrorMessage = 'Übungsfortschritt ist gerade nicht verfügbar. Bitte verbinde dich erneut.';
+    }
+  }
+
+  bool _isCurrentExerciseProgressRequest(int request) =>
+      !_disposed && request == _exerciseProgressRequest;
+
+  bool _isMismatchedExerciseProgress(
+    ApiExerciseProgress progress,
+    String exerciseId,
+    String window,
+  ) =>
+      progress.exerciseId.toLowerCase() != exerciseId.toLowerCase() ||
+      !_responseMatchesWindow(progress.windowDays, window);
 
   void _clearExerciseProgress() {
     ++_exerciseProgressRequest;

@@ -85,103 +85,10 @@ class _ProgressScreenState extends State<ProgressScreen> {
                     if (model.errorMessage case final error?)
                       _Notice(text: error, action: model.load),
                     if (data != null) ...[
-                      _Card(
-                        title: 'Gewicht',
-                        subtitle:
-                            '${data.weight.observedDays} von ${data.weight.expectedDays} Tagen mit Eintrag',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (data.latestWeight case final latest?) ...[
-                              Text(
-                                'Letzter Eintrag · ${_dateLabel(latest.date)}',
-                                style: TextStyle(
-                                  color: GainerTheme.secondaryText(context),
-                                ),
-                              ),
-                              Text(
-                                '${latest.weightKg.toStringAsFixed(1)} kg',
-                                style: CupertinoTheme.of(context)
-                                    .textTheme
-                                    .navTitleTextStyle,
-                              ),
-                              const SizedBox(height: 8),
-                            ],
-                            Text(
-                              data.sevenDayWeight.averageKg == null
-                                  ? 'Noch keine Gewichtsdaten der letzten ${data.sevenDayWeight.expectedDays} Tage'
-                                  : 'Ø ${data.sevenDayWeight.expectedDays} Tage · ${data.sevenDayWeight.averageKg!.toStringAsFixed(1)} kg',
-                              style: TextStyle(
-                                color: GainerTheme.secondaryText(context),
-                              ),
-                            ),
-                            Text(
-                              data.weight.averageKg == null
-                                  ? 'Ø ${data.weight.expectedDays} Tage · Noch keine Gewichtsdaten'
-                                  : 'Ø ${data.weight.expectedDays} Tage · ${data.weight.averageKg!.toStringAsFixed(1)} kg',
-                              style: CupertinoTheme.of(context)
-                                  .textTheme
-                                  .navTitleTextStyle,
-                            ),
-                            if (data.weight.trendKgPerWeek case final trend?)
-                              Text(
-                                '${trend >= 0 ? '+' : ''}${trend.toStringAsFixed(2)} kg pro Woche',
-                                style: TextStyle(
-                                  color: GainerTheme.secondaryText(context),
-                                ),
-                              ),
-                            const SizedBox(height: 14),
-                            if (data.weightSeries.isNotEmpty)
-                              _WeightChart(points: data.weightSeries),
-                            if (data.weightSeries.isEmpty)
-                              const Text(
-                                'Nach dem ersten Check-in erscheint hier dein Verlauf.',
-                              ),
-                          ],
-                        ),
-                      ),
+                      _weightCard(context, data),
                       ExerciseProgressSection(viewModel: model),
-                      _Card(
-                        title: 'Training',
-                        subtitle:
-                            '${data.workoutsLast7Days} Workouts in den letzten 7 Tagen',
-                        child: _MetricRow(
-                          metrics: [
-                            (
-                              'Workouts gesamt',
-                              '${data.training.workoutCount}',
-                            ),
-                            (
-                              'Trainingsvolumen',
-                              '${data.training.volumeKgRepetitions.toStringAsFixed(0)} kg × Wdh.',
-                            ),
-                          ],
-                        ),
-                      ),
-                      _Card(
-                        title: 'Ernährung',
-                        subtitle:
-                            'Abdeckung ${((data.nutrition.coverage * 100).clamp(0, 100)).round()}% · ${data.nutrition.mealDiaryDays} Tage im Ernährungstagebuch',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              data.nutrition.caloriesKcal.value == null
-                                  ? 'Noch keine Kalorienwerte erfasst.'
-                                  : '${data.nutrition.caloriesKcal.value!.toStringAsFixed(0)} kcal pro erfasstem Tag',
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              data.nutrition.proteinGrams.value == null
-                                  ? 'Noch keine Proteinwerte erfasst.'
-                                  : '${data.nutrition.proteinGrams.value!.toStringAsFixed(0)} g Protein pro erfasstem Tag',
-                              style: TextStyle(
-                                color: GainerTheme.secondaryText(context),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      _trainingCard(data),
+                      _nutritionCard(context, data),
                       if (data.activeGoal case final goal?)
                         _Card(
                           title: 'Aktives Ziel',
@@ -210,6 +117,90 @@ class _ProgressScreenState extends State<ProgressScreen> {
           ),
         );
       },
+    ),
+  );
+
+  Widget _weightCard(BuildContext context, ApiDashboardInsights data) => _Card(
+    title: 'Gewicht',
+    subtitle:
+        '${data.weight.observedDays} von ${data.weight.expectedDays} Tagen mit Eintrag',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (data.latestWeight case final latest?) ...[
+          Text(
+            'Letzter Eintrag · ${_dateLabel(latest.date)}',
+            style: TextStyle(color: GainerTheme.secondaryText(context)),
+          ),
+          Text(
+            '${latest.weightKg.toStringAsFixed(1)} kg',
+            style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+          ),
+          const SizedBox(height: 8),
+        ],
+        Text(
+          data.sevenDayWeight.averageKg == null
+              ? 'Noch keine Gewichtsdaten der letzten ${data.sevenDayWeight.expectedDays} Tage'
+              : 'Ø ${data.sevenDayWeight.expectedDays} Tage · ${data.sevenDayWeight.averageKg!.toStringAsFixed(1)} kg',
+          style: TextStyle(color: GainerTheme.secondaryText(context)),
+        ),
+        Text(
+          data.weight.averageKg == null
+              ? 'Ø ${data.weight.expectedDays} Tage · Noch keine Gewichtsdaten'
+              : 'Ø ${data.weight.expectedDays} Tage · ${data.weight.averageKg!.toStringAsFixed(1)} kg',
+          style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+        ),
+        if (data.weight.trendKgPerWeek case final trend?)
+          Text(
+            '${trend >= 0 ? '+' : ''}${trend.toStringAsFixed(2)} kg pro Woche',
+            style: TextStyle(color: GainerTheme.secondaryText(context)),
+          ),
+        const SizedBox(height: 14),
+        if (data.weightSeries.isNotEmpty)
+          _WeightChart(points: data.weightSeries),
+        if (data.weightSeries.isEmpty)
+          const Text('Nach dem ersten Check-in erscheint hier dein Verlauf.'),
+      ],
+    ),
+  );
+
+  Widget _trainingCard(ApiDashboardInsights data) => _Card(
+    title: 'Training',
+    subtitle: '${data.workoutsLast7Days} Workouts in den letzten 7 Tagen',
+    child: _MetricRow(
+      metrics: [
+        ('Workouts gesamt', '${data.training.workoutCount}'),
+        (
+          'Trainingsvolumen',
+          '${data.training.volumeKgRepetitions.toStringAsFixed(0)} kg × Wdh.',
+        ),
+      ],
+    ),
+  );
+
+  Widget _nutritionCard(
+    BuildContext context,
+    ApiDashboardInsights data,
+  ) => _Card(
+    title: 'Ernährung',
+    subtitle:
+        'Abdeckung ${((data.nutrition.coverage * 100).clamp(0, 100)).round()}% · ${data.nutrition.mealDiaryDays} Tage im Ernährungstagebuch',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          data.nutrition.caloriesKcal.value == null
+              ? 'Noch keine Kalorienwerte erfasst.'
+              : '${data.nutrition.caloriesKcal.value!.toStringAsFixed(0)} kcal pro erfasstem Tag',
+        ),
+        const SizedBox(height: 4),
+        Text(
+          data.nutrition.proteinGrams.value == null
+              ? 'Noch keine Proteinwerte erfasst.'
+              : '${data.nutrition.proteinGrams.value!.toStringAsFixed(0)} g Protein pro erfasstem Tag',
+          style: TextStyle(color: GainerTheme.secondaryText(context)),
+        ),
+      ],
     ),
   );
 }
@@ -345,6 +336,32 @@ class _WeightChartPainter extends CustomPainter {
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
+    final path = _linePath(values, size, minValue, range);
+    final gridPaint = Paint()
+      ..color = color.withValues(alpha: .14)
+      ..strokeWidth = 1;
+    for (final fraction in [0.2, 0.5, 0.8]) {
+      final y = size.height * fraction;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+    if (values.length == 1) {
+      canvas.drawCircle(
+        path.getBounds().topLeft,
+        4,
+        paint..style = PaintingStyle.fill,
+      );
+      return;
+    }
+    canvas.drawPath(path, paint);
+    _drawPointMarkers(canvas, path, paint, values.length);
+  }
+
+  Path _linePath(
+    List<double> values,
+    Size size,
+    double minValue,
+    double range,
+  ) {
     final path = Path();
     for (var i = 0; i < values.length; i++) {
       final x = values.length == 1
@@ -362,27 +379,15 @@ class _WeightChartPainter extends CustomPainter {
         path.lineTo(x, y);
       }
     }
-    final gridPaint = Paint()
-      ..color = color.withValues(alpha: .14)
-      ..strokeWidth = 1;
-    for (final fraction in [0.2, 0.5, 0.8]) {
-      final y = size.height * fraction;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-    if (values.length == 1) {
-      canvas.drawCircle(
-        path.getBounds().topLeft,
-        4,
-        paint..style = PaintingStyle.fill,
-      );
-      return;
-    }
-    canvas.drawPath(path, paint);
+    return path;
+  }
+
+  void _drawPointMarkers(Canvas canvas, Path path, Paint paint, int count) {
     for (final point in path.computeMetrics()) {
       for (
         var distance = 0.0;
         distance <= point.length;
-        distance += point.length / (values.length - 1)
+        distance += point.length / (count - 1)
       ) {
         final tangent = point.getTangentForOffset(distance);
         if (tangent != null) {
