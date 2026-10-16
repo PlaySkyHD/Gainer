@@ -19,6 +19,7 @@
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.8.0" />
     <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.8.0" />
+    <PackageVersion Include="MessagePack" Version="2.5.307" />
     <PackageVersion Include="MSTest" Version="4.0.1" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
