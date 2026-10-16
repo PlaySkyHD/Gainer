@@ -51,13 +51,13 @@ function Write-PhaseStart {
     param([string] $Name)
     $script:CurrentPhase = $Name
     $script:PhaseTimer = [System.Diagnostics.Stopwatch]::StartNew()
-    Write-Host "PHASE START name=$Name utc=$([DateTime]::UtcNow.ToString('o'))"
+    Write-Information "PHASE START name=$Name utc=$([DateTime]::UtcNow.ToString('o'))" -InformationAction Continue
 }
 
 function Write-PhaseEnd {
     param([string] $Name)
     $script:PhaseTimer.Stop()
-    Write-Host "PHASE END name=$Name utc=$([DateTime]::UtcNow.ToString('o')) elapsed_seconds=$([Math]::Round($script:PhaseTimer.Elapsed.TotalSeconds, 2))"
+    Write-Information "PHASE END name=$Name utc=$([DateTime]::UtcNow.ToString('o')) elapsed_seconds=$([Math]::Round($script:PhaseTimer.Elapsed.TotalSeconds, 2))" -InformationAction Continue
     $script:CurrentPhase = $null
 }
 
@@ -76,11 +76,11 @@ function Invoke-Checked {
     param([string] $Executable, [string[]] $Arguments)
     $label = "$Executable $($Arguments -join ' ')"
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    Write-Host "COMMAND START phase=$script:CurrentPhase utc=$([DateTime]::UtcNow.ToString('o')) command=$label"
+    Write-Information "COMMAND START phase=$script:CurrentPhase utc=$([DateTime]::UtcNow.ToString('o')) command=$label" -InformationAction Continue
     & $Executable @Arguments
     $exitCode = $LASTEXITCODE
     $timer.Stop()
-    Write-Host "COMMAND END phase=$script:CurrentPhase utc=$([DateTime]::UtcNow.ToString('o')) elapsed_seconds=$([Math]::Round($timer.Elapsed.TotalSeconds, 2)) exit_code=$exitCode command=$label"
+    Write-Information "COMMAND END phase=$script:CurrentPhase utc=$([DateTime]::UtcNow.ToString('o')) elapsed_seconds=$([Math]::Round($timer.Elapsed.TotalSeconds, 2)) exit_code=$exitCode command=$label" -InformationAction Continue
     if ($exitCode -ne 0) {
         throw "Command failed ($exitCode): $label"
     }
@@ -124,7 +124,7 @@ function Invoke-ManagedProcess {
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    Write-Host "MANAGED COMMAND START utc=$([DateTime]::UtcNow.ToString('o')) label=$Label timeout_seconds=$TimeoutSeconds"
+    Write-Information "MANAGED COMMAND START utc=$([DateTime]::UtcNow.ToString('o')) label=$Label timeout_seconds=$TimeoutSeconds" -InformationAction Continue
     try {
         if (-not $process.Start()) { throw "Could not start managed command '$Label'." }
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
@@ -154,14 +154,14 @@ function Invoke-ManagedProcess {
                             "`n... output omitted; final process output follows ...`n" +
                             $preview.Substring($preview.Length - $tailLength)
                     }
-                    Write-Host "MANAGED $($stream.Name) BEGIN label=$Label`n$preview"
-                    if ($wasTruncated) { Write-Host "MANAGED $($stream.Name) TRUNCATED label=$Label original_characters=$($stream.Text.Length) limit=$OutputPreviewLimit" }
-                    Write-Host "MANAGED $($stream.Name) END label=$Label"
+                    Write-Information "MANAGED $($stream.Name) BEGIN label=$Label`n$preview" -InformationAction Continue
+                    if ($wasTruncated) { Write-Information "MANAGED $($stream.Name) TRUNCATED label=$Label original_characters=$($stream.Text.Length) limit=$OutputPreviewLimit" -InformationAction Continue }
+                    Write-Information "MANAGED $($stream.Name) END label=$Label" -InformationAction Continue
                 }
             }
         }
         $exitCode = if ($exited) { $process.ExitCode } else { $null }
-        Write-Host "MANAGED COMMAND END utc=$([DateTime]::UtcNow.ToString('o')) label=$Label elapsed_seconds=$([Math]::Round($timer.Elapsed.TotalSeconds, 2)) timed_out=$timedOut exit_code=$exitCode termination_confirmed=$terminationConfirmed output_drained=$drainConfirmed"
+        Write-Information "MANAGED COMMAND END utc=$([DateTime]::UtcNow.ToString('o')) label=$Label elapsed_seconds=$([Math]::Round($timer.Elapsed.TotalSeconds, 2)) timed_out=$timedOut exit_code=$exitCode termination_confirmed=$terminationConfirmed output_drained=$drainConfirmed" -InformationAction Continue
         return [pscustomobject]@{ TimedOut = $timedOut; ExitCode = $exitCode; TerminationConfirmed = $terminationConfirmed; OutputDrained = $drainConfirmed; Stdout = $outText; Stderr = $errText }
     }
     finally { $process.Dispose() }
@@ -190,7 +190,7 @@ function Get-VerifiedSimulatorInventoryEntry {
     foreach ($runtime in $inventory.devices.PSObject.Properties) {
         foreach ($device in $runtime.Value) {
             if ([string]$device.udid -eq $SimulatorId) {
-                Write-Host "SIMULATOR INVENTORY MATCH label=$Label runtime=$($runtime.Name) name=$($device.name) udid=$($device.udid) state=$($device.state) is_available=$($device.isAvailable)"
+                Write-Information "SIMULATOR INVENTORY MATCH label=$Label runtime=$($runtime.Name) name=$($device.name) udid=$($device.udid) state=$($device.state) is_available=$($device.isAvailable)" -InformationAction Continue
                 if ([string]$runtime.Name -ne $ExpectedRuntimeIdentifier -or [string]$device.name -ne $ExpectedName -or $device.isAvailable -ne $true) {
                     throw "Exact simulator identity/availability check failed ($Label)."
                 }
@@ -245,7 +245,7 @@ function Invoke-CiSimulatorBootStatus {
     $inventoryMinimumWorstCase = $minimumInventoryTimeout + $processCleanupReserve
     $firstReserve = (2 * $inventoryMinimumWorstCase) + $MinimumRetrySeconds + (2 * $processCleanupReserve)
     $firstLimit = [Math]::Min($FirstAttemptSeconds, $InternalBudgetSeconds - $firstReserve)
-    Write-Host "SIMULATOR BOOT BUDGET available_seconds=$InternalBudgetSeconds first_timeout_seconds=$firstLimit"
+    Write-Information "SIMULATOR BOOT BUDGET available_seconds=$InternalBudgetSeconds first_timeout_seconds=$firstLimit" -InformationAction Continue
     if ($firstLimit -lt $MinimumFirstAttemptSeconds) { throw 'Insufficient simulator boot phase budget remains to start bootstatus safely.' }
     $bootArguments = @($ExecutablePrefixArguments) + @('simctl', 'bootstatus', $SimulatorId, '-b')
     $first = Invoke-ManagedProcess $XcrunPath $bootArguments $firstLimit 'simctl bootstatus attempt=1'
@@ -271,7 +271,7 @@ function Invoke-CiSimulatorBootStatus {
         $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
         $retryLimit = [Math]::Min($RetryMaximumSeconds, $remaining - ($inventoryMinimumWorstCase + (2 * $processCleanupReserve)))
         if ($retryLimit -lt $MinimumRetrySeconds) { throw 'Insufficient internal boot phase budget remains for a second bootstatus client.' }
-        Write-Host "SIMULATOR BOOTSTATUS RETRY utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId timeout_seconds=$retryLimit"
+        Write-Information "SIMULATOR BOOTSTATUS RETRY utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId timeout_seconds=$retryLimit" -InformationAction Continue
         $second = Invoke-ManagedProcess $XcrunPath $bootArguments $retryLimit 'simctl bootstatus attempt=2'
         if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) { throw 'Simulator boot phase deadline was exceeded after retry bootstatus client.' }
         if (-not $second.TerminationConfirmed -or -not $second.OutputDrained) { throw 'The retry bootstatus client did not terminate and drain its output safely.' }
@@ -296,7 +296,7 @@ function Invoke-CiSimulatorBootStatus {
             throw 'Insufficient internal simulator boot phase budget remains for the one permitted fresh readiness inventory client.'
         }
         Assert-OwnedSimulatorRecord $StatePath $RunToken $SimulatorId $SimulatorName $RuntimeIdentifier
-        Write-Host "SIMULATOR INVENTORY RETRY utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId timeout_seconds=$inventoryRetryTimeout reason=first_client_timed_out_terminated_and_drained"
+        Write-Information "SIMULATOR INVENTORY RETRY utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId timeout_seconds=$inventoryRetryTimeout reason=first_client_timed_out_terminated_and_drained" -InformationAction Continue
         $ready = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $inventoryRetryTimeout 'simctl final readiness inventory attempt=2' $ExecutablePrefixArguments $RuntimeIdentifier $SimulatorName -RequireBooted
         if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) {
             throw 'Internal simulator boot phase deadline was exceeded after the one permitted readiness inventory retry.'
@@ -305,7 +305,7 @@ function Invoke-CiSimulatorBootStatus {
     if (-not $ready -or $ready.RuntimeIdentifier -ne $RuntimeIdentifier -or $ready.Device.name -ne $SimulatorName -or $ready.Device.state -ne 'Booted') {
         throw "Simulator $SimulatorId did not pass bootstatus and exact Booted inventory verification."
     }
-    Write-Host "SIMULATOR BOOTSTATUS VERIFIED utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId state=$($ready.Device.state)"
+    Write-Information "SIMULATOR BOOTSTATUS VERIFIED utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId state=$($ready.Device.state)" -InformationAction Continue
     return $ready.Device
 }
 
@@ -372,7 +372,7 @@ function Get-EligibleIphoneSimulatorCandidates {
 }
 
 function Assert-PinnedFlutter {
-    Write-Host "SDK CHECK START utc=$([DateTime]::UtcNow.ToString('o'))"
+    Write-Information "SDK CHECK START utc=$([DateTime]::UtcNow.ToString('o'))" -InformationAction Continue
     if (-not (Test-Path -LiteralPath $flutterCommand -PathType Leaf)) {
         throw "Pinned Flutter SDK not found at '$flutterCommand'. Set -FlutterSdkRoot or GAINER_FLUTTER_SDK_ROOT."
     }
@@ -393,7 +393,7 @@ function Assert-PinnedFlutter {
             throw "Pinned Flutter archive requires native arm64; found '$actualArch'."
         }
     }
-    Write-Host "SDK CHECK END utc=$([DateTime]::UtcNow.ToString('o')) version=$($versionJson.frameworkVersion) revision=$($versionJson.frameworkRevision) dart=$($versionJson.dartSdkVersion)"
+    Write-Information "SDK CHECK END utc=$([DateTime]::UtcNow.ToString('o')) version=$($versionJson.frameworkVersion) revision=$($versionJson.frameworkRevision) dart=$($versionJson.dartSdkVersion)" -InformationAction Continue
 }
 
 function Invoke-ToolchainPhase {
@@ -402,7 +402,7 @@ function Invoke-ToolchainPhase {
     $doctorReportRoot = Join-Path $repositoryRoot 'artifacts/mobile/toolchain'
     New-Item -ItemType Directory -Force -Path $doctorReportRoot | Out-Null
     $doctorPath = Join-Path $doctorReportRoot 'flutter-doctor.txt'
-    Write-Host "COMMAND START phase=Toolchain utc=$([DateTime]::UtcNow.ToString('o')) command=flutter doctor --verbose"
+    Write-Information "COMMAND START phase=Toolchain utc=$([DateTime]::UtcNow.ToString('o')) command=flutter doctor --verbose" -InformationAction Continue
     $doctorTimer = [System.Diagnostics.Stopwatch]::StartNew()
     $doctorOutput = & $flutterCommand doctor --verbose 2>&1
     $doctorExitCode = $LASTEXITCODE
@@ -428,7 +428,7 @@ function Invoke-ToolchainPhase {
         doctorReport = $doctorPath
     }
     $doctorState | ConvertTo-Json | Set-Content -LiteralPath $doctorStatePath -Encoding utf8
-    Write-Host "COMMAND END phase=Toolchain utc=$([DateTime]::UtcNow.ToString('o')) elapsed_seconds=$([Math]::Round($doctorTimer.Elapsed.TotalSeconds, 2)) exit_code=$doctorExitCode xcode_confirmed=$xcodeConfirmed xcode_matches_pin=$xcodeMatchesPin"
+    Write-Information "COMMAND END phase=Toolchain utc=$([DateTime]::UtcNow.ToString('o')) elapsed_seconds=$([Math]::Round($doctorTimer.Elapsed.TotalSeconds, 2)) exit_code=$doctorExitCode xcode_confirmed=$xcodeConfirmed xcode_matches_pin=$xcodeMatchesPin" -InformationAction Continue
     if ($doctorExitCode -ne 0) {
         Write-Warning "flutter doctor exited $doctorExitCode. Full report saved at '$doctorPath'; Android or optional host warnings do not replace the explicit Xcode check."
     }
@@ -503,7 +503,7 @@ function Assert-IosBuildPrerequisites {
     if ($LASTEXITCODE -ne 0 -or $xcodeVersion -notcontains "Xcode $($toolchain.xcode.version)") {
         throw "Expected Xcode $($toolchain.xcode.version), found '$($xcodeVersion -join ' ')'."
     }
-    Write-Host ($xcodeVersion -join "`n")
+    Write-Information ($xcodeVersion -join "`n") -InformationAction Continue
 }
 
 function Invoke-IosBuildPhase {
@@ -561,7 +561,7 @@ function Invoke-SimulatorBootPhase {
             $deviceTypeIdentifier = [string]$matchingTypes[0].identifier
         }
         $simulatorName = "Gainer-CI-$runToken"
-        Write-Host "SIMULATOR CREATE START utc=$([DateTime]::UtcNow.ToString('o')) name=$simulatorName runtime=$($selected.RuntimeIdentifier) deviceType=$deviceTypeIdentifier sourceDevice=$($device.name)"
+        Write-Information "SIMULATOR CREATE START utc=$([DateTime]::UtcNow.ToString('o')) name=$simulatorName runtime=$($selected.RuntimeIdentifier) deviceType=$deviceTypeIdentifier sourceDevice=$($device.name)" -InformationAction Continue
         $createOutput = & /usr/bin/xcrun simctl create $simulatorName $deviceTypeIdentifier $selected.RuntimeIdentifier
         $createExitCode = $LASTEXITCODE
         $simulatorId = [string]($createOutput | Select-Object -Last 1)
@@ -594,13 +594,13 @@ function Invoke-SimulatorBootPhase {
     }
     New-Item -ItemType Directory -Force -Path $runStateRoot | Out-Null
     $simulatorState | ConvertTo-Json | Set-Content -LiteralPath $simulatorStatePath -Encoding utf8
-    Write-Host "SIMULATOR SELECTED utc=$([DateTime]::UtcNow.ToString('o')) name=$simulatorName ios_version=$($selected.RuntimeVersion) version_source=$($selected.RuntimeVersionSource) xcode=$($toolchain.xcode.version) runtime=$($selected.RuntimeIdentifier) udid=$simulatorId owned=$simulatorOwned initialState=$initialState"
+    Write-Information "SIMULATOR SELECTED utc=$([DateTime]::UtcNow.ToString('o')) name=$simulatorName ios_version=$($selected.RuntimeVersion) version_source=$($selected.RuntimeVersionSource) xcode=$($toolchain.xcode.version) runtime=$($selected.RuntimeIdentifier) udid=$simulatorId owned=$simulatorOwned initialState=$initialState" -InformationAction Continue
     if ($isGitHubActions) {
-        Write-Host "SIMULATOR DYLD CACHE PREPARE START utc=$([DateTime]::UtcNow.ToString('o')) runtime=$($selected.RuntimeIdentifier)"
+        Write-Information "SIMULATOR DYLD CACHE PREPARE START utc=$([DateTime]::UtcNow.ToString('o')) runtime=$($selected.RuntimeIdentifier)" -InformationAction Continue
         Invoke-Checked '/usr/bin/xcrun' @('simctl', 'runtime', 'dyld_shared_cache', 'update', $selected.RuntimeIdentifier)
-        Write-Host "SIMULATOR DYLD CACHE PREPARE END utc=$([DateTime]::UtcNow.ToString('o')) runtime=$($selected.RuntimeIdentifier)"
+        Write-Information "SIMULATOR DYLD CACHE PREPARE END utc=$([DateTime]::UtcNow.ToString('o')) runtime=$($selected.RuntimeIdentifier)" -InformationAction Continue
     }
-    Write-Host "SIMULATOR BOOTSTATUS START utc=$([DateTime]::UtcNow.ToString('o')) udid=$simulatorId"
+    Write-Information "SIMULATOR BOOTSTATUS START utc=$([DateTime]::UtcNow.ToString('o')) udid=$simulatorId" -InformationAction Continue
     if ($isGitHubActions) {
         $availableBootBudget = 270 - [int][Math]::Ceiling($script:PhaseTimer.Elapsed.TotalSeconds)
         $deviceAfterBoot = Invoke-CiSimulatorBootStatus '/usr/bin/xcrun' $runToken $simulatorStatePath $simulatorId $simulatorName $selected.RuntimeIdentifier -InternalBudgetSeconds $availableBootBudget
@@ -624,7 +624,7 @@ function Invoke-SimulatorBootPhase {
     $simulatorState.state = $deviceAfterBoot.state
     $simulatorState.recordedAtUtc = [DateTime]::UtcNow.ToString('o')
     $simulatorState | ConvertTo-Json | Set-Content -LiteralPath $simulatorStatePath -Encoding utf8
-    Write-Host "SIMULATOR READY utc=$([DateTime]::UtcNow.ToString('o')) name=$simulatorName runtimeMajor=$($selected.RuntimeMajor) runtime=$($selected.RuntimeIdentifier) udid=$simulatorId owned=$simulatorOwned state=$($deviceAfterBoot.state)"
+    Write-Information "SIMULATOR READY utc=$([DateTime]::UtcNow.ToString('o')) name=$simulatorName runtimeMajor=$($selected.RuntimeMajor) runtime=$($selected.RuntimeIdentifier) udid=$simulatorId owned=$simulatorOwned state=$($deviceAfterBoot.state)" -InformationAction Continue
 }
 
 function Invoke-NativeTestsPhase {
@@ -742,7 +742,7 @@ function Invoke-UiCapturePhase {
         $appBundleId -notmatch '^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$') {
         throw "Built Runner app has an invalid CFBundleIdentifier '$appBundleId'."
     }
-    Write-Host "SIMULATOR APP TERMINATE START utc=$([DateTime]::UtcNow.ToString('o')) udid=$($simulatorState.simulatorId) bundle=$appBundleId"
+    Write-Information "SIMULATOR APP TERMINATE START utc=$([DateTime]::UtcNow.ToString('o')) udid=$($simulatorState.simulatorId) bundle=$appBundleId" -InformationAction Continue
     $terminateResult = Invoke-ManagedProcess '/usr/bin/xcrun' @(
         'simctl', 'terminate', $simulatorState.simulatorId, $appBundleId
     ) 20 'terminate prior Runner test-host process' -OutputPreviewLimit 2000
@@ -755,10 +755,10 @@ function Invoke-UiCapturePhase {
         $terminationMessage -match '(?i)domain=NSPOSIXErrorDomain,\s*code=3' -and
         $terminationMessage -match '(?i)(?:no such process|found nothing to terminate)'
     if ($terminateResult.ExitCode -eq 0) {
-        Write-Host 'SIMULATOR APP TERMINATE END result=terminated'
+        Write-Information 'SIMULATOR APP TERMINATE END result=terminated' -InformationAction Continue
     }
     elseif ($terminateResult.ExitCode -eq 3 -and $knownNotRunningMessage) {
-        Write-Host 'SIMULATOR APP TERMINATE END result=not_running'
+        Write-Information 'SIMULATOR APP TERMINATE END result=not_running' -InformationAction Continue
     }
     else {
         throw "Could not safely confirm the prior Runner process was absent: $($terminateResult.Stderr) $($terminateResult.Stdout)"
@@ -807,7 +807,7 @@ function Invoke-UiCapturePhase {
             throw "Required native UI screenshot '$name.png' has unreasonable dimensions ${width}x${height}."
         }
     }
-    Write-Host "UI CAPTURES READY count=$($expectedScreenshots.Count) simulator=$($simulatorState.simulatorName) udid=$($simulatorState.simulatorId) elapsed_seconds=$([Math]::Round($phaseClock.Elapsed.TotalSeconds, 2))"
+    Write-Information "UI CAPTURES READY count=$($expectedScreenshots.Count) simulator=$($simulatorState.simulatorName) udid=$($simulatorState.simulatorId) elapsed_seconds=$([Math]::Round($phaseClock.Elapsed.TotalSeconds, 2))" -InformationAction Continue
 }
 
 $phaseMap = [ordered]@{

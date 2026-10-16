@@ -52,7 +52,7 @@ jobs:
         run: dotnet restore Gainer.slnx --force-evaluate
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
         working-directory: apps/web
 
       - name: Verify .NET formatting
@@ -146,7 +146,7 @@ jobs:
         run: ./scripts/Test-NuGetLicenses.ps1
 
       - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+        run: npx --yes --ignore-scripts playwright@1.62.1 install --with-deps chromium
         working-directory: apps/web
 
       - name: Verify frontend hydration behind production CSP

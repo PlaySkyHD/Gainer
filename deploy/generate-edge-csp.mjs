@@ -6,11 +6,17 @@ import { pathToFileURL } from "node:url";
 const placeholder = "__GAINER_INLINE_SCRIPT_HASHES__";
 const inlineScriptPattern = /<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi;
 
+function compareCodeUnits(a, b) {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
 async function listHtmlFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = await Promise.all(entries.map((entry) => {
     const path = resolve(directory, entry.name);
-    return entry.isDirectory() ? listHtmlFiles(path) : Promise.resolve(entry.name.endsWith(".html") ? [path] : []);
+    if (entry.isDirectory()) return listHtmlFiles(path);
+    return Promise.resolve(entry.name.endsWith(".html") ? [path] : []);
   }));
   return files.flat();
 }
@@ -30,7 +36,7 @@ export async function collectInlineScriptHashes(exportDirectory) {
   }
 
   if (hashes.size === 0) throw new Error(`No inline scripts found in ${exportDirectory}; refusing to emit an incomplete CSP.`);
-  return [...hashes].sort();
+  return [...hashes].sort(compareCodeUnits);
 }
 
 export async function generateCaddyfile(exportDirectory, templatePath) {
@@ -58,7 +64,11 @@ async function main() {
 }
 
 const invokedDirectly = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
-if (invokedDirectly) main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+if (invokedDirectly) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
+}

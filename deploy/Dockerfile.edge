@@ -1,7 +1,7 @@
 FROM node:24.7.0-alpine3.22 AS build
 WORKDIR /src
 COPY apps/web/package.json apps/web/package-lock.json ./
-RUN npm install --global npm@11.19.0 && npm ci
+RUN npm install --global --ignore-scripts npm@11.19.0 && npm ci --ignore-scripts
 COPY apps/web/ ./
 COPY deploy/Caddyfile /build/edge/Caddyfile
 COPY deploy/generate-edge-csp.mjs /build/edge/generate-edge-csp.mjs
