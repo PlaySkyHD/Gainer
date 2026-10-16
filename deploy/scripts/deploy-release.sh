@@ -12,8 +12,8 @@ current_link="/srv/gainer/current"
 previous_release="$(readlink -f "${current_link}" 2>/dev/null || true)"
 environment_backup="${environment_file}.before-${release_id}"
 
-test -f "${compose_file}"
-test -f "${environment_file}"
+[[ -f "${compose_file}" ]]
+[[ -f "${environment_file}" ]]
 cp --preserve=mode,ownership,timestamps "${environment_file}" "${environment_backup}"
 
 set_environment_value() {
