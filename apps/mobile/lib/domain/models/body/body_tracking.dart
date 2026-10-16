@@ -2,6 +2,8 @@ enum BodyGoalKind { bulk, maintain, cut }
 
 enum BodyWeightUnit { kilograms, pounds }
 
+const _invalidCalendarDayMessage = 'Ungültiger Kalendertag.';
+
 class BodyTrackingValidationException implements Exception {
   const BodyTrackingValidationException(this.fields);
 
@@ -126,9 +128,9 @@ String? validateBodyGoal({
   if (!targetWeightKg.isFinite || targetWeightKg <= 0) {
     errors['targetWeightKg'] = 'Das Zielgewicht muss positiv sein.';
   }
-  if (!_validDate(startDate)) errors['startDate'] = 'Ungültiger Kalendertag.';
+  if (!_validDate(startDate)) errors['startDate'] = _invalidCalendarDayMessage;
   if (targetDate != null && !_validDate(targetDate)) {
-    errors['targetDate'] = 'Ungültiger Kalendertag.';
+    errors['targetDate'] = _invalidCalendarDayMessage;
   } else if (targetDate != null && targetDate.compareTo(startDate) < 0) {
     errors['targetDate'] = 'Das Zieldatum darf nicht vor dem Start liegen.';
   }
@@ -149,7 +151,7 @@ void validateDailyCheckIn({
   required int? sleepMinutes,
 }) {
   final errors = <String, String>{};
-  if (!_validDate(localDate)) errors['localDate'] = 'Ungültiger Kalendertag.';
+  if (!_validDate(localDate)) errors['localDate'] = _invalidCalendarDayMessage;
   if (!weightKg.isFinite || weightKg <= 0) {
     errors['weightKg'] = 'Das Gewicht muss positiv sein.';
   }

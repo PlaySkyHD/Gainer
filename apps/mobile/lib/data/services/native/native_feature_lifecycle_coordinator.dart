@@ -118,22 +118,12 @@ class NativeFeatureLifecycleCoordinator with WidgetsBindingObserver {
     final workout = training.runningWorkout;
     final id = training.runningWorkoutId;
     if (workout == null || id == null || !workout.isRunning) {
-      final prior = _activitySessionId;
-      if (prior != null) {
-        _activitySessionId = null;
-        await activities.end(prior);
-      }
+      await _endPriorActivity();
       return;
     }
     if (!_active || !isSessionActive()) return;
     final now = clock().toUtc();
-    final rest = workout.restTimer;
-    final requestedRestEnd = rest == null
-        ? null
-        : DateTime.parse(rest.targetAtUtc).toUtc();
-    final restEnd = requestedRestEnd != null && requestedRestEnd.isAfter(now)
-        ? requestedRestEnd
-        : null;
+    final restEnd = _activeRestEnd(workout.restTimer, now);
     final state = LiveActivityState(
       sessionId: id,
       status: restEnd == null
@@ -141,23 +131,55 @@ class NativeFeatureLifecycleCoordinator with WidgetsBindingObserver {
           : LiveActivityStatus.rest,
       startedAtUtc: DateTime.parse(workout.startedAtUtc).toUtc(),
       restEndsAtUtc: restEnd,
-      staleAtUtc: restEnd == null
-          ? now.add(const Duration(hours: 8))
-          : (restEnd.add(const Duration(minutes: 5)).isAfter(now)
-                ? restEnd.add(const Duration(minutes: 5))
-                : now.add(const Duration(minutes: 5))),
+      staleAtUtc: _staleAtUtc(restEnd, now),
     );
     if (_activitySessionId != id) {
-      final previous = _activitySessionId;
-      if (previous != null) await activities.end(previous);
+      await _replaceActivitySession(id, state);
+    } else {
+      await _updateActivitySession(id, state);
+    }
+  }
+
+  Future<void> _endPriorActivity() async {
+    final prior = _activitySessionId;
+    if (prior != null) {
+      _activitySessionId = null;
+      await activities.end(prior);
+    }
+  }
+
+  DateTime? _activeRestEnd(RestTimerRecord? rest, DateTime now) {
+    if (rest == null) return null;
+    final requestedRestEnd = DateTime.parse(rest.targetAtUtc).toUtc();
+    return requestedRestEnd.isAfter(now) ? requestedRestEnd : null;
+  }
+
+  DateTime _staleAtUtc(DateTime? restEnd, DateTime now) {
+    if (restEnd == null) return now.add(const Duration(hours: 8));
+    final extended = restEnd.add(const Duration(minutes: 5));
+    return extended.isAfter(now)
+        ? extended
+        : now.add(const Duration(minutes: 5));
+  }
+
+  Future<void> _replaceActivitySession(
+    String id,
+    LiveActivityState state,
+  ) async {
+    final previous = _activitySessionId;
+    if (previous != null) await activities.end(previous);
+    if (!_active || !isSessionActive()) return;
+    if (await activities.start(state: state)) _activitySessionId = id;
+  }
+
+  Future<void> _updateActivitySession(
+    String id,
+    LiveActivityState state,
+  ) async {
+    if (!_active || !isSessionActive()) return;
+    if (!await activities.update(state: state)) {
       if (!_active || !isSessionActive()) return;
       if (await activities.start(state: state)) _activitySessionId = id;
-    } else {
-      if (!_active || !isSessionActive()) return;
-      if (!await activities.update(state: state)) {
-        if (!_active || !isSessionActive()) return;
-        if (await activities.start(state: state)) _activitySessionId = id;
-      }
     }
   }
 

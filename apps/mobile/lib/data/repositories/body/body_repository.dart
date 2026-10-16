@@ -7,6 +7,9 @@ import '../sync/local_sync_store.dart';
 
 typedef BodyIdFactory = String Function();
 
+const _bodyGoalType = 'body-goal';
+const _dailyCheckInType = 'daily-check-in';
+
 class BodyTrackingSnapshot {
   const BodyTrackingSnapshot({
     required this.activeGoal,
@@ -43,8 +46,8 @@ class BodyRepository {
   final void Function()? transactionFaultForTesting;
 
   Future<BodyTrackingSnapshot> read() async {
-    final goals = await store.readAggregates('body-goal');
-    final checkIns = await store.readAggregates('daily-check-in');
+    final goals = await store.readAggregates(_bodyGoalType);
+    final checkIns = await store.readAggregates(_dailyCheckInType);
     final parsedGoals = [
       for (final item in goals)
         (
@@ -112,17 +115,17 @@ class BodyRepository {
     String? dependency;
     int? expectedActiveGoalVersion;
     if (active case final previous?) {
-      final oldEnvelope = await store.readAggregate('body-goal', previous.id);
+      final oldEnvelope = await store.readAggregate(_bodyGoalType, previous.id);
       if (oldEnvelope == null) {
         throw StateError('The active body goal disappeared.');
       }
       expectedActiveGoalVersion = oldEnvelope.serverVersion ?? 1;
-      related['body-goal'] = _pendingEnvelope(
+      related[_bodyGoalType] = _pendingEnvelope(
         oldEnvelope,
         previous.value.toJson()..['endedAtUtc'] = createdAtUtc,
       );
       final writes =
-          (await store.readOutbox(aggregateType: 'body-goal'))
+          (await store.readOutbox(aggregateType: _bodyGoalType))
               .where(
                 (item) =>
                     item.aggregateId == previous.id &&
@@ -141,7 +144,7 @@ class BodyRepository {
     };
     await store.commitMutation(
       mutationId: ids(),
-      aggregateType: 'body-goal',
+      aggregateType: _bodyGoalType,
       aggregateId: goalId,
       operation: LocalMutationOperation.create,
       baseVersion: null,
@@ -179,14 +182,10 @@ class BodyRepository {
       sleepMinutes: sleepMinutes,
     );
     final now = clock().toUtc();
-    final rows = await store.readAggregates('daily-check-in');
-    LocalAggregateEnvelope<Object?>? existing;
-    for (final row in rows) {
-      if (_map(row.workingCopy)['localDate'] == localDate) {
-        existing = row;
-        break;
-      }
-    }
+    final existing = _findCheckInForDay(
+      await store.readAggregates(_dailyCheckInType),
+      localDate,
+    );
     final id = existing?.aggregateId ?? ids();
     final prior = existing == null ? null : _map(existing.workingCopy);
     final checkIn = DailyCheckIn(
@@ -203,7 +202,7 @@ class BodyRepository {
     );
     await store.commitMutation(
       mutationId: ids(),
-      aggregateType: 'daily-check-in',
+      aggregateType: _dailyCheckInType,
       aggregateId: id,
       operation: existing == null
           ? LocalMutationOperation.create
@@ -258,14 +257,9 @@ class BodyRepository {
       steps: null,
       sleepMinutes: null,
     );
-    final ledgerKey = 'health-ledger:body-mass';
+    const ledgerKey = 'health-ledger:body-mass';
     final rawLedger = await store.readSyncMetadata(ledgerKey);
-    final ledger = rawLedger is Map<String, dynamic>
-        ? Map<String, dynamic>.from(rawLedger)
-        : <String, dynamic>{'probes': <String, Object?>{}};
-    final probes = ledger['probes'] is Map<String, dynamic>
-        ? Map<String, dynamic>.from(ledger['probes'] as Map<String, dynamic>)
-        : <String, dynamic>{};
+    final probes = _healthProbes(rawLedger);
     if (probes.containsKey(probeId)) {
       final id =
           (probes[probeId] as Map<String, dynamic>?)?['checkInId'] as String?;
@@ -274,14 +268,10 @@ class BodyRepository {
         checkInId: id,
       );
     }
-    final rows = await store.readAggregates('daily-check-in');
-    LocalAggregateEnvelope<Object?>? existing;
-    for (final row in rows) {
-      if (_map(row.workingCopy)['localDate'] == localDate) {
-        existing = row;
-        break;
-      }
-    }
+    final existing = _findCheckInForDay(
+      await store.readAggregates(_dailyCheckInType),
+      localDate,
+    );
     if (existing != null && !replaceExistingCheckIn) {
       return HealthCheckInCommitResult(
         HealthCheckInCommitStatus.dayConflict,
@@ -312,7 +302,7 @@ class BodyRepository {
     try {
       await store.commitMutation(
         mutationId: ids(),
-        aggregateType: 'daily-check-in',
+        aggregateType: _dailyCheckInType,
         aggregateId: id,
         operation: existing == null
             ? LocalMutationOperation.create
@@ -328,7 +318,7 @@ class BodyRepository {
         },
         resourceExpectations: [
           LocalResourceExpectation(
-            aggregateType: 'daily-check-in',
+            aggregateType: _dailyCheckInType,
             aggregateId: id,
             optimisticVersion: existing?.optimisticVersion,
             serverVersion: existing?.serverVersion,
@@ -338,9 +328,7 @@ class BodyRepository {
         createdAtUtc: now,
       );
     } on StateError catch (error) {
-      if (attempt < 2 &&
-          (error.message.contains('Health import state changed') ||
-              error.message.contains('local resource changed'))) {
+      if (attempt < 2 && _isRetryableHealthImportError(error)) {
         return _importHealthWeight(
           probeId: probeId,
           localDate: localDate,
@@ -377,6 +365,31 @@ Map<String, dynamic> _map(Object? value) {
   }
   return value;
 }
+
+LocalAggregateEnvelope<Object?>? _findCheckInForDay(
+  List<LocalAggregateEnvelope<Object?>> rows,
+  String localDate,
+) {
+  for (final row in rows) {
+    if (_map(row.workingCopy)['localDate'] == localDate) {
+      return row;
+    }
+  }
+  return null;
+}
+
+Map<String, dynamic> _healthProbes(Object? rawLedger) {
+  final ledger = rawLedger is Map<String, dynamic>
+      ? Map<String, dynamic>.from(rawLedger)
+      : <String, dynamic>{'probes': <String, Object?>{}};
+  return ledger['probes'] is Map<String, dynamic>
+      ? Map<String, dynamic>.from(ledger['probes'] as Map<String, dynamic>)
+      : <String, dynamic>{};
+}
+
+bool _isRetryableHealthImportError(StateError error) =>
+    error.message.contains('Health import state changed') ||
+    error.message.contains('local resource changed');
 
 String _newUuidV4() {
   final random = Random.secure();

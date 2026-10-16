@@ -22,6 +22,47 @@ class LocalResourceExpectation {
   final int? serverVersion;
 }
 
+const _resourceChangedMessage =
+    'A local resource changed during the transaction.';
+const _localWritesFrozenKey = 'local-writes-frozen';
+const _accountOwnerIdKey = 'account-owner-id';
+
+void _requireMutationGuard(bool Function()? mutationGuard) {
+  if (mutationGuard != null && !mutationGuard()) {
+    throw StateError('The active account session changed before local commit.');
+  }
+}
+
+void _validateHealthLedgerKeys(
+  Iterable<String> keys,
+  String parameterName,
+  String message,
+) {
+  for (final key in keys) {
+    if (!key.startsWith('health-ledger:') || key.length > 160) {
+      throw ArgumentError.value(key, parameterName, message);
+    }
+  }
+}
+
+List<(String, LocalAggregateEnvelope<Object?>, String)> _encodeRelatedEnvelopes(
+  String aggregateId,
+  Map<String, LocalAggregateEnvelope<Object?>> relatedEnvelopes,
+) {
+  final relatedJson = <(String, LocalAggregateEnvelope<Object?>, String)>[];
+  for (final entry in relatedEnvelopes.entries) {
+    final related = entry.value;
+    if (related.aggregateId == aggregateId ||
+        related.syncState != LocalSyncState.pending ||
+        entry.key.trim().isEmpty ||
+        !RegExp(LocalDatabase.accountIdPattern).hasMatch(related.aggregateId)) {
+      throw ArgumentError('A related mutation envelope is invalid.');
+    }
+    relatedJson.add((entry.key, related, related.encode()));
+  }
+  return relatedJson;
+}
+
 /// Account-scoped durable storage. Every user edit writes its envelope and
 /// immutable outbox payload in one SQLite transaction before it may be shown
 /// as committed by a caller.
@@ -104,24 +145,16 @@ class LocalSyncStore {
         'A committed local edit must be a pending envelope for its aggregate.',
       );
     }
-    for (final key in localMetadataWrites.keys) {
-      if (!key.startsWith('health-ledger:') || key.length > 160) {
-        throw ArgumentError.value(
-          key,
-          'localMetadataWrites',
-          'Only purpose-bound Health ledger metadata may be written here.',
-        );
-      }
-    }
-    for (final key in localMetadataExpectations.keys) {
-      if (!key.startsWith('health-ledger:') || key.length > 160) {
-        throw ArgumentError.value(
-          key,
-          'localMetadataExpectations',
-          'Only purpose-bound Health ledger metadata may be checked here.',
-        );
-      }
-    }
+    _validateHealthLedgerKeys(
+      localMetadataWrites.keys,
+      'localMetadataWrites',
+      'Only purpose-bound Health ledger metadata may be written here.',
+    );
+    _validateHealthLedgerKeys(
+      localMetadataExpectations.keys,
+      'localMetadataExpectations',
+      'Only purpose-bound Health ledger metadata may be checked here.',
+    );
 
     final created = (createdAtUtc ?? DateTime.now()).toUtc();
     // Encode before entering the transaction so caller mutation after this
@@ -132,93 +165,22 @@ class LocalSyncStore {
       'body': body,
     });
     final envelopeJson = envelope.encode();
-    final relatedJson = <(String, LocalAggregateEnvelope<Object?>, String)>[];
-    for (final entry in relatedEnvelopes.entries) {
-      final related = entry.value;
-      if (related.aggregateId == aggregateId ||
-          related.syncState != LocalSyncState.pending ||
-          entry.key.trim().isEmpty ||
-          !RegExp(LocalDatabase.accountIdPattern)
-              .hasMatch(related.aggregateId)) {
-        throw ArgumentError('A related mutation envelope is invalid.');
-      }
-      relatedJson.add((entry.key, related, related.encode()));
-    }
+    final relatedJson = _encodeRelatedEnvelopes(aggregateId, relatedEnvelopes);
 
     final committed = await database.transaction(() async {
       await _bindAccountInTransaction();
-      if (mutationGuard != null && !mutationGuard()) {
-        throw StateError(
-          'The active account session changed before local commit.',
-        );
-      }
-      for (final expectation in resourceExpectations) {
-        final row =
-            await (database.select(database.localResources)..where(
-                  (t) =>
-                      t.aggregateType.equals(expectation.aggregateType) &
-                      t.aggregateId.equals(expectation.aggregateId),
-                ))
-                .getSingleOrNull();
-        if (expectation.optimisticVersion == null) {
-          if (row != null) {
-            throw StateError(
-              'A local resource changed during the transaction.',
-            );
-          }
-        } else if (row == null) {
-          throw StateError('A local resource changed during the transaction.');
-        } else {
-          final value = LocalAggregateEnvelope<Object?>.fromJson(
-            jsonDecode(row.envelopeJson) as Map<String, dynamic>,
-          );
-          if (value.optimisticVersion != expectation.optimisticVersion ||
-              value.serverVersion != expectation.serverVersion) {
-            throw StateError(
-              'A local resource changed during the transaction.',
-            );
-          }
-        }
-      }
-      for (final entry in localMetadataExpectations.entries) {
-        final row = await (database.select(
-          database.localSyncMetadata,
-        )..where((t) => t.key.equals(entry.key))).getSingleOrNull();
-        if (row == null) {
-          if (entry.value != null) {
-            throw StateError(
-              'Local Health import state changed during the transaction.',
-            );
-          }
-        } else if (entry.value == null ||
-            jsonEncode(jsonDecode(row.valueJson)) != jsonEncode(entry.value)) {
-          throw StateError(
-            'Local Health import state changed during the transaction.',
-          );
-        }
-      }
+      _requireMutationGuard(mutationGuard);
+      await _verifyResourceExpectations(resourceExpectations);
+      await _verifyMetadataExpectations(localMetadataExpectations);
       final frozenRow = await (database.select(
         database.localSyncMetadata,
-      )..where((t) => t.key.equals('local-writes-frozen'))).getSingleOrNull();
+      )..where((t) => t.key.equals(_localWritesFrozenKey))).getSingleOrNull();
       if (frozenRow != null && jsonDecode(frozenRow.valueJson) == true) {
         throw StateError(
           'Local edits are frozen while sync ownership is handed over.',
         );
       }
-      final prior =
-          await (database.select(database.localOutbox)..where(
-                (t) =>
-                    t.accountId.equals(accountId) &
-                    t.aggregateType.equals(aggregateType) &
-                    t.aggregateId.equals(aggregateId),
-              ))
-              .get();
-      final sequence =
-          prior.fold<int>(
-            0,
-            (max, row) => row.sequence > max ? row.sequence : max,
-          ) +
-          1;
+      final sequence = await _nextOutboxSequence(aggregateType, aggregateId);
 
       await database
           .into(database.localResources)
@@ -269,11 +231,7 @@ class LocalSyncStore {
               ),
             );
       }
-      if (mutationGuard != null && !mutationGuard()) {
-        throw StateError(
-          'The active account session changed before local commit.',
-        );
-      }
+      _requireMutationGuard(mutationGuard);
       return LocalMutation(
         mutationId: mutationId,
         accountId: accountId,
@@ -289,6 +247,76 @@ class LocalSyncStore {
     });
     _committedMutations.add(committed);
     return committed;
+  }
+
+  Future<void> _verifyResourceExpectations(
+    List<LocalResourceExpectation> expectations,
+  ) async {
+    for (final expectation in expectations) {
+      final row =
+          await (database.select(database.localResources)..where(
+                (t) =>
+                    t.aggregateType.equals(expectation.aggregateType) &
+                    t.aggregateId.equals(expectation.aggregateId),
+              ))
+              .getSingleOrNull();
+      if (expectation.optimisticVersion == null) {
+        if (row != null) {
+          throw StateError(_resourceChangedMessage);
+        }
+      } else if (row == null) {
+        throw StateError(_resourceChangedMessage);
+      } else {
+        final value = LocalAggregateEnvelope<Object?>.fromJson(
+          jsonDecode(row.envelopeJson) as Map<String, dynamic>,
+        );
+        if (value.optimisticVersion != expectation.optimisticVersion ||
+            value.serverVersion != expectation.serverVersion) {
+          throw StateError(_resourceChangedMessage);
+        }
+      }
+    }
+  }
+
+  Future<void> _verifyMetadataExpectations(
+    Map<String, Object?> expectations,
+  ) async {
+    for (final entry in expectations.entries) {
+      final row = await (database.select(
+        database.localSyncMetadata,
+      )..where((t) => t.key.equals(entry.key))).getSingleOrNull();
+      if (row == null) {
+        if (entry.value != null) {
+          throw StateError(
+            'Local Health import state changed during the transaction.',
+          );
+        }
+      } else if (entry.value == null ||
+          jsonEncode(jsonDecode(row.valueJson)) != jsonEncode(entry.value)) {
+        throw StateError(
+          'Local Health import state changed during the transaction.',
+        );
+      }
+    }
+  }
+
+  Future<int> _nextOutboxSequence(
+    String aggregateType,
+    String aggregateId,
+  ) async {
+    final prior =
+        await (database.select(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(accountId) &
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(aggregateId),
+            ))
+            .get();
+    return prior.fold<int>(
+          0,
+          (max, row) => row.sequence > max ? row.sequence : max,
+        ) +
+        1;
   }
 
   Future<List<LocalMutation>> readOutbox({String? aggregateType}) async {
@@ -460,7 +488,7 @@ class LocalSyncStore {
           .into(database.localSyncMetadata)
           .insertOnConflictUpdate(
             LocalSyncMetadataCompanion.insert(
-              key: 'local-writes-frozen',
+              key: _localWritesFrozenKey,
               valueJson: jsonEncode(true),
             ),
           );
@@ -474,7 +502,7 @@ class LocalSyncStore {
           .into(database.localSyncMetadata)
           .insertOnConflictUpdate(
             LocalSyncMetadataCompanion.insert(
-              key: 'local-writes-frozen',
+              key: _localWritesFrozenKey,
               valueJson: jsonEncode(false),
             ),
           );
@@ -484,13 +512,13 @@ class LocalSyncStore {
   Future<void> _bindAccountInTransaction() async {
     final owner = await (database.select(
       database.localSyncMetadata,
-    )..where((t) => t.key.equals('account-owner-id'))).getSingleOrNull();
+    )..where((t) => t.key.equals(_accountOwnerIdKey))).getSingleOrNull();
     if (owner == null) {
       await database
           .into(database.localSyncMetadata)
           .insert(
             LocalSyncMetadataCompanion.insert(
-              key: 'account-owner-id',
+              key: _accountOwnerIdKey,
               valueJson: jsonEncode(accountId),
             ),
           );
@@ -504,8 +532,8 @@ class LocalSyncStore {
 
   void _validateWritableMetadataKey(String key) {
     if ({
-      'account-owner-id',
-      'local-writes-frozen',
+      _accountOwnerIdKey,
+      _localWritesFrozenKey,
       'sync-lease',
     }.contains(key)) {
       throw ArgumentError.value(

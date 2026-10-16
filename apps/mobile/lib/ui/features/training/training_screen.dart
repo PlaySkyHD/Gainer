@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
+import '../../../data/repositories/training/training_repository.dart';
 import '../../../domain/models/training/training.dart';
 import '../../core/theme.dart';
 import 'training_planning_screens.dart';
@@ -111,46 +112,13 @@ class _TrainingScreenState extends State<TrainingScreen> {
         style: TextStyle(color: GainerTheme.secondaryText(context)),
       ),
       const SizedBox(height: 22),
-      _SectionHeading(title: 'Als Nächstes'),
-      if (next == null)
-        _TrainingCard(
-          icon: CupertinoIcons.arrow_2_circlepath,
-          title: 'Rotation einrichten',
-          subtitle: templates.isEmpty
-              ? 'Erstelle eine Vorlage, um dein nächstes Training festzulegen.'
-              : 'Lege eine Reihenfolge für deine Vorlagen fest.',
-          trailing: CupertinoButton(
-            key: const ValueKey('training-open-templates'),
-            minimumSize: const Size.square(48),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            onPressed: () =>
-                _push(context, TrainingTemplateLibraryScreen(viewModel: model)),
-            child: const Text('Vorlagen'),
-          ),
-        )
-      else
-        _TrainingCard(
-          key: const ValueKey('training-next-card'),
-          icon: CupertinoIcons.sportscourt,
-          title: next.value.name,
-          subtitle:
-              '${next.value.items.length} Übungen · nächste Einheit deiner Rotation',
-          trailing: CupertinoButton(
-            key: ValueKey('training-start-next-${next.id}'),
-            minimumSize: const Size.square(48),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            color: GainerTheme.actionColor,
-            onPressed: model.isSaving ? null : () => model.start(next.id),
-            child: Text(
-              'Start',
-              style: TextStyle(
-                color: model.isSaving
-                    ? GainerTheme.secondaryText(context)
-                    : CupertinoColors.white,
-              ),
-            ),
-          ),
-        ),
+      const _SectionHeading(title: 'Als Nächstes'),
+      _nextTrainingCard(
+        context,
+        model,
+        next,
+        hasTemplates: templates.isNotEmpty,
+      ),
       const SizedBox(height: 22),
       _SectionHeading(
         title: 'Deine Vorlagen',
@@ -171,40 +139,10 @@ class _TrainingScreenState extends State<TrainingScreen> {
           onPressed: () =>
               _push(context, TrainingTemplateEditorScreen(viewModel: model)),
         )
-      else ...[
-        for (final template in templates.take(3))
-          _TrainingCard(
-            key: ValueKey('training-template-card-${template.id}'),
-            contentKey: ValueKey('training-template-edit-${template.id}'),
-            icon: CupertinoIcons.list_bullet,
-            title: template.value.name,
-            subtitle: '${template.value.items.length} Übungen',
-            trailing: CupertinoButton(
-              key: ValueKey('training-start-template-${template.id}'),
-              minimumSize: const Size.square(48),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              color: GainerTheme.actionColor,
-              onPressed: model.isSaving ? null : () => model.start(template.id),
-              child: Text(
-                'Start',
-                style: TextStyle(
-                  color: model.isSaving
-                      ? GainerTheme.secondaryText(context)
-                      : CupertinoColors.white,
-                ),
-              ),
-            ),
-            onPressed: () => _push(
-              context,
-              TrainingTemplateEditorScreen(
-                viewModel: model,
-                template: template,
-              ),
-            ),
-          ),
-      ],
+      else
+        ..._templateCards(context, model, templates),
       const SizedBox(height: 16),
-      _SectionHeading(title: 'Training verwalten'),
+      const _SectionHeading(title: 'Training verwalten'),
       _TrainingCard(
         key: const ValueKey('training-open-exercises'),
         icon: CupertinoIcons.search,
@@ -243,17 +181,101 @@ class _TrainingScreenState extends State<TrainingScreen> {
           subtitle: 'Deine abgeschlossenen Einheiten erscheinen hier.',
         )
       else
-        _TrainingCard(
-          key: ValueKey('training-history-${last.id}'),
-          icon: CupertinoIcons.clock,
-          title: last.value.templateNameSnapshot,
-          subtitle: _historySummary(last.value),
-          trailing: const Icon(CupertinoIcons.chevron_right, size: 18),
-          onPressed: () =>
-              _push(context, TrainingHistoryDetailScreen(entry: last)),
-        ),
+        _historyCard(context, last),
     ];
   }
+
+  Widget _nextTrainingCard(
+    BuildContext context,
+    TrainingViewModel model,
+    ({String id, TrainingTemplate value})? next, {
+    required bool hasTemplates,
+  }) {
+    if (next == null) {
+      return _TrainingCard(
+        icon: CupertinoIcons.arrow_2_circlepath,
+        title: 'Rotation einrichten',
+        subtitle: hasTemplates
+            ? 'Lege eine Reihenfolge für deine Vorlagen fest.'
+            : 'Erstelle eine Vorlage, um dein nächstes Training festzulegen.',
+        trailing: CupertinoButton(
+          key: const ValueKey('training-open-templates'),
+          minimumSize: const Size.square(48),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          onPressed: () =>
+              _push(context, TrainingTemplateLibraryScreen(viewModel: model)),
+          child: const Text('Vorlagen'),
+        ),
+      );
+    }
+    return _TrainingCard(
+      key: const ValueKey('training-next-card'),
+      icon: CupertinoIcons.sportscourt,
+      title: next.value.name,
+      subtitle:
+          '${next.value.items.length} Übungen · nächste Einheit deiner Rotation',
+      trailing: CupertinoButton(
+        key: ValueKey('training-start-next-${next.id}'),
+        minimumSize: const Size.square(48),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        color: GainerTheme.actionColor,
+        onPressed: model.isSaving ? null : () => model.start(next.id),
+        child: Text(
+          'Start',
+          style: TextStyle(
+            color: model.isSaving
+                ? GainerTheme.secondaryText(context)
+                : CupertinoColors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _templateCards(
+    BuildContext context,
+    TrainingViewModel model,
+    List<({String id, TrainingTemplate value})> templates,
+  ) => [
+    for (final template in templates.take(3))
+      _TrainingCard(
+        key: ValueKey('training-template-card-${template.id}'),
+        contentKey: ValueKey('training-template-edit-${template.id}'),
+        icon: CupertinoIcons.list_bullet,
+        title: template.value.name,
+        subtitle: '${template.value.items.length} Übungen',
+        trailing: CupertinoButton(
+          key: ValueKey('training-start-template-${template.id}'),
+          minimumSize: const Size.square(48),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          color: GainerTheme.actionColor,
+          onPressed: model.isSaving ? null : () => model.start(template.id),
+          child: Text(
+            'Start',
+            style: TextStyle(
+              color: model.isSaving
+                  ? GainerTheme.secondaryText(context)
+                  : CupertinoColors.white,
+            ),
+          ),
+        ),
+        onPressed: () => _push(
+          context,
+          TrainingTemplateEditorScreen(viewModel: model, template: template),
+        ),
+      ),
+  ];
+
+  Widget _historyCard(BuildContext context, TrainingHistoryEntry last) =>
+      _TrainingCard(
+        key: ValueKey('training-history-${last.id}'),
+        icon: CupertinoIcons.clock,
+        title: last.value.templateNameSnapshot,
+        subtitle: _historySummary(last.value),
+        trailing: const Icon(CupertinoIcons.chevron_right, size: 18),
+        onPressed: () =>
+            _push(context, TrainingHistoryDetailScreen(entry: last)),
+      );
 
   void _push(BuildContext context, Widget page) {
     Navigator.of(context).push(CupertinoPageRoute<void>(builder: (_) => page));
@@ -310,301 +332,10 @@ class _TrainingScreenState extends State<TrainingScreen> {
           titleKey: const ValueKey('running-workout-title'),
           subtitle: 'Workout läuft · Änderungen werden lokal gespeichert',
         ),
-        CupertinoButton(
-          key: const ValueKey('training-add-exercise'),
-          minimumSize: const Size.square(48),
-          padding: EdgeInsets.zero,
-          onPressed: model.isSaving
-              ? null
-              : () async {
-                  final choices = [
-                    ...?model.planning?.exercises.map(
-                      (entry) => (id: entry.id, name: entry.name),
-                    ),
-                    ...?model.planning?.customExercises
-                        .where((entry) => !entry.isArchived)
-                        .map((entry) => (id: entry.id, name: entry.value.name)),
-                  ];
-                  if (choices.isEmpty) return;
-                  final id = await _chooseExercise(choices);
-                  if (id != null && mounted) await model.addExercise(id);
-                },
-          child: const Text('+ Übung hinzufügen'),
-        ),
+        _addExerciseButton(model),
         for (final exercise in workout.exercises)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  exercise.exerciseNameSnapshot,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                if (exercise.sourceExerciseId != null)
-                  if (model.previousByExerciseId[exercise.sourceExerciseId]
-                      case final previous?)
-                    Text(
-                      'Vorher: ${previous.sets.map((set) => '${set.weightKg?.toStringAsFixed(1)} kg × ${set.repetitions}').join(', ')}',
-                      key: ValueKey('training-previous-${exercise.id}'),
-                    ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: CupertinoButton(
-                    key: ValueKey('training-remove-exercise-${exercise.id}'),
-                    minimumSize: const Size.square(48),
-                    padding: EdgeInsets.zero,
-                    onPressed: model.isSaving
-                        ? null
-                        : () => model.removeExercise(exercise.id),
-                    child: const Text('Übung entfernen'),
-                  ),
-                ),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    CupertinoButton(
-                      key: ValueKey('training-exercise-up-${exercise.id}'),
-                      minimumSize: const Size.square(48),
-                      padding: EdgeInsets.zero,
-                      onPressed: exercise.position == 0 || model.isSaving
-                          ? null
-                          : () => model.moveExercise(
-                              exercise.id,
-                              exercise.position - 1,
-                            ),
-                      child: const Text('↑ Übung'),
-                    ),
-                    CupertinoButton(
-                      key: ValueKey('training-exercise-down-${exercise.id}'),
-                      minimumSize: const Size.square(48),
-                      padding: EdgeInsets.zero,
-                      onPressed:
-                          exercise.position == workout.exercises.length - 1 ||
-                              model.isSaving
-                          ? null
-                          : () => model.moveExercise(
-                              exercise.id,
-                              exercise.position + 1,
-                            ),
-                      child: const Text('↓ Übung'),
-                    ),
-                  ],
-                ),
-                for (final set in exercise.sets)
-                  Builder(
-                    builder: (context) {
-                      final editors = _setEditors.putIfAbsent(
-                        set.id,
-                        () => _SetEditors.fromRecord(set),
-                      );
-                      return Container(
-                        key: ValueKey('training-set-card-${set.id}'),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: CupertinoColors
-                              .secondarySystemGroupedBackground
-                              .resolveFrom(context),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Satz ${set.position + 1}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                final fieldWidth =
-                                    (constraints.maxWidth - 8) / 2;
-                                return Wrap(
-                                  spacing: 8,
-                                  runSpacing: 4,
-                                  children: [
-                                    SizedBox(
-                                      width: fieldWidth,
-                                      child: _field(
-                                        'kg',
-                                        editors.weight,
-                                        key: ValueKey('set-weight-${set.id}'),
-                                        compact: true,
-                                        numeric: true,
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: fieldWidth,
-                                      child: _field(
-                                        'Wiederholungen',
-                                        editors.repetitions,
-                                        key: ValueKey(
-                                          'set-repetitions-${set.id}',
-                                        ),
-                                        compact: true,
-                                        numeric: true,
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: fieldWidth,
-                                      child: _field(
-                                        'RIR',
-                                        editors.rir,
-                                        key: ValueKey('set-rir-${set.id}'),
-                                        compact: true,
-                                        numeric: true,
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                            _field(
-                              'Satznotiz',
-                              editors.notes,
-                              key: ValueKey('set-notes-${set.id}'),
-                              compact: true,
-                            ),
-                            CupertinoButton(
-                              key: ValueKey('training-log-${set.id}'),
-                              minimumSize: const Size.square(48),
-                              padding: EdgeInsets.zero,
-                              onPressed: model.isSaving
-                                  ? null
-                                  : () => model.logSet(
-                                      exerciseId: exercise.id,
-                                      setId: set.id,
-                                      weightKg: _parseDecimalInput(
-                                        editors.weight.text,
-                                      ),
-                                      repetitions: int.tryParse(
-                                        editors.repetitions.text,
-                                      ),
-                                      rir: _parseDecimalInput(editors.rir.text),
-                                      notes: editors.notes.text.trim().isEmpty
-                                          ? null
-                                          : editors.notes.text.trim(),
-                                      complete: true,
-                                    ),
-                              child: Text(
-                                set.isCompleted
-                                    ? '✓ Gespeichert'
-                                    : 'Satz abschließen',
-                              ),
-                            ),
-                            Wrap(
-                              children: [
-                                CupertinoButton(
-                                  key: ValueKey('training-set-up-${set.id}'),
-                                  minimumSize: const Size.square(48),
-                                  padding: EdgeInsets.zero,
-                                  onPressed: set.position == 0 || model.isSaving
-                                      ? null
-                                      : () => model.moveSet(
-                                          exercise.id,
-                                          set.id,
-                                          set.position - 1,
-                                        ),
-                                  child: const Text('↑ Satz'),
-                                ),
-                                CupertinoButton(
-                                  key: ValueKey('training-set-down-${set.id}'),
-                                  minimumSize: const Size.square(48),
-                                  padding: EdgeInsets.zero,
-                                  onPressed:
-                                      set.position ==
-                                              exercise.sets.length - 1 ||
-                                          model.isSaving
-                                      ? null
-                                      : () => model.moveSet(
-                                          exercise.id,
-                                          set.id,
-                                          set.position + 1,
-                                        ),
-                                  child: const Text('↓ Satz'),
-                                ),
-                                CupertinoButton(
-                                  key: ValueKey(
-                                    'training-remove-set-${set.id}',
-                                  ),
-                                  minimumSize: const Size.square(48),
-                                  padding: EdgeInsets.zero,
-                                  onPressed:
-                                      exercise.sets.length <= 1 ||
-                                          model.isSaving
-                                      ? null
-                                      : () => model.removeSet(
-                                          exercise.id,
-                                          set.id,
-                                        ),
-                                  child: const Text('Satz entfernen'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                CupertinoButton(
-                  key: ValueKey('training-add-set-${exercise.id}'),
-                  minimumSize: const Size.square(48),
-                  padding: EdgeInsets.zero,
-                  onPressed: model.isSaving
-                      ? null
-                      : () => model.addSet(exercise.id),
-                  child: const Text('Satz hinzufügen'),
-                ),
-              ],
-            ),
-          ),
-        if (workout.restTimer != null)
-          Container(
-            margin: const EdgeInsets.only(top: 8, bottom: 12),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: CupertinoColors.secondarySystemGroupedBackground
-                  .resolveFrom(context),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Pause · ${model.remainingRestSeconds ?? 0} s',
-                  key: const ValueKey('training-rest-timer'),
-                  style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
-                ),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    CupertinoButton(
-                      minimumSize: const Size.square(48),
-                      onPressed: () => model.timerAction(
-                        (id) => model.repository.extendRestTimer(id),
-                      ),
-                      child: const Text('+30 s'),
-                    ),
-                    CupertinoButton(
-                      minimumSize: const Size.square(48),
-                      onPressed: () =>
-                          model.timerAction(model.repository.restartRestTimer),
-                      child: const Text('Neu starten'),
-                    ),
-                    CupertinoButton(
-                      minimumSize: const Size.square(48),
-                      onPressed: () =>
-                          model.timerAction(model.repository.skipRestTimer),
-                      child: const Text('Überspringen'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          _exerciseBlock(model, workout, exercise),
+        if (workout.restTimer != null) _restTimerCard(context, model),
         CupertinoButton(
           key: const ValueKey('training-complete-workout'),
           minimumSize: const Size.square(52),
@@ -630,6 +361,294 @@ class _TrainingScreenState extends State<TrainingScreen> {
       ],
     );
   }
+
+  Widget _addExerciseButton(TrainingViewModel model) => CupertinoButton(
+    key: const ValueKey('training-add-exercise'),
+    minimumSize: const Size.square(48),
+    padding: EdgeInsets.zero,
+    onPressed: model.isSaving ? null : () => _addExercise(model),
+    child: const Text('+ Übung hinzufügen'),
+  );
+
+  Future<void> _addExercise(TrainingViewModel model) async {
+    final choices = [
+      ...?model.planning?.exercises.map(
+        (entry) => (id: entry.id, name: entry.name),
+      ),
+      ...?model.planning?.customExercises
+          .where((entry) => !entry.isArchived)
+          .map((entry) => (id: entry.id, name: entry.value.name)),
+    ];
+    if (choices.isEmpty) return;
+    final id = await _chooseExercise(choices);
+    if (id != null && mounted) await model.addExercise(id);
+  }
+
+  Widget _exerciseBlock(
+    TrainingViewModel model,
+    WorkoutRecord workout,
+    WorkoutExerciseRecord exercise,
+  ) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          exercise.exerciseNameSnapshot,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        if (exercise.sourceExerciseId != null)
+          if (model.previousByExerciseId[exercise.sourceExerciseId]
+              case final previous?)
+            Text(
+              'Vorher: ${previous.sets.map((set) => '${set.weightKg?.toStringAsFixed(1)} kg × ${set.repetitions}').join(', ')}',
+              key: ValueKey('training-previous-${exercise.id}'),
+            ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: CupertinoButton(
+            key: ValueKey('training-remove-exercise-${exercise.id}'),
+            minimumSize: const Size.square(48),
+            padding: EdgeInsets.zero,
+            onPressed: model.isSaving
+                ? null
+                : () => model.removeExercise(exercise.id),
+            child: const Text('Übung entfernen'),
+          ),
+        ),
+        _exerciseMoveButtons(model, workout, exercise),
+        for (final set in exercise.sets) _setCard(model, exercise, set),
+        CupertinoButton(
+          key: ValueKey('training-add-set-${exercise.id}'),
+          minimumSize: const Size.square(48),
+          padding: EdgeInsets.zero,
+          onPressed: model.isSaving ? null : () => model.addSet(exercise.id),
+          child: const Text('Satz hinzufügen'),
+        ),
+      ],
+    ),
+  );
+
+  Widget _exerciseMoveButtons(
+    TrainingViewModel model,
+    WorkoutRecord workout,
+    WorkoutExerciseRecord exercise,
+  ) => Wrap(
+    spacing: 8,
+    runSpacing: 4,
+    children: [
+      CupertinoButton(
+        key: ValueKey('training-exercise-up-${exercise.id}'),
+        minimumSize: const Size.square(48),
+        padding: EdgeInsets.zero,
+        onPressed: exercise.position == 0 || model.isSaving
+            ? null
+            : () => model.moveExercise(exercise.id, exercise.position - 1),
+        child: const Text('↑ Übung'),
+      ),
+      CupertinoButton(
+        key: ValueKey('training-exercise-down-${exercise.id}'),
+        minimumSize: const Size.square(48),
+        padding: EdgeInsets.zero,
+        onPressed:
+            exercise.position == workout.exercises.length - 1 || model.isSaving
+            ? null
+            : () => model.moveExercise(exercise.id, exercise.position + 1),
+        child: const Text('↓ Übung'),
+      ),
+    ],
+  );
+
+  Widget _setCard(
+    TrainingViewModel model,
+    WorkoutExerciseRecord exercise,
+    WorkoutSetRecord set,
+  ) => Builder(
+    builder: (context) {
+      final editors = _setEditors.putIfAbsent(
+        set.id,
+        () => _SetEditors.fromRecord(set),
+      );
+      return Container(
+        key: ValueKey('training-set-card-${set.id}'),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+            context,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Satz ${set.position + 1}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            _setFields(set, editors),
+            _field(
+              'Satznotiz',
+              editors.notes,
+              key: ValueKey('set-notes-${set.id}'),
+              compact: true,
+            ),
+            _logSetButton(model, exercise, set, editors),
+            _setMoveButtons(model, exercise, set),
+          ],
+        ),
+      );
+    },
+  );
+
+  Widget _setFields(WorkoutSetRecord set, _SetEditors editors) => LayoutBuilder(
+    builder: (context, constraints) {
+      final fieldWidth = (constraints.maxWidth - 8) / 2;
+      return Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          SizedBox(
+            width: fieldWidth,
+            child: _field(
+              'kg',
+              editors.weight,
+              key: ValueKey('set-weight-${set.id}'),
+              compact: true,
+              numeric: true,
+            ),
+          ),
+          SizedBox(
+            width: fieldWidth,
+            child: _field(
+              'Wiederholungen',
+              editors.repetitions,
+              key: ValueKey('set-repetitions-${set.id}'),
+              compact: true,
+              numeric: true,
+            ),
+          ),
+          SizedBox(
+            width: fieldWidth,
+            child: _field(
+              'RIR',
+              editors.rir,
+              key: ValueKey('set-rir-${set.id}'),
+              compact: true,
+              numeric: true,
+            ),
+          ),
+        ],
+      );
+    },
+  );
+
+  Widget _logSetButton(
+    TrainingViewModel model,
+    WorkoutExerciseRecord exercise,
+    WorkoutSetRecord set,
+    _SetEditors editors,
+  ) => CupertinoButton(
+    key: ValueKey('training-log-${set.id}'),
+    minimumSize: const Size.square(48),
+    padding: EdgeInsets.zero,
+    onPressed: model.isSaving
+        ? null
+        : () => model.logSet(
+            exerciseId: exercise.id,
+            setId: set.id,
+            weightKg: _parseDecimalInput(editors.weight.text),
+            repetitions: int.tryParse(editors.repetitions.text),
+            rir: _parseDecimalInput(editors.rir.text),
+            notes: editors.notes.text.trim().isEmpty
+                ? null
+                : editors.notes.text.trim(),
+            complete: true,
+          ),
+    child: Text(set.isCompleted ? '✓ Gespeichert' : 'Satz abschließen'),
+  );
+
+  Widget _setMoveButtons(
+    TrainingViewModel model,
+    WorkoutExerciseRecord exercise,
+    WorkoutSetRecord set,
+  ) => Wrap(
+    children: [
+      CupertinoButton(
+        key: ValueKey('training-set-up-${set.id}'),
+        minimumSize: const Size.square(48),
+        padding: EdgeInsets.zero,
+        onPressed: set.position == 0 || model.isSaving
+            ? null
+            : () => model.moveSet(exercise.id, set.id, set.position - 1),
+        child: const Text('↑ Satz'),
+      ),
+      CupertinoButton(
+        key: ValueKey('training-set-down-${set.id}'),
+        minimumSize: const Size.square(48),
+        padding: EdgeInsets.zero,
+        onPressed: set.position == exercise.sets.length - 1 || model.isSaving
+            ? null
+            : () => model.moveSet(exercise.id, set.id, set.position + 1),
+        child: const Text('↓ Satz'),
+      ),
+      CupertinoButton(
+        key: ValueKey('training-remove-set-${set.id}'),
+        minimumSize: const Size.square(48),
+        padding: EdgeInsets.zero,
+        onPressed: exercise.sets.length <= 1 || model.isSaving
+            ? null
+            : () => model.removeSet(exercise.id, set.id),
+        child: const Text('Satz entfernen'),
+      ),
+    ],
+  );
+
+  Widget _restTimerCard(BuildContext context, TrainingViewModel model) =>
+      Container(
+        margin: const EdgeInsets.only(top: 8, bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+            context,
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Pause · ${model.remainingRestSeconds ?? 0} s',
+              key: const ValueKey('training-rest-timer'),
+              style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                CupertinoButton(
+                  minimumSize: const Size.square(48),
+                  onPressed: () => model.timerAction(
+                    (id) => model.repository.extendRestTimer(id),
+                  ),
+                  child: const Text('+30 s'),
+                ),
+                CupertinoButton(
+                  minimumSize: const Size.square(48),
+                  onPressed: () =>
+                      model.timerAction(model.repository.restartRestTimer),
+                  child: const Text('Neu starten'),
+                ),
+                CupertinoButton(
+                  minimumSize: const Size.square(48),
+                  onPressed: () =>
+                      model.timerAction(model.repository.skipRestTimer),
+                  child: const Text('Überspringen'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
 
   Future<void> _confirmDiscard(
     BuildContext context,

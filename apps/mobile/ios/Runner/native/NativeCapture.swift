@@ -285,7 +285,7 @@ private final class BarcodeScannerViewController: UIViewController, AVCaptureMet
     view.layer.insertSublayer(layer, at: 0)
   }
 
-  func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+  func metadataOutput(_: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from _: AVCaptureConnection) {
     guard let code = metadataObjects.compactMap({ $0 as? AVMetadataMachineReadableCodeObject }).first(where: { $0.stringValue != nil })?.stringValue else { return }
     finish(code)
   }

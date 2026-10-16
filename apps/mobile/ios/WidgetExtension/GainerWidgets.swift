@@ -10,15 +10,15 @@ private struct GainerWidgetEntry: TimelineEntry {
 private struct GainerWidgetProvider: TimelineProvider {
   let destination: GainerRoute
 
-  func placeholder(in context: Context) -> GainerWidgetEntry {
+  func placeholder(in _: Context) -> GainerWidgetEntry {
     GainerWidgetEntry(date: .now, destination: destination)
   }
 
-  func getSnapshot(in context: Context, completion: @escaping (GainerWidgetEntry) -> Void) {
+  func getSnapshot(in _: Context, completion: @escaping (GainerWidgetEntry) -> Void) {
     completion(GainerWidgetEntry(date: .now, destination: destination))
   }
 
-  func getTimeline(in context: Context, completion: @escaping (Timeline<GainerWidgetEntry>) -> Void) {
+  func getTimeline(in _: Context, completion: @escaping (Timeline<GainerWidgetEntry>) -> Void) {
     let entry = GainerWidgetEntry(date: .now, destination: destination)
     completion(Timeline(entries: [entry], policy: .after(.now.addingTimeInterval(6 * 60 * 60))))
   }

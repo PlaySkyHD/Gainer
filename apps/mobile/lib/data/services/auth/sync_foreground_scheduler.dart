@@ -203,11 +203,14 @@ class SyncForegroundScheduler with WidgetsBindingObserver {
       return;
     }
     final requested = dueUtc.toUtc().difference(clock().toUtc());
-    final delay = requested <= Duration.zero
-        ? retryDelays[_retryIndex.clamp(0, retryDelays.length - 1)]
-        : requested > retryDelays.last
-        ? retryDelays.last
-        : requested;
+    final Duration delay;
+    if (requested <= Duration.zero) {
+      delay = retryDelays[_retryIndex.clamp(0, retryDelays.length - 1)];
+    } else if (requested > retryDelays.last) {
+      delay = retryDelays.last;
+    } else {
+      delay = requested;
+    }
     if (_retryIndex < retryDelays.length - 1) _retryIndex++;
     _retryTimer = timerFactory(delay, () {
       _retryTimer = null;

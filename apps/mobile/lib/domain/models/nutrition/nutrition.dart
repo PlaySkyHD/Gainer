@@ -162,18 +162,18 @@ class NutritionDay {
   NutritionDay({required this.localDate, required List<NutritionEntry> entries})
     : entries = List.unmodifiable(_orderedEntries(entries)) {
     if (!isValidLocalDate(localDate)) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'localDate': 'Ungültiger Kalendertag.',
       });
     }
     if (entries.length > 200) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'entries': 'Maximal 200 Einträge pro Tag.',
       });
     }
     final ids = entries.map((item) => item.entryId).toSet();
     if (ids.length != entries.length) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'entries': 'Eintrags-IDs müssen eindeutig sein.',
       });
     }
@@ -184,7 +184,7 @@ class NutritionDay {
           .toList();
       if (positions.toSet().length != positions.length ||
           positions.any((value) => value < 0)) {
-        throw NutritionValidationException({
+        throw const NutritionValidationException({
           'entries': 'Positionen innerhalb einer Mahlzeit müssen eindeutig und gültig sein.',
         });
       }
@@ -296,7 +296,7 @@ class ReusableMealComponent {
         this.name.length > 160 ||
         !amountGrams.isFinite ||
         amountGrams <= 0) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'components': 'Gerichtseintrag ist ungültig.',
       });
     }
@@ -356,19 +356,19 @@ class ReusableMeal {
          [...components]..sort((a, b) => a.position.compareTo(b.position)),
        ) {
     if (this.name.isEmpty || this.name.length > 120) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'name': 'Name erforderlich (maximal 120 Zeichen).',
       });
     }
     if (!standardPortion.isFinite ||
         standardPortion < .01 ||
         standardPortion > 100) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'standardPortion': 'Portion muss zwischen 0,01 und 100 liegen.',
       });
     }
     if (this.components.isEmpty || this.components.length > 50) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'components': 'Ein Gericht benötigt 1 bis 50 Bestandteile.',
       });
     }
@@ -376,12 +376,12 @@ class ReusableMeal {
             this.components.length ||
         this.components.map((e) => e.position).toSet().length !=
             this.components.length) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'components': 'Bestandteil-IDs und Positionen müssen eindeutig sein.',
       });
     }
     if (status != 'Active' && status != 'Archived') {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'status': 'Ungültiger Gerichtstatus.',
       });
     }
@@ -500,7 +500,7 @@ NutritionTotals calculatePer100Totals({
   required NutritionTotals totals,
 }) {
   if (!amountGrams.isFinite || amountGrams <= 0) {
-    throw NutritionValidationException({
+    throw const NutritionValidationException({
       'amountGrams': 'Menge muss positiv sein.',
     });
   }
@@ -537,7 +537,7 @@ NutritionTotals macroGramsFromPercent({
         fatPercent,
       ].any((value) => value < 0) ||
       (proteinPercent + carbohydratePercent + fatPercent - 100).abs() > .01) {
-    throw NutritionValidationException({
+    throw const NutritionValidationException({
       'percentages': 'Kalorien und Makroanteile müssen gültig sein und zusammen 100 % ergeben.',
     });
   }
@@ -556,22 +556,24 @@ void validateNutritionEntry(NutritionEntry entry) {
       entry.position < 0 ||
       entry.productName.isEmpty ||
       entry.productName.length > 160) {
-    throw NutritionValidationException({'entry': 'Eintrag ist ungültig.'});
+    throw const NutritionValidationException({
+      'entry': 'Eintrag ist ungültig.',
+    });
   }
   if (!entry.amountGrams.isFinite ||
       entry.amountGrams <= 0 ||
       entry.amountGrams > 100000) {
-    throw NutritionValidationException({
+    throw const NutritionValidationException({
       'amountGrams': 'Menge muss positiv und plausibel sein.',
     });
   }
   if (entry.brand != null && entry.brand!.length > 120) {
-    throw NutritionValidationException({'brand': 'Marke ist zu lang.'});
+    throw const NutritionValidationException({'brand': 'Marke ist zu lang.'});
   }
   _validateTotals(entry.per100Grams, requirePositiveCalories: true);
   if (entry.source case final source?) {
     if (!source.basisGrams.isFinite || source.basisGrams <= 0) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'source': 'Quellenbasis muss positiv sein.',
       });
     }
@@ -586,7 +588,7 @@ void _validateTotals(
       (requirePositiveCalories
           ? totals.kilocalories <= 0
           : totals.kilocalories < 0)) {
-    throw NutritionValidationException({
+    throw const NutritionValidationException({
       'kilocalories': 'Kalorien müssen positiv sein.',
     });
   }
@@ -611,48 +613,64 @@ void validateTargetSchedule(List<NutritionTargetVersion> versions) {
   }
   for (var index = 0; index < versions.length; index++) {
     final target = versions[index];
-    if (target.name.trim().isEmpty ||
-        !isValidLocalDate(target.effectiveFrom) ||
-        (target.effectiveUntil != null &&
-            !isValidLocalDate(target.effectiveUntil!))) {
-      errors['versions.$index'] = 'Name oder Datum ungültig.';
-    }
-    if (target.effectiveUntil != null &&
-        target.effectiveUntil!.compareTo(target.effectiveFrom) < 0) {
-      errors['versions.$index.effectiveUntil'] = 'Enddatum liegt vor Beginn.';
-    }
-    if (![
-          target.kilocalories,
-          target.proteinGrams,
-          target.carbohydrateGrams,
-          target.fatGrams,
-        ].every((v) => v.isFinite && v >= 0) ||
-        target.kilocalories <= 0) {
-      errors['versions.$index.nutrients'] =
-          'Zielwerte müssen gültig und Kalorien positiv sein.';
-    }
-    if (target.inputMode == NutritionTargetInputMode.percent) {
-      final p = target.proteinPercent,
-          c = target.carbohydratePercent,
-          f = target.fatPercent;
-      if (p == null ||
-          c == null ||
-          f == null ||
-          ![p, c, f].every((v) => v.isFinite && v >= 0) ||
-          (p + c + f - 100).abs() > 0.01) {
-        errors['versions.$index.percentages'] =
-            'Makroanteile müssen zusammen 100 % ergeben.';
-      }
-    }
+    _validateTargetVersion(target, index, errors);
     if (index > 0) {
-      final previous = versions[index - 1];
-      if (previous.effectiveUntil == null ||
-          previous.effectiveUntil!.compareTo(target.effectiveFrom) >= 0) {
-        errors['versions.$index.effectiveFrom'] = 'Zielphasen dürfen sich nicht überschneiden; die vorherige Phase braucht ein Enddatum.';
-      }
+      _validateTargetOverlap(versions[index - 1], target, index, errors);
     }
   }
   if (errors.isNotEmpty) throw NutritionValidationException(errors);
+}
+
+void _validateTargetVersion(
+  NutritionTargetVersion target,
+  int index,
+  Map<String, String> errors,
+) {
+  if (target.name.trim().isEmpty ||
+      !isValidLocalDate(target.effectiveFrom) ||
+      (target.effectiveUntil != null &&
+          !isValidLocalDate(target.effectiveUntil!))) {
+    errors['versions.$index'] = 'Name oder Datum ungültig.';
+  }
+  if (target.effectiveUntil != null &&
+      target.effectiveUntil!.compareTo(target.effectiveFrom) < 0) {
+    errors['versions.$index.effectiveUntil'] = 'Enddatum liegt vor Beginn.';
+  }
+  if (![
+        target.kilocalories,
+        target.proteinGrams,
+        target.carbohydrateGrams,
+        target.fatGrams,
+      ].every((v) => v.isFinite && v >= 0) ||
+      target.kilocalories <= 0) {
+    errors['versions.$index.nutrients'] =
+        'Zielwerte müssen gültig und Kalorien positiv sein.';
+  }
+  if (target.inputMode == NutritionTargetInputMode.percent) {
+    final p = target.proteinPercent,
+        c = target.carbohydratePercent,
+        f = target.fatPercent;
+    if (p == null ||
+        c == null ||
+        f == null ||
+        ![p, c, f].every((v) => v.isFinite && v >= 0) ||
+        (p + c + f - 100).abs() > 0.01) {
+      errors['versions.$index.percentages'] =
+          'Makroanteile müssen zusammen 100 % ergeben.';
+    }
+  }
+}
+
+void _validateTargetOverlap(
+  NutritionTargetVersion previous,
+  NutritionTargetVersion target,
+  int index,
+  Map<String, String> errors,
+) {
+  if (previous.effectiveUntil == null ||
+      previous.effectiveUntil!.compareTo(target.effectiveFrom) >= 0) {
+    errors['versions.$index.effectiveFrom'] = 'Zielphasen dürfen sich nicht überschneiden; die vorherige Phase braucht ein Enddatum.';
+  }
 }
 
 NutritionMeal nutritionMealFromWire(String value) =>
