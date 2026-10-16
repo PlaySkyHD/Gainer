@@ -11,6 +11,7 @@ namespace Gainer.Infrastructure.Catalog;
 public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
 {
     private const string ProductFields = "code,product_name,brands,nutriments,last_modified_t,nutrition_data_per";
+    private const string ProductIncompleteCode = "product_incomplete";
     private readonly HttpClient httpClient;
     private readonly OpenFoodFactsOptions settings;
     private readonly TimeProvider timeProvider;
@@ -160,7 +161,7 @@ public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
                 string fallbackCode = String(item, "code") ?? string.Empty;
                 normalized.Add(ParseProduct(item, fallbackCode, retrievedAtUtc));
             }
-            catch (FoodCatalogException exception) when (exception.Code is "product_incomplete" or "product_not_found")
+            catch (FoodCatalogException exception) when (exception.Code is ProductIncompleteCode or "product_not_found")
             {
                 // A malformed search hit is skipped; the bounded result remains explicit.
             }
@@ -174,9 +175,9 @@ public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
         string barcode = String(product, "code") ?? fallbackBarcode;
         string? name = String(product, "product_name");
         if (string.IsNullOrWhiteSpace(barcode) || string.IsNullOrWhiteSpace(name))
-            throw new FoodCatalogException("product_incomplete", "The product has no usable name or barcode.", false);
+            throw new FoodCatalogException(ProductIncompleteCode, "The product has no usable name or barcode.", false);
         if (!product.TryGetProperty("nutriments", out JsonElement nutrients) || nutrients.ValueKind != JsonValueKind.Object)
-            throw new FoodCatalogException("product_incomplete", "The product has no usable nutrition data.", false);
+            throw new FoodCatalogException(ProductIncompleteCode, "The product has no usable nutrition data.", false);
         decimal? kcal = Decimal(nutrients, "energy-kcal_100g");
         if (kcal is null)
         {
@@ -184,7 +185,7 @@ public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
             if (kj is not null) kcal = decimal.Round(kj.Value / 4.184m, 2, MidpointRounding.AwayFromZero);
         }
         if (kcal is null or <= 0m)
-            throw new FoodCatalogException("product_incomplete", "The product has no usable energy value.", false);
+            throw new FoodCatalogException(ProductIncompleteCode, "The product has no usable energy value.", false);
         decimal? protein = NonNegative(Decimal(nutrients, "proteins_100g"));
         decimal? carbohydrates = NonNegative(Decimal(nutrients, "carbohydrates_100g"));
         decimal? fat = NonNegative(Decimal(nutrients, "fat_100g"));

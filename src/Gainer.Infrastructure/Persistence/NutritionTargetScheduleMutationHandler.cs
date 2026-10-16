@@ -70,7 +70,7 @@ public sealed class NutritionTargetScheduleMutationHandler(
         NutritionTargetSchedule schedule,
         IReadOnlyCollection<NutritionTargetVersionDraft> incoming,
         DateOnly today,
-        ICollection<NutritionTargetVersion> materialized)
+        List<NutritionTargetVersion> materialized)
     {
         NutritionTargetVersion[] stored = schedule.Versions.ToArray();
         foreach (NutritionTargetVersion version in stored)

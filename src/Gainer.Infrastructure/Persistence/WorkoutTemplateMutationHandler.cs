@@ -144,8 +144,8 @@ public sealed class WorkoutTemplateMutationHandler(
 
     private async Task EnsureExercisesAreSelectableAsync(
         Guid userId,
-        IReadOnlyCollection<Guid> exerciseIds,
-        IReadOnlySet<Guid> previouslyReferencedExerciseIds,
+        Guid[] exerciseIds,
+        HashSet<Guid> previouslyReferencedExerciseIds,
         CancellationToken cancellationToken)
     {
         List<Exercise> exercises = await context.Exercises
@@ -153,7 +153,7 @@ public sealed class WorkoutTemplateMutationHandler(
             .Where(item => exerciseIds.Contains(item.Id))
             .Where(item => item.OwnerUserId == null || item.OwnerUserId == userId)
             .ToListAsync(cancellationToken);
-        bool allSelectable = exercises.Count == exerciseIds.Count && exercises.All(item =>
+        bool allSelectable = exercises.Count == exerciseIds.Length && exercises.All(item =>
             !item.IsArchived || previouslyReferencedExerciseIds.Contains(item.Id));
         if (!allSelectable)
         {

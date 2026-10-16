@@ -75,7 +75,7 @@ public sealed partial class CoachService(
         throw new CoachResponseValidationException("The tool round limit was exceeded.");
     }
 
-    private JsonElement Request(IReadOnlyList<JsonElement> inputs) => JsonSerializer.SerializeToElement(new
+    private static JsonElement Request(IReadOnlyList<JsonElement> inputs) => JsonSerializer.SerializeToElement(new
     {
         instructions = """
             You are a read-only fitness progress summarizer. Use only tool facts. Never diagnose, prescribe,
