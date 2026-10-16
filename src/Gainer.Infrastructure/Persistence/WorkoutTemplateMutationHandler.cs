@@ -208,32 +208,7 @@ public sealed class WorkoutTemplateMutationHandler(
         for (int index = 0; index < mutation.Items.Count; index++)
         {
             WorkoutTemplateItemValues item = mutation.Items[index];
-            string prefix = $"Items[{index}]";
-            if (item.ExerciseId == Guid.Empty)
-            {
-                errors[$"{prefix}.ExerciseId"] = "Exercise identifier cannot be empty.";
-            }
-            if (item.PlannedSets is < 1 or > 100)
-            {
-                errors[$"{prefix}.PlannedSets"] = "Planned sets must be between 1 and 100.";
-            }
-            if (item.MinimumRepetitions is < 1 or > 1_000 ||
-                item.MaximumRepetitions < item.MinimumRepetitions || item.MaximumRepetitions > 1_000)
-            {
-                errors[$"{prefix}.Repetitions"] = "Repetitions must be positive and maximum must not be below minimum.";
-            }
-            if (item.TargetRir is { } rir && !RepetitionsInReserve.TryCreate(rir, out _))
-            {
-                errors[$"{prefix}.TargetRir"] = "RIR must be between 0 and 10.";
-            }
-            if (item.RestSeconds is < 0 or > 86_400)
-            {
-                errors[$"{prefix}.RestSeconds"] = "Rest must be between 0 and 86400 seconds.";
-            }
-            if (item.Notes?.Trim().Length > 2_000)
-            {
-                errors[$"{prefix}.Notes"] = "Notes cannot exceed 2000 characters.";
-            }
+            ValidateItem(item, $"Items[{index}]", errors);
             normalized.Add(item with
             {
                 Notes = string.IsNullOrWhiteSpace(item.Notes) ? null : item.Notes.Trim(),
@@ -244,6 +219,35 @@ public sealed class WorkoutTemplateMutationHandler(
             throw new WorkoutTemplateValidationException(errors);
         }
         return (name, normalized);
+    }
+
+    private static void ValidateItem(WorkoutTemplateItemValues item, string prefix, Dictionary<string, string> errors)
+    {
+        if (item.ExerciseId == Guid.Empty)
+        {
+            errors[$"{prefix}.ExerciseId"] = "Exercise identifier cannot be empty.";
+        }
+        if (item.PlannedSets is < 1 or > 100)
+        {
+            errors[$"{prefix}.PlannedSets"] = "Planned sets must be between 1 and 100.";
+        }
+        if (item.MinimumRepetitions is < 1 or > 1_000 ||
+            item.MaximumRepetitions < item.MinimumRepetitions || item.MaximumRepetitions > 1_000)
+        {
+            errors[$"{prefix}.Repetitions"] = "Repetitions must be positive and maximum must not be below minimum.";
+        }
+        if (item.TargetRir is { } rir && !RepetitionsInReserve.TryCreate(rir, out _))
+        {
+            errors[$"{prefix}.TargetRir"] = "RIR must be between 0 and 10.";
+        }
+        if (item.RestSeconds is < 0 or > 86_400)
+        {
+            errors[$"{prefix}.RestSeconds"] = "Rest must be between 0 and 86400 seconds.";
+        }
+        if (item.Notes?.Trim().Length > 2_000)
+        {
+            errors[$"{prefix}.Notes"] = "Notes cannot exceed 2000 characters.";
+        }
     }
 
     private static WorkoutTemplateSnapshot Snapshot(

@@ -78,14 +78,7 @@ public sealed class NutritionTargetScheduleMutationHandler(
             NutritionTargetVersionDraft? candidate = incoming.SingleOrDefault(item => item.TargetVersionId == version.Id);
             if (version.EffectiveFrom <= today)
             {
-                if (candidate is null)
-                    throw new NutritionTargetScheduleConflictException("Effective target phases cannot be removed.");
-                if (!Matches(version, candidate))
-                {
-                    if (!CanCloseOpenPhase(version, candidate, incoming, today))
-                        throw new NutritionTargetScheduleConflictException("Effective target phases are immutable except for ending an open phase before a future successor.");
-                    version.EffectiveUntil = candidate.EffectiveUntil;
-                }
+                ReconcileEffectiveVersion(version, candidate, incoming, today);
                 materialized.Add(version);
                 continue;
             }
@@ -100,7 +93,32 @@ public sealed class NutritionTargetScheduleMutationHandler(
         }
 
         HashSet<Guid> storedIds = stored.Select(item => item.Id).ToHashSet();
-        foreach (NutritionTargetVersionDraft item in incoming.Where(item => !storedIds.Contains(item.TargetVersionId)))
+        AddNewVersions(schedule, incoming.Where(item => !storedIds.Contains(item.TargetVersionId)), today, materialized);
+    }
+
+    private static void ReconcileEffectiveVersion(
+        NutritionTargetVersion version,
+        NutritionTargetVersionDraft? candidate,
+        IReadOnlyCollection<NutritionTargetVersionDraft> incoming,
+        DateOnly today)
+    {
+        if (candidate is null)
+            throw new NutritionTargetScheduleConflictException("Effective target phases cannot be removed.");
+        if (!Matches(version, candidate))
+        {
+            if (!CanCloseOpenPhase(version, candidate, incoming, today))
+                throw new NutritionTargetScheduleConflictException("Effective target phases are immutable except for ending an open phase before a future successor.");
+            version.EffectiveUntil = candidate.EffectiveUntil;
+        }
+    }
+
+    private void AddNewVersions(
+        NutritionTargetSchedule schedule,
+        IEnumerable<NutritionTargetVersionDraft> additions,
+        DateOnly today,
+        List<NutritionTargetVersion> materialized)
+    {
+        foreach (NutritionTargetVersionDraft item in additions)
         {
             if (item.EffectiveFrom < today)
                 throw new NutritionTargetScheduleConflictException("New target phases cannot start in the past.");

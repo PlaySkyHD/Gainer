@@ -234,36 +234,7 @@ public sealed class SyncMutationExecutor(
                     NutritionTargetVersionPayload[] orderedPayloads = payload.Versions
                         .OrderBy(item => item.EffectiveFrom)
                         .ToArray();
-                    NutritionTargetVersionDraft[] versions = orderedPayloads.Select((item, index) =>
-                    {
-                        bool legacy = string.IsNullOrWhiteSpace(item.Name) &&
-                            string.IsNullOrWhiteSpace(item.Category) &&
-                            string.IsNullOrWhiteSpace(item.InputMode);
-                        DateOnly? effectiveUntil = item.EffectiveUntil;
-                        if (legacy && effectiveUntil is null && index + 1 < orderedPayloads.Length)
-                            effectiveUntil = orderedPayloads[index + 1].EffectiveFrom.AddDays(-1);
-                        return NutritionTargetVersionDraft.Restore(
-                            item.TargetVersionId,
-                            string.IsNullOrWhiteSpace(item.Name) ? "Ziel" : item.Name,
-                            string.IsNullOrWhiteSpace(item.Category)
-                                ? NutritionGoalCategory.Custom
-                                : ParseGoalCategory(item.Category),
-                            item.EffectiveFrom,
-                            effectiveUntil,
-                            item.Kilocalories,
-                            string.IsNullOrWhiteSpace(item.InputMode)
-                                ? NutritionTargetInputMode.Grams
-                                : ParseTargetInputMode(item.InputMode),
-                            item.ProteinGrams,
-                            item.CarbohydrateGrams,
-                            item.FatGrams,
-                            item.ProteinPercent,
-                            item.CarbohydratePercent,
-                            item.FatPercent,
-                            ParseTargetOrigin(item.Origin),
-                            item.AlgorithmVersion,
-                            item.Reason);
-                    }).ToArray();
+                    NutritionTargetVersionDraft[] versions = ToTargetVersionDrafts(orderedPayloads);
                     NutritionTargetScheduleSnapshot snapshot = await new NutritionTargetScheduleMutationHandler(context, userContext, timeProvider, collector)
                         .SaveAsync(SaveNutritionTargetScheduleMutation.Create(
                             Metadata(mutationId, content), payload.NutritionTargetScheduleId, payload.BaseVersion,
@@ -274,6 +245,38 @@ public sealed class SyncMutationExecutor(
                 throw new SyncMutationValidationException("unsupported_operation", "The mutation operation is not supported.");
         }
     }
+
+    private static NutritionTargetVersionDraft[] ToTargetVersionDrafts(NutritionTargetVersionPayload[] orderedPayloads) =>
+        orderedPayloads.Select((item, index) =>
+        {
+            bool legacy = string.IsNullOrWhiteSpace(item.Name) &&
+                string.IsNullOrWhiteSpace(item.Category) &&
+                string.IsNullOrWhiteSpace(item.InputMode);
+            DateOnly? effectiveUntil = item.EffectiveUntil;
+            if (legacy && effectiveUntil is null && index + 1 < orderedPayloads.Length)
+                effectiveUntil = orderedPayloads[index + 1].EffectiveFrom.AddDays(-1);
+            return NutritionTargetVersionDraft.Restore(
+                item.TargetVersionId,
+                string.IsNullOrWhiteSpace(item.Name) ? "Ziel" : item.Name,
+                string.IsNullOrWhiteSpace(item.Category)
+                    ? NutritionGoalCategory.Custom
+                    : ParseGoalCategory(item.Category),
+                item.EffectiveFrom,
+                effectiveUntil,
+                item.Kilocalories,
+                string.IsNullOrWhiteSpace(item.InputMode)
+                    ? NutritionTargetInputMode.Grams
+                    : ParseTargetInputMode(item.InputMode),
+                item.ProteinGrams,
+                item.CarbohydrateGrams,
+                item.FatGrams,
+                item.ProteinPercent,
+                item.CarbohydratePercent,
+                item.FatPercent,
+                ParseTargetOrigin(item.Origin),
+                item.AlgorithmVersion,
+                item.Reason);
+        }).ToArray();
 
     private static T Deserialize<T>(JsonElement payload)
     {

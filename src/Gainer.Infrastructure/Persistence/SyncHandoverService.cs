@@ -6,6 +6,7 @@ using Gainer.Core.Sync;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
@@ -44,40 +45,7 @@ public sealed class SyncHandoverService(
             item => item.RequestId == command.RequestId,
             cancellationToken);
         if (requestRetry is not null)
-        {
-            if (requestRetry.SourceClientId != command.SourceClientId || requestRetry.FrozenRevision != command.ExpectedRevision)
-                throw new SyncHandoverException("handover_request_reused", "The handover request id was already used with different values.");
-            if (requestRetry.Status == SyncHandoverStatuses.Pending && requestRetry.ExpiresAtUtc > now)
-            {
-                string retryCode;
-                try
-                {
-                    retryCode = codeProtector.Unprotect(
-                        requestRetry.ProtectedCode ?? throw new CryptographicException("The retry code is no longer available."),
-                        out DateTimeOffset codeExpiration);
-                    if (codeExpiration <= now)
-                        throw new CryptographicException("The retry code has expired.");
-                }
-                catch (CryptographicException)
-                {
-                    throw new SyncHandoverException("handover_retry_unavailable", "The pending handover must be cancelled or allowed to expire.");
-                }
-                await transaction.CommitAsync(cancellationToken);
-                return new BeginSyncHandoverResult(
-                    requestRetry.Id, retryCode, requestRetry.FrozenRevision, requestRetry.ExpiresAtUtc);
-            }
-            if (requestRetry.Status == SyncHandoverStatuses.Pending)
-            {
-                Expire(requestRetry);
-                await context.SaveChangesAsync(cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-            }
-            else
-            {
-                await transaction.CommitAsync(cancellationToken);
-            }
-            throw new SyncHandoverException("handover_not_pending", "The handover request is no longer active.");
-        }
+            return await BeginRetryAsync(requestRetry, command, now, transaction, cancellationToken);
 
         await ExpirePendingHandoversAsync(userId, now, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
@@ -107,6 +75,47 @@ public sealed class SyncHandoverService(
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new BeginSyncHandoverResult(handover.Id, oneTimeCode, handover.FrozenRevision, handover.ExpiresAtUtc);
+    }
+
+    private async Task<BeginSyncHandoverResult> BeginRetryAsync(
+        SyncHandover requestRetry,
+        BeginSyncHandoverCommand command,
+        DateTime now,
+        IDbContextTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (requestRetry.SourceClientId != command.SourceClientId || requestRetry.FrozenRevision != command.ExpectedRevision)
+            throw new SyncHandoverException("handover_request_reused", "The handover request id was already used with different values.");
+        if (requestRetry.Status == SyncHandoverStatuses.Pending && requestRetry.ExpiresAtUtc > now)
+        {
+            string retryCode;
+            try
+            {
+                retryCode = codeProtector.Unprotect(
+                    requestRetry.ProtectedCode ?? throw new CryptographicException("The retry code is no longer available."),
+                    out DateTimeOffset codeExpiration);
+                if (codeExpiration <= now)
+                    throw new CryptographicException("The retry code has expired.");
+            }
+            catch (CryptographicException)
+            {
+                throw new SyncHandoverException("handover_retry_unavailable", "The pending handover must be cancelled or allowed to expire.");
+            }
+            await transaction.CommitAsync(cancellationToken);
+            return new BeginSyncHandoverResult(
+                requestRetry.Id, retryCode, requestRetry.FrozenRevision, requestRetry.ExpiresAtUtc);
+        }
+        if (requestRetry.Status == SyncHandoverStatuses.Pending)
+        {
+            Expire(requestRetry);
+            await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        else
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+        throw new SyncHandoverException("handover_not_pending", "The handover request is no longer active.");
     }
 
     public Task<CompleteSyncHandoverResult> CompleteAsync(
