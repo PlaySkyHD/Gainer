@@ -141,7 +141,7 @@ public static class NutritionCalculator
         decimal value,
         string sourceName,
         string field,
-        IDictionary<string, string> errors)
+        Dictionary<string, string> errors)
     {
         _ = sourceName;
         if (value <= 0m)
@@ -150,7 +150,7 @@ public static class NutritionCalculator
         }
     }
 
-    private static void ValidateOptional(decimal? value, string field, IDictionary<string, string> errors)
+    private static void ValidateOptional(decimal? value, string field, Dictionary<string, string> errors)
     {
         if (value is < 0m)
         {
@@ -158,12 +158,12 @@ public static class NutritionCalculator
         }
     }
 
-    private static void ValidateNonNegative(decimal value, string field, IDictionary<string, string> errors)
+    private static void ValidateNonNegative(decimal value, string field, Dictionary<string, string> errors)
     {
         if (value < 0m) errors[field] = $"{field} cannot be negative.";
     }
 
-    private static void ValidatePercent(decimal value, string field, IDictionary<string, string> errors)
+    private static void ValidatePercent(decimal value, string field, Dictionary<string, string> errors)
     {
         if (value is <= 0m or > 100m) errors[field] = $"{field} must be positive and no greater than 100.";
     }

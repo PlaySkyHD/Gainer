@@ -96,7 +96,7 @@ public sealed record ReusableMealComponentDraft(
 
     private static void ValidatePer100Grams(
         NutritionPer100Grams values,
-        IDictionary<string, string> errors)
+        Dictionary<string, string> errors)
     {
         if (values.Kilocalories is <= 0m or > NutritionLimits.MaxKilocaloriesPer100Grams)
             errors["KilocaloriesPer100Grams"] = "KilocaloriesPer100Grams is outside the allowed range.";
@@ -105,7 +105,7 @@ public sealed record ReusableMealComponentDraft(
         ValidateOptional(values.FatGrams, "FatGramsPer100Grams", errors);
     }
 
-    private static void ValidateOptional(decimal? value, string field, IDictionary<string, string> errors)
+    private static void ValidateOptional(decimal? value, string field, Dictionary<string, string> errors)
     {
         if (value is < 0m or > NutritionLimits.MaxMacroGramsPer100Grams)
             errors[field] = $"{field} is outside the allowed range.";
@@ -191,7 +191,7 @@ public sealed record SaveReusableMealMutation : ITypedMutation<ReusableMealSnaps
         ArgumentNullException.ThrowIfNull(metadata);
         ArgumentNullException.ThrowIfNull(values);
         if (reusableMealId == Guid.Empty) throw new ArgumentException("Reusable meal identifier cannot be empty.", nameof(reusableMealId));
-        if (baseVersion < 0) throw new ArgumentOutOfRangeException(nameof(baseVersion));
+        ArgumentOutOfRangeException.ThrowIfNegative(baseVersion);
         return new SaveReusableMealMutation(metadata, reusableMealId, baseVersion, values);
     }
 }
@@ -216,7 +216,7 @@ public sealed record ArchiveReusableMealMutation : ITypedMutation<ReusableMealSn
     {
         ArgumentNullException.ThrowIfNull(metadata);
         if (reusableMealId == Guid.Empty) throw new ArgumentException("Reusable meal identifier cannot be empty.", nameof(reusableMealId));
-        if (baseVersion <= 0) throw new ArgumentOutOfRangeException(nameof(baseVersion));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
         return new ArchiveReusableMealMutation(metadata, reusableMealId, baseVersion);
     }
 }

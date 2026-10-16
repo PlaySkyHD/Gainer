@@ -107,16 +107,16 @@ public sealed record SaveNutritionDayMutation : ITypedMutation<NutritionDaySnaps
         ArgumentNullException.ThrowIfNull(metadata);
         ArgumentNullException.ThrowIfNull(entries);
         if (nutritionDayId == Guid.Empty) throw new ArgumentException("Nutrition day identifier cannot be empty.", nameof(nutritionDayId));
-        if (baseVersion < 0) throw new ArgumentOutOfRangeException(nameof(baseVersion));
+        ArgumentOutOfRangeException.ThrowIfNegative(baseVersion);
         NutritionEntryInput[] entryArray = entries.ToArray();
         ValidateEntries(entryArray);
         return new SaveNutritionDayMutation(metadata, nutritionDayId, localDate, baseVersion, entryArray);
     }
 
-    private static void ValidateEntries(IReadOnlyCollection<NutritionEntryInput> entries)
+    private static void ValidateEntries(NutritionEntryInput[] entries)
     {
-        if (entries.Count > 200) throw new NutritionValidationException(new Dictionary<string, string> { [nameof(Entries)] = "A day can contain at most 200 entries." });
-        if (entries.Select(item => item.EntryId).Distinct().Count() != entries.Count)
+        if (entries.Length > 200) throw new NutritionValidationException(new Dictionary<string, string> { [nameof(Entries)] = "A day can contain at most 200 entries." });
+        if (entries.Select(item => item.EntryId).Distinct().Count() != entries.Length)
             throw new NutritionValidationException(new Dictionary<string, string> { [nameof(Entries)] = "Entry identifiers must be unique." });
         if (entries.GroupBy(item => item.Meal).Any(group => group.Select(item => item.Position).Distinct().Count() != group.Count()))
             throw new NutritionValidationException(new Dictionary<string, string> { [nameof(Entries)] = "Positions must be unique within a meal." });
@@ -167,7 +167,7 @@ public sealed record DeleteNutritionDayMutation : ITypedMutation<long>
     {
         ArgumentNullException.ThrowIfNull(metadata);
         if (nutritionDayId == Guid.Empty) throw new ArgumentException("Nutrition day identifier cannot be empty.", nameof(nutritionDayId));
-        if (baseVersion <= 0) throw new ArgumentOutOfRangeException(nameof(baseVersion));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
         return new DeleteNutritionDayMutation(metadata, nutritionDayId, baseVersion);
     }
 }
