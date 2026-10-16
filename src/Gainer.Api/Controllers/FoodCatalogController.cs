@@ -67,10 +67,12 @@ public sealed class FoodCatalogController(IExternalFoodCatalog catalog) : Contro
 
     private ObjectResult ProviderProblem(FoodCatalogException exception)
     {
-        int status = exception.Code == "product_not_found" ? StatusCodes.Status404NotFound
-            : exception.Code == "provider_rate_limited" ? StatusCodes.Status429TooManyRequests
-            : exception.IsTemporary ? StatusCodes.Status503ServiceUnavailable
-            : StatusCodes.Status422UnprocessableEntity;
+        int status = exception.Code switch
+        {
+            "product_not_found" => StatusCodes.Status404NotFound,
+            "provider_rate_limited" => StatusCodes.Status429TooManyRequests,
+            _ => exception.IsTemporary ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status422UnprocessableEntity,
+        };
         var problem = new ProblemDetails
         {
             Status = status,

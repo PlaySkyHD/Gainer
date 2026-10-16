@@ -17,6 +17,8 @@ namespace Gainer.Api.Controllers;
 [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
 public sealed class SyncMutationsController(ISyncMutationProcessor processor, IUserContext userContext) : ControllerBase
 {
+    private static readonly JsonSerializerOptions WebJsonOptions = new(JsonSerializerDefaults.Web);
+
     [HttpPut("{mutationId:guid}")]
     [ProducesResponseType<PushMutationResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
@@ -108,7 +110,7 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         JsonElement? snapshot = change.IsTombstone ? null : change.Snapshot switch
         {
             JsonElement element => element.Clone(),
-            _ => JsonSerializer.SerializeToElement(change.Snapshot, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            _ => JsonSerializer.SerializeToElement(change.Snapshot, WebJsonOptions),
         };
         return new SyncResourceResult(
             change.Resource.Kind.ToString(),

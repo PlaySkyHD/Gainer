@@ -50,9 +50,9 @@ public static class GainerIdentityExtensions
             .AddEntityFrameworkStores<AppDbContext>()
             .AddDefaultTokenProviders();
         builder.Services.AddScoped<IUserConfirmation<AppUser>, GainerUserConfirmation>();
-        builder.Services.AddAuthorization(options => options.AddPolicy(
+        builder.Services.AddAuthorizationBuilder().AddPolicy(
             AccountOperatorAuthorization.PolicyName,
-            policy => policy.RequireRole(AccountOperatorAuthorization.RoleName)));
+            policy => policy.RequireRole(AccountOperatorAuthorization.RoleName));
         builder.Services.AddScoped<IInitialAccountOperatorProvisioner, InitialAccountOperatorProvisioner>();
         builder.Services.ConfigureApplicationCookie(options =>
         {
