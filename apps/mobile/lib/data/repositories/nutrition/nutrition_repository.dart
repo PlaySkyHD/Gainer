@@ -9,6 +9,10 @@ import '../sync/local_sync_store.dart';
 
 typedef NutritionIdFactory = String Function();
 
+const _nutritionDayType = 'nutrition-day';
+const _reusableMealType = 'reusable-meal';
+const _nutritionTargetScheduleType = 'nutrition-target-schedule';
+
 abstract interface class NutritionOnlineProvider {
   Future<List<NutritionFood>> searchFoods(String query);
   Future<NutritionFood?> lookupBarcode(String barcode);
@@ -168,17 +172,17 @@ class NutritionRepository {
 
   Future<NutritionSnapshot> read(String localDate) async {
     if (!isValidLocalDate(localDate)) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'localDate': 'Ungültiger Kalendertag.',
       });
     }
-    final dayRow = (await store.readAggregates('nutrition-day'))
+    final dayRow = (await store.readAggregates(_nutritionDayType))
         .where((row) => _map(row.workingCopy)['localDate'] == localDate)
         .firstOrNull;
     final day = dayRow == null
         ? NutritionDay(localDate: localDate, entries: const [])
         : NutritionDay.fromJson(_map(dayRow.workingCopy));
-    final mealRows = await store.readAggregates('reusable-meal');
+    final mealRows = await store.readAggregates(_reusableMealType);
     final meals =
         [
           for (final row in mealRows)
@@ -191,7 +195,7 @@ class NutritionRepository {
               a.value.name.toLowerCase().compareTo(b.value.name.toLowerCase()),
         );
     final scheduleRows = await store.readAggregates(
-      'nutrition-target-schedule',
+      _nutritionTargetScheduleType,
     );
     final schedule = scheduleRows.isEmpty
         ? null
@@ -210,7 +214,7 @@ class NutritionRepository {
 
   Future<List<NutritionFood>> recentFoods({int limit = 20}) async {
     if (limit < 1 || limit > 50) throw RangeError.range(limit, 1, 50, 'limit');
-    final rows = await store.readAggregates('nutrition-day');
+    final rows = await store.readAggregates(_nutritionDayType);
     final candidates = <({NutritionFood food, String stamp})>[];
     for (final row in rows) {
       final body = _map(row.workingCopy);
@@ -263,7 +267,7 @@ class NutritionRepository {
   }
 
   Future<void> saveDay(NutritionDay day) async {
-    final existing = (await store.readAggregates('nutrition-day'))
+    final existing = (await store.readAggregates(_nutritionDayType))
         .where((row) => _map(row.workingCopy)['localDate'] == day.localDate)
         .firstOrNull;
     final aggregateId = existing?.aggregateId ?? ids();
@@ -275,7 +279,7 @@ class NutritionRepository {
     };
     await store.commitMutation(
       mutationId: ids(),
-      aggregateType: 'nutrition-day',
+      aggregateType: _nutritionDayType,
       aggregateId: aggregateId,
       operation: existing == null
           ? LocalMutationOperation.create
@@ -292,7 +296,7 @@ class NutritionRepository {
   Future<String> saveReusableMeal(ReusableMeal input, {String? id}) async {
     final existing = id == null
         ? null
-        : await store.readAggregate('reusable-meal', id);
+        : await store.readAggregate(_reusableMealType, id);
     if (existing != null &&
         _map(existing.workingCopy)['status'] == 'Archived') {
       throw StateError('Archivierte Gerichte sind schreibgeschützt.');
@@ -311,7 +315,7 @@ class NutritionRepository {
       updatedAtUtc: now,
     ).toJson();
     await _commitResource(
-      type: 'reusable-meal',
+      type: _reusableMealType,
       id: mealId,
       value: value,
       existing: existing,
@@ -323,7 +327,7 @@ class NutritionRepository {
   }
 
   Future<void> archiveReusableMeal(String id) async {
-    final existing = await _required('reusable-meal', id);
+    final existing = await _required(_reusableMealType, id);
     final meal = ReusableMeal.fromJson(_map(existing.workingCopy));
     if (meal.status == 'Archived') return;
     final value = {
@@ -331,7 +335,7 @@ class NutritionRepository {
       'updatedAtUtc': clock().toUtc().toIso8601String(),
     };
     await _commitResource(
-      type: 'reusable-meal',
+      type: _reusableMealType,
       id: id,
       value: value,
       existing: existing,
@@ -344,10 +348,10 @@ class NutritionRepository {
     required String name,
   }) async {
     final source = ReusableMeal.fromJson(
-      _map((await _required('reusable-meal', id)).workingCopy),
+      _map((await _required(_reusableMealType, id)).workingCopy),
     );
     if (name.trim().isEmpty) {
-      throw NutritionValidationException({'name': 'Name erforderlich.'});
+      throw const NutritionValidationException({'name': 'Name erforderlich.'});
     }
     return saveReusableMeal(
       ReusableMeal(
@@ -409,14 +413,14 @@ class NutritionRepository {
     required NutritionMeal meal,
     double? portionScale,
   }) async {
-    final row = await _required('reusable-meal', mealId);
+    final row = await _required(_reusableMealType, mealId);
     final reusable = ReusableMeal.fromJson(_map(row.workingCopy));
     if (reusable.status != 'Active') {
       throw StateError('Archivierte Gerichte können nicht übernommen werden.');
     }
     final scale = portionScale ?? reusable.standardPortion;
     if (!scale.isFinite || scale < .01 || scale > 100) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'portionScale': 'Portion muss zwischen 0,01 und 100 liegen.',
       });
     }
@@ -448,7 +452,7 @@ class NutritionRepository {
   }
 
   Future<void> saveTargetSchedule(NutritionTargetSchedule schedule) async {
-    final rows = await store.readAggregates('nutrition-target-schedule');
+    final rows = await store.readAggregates(_nutritionTargetScheduleType);
     final existing = rows.isEmpty ? null : rows.first;
     final id = existing?.aggregateId ?? ids();
     final now = clock().toUtc().toIso8601String();
@@ -458,7 +462,7 @@ class NutritionRepository {
       if (existing == null) 'createdAtUtc': now,
     };
     await _commitResource(
-      type: 'nutrition-target-schedule',
+      type: _nutritionTargetScheduleType,
       id: id,
       value: body,
       existing: existing,
@@ -484,7 +488,7 @@ class NutritionRepository {
       }
       final previousDay = _dateBefore(phase.effectiveFrom);
       if (previousDay.compareTo(prior.effectiveFrom) < 0) {
-        throw NutritionValidationException({
+        throw const NutritionValidationException({
           'effectiveFrom':
               'Neue Phase muss nach Beginn der offenen Phase liegen.',
         });
@@ -539,7 +543,7 @@ class NutritionRepository {
   }
 
   Future<NutritionTargetSchedule?> _readTargetSchedule() async {
-    final rows = await store.readAggregates('nutrition-target-schedule');
+    final rows = await store.readAggregates(_nutritionTargetScheduleType);
     if (rows.isEmpty) return null;
     return NutritionTargetSchedule(
       versions: _list(_map(rows.first.workingCopy)['versions'])
@@ -551,7 +555,7 @@ class NutritionRepository {
   Future<List<NutritionFood>> searchFoods(String query) async {
     final normalized = query.trim();
     if (normalized.length < 2 || normalized.length > 120) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'query': 'Mindestens 2 und höchstens 120 Zeichen eingeben.',
       });
     }
@@ -565,7 +569,9 @@ class NutritionRepository {
   Future<NutritionFood?> lookupBarcode(String barcode) async {
     final normalized = barcode.trim();
     if (!RegExp(r'^\d{8,14}$').hasMatch(normalized)) {
-      throw NutritionValidationException({'barcode': 'Ungültiger Barcode.'});
+      throw const NutritionValidationException({
+        'barcode': 'Ungültiger Barcode.',
+      });
     }
     final provider = online;
     if (provider == null) {
@@ -577,7 +583,7 @@ class NutritionRepository {
   Future<MealEstimateDraft> estimateMeal(String description) async {
     final normalized = description.trim();
     if (normalized.isEmpty || normalized.length > 1000) {
-      throw NutritionValidationException({
+      throw const NutritionValidationException({
         'description': 'Beschreibung ist erforderlich (maximal 1000 Zeichen).',
       });
     }

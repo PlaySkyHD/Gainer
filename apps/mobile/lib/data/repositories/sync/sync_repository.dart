@@ -16,6 +16,9 @@ import 'sync_payload_codec.dart';
 
 const nativeSyncProtocolVersion = 2;
 
+const _syncLeaseKey = 'sync-lease';
+const _pullCursorKey = 'pull-cursor';
+
 enum SyncRunState {
   idle,
   busy,
@@ -169,7 +172,7 @@ class SyncRepository implements MobileSyncActions {
     final acquired = await database.transaction(() async {
       final row = await (database.select(
         database.localSyncMetadata,
-      )..where((t) => t.key.equals('sync-lease'))).getSingleOrNull();
+      )..where((t) => t.key.equals(_syncLeaseKey))).getSingleOrNull();
       if (row != null) {
         final value = jsonDecode(row.valueJson);
         if (value is Map<String, dynamic> &&
@@ -186,7 +189,7 @@ class SyncRepository implements MobileSyncActions {
           .into(database.localSyncMetadata)
           .insertOnConflictUpdate(
             LocalSyncMetadataCompanion.insert(
-              key: 'sync-lease',
+              key: _syncLeaseKey,
               valueJson: jsonEncode({
                 'ownerId': _leaseOwnerId,
                 'expiresAtUtc': currentTime
@@ -210,14 +213,14 @@ class SyncRepository implements MobileSyncActions {
       await database.transaction(() async {
         final row = await (database.select(
           database.localSyncMetadata,
-        )..where((t) => t.key.equals('sync-lease'))).getSingleOrNull();
+        )..where((t) => t.key.equals(_syncLeaseKey))).getSingleOrNull();
         if (row == null) return;
         final value = jsonDecode(row.valueJson);
         if (value is Map<String, dynamic> &&
             value['ownerId'] == _leaseOwnerId) {
           await (database.delete(
             database.localSyncMetadata,
-          )..where((t) => t.key.equals('sync-lease'))).go();
+          )..where((t) => t.key.equals(_syncLeaseKey))).go();
         }
       });
     }
@@ -232,28 +235,10 @@ class SyncRepository implements MobileSyncActions {
     await _refreshSyncLease();
     final session = await api.getSession();
     if (session == null) {
-      await _markStatuses(
-        {LocalMutationStatus.pending, LocalMutationStatus.syncing},
-        LocalMutationStatus.authBlocked,
-        'authentication_required',
-      );
-      return const SyncRunReport(
-        state: SyncRunState.authBlocked,
-        pushed: 0,
-        pulledBatches: 0,
-      );
+      return _blockAuthorization('authentication_required');
     }
     if (session.userId.toLowerCase() != store.accountId.toLowerCase()) {
-      await _markStatuses(
-        {LocalMutationStatus.pending, LocalMutationStatus.syncing},
-        LocalMutationStatus.authBlocked,
-        'account_changed',
-      );
-      return const SyncRunReport(
-        state: SyncRunState.authBlocked,
-        pushed: 0,
-        pulledBatches: 0,
-      );
+      return _blockAuthorization('account_changed');
     }
     final clientId = await installationIdentity.getOrCreateInstallationId();
     SyncClientRegistrationResponse registration;
@@ -269,93 +254,17 @@ class SyncRepository implements MobileSyncActions {
         expectedAccountId: store.accountId,
       );
     } on ApiException catch (error) {
-      if (error.statusCode == 401) {
-        await _markStatuses(
-          {LocalMutationStatus.pending, LocalMutationStatus.syncing},
-          LocalMutationStatus.authBlocked,
-          'authentication_required',
-        );
-        return const SyncRunReport(
-          state: SyncRunState.authBlocked,
-          pushed: 0,
-          pulledBatches: 0,
-        );
-      }
-      if (error.code == 'account_changed') {
-        await _markStatuses(
-          {LocalMutationStatus.pending, LocalMutationStatus.syncing},
-          LocalMutationStatus.authBlocked,
-          error.code,
-        );
-        return const SyncRunReport(
-          state: SyncRunState.authBlocked,
-          pushed: 0,
-          pulledBatches: 0,
-        );
-      }
-      if (error.code == 'upgrade_required') {
-        await _markStatuses(
-          {LocalMutationStatus.pending, LocalMutationStatus.syncing},
-          LocalMutationStatus.upgradeRequired,
-          error.code,
-        );
-        return const SyncRunReport(
-          state: SyncRunState.upgradeRequired,
-          pushed: 0,
-          pulledBatches: 0,
-        );
-      }
-      rethrow;
+      final blocked = await _registrationFailureReport(error);
+      if (blocked == null) rethrow;
+      return blocked;
     }
 
     var pushed = 0;
     if (registration.isActiveWriter) {
-      await _resumeInactiveAndAuthenticated();
-      await _prepareSequences();
-      final candidates = await _oldestReadyPerAggregate(timestamp);
-      for (final record in candidates) {
-        await _refreshSyncLease();
-        final syncing = _copyMutation(
-          record,
-          status: LocalMutationStatus.syncing,
-          lastErrorCode: null,
-        );
-        await store.updateMutation(syncing);
-        try {
-          final request = _toRequest(syncing, clientId);
-          final response = await api.pushMutation(
-            mutationId: syncing.mutationId,
-            mutation: request,
-            expectedAccountId: store.accountId,
-          );
-          if (response.mutationId != syncing.mutationId) {
-            throw const FormatException(
-              'Sync response mutation id does not match the request.',
-            );
-          }
-          // Keep the same id/payload until pull applies the canonical server
-          // batch. This makes a timeout/retry safe under server idempotency.
-          await store.updateMutation(
-            _copyMutation(
-              syncing,
-              status: LocalMutationStatus.clean,
-              clearError: true,
-            ),
-          );
-          pushed++;
-        } on ApiException catch (error) {
-          final shouldStop = await _handlePushError(syncing, error, timestamp);
-          if (shouldStop != null) {
-            final pulled = shouldStop == SyncRunState.authBlocked
-                ? 0
-                : await _pullAll();
-            return SyncRunReport(
-              state: shouldStop,
-              pushed: pushed,
-              pulledBatches: pulled,
-            );
-          }
-        }
+      final push = await _pushAsActiveWriter(clientId, timestamp);
+      pushed = push.pushed;
+      if (push.stopState case final stopState?) {
+        return _stopAfterPush(stopState, pushed);
       }
     }
 
@@ -363,22 +272,9 @@ class SyncRepository implements MobileSyncActions {
     try {
       pulled = await _pullAll();
     } on ApiException catch (error) {
-      if (error.statusCode == 401 || error.code == 'account_changed') {
-        final code = error.code == 'account_changed'
-            ? error.code
-            : 'authentication_required';
-        await _markStatuses(
-          {LocalMutationStatus.pending, LocalMutationStatus.syncing},
-          LocalMutationStatus.authBlocked,
-          code,
-        );
-        return SyncRunReport(
-          state: SyncRunState.authBlocked,
-          pushed: pushed,
-          pulledBatches: 0,
-        );
-      }
-      rethrow;
+      final blocked = await _pullFailureReport(error, pushed);
+      if (blocked == null) rethrow;
+      return blocked;
     }
     if (!registration.isActiveWriter) {
       return SyncRunReport(
@@ -387,6 +283,124 @@ class SyncRepository implements MobileSyncActions {
         pulledBatches: pulled,
       );
     }
+    return _reportAfterPull(
+      pushed: pushed,
+      pulled: pulled,
+      timestamp: timestamp,
+    );
+  }
+
+  Future<SyncRunReport> _blockAuthorization(
+    String code, {
+    int pushed = 0,
+  }) async {
+    await _markStatuses(
+      {LocalMutationStatus.pending, LocalMutationStatus.syncing},
+      LocalMutationStatus.authBlocked,
+      code,
+    );
+    return SyncRunReport(
+      state: SyncRunState.authBlocked,
+      pushed: pushed,
+      pulledBatches: 0,
+    );
+  }
+
+  Future<SyncRunReport?> _registrationFailureReport(ApiException error) async {
+    if (error.statusCode == 401) {
+      return _blockAuthorization('authentication_required');
+    }
+    if (error.code == 'account_changed') {
+      return _blockAuthorization(error.code);
+    }
+    if (error.code == 'upgrade_required') {
+      await _markStatuses(
+        {LocalMutationStatus.pending, LocalMutationStatus.syncing},
+        LocalMutationStatus.upgradeRequired,
+        error.code,
+      );
+      return const SyncRunReport(
+        state: SyncRunState.upgradeRequired,
+        pushed: 0,
+        pulledBatches: 0,
+      );
+    }
+    return null;
+  }
+
+  Future<SyncRunReport?> _pullFailureReport(
+    ApiException error,
+    int pushed,
+  ) async {
+    if (error.statusCode == 401 || error.code == 'account_changed') {
+      return _blockAuthorization(
+        error.code == 'account_changed'
+            ? error.code
+            : 'authentication_required',
+        pushed: pushed,
+      );
+    }
+    return null;
+  }
+
+  Future<({int pushed, SyncRunState? stopState})> _pushAsActiveWriter(
+    String clientId,
+    DateTime timestamp,
+  ) async {
+    var pushed = 0;
+    await _resumeInactiveAndAuthenticated();
+    await _prepareSequences();
+    final candidates = await _oldestReadyPerAggregate(timestamp);
+    for (final record in candidates) {
+      await _refreshSyncLease();
+      final syncing = _copyMutation(
+        record,
+        status: LocalMutationStatus.syncing,
+        lastErrorCode: null,
+      );
+      await store.updateMutation(syncing);
+      try {
+        final request = _toRequest(syncing, clientId);
+        final response = await api.pushMutation(
+          mutationId: syncing.mutationId,
+          mutation: request,
+          expectedAccountId: store.accountId,
+        );
+        if (response.mutationId != syncing.mutationId) {
+          throw const FormatException(
+            'Sync response mutation id does not match the request.',
+          );
+        }
+        // Keep the same id/payload until pull applies the canonical server
+        // batch. This makes a timeout/retry safe under server idempotency.
+        await store.updateMutation(
+          _copyMutation(
+            syncing,
+            status: LocalMutationStatus.clean,
+            clearError: true,
+          ),
+        );
+        pushed++;
+      } on ApiException catch (error) {
+        final shouldStop = await _handlePushError(syncing, error, timestamp);
+        if (shouldStop != null) {
+          return (pushed: pushed, stopState: shouldStop);
+        }
+      }
+    }
+    return (pushed: pushed, stopState: null);
+  }
+
+  Future<SyncRunReport> _stopAfterPush(SyncRunState state, int pushed) async {
+    final pulled = state == SyncRunState.authBlocked ? 0 : await _pullAll();
+    return SyncRunReport(state: state, pushed: pushed, pulledBatches: pulled);
+  }
+
+  Future<SyncRunReport> _reportAfterPull({
+    required int pushed,
+    required int pulled,
+    required DateTime timestamp,
+  }) async {
     final pending = (await store.readOutbox()).where(
       (mutation) => mutation.status == LocalMutationStatus.pending,
     );
@@ -535,39 +549,13 @@ class SyncRepository implements MobileSyncActions {
   Future<int> _pullAll() async {
     var applied = 0;
     while (true) {
-      final cursorValue = await store.readSyncMetadata('pull-cursor');
+      final cursorValue = await store.readSyncMetadata(_pullCursorKey);
       final cursor = cursorValue is int ? cursorValue : 0;
-      late final SyncPullResponse response;
-      try {
-        await _refreshSyncLease();
-        response = await api.pullChanges(
-          after: cursor,
-          limit: 200,
-          expectedAccountId: store.accountId,
-        );
-      } on ApiException catch (error) {
-        if (error.statusCode == 401 || error.code == 'account_changed') {
-          await _markStatuses(
-            {LocalMutationStatus.pending, LocalMutationStatus.syncing},
-            LocalMutationStatus.authBlocked,
-            error.code == 'account_changed'
-                ? error.code
-                : 'authentication_required',
-          );
-        }
-        rethrow;
-      }
-      if (response.protocolVersion != nativeSyncProtocolVersion) {
-        throw const FormatException(
-          'Unsupported sync protocol version in pull response.',
-        );
-      }
-      if (response.nextCursor < cursor) {
-        throw const FormatException('Sync cursor cannot move backwards.');
-      }
+      final response = await _fetchPullPage(cursor);
+      _validatePullResponse(response, cursor);
       if (response.batches.isEmpty) {
         if (response.nextCursor != cursor) {
-          await store.writeSyncMetadata('pull-cursor', response.nextCursor);
+          await store.writeSyncMetadata(_pullCursorKey, response.nextCursor);
         }
         break;
       }
@@ -578,6 +566,39 @@ class SyncRepository implements MobileSyncActions {
       if (!response.hasMore) break;
     }
     return applied;
+  }
+
+  Future<SyncPullResponse> _fetchPullPage(int cursor) async {
+    try {
+      await _refreshSyncLease();
+      return await api.pullChanges(
+        after: cursor,
+        limit: 200,
+        expectedAccountId: store.accountId,
+      );
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.code == 'account_changed') {
+        await _markStatuses(
+          {LocalMutationStatus.pending, LocalMutationStatus.syncing},
+          LocalMutationStatus.authBlocked,
+          error.code == 'account_changed'
+              ? error.code
+              : 'authentication_required',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  void _validatePullResponse(SyncPullResponse response, int cursor) {
+    if (response.protocolVersion != nativeSyncProtocolVersion) {
+      throw const FormatException(
+        'Unsupported sync protocol version in pull response.',
+      );
+    }
+    if (response.nextCursor < cursor) {
+      throw const FormatException('Sync cursor cannot move backwards.');
+    }
   }
 
   Future<void> _applyBatch(SyncChangeBatchResponse batch) async {
@@ -593,163 +614,10 @@ class SyncRepository implements MobileSyncActions {
           );
         }
         if (change.isTombstone) {
-          final pending =
-              await (database.select(database.localOutbox)..where(
-                    (t) =>
-                        t.accountId.equals(store.accountId) &
-                        t.aggregateType.equals(aggregateType) &
-                        t.aggregateId.equals(change.resourceId) &
-                        t.status.isNotValue(LocalMutationStatus.clean.name),
-                  ))
-                  .get();
-          if (pending.isNotEmpty) {
-            final old =
-                await (database.select(database.localResources)..where(
-                      (t) =>
-                          t.aggregateType.equals(aggregateType) &
-                          t.aggregateId.equals(change.resourceId),
-                    ))
-                    .getSingleOrNull();
-            if (old != null) {
-              final envelope = LocalAggregateEnvelope<Object?>.fromJson(
-                jsonDecode(old.envelopeJson) as Map<String, dynamic>,
-              );
-              final conflicted = LocalAggregateEnvelope(
-                aggregateId: envelope.aggregateId,
-                serverSnapshot: null,
-                workingCopy: envelope.workingCopy,
-                serverVersion: null,
-                optimisticVersion: envelope.optimisticVersion,
-                syncState: LocalSyncState.conflict,
-              );
-              await (database.update(database.localResources)..where(
-                    (t) =>
-                        t.aggregateType.equals(aggregateType) &
-                        t.aggregateId.equals(change.resourceId),
-                  ))
-                  .write(
-                    LocalResourcesCompanion(
-                      envelopeJson: Value(conflicted.encode()),
-                    ),
-                  );
-            }
-            await database
-                .into(database.localConflicts)
-                .insertOnConflictUpdate(
-                  LocalConflictsCompanion.insert(
-                    conflictId:
-                        'tombstone:${change.resourceType}:${change.resourceId}:${batch.revision}',
-                    aggregateType: aggregateType,
-                    aggregateId: change.resourceId,
-                    createdAtUtc: DateTime.now().toUtc().toIso8601String(),
-                    code: 'server_deleted_local_pending',
-                    detailJson: jsonEncode({
-                      'revision': batch.revision,
-                      'resourceType': change.resourceType,
-                    }),
-                  ),
-                );
-            for (final row in pending) {
-              await (database.update(database.localOutbox)..where(
-                    (t) =>
-                        t.accountId.equals(store.accountId) &
-                        t.mutationId.equals(row.mutationId),
-                  ))
-                  .write(
-                    const LocalOutboxCompanion(
-                      status: Value('conflict'),
-                      lastErrorCode: Value('server_deleted'),
-                    ),
-                  );
-            }
-          } else {
-            await (database.delete(database.localResources)..where(
-                  (t) =>
-                      t.aggregateType.equals(aggregateType) &
-                      t.aggregateId.equals(change.resourceId),
-                ))
-                .go();
-          }
-          await database
-              .into(database.localTombstones)
-              .insertOnConflictUpdate(
-                LocalTombstonesCompanion.insert(
-                  resourceType: change.resourceType,
-                  resourceId: change.resourceId,
-                  revision: batch.revision,
-                ),
-              );
+          await _applyTombstone(batch, change, aggregateType);
           continue;
         }
-        final existing =
-            await (database.select(database.localResources)..where(
-                  (t) =>
-                      t.aggregateType.equals(aggregateType) &
-                      t.aggregateId.equals(change.resourceId),
-                ))
-                .getSingleOrNull();
-        final pending =
-            await (database.select(database.localOutbox)..where(
-                  (t) =>
-                      t.accountId.equals(store.accountId) &
-                      t.aggregateType.equals(aggregateType) &
-                      t.aggregateId.equals(change.resourceId) &
-                      t.status.isNotValue(LocalMutationStatus.clean.name),
-                ))
-                .get();
-        final snapshot = SyncPayloadCodec.normalizeSnapshot(
-          change.resourceType,
-          change.snapshot,
-        );
-        LocalAggregateEnvelope<Object?> envelope;
-        if (existing != null && pending.isNotEmpty) {
-          final old = LocalAggregateEnvelope<Object?>.fromJson(
-            jsonDecode(existing.envelopeJson) as Map<String, dynamic>,
-          );
-          envelope = LocalAggregateEnvelope(
-            aggregateId: old.aggregateId,
-            serverSnapshot: snapshot,
-            workingCopy: old.workingCopy,
-            serverVersion: change.version,
-            optimisticVersion: old.optimisticVersion,
-            syncState:
-                pending.any(
-                  (row) => row.status == LocalMutationStatus.conflict.name,
-                )
-                ? LocalSyncState.conflict
-                : LocalSyncState.pending,
-          );
-        } else {
-          envelope = serverEnvelope(
-            aggregateId: change.resourceId,
-            snapshot: snapshot,
-            version: change.version,
-          );
-        }
-        await database
-            .into(database.localResources)
-            .insertOnConflictUpdate(
-              LocalResourcesCompanion.insert(
-                aggregateType: aggregateType,
-                aggregateId: change.resourceId,
-                envelopeJson: envelope.encode(),
-                updatedAtEpochMs: DateTime.now().toUtc().millisecondsSinceEpoch,
-              ),
-            );
-        await (database.delete(database.localTombstones)..where(
-              (t) =>
-                  t.resourceType.equals(change.resourceType) &
-                  t.resourceId.equals(change.resourceId),
-            ))
-            .go();
-        if (batch.originMutationId != null) {
-          await _advanceNextMutationBase(
-            aggregateType: aggregateType,
-            aggregateId: change.resourceId,
-            originMutationId: batch.originMutationId!,
-            version: change.version,
-          );
-        }
+        await _applyUpsert(batch, change, aggregateType);
       }
       if (batch.originMutationId != null) {
         await (database.delete(database.localOutbox)..where(
@@ -763,11 +631,180 @@ class SyncRepository implements MobileSyncActions {
           .into(database.localSyncMetadata)
           .insertOnConflictUpdate(
             LocalSyncMetadataCompanion.insert(
-              key: 'pull-cursor',
+              key: _pullCursorKey,
               valueJson: jsonEncode(batch.revision),
             ),
           );
     });
+  }
+
+  Future<void> _applyTombstone(
+    SyncChangeBatchResponse batch,
+    SyncChangeResponse change,
+    String aggregateType,
+  ) async {
+    final database = store.database;
+    final pending =
+        await (database.select(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(store.accountId) &
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(change.resourceId) &
+                  t.status.isNotValue(LocalMutationStatus.clean.name),
+            ))
+            .get();
+    if (pending.isNotEmpty) {
+      final old =
+          await (database.select(database.localResources)..where(
+                (t) =>
+                    t.aggregateType.equals(aggregateType) &
+                    t.aggregateId.equals(change.resourceId),
+              ))
+              .getSingleOrNull();
+      if (old != null) {
+        final envelope = LocalAggregateEnvelope<Object?>.fromJson(
+          jsonDecode(old.envelopeJson) as Map<String, dynamic>,
+        );
+        final conflicted = LocalAggregateEnvelope(
+          aggregateId: envelope.aggregateId,
+          serverSnapshot: null,
+          workingCopy: envelope.workingCopy,
+          serverVersion: null,
+          optimisticVersion: envelope.optimisticVersion,
+          syncState: LocalSyncState.conflict,
+        );
+        await (database.update(database.localResources)..where(
+              (t) =>
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(change.resourceId),
+            ))
+            .write(
+              LocalResourcesCompanion(envelopeJson: Value(conflicted.encode())),
+            );
+      }
+      await database
+          .into(database.localConflicts)
+          .insertOnConflictUpdate(
+            LocalConflictsCompanion.insert(
+              conflictId:
+                  'tombstone:${change.resourceType}:${change.resourceId}:${batch.revision}',
+              aggregateType: aggregateType,
+              aggregateId: change.resourceId,
+              createdAtUtc: DateTime.now().toUtc().toIso8601String(),
+              code: 'server_deleted_local_pending',
+              detailJson: jsonEncode({
+                'revision': batch.revision,
+                'resourceType': change.resourceType,
+              }),
+            ),
+          );
+      for (final row in pending) {
+        await (database.update(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(store.accountId) &
+                  t.mutationId.equals(row.mutationId),
+            ))
+            .write(
+              const LocalOutboxCompanion(
+                status: Value('conflict'),
+                lastErrorCode: Value('server_deleted'),
+              ),
+            );
+      }
+    } else {
+      await (database.delete(database.localResources)..where(
+            (t) =>
+                t.aggregateType.equals(aggregateType) &
+                t.aggregateId.equals(change.resourceId),
+          ))
+          .go();
+    }
+    await database
+        .into(database.localTombstones)
+        .insertOnConflictUpdate(
+          LocalTombstonesCompanion.insert(
+            resourceType: change.resourceType,
+            resourceId: change.resourceId,
+            revision: batch.revision,
+          ),
+        );
+  }
+
+  Future<void> _applyUpsert(
+    SyncChangeBatchResponse batch,
+    SyncChangeResponse change,
+    String aggregateType,
+  ) async {
+    final database = store.database;
+    final existing =
+        await (database.select(database.localResources)..where(
+              (t) =>
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(change.resourceId),
+            ))
+            .getSingleOrNull();
+    final pending =
+        await (database.select(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(store.accountId) &
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(change.resourceId) &
+                  t.status.isNotValue(LocalMutationStatus.clean.name),
+            ))
+            .get();
+    final snapshot = SyncPayloadCodec.normalizeSnapshot(
+      change.resourceType,
+      change.snapshot,
+    );
+    LocalAggregateEnvelope<Object?> envelope;
+    if (existing != null && pending.isNotEmpty) {
+      final old = LocalAggregateEnvelope<Object?>.fromJson(
+        jsonDecode(existing.envelopeJson) as Map<String, dynamic>,
+      );
+      envelope = LocalAggregateEnvelope(
+        aggregateId: old.aggregateId,
+        serverSnapshot: snapshot,
+        workingCopy: old.workingCopy,
+        serverVersion: change.version,
+        optimisticVersion: old.optimisticVersion,
+        syncState:
+            pending.any(
+              (row) => row.status == LocalMutationStatus.conflict.name,
+            )
+            ? LocalSyncState.conflict
+            : LocalSyncState.pending,
+      );
+    } else {
+      envelope = serverEnvelope(
+        aggregateId: change.resourceId,
+        snapshot: snapshot,
+        version: change.version,
+      );
+    }
+    await database
+        .into(database.localResources)
+        .insertOnConflictUpdate(
+          LocalResourcesCompanion.insert(
+            aggregateType: aggregateType,
+            aggregateId: change.resourceId,
+            envelopeJson: envelope.encode(),
+            updatedAtEpochMs: DateTime.now().toUtc().millisecondsSinceEpoch,
+          ),
+        );
+    await (database.delete(database.localTombstones)..where(
+          (t) =>
+              t.resourceType.equals(change.resourceType) &
+              t.resourceId.equals(change.resourceId),
+        ))
+        .go();
+    if (batch.originMutationId != null) {
+      await _advanceNextMutationBase(
+        aggregateType: aggregateType,
+        aggregateId: change.resourceId,
+        originMutationId: batch.originMutationId!,
+        version: change.version,
+      );
+    }
   }
 
   Future<void> _advanceNextMutationBase({
@@ -909,7 +946,7 @@ class SyncRepository implements MobileSyncActions {
     await database.transaction(() async {
       final row = await (database.select(
         database.localSyncMetadata,
-      )..where((t) => t.key.equals('sync-lease'))).getSingleOrNull();
+      )..where((t) => t.key.equals(_syncLeaseKey))).getSingleOrNull();
       if (row == null) return;
       final value = jsonDecode(row.valueJson);
       if (value is! Map<String, dynamic> || value['ownerId'] != _leaseOwnerId) {
@@ -919,7 +956,7 @@ class SyncRepository implements MobileSyncActions {
           .into(database.localSyncMetadata)
           .insertOnConflictUpdate(
             LocalSyncMetadataCompanion.insert(
-              key: 'sync-lease',
+              key: _syncLeaseKey,
               valueJson: jsonEncode({
                 'ownerId': _leaseOwnerId,
                 'expiresAtUtc': DateTime.now()
