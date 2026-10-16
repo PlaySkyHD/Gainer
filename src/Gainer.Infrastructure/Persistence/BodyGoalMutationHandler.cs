@@ -115,15 +115,12 @@ public sealed class BodyGoalMutationHandler(
 
     private static bool IsConcurrencyConflict(Exception exception)
     {
-        PostgresException? postgres = exception switch
+        for (Exception? current = exception; current is not null; current = current.InnerException)
         {
-            PostgresException direct => direct,
-            DbUpdateException { InnerException: PostgresException inner } => inner,
-            _ => null,
-        };
-        return postgres?.SqlState is PostgresErrorCodes.UniqueViolation
-            or PostgresErrorCodes.SerializationFailure
-            or PostgresErrorCodes.DeadlockDetected;
+            if (current is PostgresException postgres && postgres.SqlState is
+                PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected)
+                return true;
+        }
+        return false;
     }
-
 }
