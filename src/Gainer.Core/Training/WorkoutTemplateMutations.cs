@@ -51,10 +51,7 @@ public sealed record SaveWorkoutTemplateMutation : ITypedMutation<WorkoutTemplat
         {
             throw new ArgumentException("The template identifier cannot be empty.", nameof(templateId));
         }
-        if (baseVersion < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(baseVersion));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(baseVersion);
         return new(metadata, templateId, baseVersion, name, items);
     }
 }
@@ -78,10 +75,15 @@ public sealed record ArchiveWorkoutTemplateMutation : ITypedMutation<WorkoutTemp
     public static ArchiveWorkoutTemplateMutation Create(
         MutationMetadata metadata,
         Guid templateId,
-        long baseVersion) =>
-        templateId == Guid.Empty ? throw new ArgumentException("The template identifier cannot be empty.", nameof(templateId)) :
-        baseVersion <= 0 ? throw new ArgumentOutOfRangeException(nameof(baseVersion)) :
-        new(metadata, templateId, baseVersion);
+        long baseVersion)
+    {
+        if (templateId == Guid.Empty)
+        {
+            throw new ArgumentException("The template identifier cannot be empty.", nameof(templateId));
+        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
+        return new(metadata, templateId, baseVersion);
+    }
 }
 
 public sealed record WorkoutTemplateSnapshot(
