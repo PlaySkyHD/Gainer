@@ -13,6 +13,8 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class ExerciseCatalogSyncPersistenceTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static PostgreSqlTestFixture? fixture;
     private static PostgreSqlTestFixture Fixture => fixture
@@ -70,9 +72,9 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         Assert.AreEqual(3, archived.Changes.Single().Version);
 
         await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
-        ExerciseCategory stored = await check.ExerciseCategories.SingleAsync(item => item.Id == categoryId);
+        ExerciseCategory stored = await check.ExerciseCategories.SingleAsync(item => item.Id == categoryId, TestContext.CancellationToken);
         Assert.IsTrue(stored.IsArchived);
-        Assert.AreEqual(1, await check.ProcessedMutations.CountAsync(item => item.MutationId == createId));
+        Assert.AreEqual(1, await check.ProcessedMutations.CountAsync(item => item.MutationId == createId, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -96,7 +98,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         Assert.AreEqual("resource_not_found", archive.Code);
 
         await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
-        ExerciseCategory stored = await check.ExerciseCategories.IgnoreQueryFilters().SingleAsync(item => item.Id == legs);
+        ExerciseCategory stored = await check.ExerciseCategories.IgnoreQueryFilters().SingleAsync(item => item.Id == legs, TestContext.CancellationToken);
         Assert.AreEqual(ExerciseCatalogSnapshot.Document.Categories.Single(item => item.Key == "legs").Name, stored.Name);
         Assert.IsFalse(stored.IsArchived);
         Assert.AreEqual(1, stored.Version);
@@ -138,7 +140,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         Guid[] assigned = await check.ExerciseCategoryAssignments
             .Where(item => item.ExerciseId == exerciseId)
             .Select(item => item.CategoryId)
-            .ToArrayAsync();
+            .ToArrayAsync(TestContext.CancellationToken);
         CollectionAssert.AreEqual(new[] { chest }, assigned);
     }
 
@@ -171,7 +173,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         Assert.IsTrue(duplicates.Errors.ContainsKey(nameof(CustomExerciseValues.CategoryIds)));
 
         await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
-        Assert.AreEqual(0, await check.Exercises.CountAsync(item => item.OwnerUserId == userId));
+        Assert.AreEqual(0, await check.Exercises.CountAsync(item => item.OwnerUserId == userId, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -228,12 +230,12 @@ public sealed class ExerciseCatalogSyncPersistenceTests
             new { categoryId, baseVersion = 1 }));
 
         await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
-        Assert.AreEqual(2, await check.ExerciseCategoryAssignments.CountAsync(item => item.CategoryId == categoryId));
-        Exercise first = await check.Exercises.SingleAsync(item => item.Id == firstExercise);
+        Assert.AreEqual(2, await check.ExerciseCategoryAssignments.CountAsync(item => item.CategoryId == categoryId, TestContext.CancellationToken));
+        Exercise first = await check.Exercises.SingleAsync(item => item.Id == firstExercise, TestContext.CancellationToken);
         Assert.AreEqual(1, first.Version);
         Assert.IsFalse(first.IsArchived);
         var queries = new ExerciseCatalogQueries(check, new TestUserContext(userId));
-        ExerciseCatalogPage page = await queries.SearchAsync(new ExerciseCatalogFilter(Search: "First"));
+        ExerciseCatalogPage page = await queries.SearchAsync(new ExerciseCatalogFilter(Search: "First"), TestContext.CancellationToken);
         Assert.AreEqual(1, page.Total);
         CollectionAssert.AreEqual(new[] { categoryId }, page.Items.Single().CategoryIds.ToArray());
         Assert.IsFalse(page.Categories.Any(item => item.Id == categoryId));
@@ -257,8 +259,8 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         Assert.IsFalse(first.Replayed);
         Assert.IsTrue(second.Replayed);
         await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
-        Assert.AreEqual(1, await check.Exercises.CountAsync(item => item.OwnerUserId == userId));
-        Assert.AreEqual(1, await check.ChangeBatches.CountAsync());
+        Assert.AreEqual(1, await check.Exercises.CountAsync(item => item.OwnerUserId == userId, TestContext.CancellationToken));
+        Assert.AreEqual(1, await check.ChangeBatches.CountAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -275,12 +277,12 @@ public sealed class ExerciseCatalogSyncPersistenceTests
             new { categoryId, name = "Private" }));
 
         await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
-        SyncChangeFeedPage ownerPage = await new SyncChangeFeed(ownerContext).GetAsync(0, 10);
+        SyncChangeFeedPage ownerPage = await new SyncChangeFeed(ownerContext).GetAsync(0, 10, TestContext.CancellationToken);
         Assert.IsTrue(ownerPage.Batches.SelectMany(batch => batch.Changes)
             .Any(change => change.ResourceType == "ExerciseCategory" && change.ResourceId == categoryId));
 
         await using AppDbContext otherContext = Fixture.CreateContext(connectionString, other);
-        SyncChangeFeedPage otherPage = await new SyncChangeFeed(otherContext).GetAsync(0, 10);
+        SyncChangeFeedPage otherPage = await new SyncChangeFeed(otherContext).GetAsync(0, 10, TestContext.CancellationToken);
         Assert.IsFalse(otherPage.Batches.Any());
     }
 
@@ -322,8 +324,8 @@ public sealed class ExerciseCatalogSyncPersistenceTests
 
         await using AppDbContext allowed = Fixture.CreateContext(connectionString, owner);
         allowed.ExerciseCategoryAssignments.Add(new ExerciseCategoryAssignment { ExerciseId = ownerExercise, CategoryId = ownerCategory });
-        await allowed.SaveChangesAsync();
-        Assert.AreEqual(1, await allowed.ExerciseCategoryAssignments.CountAsync(item => item.ExerciseId == ownerExercise));
+        await allowed.SaveChangesAsync(TestContext.CancellationToken);
+        Assert.AreEqual(1, await allowed.ExerciseCategoryAssignments.CountAsync(item => item.ExerciseId == ownerExercise, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -353,7 +355,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
 
         await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
         var controller = new Gainer.Api.Controllers.ExerciseCatalogController(new ExerciseCatalogQueries(context, new TestUserContext(owner)));
-        var result = (Microsoft.AspNetCore.Mvc.OkObjectResult)(await controller.Search(null, null, null, null, 0, 100)).Result!;
+        var result = (Microsoft.AspNetCore.Mvc.OkObjectResult)(await controller.Search(null, null, null, null, 0, 100, TestContext.CancellationToken)).Result!;
         var response = (Gainer.Contracts.Training.ExerciseCatalogResponse)result.Value!;
 
         Assert.IsFalse(response.Items.Any(item => item.Name == "Other Movement"));
@@ -369,7 +371,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
 
         await using AppDbContext otherContext = Fixture.CreateContext(connectionString, other);
         var otherController = new Gainer.Api.Controllers.ExerciseCatalogController(new ExerciseCatalogQueries(otherContext, new TestUserContext(other)));
-        var otherResult = (Microsoft.AspNetCore.Mvc.OkObjectResult)(await otherController.Search(null, null, null, null, 0, 100)).Result!;
+        var otherResult = (Microsoft.AspNetCore.Mvc.OkObjectResult)(await otherController.Search(null, null, null, null, 0, 100, TestContext.CancellationToken)).Result!;
         var otherResponse = (Gainer.Contracts.Training.ExerciseCatalogResponse)otherResult.Value!;
         Assert.IsFalse(otherResponse.Items.Any(item => item.Name == "Owner Movement"));
         Assert.IsFalse(otherResponse.Categories.Any(item => item.Id == ownerCategory));

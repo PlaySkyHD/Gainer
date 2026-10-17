@@ -13,6 +13,8 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class InsightQueriesTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     private static PostgreSqlTestFixture? fixture;
     private static PostgreSqlTestFixture Fixture => fixture!;
     private static readonly TimeZoneInfo Berlin = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
@@ -39,7 +41,7 @@ public sealed class InsightQueriesTests
         await SeedCheckInsAndWorkoutAsync(connectionString, firstUser, exerciseId);
         await using AppDbContext first = Fixture.CreateContext(connectionString, firstUser);
         DashboardInsightSnapshot dashboard = await new InsightQueries(first, new TestUserContext(firstUser))
-            .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin);
+            .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(0, dashboard.AsOfRevision);
         Assert.AreEqual(2, dashboard.Weight.ObservedDays);
         Assert.AreEqual(80.5m, dashboard.Weight.AverageKg);
@@ -48,7 +50,7 @@ public sealed class InsightQueriesTests
 
         await using AppDbContext second = Fixture.CreateContext(connectionString, secondUser);
         DashboardInsightSnapshot isolated = await new InsightQueries(second, new TestUserContext(secondUser))
-            .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin);
+            .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(0, isolated.Weight.ObservedDays);
         Assert.AreEqual(0, isolated.Training.WorkoutCount);
     }
@@ -86,12 +88,12 @@ public sealed class InsightQueriesTests
                 KilocaloriesPerBasis = 200m,
             });
             seed.NutritionDays.Add(day);
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
         await using AppDbContext first = Fixture.CreateContext(connectionString, firstUser);
         DashboardInsightSnapshot dashboard = await new InsightQueries(first, new TestUserContext(firstUser))
-            .DashboardAsync(new DateOnly(2026, 8, 18), 2, Berlin);
+            .DashboardAsync(new DateOnly(2026, 8, 18), 2, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(1550m, dashboard.Nutrition.CaloriesKcal.Value);
         Assert.AreEqual(180m, dashboard.Nutrition.ProteinGrams.Value);
         Assert.AreEqual(1, dashboard.Nutrition.ProteinGrams.ObservedDays);
@@ -100,7 +102,7 @@ public sealed class InsightQueriesTests
 
         await using AppDbContext second = Fixture.CreateContext(connectionString, secondUser);
         DashboardInsightSnapshot isolated = await new InsightQueries(second, new TestUserContext(secondUser))
-            .DashboardAsync(new DateOnly(2026, 8, 18), 2, Berlin);
+            .DashboardAsync(new DateOnly(2026, 8, 18), 2, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(0, isolated.Nutrition.ObservedDays);
         Assert.AreEqual(0, isolated.Nutrition.MealDiaryDays);
     }
@@ -116,13 +118,13 @@ public sealed class InsightQueriesTests
             exerciseId,
             7,
             new DateTime(2026, 8, 18, 22, 30, 0, DateTimeKind.Utc),
-            Berlin);
+            Berlin, TestContext.CancellationToken);
         Assert.HasCount(1, result.Points);
         Assert.AreEqual(1800m, result.Points[0].VolumeKgRepetitions);
         Assert.AreEqual(140m, result.BestSet!.EstimatedOneRepMaxKg);
 
         ExerciseProgressSnapshot missing = await new InsightQueries(context, new TestUserContext(userId)).ExerciseProgressAsync(
-            Guid.NewGuid(), 30, new DateTime(2026, 8, 18, 22, 30, 0, DateTimeKind.Utc), TimeZoneInfo.Utc);
+            Guid.NewGuid(), 30, new DateTime(2026, 8, 18, 22, 30, 0, DateTimeKind.Utc), TimeZoneInfo.Utc, TestContext.CancellationToken);
         Assert.IsEmpty(missing.Points);
         Assert.IsNull(missing.BestSet);
     }
@@ -134,12 +136,12 @@ public sealed class InsightQueriesTests
         await using (AppDbContext seed = Fixture.CreateContext(connectionString, userId))
         {
             seed.DailyCheckIns.Add(CheckIn(new DateOnly(2026, 8, 17), 80m));
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
         await using AppDbContext reader = Fixture.CreateContext(connectionString, userId);
-        await using var transaction = await reader.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead);
-        int before = await reader.DailyCheckIns.CountAsync();
-        long revisionBefore = await reader.UserSyncStates.Select(item => (long?)item.CurrentRevision).SingleOrDefaultAsync() ?? 0;
+        await using var transaction = await reader.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, TestContext.CancellationToken);
+        int before = await reader.DailyCheckIns.CountAsync(TestContext.CancellationToken);
+        long revisionBefore = await reader.UserSyncStates.Select(item => (long?)item.CurrentRevision).SingleOrDefaultAsync(TestContext.CancellationToken) ?? 0;
 
         await using (AppDbContext writer = Fixture.CreateContext(connectionString, userId))
         {
@@ -150,13 +152,13 @@ public sealed class InsightQueriesTests
                 UpdatedAtUtc = DateTime.UtcNow,
                 Version = 1,
             });
-            await writer.SaveChangesAsync();
+            await writer.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        Assert.AreEqual(before, await reader.DailyCheckIns.CountAsync());
+        Assert.AreEqual(before, await reader.DailyCheckIns.CountAsync(TestContext.CancellationToken));
         Assert.AreEqual(revisionBefore,
-            await reader.UserSyncStates.Select(item => (long?)item.CurrentRevision).SingleOrDefaultAsync() ?? 0);
-        await transaction.CommitAsync();
+            await reader.UserSyncStates.Select(item => (long?)item.CurrentRevision).SingleOrDefaultAsync(TestContext.CancellationToken) ?? 0);
+        await transaction.CommitAsync(TestContext.CancellationToken);
     }
 
     private static async Task SeedCheckInsAndWorkoutAsync(string connectionString, Guid userId, Guid exerciseId)

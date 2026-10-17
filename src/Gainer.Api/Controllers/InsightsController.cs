@@ -127,6 +127,10 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
         value.RepetitionRecords.Select(item => new RepetitionRecordResponse(
             item.Repetitions, TrainingStatistics.RoundForOutput(item.MaxWeightKg))).ToList());
 
-    private static RecordEventResponse? Event(RecordEvent? value, RecordKind kind) => value is null ? null : new(
-        value.WorkoutId, kind == RecordKind.MaxRepetitions ? value.Value : TrainingStatistics.RoundForOutput(value.Value));
+    private static RecordEventResponse? Event(RecordEvent? value, RecordKind kind)
+    {
+        if (value is null) return null;
+        decimal recorded = kind == RecordKind.MaxRepetitions ? value.Value : TrainingStatistics.RoundForOutput(value.Value);
+        return new(value.WorkoutId, recorded);
+    }
 }

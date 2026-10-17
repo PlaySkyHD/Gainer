@@ -27,16 +27,10 @@ public static class ExerciseTypes
 
     public static bool TryParse(string? value, out ExerciseType type)
     {
-        foreach (ExerciseType candidate in Enum.GetValues<ExerciseType>())
-        {
-            if (string.Equals(value, ToStorageValue(candidate), StringComparison.OrdinalIgnoreCase))
-            {
-                type = candidate;
-                return true;
-            }
-        }
-
-        type = default;
-        return false;
+        ExerciseType[] matches = Enum.GetValues<ExerciseType>()
+            .Where(candidate => string.Equals(value, ToStorageValue(candidate), StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        type = matches.Length > 0 ? matches[0] : default;
+        return matches.Length > 0;
     }
 }
