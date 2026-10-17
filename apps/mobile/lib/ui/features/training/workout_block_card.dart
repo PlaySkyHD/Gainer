@@ -1,31 +1,42 @@
 import 'package:flutter/cupertino.dart';
 
+import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_rules.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import 'exercise_picker_sheet.dart';
+import 'exercise_statistics_screen.dart';
+import 'reorder_blocks_sheet.dart';
 import 'set_row.dart';
-import 'workout_history_sheet.dart';
 import 'workout_text_sheet.dart';
 import 'workout_view_model.dart';
 
-enum _BlockAction { note, addSet, connect, detach }
+enum _BlockAction {
+  move,
+  replace,
+  delete,
+  note,
+  connect,
+  detach,
+  history,
+  chart,
+  records,
+  toggleWeightUnit,
+}
 
 enum _SetAction { duplicate, moveUp, moveDown, remove }
 
 /// Übungskarte: Name, Stammnotiz (nur lesend), Blocknotiz, Satzzeilen und
-/// Fußzeile mit „Satz hinzufügen“, Verlauf, Graph und Rekorden.
+/// Fußzeile mit „Satz hinzufügen“, Verlauf, Graph und Rekorden. Die Fußzeilen-
+/// Icons und das Blockmenü öffnen die Statistik derselben Übung.
 /// [supersetLabel] (A, B, …) kennzeichnet Blöcke innerhalb eines Supersets.
-/// Graph und Rekorde sind Platzhalter, bis ihre Sheets existieren; ohne
-/// Callback sind die Buttons deaktiviert.
 class WorkoutBlockCard extends StatelessWidget {
   const WorkoutBlockCard({
     required this.viewModel,
     required this.block,
     required this.fieldFocus,
     this.supersetLabel,
-    this.onShowChart,
-    this.onShowRecords,
     this.onEditingChanged,
     super.key,
   });
@@ -34,8 +45,6 @@ class WorkoutBlockCard extends StatelessWidget {
   final WorkoutBlock block;
   final SetFieldFocus fieldFocus;
   final String? supersetLabel;
-  final VoidCallback? onShowChart;
-  final VoidCallback? onShowRecords;
 
   /// Meldet, ob ein Zahlenfeld dieser Übung den Fokus hat.
   final ValueChanged<bool>? onEditingChanged;
@@ -217,19 +226,22 @@ class WorkoutBlockCard extends StatelessWidget {
               _FooterIconButton(
                 icon: CupertinoIcons.clock,
                 semanticLabel: 'Verlauf',
-                onPressed: () => _showHistory(context),
+                onPressed: () =>
+                    _openStatistics(context, ExerciseStatisticsTab.history),
               ),
               const SizedBox(width: GainerSpacing.xs),
               _FooterIconButton(
                 icon: CupertinoIcons.chart_bar,
                 semanticLabel: 'Graph',
-                onPressed: onShowChart,
+                onPressed: () =>
+                    _openStatistics(context, ExerciseStatisticsTab.chart),
               ),
               const SizedBox(width: GainerSpacing.xs),
               _FooterIconButton(
                 icon: CupertinoIcons.rosette,
                 semanticLabel: 'Rekorde',
-                onPressed: onShowRecords,
+                onPressed: () =>
+                    _openStatistics(context, ExerciseStatisticsTab.records),
               ),
             ],
           ),
@@ -238,49 +250,102 @@ class WorkoutBlockCard extends StatelessWidget {
     );
   }
 
-  void _showHistory(BuildContext context) {
-    showWorkoutHistorySheet(
-      context: context,
-      exerciseName: block.exerciseNameSnapshot,
-      entries: viewModel.historyFor(block),
-      unit: viewModel.weightUnit,
+  void _openStatistics(BuildContext context, ExerciseStatisticsTab tab) {
+    openExerciseStatistics(
+      context,
+      repository: viewModel.repository,
+      exerciseId: block.sourceExerciseId,
+      initialTab: tab,
     );
   }
 
+  /// Blockmenü als Sheet: Verschieben, Ersetzen und Löschen oben, darunter
+  /// Notiz, Superset, Statistik und Gewichtseinheit.
   Future<void> _showBlockMenu(BuildContext context) async {
     final next = viewModel.blockAfter(block.workoutExerciseId);
     final inSuperset = block.supersetId != null;
     final connectedToNext = inSuperset && next?.supersetId == block.supersetId;
+    final unit = viewModel.weightUnit;
     final action = await showGainerActionSheet<_BlockAction>(
       context: context,
       title: block.exerciseNameSnapshot,
-      quickActions: [
-        const GainerSheetAction(
-          label: 'Notiz',
-          icon: CupertinoIcons.doc_text,
-          value: _BlockAction.note,
+      quickActions: const [
+        GainerSheetAction(
+          label: 'Verschieben',
+          icon: CupertinoIcons.arrow_up_arrow_down,
+          value: _BlockAction.move,
         ),
-        const GainerSheetAction(
-          label: 'Satz',
-          icon: CupertinoIcons.add,
-          value: _BlockAction.addSet,
+        GainerSheetAction(
+          label: 'Ersetzen',
+          icon: CupertinoIcons.arrow_2_circlepath,
+          value: _BlockAction.replace,
         ),
-        if (next != null && !connectedToNext)
+        GainerSheetAction(
+          label: 'Löschen',
+          icon: CupertinoIcons.trash,
+          value: _BlockAction.delete,
+          destructive: true,
+        ),
+      ],
+      groups: [
+        [
           const GainerSheetAction(
-            label: 'Verbinden',
-            icon: CupertinoIcons.link,
-            value: _BlockAction.connect,
+            label: 'Notiz bearbeiten',
+            icon: CupertinoIcons.doc_text,
+            value: _BlockAction.note,
           ),
-        if (inSuperset)
-          const GainerSheetAction(
-            label: 'Lösen',
-            icon: CupertinoIcons.link_circle_fill,
-            value: _BlockAction.detach,
+          if (next != null && !connectedToNext)
+            const GainerSheetAction(
+              label: 'Mit nächster Übung verbinden',
+              icon: CupertinoIcons.link,
+              value: _BlockAction.connect,
+            ),
+          if (inSuperset)
+            const GainerSheetAction(
+              label: 'Aus Superset lösen',
+              icon: CupertinoIcons.link_circle_fill,
+              value: _BlockAction.detach,
+            ),
+        ],
+        const [
+          GainerSheetAction(
+            label: 'Verlauf',
+            icon: CupertinoIcons.clock,
+            value: _BlockAction.history,
           ),
+          GainerSheetAction(
+            label: 'Graphen',
+            icon: CupertinoIcons.chart_bar,
+            value: _BlockAction.chart,
+          ),
+          GainerSheetAction(
+            label: 'Persönliche Rekorde',
+            icon: CupertinoIcons.rosette,
+            value: _BlockAction.records,
+          ),
+        ],
+        [
+          GainerSheetAction(
+            label: 'Gewichtseinheit: ${unit.label}',
+            icon: CupertinoIcons.arrow_2_squarepath,
+            value: _BlockAction.toggleWeightUnit,
+          ),
+        ],
       ],
     );
     if (!context.mounted) return;
+    final blockId = block.workoutExerciseId;
     switch (action) {
+      case _BlockAction.move:
+        final ids = await showReorderBlocksSheet(
+          context,
+          blocks: viewModel.workout?.exercises ?? const [],
+        );
+        if (ids != null) await viewModel.arrangeBlocks(ids);
+      case _BlockAction.replace:
+        await _replaceExercise(context);
+      case _BlockAction.delete:
+        await _confirmDelete(context);
       case _BlockAction.note:
         final text = await showWorkoutTextSheet(
           context: context,
@@ -290,16 +355,54 @@ class WorkoutBlockCard extends StatelessWidget {
           multiline: true,
         );
         if (text != null) {
-          await viewModel.setBlockNotes(block.workoutExerciseId, text);
+          await viewModel.setBlockNotes(blockId, text);
         }
-      case _BlockAction.addSet:
-        await viewModel.addSet(block.workoutExerciseId);
       case _BlockAction.connect:
-        await viewModel.connectWithNextBlock(block.workoutExerciseId);
+        await viewModel.connectWithNextBlock(blockId);
       case _BlockAction.detach:
-        await viewModel.detachFromSuperset(block.workoutExerciseId);
+        await viewModel.detachFromSuperset(blockId);
+      case _BlockAction.history:
+        _openStatistics(context, ExerciseStatisticsTab.history);
+      case _BlockAction.chart:
+        _openStatistics(context, ExerciseStatisticsTab.chart);
+      case _BlockAction.records:
+        _openStatistics(context, ExerciseStatisticsTab.records);
+      case _BlockAction.toggleWeightUnit:
+        await viewModel.setWeightUnit(
+          unit == WeightUnit.kg ? WeightUnit.lbs : WeightUnit.kg,
+        );
       case null:
     }
+  }
+
+  /// Ersetzt die Übung durch eine einzelne Auswahl ohne Supersatz.
+  Future<void> _replaceExercise(BuildContext context) async {
+    final result = await showExercisePicker(
+      context,
+      repository: viewModel.repository,
+      allowSuperset: false,
+      title: 'Übung ersetzen',
+    );
+    if (result == null || result.exercises.isEmpty || !context.mounted) return;
+    await viewModel.replaceExercise(
+      block.workoutExerciseId,
+      result.exercises.first,
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showGainerStackedDialog<bool>(
+      context: context,
+      title: 'Übung entfernen?',
+      message:
+          '„${block.exerciseNameSnapshot}“ und seine Sätze werden aus diesem Training entfernt.',
+      actions: const [
+        GainerDialogAction(label: 'Löschen', value: true, destructive: true),
+        GainerDialogAction(label: 'Abbrechen', value: false),
+      ],
+    );
+    if (confirmed != true) return;
+    await viewModel.removeBlock(block.workoutExerciseId);
   }
 
   Future<void> _showSetMenu(

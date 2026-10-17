@@ -3,8 +3,12 @@ import 'package:flutter/cupertino.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import 'repeat_workout_sheet.dart';
+import 'save_workout_as_plan.dart';
 import 'training_format.dart';
 import 'training_home_view_model.dart';
+
+enum _DiaryAction { repeat, savePlan, delete }
 
 /// Tagebuch: Trainings nach Monat gruppiert, neueste zuerst.
 class TrainingDiarySection extends StatelessWidget {
@@ -240,6 +244,56 @@ class _DiaryRow extends StatelessWidget {
     }
   }
 
+  Future<void> _showActions(BuildContext context) async {
+    final action = await showGainerActionSheet<_DiaryAction>(
+      context: context,
+      title: workout.title,
+      groups: [
+        [
+          GainerSheetAction(
+            label: 'Wiederholen',
+            icon: CupertinoIcons.arrow_2_circlepath,
+            value: _DiaryAction.repeat,
+          ),
+          GainerSheetAction(
+            label: 'Als Trainingsplan speichern',
+            icon: CupertinoIcons.square_list,
+            value: _DiaryAction.savePlan,
+          ),
+        ],
+        [
+          GainerSheetAction(
+            label: 'Löschen',
+            icon: CupertinoIcons.trash,
+            value: _DiaryAction.delete,
+            destructive: true,
+          ),
+        ],
+      ],
+    );
+    if (!context.mounted) return;
+    switch (action) {
+      case _DiaryAction.repeat:
+        await showRepeatWorkoutSheet(
+          context,
+          repository: viewModel.repository,
+          activeWorkout: viewModel.activeWorkout,
+          source: workout,
+        );
+        await viewModel.loadDiary();
+      case _DiaryAction.savePlan:
+        await saveWorkoutAsPlanFlow(
+          context,
+          repository: viewModel.repository,
+          workout: workout,
+        );
+      case _DiaryAction.delete:
+        await _deleteAfterConfirmation(context);
+      case null:
+        return;
+    }
+  }
+
   Widget _rowContent(BuildContext context, GainerColors colors) {
     final local = workout.startedAtUtc.toLocal();
     final ended = workout.endedAtUtc;
@@ -249,6 +303,7 @@ class _DiaryRow extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: editing ? null : () => onOpen(workout),
+      onLongPress: editing ? null : () => _showActions(context),
       child: Padding(
         padding: const EdgeInsets.all(GainerSpacing.m),
         child: Row(

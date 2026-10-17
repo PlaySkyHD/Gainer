@@ -2,10 +2,12 @@ import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../data/repositories/training/training_preferences.dart';
+import '../../../domain/models/training/exercise_catalog_model.dart';
 import '../../../domain/models/training/exercise_history.dart';
 import '../../../domain/models/training/previous_values.dart';
 import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
+import '../../../domain/models/training/workout_rules.dart';
 import '../../../domain/models/training/workout_validation.dart';
 import 'active_workout_controller.dart';
 
@@ -273,6 +275,80 @@ class WorkoutViewModel extends ChangeNotifier {
         : block.copyWith(supersetId: () => null),
   );
 
+  /// Hängt je Übung einen Block mit einem leeren normalen Satz an. Mit
+  /// [asSuperset] teilen die Blöcke eine neue Superset-ID.
+  Future<void> addExercises(
+    List<CatalogExercise> exercises, {
+    bool asSuperset = false,
+  }) {
+    if (_workout == null || exercises.isEmpty) return Future.value();
+    final supersetId = asSuperset && exercises.length > 1 ? newId() : null;
+    final blocks = [
+      for (final exercise in exercises)
+        WorkoutBlock(
+          workoutExerciseId: newId(),
+          sourceExerciseId: exercise.id,
+          exerciseNameSnapshot: exercise.name,
+          exerciseTypeSnapshot: exercise.exerciseType,
+          supersetId: supersetId,
+          sets: [LoggedSet(setId: newId(), setType: SetType.normal)],
+        ),
+    ];
+    return edit((w) => w.copyWith(exercises: [...w.exercises, ...blocks]));
+  }
+
+  /// Ersetzt die Übung eines Blocks. Satzwerte und Blocknotiz bleiben; Vorwerte
+  /// beziehen sich danach auf die neue Übung.
+  Future<void> replaceExercise(String blockId, CatalogExercise exercise) =>
+      _editBlock(
+        blockId,
+        (block) => block.copyWith(
+          sourceExerciseId: exercise.id,
+          exerciseNameSnapshot: exercise.name,
+          exerciseTypeSnapshot: exercise.exerciseType,
+        ),
+      );
+
+  /// Ordnet die Blöcke in der gegebenen Reihenfolge neu. Blöcke, die nicht in
+  /// [orderedBlockIds] stehen, entfallen. Ein Superset, das durch das Entfernen
+  /// oder Verschieben nicht mehr zusammenhängt, wird aufgelöst.
+  Future<void> arrangeBlocks(List<String> orderedBlockIds) {
+    final current = _workout;
+    if (current == null) return Future.value();
+    final byId = {
+      for (final block in current.exercises) block.workoutExerciseId: block,
+    };
+    final kept = [
+      for (final id in orderedBlockIds)
+        if (byId[id] != null) byId[id]!,
+    ];
+    if (listEquals(
+      [for (final block in current.exercises) block.workoutExerciseId],
+      [for (final block in kept) block.workoutExerciseId],
+    )) {
+      return Future.value();
+    }
+
+    final arranged = [
+      for (var i = 0; i < kept.length; i++)
+        if (kept[i].supersetId != null &&
+            !_connected(kept, i, kept[i].supersetId!))
+          kept[i].copyWith(supersetId: () => null)
+        else
+          kept[i],
+    ];
+    return edit((w) => w.copyWith(exercises: arranged));
+  }
+
+  bool _connected(List<WorkoutBlock> blocks, int index, String supersetId) =>
+      (index > 0 && blocks[index - 1].supersetId == supersetId) ||
+      (index + 1 < blocks.length && blocks[index + 1].supersetId == supersetId);
+
+  Future<void> removeBlock(String blockId) => arrangeBlocks([
+    for (final block in _workout?.exercises ?? const <WorkoutBlock>[])
+      if (block.workoutExerciseId != blockId) block.workoutExerciseId,
+  ]);
+
   // Sätze
 
   Future<void> setWeight(String blockId, String setId, double? kg) =>
@@ -424,13 +500,25 @@ class WorkoutViewModel extends ChangeNotifier {
 
   // Training beenden und löschen
 
-  /// Beendet das Training. Dies ist der Hook für den Fehlwerte-Dialog und die
-  /// Zusammenfassung; vorerst wird ohne Rückfrage direkt beendet.
-  Future<WorkoutFinishOutcome> requestFinish() async {
+  /// Anzahl der Sätze mit fehlenden Pflichtwerten. Die Ansicht fragt nur bei
+  /// Werten größer null nach, bevor sie beendet.
+  int get missingValueCount {
+    final current = _workout;
+    return current == null ? 0 : missingValueSets(current).length;
+  }
+
+  /// Beendet das Training. Mit [applyPreviousValues] füllen Vorwerte die leeren
+  /// Felder; sonst bleiben fehlende Werte leer.
+  Future<WorkoutFinishOutcome> requestFinish({
+    bool applyPreviousValues = false,
+  }) async {
     await _enqueueSave();
     if (_hasUnsavedChanges) return WorkoutFinishOutcome.failed;
     try {
-      await repository.finishWorkout(workoutId);
+      await repository.finishWorkout(
+        workoutId,
+        applyPreviousValues: applyPreviousValues,
+      );
     } catch (_) {
       if (!_disposed) {
         errorMessage = 'Das Training konnte nicht beendet werden.';

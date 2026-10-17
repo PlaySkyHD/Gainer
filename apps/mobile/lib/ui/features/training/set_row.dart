@@ -307,6 +307,7 @@ class _NumberInput<T> extends StatefulWidget {
 class _NumberInputState<T> extends State<_NumberInput<T>> {
   final _controller = TextEditingController();
   String? _error;
+  bool _focused = false;
 
   FocusNode get _focus => widget.focusNode;
 
@@ -355,6 +356,7 @@ class _NumberInputState<T> extends State<_NumberInput<T>> {
 
   void _handleFocusChanged() {
     widget.onFocusChanged(_focus.hasFocus);
+    if (_focused != _focus.hasFocus) setState(() => _focused = _focus.hasFocus);
     if (_focus.hasFocus) return;
     final result = widget.parse(_controller.text, committing: true);
     if (result.error != null) {
@@ -383,24 +385,22 @@ class _NumberInputState<T> extends State<_NumberInput<T>> {
         Semantics(
           label: widget.label,
           value: showsPlaceholder ? 'Vorwert $placeholder' : null,
-          child: CupertinoTextField(
-            controller: _controller,
-            focusNode: _focus,
-            keyboardType: widget.keyboard,
-            placeholder: placeholder,
-            placeholderStyle: GainerTypography.value.copyWith(
-              color: colors.placeholderText,
+          child: SizedBox(
+            height: _fieldHeight,
+            child: CupertinoTextField(
+              controller: _controller,
+              focusNode: _focus,
+              keyboardType: widget.keyboard,
+              placeholder: placeholder,
+              placeholderStyle: GainerTypography.value.copyWith(
+                color: colors.placeholderText,
+              ),
+              style: GainerTypography.value.copyWith(color: colors.primaryText),
+              textAlignVertical: TextAlignVertical.center,
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: _underline(colors, error: error != null),
+              onChanged: _handleChanged,
             ),
-            style: GainerTypography.value.copyWith(color: colors.primaryText),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-            decoration: BoxDecoration(
-              color: colors.elevatedSurface,
-              borderRadius: BorderRadius.circular(GainerRadii.field),
-              border: error == null
-                  ? null
-                  : Border.all(color: colors.destructive, width: 1.5),
-            ),
-            onChanged: _handleChanged,
           ),
         ),
         if (error != null)
@@ -416,7 +416,26 @@ class _NumberInputState<T> extends State<_NumberInput<T>> {
       ],
     );
   }
+
+  /// Werte stehen ohne Feldhintergrund und Rahmen. Den Fokus zeigt eine
+  /// Akzentlinie darunter, ein Fehler eine rote.
+  BoxDecoration _underline(GainerColors colors, {required bool error}) {
+    final visible = error || _focused;
+    return BoxDecoration(
+      border: Border(
+        bottom: visible
+            ? BorderSide(
+                color: error ? colors.destructive : colors.accent,
+                width: 1.5,
+              )
+            : BorderSide.none,
+      ),
+    );
+  }
 }
+
+/// Mindesthöhe des Tap-Ziels je Zahlenfeld und Notizzelle.
+const _fieldHeight = 44.0;
 
 /// Notizfeld eines Satzes. Antippen öffnet den Notizeditor.
 class _NotesCell extends StatelessWidget {
@@ -449,13 +468,8 @@ class _NotesCell extends StatelessWidget {
             const SizedBox(height: GainerSpacing.xxs),
             Container(
               width: double.infinity,
-              constraints: const BoxConstraints(minHeight: 40),
+              height: _fieldHeight,
               alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-              decoration: BoxDecoration(
-                color: colors.elevatedSurface,
-                borderRadius: BorderRadius.circular(GainerRadii.field),
-              ),
               child: Text(
                 text.isEmpty ? ' ' : text,
                 maxLines: 1,
