@@ -2,7 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 
-import '../../../../integration_test/ui_design_test.dart'
+import '../../../../integration_test/ui_design_fixture.dart'
     show createUiDesignFixture;
 
 void main() {

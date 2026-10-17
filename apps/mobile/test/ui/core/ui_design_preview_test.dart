@@ -6,13 +6,13 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gainer_mobile/ui/core/theme.dart';
 
-import '../../../integration_test/ui_design_test.dart'
-    show UiDesignFixture, createUiDesignFixture;
+import '../../../integration_test/ui_design_fixture.dart';
+import '../../../integration_test/ui_design_flow.dart';
 
 const _previewNames = [
   'tab-heute',
+  'exercise-progress',
   'tab-checkin',
   'sheet-checkin',
   'sheet-goal',
@@ -20,7 +20,8 @@ const _previewNames = [
   'tab-essen',
   'editor-essen',
   'tab-training',
-  'editor-training',
+  'training-workout',
+  'training-minimized',
   'tab-mehr',
   'tab-dark-heute',
   'tab-dark-checkin',
@@ -29,8 +30,6 @@ const _previewNames = [
   'tab-dark-mehr',
   'sheet-dark-checkin',
   'editor-dark-essen',
-  'editor-dark-training',
-  'exercise-progress',
   'exercise-dark-progress',
 ];
 
@@ -65,156 +64,13 @@ void main() {
         }
       });
 
-      await tester.pumpWidget(
-        RepaintBoundary(
-          key: boundaryKey,
-          child: fixture.app(GainerTheme.light),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await _waitForExerciseProgress(tester, fixture);
-      await _savePreview(tester, boundaryKey, output, 'tab-heute');
-      await _scrollProgressUntilVisible(
+      await runUiDesignCaptureFlow(
         tester,
-        find.text('148 g Protein pro erfasstem Tag'),
+        fixture,
+        (theme) => RepaintBoundary(key: boundaryKey, child: fixture.app(theme)),
+        (name) => _savePreview(tester, boundaryKey, output, name),
       );
-      expect(find.text('148 g Protein pro erfasstem Tag'), findsOneWidget);
-      _resetProgressScroll(tester);
-      await tester.pumpAndSettle();
-      await _scrollProgressUntilVisible(tester, find.text('Übungsfortschritt'));
-      await _savePreview(tester, boundaryKey, output, 'exercise-progress');
 
-      await _tapTab(tester, 'Check-in');
-      await _savePreview(tester, boundaryKey, output, 'tab-checkin');
-      await _scrollActiveListUntilVisible(
-        tester,
-        find.byKey(const ValueKey('body-open-checkin')),
-      );
-      await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
-      await tester.pumpAndSettle();
-      await _savePreview(tester, boundaryKey, output, 'sheet-checkin');
-      await tester.tap(find.text('Abbrechen'));
-      await tester.pumpAndSettle();
-      await _scrollActiveListUntilVisible(
-        tester,
-        find.byKey(const ValueKey('body-open-goal')),
-      );
-      await tester.tap(find.byKey(const ValueKey('body-open-goal')));
-      await tester.pumpAndSettle();
-      await _savePreview(tester, boundaryKey, output, 'sheet-goal');
-      await tester.tap(find.byKey(const ValueKey('body-start-date')));
-      await tester.pumpAndSettle();
-      await _savePreview(tester, boundaryKey, output, 'date-picker');
-      await tester.tap(find.byKey(const ValueKey('body-date-cancel')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Abbrechen'));
-      await tester.pumpAndSettle();
-
-      await _tapTab(tester, 'Essen');
-      await _savePreview(tester, boundaryKey, output, 'tab-essen');
-      await _scrollActiveListUntilVisible(
-        tester,
-        find.byKey(const ValueKey('nutrition-add-food')),
-      );
-      await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nutrition-mode-manual')));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('nutrition-entry-name')),
-      );
-      await _savePreview(tester, boundaryKey, output, 'editor-essen');
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      _resetActiveListScroll(tester);
-      await tester.pumpAndSettle();
-      expect(find.text('Ernährungstagebuch'), findsOneWidget);
-
-      await _tapTab(tester, 'Training');
-      await _savePreview(tester, boundaryKey, output, 'tab-training');
-      await _scrollActiveListUntilVisible(
-        tester,
-        find.byKey(const ValueKey('training-create-template-route')),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('training-create-template-route')),
-      );
-      await tester.pumpAndSettle();
-      await _savePreview(tester, boundaryKey, output, 'editor-training');
-      await tester.tap(find.byKey(const ValueKey('training-cancel-template')));
-      await tester.pumpAndSettle();
-      _resetActiveListScroll(tester);
-      await tester.pumpAndSettle();
-      expect(find.text('Dein Training'), findsOneWidget);
-
-      await _tapTab(tester, 'Mehr');
-      await _savePreview(tester, boundaryKey, output, 'tab-mehr');
-
-      await tester.pumpWidget(
-        RepaintBoundary(key: boundaryKey, child: fixture.app(GainerTheme.dark)),
-      );
-      await tester.pumpAndSettle();
-      for (final tab in const [
-        ('Heute', 'tab-dark-heute'),
-        ('Check-in', 'tab-dark-checkin'),
-        ('Essen', 'tab-dark-essen'),
-        ('Training', 'tab-dark-training'),
-        ('Mehr', 'tab-dark-mehr'),
-      ]) {
-        await _tapTab(tester, tab.$1);
-        _resetActiveListScroll(tester);
-        await tester.pumpAndSettle();
-        if (tab.$1 == 'Heute') {
-          expect(
-            find.text('Dein Fortschritt aus deinen Einträgen'),
-            findsOneWidget,
-          );
-        }
-        await _savePreview(tester, boundaryKey, output, tab.$2);
-      }
-      await _tapTab(tester, 'Heute');
-      await _scrollProgressUntilVisible(tester, find.text('Übungsfortschritt'));
-      await _savePreview(tester, boundaryKey, output, 'exercise-dark-progress');
-      await _tapTab(tester, 'Check-in');
-      await _scrollActiveListUntilVisible(
-        tester,
-        find.byKey(const ValueKey('body-open-checkin')),
-      );
-      await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
-      await tester.pumpAndSettle();
-      await _savePreview(tester, boundaryKey, output, 'sheet-dark-checkin');
-      await tester.tap(find.text('Abbrechen'));
-      await tester.pumpAndSettle();
-
-      await _tapTab(tester, 'Essen');
-      await _scrollActiveListUntilVisible(
-        tester,
-        find.byKey(const ValueKey('nutrition-add-food')),
-      );
-      await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nutrition-mode-manual')));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('nutrition-entry-name')),
-      );
-      await _savePreview(tester, boundaryKey, output, 'editor-dark-essen');
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-
-      await _tapTab(tester, 'Training');
-      await _scrollActiveListUntilVisible(
-        tester,
-        find.byKey(const ValueKey('training-create-template-route')),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('training-create-template-route')),
-      );
-      await tester.pumpAndSettle();
-      await _savePreview(tester, boundaryKey, output, 'editor-dark-training');
-      await tester.tap(find.byKey(const ValueKey('training-cancel-template')));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
       await tester.runAsync(() async {
         for (final name in _previewNames) {
           final path = '${output.path}/$name-windows-font-substitution.png';
@@ -284,84 +140,6 @@ bool _isPng(Uint8List bytes) {
       bytes[13] == 72 &&
       bytes[14] == 68 &&
       bytes[15] == 82;
-}
-
-void _resetProgressScroll(WidgetTester tester) {
-  final scrollable = find.descendant(
-    of: find.byKey(const ValueKey('progress-overview-scroll')),
-    matching: find.byType(Scrollable),
-  );
-  tester.state<ScrollableState>(scrollable).position.jumpTo(0);
-}
-
-Future<void> _scrollProgressUntilVisible(
-  WidgetTester tester,
-  Finder target,
-) async {
-  final scrollable = find.descendant(
-    of: find.byKey(const ValueKey('progress-overview-scroll')),
-    matching: find.byType(Scrollable),
-  );
-  await tester.scrollUntilVisible(
-    target,
-    260,
-    scrollable: scrollable,
-    maxScrolls: 12,
-  );
-  await tester.pumpAndSettle();
-}
-
-Future<void> _scrollActiveListUntilVisible(
-  WidgetTester tester,
-  Finder target,
-) async {
-  final list = find.byType(ListView).hitTestable().first;
-  final scrollable = find.descendant(
-    of: list,
-    matching: find.byType(Scrollable),
-  );
-  await tester.scrollUntilVisible(
-    target,
-    240,
-    scrollable: scrollable,
-    maxScrolls: 12,
-  );
-  await tester.pumpAndSettle();
-}
-
-void _resetActiveListScroll(WidgetTester tester) {
-  final list = find.byType(ListView).hitTestable().first;
-  final scrollable = find.descendant(
-    of: list,
-    matching: find.byType(Scrollable),
-  );
-  tester.state<ScrollableState>(scrollable).position.jumpTo(0);
-}
-
-Future<void> _tapTab(WidgetTester tester, String label) async {
-  await tester.tap(find.text(label).last);
-  await tester.pumpAndSettle();
-}
-
-Future<void> _waitForExerciseProgress(
-  WidgetTester tester,
-  UiDesignFixture fixture,
-) async {
-  final viewModel = fixture.account.progressViewModel;
-  for (
-    var attempt = 0;
-    attempt < 30 &&
-        (viewModel.dashboard == null || viewModel.exerciseProgress == null);
-    attempt++
-  ) {
-    await tester.pump(const Duration(milliseconds: 50));
-  }
-  expect(viewModel.dashboard, isNotNull);
-  expect(viewModel.selectedExerciseId, isNotNull);
-  expect(viewModel.selectedProgressWindow, '30');
-  expect(viewModel.exerciseOptions, isNotEmpty);
-  expect(viewModel.exerciseProgress, isNotNull);
-  expect(viewModel.exerciseProgress!.points, isNotEmpty);
 }
 
 Future<void> _savePreview(
