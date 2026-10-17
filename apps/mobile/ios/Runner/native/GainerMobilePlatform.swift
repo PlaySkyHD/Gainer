@@ -183,38 +183,14 @@ final class GainerMobilePlatform: MobilePlatformApi {
     try extensionSnapshots.clear(minimumGeneration: Int(minimumGeneration))
   }
 
-  func startLiveActivity(
-    sessionId: String,
-    status: String,
-    startedAtUtcEpochMilliseconds: Int64,
-    restEndsAtUtcEpochMilliseconds: Int64?,
-    staleAtUtcEpochMilliseconds: Int64
-  ) async throws -> Bool {
+  func startLiveActivity(state: PlatformLiveActivityState) async throws -> Bool {
     guard #available(iOS 17.0, *) else { return false }
-    return try await liveActivities.start(
-      sessionId: sessionId,
-      status: status,
-      startedAtUtcEpochMilliseconds: startedAtUtcEpochMilliseconds,
-      restEndsAtUtcEpochMilliseconds: restEndsAtUtcEpochMilliseconds,
-      staleAtUtcEpochMilliseconds: staleAtUtcEpochMilliseconds
-    )
+    return try await liveActivities.start(state)
   }
 
-  func updateLiveActivity(
-    sessionId: String,
-    status: String,
-    startedAtUtcEpochMilliseconds: Int64,
-    restEndsAtUtcEpochMilliseconds: Int64?,
-    staleAtUtcEpochMilliseconds: Int64
-  ) async throws -> Bool {
+  func updateLiveActivity(state: PlatformLiveActivityState) async throws -> Bool {
     guard #available(iOS 17.0, *) else { return false }
-    return try await liveActivities.update(
-      sessionId: sessionId,
-      status: status,
-      startedAtUtcEpochMilliseconds: startedAtUtcEpochMilliseconds,
-      restEndsAtUtcEpochMilliseconds: restEndsAtUtcEpochMilliseconds,
-      staleAtUtcEpochMilliseconds: staleAtUtcEpochMilliseconds
-    )
+    return try await liveActivities.update(state)
   }
 
   func endLiveActivity(sessionId: String) async throws {

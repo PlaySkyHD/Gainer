@@ -81,12 +81,25 @@ struct GainerPendingRoute: Codable, Equatable {
 @available(iOS 17.0, *)
 struct GainerWorkoutActivityAttributes: ActivityAttributes {
   struct ContentState: Codable, Hashable {
-    let status: String
+    /// Nur bei ausdrücklicher Detailfreigabe. Gewichte und Wiederholungen gehören nie hierher.
+    struct Detail: Codable, Hashable {
+      let title: String
+      let exerciseName: String
+      let setIndex: Int
+      let setCount: Int
+    }
+
     let startedAt: Date
-    let restEndsAt: Date?
+    /// One of `ready`, `running`, `paused`, `expired`.
+    let timerPhase: String
+    /// Only while a rest runs; the system renders the countdown from it.
+    let timerTargetAt: Date?
+    let pausedRemainingSeconds: Int?
+    let expired: Bool
+    let detail: Detail?
   }
 
-  /// A random per-activity identifier; it contains no account or workout data.
+  /// Workout identifier (UUID), one activity per training. It contains no account data.
   let sessionId: String
 }
 #endif

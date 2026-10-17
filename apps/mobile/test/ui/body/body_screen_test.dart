@@ -7,12 +7,54 @@ import 'package:gainer_mobile/data/repositories/body/body_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
+import 'package:gainer_mobile/ui/core/components/components.dart';
+import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/body/body_screen.dart';
 import 'package:gainer_mobile/ui/features/body/body_view_model.dart';
 
 const accountId = '00000000-0000-4000-8000-000000000003';
 
 void main() {
+  for (final brightness in [Brightness.light, Brightness.dark]) {
+    testWidgets('check-in screen matches golden in ${brightness.name} mode', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final database = LocalDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final repository = BodyRepository(
+        store: LocalSyncStore(database: database, accountId: accountId),
+      );
+      await repository.activateGoal(
+        kind: BodyGoalKind.cut,
+        startWeightKg: 82,
+        targetWeightKg: 76,
+        startDate: '2026-10-01',
+        targetDate: null,
+      );
+      final model = BodyViewModel(repository);
+      addTearDown(model.dispose);
+
+      await tester.pumpWidget(
+        CupertinoApp(
+          debugShowCheckedModeBanner: false,
+          theme: GainerTheme.forBrightness(brightness),
+          home: BodyScreen(viewModel: model),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await expectLater(
+        find.byType(BodyScreen),
+        matchesGoldenFile('goldens/body_screen_${brightness.name}.png'),
+      );
+      expect(tester.takeException(), isNull);
+    }, tags: ['golden']);
+  }
+
   test(
     'BodyViewModel does not notify after disposal during a pending read',
     () async {
@@ -357,7 +399,8 @@ void main() {
       completion.complete('fixture-check-in');
       await tester.pumpAndSettle();
 
-      expect(find.text('Check-in'), findsNWidgets(2));
+      expect(find.byType(GainerScaffold), findsOneWidget);
+      expect(find.text('Check-in'), findsWidgets);
       expect(tester.takeException(), isNull);
       model.dispose();
     },

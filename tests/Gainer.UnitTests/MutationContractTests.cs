@@ -8,16 +8,13 @@ public sealed class MutationContractTests
     [TestMethod]
     public void MutationScopeSupportsAtomicMultiAggregateOperations()
     {
-        MutationMetadata metadata = MutationMetadata.Create(Guid.NewGuid(), Guid.NewGuid(), clientSequence: 1);
         ResourceVersionExpectation workout = Expect(ResourceKind.Workout, baseVersion: 4);
         ResourceVersionExpectation rotation = Expect(ResourceKind.WorkoutRotation, baseVersion: 2);
-        var mutation = new CompleteWorkoutMutation(
-            metadata,
-            AtomicMutationScope.Create(workout, rotation));
+        AtomicMutationScope scope = AtomicMutationScope.Create(workout, rotation);
 
-        Assert.HasCount(2, mutation.Scope.Resources);
-        Assert.AreEqual(4, mutation.Scope.Resources[0].BaseVersion);
-        Assert.AreEqual(2, mutation.Scope.Resources[1].BaseVersion);
+        Assert.HasCount(2, scope.Resources);
+        Assert.AreEqual(4, scope.Resources[0].BaseVersion);
+        Assert.AreEqual(2, scope.Resources[1].BaseVersion);
     }
 
     [TestMethod]

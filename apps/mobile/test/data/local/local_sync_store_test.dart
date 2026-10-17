@@ -288,6 +288,33 @@ void main() {
         UNIQUE(account_id, aggregate_type, aggregate_id, sequence)
       )
     ''');
+      legacy.execute('''
+      CREATE TABLE local_resources (
+        aggregate_type TEXT NOT NULL,
+        aggregate_id TEXT NOT NULL,
+        envelope_json TEXT NOT NULL,
+        updated_at_epoch_ms INTEGER NOT NULL,
+        PRIMARY KEY (aggregate_type, aggregate_id)
+      )
+    ''');
+      legacy.execute('''
+      CREATE TABLE local_conflicts (
+        conflict_id TEXT NOT NULL PRIMARY KEY,
+        aggregate_type TEXT NOT NULL,
+        aggregate_id TEXT NOT NULL,
+        created_at_utc TEXT NOT NULL,
+        code TEXT NOT NULL,
+        detail_json TEXT NOT NULL
+      )
+    ''');
+      legacy.execute('''
+      CREATE TABLE local_tombstones (
+        resource_type TEXT NOT NULL,
+        resource_id TEXT NOT NULL,
+        revision INTEGER NOT NULL,
+        PRIMARY KEY (resource_type, resource_id)
+      )
+    ''');
       legacy.execute(
         '''
       INSERT INTO local_outbox (

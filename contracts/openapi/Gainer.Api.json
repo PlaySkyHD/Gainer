@@ -691,6 +691,14 @@
               "format": "int32",
               "default": 30
             }
+          },
+          {
+            "name": "timeZone",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "Europe/Berlin"
+            }
           }
         ],
         "responses": {
@@ -1930,7 +1938,7 @@
           "workoutId",
           "exerciseId",
           "completedAtUtc",
-          "weightKg",
+          "effectiveWeightKg",
           "repetitions",
           "estimatedOneRepMaxKg"
         ],
@@ -1948,7 +1956,7 @@
             "type": "string",
             "format": "date-time"
           },
-          "weightKg": {
+          "effectiveWeightKg": {
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
             "type": [
               "number",
@@ -2303,7 +2311,12 @@
           "equipment",
           "isCustom",
           "catalogVersion",
-          "version"
+          "version",
+          "exerciseType",
+          "notes",
+          "bodyweightFactor",
+          "weightFactor",
+          "categoryIds"
         ],
         "type": "object",
         "properties": {
@@ -2354,6 +2367,40 @@
               "string"
             ],
             "format": "int64"
+          },
+          "exerciseType": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "bodyweightFactor": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "weightFactor": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "categoryIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -2362,7 +2409,8 @@
           "items",
           "offset",
           "limit",
-          "total"
+          "total",
+          "categories"
         ],
         "type": "object",
         "properties": {
@@ -2395,6 +2443,32 @@
               "string"
             ],
             "format": "int32"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExerciseCategoryResponse"
+            }
+          }
+        }
+      },
+      "ExerciseCategoryResponse": {
+        "required": [
+          "id",
+          "name",
+          "isBase"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isBase": {
+            "type": "boolean"
           }
         }
       },
@@ -2403,9 +2477,10 @@
           "workoutId",
           "completedAtUtc",
           "volumeKgRepetitions",
-          "bestWeightKg",
-          "bestRepetitions",
-          "estimatedOneRepMaxKg"
+          "maxWeightKg",
+          "maxRepetitions",
+          "estimatedOneRepMaxKg",
+          "bodyweightMissing"
         ],
         "type": "object",
         "properties": {
@@ -2425,7 +2500,7 @@
             ],
             "format": "double"
           },
-          "bestWeightKg": {
+          "maxWeightKg": {
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
             "type": [
               "null",
@@ -2434,10 +2509,9 @@
             ],
             "format": "double"
           },
-          "bestRepetitions": {
+          "maxRepetitions": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
@@ -2451,6 +2525,9 @@
               "string"
             ],
             "format": "double"
+          },
+          "bodyweightMissing": {
+            "type": "boolean"
           }
         }
       },
@@ -2461,8 +2538,11 @@
           "windowDays",
           "fromUtc",
           "throughUtc",
+          "volumeAlgorithmVersion",
+          "estimatedOneRepMaxAlgorithmVersion",
           "points",
-          "bestSet"
+          "bestSet",
+          "records"
         ],
         "type": "object",
         "properties": {
@@ -2495,6 +2575,12 @@
             "type": "string",
             "format": "date-time"
           },
+          "volumeAlgorithmVersion": {
+            "type": "string"
+          },
+          "estimatedOneRepMaxAlgorithmVersion": {
+            "type": "string"
+          },
           "points": {
             "type": "array",
             "items": {
@@ -2510,6 +2596,67 @@
                 "$ref": "#/components/schemas/BestSetResponse"
               }
             ]
+          },
+          "records": {
+            "$ref": "#/components/schemas/ExerciseRecordsResponse"
+          }
+        }
+      },
+      "ExerciseRecordsResponse": {
+        "required": [
+          "maxWeightKg",
+          "estimatedOneRepMaxKg",
+          "volumeKgRepetitions",
+          "maxRepetitions",
+          "repetitionRecords"
+        ],
+        "type": "object",
+        "properties": {
+          "maxWeightKg": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordEventResponse"
+              }
+            ]
+          },
+          "estimatedOneRepMaxKg": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordEventResponse"
+              }
+            ]
+          },
+          "volumeKgRepetitions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordEventResponse"
+              }
+            ]
+          },
+          "maxRepetitions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordEventResponse"
+              }
+            ]
+          },
+          "repetitionRecords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepetitionRecordResponse"
+            }
           }
         }
       },
@@ -3500,6 +3647,27 @@
           }
         }
       },
+      "RecordEventResponse": {
+        "required": [
+          "workoutId",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "workoutId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "value": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
       "RegisterSyncClientRequest": {
         "required": [
           "clientId",
@@ -3528,6 +3696,32 @@
           },
           "takeOverWriting": {
             "type": "boolean"
+          }
+        }
+      },
+      "RepetitionRecordResponse": {
+        "required": [
+          "repetitions",
+          "maxWeightKg"
+        ],
+        "type": "object",
+        "properties": {
+          "repetitions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "maxWeightKg": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -3902,7 +4096,8 @@
           "volumeUnit",
           "workoutCount",
           "volumeKgRepetitions",
-          "bestSet"
+          "bestSet",
+          "bodyweightMissing"
         ],
         "type": "object",
         "properties": {
@@ -3940,6 +4135,9 @@
                 "$ref": "#/components/schemas/BestSetResponse"
               }
             ]
+          },
+          "bodyweightMissing": {
+            "type": "boolean"
           }
         }
       },

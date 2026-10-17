@@ -17,13 +17,24 @@ public sealed record ExerciseCatalogItem(
     string? Equipment,
     bool IsCustom,
     string? CatalogVersion,
-    long Version);
+    long Version,
+    ExerciseType ExerciseType,
+    string? Notes,
+    decimal? BodyweightFactor,
+    decimal? WeightFactor,
+    IReadOnlyList<Guid> CategoryIds);
+
+public sealed record ExerciseCategoryItem(
+    Guid Id,
+    string Name,
+    bool IsBase);
 
 public sealed record ExerciseCatalogPage(
     IReadOnlyList<ExerciseCatalogItem> Items,
     int Offset,
     int Limit,
-    int Total);
+    int Total,
+    IReadOnlyList<ExerciseCategoryItem> Categories);
 
 public interface IExerciseCatalogQueries
 {

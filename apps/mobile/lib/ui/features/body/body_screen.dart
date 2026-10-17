@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../data/repositories/body/body_repository.dart';
 import '../../../domain/models/body/body_tracking.dart';
+import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'body_view_model.dart';
 
@@ -63,85 +64,54 @@ class _BodyScreenState extends State<BodyScreen> {
   Widget build(BuildContext context) => ChangeNotifierProvider.value(
     value: widget.viewModel,
     child: Consumer<BodyViewModel>(
-      builder: (context, model, _) => CupertinoPageScaffold(
-        navigationBar: const CupertinoNavigationBar(
-          middle: Text(_checkInTitle),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: ListView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
-                children: [
-                  if (model.isLoading && model.snapshot == null)
-                    const Center(child: CupertinoActivityIndicator()),
-                  if (model.errorMessage != null)
-                    _NoticeCard(
-                      key: const ValueKey('body-error'),
-                      message: model.errorMessage!,
-                    ),
-                  Text(
-                    _checkInTitle,
-                    style: CupertinoTheme.of(context)
-                        .textTheme
-                        .navLargeTitleTextStyle,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Dein aktueller Stand und tägliche Check-ins',
-                    style: TextStyle(color: GainerTheme.secondaryText(context)),
-                  ),
-                  const SizedBox(height: 20),
-                  _goalCard(model),
-                  const SizedBox(height: 12),
-                  _todayCard(model),
-                  const SizedBox(height: 12),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 52),
-                    child: CupertinoButton.filled(
-                      color: GainerTheme.actionColor,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      key: const ValueKey('body-open-checkin'),
-                      onPressed: model.isSaving
-                          ? null
-                          : () => _openCheckIn(model),
-                      child: const Text(
-                        'Check-in eintragen',
-                        textAlign: TextAlign.center,
-                        softWrap: true,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  CupertinoButton(
-                    key: const ValueKey('body-open-goal'),
-                    minimumSize: const Size(double.infinity, 48),
-                    onPressed: () => _openGoal(model),
-                    child: Text(
-                      model.snapshot?.activeGoal == null
-                          ? 'Körperziel festlegen'
-                          : 'Ziel bearbeiten',
-                    ),
-                  ),
-                  _sectionTitle(context, 'Verlauf'),
-                  _history(model.snapshot, isLoading: model.isLoading),
-                ],
+      builder: (context, model, _) {
+        final colors = GainerDesign.colorsOf(context);
+        return GainerScaffold(
+          title: _checkInTitle,
+          children: [
+            if (model.isLoading && model.snapshot == null)
+              const Center(child: CupertinoActivityIndicator()),
+            if (model.errorMessage != null)
+              _NoticeCard(
+                key: const ValueKey('body-error'),
+                message: model.errorMessage!,
+              ),
+            Text(
+              'Dein aktueller Stand und tägliche Check-ins',
+              style: GainerTypography.body.copyWith(
+                color: colors.secondaryText,
               ),
             ),
-          ),
-        ),
-      ),
+            const SizedBox(height: 20),
+            _goalCard(context, model),
+            const SizedBox(height: 12),
+            _todayCard(context, model),
+            const SizedBox(height: 12),
+            GainerPillButton(
+              key: const ValueKey('body-open-checkin'),
+              label: 'Check-in eintragen',
+              expand: true,
+              onPressed: model.isSaving ? null : () => _openCheckIn(model),
+            ),
+            const SizedBox(height: 8),
+            GainerPillButton(
+              key: const ValueKey('body-open-goal'),
+              label: model.snapshot?.activeGoal == null
+                  ? 'Körperziel festlegen'
+                  : 'Ziel bearbeiten',
+              variant: GainerPillVariant.tonal,
+              expand: true,
+              onPressed: () => _openGoal(model),
+            ),
+            _sectionTitle(context, 'Verlauf'),
+            _history(context, model.snapshot, isLoading: model.isLoading),
+          ],
+        );
+      },
     ),
   );
 
-  Widget _goalCard(BodyViewModel model) => _OverviewCard(
+  Widget _goalCard(BuildContext context, BodyViewModel model) => _OverviewCard(
     title: 'Aktives Ziel',
     icon: CupertinoIcons.scope,
     child: model.snapshot == null
@@ -150,10 +120,10 @@ class _BodyScreenState extends State<BodyScreen> {
                 ? 'Zieldaten werden geladen …'
                 : 'Zieldaten sind nicht verfügbar.',
           )
-        : _activeGoal(model.snapshot!.activeGoal),
+        : _activeGoal(context, model.snapshot!.activeGoal),
   );
 
-  Widget _todayCard(BodyViewModel model) => _OverviewCard(
+  Widget _todayCard(BuildContext context, BodyViewModel model) => _OverviewCard(
     title: 'Heute',
     icon: CupertinoIcons.calendar,
     child: model.snapshot == null
@@ -175,24 +145,24 @@ class _BodyScreenState extends State<BodyScreen> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       if (goal) ...[
-        CupertinoSlidingSegmentedControl<BodyGoalKind>(
-          groupValue: _kind,
-          children: const {
-            BodyGoalKind.bulk: Text('Aufbau'),
-            BodyGoalKind.maintain: Text('Halten'),
-            BodyGoalKind.cut: Text('Abnehmen'),
+        GainerSegmentedControl<BodyGoalKind>(
+          value: _kind,
+          options: const {
+            BodyGoalKind.bulk: 'Aufbau',
+            BodyGoalKind.maintain: 'Halten',
+            BodyGoalKind.cut: 'Abnehmen',
           },
-          onValueChanged: (value) => rebuild(() => _kind = value!),
+          onChanged: (value) => rebuild(() => _kind = value),
         ),
         const SizedBox(height: 12),
-        CupertinoSlidingSegmentedControl<BodyWeightUnit>(
+        GainerSegmentedControl<BodyWeightUnit>(
           key: const ValueKey('body-goal-weight-unit'),
-          groupValue: _unit,
-          children: const {
-            BodyWeightUnit.kilograms: Text('kg'),
-            BodyWeightUnit.pounds: Text('lb'),
+          value: _unit,
+          options: const {
+            BodyWeightUnit.kilograms: 'kg',
+            BodyWeightUnit.pounds: 'lb',
           },
-          onValueChanged: (value) => rebuild(() => _changeUnit(value!)),
+          onChanged: (value) => rebuild(() => _changeUnit(value)),
         ),
         _field(
           context,
@@ -212,20 +182,22 @@ class _BodyScreenState extends State<BodyScreen> {
           padding: const EdgeInsets.only(top: 12),
           child: Text('Startdatum · ${_prettyDate(_dateOnly(_startDate))}'),
         ),
-        CupertinoButton(
+        GainerPillButton(
           key: const ValueKey('body-start-date'),
-          minimumSize: const Size(double.infinity, 48),
+          label: 'Startdatum wählen',
+          variant: GainerPillVariant.tonal,
+          expand: true,
           onPressed: () => _pickDate(start: true, rebuild: rebuild),
-          child: const Text('Startdatum wählen'),
         ),
         Text(
           'Zieldatum · ${_targetDate == null ? 'Kein Datum' : _prettyDate(_dateOnly(_targetDate!))}',
         ),
-        CupertinoButton(
+        GainerPillButton(
           key: const ValueKey('body-target-date'),
-          minimumSize: const Size(double.infinity, 48),
+          label: 'Zieldatum wählen',
+          variant: GainerPillVariant.tonal,
+          expand: true,
           onPressed: () => _pickDate(start: false, rebuild: rebuild),
-          child: const Text('Zieldatum wählen'),
         ),
       ],
       if (!goal) ...[
@@ -308,16 +280,15 @@ class _BodyScreenState extends State<BodyScreen> {
             builder: (sheetContext, liveModel, _) => StatefulBuilder(
               builder: (sheetContext, setSheetState) {
                 final media = MediaQuery.of(sheetContext);
+                final colors = GainerDesign.colorsOf(sheetContext);
                 return Padding(
                   padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
                   child: Container(
                     height: (media.size.height - media.viewInsets.bottom) * .94,
                     decoration: BoxDecoration(
-                      color: CupertinoColors.systemBackground.resolveFrom(
-                        sheetContext,
-                      ),
+                      color: colors.background,
                       borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(22),
+                        top: Radius.circular(GainerRadii.card),
                       ),
                     ),
                     child: SafeArea(
@@ -369,51 +340,60 @@ class _BodyScreenState extends State<BodyScreen> {
     BuildContext sheetContext,
     BodyViewModel liveModel, {
     required bool goal,
-  }) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: CupertinoButton(
-            minimumSize: const Size(64, 48),
-            onPressed: liveModel.isSaving
-                ? null
-                : () => Navigator.of(sheetContext).pop(),
-            child: const Text(
-              'Abbrechen',
-              textAlign: TextAlign.center,
-              softWrap: true,
+  }) {
+    final colors = GainerDesign.colorsOf(sheetContext);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: GainerPillButton(
+              label: 'Abbrechen',
+              variant: GainerPillVariant.tonal,
+              onPressed: liveModel.isSaving
+                  ? null
+                  : () => Navigator.of(sheetContext).pop(),
             ),
           ),
-        ),
-        Expanded(
-          child: Text(
-            goal ? 'Körperziel' : _checkInTitle,
-            textAlign: TextAlign.center,
-            softWrap: true,
-            style: CupertinoTheme.of(sheetContext).textTheme.navTitleTextStyle,
+          Expanded(
+            child: Text(
+              goal ? 'Körperziel' : _checkInTitle,
+              textAlign: TextAlign.center,
+              softWrap: true,
+              style: GainerTypography.title.copyWith(color: colors.primaryText),
+            ),
           ),
-        ),
-        Expanded(
-          child: CupertinoButton(
-            key: ValueKey(goal ? 'body-save-goal' : 'body-save-checkin'),
-            minimumSize: const Size(64, 48),
-            onPressed: liveModel.isSaving
-                ? null
-                : () => _saveFromSheet(sheetContext, liveModel, goal: goal),
-            child: liveModel.isSaving
-                ? const CupertinoActivityIndicator()
-                : const Text(
-                    'Sichern',
-                    textAlign: TextAlign.center,
-                    softWrap: true,
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (liveModel.isSaving) ...[
+                  const CupertinoActivityIndicator(),
+                  const SizedBox(width: GainerSpacing.xs),
+                ],
+                Flexible(
+                  child: GainerPillButton(
+                    key: ValueKey(
+                      goal ? 'body-save-goal' : 'body-save-checkin',
+                    ),
+                    label: 'Sichern',
+                    onPressed: liveModel.isSaving
+                        ? null
+                        : () => _saveFromSheet(
+                            sheetContext,
+                            liveModel,
+                            goal: goal,
+                          ),
                   ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
   Future<void> _saveFromSheet(
     BuildContext sheetContext,
@@ -437,39 +417,48 @@ class _BodyScreenState extends State<BodyScreen> {
     BuildContext sheetContext,
     BodyViewModel liveModel,
     StateSetter setSheetState,
-  ) => [
-    CupertinoButton(
-      key: const ValueKey('body-checkin-date'),
-      minimumSize: const Size(double.infinity, 48),
-      padding: EdgeInsets.zero,
-      onPressed: liveModel.isSaving
-          ? null
-          : () => _pickCheckInDate(liveModel, setSheetState),
-      child: Row(
-        children: [
-          const Icon(CupertinoIcons.calendar),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Datum · ${_prettyDate(_dateOnly(_checkInDate))}',
-              softWrap: true,
+  ) {
+    final colors = GainerDesign.colorsOf(sheetContext);
+    return [
+      CupertinoButton(
+        key: const ValueKey('body-checkin-date'),
+        minimumSize: const Size(double.infinity, 48),
+        padding: EdgeInsets.zero,
+        onPressed: liveModel.isSaving
+            ? null
+            : () => _pickCheckInDate(liveModel, setSheetState),
+        child: Row(
+          children: [
+            Icon(CupertinoIcons.calendar, color: colors.accent),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Datum · ${_prettyDate(_dateOnly(_checkInDate))}',
+                softWrap: true,
+                style: GainerTypography.body.copyWith(
+                  color: colors.primaryText,
+                ),
+              ),
             ),
-          ),
-          const Spacer(),
-          const CupertinoListTileChevron(),
-        ],
+            Icon(
+              CupertinoIcons.chevron_forward,
+              size: 16,
+              color: colors.secondaryText,
+            ),
+          ],
+        ),
       ),
-    ),
-    Text(
-      'Check-in für ${_prettyDate(_dateOnly(_checkInDate))}',
-      style: CupertinoTheme.of(sheetContext).textTheme.navTitleTextStyle,
-    ),
-    const SizedBox(height: 8),
-    Text(
-      'Gewicht ist erforderlich. Weitere Angaben sind optional.',
-      style: TextStyle(color: GainerTheme.secondaryText(sheetContext)),
-    ),
-  ];
+      Text(
+        'Check-in für ${_prettyDate(_dateOnly(_checkInDate))}',
+        style: GainerTypography.title.copyWith(color: colors.primaryText),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        'Gewicht ist erforderlich. Weitere Angaben sind optional.',
+        style: GainerTypography.label.copyWith(color: colors.secondaryText),
+      ),
+    ];
+  }
 
   Widget _todaySummary(List<({String id, DailyCheckIn value})> checkIns) {
     final today = _dateOnly(DateTime.now());
@@ -496,7 +485,11 @@ class _BodyScreenState extends State<BodyScreen> {
     );
   }
 
-  Widget _history(BodyTrackingSnapshot? snapshot, {required bool isLoading}) {
+  Widget _history(
+    BuildContext context,
+    BodyTrackingSnapshot? snapshot, {
+    required bool isLoading,
+  }) {
     if (snapshot == null) {
       return const _OverviewCard(
         title: 'Verlauf',
@@ -515,46 +508,35 @@ class _BodyScreenState extends State<BodyScreen> {
         ),
       );
     }
+    final colors = GainerDesign.colorsOf(context);
+    final rows = <Widget>[
+      for (final item in goals)
+        _HistoryRow(
+          top:
+              '${_goalLabel(item.value.kind)} · ${_prettyDate(item.value.startDate)}',
+          bottom:
+              '${_formatWeight(item.value.startWeightKg)} → ${_formatWeight(item.value.targetWeightKg)}',
+        ),
+      if (entries.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 7),
+          child: Text('Noch keine Check-ins gespeichert.'),
+        ),
+      for (final item in entries.take(10))
+        _HistoryRow(
+          top: _prettyDate(item.value.localDate),
+          bottom: _formatWeight(item.value.weightKg),
+        ),
+    ];
     return _OverviewCard(
       title: 'Verlauf',
       icon: CupertinoIcons.chart_bar,
       child: Column(
         children: [
-          for (final item in goals)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${_goalLabel(item.value.kind)} · ${_prettyDate(item.value.startDate)}',
-                  ),
-                  Text(
-                    '${_formatWeight(item.value.startWeightKg)} → ${_formatWeight(item.value.targetWeightKg)}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-            ),
-          if (entries.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 7),
-              child: Text('Noch keine Check-ins gespeichert.'),
-            ),
-          for (final item in entries.take(10))
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_prettyDate(item.value.localDate)),
-                  Text(
-                    _formatWeight(item.value.weightKg),
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-            ),
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Container(height: 0.5, color: colors.separator),
+            rows[i],
+          ],
         ],
       ),
     );
@@ -582,27 +564,37 @@ class _BodyScreenState extends State<BodyScreen> {
     return '${parsed.day}. ${months[parsed.month - 1]} ${parsed.year}';
   }
 
-  Widget _activeGoal(({String id, BodyGoal value})? goal) => goal == null
-      ? const Text('Noch kein aktives Ziel')
-      : Column(
-          key: const ValueKey('body-active-goal'),
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _goalLabel(goal.value.kind),
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              '${_formatWeight(goal.value.startWeightKg)}  →  ${_formatWeight(goal.value.targetWeightKg)}',
-            ),
-            if (goal.value.targetDate case final date?)
+  Widget _activeGoal(
+    BuildContext context,
+    ({String id, BodyGoal value})? goal,
+  ) {
+    final colors = GainerDesign.colorsOf(context);
+    return goal == null
+        ? const Text('Noch kein aktives Ziel')
+        : Column(
+            key: const ValueKey('body-active-goal'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                'Zieldatum · ${_prettyDate(date)}',
-                style: const TextStyle(fontSize: 13),
+                _goalLabel(goal.value.kind),
+                style: GainerTypography.cardTitle.copyWith(
+                  color: colors.primaryText,
+                ),
               ),
-          ],
-        );
+              const SizedBox(height: 5),
+              Text(
+                '${_formatWeight(goal.value.startWeightKg)}  →  ${_formatWeight(goal.value.targetWeightKg)}',
+              ),
+              if (goal.value.targetDate case final date?)
+                Text(
+                  'Zieldatum · ${_prettyDate(date)}',
+                  style: GainerTypography.label.copyWith(
+                    color: colors.secondaryText,
+                  ),
+                ),
+            ],
+          );
+  }
 
   String _goalLabel(BodyGoalKind kind) => switch (kind) {
     BodyGoalKind.bulk => 'Muskelaufbau',
@@ -614,8 +606,10 @@ class _BodyScreenState extends State<BodyScreen> {
     padding: const EdgeInsets.only(top: 24, bottom: 10),
     child: Text(
       title,
-      style: CupertinoTheme.of(context).textTheme.navTitleTextStyle
-          .copyWith(fontSize: 20),
+      style: GainerTypography.title.copyWith(
+        fontSize: 20,
+        color: GainerDesign.colorsOf(context).primaryText,
+      ),
     ),
   );
 
@@ -625,30 +619,38 @@ class _BodyScreenState extends State<BodyScreen> {
     TextEditingController controller, {
     bool decimal = false,
     Key? key,
-  }) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: CupertinoTheme.of(context).textTheme.textStyle),
-        const SizedBox(height: 5),
-        CupertinoTextField(
-          key: key,
-          controller: controller,
-          placeholder: 'Eintragen',
-          minLines: 1,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
-          decoration: BoxDecoration(
-            color: CupertinoColors.tertiarySystemGroupedBackground.resolveFrom(
-              context,
-            ),
-            borderRadius: BorderRadius.circular(10),
+  }) {
+    final colors = GainerDesign.colorsOf(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GainerTypography.label.copyWith(color: colors.secondaryText),
           ),
-          keyboardType: TextInputType.numberWithOptions(decimal: decimal),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: 5),
+          CupertinoTextField(
+            key: key,
+            controller: controller,
+            placeholder: 'Eintragen',
+            placeholderStyle: GainerTypography.body.copyWith(
+              color: colors.placeholderText,
+            ),
+            style: GainerTypography.body.copyWith(color: colors.primaryText),
+            minLines: 1,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(GainerRadii.field),
+            ),
+            keyboardType: TextInputType.numberWithOptions(decimal: decimal),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _pickDate({
     required bool start,
@@ -660,36 +662,27 @@ class _BodyScreenState extends State<BodyScreen> {
       context: context,
       builder: (context) => Container(
         height: 310,
-        color: CupertinoColors.systemBackground.resolveFrom(context),
+        color: GainerDesign.colorsOf(context).background,
         child: Column(
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: CupertinoButton(
+                    child: GainerPillButton(
                       key: const ValueKey('body-date-cancel'),
-                      minimumSize: const Size(64, 48),
+                      label: 'Abbrechen',
+                      variant: GainerPillVariant.tonal,
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text(
-                        'Abbrechen',
-                        textAlign: TextAlign.center,
-                        softWrap: true,
-                      ),
                     ),
                   ),
+                  const SizedBox(width: GainerSpacing.xs),
                   Expanded(
-                    child: CupertinoButton(
+                    child: GainerPillButton(
                       key: const ValueKey('body-date-done'),
-                      minimumSize: const Size(64, 48),
+                      label: 'Fertig',
                       onPressed: () => Navigator.of(context).pop(selected),
-                      child: const Text(
-                        'Fertig',
-                        textAlign: TextAlign.center,
-                        softWrap: true,
-                      ),
                     ),
                   ),
                 ],
@@ -724,7 +717,7 @@ class _BodyScreenState extends State<BodyScreen> {
       builder: (context) => Container(
         key: const ValueKey('body-checkin-date-picker'),
         height: 310,
-        color: CupertinoColors.systemBackground.resolveFrom(context),
+        color: GainerDesign.colorsOf(context).background,
         child: Column(
           children: [
             Padding(
@@ -732,18 +725,18 @@ class _BodyScreenState extends State<BodyScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: CupertinoButton(
-                      minimumSize: const Size(64, 48),
+                    child: GainerPillButton(
+                      label: 'Abbrechen',
+                      variant: GainerPillVariant.tonal,
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Abbrechen'),
                     ),
                   ),
+                  const SizedBox(width: GainerSpacing.xs),
                   Expanded(
-                    child: CupertinoButton(
+                    child: GainerPillButton(
                       key: const ValueKey('body-checkin-date-done'),
-                      minimumSize: const Size(64, 48),
+                      label: 'Fertig',
                       onPressed: () => Navigator.of(context).pop(selected),
-                      child: const Text('Fertig'),
                     ),
                   ),
                 ],
@@ -836,6 +829,36 @@ class _BodyScreenState extends State<BodyScreen> {
   }
 }
 
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({required this.top, required this.bottom});
+  final String top;
+  final String bottom;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            top,
+            style: GainerTypography.label.copyWith(color: colors.secondaryText),
+          ),
+          Text(
+            bottom,
+            style: GainerTypography.body.copyWith(
+              fontWeight: FontWeight.w600,
+              color: colors.primaryText,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _OverviewCard extends StatelessWidget {
   const _OverviewCard({
     required this.title,
@@ -847,44 +870,33 @@ class _OverviewCard extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(
-        color: CupertinoColors.separator
-            .resolveFrom(context)
-            .withValues(alpha: .25),
-      ),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: CupertinoTheme.of(context).primaryColor,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                title,
-                style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
-                softWrap: true,
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return GainerCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: colors.accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: GainerTypography.cardTitle.copyWith(
+                    color: colors.primaryText,
+                  ),
+                  softWrap: true,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        child,
-      ],
-    ),
-  );
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
 }
 
 class _MetricPill extends StatelessWidget {
@@ -895,10 +907,8 @@ class _MetricPill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
     decoration: BoxDecoration(
-      color: CupertinoColors.tertiarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
-      borderRadius: BorderRadius.circular(12),
+      color: GainerDesign.colorsOf(context).elevatedSurface,
+      borderRadius: BorderRadius.circular(GainerRadii.field),
     ),
     child: Text(
       '$label  $value',
@@ -911,18 +921,16 @@ class _NoticeCard extends StatelessWidget {
   const _NoticeCard({required this.message, super.key});
   final String message;
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 14),
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: CupertinoColors.systemRed
-          .resolveFrom(context)
-          .withValues(alpha: .10),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Text(
-      message,
-      style: TextStyle(color: CupertinoColors.systemRed.resolveFrom(context)),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.destructive.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(GainerRadii.field),
+      ),
+      child: Text(message, style: TextStyle(color: colors.destructive)),
+    );
+  }
 }

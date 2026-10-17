@@ -12,16 +12,19 @@ public sealed class WorkoutHistoryQueries(AppDbContext context) : IWorkoutHistor
     {
         if (offset < 0 || limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
         return await context.Workouts.AsNoTracking()
-            .Where(item => item.Status == WorkoutStatus.Completed)
-            .OrderByDescending(item => item.CompletedAtUtc)
+            .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null)
+            .OrderByDescending(item => item.EndedAtUtc)
             .ThenByDescending(item => item.Id)
             .Skip(offset).Take(limit)
             .Select(item => new WorkoutHistorySummary(
                 item.Id,
-                item.TemplateNameSnapshot,
+                item.Title,
                 item.StartedAtUtc,
-                item.CompletedAtUtc!.Value,
-                context.WorkoutSets.Count(set => set.WorkoutId == item.Id && set.IsCompleted),
+                item.EndedAtUtc!.Value,
+                context.WorkoutSets.Count(set => set.WorkoutId == item.Id
+                    && set.SetType != WorkoutSetType.Warmup
+                    && set.WeightKg != null
+                    && set.Repetitions > 0),
                 item.Version))
             .ToListAsync(cancellationToken);
     }
@@ -29,36 +32,13 @@ public sealed class WorkoutHistoryQueries(AppDbContext context) : IWorkoutHistor
     public async Task<WorkoutSnapshot?> GetAsync(Guid workoutId, CancellationToken cancellationToken = default)
     {
         Workout? workout = await context.Workouts.AsNoTracking().SingleOrDefaultAsync(
-            item => item.Id == workoutId && item.Status == WorkoutStatus.Completed,
+            item => item.Id == workoutId && item.DeletedAtUtc == null,
             cancellationToken);
         if (workout is null) return null;
         List<WorkoutExercise> exercises = await context.WorkoutExercises.AsNoTracking()
             .Where(item => item.WorkoutId == workoutId).OrderBy(item => item.Position).ToListAsync(cancellationToken);
         List<WorkoutSet> sets = await context.WorkoutSets.AsNoTracking()
             .Where(item => item.WorkoutId == workoutId).OrderBy(item => item.Position).ToListAsync(cancellationToken);
-        return new WorkoutSnapshot(
-            workout.Id,
-            workout.SourceTemplateId,
-            workout.TemplateNameSnapshot,
-            workout.Status,
-            exercises.Select(exercise => new WorkoutExerciseSnapshotValues(
-                exercise.Id,
-                exercise.SourceExerciseId,
-                exercise.ExerciseNameSnapshot,
-                exercise.PlannedSets,
-                exercise.MinimumRepetitions,
-                exercise.MaximumRepetitions,
-                exercise.TargetRir,
-                exercise.RestSeconds,
-                exercise.Notes,
-                sets.Where(set => set.WorkoutExerciseId == exercise.Id).OrderBy(set => set.Position)
-                    .Select(set => new WorkoutSetSnapshotValues(
-                        set.Id, set.WeightKg, set.Repetitions, set.Rir, set.Notes, set.IsCompleted, set.CompletedAtUtc))
-                    .ToList())).ToList(),
-            workout.StartedAtUtc,
-            workout.CompletedAtUtc,
-            workout.DiscardedAtUtc,
-            workout.UpdatedAtUtc,
-            workout.Version);
+        return WorkoutSnapshots.Create(workout, WorkoutSnapshots.ToExerciseValues(exercises, sets));
     }
 }

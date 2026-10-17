@@ -140,23 +140,11 @@ class PigeonNativeFeaturesPlatform
 
   @override
   Future<bool> start({required LiveActivityState state}) =>
-      _api.startLiveActivity(
-        state.sessionId,
-        _activityStatus(state.status),
-        state.startedAtUtc.toUtc().millisecondsSinceEpoch,
-        state.restEndsAtUtc?.toUtc().millisecondsSinceEpoch,
-        state.staleAtUtc.toUtc().millisecondsSinceEpoch,
-      );
+      _api.startLiveActivity(_liveActivityPlatformState(state));
 
   @override
   Future<bool> update({required LiveActivityState state}) =>
-      _api.updateLiveActivity(
-        state.sessionId,
-        _activityStatus(state.status),
-        state.startedAtUtc.toUtc().millisecondsSinceEpoch,
-        state.restEndsAtUtc?.toUtc().millisecondsSinceEpoch,
-        state.staleAtUtc.toUtc().millisecondsSinceEpoch,
-      );
+      _api.updateLiveActivity(_liveActivityPlatformState(state));
 
   @override
   Future<void> end(String sessionId) => _api.endLiveActivity(sessionId);
@@ -164,8 +152,32 @@ class PigeonNativeFeaturesPlatform
   @override
   Future<void> endAll() => _api.endAllLiveActivities();
 
-  String _activityStatus(LiveActivityStatus status) => switch (status) {
-    LiveActivityStatus.workout => 'workout',
-    LiveActivityStatus.rest => 'rest',
-  };
+  PlatformLiveActivityState _liveActivityPlatformState(
+    LiveActivityState state,
+  ) {
+    final detail = state.detail;
+    return PlatformLiveActivityState(
+      sessionId: state.sessionId,
+      timerPhase: state.timerPhase.name,
+      startedAtUtcEpochMilliseconds: state.startedAtUtc
+          .toUtc()
+          .millisecondsSinceEpoch,
+      expired: state.expired,
+      staleAtUtcEpochMilliseconds: state.staleAtUtc
+          .toUtc()
+          .millisecondsSinceEpoch,
+      timerTargetAtUtcEpochMilliseconds: state.timerTargetAtUtc
+          ?.toUtc()
+          .millisecondsSinceEpoch,
+      pausedRemainingSeconds: state.pausedRemainingSeconds,
+      detail: detail == null
+          ? null
+          : PlatformLiveActivityDetail(
+              title: detail.title,
+              exerciseName: detail.exerciseName,
+              setIndex: detail.setIndex,
+              setCount: detail.setCount,
+            ),
+    );
+  }
 }

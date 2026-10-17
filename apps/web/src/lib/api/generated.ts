@@ -548,6 +548,7 @@ export interface paths {
                 query?: {
                     through?: string;
                     days?: number | string;
+                    timeZone?: string;
                 };
                 header?: never;
                 path?: never;
@@ -1511,7 +1512,7 @@ export interface components {
             /** Format: date-time */
             completedAtUtc: string;
             /** Format: double */
-            weightKg: number | string;
+            effectiveWeightKg: number | string;
             /** Format: int32 */
             repetitions: number | string;
             /** Format: double */
@@ -1603,6 +1604,13 @@ export interface components {
             catalogVersion: null | string;
             /** Format: int64 */
             version: number | string;
+            exerciseType: string;
+            notes: null | string;
+            /** Format: double */
+            bodyweightFactor: null | number | string;
+            /** Format: double */
+            weightFactor: null | number | string;
+            categoryIds: string[];
         };
         ExerciseCatalogResponse: {
             items: components["schemas"]["ExerciseCatalogItemResponse"][];
@@ -1612,6 +1620,13 @@ export interface components {
             limit: number | string;
             /** Format: int32 */
             total: number | string;
+            categories: components["schemas"]["ExerciseCategoryResponse"][];
+        };
+        ExerciseCategoryResponse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            isBase: boolean;
         };
         ExerciseProgressPointResponse: {
             /** Format: uuid */
@@ -1621,11 +1636,12 @@ export interface components {
             /** Format: double */
             volumeKgRepetitions: number | string;
             /** Format: double */
-            bestWeightKg: null | number | string;
+            maxWeightKg: null | number | string;
             /** Format: int32 */
-            bestRepetitions: null | number | string;
+            maxRepetitions: number | string;
             /** Format: double */
             estimatedOneRepMaxKg: null | number | string;
+            bodyweightMissing: boolean;
         };
         ExerciseProgressResponse: {
             /** Format: int64 */
@@ -1638,8 +1654,18 @@ export interface components {
             fromUtc: string;
             /** Format: date-time */
             throughUtc: string;
+            volumeAlgorithmVersion: string;
+            estimatedOneRepMaxAlgorithmVersion: string;
             points: components["schemas"]["ExerciseProgressPointResponse"][];
             bestSet: null | components["schemas"]["BestSetResponse"];
+            records: components["schemas"]["ExerciseRecordsResponse"];
+        };
+        ExerciseRecordsResponse: {
+            maxWeightKg: null | components["schemas"]["RecordEventResponse"];
+            estimatedOneRepMaxKg: null | components["schemas"]["RecordEventResponse"];
+            volumeKgRepetitions: null | components["schemas"]["RecordEventResponse"];
+            maxRepetitions: null | components["schemas"]["RecordEventResponse"];
+            repetitionRecords: components["schemas"]["RepetitionRecordResponse"][];
         };
         FoodCatalogProductResponse: {
             barcode: string;
@@ -1868,6 +1894,12 @@ export interface components {
         RecentNutritionEntriesResponse: {
             entries: components["schemas"]["NutritionEntryResponse"][];
         };
+        RecordEventResponse: {
+            /** Format: uuid */
+            workoutId: string;
+            /** Format: double */
+            value: number | string;
+        };
         RegisterSyncClientRequest: {
             /** Format: uuid */
             clientId: string;
@@ -1875,6 +1907,12 @@ export interface components {
             /** Format: int32 */
             protocolVersion: number | string;
             takeOverWriting: boolean;
+        };
+        RepetitionRecordResponse: {
+            /** Format: int32 */
+            repetitions: number | string;
+            /** Format: double */
+            maxWeightKg: null | number | string;
         };
         ResourceVersionRequest: {
             resourceType: string;
@@ -1976,6 +2014,7 @@ export interface components {
             /** Format: double */
             volumeKgRepetitions: number | string;
             bestSet: null | components["schemas"]["BestSetResponse"];
+            bodyweightMissing: boolean;
         };
         WeightInsightsResponse: {
             averageAlgorithmVersion: string;

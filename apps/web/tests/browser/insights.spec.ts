@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("dashboard and exercise progress cache deterministic server insights for offline use without coach dependency", async ({ page }) => {
+test("dashboard caches deterministic server insights for offline use without coach dependency", async ({ page }) => {
   let authenticated = false;
   let unavailable = false;
   let coachCalls = 0;
@@ -25,16 +25,6 @@ test("dashboard and exercise progress cache deterministic server insights for of
   await page.route("**/api/v1/insights/dashboard**", async (route) => {
     if (unavailable) { await route.abort("failed"); return; }
     await route.fulfill({ json: dashboardResponse() });
-  });
-  await page.route("**/api/v1/insights/exercises/**", async (route) => {
-    if (unavailable) { await route.abort("failed"); return; }
-    const exerciseId = new URL(route.request().url()).pathname.split("/").at(-2)!;
-    await route.fulfill({ json: {
-      asOfRevision: 12, exerciseId, windowDays: 30,
-      fromUtc: "2026-07-20T00:00:00Z", throughUtc: "2026-08-18T23:59:59Z",
-      points: [{ workoutId: crypto.randomUUID(), completedAtUtc: "2026-08-18T18:00:00Z", volumeKgRepetitions: 2400, bestWeightKg: 100, bestRepetitions: 8, estimatedOneRepMaxKg: 126.67 }],
-      bestSet: null,
-    } });
   });
 
   await page.goto("/");
@@ -66,7 +56,7 @@ function dashboardResponse() {
     sevenDayWeight: { averageAlgorithmVersion: "weight-average-v1", trendAlgorithmVersion: "weight-trend-ols-v1", unit: "kg", from: "2026-08-12", through: "2026-08-18", expectedDays: 7, observedDays: 2, coverage: 0.2857, averageKg: 81.1, trendKgPerWeek: null },
     weight: { averageAlgorithmVersion: "weight-average-v1", trendAlgorithmVersion: "weight-trend-ols-v1", unit: "kg", from: "2026-07-20", through: "2026-08-18", expectedDays: 30, observedDays: 2, coverage: 0.0667, averageKg: 81.1, trendKgPerWeek: null },
     nutrition: { algorithmVersion: "nutrition-average-v1", expectedDays: 30, observedDays: 2, coverage: 0.0667, caloriesKcal: { value: 2500, observedDays: 2 }, proteinGrams: { value: 180, observedDays: 2 }, carbohydrateGrams: { value: 300, observedDays: 2 }, fatGrams: { value: 70, observedDays: 2 } },
-    training: { volumeAlgorithmVersion: "training-volume-v1", estimatedOneRepMaxAlgorithmVersion: "e1rm-epley-v1", volumeUnit: "kg·repetitions", workoutCount: 3, volumeKgRepetitions: 12345, bestSet: null },
+    training: { volumeAlgorithmVersion: "training-volume-v2", estimatedOneRepMaxAlgorithmVersion: "e1rm-epley-v2", volumeUnit: "kg·repetitions", workoutCount: 3, volumeKgRepetitions: 12345, bestSet: null, bodyweightMissing: false },
     workoutsLast7Days: 2,
   };
 }

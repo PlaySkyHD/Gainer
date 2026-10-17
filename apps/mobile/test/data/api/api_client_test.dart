@@ -71,6 +71,7 @@ void main() {
               'workoutCount': 2,
               'volumeKgRepetitions': 4200,
               'bestSet': null,
+              'bodyweightMissing': false,
             },
             'workoutsLast7Days': 2,
           });
@@ -138,11 +139,19 @@ void main() {
                 'isCustom': false,
                 'catalogVersion': '2026.08.1',
                 'version': 3,
+                'exerciseType': 'strength',
+                'notes': null,
+                'bodyweightFactor': null,
+                'weightFactor': null,
+                'categoryIds': [],
               },
             ],
             'offset': 0,
             'limit': 100,
             'total': 1,
+            'categories': [
+              {'id': 'category-1', 'name': 'Beine', 'isBase': true},
+            ],
           });
         }
         if (request.uri.path == '/api/v1/foods/search') {

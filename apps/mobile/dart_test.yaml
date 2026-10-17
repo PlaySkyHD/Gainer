@@ -1,0 +1,3 @@
+tags:
+  golden:
+    description: Pixel comparisons against Linux-rendered reference PNGs in test/**/goldens. Run on Linux only; excluded in the macOS CI job.

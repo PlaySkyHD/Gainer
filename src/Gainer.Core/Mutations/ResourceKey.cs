@@ -32,10 +32,11 @@ public enum ResourceKind
     BodyGoal = 1,
     DailyCheckIn = 2,
     CustomExercise = 3,
-    WorkoutTemplate = 4,
+    TrainingPlan = 4,
     WorkoutRotation = 5,
     Workout = 6,
     NutritionDay = 7,
     ReusableMeal = 8,
     NutritionTargetSchedule = 9,
+    ExerciseCategory = 10,
 }

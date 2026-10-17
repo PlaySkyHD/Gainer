@@ -47,10 +47,6 @@ export async function retryConflictOnCurrentServerVersion(
       if (!record || record.envelope.serverVersion === null) {
         throw new Error("Für diesen Konflikt ist keine aktuelle Basisversion verfügbar.");
       }
-      if (mapping.type === "workout" &&
-          ["completed", "discarded"].includes(String((record.envelope.workingCopy as { status?: string }).status).toLowerCase())) {
-        throw new Error("Abgeschlossene oder verworfene Workouts können nicht erneut angewendet werden.");
-      }
       const old = await database.outbox.where("aggregateKey").equals(conflict.aggregateKey).first();
       if (!old) throw new Error("Die lokale Änderung ist nicht mehr vorhanden.");
       replacementId = crypto.randomUUID();
@@ -87,11 +83,6 @@ function localMapping(database: AccountDatabase, aggregateKey: string) {
   const tables = {
     "body-goal": database.goals,
     "daily-check-in": database.checkIns,
-    "custom-exercise": database.customExercises,
-    "workout-template": database.templates,
-    "workout-rotation": database.rotation,
-    workout: database.workouts,
-    "workout-completion": database.workouts,
     "nutrition-day": database.nutritionDays,
     "reusable-meal": database.reusableMeals,
     "nutrition-target-schedule": database.nutritionTargetSchedules,

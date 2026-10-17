@@ -44,9 +44,15 @@ public sealed class ExerciseCatalogController(IExerciseCatalogQueries queries) :
                 item.Equipment,
                 item.IsCustom,
                 item.CatalogVersion,
-                item.Version)).ToList(),
+                item.Version,
+                ExerciseTypes.ToStorageValue(item.ExerciseType),
+                item.Notes,
+                item.BodyweightFactor,
+                item.WeightFactor,
+                item.CategoryIds)).ToList(),
             page.Offset,
             page.Limit,
-            page.Total));
+            page.Total,
+            page.Categories.Select(item => new ExerciseCategoryResponse(item.Id, item.Name, item.IsBase)).ToList()));
     }
 }

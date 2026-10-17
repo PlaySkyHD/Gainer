@@ -20,4 +20,8 @@
     <ProjectReference Include="..\..\src\Gainer.Core\Gainer.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\contracts\fixtures\training-statistics.json" Link="Fixtures\training-statistics.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -22,9 +22,11 @@ extension UNUserNotificationCenter: LocalNotificationCenter {
 
 @MainActor
 final class NativeTimerNotifications {
+  nonisolated static let timerIdentifierPrefix = "com.gainer.mobile.pause."
+
   private let notificationCenter: LocalNotificationCenter
   private let defaults: UserDefaults
-  private let identifierPrefix = "com.gainer.mobile.pause."
+  private let identifierPrefix = NativeTimerNotifications.timerIdentifierPrefix
 
   init(
     notificationCenter: LocalNotificationCenter = UNUserNotificationCenter.current(),
@@ -76,8 +78,8 @@ final class NativeTimerNotifications {
     }
 
     let content = UNMutableNotificationContent()
-    content.title = "Pause beendet"
-    content.body = "Dein Training wartet auf dich."
+    content.title = "Pause vorbei"
+    content.body = "Weiter mit dem nächsten Satz."
     content.sound = .default
     let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, delay), repeats: false)
     try await notificationCenter.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
@@ -115,5 +117,51 @@ final class NativeTimerNotifications {
   private func key(for workoutId: String) -> String {
     let digest = SHA256.hash(data: Data(workoutId.utf8))
     return digest.map { String(format: "%02x", $0) }.joined()
+  }
+}
+
+/// Zeigt Pausen-Benachrichtigungen auch bei geöffneter App als Banner mit Ton.
+/// Alle anderen Benachrichtigungen gehen an den zuvor gesetzten Delegate.
+final class TimerNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+  private let previousDelegate: UNUserNotificationCenterDelegate?
+
+  init(previousDelegate: UNUserNotificationCenterDelegate?) {
+    self.previousDelegate = previousDelegate
+  }
+
+  static func presentationOptions(forIdentifier identifier: String) -> UNNotificationPresentationOptions? {
+    identifier.hasPrefix(NativeTimerNotifications.timerIdentifierPrefix) ? [.banner, .sound, .list] : nil
+  }
+
+  func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    if let options = Self.presentationOptions(forIdentifier: notification.request.identifier) {
+      completionHandler(options)
+      return
+    }
+    guard let previousDelegate,
+      previousDelegate.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:)))
+    else {
+      completionHandler([])
+      return
+    }
+    previousDelegate.userNotificationCenter?(center, willPresent: notification, withCompletionHandler: completionHandler)
+  }
+
+  func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
+    guard let previousDelegate,
+      previousDelegate.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:)))
+    else {
+      completionHandler()
+      return
+    }
+    previousDelegate.userNotificationCenter?(center, didReceive: response, withCompletionHandler: completionHandler)
   }
 }

@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../../data/models/api/api_models.dart';
 import '../../../data/repositories/insights/insights_repository.dart';
-import '../../../data/repositories/training/api_exercise_catalog_provider.dart';
-import '../../../data/repositories/training/training_repository.dart';
+import '../../../data/repositories/training/training_log_repository.dart';
+import '../../../domain/models/training/exercise_catalog_model.dart';
 
 class ExerciseProgressOption {
   const ExerciseProgressOption({
@@ -20,12 +20,12 @@ class ExerciseProgressOption {
 }
 
 class ProgressViewModel extends ChangeNotifier {
-  ProgressViewModel(this.repository, {this.trainingRepository});
+  ProgressViewModel(this.repository, {this.training});
 
   static const progressWindows = ['7', '30', '90', 'all'];
 
   final InsightsRepository repository;
-  final TrainingRepository? trainingRepository;
+  final TrainingLogRepository? training;
   ApiDashboardInsights? dashboard;
   bool isLoading = false;
   bool dashboardIsStale = false;
@@ -84,9 +84,9 @@ class ProgressViewModel extends ChangeNotifier {
   }
 
   Future<void> loadExerciseOptions({bool refresh = false}) async {
-    final training = trainingRepository;
+    final trainingLog = training;
     if (_disposed ||
-        training == null ||
+        trainingLog == null ||
         _isExerciseOptionsLoadRedundant(refresh)) {
       return;
     }
@@ -95,10 +95,10 @@ class ProgressViewModel extends ChangeNotifier {
     exerciseOptionsErrorMessage = null;
     notifyListeners();
     try {
-      final planning = await training.readPlanning();
+      final exercises = await trainingLog.readExercises();
       if (!_isCurrentExerciseOptionsRequest(request)) return;
-      exerciseOptions = _uniqueExerciseOptions(planning);
-      isExerciseCatalogStale = _catalogIsStale(training);
+      exerciseOptions = _uniqueExerciseOptions(exercises);
+      isExerciseCatalogStale = trainingLog.isCatalogStale;
       _hasLoadedExerciseOptions = true;
       final oldSelection = selectedExerciseId;
       selectedExerciseId = _selectionAfterOptionsLoad(oldSelection);
@@ -204,18 +204,15 @@ class ProgressViewModel extends ChangeNotifier {
       !_disposed && request == _exerciseOptionsRequest;
 
   List<ExerciseProgressOption> _uniqueExerciseOptions(
-    TrainingPlanningSnapshot planning,
+    List<CatalogExercise> exercises,
   ) {
     final options = <ExerciseProgressOption>[
-      for (final exercise in planning.exercises)
-        ExerciseProgressOption(id: exercise.id, name: exercise.name),
-      for (final exercise in planning.customExercises)
-        if (!exercise.isArchived)
-          ExerciseProgressOption(
-            id: exercise.id,
-            name: exercise.value.name,
-            isCustom: true,
-          ),
+      for (final exercise in exercises)
+        ExerciseProgressOption(
+          id: exercise.id,
+          name: exercise.name,
+          isCustom: !exercise.isBase,
+        ),
     ];
     final byId = <String, ExerciseProgressOption>{};
     for (final option in options) {
@@ -223,10 +220,6 @@ class ProgressViewModel extends ChangeNotifier {
     }
     return List.unmodifiable(byId.values);
   }
-
-  bool _catalogIsStale(TrainingRepository training) =>
-      training.catalog is ApiExerciseCatalogProvider &&
-      (training.catalog as ApiExerciseCatalogProvider).lastLoadWasStale;
 
   String? _selectionAfterOptionsLoad(String? oldSelection) {
     final selectionExists =

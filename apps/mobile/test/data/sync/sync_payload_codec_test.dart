@@ -23,13 +23,14 @@ LocalMutation _mutation(
 );
 
 void main() {
-  test('maps all nine backend resource names to PWA aggregate types', () {
+  test('maps every backend resource name to its local aggregate type', () {
     expect(
       [
         'BodyGoal',
         'DailyCheckIn',
         'CustomExercise',
-        'WorkoutTemplate',
+        'ExerciseCategory',
+        'TrainingPlan',
         'WorkoutRotation',
         'Workout',
         'NutritionDay',
@@ -40,13 +41,18 @@ void main() {
         'body-goal',
         'daily-check-in',
         'custom-exercise',
-        'workout-template',
+        'exercise-category',
+        'training-plan',
         'workout-rotation',
         'workout',
         'nutrition-day',
         'reusable-meal',
         'nutrition-target-schedule',
       ],
+    );
+    expect(
+      SyncPayloadCodec.aggregateTypeForResource('WorkoutTemplate'),
+      isNull,
     );
   });
 
@@ -130,132 +136,6 @@ void main() {
               as Map<String, dynamic>;
       expect(goalPayload['goalId'], _aggregateId);
       expect(goalPayload['targetWeightKg'], 85);
-    },
-  );
-
-  test('normalizes template and rotation nested identifiers for PWA edits', () {
-    final template =
-        SyncPayloadCodec.normalizeSnapshot('WorkoutTemplate', {
-              'templateId': _aggregateId,
-              'version': 7,
-              'name': 'Push',
-              'isArchived': false,
-              'items': [
-                {
-                  'itemId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                  'exerciseId': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-                  'plannedSets': 3,
-                  'minimumRepetitions': 8,
-                  'maximumRepetitions': 10,
-                  'targetRir': 2,
-                  'restSeconds': 90,
-                  'notes': 'controlled',
-                },
-              ],
-            })!
-            as Map<String, dynamic>;
-    final templateItem = (template['items'] as List).single as Map;
-    expect(templateItem['id'], 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
-    expect(templateItem.containsKey('itemId'), isFalse);
-    final templatePayload =
-        SyncPayloadCodec.serverPayload(
-              _mutation(
-                'workout-template',
-                LocalMutationOperation.update,
-                template,
-              ),
-              template,
-              7,
-            )!
-            as Map<String, dynamic>;
-    expect(
-      (templatePayload['items'] as List).single['itemId'],
-      templateItem['id'],
-    );
-
-    final rotation =
-        SyncPayloadCodec.normalizeSnapshot('WorkoutRotation', {
-              'rotationId': _aggregateId,
-              'version': 4,
-              'entries': [
-                {
-                  'itemId': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-                  'templateId': _aggregateId,
-                },
-              ],
-              'lastCompletedTemplateId': null,
-              'nextTemplateId': _aggregateId,
-            })!
-            as Map<String, dynamic>;
-    final entry = (rotation['entries'] as List).single as Map;
-    expect(entry['id'], 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
-    final rotationPayload =
-        SyncPayloadCodec.serverPayload(
-              _mutation(
-                'workout-rotation',
-                LocalMutationOperation.update,
-                rotation,
-              ),
-              rotation,
-              4,
-            )!
-            as Map<String, dynamic>;
-    expect((rotationPayload['entries'] as List).single['itemId'], entry['id']);
-  });
-
-  test(
-    'normalizes workout exercise and set IDs and maps them back on edit',
-    () {
-      final source = {
-        'workoutId': _aggregateId,
-        'version': 8,
-        'sourceTemplateId': null,
-        'templateNameSnapshot': 'Workout',
-        'status': 'inProgress',
-        'exercises': [
-          {
-            'workoutExerciseId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-            'sourceExerciseId': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-            'exerciseNameSnapshot': 'Squat',
-            'plannedSets': 1,
-            'minimumRepetitions': 5,
-            'maximumRepetitions': 5,
-            'targetRir': 2,
-            'restSeconds': null,
-            'notes': null,
-            'sets': [
-              {
-                'setId': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-                'weightKg': 80,
-                'repetitions': 5,
-                'rir': 2,
-                'notes': null,
-                'isCompleted': true,
-                'completedAtUtc': '2026-01-01T12:00:00Z',
-              },
-            ],
-          },
-        ],
-      };
-      final working =
-          SyncPayloadCodec.normalizeSnapshot('Workout', source)!
-              as Map<String, dynamic>;
-      final exercise = (working['exercises'] as List).single as Map;
-      final set = (exercise['sets'] as List).single as Map;
-      expect(exercise['id'], 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
-      expect(set['id'], 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
-      final payload =
-          SyncPayloadCodec.serverPayload(
-                _mutation('workout', LocalMutationOperation.update, working),
-                working,
-                8,
-              )!
-              as Map<String, dynamic>;
-      final payloadExercise = (payload['exercises'] as List).single as Map;
-      final payloadSet = (payloadExercise['sets'] as List).single as Map;
-      expect(payloadExercise['workoutExerciseId'], exercise['id']);
-      expect(payloadSet['setId'], set['id']);
-      expect(source['exercises']!.toString(), contains('workoutExerciseId'));
     },
   );
 

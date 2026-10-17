@@ -1,0 +1,250 @@
+import 'package:flutter/cupertino.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/domain/models/training/exercise_catalog_model.dart';
+import 'package:gainer_mobile/domain/models/training/workout_model.dart';
+import 'package:gainer_mobile/ui/features/training/exercise_editor_screen.dart';
+
+import 'exercise_catalog_test_support.dart';
+import 'training_plans_test_support.dart';
+import 'training_test_support.dart';
+
+Future<CatalogHarness> _harness(WidgetTester tester) async {
+  final harness = await tester.runAsync(CatalogHarness.create);
+  if (harness == null) throw StateError('Harness nicht erstellt.');
+  addTearDown(() => tester.runAsync(harness.dispose));
+  return harness;
+}
+
+/// Öffnet den Editor aus einer Host-Seite, damit „Speichern“ zurückpoppt.
+Future<void> _openEditor(
+  WidgetTester tester,
+  CatalogHarness harness, {
+  CatalogExercise? exercise,
+}) async {
+  usePhoneSize(tester);
+  await tester.pumpWidget(
+    catalogHost(
+      buildRoute: (_) => ExerciseEditorScreen(
+        repository: harness.repository,
+        exercise: exercise,
+      ),
+    ),
+  );
+  await tester.tap(find.byKey(const ValueKey('open-under-test')));
+  await settle(tester);
+}
+
+Future<void> _enter(WidgetTester tester, Key key, String text) async {
+  await tester.ensureVisible(find.byKey(key));
+  await tester.enterText(find.byKey(key), text);
+  await settle(tester);
+}
+
+Future<void> _save(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('exercise-save')));
+  await settle(tester);
+}
+
+void main() {
+  testWidgets('eigene Übung lässt sich offline anlegen und ist sofort lesbar', (
+    tester,
+  ) async {
+    final harness = await _harness(tester);
+    await _openEditor(tester, harness);
+
+    await _enter(tester, const ValueKey('exercise-name'), 'Landmine Press');
+    await tester.tap(find.byKey(const ValueKey('exercise-kind-strength')));
+    await settle(tester);
+    await _save(tester);
+
+    expect(find.byKey(const ValueKey('exercise-save')), findsNothing);
+    final own = await tester.runAsync(
+      () async => [
+        for (final exercise in await harness.repository.readExercises())
+          if (!exercise.isBase) exercise,
+      ],
+    );
+    expect(own, hasLength(1));
+    expect(own!.single.name, 'Landmine Press');
+    expect(own.single.exerciseType, ExerciseKind.strength);
+    expect(own.single.isBase, isFalse);
+  });
+
+  testWidgets('Basisübung ist nur lesbar und lässt sich nicht speichern', (
+    tester,
+  ) async {
+    final harness = await _harness(tester);
+    await _openEditor(tester, harness, exercise: baseBench);
+
+    expect(find.byKey(const ValueKey('exercise-name')), findsNothing);
+    expect(find.byKey(const ValueKey('exercise-save')), findsNothing);
+    expect(find.byKey(const ValueKey('exercise-archive')), findsNothing);
+    expect(find.text('Basisübung. Sie ist schreibgeschützt.'), findsOneWidget);
+    expect(find.text('Bankdrücken'), findsWidgets);
+
+    final refused = await tester.runAsync(() async {
+      try {
+        await harness.repository.updateCustomExercise(baseBench);
+        return false;
+      } on StateError {
+        return true;
+      }
+    });
+    expect(refused, isTrue);
+  });
+
+  testWidgets(
+    'Typwechsel einer verwendeten Übung speichert erst nach Bestätigung',
+    (tester) async {
+      final harness = await _harness(tester);
+      final exercise = await tester.runAsync(() async {
+        final own = await seedOwnExercise(harness, name: 'Ausfallschritt');
+        await seedFinishedWorkout(
+          harness,
+          exerciseId: own.id,
+          exerciseName: own.name,
+        );
+        return own;
+      });
+      await _openEditor(tester, harness, exercise: exercise);
+
+      await tester.tap(
+        find.byKey(const ValueKey('exercise-kind-bodyweightOnly')),
+      );
+      await settle(tester);
+      await _save(tester);
+
+      expect(
+        find.text('Bestehende Sätze werden nach dem neuen Typ ausgewertet.'),
+        findsOneWidget,
+      );
+      var stored = await tester.runAsync(
+        () => harness.repository.readExercises().then(
+          (all) => all.singleWhere((item) => item.id == exercise!.id),
+        ),
+      );
+      expect(stored!.exerciseType, ExerciseKind.strength);
+
+      await tester.tap(find.text('Ändern').last);
+      await settle(tester);
+
+      stored = await tester.runAsync(
+        () => harness.repository.readExercises().then(
+          (all) => all.singleWhere((item) => item.id == exercise!.id),
+        ),
+      );
+      expect(stored!.exerciseType, ExerciseKind.bodyweightOnly);
+    },
+  );
+
+  testWidgets('Körpergewicht 64 % wird als Faktor 0,64 gespeichert', (
+    tester,
+  ) async {
+    final harness = await _harness(tester);
+    await _openEditor(tester, harness);
+
+    await _enter(tester, const ValueKey('exercise-name'), 'Dips Variante');
+    await _enter(tester, const ValueKey('exercise-bodyweight'), '64');
+    await _save(tester);
+
+    final stored = await tester.runAsync(
+      () => harness.repository.readExercises().then(
+        (all) => all.singleWhere((item) => item.name == 'Dips Variante'),
+      ),
+    );
+    expect(stored!.bodyweightFactor, 0.64);
+    expect(stored.weightFactor, isNull);
+  });
+
+  testWidgets('ungültige Faktoren und Namen zeigen Feldfehler', (tester) async {
+    final harness = await _harness(tester);
+    await _openEditor(tester, harness);
+
+    await _enter(tester, const ValueKey('exercise-name'), 'Testübung');
+    await _enter(tester, const ValueKey('exercise-bodyweight'), 'abc');
+    await _save(tester);
+    expect(find.text('Bitte eine Zahl eingeben.'), findsOneWidget);
+
+    await _enter(tester, const ValueKey('exercise-bodyweight'), '150');
+    await _save(tester);
+    expect(
+      find.text('Der Körpergewichtsfaktor muss zwischen 0 und 100 % liegen.'),
+      findsOneWidget,
+    );
+
+    await _enter(tester, const ValueKey('exercise-bodyweight'), '');
+    await _enter(tester, const ValueKey('exercise-weight-factor'), '0');
+    await _save(tester);
+    expect(
+      find.text(
+        'Der Zusatzgewichtsfaktor muss größer 0 und höchstens 10 sein.',
+      ),
+      findsOneWidget,
+    );
+
+    await _enter(tester, const ValueKey('exercise-weight-factor'), '11');
+    await _save(tester);
+    expect(
+      find.text(
+        'Der Zusatzgewichtsfaktor muss größer 0 und höchstens 10 sein.',
+      ),
+      findsOneWidget,
+    );
+
+    await _enter(tester, const ValueKey('exercise-weight-factor'), '2,5');
+    await _enter(tester, const ValueKey('exercise-name'), '');
+    await _save(tester);
+    expect(
+      find.text('Der Name muss zwischen 1 und 160 Zeichen lang sein.'),
+      findsOneWidget,
+    );
+
+    final all = await tester.runAsync(harness.repository.readExercises);
+    expect(all!.where((item) => !item.isBase), isEmpty);
+  });
+
+  testWidgets('Archivieren verbirgt die Übung, Historie behält den Namen', (
+    tester,
+  ) async {
+    final harness = await _harness(tester);
+    final exercise = await tester.runAsync(() async {
+      final own = await seedOwnExercise(harness, name: 'Schrägbank Flys');
+      await seedFinishedWorkout(
+        harness,
+        exerciseId: own.id,
+        exerciseName: own.name,
+      );
+      return own;
+    });
+    await _openEditor(tester, harness, exercise: exercise);
+
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('exercise-archive')),
+      find.byType(CustomScrollView),
+      const Offset(0, -200),
+    );
+    await tester.tap(find.byKey(const ValueKey('exercise-archive')));
+    await settle(tester);
+    expect(find.text('Übung archivieren?'), findsOneWidget);
+    await tester.tap(find.text('Archivieren').last);
+    await settle(tester);
+
+    final state = await tester.runAsync(() async {
+      final active = await harness.repository.readExercises();
+      final everything = await harness.repository.readExercises(
+        includeArchived: true,
+      );
+      final diary = await harness.repository.readDiary();
+      return (active, everything, diary);
+    });
+    final (active, everything, diary) = state!;
+    expect(active.any((item) => item.id == exercise!.id), isFalse);
+    expect(
+      everything.singleWhere((item) => item.id == exercise!.id).isArchived,
+      isTrue,
+    );
+    final block = diary.single.exercises.single;
+    expect(block.exerciseNameSnapshot, 'Schrägbank Flys');
+    expect(block.sourceExerciseId, exercise!.id);
+  });
+}

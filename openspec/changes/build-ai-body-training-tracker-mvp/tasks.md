@@ -121,7 +121,7 @@
 - [x] 12.3 Ergänze Grenz-, Fuzz- und Parallelitätstests für Freitext-/Requestlimits, Dezimalwerte, kanonische Mutationshashes, doppelte Tagesdaten, Versionskonflikte und unteilbare Workout-Abschlüsse.
 - [x] 12.4 Prüfe automatisiert Logs, Traces, Buildartefakte, Images und Compose-Ausgabe auf Test-Fitnessdaten, Prompts, Antworten, Zugangsdaten und Secrets und lasse gefundene Inhalte den Build brechen.
 - [x] 12.5 Führe reproduzierbare Lizenz- und Abhängigkeitsrichtlinienprüfungen aus, dokumentiere akzeptierte Lizenzbefunde und verhindere, dass nicht freigegebene Übungsmedien oder RAG-/pgvector-Abhängigkeiten in das MVP gelangen. Automatisierte CVE-Scans sind für dieses private MVP ausdrücklich kein Release-Gate.
-- [ ] 12.6 Automatisiere die vollständige Zwei-Nutzer-Journey von Einladung über Offline-Check-in, Planung, Workout, Timer, Sync, Dashboard und Coach mit simulierten Fehlern, bevor eine Produktionsfreigabe möglich ist.
+- [ ] 12.6 Automatisiere die vollständige Zwei-Nutzer-Journey von Einladung über Offline-Check-in, Planung, Workout, Timer (Trainingsteil gemäß `rebuild-training-logging`), Sync, Dashboard und Coach mit simulierten Fehlern, bevor eine Produktionsfreigabe möglich ist.
 
 ## 13. Container, Linux-VPS und Betrieb
 

@@ -12,6 +12,8 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class SyncPersistenceTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly int[] ExpectedPositions = [0, 1];
     private static PostgreSqlTestFixture? fixture;
@@ -86,11 +88,11 @@ public sealed class SyncPersistenceTests
                 ResourceVersion = 2,
                 SnapshotJson = "{\"version\":2}",
             });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.CancellationToken);
 
         context.ChangeTracker.Clear();
-        ChangeBatch stored = await context.ChangeBatches.SingleAsync();
-        List<ChangeItem> items = await context.ChangeItems.OrderBy(item => item.Position).ToListAsync();
+        ChangeBatch stored = await context.ChangeBatches.SingleAsync(TestContext.CancellationToken);
+        List<ChangeItem> items = await context.ChangeItems.OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
         Assert.AreEqual(1, stored.Revision);
         CollectionAssert.AreEqual(ExpectedPositions, items.Select(item => item.Position).ToArray());
         Assert.IsTrue(items.All(item => item.BatchId == stored.Id));
@@ -104,7 +106,7 @@ public sealed class SyncPersistenceTests
         await InsertReceiptAsync(connectionString, firstUser, mutationId, revision: 1);
         await InsertReceiptAsync(connectionString, secondUser, mutationId, revision: 1);
         await using AppDbContext duplicate = Fixture.CreateContext(connectionString, firstUser);
-        SyncClient client = await duplicate.SyncClients.SingleAsync();
+        SyncClient client = await duplicate.SyncClients.SingleAsync(TestContext.CancellationToken);
         duplicate.ProcessedMutations.Add(new ProcessedMutation
         {
             MutationId = mutationId,
@@ -115,7 +117,7 @@ public sealed class SyncPersistenceTests
             Revision = 2,
             AppliedAtUtc = DateTime.UtcNow,
         });
-        await Assert.ThrowsAsync<DbUpdateException>(() => duplicate.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => duplicate.SaveChangesAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -135,7 +137,7 @@ public sealed class SyncPersistenceTests
             Revision = 1,
             AppliedAtUtc = DateTime.UtcNow,
         });
-        await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync(TestContext.CancellationToken));
 
         invalid.ChangeTracker.Clear();
         Guid batchId = Guid.NewGuid();
@@ -151,7 +153,7 @@ public sealed class SyncPersistenceTests
             IsTombstone = true,
             SnapshotJson = "{\"must\":\"be-null\"}",
         });
-        await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -169,7 +171,7 @@ public sealed class SyncPersistenceTests
             var user = new UserContext(userId);
             var processor = new SyncMutationProcessor(
                 firstContext, user, new SyncMutationExecutor(firstContext, user, TimeProvider.System), TimeProvider.System);
-            ProcessedSyncMutationResult applied = await processor.ProcessAsync(command);
+            ProcessedSyncMutationResult applied = await processor.ProcessAsync(command, TestContext.CancellationToken);
             Assert.IsFalse(applied.Replayed);
             Assert.AreEqual(1, applied.Revision);
             Assert.HasCount(1, applied.Changes);
@@ -179,24 +181,24 @@ public sealed class SyncPersistenceTests
             var user = new UserContext(userId);
             var processor = new SyncMutationProcessor(
                 replayContext, user, new SyncMutationExecutor(replayContext, user, TimeProvider.System), TimeProvider.System);
-            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(command);
+            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(command, TestContext.CancellationToken);
             Assert.IsTrue(replayed.Replayed);
             Assert.AreEqual(1, replayed.Revision);
-            Assert.AreEqual(1, await replayContext.DailyCheckIns.CountAsync());
-            Assert.AreEqual(1, await replayContext.ProcessedMutations.CountAsync());
-            Assert.AreEqual(1, await replayContext.ChangeBatches.CountAsync());
-            Assert.AreEqual(1, (await replayContext.UserSyncStates.SingleAsync()).CurrentRevision);
+            Assert.AreEqual(1, await replayContext.DailyCheckIns.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(1, await replayContext.ProcessedMutations.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(1, await replayContext.ChangeBatches.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(1, (await replayContext.UserSyncStates.SingleAsync(TestContext.CancellationToken)).CurrentRevision);
 
             ProcessSyncMutationCommand changed = CreateCheckInCommand(mutationId, clientId, checkInId, 90m);
             SyncMutationConflictException conflict = await Assert.ThrowsAsync<SyncMutationConflictException>(
-                () => processor.ProcessAsync(changed));
+                () => processor.ProcessAsync(changed, TestContext.CancellationToken));
             Assert.AreEqual("mutation_id_reused", conflict.Code);
-            Assert.AreEqual(82.5m, (await replayContext.DailyCheckIns.SingleAsync()).WeightKg);
+            Assert.AreEqual(82.5m, (await replayContext.DailyCheckIns.SingleAsync(TestContext.CancellationToken)).WeightKg);
         }
     }
 
     [TestMethod]
-    public async Task OfflineWorkoutCompletionReplaysAfterLostAcknowledgementAndRejectsChangedRetryAndForeignId()
+    public async Task OfflineWorkoutEndReplaysAfterLostAcknowledgementAndRejectsChangedRetryAndForeignId()
     {
         (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
         Guid firstClient = Guid.NewGuid();
@@ -204,104 +206,36 @@ public sealed class SyncPersistenceTests
         await RegisterActiveClientAsync(connectionString, firstUser, firstClient);
         await RegisterActiveClientAsync(connectionString, secondUser, secondClient);
 
-        Guid exerciseId = Guid.NewGuid();
-        Guid templateId = Guid.NewGuid();
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, firstUser))
+        Guid exerciseId;
+        await using (AppDbContext catalog = Fixture.CreateContext(connectionString, firstUser))
         {
-            seed.Exercises.Add(new Exercise
-            {
-                Id = exerciseId,
-                OwnerUserId = firstUser,
-                Name = "Bench press",
-                TargetMuscle = "Chest",
-                MuscleGroup = "Chest",
-                Equipment = "Barbell",
-                CatalogVersion = null,
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow,
-                Version = 1,
-            });
-            seed.WorkoutTemplates.Add(new WorkoutTemplate
-            {
-                Id = templateId,
-                Name = "Push",
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow,
-                Version = 1,
-            });
-            seed.WorkoutTemplateItems.Add(new WorkoutTemplateItem
-            {
-                Id = Guid.NewGuid(),
-                TemplateId = templateId,
-                ExerciseId = exerciseId,
-                Position = 0,
-                PlannedSets = 1,
-                MinimumRepetitions = 6,
-                MaximumRepetitions = 10,
-            });
-            await seed.SaveChangesAsync();
+            exerciseId = await catalog.Exercises.Where(item => item.OwnerUserId == null)
+                .Select(item => item.Id).FirstAsync(TestContext.CancellationToken);
         }
 
         Guid workoutId = Guid.NewGuid();
-        Guid startMutationId = Guid.NewGuid();
-        Guid editMutationId = Guid.NewGuid();
-        Guid completeMutationId = Guid.NewGuid();
-        ProcessSyncMutationCommand start = Command(
-            startMutationId, firstClient, 1, "startWorkout", "Workout", workoutId, 0,
-            new { workoutId, templateId });
+        Guid createMutationId = Guid.NewGuid();
+        Guid endMutationId = Guid.NewGuid();
+        DateTime started = new(2026, 8, 18, 17, 0, 0, DateTimeKind.Utc);
         Guid workoutExerciseId = Guid.NewGuid();
         Guid setId = Guid.NewGuid();
-        ProcessSyncMutationCommand edit = Command(
-            editMutationId, firstClient, 2, "editWorkout", "Workout", workoutId, 1,
-            new
-            {
-                workoutId,
-                baseVersion = 1,
-                exercises = new[]
-                {
-                    new
-                    {
-                        workoutExerciseId,
-                        sourceExerciseId = exerciseId,
-                        exerciseNameSnapshot = "untrusted client name",
-                        plannedSets = 1,
-                        minimumRepetitions = 6,
-                        maximumRepetitions = 10,
-                        targetRir = (decimal?)2,
-                        restSeconds = (int?)120,
-                        notes = (string?)null,
-                        sets = new[]
-                        {
-                            new
-                            {
-                                setId,
-                                weightKg = (decimal?)100,
-                                repetitions = (int?)8,
-                                rir = (decimal?)2,
-                                notes = (string?)null,
-                                isCompleted = true,
-                                completedAtUtc = (DateTime?)null,
-                            },
-                        },
-                    },
-                },
-            },
-            startMutationId);
-        ProcessSyncMutationCommand complete = Command(
-            completeMutationId, firstClient, 3, "completeWorkout", "Workout", workoutId, 2,
-            new { workoutId, baseVersion = 2, rotationId = (Guid?)null, rotationBaseVersion = (long?)null },
-            editMutationId);
+        ProcessSyncMutationCommand create = Command(
+            createMutationId, firstClient, 1, "createWorkout", "Workout", workoutId, 0,
+            new { workout = WorkoutPayload(workoutId, started, null, exerciseId, workoutExerciseId, setId, 100, 8) });
+        ProcessSyncMutationCommand end = Command(
+            endMutationId, firstClient, 2, "saveWorkout", "Workout", workoutId, 1,
+            new { baseVersion = 1, workout = WorkoutPayload(workoutId, started, started.AddMinutes(45), exerciseId, workoutExerciseId, setId, 100, 8) },
+            createMutationId);
 
         await using (AppDbContext apply = Fixture.CreateContext(connectionString, firstUser))
         {
             var user = new UserContext(firstUser);
             var processor = new SyncMutationProcessor(
                 apply, user, new SyncMutationExecutor(apply, user, TimeProvider.System), TimeProvider.System);
-            await processor.ProcessAsync(start);
-            await processor.ProcessAsync(edit);
-            ProcessedSyncMutationResult applied = await processor.ProcessAsync(complete);
+            await processor.ProcessAsync(create, TestContext.CancellationToken);
+            ProcessedSyncMutationResult applied = await processor.ProcessAsync(end, TestContext.CancellationToken);
             Assert.IsFalse(applied.Replayed);
-            Assert.AreEqual(3, applied.Revision);
+            Assert.AreEqual(2, applied.Revision);
         }
 
         await using (AppDbContext retry = Fixture.CreateContext(connectionString, firstUser))
@@ -309,18 +243,18 @@ public sealed class SyncPersistenceTests
             var user = new UserContext(firstUser);
             var processor = new SyncMutationProcessor(
                 retry, user, new SyncMutationExecutor(retry, user, TimeProvider.System), TimeProvider.System);
-            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(complete);
+            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(end, TestContext.CancellationToken);
             Assert.IsTrue(replayed.Replayed);
-            Assert.AreEqual(3, replayed.Revision);
-            Assert.AreEqual(WorkoutStatus.Completed, (await retry.Workouts.SingleAsync()).Status);
-            Assert.AreEqual(3, await retry.ProcessedMutations.CountAsync());
+            Assert.AreEqual(2, replayed.Revision);
+            Assert.IsNotNull((await retry.Workouts.SingleAsync(TestContext.CancellationToken)).EndedAtUtc);
+            Assert.AreEqual(2, await retry.ProcessedMutations.CountAsync(TestContext.CancellationToken));
 
             ProcessSyncMutationCommand changedRetry = Command(
-                completeMutationId, firstClient, 3, "completeWorkout", "Workout", workoutId, 1,
-                new { workoutId, baseVersion = 1, rotationId = (Guid?)null, rotationBaseVersion = (long?)null },
-                editMutationId);
+                endMutationId, firstClient, 2, "saveWorkout", "Workout", workoutId, 1,
+                new { baseVersion = 1, workout = WorkoutPayload(workoutId, started, null, exerciseId, workoutExerciseId, setId, 100, 8) },
+                createMutationId);
             SyncMutationConflictException changed = await Assert.ThrowsAsync<SyncMutationConflictException>(
-                () => processor.ProcessAsync(changedRetry));
+                () => processor.ProcessAsync(changedRetry, TestContext.CancellationToken));
             Assert.AreEqual("mutation_id_reused", changed.Code);
         }
 
@@ -329,11 +263,11 @@ public sealed class SyncPersistenceTests
             var user = new UserContext(secondUser);
             var processor = new SyncMutationProcessor(
                 foreign, user, new SyncMutationExecutor(foreign, user, TimeProvider.System), TimeProvider.System);
-            ProcessSyncMutationCommand foreignEdit = Command(
-                Guid.NewGuid(), secondClient, 1, "editWorkout", "Workout", workoutId, 3,
-                new { workoutId, baseVersion = 3, exercises = Array.Empty<object>() });
+            ProcessSyncMutationCommand foreignSave = Command(
+                Guid.NewGuid(), secondClient, 1, "saveWorkout", "Workout", workoutId, 2,
+                new { baseVersion = 2, workout = WorkoutPayload(workoutId, started, null, exerciseId, workoutExerciseId, setId, 100, 8) });
             SyncMutationConflictException denied = await Assert.ThrowsAsync<SyncMutationConflictException>(
-                () => processor.ProcessAsync(foreignEdit));
+                () => processor.ProcessAsync(foreignSave, TestContext.CancellationToken));
             Assert.AreEqual("resource_not_found", denied.Code);
         }
     }
@@ -351,7 +285,7 @@ public sealed class SyncPersistenceTests
             context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
         ProcessSyncMutationCommand inactive = CreateCheckInCommand(Guid.NewGuid(), inactiveClient, Guid.NewGuid(), 80m);
         SyncMutationConflictException inactiveError = await Assert.ThrowsAsync<SyncMutationConflictException>(
-            () => processor.ProcessAsync(inactive));
+            () => processor.ProcessAsync(inactive, TestContext.CancellationToken));
         Assert.AreEqual("inactive_client", inactiveError.Code);
 
         ProcessSyncMutationCommand unsupported = new(
@@ -362,13 +296,13 @@ public sealed class SyncPersistenceTests
                 null,
                 JsonDocument.Parse("{}").RootElement.Clone()));
         SyncMutationValidationException invalid = await Assert.ThrowsAsync<SyncMutationValidationException>(
-            () => processor.ProcessAsync(unsupported));
+            () => processor.ProcessAsync(unsupported, TestContext.CancellationToken));
         Assert.AreEqual("unsupported_operation", invalid.Code);
         context.ChangeTracker.Clear();
-        Assert.AreEqual(0, await context.ProcessedMutations.CountAsync());
-        Assert.AreEqual(0, await context.ChangeBatches.CountAsync());
-        Assert.AreEqual(0, await context.DailyCheckIns.CountAsync());
-        Assert.AreEqual(0, (await context.UserSyncStates.SingleAsync()).CurrentRevision);
+        Assert.AreEqual(0, await context.ProcessedMutations.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(0, await context.ChangeBatches.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(0, await context.DailyCheckIns.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(0, (await context.UserSyncStates.SingleAsync(TestContext.CancellationToken)).CurrentRevision);
     }
 
     [TestMethod]
@@ -387,14 +321,14 @@ public sealed class SyncPersistenceTests
 
         await using AppDbContext firstContext = Fixture.CreateContext(connectionString, firstUser);
         var feed = new SyncChangeFeed(firstContext);
-        SyncChangeFeedPage firstPage = await feed.GetAsync(0, 1);
+        SyncChangeFeedPage firstPage = await feed.GetAsync(0, 1, TestContext.CancellationToken);
         Assert.AreEqual(1, firstPage.NextCursor);
         Assert.IsTrue(firstPage.HasMore);
         Assert.HasCount(1, firstPage.Batches);
         Assert.HasCount(2, firstPage.Batches[0].Changes);
         Assert.AreEqual(firstResource, firstPage.Batches[0].Changes[0].ResourceId);
 
-        SyncChangeFeedPage secondPage = await feed.GetAsync(firstPage.NextCursor, 1);
+        SyncChangeFeedPage secondPage = await feed.GetAsync(firstPage.NextCursor, 1, TestContext.CancellationToken);
         Assert.AreEqual(2, secondPage.NextCursor);
         Assert.IsFalse(secondPage.HasMore);
         Assert.HasCount(1, secondPage.Batches);
@@ -403,13 +337,13 @@ public sealed class SyncPersistenceTests
         Assert.IsTrue(tombstone.IsTombstone);
         Assert.IsNull(tombstone.Snapshot);
 
-        SyncChangeFeedPage replay = await feed.GetAsync(secondPage.NextCursor, 1);
+        SyncChangeFeedPage replay = await feed.GetAsync(secondPage.NextCursor, 1, TestContext.CancellationToken);
         Assert.AreEqual(2, replay.NextCursor);
         Assert.IsFalse(replay.HasMore);
         Assert.IsEmpty(replay.Batches);
 
         await using AppDbContext secondContext = Fixture.CreateContext(connectionString, secondUser);
-        SyncChangeFeedPage secondUserPage = await new SyncChangeFeed(secondContext).GetAsync(0, 10);
+        SyncChangeFeedPage secondUserPage = await new SyncChangeFeed(secondContext).GetAsync(0, 10, TestContext.CancellationToken);
         Assert.HasCount(1, secondUserPage.Batches);
         Assert.AreEqual("DailyCheckIn", secondUserPage.Batches[0].Changes.Single().ResourceType);
     }
@@ -424,17 +358,17 @@ public sealed class SyncPersistenceTests
         var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
 
         RegisteredSyncClient first = await registry.RegisterAsync(new RegisterSyncClientCommand(
-            firstId, "Phone", 1, false));
+            firstId, "Phone", 2, false), TestContext.CancellationToken);
         RegisteredSyncClient second = await registry.RegisterAsync(new RegisterSyncClientCommand(
-            secondId, "Laptop", 2, false));
+            secondId, "Laptop", 2, false), TestContext.CancellationToken);
         Assert.IsTrue(first.IsActiveWriter);
         Assert.IsFalse(second.IsActiveWriter);
-        Assert.AreEqual(firstId, (await context.UserSyncStates.SingleAsync()).ActiveClientId);
+        Assert.AreEqual(firstId, (await context.UserSyncStates.SingleAsync(TestContext.CancellationToken)).ActiveClientId);
 
         RegisteredSyncClient takeover = await registry.RegisterAsync(new RegisterSyncClientCommand(
-            secondId, "Laptop", 2, true));
+            secondId, "Laptop", 2, true), TestContext.CancellationToken);
         Assert.IsTrue(takeover.IsActiveWriter);
-        UserSyncState state = await context.UserSyncStates.SingleAsync();
+        UserSyncState state = await context.UserSyncStates.SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual(secondId, state.ActiveClientId);
         Assert.AreEqual(2, state.Version);
     }
@@ -446,10 +380,10 @@ public sealed class SyncPersistenceTests
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
         var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
         SyncUpgradeRequiredException error = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(() =>
-            registry.RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Old browser", 0, true)));
+            registry.RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Old browser", 0, true), TestContext.CancellationToken));
         Assert.AreEqual("upgrade_required", error.Code);
-        Assert.AreEqual(0, await context.SyncClients.CountAsync());
-        Assert.AreEqual(0, await context.UserSyncStates.CountAsync());
+        Assert.AreEqual(0, await context.SyncClients.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(0, await context.UserSyncStates.CountAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -466,26 +400,26 @@ public sealed class SyncPersistenceTests
         ProcessSyncMutationCommand blocked = CreateCheckInCommand(
             Guid.NewGuid(), clientId, Guid.NewGuid(), 81m, sequence: 1, dependsOn: Guid.NewGuid());
         SyncMutationConflictException dependencyError = await Assert.ThrowsAsync<SyncMutationConflictException>(
-            () => processor.ProcessAsync(blocked));
+            () => processor.ProcessAsync(blocked, TestContext.CancellationToken));
         Assert.AreEqual("dependency_not_applied", dependencyError.Code);
 
         Guid checkInId = Guid.NewGuid();
         ProcessSyncMutationCommand independent = CreateCheckInCommand(
             Guid.NewGuid(), clientId, checkInId, 82m, sequence: 2);
-        ProcessedSyncMutationResult applied = await processor.ProcessAsync(independent);
+        ProcessedSyncMutationResult applied = await processor.ProcessAsync(independent, TestContext.CancellationToken);
         Assert.AreEqual(1, applied.Revision);
 
         ProcessSyncMutationCommand stale = CorrectCheckInCommand(
             Guid.NewGuid(), clientId, checkInId, 2, 83m, sequence: 3);
         SyncMutationConflictException staleError = await Assert.ThrowsAsync<SyncMutationConflictException>(
-            () => processor.ProcessAsync(stale));
+            () => processor.ProcessAsync(stale, TestContext.CancellationToken));
         Assert.AreEqual("stale_base_version", staleError.Code);
 
         context.ChangeTracker.Clear();
-        Assert.AreEqual(82m, (await context.DailyCheckIns.SingleAsync()).WeightKg);
-        Assert.AreEqual(1, await context.ProcessedMutations.CountAsync());
-        Assert.AreEqual(1, await context.ChangeBatches.CountAsync());
-        Assert.AreEqual(1, (await context.UserSyncStates.SingleAsync()).CurrentRevision);
+        Assert.AreEqual(82m, (await context.DailyCheckIns.SingleAsync(TestContext.CancellationToken)).WeightKg);
+        Assert.AreEqual(1, await context.ProcessedMutations.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(1, await context.ChangeBatches.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(1, (await context.UserSyncStates.SingleAsync(TestContext.CancellationToken)).CurrentRevision);
     }
 
     private static async Task InsertReceiptAsync(string connectionString, Guid userId, Guid mutationId, long revision)
@@ -605,6 +539,50 @@ public sealed class SyncPersistenceTests
                 payload));
     }
 
+    private static object WorkoutPayload(
+        Guid workoutId,
+        DateTime startedAtUtc,
+        DateTime? endedAtUtc,
+        Guid exerciseId,
+        Guid workoutExerciseId,
+        Guid setId,
+        decimal weightKg,
+        int repetitions) => new
+        {
+            workoutId,
+            title = "Push",
+            notes = (string?)null,
+            startedAtUtc,
+            endedAtUtc,
+            previousValueSource = "exercise",
+            sourcePlanId = (Guid?)null,
+            sourceWorkoutId = (Guid?)null,
+            exercises = new[]
+        {
+            new
+            {
+                workoutExerciseId,
+                sourceExerciseId = exerciseId,
+                exerciseNameSnapshot = "Bench press",
+                exerciseTypeSnapshot = "strength",
+                notes = (string?)null,
+                supersetId = (Guid?)null,
+                sets = new[]
+                {
+                    new
+                    {
+                        setId,
+                        setType = "normal",
+                        weightKg = (decimal?)weightKg,
+                        repetitions = (int?)repetitions,
+                        rir = (decimal?)2,
+                        notes = (string?)null,
+                    },
+                },
+            },
+        },
+        };
+
     private static ProcessSyncMutationCommand Command(
         Guid mutationId,
         Guid clientId,
@@ -618,7 +596,7 @@ public sealed class SyncPersistenceTests
         new(
             mutationId,
             new CanonicalMutationContent(
-                2,
+                3,
                 clientId,
                 sequence,
                 operation,
