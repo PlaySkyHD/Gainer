@@ -2303,7 +2303,12 @@
           "equipment",
           "isCustom",
           "catalogVersion",
-          "version"
+          "version",
+          "exerciseType",
+          "notes",
+          "bodyweightFactor",
+          "weightFactor",
+          "categoryIds"
         ],
         "type": "object",
         "properties": {
@@ -2354,6 +2359,40 @@
               "string"
             ],
             "format": "int64"
+          },
+          "exerciseType": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "bodyweightFactor": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "weightFactor": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "categoryIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -2362,7 +2401,8 @@
           "items",
           "offset",
           "limit",
-          "total"
+          "total",
+          "categories"
         ],
         "type": "object",
         "properties": {
@@ -2395,6 +2435,32 @@
               "string"
             ],
             "format": "int32"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExerciseCategoryResponse"
+            }
+          }
+        }
+      },
+      "ExerciseCategoryResponse": {
+        "required": [
+          "id",
+          "name",
+          "isBase"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isBase": {
+            "type": "boolean"
           }
         }
       },

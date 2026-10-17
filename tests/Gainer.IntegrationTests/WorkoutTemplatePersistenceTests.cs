@@ -97,7 +97,7 @@ public sealed class WorkoutTemplatePersistenceTests
         {
             var customHandler = new CustomExerciseMutationHandler(customContext, new User(ownerId), TimeProvider.System);
             await customHandler.CreateAsync(CreateCustomExerciseMutation.Create(
-                Metadata(), customId, new CustomExerciseValues("Owner movement")));
+                Metadata(), customId, new CustomExerciseValues("Owner movement", "strength")));
         }
 
         Guid templateId = Guid.NewGuid();

@@ -22,16 +22,21 @@ public static class ExerciseTypes
     };
 
     /// <summary>Parses a storage value; unknown or empty values are rejected instead of falling back to a default.</summary>
-    public static ExerciseType Parse(string? value)
+    public static ExerciseType Parse(string? value) =>
+        TryParse(value, out ExerciseType type) ? type : throw new UnknownExerciseTypeException(value);
+
+    public static bool TryParse(string? value, out ExerciseType type)
     {
         foreach (ExerciseType candidate in Enum.GetValues<ExerciseType>())
         {
             if (string.Equals(value, ToStorageValue(candidate), StringComparison.OrdinalIgnoreCase))
             {
-                return candidate;
+                type = candidate;
+                return true;
             }
         }
 
-        throw new UnknownExerciseTypeException(value);
+        type = default;
+        return false;
     }
 }

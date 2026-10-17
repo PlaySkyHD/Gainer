@@ -115,7 +115,7 @@ public sealed class ExerciseCatalogPersistenceTests
             CustomExerciseSnapshot created = await handler.CreateAsync(CreateCustomExerciseMutation.Create(
                 Metadata(),
                 exerciseId,
-                new CustomExerciseValues("  My Fly  ", MuscleGroup: "Chest", Equipment: "Cable")));
+                new CustomExerciseValues("  My Fly  ", "strength", MuscleGroup: "Chest", Equipment: "Cable")));
             Assert.AreEqual("My Fly", created.Values.Name);
             Assert.AreEqual(1, created.Version);
         }
@@ -133,7 +133,7 @@ public sealed class ExerciseCatalogPersistenceTests
                     Metadata(),
                     exerciseId,
                     1,
-                    new CustomExerciseValues("Stolen"))));
+                    new CustomExerciseValues("Stolen", "strength"))));
         }
 
         await using (AppDbContext archiveContext = Fixture.CreateContext(connectionString, ownerId))
@@ -170,14 +170,14 @@ public sealed class ExerciseCatalogPersistenceTests
         await using AppDbContext context = Fixture.CreateContext(connectionString, ownerId);
         var handler = new CustomExerciseMutationHandler(context, new TestUserContext(ownerId), TimeProvider.System);
         await Assert.ThrowsAsync<CustomExerciseValidationException>(() => handler.CreateAsync(
-            CreateCustomExerciseMutation.Create(Metadata(), exerciseId, new CustomExerciseValues("  "))));
+            CreateCustomExerciseMutation.Create(Metadata(), exerciseId, new CustomExerciseValues("  ", "strength"))));
         Assert.AreEqual(0, await context.Exercises.CountAsync(item => item.OwnerUserId == ownerId));
 
         CustomExerciseSnapshot created = await handler.CreateAsync(CreateCustomExerciseMutation.Create(
-            Metadata(), exerciseId, new CustomExerciseValues("Original")));
+            Metadata(), exerciseId, new CustomExerciseValues("Original", "strength")));
         await Assert.ThrowsAsync<CustomExerciseConflictException>(() => handler.UpdateAsync(
             UpdateCustomExerciseMutation.Create(
-                Metadata(), exerciseId, created.Version + 1, new CustomExerciseValues("Changed"))));
+                Metadata(), exerciseId, created.Version + 1, new CustomExerciseValues("Changed", "strength"))));
         context.ChangeTracker.Clear();
         Exercise stored = await context.Exercises.SingleAsync(item => item.Id == exerciseId);
         Assert.AreEqual("Original", stored.Name);

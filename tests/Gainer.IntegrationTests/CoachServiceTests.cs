@@ -191,7 +191,7 @@ public sealed class CoachServiceTests
     private sealed class FakeExercises : IExerciseCatalogQueries
     {
         public Task<ExerciseCatalogPage> SearchAsync(ExerciseCatalogFilter filter, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ExerciseCatalogPage([], 0, filter.Limit, 0));
+            Task.FromResult(new ExerciseCatalogPage([], 0, filter.Limit, 0, []));
     }
 
     private sealed class FixedTimeProvider : TimeProvider

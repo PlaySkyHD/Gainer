@@ -68,7 +68,11 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         }
         catch (CustomExerciseValidationException exception)
         {
-            return SyncProblem(StatusCodes.Status422UnprocessableEntity, "validation_failed", exception.Message);
+            return SyncValidationProblem(exception.Message, exception.Errors);
+        }
+        catch (ExerciseCategoryValidationException exception)
+        {
+            return SyncValidationProblem(exception.Message, exception.Errors);
         }
         catch (Exception exception) when (exception is BodyGoalValidationException
                                           or WorkoutTemplateValidationException
@@ -81,6 +85,8 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
                                           or DailyCheckInNotFoundException
                                           or CustomExerciseConflictException
                                           or CustomExerciseNotFoundException
+                                          or ExerciseCategoryConflictException
+                                          or ExerciseCategoryNotFoundException
                                           or BodyGoalConflictException
                                           or WorkoutTemplateConflictException
                                           or WorkoutTemplateNotFoundException
@@ -103,6 +109,13 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         };
         problem.Extensions["code"] = code;
         return StatusCode(status, problem);
+    }
+
+    private ObjectResult SyncValidationProblem(string title, IReadOnlyDictionary<string, string> errors)
+    {
+        ObjectResult result = SyncProblem(StatusCodes.Status422UnprocessableEntity, "validation_failed", title);
+        ((ProblemDetails)result.Value!).Extensions["errors"] = errors;
+        return result;
     }
 
     private static SyncResourceResult ToResponse(ExecutedSyncChange change)

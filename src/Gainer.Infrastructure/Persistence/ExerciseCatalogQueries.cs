@@ -47,23 +47,22 @@ public sealed class ExerciseCatalogQueries(AppDbContext context, IUserContext us
         }
 
         int total = await query.CountAsync(cancellationToken);
-        List<ExerciseCatalogItem> items = await query
+        List<ExerciseCatalogItem> items = await Project(query
             .OrderBy(item => item.Name)
             .ThenBy(item => item.Id)
             .Skip(filter.Offset)
-            .Take(filter.Limit)
-            .Select(item => new ExerciseCatalogItem(
-                item.Id,
-                item.Name,
-                item.Description,
-                item.TargetMuscle,
-                item.MuscleGroup,
-                item.Equipment,
-                item.OwnerUserId != null,
-                item.CatalogVersion,
-                item.Version))
+            .Take(filter.Limit), cancellationToken);
+        List<ExerciseCategoryItem> categories = await context.ExerciseCategories
+            .AsNoTracking()
+            .Where(item => item.OwnerUserId == null || (item.OwnerUserId == userId && !item.IsArchived))
+            .Select(item => new ExerciseCategoryItem(item.Id, item.Name, item.OwnerUserId == null))
             .ToListAsync(cancellationToken);
-        return new ExerciseCatalogPage(items, filter.Offset, filter.Limit, total);
+        return new ExerciseCatalogPage(
+            items,
+            filter.Offset,
+            filter.Limit,
+            total,
+            categories.OrderBy(item => item.IsBase ? 0 : 1).ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase).ToList());
     }
 
     public async Task<ExerciseCatalogItem?> ResolveAsync(
@@ -73,11 +72,17 @@ public sealed class ExerciseCatalogQueries(AppDbContext context, IUserContext us
     {
         Guid userId = userContext.UserId
             ?? throw new InvalidOperationException("An authenticated user is required.");
-        return await context.Exercises
+        List<ExerciseCatalogItem> items = await Project(context.Exercises
             .AsNoTracking()
             .Where(item => item.Id == exerciseId)
             .Where(item => item.OwnerUserId == null || item.OwnerUserId == userId)
-            .Where(item => includeArchived || !item.IsArchived)
+            .Where(item => includeArchived || !item.IsArchived), cancellationToken);
+        return items.SingleOrDefault();
+    }
+
+    private async Task<List<ExerciseCatalogItem>> Project(IQueryable<Exercise> query, CancellationToken cancellationToken)
+    {
+        List<ExerciseCatalogItem> exercises = await query
             .Select(item => new ExerciseCatalogItem(
                 item.Id,
                 item.Name,
@@ -87,8 +92,28 @@ public sealed class ExerciseCatalogQueries(AppDbContext context, IUserContext us
                 item.Equipment,
                 item.OwnerUserId != null,
                 item.CatalogVersion,
-                item.Version))
-            .SingleOrDefaultAsync(cancellationToken);
+                item.Version,
+                item.ExerciseType,
+                item.Notes,
+                item.BodyweightFactor,
+                item.WeightFactor,
+                Array.Empty<Guid>()))
+            .ToListAsync(cancellationToken);
+        if (exercises.Count == 0)
+        {
+            return exercises;
+        }
+        Guid[] exerciseIds = exercises.Select(item => item.Id).ToArray();
+        var categoryIds = (await context.ExerciseCategoryAssignments.AsNoTracking()
+            .Where(item => exerciseIds.Contains(item.ExerciseId))
+            .Select(item => new { item.ExerciseId, item.CategoryId })
+            .ToListAsync(cancellationToken))
+            .GroupBy(item => item.ExerciseId)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.CategoryId).Order().ToArray());
+        return exercises.Select(item => item with
+        {
+            CategoryIds = categoryIds.TryGetValue(item.Id, out Guid[]? ids) ? ids : Array.Empty<Guid>(),
+        }).ToList();
     }
 
     private static void ValidateFilterLength(string? value, string name)
