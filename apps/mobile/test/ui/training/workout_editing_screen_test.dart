@@ -5,6 +5,7 @@ import 'package:gainer_mobile/data/repositories/training/training_log_repository
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
+import 'package:gainer_mobile/ui/features/training/exercise_statistics_screen.dart';
 import 'package:gainer_mobile/ui/features/training/workout_metadata_card.dart';
 import 'package:gainer_mobile/ui/features/training/workout_screen.dart';
 
@@ -582,9 +583,9 @@ void main() {
     await tester.tap(_labelled('Verlauf'));
     await settle(tester);
 
-    expect(find.text('60 kg × 10'), findsOneWidget);
-    expect(find.textContaining('Zug'), findsOneWidget);
-    expect(find.textContaining('Alt'), findsNothing);
+    expect(find.byType(ExerciseStatisticsScreen), findsOneWidget);
+    expect(find.text('Zug'), findsOneWidget);
+    expect(find.text('Alt'), findsNothing);
   });
 
   testWidgets('Startzeit ändern übernimmt die neue Zeit', (tester) async {

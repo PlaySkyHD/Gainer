@@ -5,6 +5,8 @@ import '../../../domain/models/training/training_plan_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'active_workout_controller.dart';
+import 'category_library_screen.dart';
+import 'exercise_library_screen.dart';
 import 'plan_editor_screen.dart';
 import 'plan_rotation_sheet.dart';
 import 'plan_start.dart';
@@ -72,6 +74,44 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
 
   Future<void> _openRotation() async {
     await showPlanRotationSheet(context, viewModel: _viewModel);
+  }
+
+  Future<void> _openExerciseLibrary() async {
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
+        builder: (_) => ExerciseLibraryScreen(repository: widget.repository),
+      ),
+    );
+  }
+
+  Future<void> _openCategoryLibrary() async {
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
+        builder: (_) => CategoryLibraryScreen(repository: widget.repository),
+      ),
+    );
+  }
+
+  Widget _buildCatalogSection() {
+    return GainerGroupedSection(
+      header: 'Katalog',
+      children: [
+        GainerListRow(
+          key: const ValueKey('training-plans-exercises'),
+          title: 'Übungen verwalten',
+          leadingIcon: CupertinoIcons.list_bullet,
+          showChevron: true,
+          onTap: _openExerciseLibrary,
+        ),
+        GainerListRow(
+          key: const ValueKey('training-plans-categories'),
+          title: 'Kategorien verwalten',
+          leadingIcon: CupertinoIcons.tag,
+          showChevron: true,
+          onTap: _openCategoryLibrary,
+        ),
+      ],
+    );
   }
 
   Future<void> _archive(TrainingPlanModel plan) async {
@@ -186,6 +226,8 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
               else
                 _buildList(plans, nextId, colors),
             ],
+            const SizedBox(height: GainerSpacing.l),
+            _buildCatalogSection(),
           ],
         );
       },

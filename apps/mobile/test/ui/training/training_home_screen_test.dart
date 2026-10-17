@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/models/local/local_mutation.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/training_home_screen.dart';
@@ -181,5 +182,100 @@ void main() {
     await tester.tap(find.text('Statistik'));
     await settle(tester);
     expect(find.text('Noch keine Statistik'), findsOneWidget);
+  });
+
+  testWidgets('langes Drücken öffnet das Kontextmenü des Trainings', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => harness.seedWorkout(
+        title: 'Legs 2',
+        start: DateTime(2026, 10, 15, 18).toUtc(),
+        end: DateTime(2026, 10, 15, 19).toUtc(),
+      ),
+    );
+    await pumpHome(tester);
+
+    await tester.longPress(find.text('Legs 2'));
+    await settle(tester);
+
+    expect(find.text('Wiederholen'), findsOneWidget);
+    expect(find.text('Als Trainingsplan speichern'), findsOneWidget);
+    expect(find.text('Löschen'), findsOneWidget);
+  });
+
+  testWidgets('Kontextmenü Wiederholen öffnet das Wiederholen-Sheet', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => harness.seedWorkout(
+        title: 'Legs 2',
+        start: DateTime(2026, 10, 15, 18).toUtc(),
+        end: DateTime(2026, 10, 15, 19).toUtc(),
+      ),
+    );
+    await pumpHome(tester);
+
+    await tester.longPress(find.text('Legs 2'));
+    await settle(tester);
+    await tester.tap(find.text('Wiederholen'));
+    await settle(tester);
+
+    expect(find.text('Training wiederholen'), findsOneWidget);
+    expect(find.text('Wiederholtes Training'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Kontextmenü Löschen fragt nach und speichert genau eine Mutation',
+    (tester) async {
+      await tester.runAsync(
+        () => harness.seedWorkout(
+          title: 'Legs 2',
+          start: DateTime(2026, 10, 15, 18).toUtc(),
+          end: DateTime(2026, 10, 15, 19).toUtc(),
+        ),
+      );
+      await pumpHome(tester);
+      final before = (await tester.runAsync(harness.store.readOutbox))!;
+
+      await tester.longPress(find.text('Legs 2'));
+      await settle(tester);
+      await tester.tap(find.text('Löschen'));
+      await settle(tester);
+      expect(find.text('Legs 2'), findsOneWidget);
+      await tester.tap(_inDialog('Löschen'));
+      await settle(tester);
+
+      expect(find.text('Legs 2'), findsNothing);
+      final after = (await tester.runAsync(harness.store.readOutbox))!;
+      expect(after, hasLength(before.length + 1));
+      expect(after.last.operation, LocalMutationOperation.delete);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Kontextmenü Als Trainingsplan speichern legt einen Plan an', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => harness.seedWorkout(
+        title: 'Legs 2',
+        start: DateTime(2026, 10, 15, 18).toUtc(),
+        end: DateTime(2026, 10, 15, 19).toUtc(),
+        blocks: [strengthBlock('Beinbeuger', 2, id: 'legs')],
+      ),
+    );
+    await pumpHome(tester);
+
+    await tester.longPress(find.text('Legs 2'));
+    await settle(tester);
+    await tester.tap(find.text('Als Trainingsplan speichern'));
+    await settle(tester);
+    expect(find.text('Plan gespeichert'), findsOneWidget);
+    await tester.tap(_inDialog('OK'));
+    await settle(tester);
+
+    final plans = await tester.runAsync(harness.repository.readPlans);
+    expect(plans?.map((plan) => plan.name), ['Legs 2']);
   });
 }

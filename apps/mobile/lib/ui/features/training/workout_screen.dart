@@ -7,10 +7,13 @@ import '../../../domain/models/training/workout_rules.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'active_workout_controller.dart';
+import 'exercise_picker_sheet.dart';
+import 'reorder_blocks_sheet.dart';
 import 'set_row.dart';
 import 'training_format.dart';
 import 'workout_block_card.dart';
 import 'workout_metadata_card.dart';
+import 'workout_summary_screen.dart';
 import 'workout_view_model.dart';
 
 /// Öffnet ein Training als Vollbild-Modal über der Shell.
@@ -50,7 +53,10 @@ class WorkoutScreen extends StatefulWidget {
   State<WorkoutScreen> createState() => _WorkoutScreenState();
 }
 
-enum _WorkoutMenuAction { toggleWeightUnit, toggleRir, delete }
+enum _WorkoutMenuAction { reorder, toggleWeightUnit, toggleRir, delete }
+
+/// Antwort im Fehlwerte-Dialog beim Beenden.
+enum _FinishChoice { previousValues, anyway, continueTraining }
 
 class _WorkoutScreenState extends State<WorkoutScreen> {
   late final WorkoutViewModel _viewModel;
@@ -81,9 +87,75 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
   void _close() => Navigator.of(context).pop();
 
+  /// Fragt bei fehlenden Pflichtwerten nach, beendet dann und zeigt die
+  /// Zusammenfassung. „Training fortsetzen“ öffnet das Training wieder.
   Future<void> _finish() async {
-    final outcome = await _viewModel.requestFinish();
-    if (outcome == WorkoutFinishOutcome.finished && mounted) _close();
+    var applyPreviousValues = false;
+    final missing = _viewModel.missingValueCount;
+    if (missing > 0) {
+      final choice = await showGainerStackedDialog<_FinishChoice>(
+        context: context,
+        title: 'Gewicht oder Wiederholungen fehlen',
+        message:
+            '$missing ${missing == 1 ? 'Satz hat' : 'Sätze haben'} noch keine vollständigen Werte. '
+            'Vorwerte aus einem früheren Training füllen nur leere Felder; eigene Werte bleiben. '
+            'Ohne Vorwert bleibt ein Feld leer.',
+        actions: const [
+          GainerDialogAction(
+            label: 'Ja, Vorwerte verwenden',
+            value: _FinishChoice.previousValues,
+          ),
+          GainerDialogAction(
+            label: 'Trotzdem beenden',
+            value: _FinishChoice.anyway,
+          ),
+          GainerDialogAction(
+            label: 'Weitertrainieren',
+            value: _FinishChoice.continueTraining,
+          ),
+        ],
+      );
+      if (!mounted || choice == null) return;
+      if (choice == _FinishChoice.continueTraining) return;
+      applyPreviousValues = choice == _FinishChoice.previousValues;
+    }
+    final outcome = await _viewModel.requestFinish(
+      applyPreviousValues: applyPreviousValues,
+    );
+    if (outcome != WorkoutFinishOutcome.finished || !mounted) return;
+    final result = await openWorkoutSummary(
+      context,
+      repository: widget.repository,
+      workoutId: widget.workoutId,
+    );
+    if (!mounted) return;
+    if (result == WorkoutSummaryResult.resumed) {
+      await widget.activeWorkout.load();
+      await _viewModel.load();
+    } else {
+      _close();
+    }
+  }
+
+  Future<void> _reorderBlocks(Workout workout) async {
+    final ids = await showReorderBlocksSheet(
+      context,
+      blocks: workout.exercises,
+    );
+    if (ids != null) await _viewModel.arrangeBlocks(ids);
+  }
+
+  /// Öffnet die Übungsauswahl; Supersatz-Auswahl legt die Blöcke verbunden an.
+  Future<void> _addExercise() async {
+    final result = await showExercisePicker(
+      context,
+      repository: widget.repository,
+    );
+    if (result == null || !mounted) return;
+    await _viewModel.addExercises(
+      result.exercises,
+      asSuperset: result.asSuperset,
+    );
   }
 
   void _onEditingChanged(bool focused) {
@@ -129,6 +201,12 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       ],
       groups: [
         [
+          if (workout.exercises.length > 1)
+            GainerSheetAction(
+              label: 'Übungen neu anordnen',
+              icon: CupertinoIcons.arrow_up_arrow_down,
+              value: _WorkoutMenuAction.reorder,
+            ),
           GainerSheetAction(
             label: 'Gewichtseinheit: ${_viewModel.weightUnit.label}',
             icon: CupertinoIcons.arrow_2_squarepath,
@@ -144,6 +222,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     );
     if (!mounted) return;
     switch (choice) {
+      case _WorkoutMenuAction.reorder:
+        await _reorderBlocks(workout);
       case _WorkoutMenuAction.toggleWeightUnit:
         await _viewModel.setWeightUnit(
           _viewModel.weightUnit == WeightUnit.kg
@@ -288,6 +368,32 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           ),
         ),
       ..._blocks(workout),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: CupertinoButton(
+          padding: EdgeInsets.zero,
+          minimumSize: const Size.square(44),
+          onPressed: _addExercise,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                CupertinoIcons.add,
+                size: 18,
+                color: GainerDesign.colorsOf(context).accent,
+              ),
+              const SizedBox(width: GainerSpacing.xxs),
+              Text(
+                'Übung hinzufügen',
+                style: GainerTypography.label.copyWith(
+                  color: GainerDesign.colorsOf(context).accent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     ];
   }
 

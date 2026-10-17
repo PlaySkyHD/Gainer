@@ -59,16 +59,16 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 - [x] 9.1 Training-Tab mit Segment „Tagebuch | Pläne | Statistik“ und Tagebuch nach Monaten mit Datums-Badges und Wischen zum Löschen (D10, Spec `training-screens`) umsetzen; Widget-Test für die Monatsgruppierung und Golden-Test beider Modi.
 - [x] 9.2 Aktives Training als Vollbild-Modal mit Minimieren und kompakter Leiste über der Tableiste in allen Tabs umsetzen; Widget-Tests für Minimieren/Wiederöffnen und Wiederherstellung nach Neustart.
 - [x] 9.3 Übungskarten mit Fußzeilenaktionen und Satzzeilen nach `training-screens` mit Inline-Eingabe (Komma/Punkt, Ziffernblock mit Zubehörleiste zurück/weiter/fertig, Feldfehler), blassen Platzhaltern, Übernahme per Tipp auf die Satznummer, Satztyp-Menü, Duplizieren/Entfernen/Umordnen sowie optionaler RIR-Spalte umsetzen; Widget-Tests decken die Szenarien aus `set-logging` ab.
-- [ ] 9.4 Übungsauswahl mit Suche, Kategorien, zuletzt verwendet und Mehrfachauswahl als Superset sowie Neuordnen-Sheet mit Ziehgriffen und Übung ersetzen umsetzen; Widget-Tests für Suche „kniebeu“, Superset-Hinzufügen und Reihenfolge.
+- [x] 9.4 Übungsauswahl mit Suche, Kategorien, zuletzt verwendet und Mehrfachauswahl als Superset sowie Neuordnen-Sheet mit Ziehgriffen und Übung ersetzen umsetzen; Widget-Tests für Suche „kniebeu“, Superset-Hinzufügen und Reihenfolge.
 - [x] 9.5 Trainingskopf mit Titel, Notiz und Start/Ende (ohne Körpergewicht) sowie Gewichtseinheit kg/lbs umsetzen; Tests für ungültige Endzeit und lbs-Umrechnung.
-- [ ] 9.6 Fehlwerte-Dialog beim Beenden und Trainingszusammenfassung mit Rekordhervorhebung umsetzen; Widget-Tests für „Vorwerte übernehmen“, „Trotzdem beenden“, „Weitertrainieren“ und das 20 kg × 6-Beispiel.
-- [ ] 9.7 Bearbeiten und Löschen historischer Trainings sowie „Training wiederholen“ mit Wahl der Vorwertquelle umsetzen; Widget- und Repository-Tests inklusive Offline-Löschen.
+- [x] 9.6 Fehlwerte-Dialog beim Beenden und Trainingszusammenfassung mit Rekordhervorhebung umsetzen; Widget-Tests für „Vorwerte übernehmen“, „Trotzdem beenden“, „Weitertrainieren“ und das 20 kg × 6-Beispiel.
+- [x] 9.7 Bearbeiten und Löschen historischer Trainings sowie „Training wiederholen“ mit Wahl der Vorwertquelle umsetzen; Widget- und Repository-Tests inklusive Offline-Löschen.
 
 ## 10. Flutter: Pläne, Übungen, Statistik
 
 - [x] 10.1 Planliste mit Rotation und Vorschlag „Nächstes Training“, Planeditor (Aufwärm-/Arbeitssätze, Notiz, Superset, Vorwertquelle) und Planstart umsetzen; Widget-Tests für Standardwerte 0/3, Eintrag ohne Sätze und Planstart W, W, 1, 2, 3.
-- [ ] 10.2 „Als Plan speichern“ mit Rückfrage bei gleichnamigem Plan umsetzen; Test für Überschreiben und Neuanlage.
-- [ ] 10.3 Übungsverwaltung (eigene Übungen, Typ, Kategorien, Faktoren, Archivieren, Typwechsel-Warnung, Zusammenführen) umsetzen; Widget-Tests für die Szenarien aus `exercise-catalog`.
+- [x] 10.2 „Als Plan speichern“ mit Rückfrage bei gleichnamigem Plan umsetzen; Test für Überschreiben und Neuanlage.
+- [x] 10.3 Übungsverwaltung (eigene Übungen, Typ, Kategorien, Faktoren, Archivieren, Typwechsel-Warnung, Zusammenführen) umsetzen; Widget-Tests für die Szenarien aus `exercise-catalog`.
 - [x] 10.4 Statistikbereich mit Übungsliste, Rekorden, Wiederholungsrekorden und Verlauf (1RM, Max. Gewicht, Volumen) sowie Übungsverlauf aus dem Block umsetzen; Widget-Test für Offline-Berechnung.
 
 ## 11. Pausentimer und Live Activity

@@ -9,8 +9,10 @@ import 'package:gainer_mobile/ui/features/training/set_row.dart';
 import 'package:gainer_mobile/ui/features/training/training_home_screen.dart';
 import 'package:gainer_mobile/ui/features/training/workout_metadata_card.dart';
 import 'package:gainer_mobile/ui/features/training/workout_screen.dart';
+import 'package:gainer_mobile/ui/features/training/workout_summary_screen.dart';
 
 import 'training_test_support.dart';
+import 'workout_flow_test_support.dart';
 
 void main() {
   for (final brightness in [Brightness.light, Brightness.dark]) {
@@ -279,6 +281,96 @@ void main() {
         matchesGoldenFile('goldens/compact_training_bar_$name.png'),
       );
     });
+
+    testWidgets('Übungsmenü als Sheet $name', (tester) async {
+      final ctx = await _openPlanningWorkout(tester, brightness);
+      await tester.tap(labelled('Übungsmenü').first);
+      await settle(tester);
+
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(CupertinoApp),
+        matchesGoldenFile('goldens/workout_block_menu_$name.png'),
+      );
+      await ctx.dispose();
+    });
+
+    testWidgets('Neuordnen-Sheet $name', (tester) async {
+      final ctx = await _openPlanningWorkout(tester, brightness);
+      await tester.tap(labelled('Weitere Aktionen'));
+      await settle(tester);
+      await tester.tap(find.text('Übungen neu anordnen'));
+      await settle(tester);
+
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(CupertinoApp),
+        matchesGoldenFile('goldens/workout_reorder_$name.png'),
+      );
+      await ctx.dispose();
+    });
+
+    testWidgets('Fehlwerte-Dialog $name', (tester) async {
+      final ctx = await _openPlanningWorkout(tester, brightness);
+      await tester.tap(find.text('Beenden'));
+      await settle(tester);
+
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(CupertinoApp),
+        matchesGoldenFile('goldens/workout_missing_values_$name.png'),
+      );
+      await ctx.dispose();
+    });
+
+    testWidgets('Zusammenfassung mit neuem Rekord $name', (tester) async {
+      _phoneSize(tester);
+      final harness = await tester.runAsync(TrainingHarness.create);
+      if (harness == null) throw StateError('Harness nicht erstellt.');
+      addTearDown(() => tester.runAsync(harness.dispose));
+      await tester.runAsync(
+        () => harness.seedWorkout(
+          title: 'Beine A',
+          start: DateTime.utc(2026, 10, 10, 8),
+          end: DateTime.utc(2026, 10, 10, 9),
+          blocks: [
+            _squatBlock(
+              const LoggedSet(setId: 'o', weightKg: 125, repetitions: 6),
+            ),
+          ],
+        ),
+      );
+      final workout = await tester.runAsync(
+        () => harness.seedWorkout(
+          title: 'Beine B',
+          start: DateTime.utc(2026, 10, 17, 8),
+          end: DateTime.utc(2026, 10, 17, 9),
+          blocks: [
+            _squatBlock(
+              const LoggedSet(setId: 'n1', weightKg: 130, repetitions: 6),
+              const LoggedSet(setId: 'n2', weightKg: 130, repetitions: 5),
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        trainingTestApp(
+          brightness: brightness,
+          home: WorkoutSummaryScreen(
+            repository: harness.repository,
+            workoutId: workout!.workoutId,
+          ),
+        ),
+      );
+      await settle(tester);
+
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(WorkoutSummaryScreen),
+        matchesGoldenFile('goldens/workout_summary_$name.png'),
+      );
+    });
   }
 }
 
@@ -350,3 +442,49 @@ void _phoneSize(WidgetTester tester) {
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 }
+
+/// Aktives Training wie in den Planungs-Goldens, im Trainingsscreen geöffnet.
+Future<_Opened> _openPlanningWorkout(
+  WidgetTester tester,
+  Brightness brightness,
+) async {
+  _phoneSize(tester);
+  final harness = await tester.runAsync(TrainingHarness.create);
+  if (harness == null) throw StateError('Harness nicht erstellt.');
+  final active = ActiveWorkoutController(harness.repository);
+  final workoutId = await tester.runAsync(
+    () => _seedPlanningWorkout(harness, active),
+  );
+  await tester.pumpWidget(
+    trainingTestApp(
+      brightness: brightness,
+      home: WorkoutScreen(
+        repository: harness.repository,
+        activeWorkout: active,
+        workoutId: workoutId!,
+      ),
+    ),
+  );
+  await settle(tester);
+  return _Opened(harness, active);
+}
+
+class _Opened {
+  _Opened(this.harness, this.active);
+
+  final TrainingHarness harness;
+  final ActiveWorkoutController active;
+
+  Future<void> dispose() async {
+    active.dispose();
+    await harness.dispose();
+  }
+}
+
+WorkoutBlock _squatBlock(LoggedSet first, [LoggedSet? second]) => WorkoutBlock(
+  workoutExerciseId: 'squat',
+  sourceExerciseId: 'squat-source',
+  exerciseNameSnapshot: 'Kniebeuge',
+  exerciseTypeSnapshot: ExerciseKind.strength,
+  sets: [first, ?second],
+);
