@@ -45,6 +45,12 @@ Finder _labelled(String label) => find.byWidgetPredicate(
   (widget) => widget is Semantics && widget.properties.label == label,
 );
 
+/// Simuliert eine sichtbare Zahlentastatur, wie sie das Gerät über die Insets meldet.
+void _showKeyboard(WidgetTester tester) {
+  tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+  addTearDown(tester.view.resetViewInsets);
+}
+
 Finder _compactBar() => find.byKey(const ValueKey('compact-training-bar'));
 
 void main() {
@@ -115,6 +121,7 @@ void main() {
     await startTimer(180);
     await settle(tester);
 
+    _showKeyboard(tester);
     await tester.tap(_field(0));
     await settle(tester);
     await tester.enterText(_field(0), '82,5');
@@ -137,6 +144,63 @@ void main() {
     expect(_hasFocus(tester, 0), isTrue);
     expect(_text(tester, 0), '82,5');
   });
+
+  testWidgets('Timer ohne sichtbare Tastatur: nach Schließen kein Fokus', (
+    tester,
+  ) async {
+    final id = await seedActive(
+      blocks: [strengthBlock('Bankdrücken', 1, id: 'bench')],
+    );
+    await pumpWorkout(tester, id);
+    await startTimer(180);
+    await settle(tester);
+
+    await tester.tap(_field(0));
+    await settle(tester);
+    expect(_hasFocus(tester, 0), isTrue);
+
+    await tester.tap(find.byType(RestTimerBar));
+    await settle(tester);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(RestTimerSheet),
+        matching: _labelled('Timer schließen'),
+      ),
+    );
+    await settle(tester);
+
+    expect(find.byType(RestTimerSheet), findsNothing);
+    expect(_hasFocus(tester, 0), isFalse);
+  });
+
+  testWidgets(
+    'Weiter: das neu fokussierte Satzfeld liegt oberhalb der Leisten',
+    (tester) async {
+      final id = await seedActive(
+        blocks: [strengthBlock('Bankdrücken', 8, id: 'bench')],
+      );
+      await pumpWorkout(tester, id);
+      await startTimer(180);
+      _showKeyboard(tester);
+      await settle(tester);
+
+      await tester.tap(_field(0));
+      await settle(tester);
+      for (var step = 0; step < 9; step++) {
+        await tester.tap(_labelled('Weiter'));
+        await settle(tester);
+      }
+
+      expect(_hasFocus(tester, 9), isTrue);
+      final field = tester.getRect(_field(9));
+      final bars = tester.getRect(find.byType(RestTimerBar));
+      final accessory = tester.getRect(find.byType(GainerNumericAccessoryBar));
+      expect(field.bottom, lessThanOrEqualTo(bars.top));
+      expect(field.bottom, lessThanOrEqualTo(accessory.top));
+      expect(field.top, greaterThanOrEqualTo(0));
+      disposeActive();
+    },
+  );
 
   testWidgets(
     'abgelaufener Timer bleibt bei 00:00, bis der Satz vollständig ist',

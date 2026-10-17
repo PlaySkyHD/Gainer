@@ -131,7 +131,9 @@ private struct GainerWorkoutLiveActivity: Widget {
           }
         }
         DynamicIslandExpandedRegion(.bottom) {
-          GainerMiddleLine(state: context.state, large: false)
+          if GainerPauseReadout.isShown(for: context.state) {
+            GainerPauseReadout(state: context.state, large: false)
+          }
         }
       } compactLeading: {
         GainerAppIconImage(size: 18)
@@ -163,14 +165,24 @@ private struct GainerActivityView: View {
       }
       Spacer(minLength: 0)
       VStack(spacing: 6) {
+        if GainerPauseReadout.isShown(for: state) {
+          GainerPauseReadout(state: state, large: true)
+        }
         if let detail = state.detail {
           Text(detail.exerciseName)
             .font(.title3.weight(.semibold))
             .foregroundStyle(Color("GainerPrimaryText"))
             .multilineTextAlignment(.center)
             .lineLimit(2)
+          Text("Satz \(detail.setIndex) von \(detail.setCount)")
+            .font(.subheadline)
+            .foregroundStyle(Color("GainerSecondaryText"))
+        } else if !GainerPauseReadout.isShown(for: state) {
+          // Ohne Details steht statt der Übung die Trainingszeit groß in der Karte.
+          GainerActivityClock(state: state)
+            .font(.system(size: 44, weight: .bold))
+            .foregroundStyle(Color("GainerPrimaryText"))
         }
-        GainerMiddleLine(state: state, large: true)
       }
       .frame(maxWidth: .infinity)
       Spacer(minLength: 0)
@@ -186,10 +198,15 @@ private struct GainerActivityView: View {
   }
 }
 
-/// Satzzeile, bei laufender Pause der Countdown und nach Ablauf 0:00.
-private struct GainerMiddleLine: View {
+/// Pausenanzeige in Akzentfarbe: Countdown, 0:00 nach Ablauf oder die angehaltene Restzeit.
+/// Ohne Pause gibt es keine Anzeige.
+private struct GainerPauseReadout: View {
   let state: GainerWorkoutActivityAttributes.ContentState
   let large: Bool
+
+  static func isShown(for state: GainerWorkoutActivityAttributes.ContentState) -> Bool {
+    state.expired || state.timerTargetAt != nil || state.pausedRemainingSeconds != nil
+  }
 
   var body: some View {
     if state.expired {
@@ -202,10 +219,12 @@ private struct GainerMiddleLine: View {
       GainerCountdown(targetAt: targetAt)
         .font(large ? .system(size: 44, weight: .bold) : .title3.weight(.bold))
         .foregroundStyle(Color("GainerAccent"))
-    } else if let detail = state.detail {
-      Text("Satz \(detail.setIndex) von \(detail.setCount)")
-        .font(large ? .title3 : .caption)
-        .foregroundStyle(Color("GainerSecondaryText"))
+    } else if let remaining = state.pausedRemainingSeconds {
+      Text(String(format: "%d:%02d", remaining / 60, remaining % 60))
+        .font(large ? .system(size: 44, weight: .bold) : .title3.weight(.bold))
+        .monospacedDigit()
+        .foregroundStyle(Color("GainerAccent"))
+        .accessibilityLabel("Pausenzeit angehalten")
     }
   }
 }

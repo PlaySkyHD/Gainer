@@ -195,6 +195,7 @@ void main() {
   });
 
   test('Umschalten aus auf an sendet das detail sofort', () async {
+    await setDetails(false);
     await startTraining(blocks: [_block('Latzug')]);
     expect(platform.states.last.detail, isNull);
 
@@ -219,6 +220,7 @@ void main() {
   });
 
   test('ohne Detailfreigabe gibt es kein detail', () async {
+    await setDetails(false);
     await startTraining(blocks: [_block('Latzug')]);
 
     expect(platform.states.single.detail, isNull);
@@ -251,6 +253,48 @@ void main() {
     expect(platform.states.last.detail!.setIndex, 2);
     expect(platform.calls.last, 'update');
   });
+
+  test(
+    'Standard zeigt Übung und Satz auch während und nach der Pause',
+    () async {
+      await startTraining(blocks: [_block('Latzug')]);
+      expect(platform.states.last.detail!.exerciseName, 'Latzug');
+
+      await active.restTimer!.start();
+      await _flush();
+      expect(platform.states.last.detail!.setIndex, 1);
+      expect(platform.states.last.timerTargetAtUtc, isNotNull);
+
+      await active.restTimer!.adjust(-180);
+      await _flush();
+      expect(platform.states.last.expired, isTrue);
+      expect(platform.states.last.detail!.exerciseName, 'Latzug');
+    },
+  );
+
+  test(
+    'Satz während laufender Pause aktualisiert Activity mit nächstem Satz',
+    () async {
+      final workout = await startTraining(blocks: [_block('Latzug')]);
+      await active.restTimer!.start();
+      await _flush();
+      final callsBefore = platform.calls.length;
+
+      final block = _block('Latzug', recorded: 1);
+      await harness.repository.saveWorkout(
+        workout.copyWith(exercises: [block]),
+      );
+      await active.load();
+      await _flush();
+
+      expect(platform.calls.length, greaterThan(callsBefore));
+      final state = platform.states.last;
+      expect(state.timerPhase, RestTimerPhase.running);
+      expect(state.timerTargetAtUtc, isNotNull);
+      expect(state.detail!.setIndex, 2);
+      expect(state.detail!.exerciseName, 'Latzug');
+    },
+  );
 
   test('Titeländerung aktualisiert die Activity', () async {
     await setDetails(true);

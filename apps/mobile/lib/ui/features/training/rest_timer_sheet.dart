@@ -15,6 +15,11 @@ Future<void> showRestTimerSheet(
   BuildContext context,
   RestTimerController controller,
 ) {
+  // Ohne sichtbare Tastatur hat kein Feld den Fokus. Flutter stellt ihn sonst
+  // nach dem Schließen wieder her und blendet die Tastatur ungefragt ein.
+  if (View.of(context).viewInsets.bottom <= 0) {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
   return showCupertinoModalPopup<void>(
     context: context,
     builder: (_) => RestTimerSheet(controller: controller),
