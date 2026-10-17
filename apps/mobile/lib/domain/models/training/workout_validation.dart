@@ -37,42 +37,49 @@ void validateWorkout(Workout workout) {
   }
 
   for (var i = 0; i < workout.exercises.length; i++) {
-    final block = workout.exercises[i];
-    final prefix = 'exercises[$i]';
-    _checkName(
-      block.exerciseNameSnapshot,
-      '$prefix.exerciseNameSnapshot',
-      fields,
-    );
-    _checkNotes(block.notes, '$prefix.notes', fields);
-
-    if (block.sets.length > _maxSets) {
-      fields['$prefix.sets'] = 'Eine Übung enthält höchstens $_maxSets Sätze.';
-    }
-    for (var j = 0; j < block.sets.length; j++) {
-      final set = block.sets[j];
-      final setPrefix = '$prefix.sets[$j]';
-      final weight = set.weightKg;
-      if (weight != null &&
-          (weight.isNaN || weight < 0 || weight > maxWeightKg)) {
-        fields['$setPrefix.weightKg'] =
-            'Das Gewicht muss zwischen 0 und ${maxWeightKg.toInt()} kg liegen.';
-      }
-      final repetitions = set.repetitions;
-      if (repetitions != null &&
-          (repetitions < 0 || repetitions > maxRepetitions)) {
-        fields['$setPrefix.repetitions'] =
-            'Wiederholungen müssen zwischen 0 und $maxRepetitions liegen.';
-      }
-      final rir = set.rir;
-      if (rir != null && (rir < 0 || rir > maxRir)) {
-        fields['$setPrefix.rir'] = 'RIR muss zwischen 0 und $maxRir liegen.';
-      }
-      _checkNotes(set.notes, '$setPrefix.notes', fields);
-    }
+    _checkBlock(workout.exercises[i], 'exercises[$i]', fields);
   }
 
   _throwIfAny(fields);
+}
+
+void _checkBlock(
+  WorkoutBlock block,
+  String prefix,
+  Map<String, String> fields,
+) {
+  _checkName(
+    block.exerciseNameSnapshot,
+    '$prefix.exerciseNameSnapshot',
+    fields,
+  );
+  _checkNotes(block.notes, '$prefix.notes', fields);
+
+  if (block.sets.length > _maxSets) {
+    fields['$prefix.sets'] = 'Eine Übung enthält höchstens $_maxSets Sätze.';
+  }
+  for (var j = 0; j < block.sets.length; j++) {
+    _checkSet(block.sets[j], '$prefix.sets[$j]', fields);
+  }
+}
+
+void _checkSet(LoggedSet set, String setPrefix, Map<String, String> fields) {
+  final weight = set.weightKg;
+  if (weight != null && (weight.isNaN || weight < 0 || weight > maxWeightKg)) {
+    fields['$setPrefix.weightKg'] =
+        'Das Gewicht muss zwischen 0 und ${maxWeightKg.toInt()} kg liegen.';
+  }
+  final repetitions = set.repetitions;
+  if (repetitions != null &&
+      (repetitions < 0 || repetitions > maxRepetitions)) {
+    fields['$setPrefix.repetitions'] =
+        'Wiederholungen müssen zwischen 0 und $maxRepetitions liegen.';
+  }
+  final rir = set.rir;
+  if (rir != null && (rir < 0 || rir > maxRir)) {
+    fields['$setPrefix.rir'] = 'RIR muss zwischen 0 und $maxRir liegen.';
+  }
+  _checkNotes(set.notes, '$setPrefix.notes', fields);
 }
 
 /// Prüft einen Plan gegen die Vertragsgrenzen.

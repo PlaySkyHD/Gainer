@@ -63,7 +63,7 @@ class _RestTimerSheetState extends State<RestTimerSheet> {
         return DecoratedBox(
           decoration: BoxDecoration(
             color: colors.background,
-            borderRadius: BorderRadius.vertical(
+            borderRadius: const BorderRadius.vertical(
               top: Radius.circular(GainerRadii.card),
             ),
           ),
@@ -176,11 +176,11 @@ class _RestTimerSheetState extends State<RestTimerSheet> {
   }
 }
 
-int _clampShortcut(int seconds) => seconds < restTimerMinSeconds
-    ? restTimerMinSeconds
-    : seconds > restTimerMaxSeconds
-    ? restTimerMaxSeconds
-    : seconds;
+int _clampShortcut(int seconds) {
+  if (seconds < restTimerMinSeconds) return restTimerMinSeconds;
+  if (seconds > restTimerMaxSeconds) return restTimerMaxSeconds;
+  return seconds;
+}
 
 class _RingCountdown extends StatelessWidget {
   const _RingCountdown({required this.progress, required this.seconds});
@@ -381,7 +381,7 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: BorderRadius.vertical(
+        borderRadius: const BorderRadius.vertical(
           top: Radius.circular(GainerRadii.card),
         ),
       ),

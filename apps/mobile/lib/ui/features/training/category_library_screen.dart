@@ -47,10 +47,6 @@ class _CategoryLibraryScreenState extends State<CategoryLibraryScreen> {
     return ListenableBuilder(
       listenable: _viewModel,
       builder: (context, _) {
-        final loading =
-            _viewModel.isLoading &&
-            _viewModel.baseCategories.isEmpty &&
-            _viewModel.ownCategories.isEmpty;
         return GainerScaffold(
           title: 'Kategorien',
           trailing: [
@@ -60,62 +56,68 @@ class _CategoryLibraryScreenState extends State<CategoryLibraryScreen> {
               onPressed: () => _edit(null),
             ),
           ],
-          children: [
-            if (loading)
-              const Center(child: CupertinoActivityIndicator())
-            else if (_viewModel.errorMessage != null)
-              GainerCard(
-                child: Text(
-                  _viewModel.errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: GainerTypography.body.copyWith(
-                    color: colors.secondaryText,
-                  ),
-                ),
-              )
-            else ...[
-              GainerGroupedSection(
-                header: 'Basis-Kategorien',
-                children: [
-                  for (final category in _viewModel.baseCategories)
-                    GainerListRow(
-                      key: ValueKey('category-row-${category.id}'),
-                      title: category.name,
-                      subtitle: 'Katalog',
-                    ),
-                ],
-              ),
-              const SizedBox(height: GainerSpacing.m),
-              if (_viewModel.ownCategories.isEmpty)
-                GainerCard(
-                  padding: const EdgeInsets.all(GainerSpacing.l),
-                  child: Text(
-                    'Noch keine eigenen Kategorien.',
-                    textAlign: TextAlign.center,
-                    style: GainerTypography.body.copyWith(
-                      color: colors.secondaryText,
-                    ),
-                  ),
-                )
-              else
-                GainerGroupedSection(
-                  header: 'Eigene Kategorien',
-                  children: [
-                    for (final category in _viewModel.ownCategories)
-                      GainerListRow(
-                        key: ValueKey('category-row-${category.id}'),
-                        title: category.name,
-                        showChevron: true,
-                        onTap: () => _edit(category),
-                      ),
-                  ],
-                ),
-            ],
-            const SizedBox(height: GainerSpacing.l),
-          ],
+          children: _sections(colors),
         );
       },
     );
+  }
+
+  List<Widget> _sections(GainerColors colors) {
+    final loading =
+        _viewModel.isLoading &&
+        _viewModel.baseCategories.isEmpty &&
+        _viewModel.ownCategories.isEmpty;
+    return [
+      if (loading)
+        const Center(child: CupertinoActivityIndicator())
+      else if (_viewModel.errorMessage != null)
+        GainerCard(
+          child: Text(
+            _viewModel.errorMessage!,
+            textAlign: TextAlign.center,
+            style: GainerTypography.body.copyWith(color: colors.secondaryText),
+          ),
+        )
+      else ...[
+        GainerGroupedSection(
+          header: 'Basis-Kategorien',
+          children: [
+            for (final category in _viewModel.baseCategories)
+              GainerListRow(
+                key: ValueKey('category-row-${category.id}'),
+                title: category.name,
+                subtitle: 'Katalog',
+              ),
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.m),
+        if (_viewModel.ownCategories.isEmpty)
+          GainerCard(
+            padding: const EdgeInsets.all(GainerSpacing.l),
+            child: Text(
+              'Noch keine eigenen Kategorien.',
+              textAlign: TextAlign.center,
+              style: GainerTypography.body.copyWith(
+                color: colors.secondaryText,
+              ),
+            ),
+          )
+        else
+          GainerGroupedSection(
+            header: 'Eigene Kategorien',
+            children: [
+              for (final category in _viewModel.ownCategories)
+                GainerListRow(
+                  key: ValueKey('category-row-${category.id}'),
+                  title: category.name,
+                  showChevron: true,
+                  onTap: () => _edit(category),
+                ),
+            ],
+          ),
+      ],
+      const SizedBox(height: GainerSpacing.l),
+    ];
   }
 }
 

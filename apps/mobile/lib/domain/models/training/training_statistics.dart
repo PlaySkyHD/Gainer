@@ -373,6 +373,28 @@ TrainingSummary summarizeTraining(
     includeWarmups: includeWarmups,
   );
 
+  return TrainingSummary(
+    workoutId: workout.workoutId,
+    duration: endedAt.difference(workout.startedAtUtc),
+    setCount: stats.fold(0, (sum, stat) => sum + stat.setCount),
+    totalRepetitions: stats.fold(0, (sum, stat) => sum + stat.totalRepetitions),
+    volumeKg: stats.fold<double>(0, (sum, stat) => sum + stat.volumeKg),
+    bestSets: _bestSetsOf(stats),
+    newRecords: _newRecordsOf(workout, stats, records),
+  );
+}
+
+List<BestSet> _bestSetsOf(List<ExerciseStats> stats) => [
+  for (final stat in stats)
+    if (stat.bestSet != null)
+      BestSet(sourceExerciseId: stat.sourceExerciseId, set: stat.bestSet!),
+];
+
+List<NewRecord> _newRecordsOf(
+  Workout workout,
+  List<ExerciseStats> stats,
+  Map<String, ExerciseRecords> records,
+) {
   final newRecords = <NewRecord>[];
   final seen = <String>{};
   for (final stat in stats) {
@@ -393,20 +415,7 @@ TrainingSummary summarizeTraining(
       }
     }
   }
-
-  return TrainingSummary(
-    workoutId: workout.workoutId,
-    duration: endedAt.difference(workout.startedAtUtc),
-    setCount: stats.fold(0, (sum, stat) => sum + stat.setCount),
-    totalRepetitions: stats.fold(0, (sum, stat) => sum + stat.totalRepetitions),
-    volumeKg: stats.fold<double>(0, (sum, stat) => sum + stat.volumeKg),
-    bestSets: [
-      for (final stat in stats)
-        if (stat.bestSet != null)
-          BestSet(sourceExerciseId: stat.sourceExerciseId, set: stat.bestSet!),
-    ],
-    newRecords: newRecords,
-  );
+  return newRecords;
 }
 
 /// Zähler „n. Training · m. diese Woche“. Woche = Montag bis Sonntag, lokal.
@@ -468,7 +477,6 @@ class ExerciseWorkoutTotals {
 }
 
 ExerciseRecords _recordsFor(List<ExerciseWorkoutTotals> entries) {
-  final sets = [for (final entry in entries) ...entry.sets];
   return ExerciseRecords(
     maxWeight: _strictRecords([
       for (final entry in entries)
@@ -480,28 +488,36 @@ ExerciseRecords _recordsFor(List<ExerciseWorkoutTotals> entries) {
         if (entry.estimatedOneRepMaxKg case final value?)
           RecordEvent(workoutId: entry.workoutId, value: value),
     ]),
-    volume: _strictRecords([
+    volume: _volumeRecords(entries),
+    maxRepetitions: _maxRepetitionRecords(entries),
+    repRecords: _repRecordsOf([for (final entry in entries) ...entry.sets]),
+  );
+}
+
+List<RecordEvent> _volumeRecords(List<ExerciseWorkoutTotals> entries) =>
+    _strictRecords([
       for (final entry in entries)
         if (entry.setCount > 0)
           RecordEvent(workoutId: entry.workoutId, value: entry.volumeKg),
-    ]),
-    maxRepetitions: _strictRecords([
+    ]);
+
+List<RecordEvent> _maxRepetitionRecords(List<ExerciseWorkoutTotals> entries) =>
+    _strictRecords([
       for (final entry in entries)
         if (entry.setCount > 0)
           RecordEvent(
             workoutId: entry.workoutId,
             value: entry.maxRepetitions.toDouble(),
           ),
+    ]);
+
+Map<int, double?> _repRecordsOf(List<SetResult> sets) => {
+  for (final threshold in repetitionRecordThresholds)
+    threshold: _maxOrNull([
+      for (final set in sets)
+        if (set.repetitions >= threshold) set.effectiveWeightKg,
     ]),
-    repRecords: {
-      for (final threshold in repetitionRecordThresholds)
-        threshold: _maxOrNull([
-          for (final set in sets)
-            if (set.repetitions >= threshold) set.effectiveWeightKg,
-        ]),
-    },
-  );
-}
+};
 
 /// Ein Wert ist nur dann ein Rekord, wenn er den bisherigen Bestwert strikt übertrifft.
 List<RecordEvent> _strictRecords(List<RecordEvent> chronological) {

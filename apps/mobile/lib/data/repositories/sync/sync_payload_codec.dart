@@ -40,50 +40,75 @@ class SyncPayloadCodec {
       case _bodyGoalType:
         return 'activateBodyGoal';
       case _dailyCheckInType:
-        return mutation.operation == LocalMutationOperation.create
-            ? 'createDailyCheckIn'
-            : 'correctDailyCheckIn';
+        return _dailyCheckInOperation(mutation);
       case _customExerciseType:
         return _customExerciseOperation(mutation, body);
       case _exerciseCategoryType:
-        return switch (mutation.operation) {
-          LocalMutationOperation.create => 'createExerciseCategory',
-          _ =>
-            body['isArchived'] == true
-                ? 'archiveExerciseCategory'
-                : 'updateExerciseCategory',
-        };
+        return _exerciseCategoryOperation(mutation, body);
       case _trainingPlanType:
-        return switch (mutation.operation) {
-          LocalMutationOperation.create => 'createTrainingPlan',
-          LocalMutationOperation.reorder => 'reorderTrainingPlans',
-          _ =>
-            body['isArchived'] == true
-                ? 'archiveTrainingPlan'
-                : 'updateTrainingPlan',
-        };
+        return _trainingPlanOperation(mutation, body);
       case _workoutRotationType:
         return 'saveWorkoutRotation';
       case _workoutType:
-        return switch (mutation.operation) {
-          LocalMutationOperation.create => 'createWorkout',
-          LocalMutationOperation.delete => 'deleteWorkout',
-          _ => 'saveWorkout',
-        };
+        return _workoutOperation(mutation);
       case _nutritionDayType:
-        return mutation.operation == LocalMutationOperation.delete
-            ? 'deleteNutritionDay'
-            : 'saveNutritionDay';
+        return _nutritionDayOperation(mutation);
       case _reusableMealType:
-        return body['status'] == 'Archived'
-            ? 'archiveReusableMeal'
-            : 'saveReusableMeal';
+        return _reusableMealOperation(body);
       case _nutritionTargetScheduleType:
         return 'saveNutritionTargetSchedule';
       default:
         throw ArgumentError.value(mutation.aggregateType, 'aggregateType');
     }
   }
+
+  static String _dailyCheckInOperation(LocalMutation mutation) =>
+      mutation.operation == LocalMutationOperation.create
+      ? 'createDailyCheckIn'
+      : 'correctDailyCheckIn';
+
+  static String _exerciseCategoryOperation(
+    LocalMutation mutation,
+    Map<String, dynamic> body,
+  ) {
+    return switch (mutation.operation) {
+      LocalMutationOperation.create => 'createExerciseCategory',
+      _ =>
+        body['isArchived'] == true
+            ? 'archiveExerciseCategory'
+            : 'updateExerciseCategory',
+    };
+  }
+
+  static String _trainingPlanOperation(
+    LocalMutation mutation,
+    Map<String, dynamic> body,
+  ) {
+    return switch (mutation.operation) {
+      LocalMutationOperation.create => 'createTrainingPlan',
+      LocalMutationOperation.reorder => 'reorderTrainingPlans',
+      _ =>
+        body['isArchived'] == true
+            ? 'archiveTrainingPlan'
+            : 'updateTrainingPlan',
+    };
+  }
+
+  static String _workoutOperation(LocalMutation mutation) {
+    return switch (mutation.operation) {
+      LocalMutationOperation.create => 'createWorkout',
+      LocalMutationOperation.delete => 'deleteWorkout',
+      _ => 'saveWorkout',
+    };
+  }
+
+  static String _nutritionDayOperation(LocalMutation mutation) =>
+      mutation.operation == LocalMutationOperation.delete
+      ? 'deleteNutritionDay'
+      : 'saveNutritionDay';
+
+  static String _reusableMealOperation(Map<String, dynamic> body) =>
+      body['status'] == 'Archived' ? 'archiveReusableMeal' : 'saveReusableMeal';
 
   static String _customExerciseOperation(
     LocalMutation mutation,
@@ -474,32 +499,12 @@ class SyncPayloadCodec {
     if (snapshotValue is! Map<String, dynamic>) return snapshotValue;
     final snapshot = Map<String, dynamic>.from(snapshotValue);
     if (resourceType == 'ExerciseCategory') {
-      return {
-        'id': snapshot['categoryId'],
-        'name': snapshot['name'],
-        'isBase': false,
-        'isArchived': snapshot['isArchived'] ?? false,
-        'createdAtUtc': snapshot['createdAtUtc'],
-        'updatedAtUtc': snapshot['updatedAtUtc'],
-      };
+      return _normalizedCategorySnapshot(snapshot);
     }
     if (resourceType == 'DailyCheckIn' || resourceType == 'CustomExercise') {
       final values = snapshot['values'];
       if (values is Map<String, dynamic>) {
-        return {
-          ...values,
-          if (resourceType == 'CustomExercise') ...{
-            'id': snapshot['exerciseId'],
-            'isBase': false,
-          },
-          for (final key in [
-            'localDate',
-            'isArchived',
-            'createdAtUtc',
-            'updatedAtUtc',
-          ])
-            if (snapshot.containsKey(key)) key: snapshot[key],
-        };
+        return _normalizedValuesSnapshot(resourceType, snapshot, values);
       }
     }
     for (final key in [
@@ -513,4 +518,34 @@ class SyncPayloadCodec {
     }
     return snapshot;
   }
+
+  static Map<String, Object?> _normalizedCategorySnapshot(
+    Map<String, dynamic> snapshot,
+  ) => {
+    'id': snapshot['categoryId'],
+    'name': snapshot['name'],
+    'isBase': false,
+    'isArchived': snapshot['isArchived'] ?? false,
+    'createdAtUtc': snapshot['createdAtUtc'],
+    'updatedAtUtc': snapshot['updatedAtUtc'],
+  };
+
+  static Map<String, Object?> _normalizedValuesSnapshot(
+    String resourceType,
+    Map<String, dynamic> snapshot,
+    Map<String, dynamic> values,
+  ) => {
+    ...values,
+    if (resourceType == 'CustomExercise') ...{
+      'id': snapshot['exerciseId'],
+      'isBase': false,
+    },
+    for (final key in [
+      'localDate',
+      'isArchived',
+      'createdAtUtc',
+      'updatedAtUtc',
+    ])
+      if (snapshot.containsKey(key)) key: snapshot[key],
+  };
 }

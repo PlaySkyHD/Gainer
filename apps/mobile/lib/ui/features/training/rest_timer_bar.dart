@@ -85,7 +85,7 @@ class _RestTimerBarState extends State<RestTimerBar> {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: colors.surface,
-          borderRadius: BorderRadius.vertical(
+          borderRadius: const BorderRadius.vertical(
             top: Radius.circular(GainerRadii.card),
           ),
         ),

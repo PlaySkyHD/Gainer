@@ -296,7 +296,7 @@ CatalogExercise _exerciseById(List<CatalogExercise> catalog, String id) {
   for (final exercise in catalog) {
     if (exercise.id == id) return exercise;
   }
-  throw WorkoutValidationException({
+  throw const WorkoutValidationException({
     'exerciseId': 'Die Übung ist nicht im Katalog vorhanden.',
   });
 }

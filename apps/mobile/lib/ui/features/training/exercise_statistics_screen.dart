@@ -31,6 +31,8 @@ Future<void> openExerciseStatistics(
   );
 }
 
+const _maxWeightLabel = 'Max. Gewicht';
+
 class ExerciseStatisticsScreen extends StatefulWidget {
   const ExerciseStatisticsScreen({
     required this.repository,
@@ -133,7 +135,7 @@ class _ExerciseStatisticsScreenState extends State<ExerciseStatisticsScreen> {
     }
     return [
       if (model.bodyweightMissing) ...[
-        GainerCard(child: const BodyweightMissingHint()),
+        const GainerCard(child: BodyweightMissingHint()),
         const SizedBox(height: GainerSpacing.s),
       ],
       switch (_tab) {
@@ -259,7 +261,7 @@ class _ChartBody extends StatelessWidget {
 
   static const _metricLabels = <ChartMetric, String>{
     ChartMetric.estimatedOneRepMax: '1RM',
-    ChartMetric.maxWeight: 'Max. Gewicht',
+    ChartMetric.maxWeight: _maxWeightLabel,
     ChartMetric.volume: 'Volumen',
   };
 
@@ -377,7 +379,7 @@ class _RecordsBody extends StatelessWidget {
   final ExerciseStatisticsViewModel model;
 
   static const _kindLabels = <RecordKind, String>{
-    RecordKind.maxWeight: 'Max. Gewicht',
+    RecordKind.maxWeight: _maxWeightLabel,
     RecordKind.estimatedOneRepMax: 'Geschätztes 1RM',
     RecordKind.volume: 'Volumen',
     RecordKind.maxRepetitions: 'Max. Wdh.',
@@ -586,6 +588,20 @@ class _TrendChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (points.isEmpty || size.isEmpty) return;
+    final offsets = _offsetsFor(size);
+    _paintGrid(canvas, size);
+    final dot = Paint()..color = color;
+    if (offsets.length == 1) {
+      canvas.drawCircle(offsets.single, 4, dot);
+      return;
+    }
+    _paintLine(canvas, offsets);
+    for (final point in offsets) {
+      canvas.drawCircle(point, 4, dot);
+    }
+  }
+
+  List<Offset> _offsetsFor(Size size) {
     const inset = 12.0;
     final values = [for (final point in points) point.value];
     final minValue = values.reduce((a, b) => a < b ? a : b);
@@ -594,7 +610,7 @@ class _TrendChartPainter extends CustomPainter {
     final height = size.height - inset * 2;
     final firstTime = points.first.startedAtUtc.millisecondsSinceEpoch;
     final span = points.last.startedAtUtc.millisecondsSinceEpoch - firstTime;
-    final offsets = <Offset>[
+    return <Offset>[
       for (final point in points)
         Offset(
           span == 0
@@ -606,6 +622,9 @@ class _TrendChartPainter extends CustomPainter {
               height * (range == 0 ? .5 : 1 - (point.value - minValue) / range),
         ),
     ];
+  }
+
+  void _paintGrid(Canvas canvas, Size size) {
     final grid = Paint()
       ..color = labelColor.withValues(alpha: .16)
       ..strokeWidth = 1;
@@ -613,11 +632,9 @@ class _TrendChartPainter extends CustomPainter {
       final y = size.height * fraction;
       canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
     }
-    final dot = Paint()..color = color;
-    if (offsets.length == 1) {
-      canvas.drawCircle(offsets.single, 4, dot);
-      return;
-    }
+  }
+
+  void _paintLine(Canvas canvas, List<Offset> offsets) {
     final line = Paint()
       ..color = color
       ..strokeWidth = 3
@@ -629,9 +646,6 @@ class _TrendChartPainter extends CustomPainter {
       path.lineTo(point.dx, point.dy);
     }
     canvas.drawPath(path, line);
-    for (final point in offsets) {
-      canvas.drawCircle(point, 4, dot);
-    }
   }
 
   @override
@@ -644,7 +658,7 @@ class _TrendChartPainter extends CustomPainter {
 String _chartDescription(ChartMetric metric, List<ChartPoint> points) {
   final name = switch (metric) {
     ChartMetric.estimatedOneRepMax => 'Geschätztes 1RM',
-    ChartMetric.maxWeight => 'Max. Gewicht',
+    ChartMetric.maxWeight => _maxWeightLabel,
     ChartMetric.volume => 'Volumen',
   };
   return '$name im Verlauf. ${points.map((point) => '${_formatDate(point.startedAtUtc)}: ${_formatValue(metric, point.value)}').join(', ')}';
