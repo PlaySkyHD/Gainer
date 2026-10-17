@@ -218,8 +218,8 @@ export async function oldestReadyMutationPerAggregate(
 export async function applyChangeBatch(database: AccountDatabase, batch: SyncBatch): Promise<void> {
   const tables = [
     database.syncMeta, database.outbox, database.conflicts, database.tombstones,
-    database.goals, database.checkIns, database.customExercises, database.templates,
-    database.rotation, database.workouts, database.nutritionDays,
+    database.goals, database.checkIns,
+    database.nutritionDays,
     database.reusableMeals, database.nutritionTargetSchedules,
   ] as const;
   await database.transaction("rw", tables, async () => {
@@ -247,16 +247,6 @@ async function applyChange(database: AccountDatabase, batch: SyncBatch, change: 
   const existing = await mapping.table.get(change.resourceId) as LocalResourceRecord | undefined;
   const otherPending = (await database.outbox.where("aggregateKey").equals(aggregateKey).toArray())
     .some((item) => item.mutationId !== batch.originMutationId && item.status !== "clean");
-  if (existing && isImmutableHistory(change.resourceType, existing.envelope.workingCopy) &&
-      !same(existing.envelope.workingCopy, snapshot)) {
-    await database.conflicts.put({
-      conflictId: `history:${change.resourceId}:${batch.revision}`,
-      aggregateKey,
-      createdAtUtc: new Date().toISOString(),
-      detail: { code: "immutable_history", serverSnapshot: snapshot, serverVersion: change.version },
-    });
-    return;
-  }
   const envelope: LocalAggregateEnvelope<unknown> = existing && otherPending
     ? {
         ...existing.envelope,
@@ -349,12 +339,6 @@ function pushRequest(record: OutboxRecord, clientId: string) {
       baseVersion: Number(payload.body.expectedActiveGoalVersion),
     });
   }
-  if (aggregateType === "workout" && payload.operation === "complete") {
-    const rotation = payload.body.rotation as { id?: unknown; serverVersion?: unknown } | null;
-    if (rotation?.id && rotation.serverVersion) {
-      resources.push({ resourceType: "WorkoutRotation", resourceId: String(rotation.id), baseVersion: Number(rotation.serverVersion) });
-    }
-  }
   return {
     protocolVersion: syncProtocolVersion,
     clientId,
@@ -369,18 +353,6 @@ function pushRequest(record: OutboxRecord, clientId: string) {
 function serverOperation(type: string, operation: string, body: Record<string, unknown>): string {
   if (type === "body-goal") return "activateBodyGoal";
   if (type === "daily-check-in") return operation === "create" ? "createDailyCheckIn" : "correctDailyCheckIn";
-  if (type === "custom-exercise") {
-    if (operation === "create") return "createCustomExercise";
-    return body.isArchived ? "archiveCustomExercise" : "updateCustomExercise";
-  }
-  if (type === "workout-template") return operation === "update" && body.isArchived ? "archiveWorkoutTemplate" : "saveWorkoutTemplate";
-  if (type === "workout-rotation") return "saveWorkoutRotation";
-  if (type === "workout") {
-    if (operation === "create") return "startWorkout";
-    if (operation === "complete") return "completeWorkout";
-    if (operation === "discard") return "discardWorkout";
-    return "editWorkout";
-  }
   if (type === "nutrition-day") return operation === "delete" ? "deleteNutritionDay" : "saveNutritionDay";
   if (type === "reusable-meal") return body.status === "Archived" ? "archiveReusableMeal" : "saveReusableMeal";
   if (type === "nutrition-target-schedule") return "saveNutritionTargetSchedule";
@@ -409,17 +381,6 @@ function serverPayload(
       ? { checkInId: id, localDate: body.localDate, values }
       : { checkInId: id, baseVersion, values };
   }
-  if (type === "custom-exercise") {
-    if (operation !== "create" && body.isArchived) return { exerciseId: id, baseVersion };
-    const values = {
-      name: body.name,
-      description: body.description,
-      targetMuscle: body.targetMuscle,
-      muscleGroup: body.muscleGroup,
-      equipment: body.equipment,
-    };
-    return operation === "create" ? { exerciseId: id, values } : { exerciseId: id, baseVersion, values };
-  }
   if (type === "body-goal") {
     return {
       goalId: id,
@@ -430,71 +391,6 @@ function serverPayload(
       targetDate: body.targetDate,
       expectedActiveGoalId: body.expectedActiveGoalId ?? null,
       expectedActiveGoalVersion: body.expectedActiveGoalVersion ?? null,
-    };
-  }
-  if (type === "workout-template") {
-    if (operation === "update" && body.isArchived) return { templateId: id, baseVersion };
-    return {
-      templateId: id,
-      baseVersion,
-      name: body.name,
-      items: (body.items as Record<string, unknown>[]).map((item) => ({
-        itemId: item.id,
-        exerciseId: item.exerciseId,
-        plannedSets: item.plannedSets,
-        minimumRepetitions: item.minimumRepetitions,
-        maximumRepetitions: item.maximumRepetitions,
-        targetRir: item.targetRir,
-        restSeconds: item.restSeconds,
-        notes: item.notes,
-      })),
-    };
-  }
-  if (type === "workout-rotation") {
-    return {
-      rotationId: id,
-      baseVersion,
-      entries: (body.entries as Record<string, unknown>[]).map((entry) => ({
-        itemId: entry.id,
-        templateId: entry.templateId,
-      })),
-    };
-  }
-  if (type === "workout") {
-    if (operation === "create") return { workoutId: id, templateId: body.sourceTemplateId };
-    if (operation === "complete") {
-      const completion = body as { rotation?: Record<string, unknown> | null };
-      return {
-        workoutId: id,
-        baseVersion,
-        rotationId: completion.rotation ? completion.rotation.id ?? null : null,
-        rotationBaseVersion: completion.rotation ? completion.rotation.serverVersion ?? null : null,
-      };
-    }
-    if (operation === "discard") return { workoutId: id, baseVersion };
-    return {
-      workoutId: id,
-      baseVersion,
-      exercises: (body.exercises as Record<string, unknown>[]).map((exercise) => ({
-        workoutExerciseId: exercise.id,
-        sourceExerciseId: exercise.sourceExerciseId,
-        exerciseNameSnapshot: exercise.exerciseNameSnapshot,
-        plannedSets: exercise.plannedSets,
-        minimumRepetitions: exercise.minimumRepetitions,
-        maximumRepetitions: exercise.maximumRepetitions,
-        targetRir: exercise.targetRir,
-        restSeconds: exercise.restSeconds,
-        notes: exercise.notes,
-        sets: (exercise.sets as Record<string, unknown>[]).map((set) => ({
-          setId: set.id,
-          weightKg: set.weightKg,
-          repetitions: set.repetitions,
-          rir: set.rir,
-          notes: set.notes,
-          isCompleted: set.isCompleted,
-          completedAtUtc: set.completedAtUtc,
-        })),
-      })),
     };
   }
   if (type === "nutrition-day") {
@@ -577,10 +473,6 @@ function resourceMapping(database: AccountDatabase, type: string) {
   const values: Record<string, { table: EntityTable<LocalResourceRecord, "id">; aggregateType: string }> = {
     BodyGoal: { table: database.goals, aggregateType: "body-goal" },
     DailyCheckIn: { table: database.checkIns, aggregateType: "daily-check-in" },
-    CustomExercise: { table: database.customExercises, aggregateType: "custom-exercise" },
-    WorkoutTemplate: { table: database.templates, aggregateType: "workout-template" },
-    WorkoutRotation: { table: database.rotation, aggregateType: "workout-rotation" },
-    Workout: { table: database.workouts, aggregateType: "workout" },
     NutritionDay: { table: database.nutritionDays, aggregateType: "nutrition-day" },
     ReusableMeal: { table: database.reusableMeals, aggregateType: "reusable-meal" },
     NutritionTargetSchedule: { table: database.nutritionTargetSchedules, aggregateType: "nutrition-target-schedule" },
@@ -594,14 +486,6 @@ function normalizeSnapshot(type: string, value: unknown): unknown {
     return {
       ...(snapshot.values as Record<string, unknown>),
       localDate: snapshot.localDate,
-      createdAtUtc: snapshot.createdAtUtc,
-      updatedAtUtc: snapshot.updatedAtUtc,
-    };
-  }
-  if (type === "CustomExercise") {
-    return {
-      ...(snapshot.values as Record<string, unknown>),
-      isArchived: snapshot.isArchived,
       createdAtUtc: snapshot.createdAtUtc,
       updatedAtUtc: snapshot.updatedAtUtc,
     };
@@ -627,24 +511,13 @@ function normalizeSnapshot(type: string, value: unknown): unknown {
   const copy = { ...snapshot };
   delete copy.version;
   delete copy.goalId;
-  delete copy.templateId;
-  delete copy.rotationId;
-  delete copy.workoutId;
   return copy;
-}
-
-function isImmutableHistory(type: string, value: unknown): boolean {
-  return type === "Workout" && (value as { status?: string })?.status?.toLowerCase() === "completed";
 }
 
 function serverResourceType(type: string): string {
   const mapping: Record<string, string> = {
     "body-goal": "BodyGoal",
     "daily-check-in": "DailyCheckIn",
-    "custom-exercise": "CustomExercise",
-    "workout-template": "WorkoutTemplate",
-    "workout-rotation": "WorkoutRotation",
-    workout: "Workout",
     "nutrition-day": "NutritionDay",
     "reusable-meal": "ReusableMeal",
     "nutrition-target-schedule": "NutritionTargetSchedule",
@@ -663,8 +536,4 @@ function splitAggregate(value: string): { aggregateType: string; aggregateId: st
 function compareOutbox(left: OutboxRecord, right: OutboxRecord): number {
   return left.createdAtUtc.localeCompare(right.createdAtUtc) ||
     left.aggregateKey.localeCompare(right.aggregateKey) || left.sequence - right.sequence;
-}
-
-function same(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }

@@ -32,7 +32,7 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 ## 5. Verträge und Web
 
 - [ ] 5.1 OpenAPI (`contracts/openapi/Gainer.Api.json`) und `Gainer.Contracts/Sync` regenerieren; CI-Vertragsprüfung grün.
-- [ ] 5.2 Trainingsnavigation und -seiten in `apps/web` ausblenden und `generated.ts` aktualisieren; `npm run typecheck`, `npm run lint`, `npm run build` und Playwright-Tests grün.
+- [x] 5.2 Trainingsnavigation und -seiten in `apps/web` ausblenden und `generated.ts` aktualisieren; `npm run typecheck`, `npm run lint`, `npm run build` und Playwright-Tests grün.
 
 ## 6. Flutter: Domäne, lokale Daten, Sync
 

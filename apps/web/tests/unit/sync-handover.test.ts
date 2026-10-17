@@ -10,8 +10,6 @@ import { type SyncHandoverTransport } from "../../src/lib/api/sync-handover-tran
 import { saveLocalCheckIn } from "../../src/lib/offline/body-tracking.ts";
 import { cancelPwaHandover, finishPwaHandoverTarget, type HandoverRecoveryTransports } from "../../src/lib/offline/sync-handover.ts";
 import { createNutritionEntry, saveLocalNutritionDay } from "../../src/lib/offline/nutrition-tracking.ts";
-import { readTrainingPlanning, saveLocalTemplate } from "../../src/lib/offline/training-planning.ts";
-import { startLocalWorkout } from "../../src/lib/offline/workout-execution.ts";
 import { acceptConflictServerState, retryConflictOnCurrentServerVersion } from "../../src/lib/offline/sync-conflicts.ts";
 
 const databases: AccountDatabase[] = [];
@@ -41,14 +39,8 @@ test("local writes serialize across tabs and stop after the handover freeze", as
   await assert.rejects(write(second), /eingefroren/i);
 });
 
-test("real body, nutrition and workout writers reject edits after the source freeze", async () => {
+test("real body and nutrition writers reject edits after the source freeze", async () => {
   const database = await openDatabase(crypto.randomUUID());
-  const exercise = (await readTrainingPlanning(database)).exercises[0];
-  assert.ok(exercise);
-  const templateId = await saveLocalTemplate(database, {
-    name: "Freeze test",
-    items: [{ id: crypto.randomUUID(), exerciseId: exercise.id, plannedSets: 1, minimumRepetitions: 5, maximumRepetitions: 8, targetRir: null, restSeconds: 60, notes: null }],
-  });
   const beforeOutbox = await database.outbox.count();
   await database.syncMeta.put({ key: "handover-write-freeze", value: true });
 
@@ -60,11 +52,9 @@ test("real body, nutrition and workout writers reject edits after the source fre
     meal: "Lunch", position: 0, productName: "Haferflocken", amountGrams: 100,
     per100Grams: { kilocalories: 370, proteinGrams: 13, carbohydrateGrams: 58, fatGrams: 7 },
   })]), /eingefroren/i);
-  await assert.rejects(startLocalWorkout(database, templateId), /eingefroren/i);
 
   assert.equal(await database.checkIns.count(), 0);
   assert.equal(await database.nutritionDays.count(), 0);
-  assert.equal(await database.workouts.count(), 0);
   assert.equal(await database.outbox.count(), beforeOutbox);
 });
 
