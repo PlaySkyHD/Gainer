@@ -39,10 +39,12 @@ const goldenVariants = <({String suffix, Brightness brightness, double scale})>[
   (suffix: 'text_scale_2', brightness: Brightness.light, scale: 2),
 ];
 
+/// `animated` für Motive mit endlos laufender Animation (Spinner): dort wird nur ein Frame gepumpt.
 void expectGoldenVariants(
   String name,
   Widget Function() build, {
   Size size = const Size(390, 844),
+  bool animated = false,
 }) {
   for (final variant in goldenVariants) {
     testWidgets('$name ${variant.suffix}', (tester) async {
@@ -61,7 +63,11 @@ void expectGoldenVariants(
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      if (animated) {
+        await tester.pump();
+      } else {
+        await tester.pumpAndSettle();
+      }
       await expectLater(
         find.byKey(boundary),
         matchesGoldenFile('goldens/${name}_${variant.suffix}.png'),

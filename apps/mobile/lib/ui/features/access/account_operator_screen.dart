@@ -156,25 +156,17 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
     return [for (final account in _accounts) _accountRow(account, colors)];
   }
 
-  Widget _accountRow(ApiAccountSummary account, GainerColors colors) => Row(
-    children: [
-      Expanded(
-        child: GainerListRow(
-          title: account.email,
-          value: account.isActive ? 'Aktiv' : 'Deaktiviert',
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.only(right: GainerSpacing.m),
-        child: CupertinoSwitch(
+  Widget _accountRow(ApiAccountSummary account, GainerColors colors) =>
+      GainerListRow(
+        title: account.email,
+        subtitle: account.isActive ? 'Aktiv' : 'Deaktiviert',
+        trailing: CupertinoSwitch(
           value: account.isActive,
           onChanged: _isOwnAccount(account) || _busy
               ? null
               : (value) => _setStatus(account, value),
         ),
-      ),
-    ],
-  );
+      );
 
   bool _isOwnAccount(ApiAccountSummary account) =>
       account.accountId.toLowerCase() ==

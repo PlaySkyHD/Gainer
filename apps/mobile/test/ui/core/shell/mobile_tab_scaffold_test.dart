@@ -58,6 +58,39 @@ void main() {
     final tabBar = tester.getTopLeft(find.text('Heute'));
     expect(slot.dy, lessThan(tabBar.dy));
   });
+
+  testWidgets('Tastatur verdeckt Inhalt nur bis zur Tableiste', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    final model = MobileShellViewModel();
+    addTearDown(model.dispose);
+    final field = GlobalKey();
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.light,
+        home: MobileTabScaffold(
+          model: model,
+          tabBuilder: (context, area) => CupertinoPageScaffold(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: CupertinoTextField(key: field, placeholder: 'Eingabe'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final fieldBottom = tester.getBottomLeft(find.byKey(field)).dy;
+    final tabBarTop = tester.getTopLeft(find.text('Heute')).dy;
+    final keyboardTop = 844 - 300;
+    expect(fieldBottom, closeTo(keyboardTop, 0.5));
+    expect(tabBarTop, greaterThan(keyboardTop));
+  });
 }
 
 bool _isSelected(WidgetTester tester, String label) {

@@ -1,3 +1,5 @@
+import 'dart:math' show max;
+
 import 'package:flutter/cupertino.dart';
 
 import '../components/components.dart';
@@ -6,7 +8,7 @@ import '../view_models/mobile_shell_view_model.dart';
 
 /// Hauptgerüst der Tabs: Inhalte oben, darunter der reservierte Slot und die schwebende Tableiste.
 /// Tabs werden beim ersten Anzeigen gebaut und behalten danach ihren Zustand.
-class MobileTabScaffold extends StatelessWidget {
+class MobileTabScaffold extends StatefulWidget {
   const MobileTabScaffold({
     required this.model,
     required this.tabBuilder,
@@ -21,48 +23,78 @@ class MobileTabScaffold extends StatelessWidget {
   final Widget? compactTrainingBar;
 
   @override
+  State<MobileTabScaffold> createState() => _MobileTabScaffoldState();
+}
+
+class _MobileTabScaffoldState extends State<MobileTabScaffold> {
+  final _bottomKey = GlobalKey();
+
+  /// Höhe von Slot und Tableiste. Der Inhalt endet bereits darüber, daher darf die
+  /// Tastatur nur den Rest der Höhe verdecken.
+  double _bottomHeight = 0;
+
+  void _measureBottom() {
+    final box = _bottomKey.currentContext?.findRenderObject() as RenderBox?;
+    final height = box?.hasSize == true ? box!.size.height : 0.0;
+    if (mounted && height != _bottomHeight) {
+      setState(() => _bottomHeight = height);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureBottom());
+    final mediaQuery = MediaQuery.of(context);
+    final keyboard = mediaQuery.viewInsets.bottom;
     return ListenableBuilder(
-      listenable: model,
+      listenable: widget.model,
       builder: (context, _) => ColoredBox(
         color: GainerDesign.colorsOf(context).background,
         child: Column(
           children: [
             Expanded(
-              child: MediaQuery.removePadding(
-                context: context,
-                removeBottom: true,
+              child: MediaQuery(
+                data: mediaQuery
+                    .removePadding(removeBottom: true)
+                    .copyWith(
+                      viewInsets: mediaQuery.viewInsets.copyWith(
+                        bottom: max(0, keyboard - _bottomHeight),
+                      ),
+                    ),
                 child: _TabBodies(
-                  currentIndex: model.selectedIndex,
-                  tabBuilder: tabBuilder,
+                  currentIndex: widget.model.selectedIndex,
+                  tabBuilder: widget.tabBuilder,
                 ),
               ),
             ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  GainerSpacing.m,
-                  0,
-                  GainerSpacing.m,
-                  GainerSpacing.xs,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (compactTrainingBar case final bar?) ...[
-                      bar,
-                      const SizedBox(height: GainerSpacing.xs),
-                    ],
-                    GainerFloatingTabBar(
-                      items: [
-                        for (final area in MobileArea.values)
-                          GainerTabItem(label: area.label, icon: area.icon),
+            KeyedSubtree(
+              key: _bottomKey,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    GainerSpacing.m,
+                    0,
+                    GainerSpacing.m,
+                    GainerSpacing.xs,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.compactTrainingBar case final bar?) ...[
+                        bar,
+                        const SizedBox(height: GainerSpacing.xs),
                       ],
-                      currentIndex: model.selectedIndex,
-                      onTap: model.selectTab,
-                    ),
-                  ],
+                      GainerFloatingTabBar(
+                        items: [
+                          for (final area in MobileArea.values)
+                            GainerTabItem(label: area.label, icon: area.icon),
+                        ],
+                        currentIndex: widget.model.selectedIndex,
+                        onTap: widget.model.selectTab,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

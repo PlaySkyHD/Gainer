@@ -149,13 +149,9 @@ class _AuthScreenState extends State<AuthScreen> {
                       ? 'Einladung bestätigen'
                       : 'Anmelden',
                   expand: true,
+                  isLoading: _busy,
                   onPressed: _busy ? null : _login,
                 ),
-                if (_busy)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 12),
-                    child: CupertinoActivityIndicator(),
-                  ),
                 const SizedBox(height: 14),
                 Text(
                   'Deine Trainings- und Ernährungseinträge werden pro Konto lokal gespeichert und bleiben bei einem Verbindungsabbruch erhalten.',
