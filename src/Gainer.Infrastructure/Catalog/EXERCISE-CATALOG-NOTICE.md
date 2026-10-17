@@ -1,6 +1,6 @@
 # Exercise catalog provenance and license gate
 
-Catalog version `2026.08.1` is a deliberately small, project-authored metadata snapshot. No third-party exercise dataset was copied or transformed. Exercise names and the factual muscle/equipment classifications were entered specifically for Gainer; the snapshot contains no images, animation, instructions, biographies, or other expressive third-party material.
+Catalog versions `2026.08.1` and `2026.10.1` are deliberately small, project-authored metadata snapshots. No third-party exercise dataset was copied or transformed. Exercise names and the factual muscle/equipment classifications were entered specifically for Gainer; the snapshot contains no images, animation, instructions, biographies, or other expressive third-party material.
 
 The initially considered external dataset is therefore **not approved and not imported**. Its licensing does not need to be relied upon for the MVP. Any future replacement or expansion must record the exact source, immutable source revision, license text, attribution obligations, media rights, and a review decision before data enters this file or production.
 

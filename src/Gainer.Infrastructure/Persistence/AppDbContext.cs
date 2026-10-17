@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -39,6 +40,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     public DbSet<NutritionTargetVersion> NutritionTargetVersions => Set<NutritionTargetVersion>();
 
     public DbSet<Exercise> Exercises => Set<Exercise>();
+
+    public DbSet<ExerciseCategory> ExerciseCategories => Set<ExerciseCategory>();
+
+    public DbSet<ExerciseCategoryAssignment> ExerciseCategoryAssignments => Set<ExerciseCategoryAssignment>();
 
     public DbSet<WorkoutTemplate> WorkoutTemplates => Set<WorkoutTemplate>();
 
@@ -213,6 +218,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                     "CK_exercises_catalog_ownership",
                     "(\"OwnerUserId\" IS NULL AND \"CatalogVersion\" IS NOT NULL AND \"IsArchived\" = FALSE) OR " +
                     "(\"OwnerUserId\" IS NOT NULL AND \"CatalogVersion\" IS NULL)");
+                table.HasCheckConstraint(
+                    "CK_exercises_type",
+                    "\"ExerciseType\" IN ('strength', 'bodyweightLoaded', 'bodyweightOnly', 'assisted')");
+                table.HasCheckConstraint(
+                    "CK_exercises_bodyweight_factor",
+                    "\"BodyweightFactor\" IS NULL OR (\"BodyweightFactor\" >= 0 AND \"BodyweightFactor\" <= 1)");
+                table.HasCheckConstraint(
+                    "CK_exercises_weight_factor",
+                    "\"WeightFactor\" IS NULL OR (\"WeightFactor\" > 0 AND \"WeightFactor\" <= 10)");
             });
             exercise.HasKey(item => item.Id);
             exercise.Property(item => item.Name).HasMaxLength(160).IsRequired();
@@ -220,6 +234,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             exercise.Property(item => item.TargetMuscle).HasMaxLength(100);
             exercise.Property(item => item.MuscleGroup).HasMaxLength(100);
             exercise.Property(item => item.Equipment).HasMaxLength(100);
+            exercise.Property(item => item.ExerciseType)
+                .HasConversion(new ValueConverter<ExerciseType, string>(
+                    value => ExerciseTypes.ToStorageValue(value),
+                    value => ExerciseTypes.Parse(value)))
+                .HasMaxLength(32)
+                .IsRequired();
+            exercise.Property(item => item.Notes).HasMaxLength(2_000);
+            exercise.Property(item => item.BodyweightFactor).HasPrecision(5, 4);
+            exercise.Property(item => item.WeightFactor).HasPrecision(5, 3);
             exercise.Property(item => item.CatalogVersion).HasMaxLength(32);
             exercise.Property(item => item.Version).IsConcurrencyToken();
             exercise.HasIndex(item => new { item.OwnerUserId, item.Name });
@@ -231,7 +254,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 .HasForeignKey(item => item.OwnerUserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            DateTime catalogTimestamp = new(2026, 8, 18, 0, 0, 0, DateTimeKind.Utc);
+            DateTime catalogCreatedAt = new(2026, 8, 18, 0, 0, 0, DateTimeKind.Utc);
+            DateTime catalogUpdatedAt = new(2026, 10, 17, 0, 0, 0, DateTimeKind.Utc);
             exercise.HasData(ExerciseCatalogSnapshot.Document.Entries.Select(item => new Exercise
             {
                 Id = item.Id,
@@ -239,11 +263,69 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 TargetMuscle = item.TargetMuscle,
                 MuscleGroup = item.MuscleGroup,
                 Equipment = item.Equipment,
+                ExerciseType = ExerciseTypes.Parse(item.ExerciseType),
+                BodyweightFactor = item.BodyweightFactor,
+                WeightFactor = item.WeightFactor,
+                CatalogVersion = ExerciseCatalogSnapshot.Document.CatalogVersion,
+                CreatedAtUtc = catalogCreatedAt,
+                UpdatedAtUtc = catalogUpdatedAt,
+                Version = 1,
+            }));
+        });
+
+        modelBuilder.Entity<ExerciseCategory>(category =>
+        {
+            category.ToTable("exercise_categories", DatabaseSchemas.Training, table =>
+            {
+                table.HasCheckConstraint("CK_exercise_categories_name", NameNotBlankCheck);
+                table.HasCheckConstraint(
+                    "CK_exercise_categories_catalog_ownership",
+                    "(\"OwnerUserId\" IS NULL AND \"CatalogVersion\" IS NOT NULL AND \"IsArchived\" = FALSE) OR " +
+                    "(\"OwnerUserId\" IS NOT NULL AND \"CatalogVersion\" IS NULL)");
+            });
+            category.HasKey(item => item.Id);
+            category.Property(item => item.Name).HasMaxLength(80).IsRequired();
+            category.Property(item => item.CatalogVersion).HasMaxLength(32);
+            category.Property(item => item.Version).IsConcurrencyToken();
+            category.HasIndex(item => new { item.OwnerUserId, item.Name });
+            category.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(item => item.OwnerUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            DateTime catalogTimestamp = new(2026, 10, 17, 0, 0, 0, DateTimeKind.Utc);
+            category.HasData(ExerciseCatalogSnapshot.Document.Categories.Select(item => new ExerciseCategory
+            {
+                Id = item.Id,
+                Name = item.Name,
                 CatalogVersion = ExerciseCatalogSnapshot.Document.CatalogVersion,
                 CreatedAtUtc = catalogTimestamp,
                 UpdatedAtUtc = catalogTimestamp,
                 Version = 1,
             }));
+        });
+
+        modelBuilder.Entity<ExerciseCategoryAssignment>(assignment =>
+        {
+            assignment.ToTable("exercise_category_assignments", DatabaseSchemas.Training);
+            assignment.HasKey(item => new { item.ExerciseId, item.CategoryId });
+            assignment.HasIndex(item => item.CategoryId);
+            assignment.HasOne<Exercise>()
+                .WithMany()
+                .HasForeignKey(item => item.ExerciseId)
+                .OnDelete(DeleteBehavior.Cascade);
+            assignment.HasOne<ExerciseCategory>()
+                .WithMany()
+                .HasForeignKey(item => item.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            ExerciseCatalogDocument document = ExerciseCatalogSnapshot.Document;
+            assignment.HasData(document.Entries.SelectMany(entry => entry.CategoryKeys.Select(key =>
+                new ExerciseCategoryAssignment
+                {
+                    ExerciseId = entry.Id,
+                    CategoryId = document.CategoryId(key),
+                })));
         });
 
         modelBuilder.Entity<WorkoutTemplate>(template =>

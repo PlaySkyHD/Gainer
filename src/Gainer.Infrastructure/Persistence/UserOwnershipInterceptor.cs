@@ -32,7 +32,7 @@ internal sealed class UserOwnershipInterceptor(IUserContext userContext) : SaveC
             return;
         }
 
-        EnforceExerciseOwnership(context);
+        EnforceCatalogOwnership(context);
 
         EntityEntry<IUserOwnedEntity>[] ownedEntries = context.ChangeTracker.Entries<IUserOwnedEntity>()
             .Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
@@ -49,27 +49,37 @@ internal sealed class UserOwnershipInterceptor(IUserContext userContext) : SaveC
         }
     }
 
-    private void EnforceExerciseOwnership(DbContext context)
+    private void EnforceCatalogOwnership(DbContext context)
     {
-        EntityEntry<Exercise>[] exercises = context.ChangeTracker.Entries<Exercise>()
+        EnforceCatalogOwnership<Exercise>(context, item => item.OwnerUserId, nameof(Exercise.OwnerUserId));
+        EnforceCatalogOwnership<ExerciseCategory>(context, item => item.OwnerUserId, nameof(ExerciseCategory.OwnerUserId));
+    }
+
+    private void EnforceCatalogOwnership<TEntity>(
+        DbContext context,
+        Func<TEntity, Guid?> ownerOf,
+        string ownerProperty)
+        where TEntity : class
+    {
+        EntityEntry<TEntity>[] entries = context.ChangeTracker.Entries<TEntity>()
             .Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
             .ToArray();
-        if (exercises.Length == 0)
+        if (entries.Length == 0)
         {
             return;
         }
 
         Guid currentUserId = userContext.UserId ?? throw new UserIsolationViolationException();
-        foreach (EntityEntry<Exercise> entry in exercises)
+        foreach (EntityEntry<TEntity> entry in entries)
         {
             Guid? originalOwner = entry.State == EntityState.Added
-                ? entry.Entity.OwnerUserId
-                : entry.OriginalValues.GetValue<Guid?>(nameof(Exercise.OwnerUserId));
+                ? ownerOf(entry.Entity)
+                : entry.OriginalValues.GetValue<Guid?>(ownerProperty);
             if (originalOwner is null)
             {
                 throw new BaseExerciseImmutableException();
             }
-            if (originalOwner != currentUserId || entry.Entity.OwnerUserId != currentUserId)
+            if (originalOwner != currentUserId || ownerOf(entry.Entity) != currentUserId)
             {
                 throw new UserIsolationViolationException();
             }

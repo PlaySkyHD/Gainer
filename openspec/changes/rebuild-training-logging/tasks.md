@@ -8,8 +8,8 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 
 ## 2. Backend: Übungskatalog
 
-- [ ] 2.1 `Exercise` um `ExerciseType`, `Notes`, `BodyweightFactor`, `WeightFactor` erweitern; `ExerciseCategory` und Zuordnungstabelle anlegen (D6). Unit-Tests für Typparser (unbekannter Typ → Ablehnung) und Faktor-Defaults gemäß Spec `exercise-catalog` grün.
-- [ ] 2.2 `ExerciseCatalogSnapshot` als neue Katalogversion um Typ, Basis-Kategorien und Faktoren erweitern; Integrationstest prüft, dass Basisübungen und -kategorien nicht änderbar sind.
+- [x] 2.1 `Exercise` um `ExerciseType`, `Notes`, `BodyweightFactor`, `WeightFactor` erweitern; `ExerciseCategory` und Zuordnungstabelle anlegen (D6). Unit-Tests für Typparser (unbekannter Typ → Ablehnung) und Faktor-Defaults gemäß Spec `exercise-catalog` grün.
+- [x] 2.2 `ExerciseCatalogSnapshot` als neue Katalogversion um Typ, Basis-Kategorien und Faktoren erweitern; Integrationstest prüft, dass Basisübungen und -kategorien nicht änderbar sind.
 - [ ] 2.3 Sync-Operationen für eigene Übungen (anlegen/ändern/archivieren inkl. Typ, Kategorien, Faktoren) und eigene Kategorien implementieren; Integrationstests für Idempotenz bei Wiederholung und Zugriff auf fremde IDs (Nutzer A/B, keine Datenoffenlegung).
 - [ ] 2.4 `ExerciseCatalogController`/`ExerciseCatalogResponse` um Typ, Kategorien und Faktoren erweitern; API-Integrationstest liefert Basis- plus eigene Übungen nur des angemeldeten Nutzers.
 
