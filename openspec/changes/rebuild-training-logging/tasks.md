@@ -4,7 +4,7 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 
 ## 1. Planungsgrundlage bereinigen
 
-- [ ] 1.1 In `build-ai-body-training-tracker-mvp` die Specs `workout-execution` und `exercise-and-plan-management` sowie die offenen Trainings-Tasks als durch `rebuild-training-logging` abgelöst kennzeichnen; in `migrate-pwa-to-ios-first-flutter` die Requirements „Pausentimer und lokale Benachrichtigungen“ und „Live Activity für Workout und Pause“ ebenso. Prüfen mit `openspec validate --all`, dass alle Changes gültig bleiben.
+- [x] 1.1 In `build-ai-body-training-tracker-mvp` die Specs `workout-execution` und `exercise-and-plan-management` sowie die offenen Trainings-Tasks als durch `rebuild-training-logging` abgelöst kennzeichnen; in `migrate-pwa-to-ios-first-flutter` die Requirements „Pausentimer und lokale Benachrichtigungen“ und „Live Activity für Workout und Pause“ ebenso. Prüfen mit `openspec validate --all`, dass alle Changes gültig bleiben.
 
 ## 2. Backend: Übungskatalog
 

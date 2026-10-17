@@ -2,6 +2,8 @@
 
 Diese Capability erweitert die iPhone-Kernreise um native Erfassung, zeitbasierte Trainingshilfe und kontrollierte Einstiege über Apple-Systemoberflächen.
 
+> **Teilweise abgelöst:** Die Requirements „Pausentimer und lokale Benachrichtigungen“ und „Live Activity für Workout und Pause“ werden durch die Capabilities `rest-timer` und `training-screens` der Change `rebuild-training-logging` ersetzt und beim Archivieren nicht übernommen.
+
 ## ADDED Requirements
 
 ### Requirement: Native Kamera und Fotoauswahl
