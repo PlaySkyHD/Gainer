@@ -125,22 +125,22 @@ Auf unterstützten iPhones SHALL während eines aktiven Trainings eine Live Acti
 
 ### Requirement: Datenschutz der Live Activity
 
-Die Detailanzeige ist standardmäßig aktiv und SHALL Trainingstitel, aktuelle Übung und Satzposition (z. B. „Satz 2 von 4“) zeigen – auch nach erfasstem Satz und während einer Pause (dann der als Nächstes anstehende Satz). Der Nutzer kann sie abschalten; dann DÜRFEN Systemflächen nur Trainings-/Pausenstatus und Zeiten zeigen. Gewichte und Wiederholungen MUST NOT erscheinen.
+Die Detailanzeige ist standardmäßig aktiv und SHALL Trainingstitel, aktuelle Übung, Position des als Nächstes anstehenden Satzes und, sofern vorhanden, dessen Zielwert aus der Vorwertquelle zeigen – auch während einer Pause. Eingetragene Ist-Werte erscheinen nicht. Ist sie abgeschaltet, DÜRFEN Systemflächen nur Trainings-/Pausenstatus und Zeiten zeigen.
 
 #### Scenario: Übung nach erfasstem Satz
 - **GIVEN** Standardeinstellung, Training „Pull“, Latzug mit drei Sätzen, der erste ist erfasst
 - **WHEN** das iPhone gesperrt wird, mit oder ohne laufende Pause
-- **THEN** zeigt die Live Activity „Latzug“ und „Satz 2 von 3“ und die Zeit, aber kein Gewicht
+- **THEN** zeigt die Live Activity „Latzug“, „Satz 2 von 3“, den Zielwert des zweiten Satzes aus dem letzten Training (z. B. „Ziel 60 kg × 10“) und die Zeit
 
 #### Scenario: Details abgeschaltet
 - **GIVEN** der Nutzer hat „Details auf Sperrbildschirm“ abgeschaltet
 - **WHEN** das iPhone gesperrt wird
-- **THEN** zeigt die Live Activity nur „Training“ bzw. „Pause“ und die Zeiten, ohne Übungsnamen
+- **THEN** zeigt die Live Activity nur „Training“ bzw. „Pause“ und die Zeiten, ohne Übungsnamen und ohne Zielwerte
 
 #### Scenario: Detailfreigabe aktiv
 - **GIVEN** die Detailanzeige ist aktiv und der Nutzer trainiert Latzug im Training „Pull“ im ersten von drei Sätzen
 - **WHEN** das iPhone gesperrt wird
-- **THEN** zeigt die Live Activity „Pull“, „Latzug“, „Satz 1 von 3“ und die Zeit, aber kein Gewicht
+- **THEN** zeigt die Live Activity „Pull“, „Latzug“, „Satz 1 von 3“ und die Zeit; ohne Vorwert erscheint kein Zielwert
 
 #### Scenario: Antippen der Live Activity
 - **GIVEN** eine Live Activity eines anderen, inzwischen abgemeldeten Kontos

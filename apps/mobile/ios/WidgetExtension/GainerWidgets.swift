@@ -117,6 +117,8 @@ private struct GainerWorkoutLiveActivity: Widget {
         DynamicIslandExpandedRegion(.trailing) {
           GainerActivityClock(state: context.state)
             .font(.subheadline)
+            .multilineTextAlignment(.trailing)
+            .frame(width: 64, alignment: .trailing)
         }
         DynamicIslandExpandedRegion(.center) {
           if let detail = context.state.detail {
@@ -127,67 +129,76 @@ private struct GainerWorkoutLiveActivity: Widget {
               Text("Satz \(detail.setIndex) von \(detail.setCount)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+              if let targetText = detail.targetText {
+                Text(targetText)
+                  .font(.caption2)
+                  .foregroundStyle(.secondary)
+                  .lineLimit(1)
+              }
             }
           }
         }
         DynamicIslandExpandedRegion(.bottom) {
-          if GainerPauseReadout.isShown(for: context.state) {
-            GainerPauseReadout(state: context.state, large: false)
+          if GainerRestPhase(context.state).isPause {
+            HStack(spacing: 10) {
+              GainerTimeReadout(state: context.state, font: .title3.weight(.bold))
+                .multilineTextAlignment(.leading)
+              GainerRestProgress(state: context.state)
+                .frame(maxWidth: .infinity)
+            }
           }
         }
       } compactLeading: {
-        GainerAppIconImage(size: 18)
+        GainerIslandLeading(state: context.state)
       } compactTrailing: {
         GainerCompactTimer(state: context.state)
+          .multilineTextAlignment(.trailing)
+          .frame(width: 44, alignment: .trailing)
       } minimal: {
-        GainerAppIconImage(size: 18)
+        GainerIslandLeading(state: context.state)
       }
       .widgetURL(GainerExtensionURL.route(.training, source: "liveActivity"))
     }
   }
 }
 
+/// Sperrbildschirm: oben Icon, Titel und Trainingszeit; darunter links die Zeit
+/// (Pause oder Training), rechts die Übung mit Satz und Ziel; unten Fortschritt.
 private struct GainerActivityView: View {
   let state: GainerWorkoutActivityAttributes.ContentState
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .center, spacing: 8) {
-        GainerAppIconImage(size: 24)
+        GainerAppIconImage(size: 20)
         Text(GainerActivityText.title(for: state))
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(Color("GainerPrimaryText"))
           .lineLimit(1)
         Spacer(minLength: 8)
-        GainerActivityClock(state: state)
-          .font(.subheadline)
-          .foregroundStyle(Color("GainerSecondaryText"))
-      }
-      Spacer(minLength: 0)
-      VStack(spacing: 6) {
-        if GainerPauseReadout.isShown(for: state) {
-          GainerPauseReadout(state: state, large: true)
-        }
-        if let detail = state.detail {
-          Text(detail.exerciseName)
-            .font(.title3.weight(.semibold))
-            .foregroundStyle(Color("GainerPrimaryText"))
-            .multilineTextAlignment(.center)
-            .lineLimit(2)
-          Text("Satz \(detail.setIndex) von \(detail.setCount)")
+        // Ohne Pause steht die Trainingszeit bereits groß in der Karte.
+        if GainerRestPhase(state).isPause {
+          GainerActivityClock(state: state)
             .font(.subheadline)
             .foregroundStyle(Color("GainerSecondaryText"))
-        } else if !GainerPauseReadout.isShown(for: state) {
-          // Ohne Details steht statt der Übung die Trainingszeit groß in der Karte.
-          GainerActivityClock(state: state)
-            .font(.system(size: 44, weight: .bold))
-            .foregroundStyle(Color("GainerPrimaryText"))
+            .multilineTextAlignment(.trailing)
+            .frame(width: 72, alignment: .trailing)
         }
       }
-      .frame(maxWidth: .infinity)
-      Spacer(minLength: 0)
+      if let detail = state.detail {
+        HStack(alignment: .top, spacing: 12) {
+          GainerTimeColumn(state: state)
+          GainerExerciseColumn(detail: detail)
+        }
+        GainerFooter(state: state, detail: detail)
+      } else {
+        // Ohne Details nur der Status und die Zeit, ohne Übung und Satz.
+        GainerTimeReadout(state: state, font: .system(size: 44, weight: .bold))
+          .multilineTextAlignment(.center)
+          .frame(maxWidth: .infinity)
+      }
     }
-    .padding(16)
+    .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(Color("GainerSurface"))
     .activityBackgroundTint(Color("GainerSurface"))
@@ -198,33 +209,238 @@ private struct GainerActivityView: View {
   }
 }
 
-/// Pausenanzeige in Akzentfarbe: Countdown, 0:00 nach Ablauf oder die angehaltene Restzeit.
-/// Ohne Pause gibt es keine Anzeige.
-private struct GainerPauseReadout: View {
+/// Linke Spalte: Statusbeschriftung und die große Zeit.
+private struct GainerTimeColumn: View {
   let state: GainerWorkoutActivityAttributes.ContentState
-  let large: Bool
-
-  static func isShown(for state: GainerWorkoutActivityAttributes.ContentState) -> Bool {
-    state.expired || state.timerTargetAt != nil || state.pausedRemainingSeconds != nil
-  }
 
   var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(GainerRestPhase(state).label)
+        .font(.caption2.weight(.semibold))
+        .tracking(0.8)
+        .foregroundStyle(Color("GainerSecondaryText"))
+        .lineLimit(1)
+      GainerTimeReadout(state: state, font: .system(size: 40, weight: .bold))
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+    }
+    .frame(width: 140, alignment: .leading)
+  }
+}
+
+/// Rechte Spalte: Übung, Satzposition mit Punkten und der Zielwert.
+private struct GainerExerciseColumn: View {
+  let detail: GainerWorkoutActivityAttributes.ContentState.Detail
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(detail.exerciseName)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(Color("GainerPrimaryText"))
+        .lineLimit(2)
+      HStack(spacing: 6) {
+        Text("Satz \(detail.setIndex) von \(detail.setCount)")
+          .font(.caption)
+          .foregroundStyle(Color("GainerSecondaryText"))
+          .lineLimit(1)
+        if detail.setCount <= GainerSetDots.maxCount {
+          GainerSetDots(current: detail.setIndex, count: detail.setCount)
+        }
+      }
+      if let targetText = detail.targetText {
+        Text(targetText)
+          .font(.caption)
+          .foregroundStyle(Color("GainerSecondaryText"))
+          .lineLimit(1)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+/// Unterer Streifen: Pausenfortschritt, rechts die Position „Übung x/y“.
+private struct GainerFooter: View {
+  let state: GainerWorkoutActivityAttributes.ContentState
+  let detail: GainerWorkoutActivityAttributes.ContentState.Detail
+
+  var body: some View {
+    HStack(spacing: 10) {
+      if GainerRestPhase(state).isPause {
+        GainerRestProgress(state: state)
+          .frame(maxWidth: .infinity)
+      } else {
+        Spacer(minLength: 0)
+      }
+      if let exerciseIndex = detail.exerciseIndex, let exerciseCount = detail.exerciseCount {
+        Text("Übung \(exerciseIndex)/\(exerciseCount)")
+          .font(.caption)
+          .foregroundStyle(Color("GainerSecondaryText"))
+          .monospacedDigit()
+          .lineLimit(1)
+      }
+    }
+  }
+}
+
+/// Satzpunkte: erledigte gefüllt, aktueller als Ring, offene gedämpft.
+private struct GainerSetDots: View {
+  static let maxCount = 8
+
+  let current: Int
+  let count: Int
+
+  var body: some View {
+    HStack(spacing: 4) {
+      ForEach(0..<count, id: \.self) { index in
+        dot(at: index)
+          .frame(width: 7, height: 7)
+      }
+    }
+    .accessibilityHidden(true)
+  }
+
+  @ViewBuilder
+  private func dot(at index: Int) -> some View {
+    let position = min(max(current, 1), count) - 1
+    if index < position {
+      Circle().fill(Color("GainerAccent"))
+    } else if index == position {
+      Circle().strokeBorder(Color("GainerAccent"), lineWidth: 1.5)
+    } else {
+      Circle().fill(Color("GainerSecondaryText").opacity(0.35))
+    }
+  }
+}
+
+/// Fortschrittsbalken der Pause. Läuft die Pause, zählt das System den Balken
+/// selbst; pausiert ist er statisch, nach Ablauf leer.
+private struct GainerRestProgress: View {
+  let state: GainerWorkoutActivityAttributes.ContentState
+
+  var body: some View {
+    switch GainerRestPhase(state) {
+    case .training:
+      EmptyView()
+    case .running(let targetAt):
+      ProgressView(
+        timerInterval: Self.interval(to: targetAt, duration: state.restDurationSeconds),
+        countsDown: true
+      )
+      .labelsHidden()
+      .tint(Color("GainerAccent"))
+      .accessibilityLabel("Pausenfortschritt")
+    case .paused(let remaining):
+      ProgressView(
+        value: Double(remaining),
+        total: Double(max(state.restDurationSeconds ?? remaining, remaining, 1))
+      )
+      .labelsHidden()
+      .tint(Color("GainerAccent"))
+      .accessibilityLabel("Pausenfortschritt")
+    case .expired:
+      ProgressView(value: 0, total: 1)
+        .labelsHidden()
+        .tint(Color("GainerAccent"))
+        .accessibilityLabel("Pausenfortschritt")
+    }
+  }
+
+  /// Der Balken beginnt beim Pausenbeginn (Ziel minus Dauer) und endet am Ziel.
+  private static func interval(to targetAt: Date, duration: Int?) -> ClosedRange<Date> {
+    guard let duration, duration > 0 else {
+      let now = Date.now
+      return now...max(targetAt, now)
+    }
+    return targetAt.addingTimeInterval(-Double(duration))...targetAt
+  }
+}
+
+/// Anzeigezustand der Pause, aus dem Content-State abgeleitet.
+private enum GainerRestPhase {
+  case training
+  case running(Date)
+  case paused(Int)
+  case expired
+
+  init(_ state: GainerWorkoutActivityAttributes.ContentState) {
     if state.expired {
-      Text("0:00")
-        .font(large ? .system(size: 44, weight: .bold) : .title3.weight(.bold))
-        .monospacedDigit()
-        .foregroundStyle(Color("GainerAccent"))
-        .accessibilityLabel("Pause abgelaufen")
+      self = .expired
     } else if let targetAt = state.timerTargetAt {
-      GainerCountdown(targetAt: targetAt)
-        .font(large ? .system(size: 44, weight: .bold) : .title3.weight(.bold))
-        .foregroundStyle(Color("GainerAccent"))
+      self = .running(targetAt)
     } else if let remaining = state.pausedRemainingSeconds {
+      self = .paused(remaining)
+    } else {
+      self = .training
+    }
+  }
+
+  var isPause: Bool {
+    switch self {
+    case .training:
+      return false
+    case .running, .paused, .expired:
+      return true
+    }
+  }
+
+  var label: String {
+    switch self {
+    case .training: "TRAINING"
+    case .running, .paused: "PAUSE"
+    case .expired: "PAUSE VORBEI"
+    }
+  }
+}
+
+/// Die große Zeit: Trainingszeit ohne Pause, sonst Countdown, angehaltene Restzeit oder 0:00.
+private struct GainerTimeReadout: View {
+  let state: GainerWorkoutActivityAttributes.ContentState
+  let font: Font
+
+  var body: some View {
+    switch GainerRestPhase(state) {
+    case .training:
+      GainerActivityClock(state: state)
+        .font(font)
+        .foregroundStyle(Color("GainerPrimaryText"))
+    case .running(let targetAt):
+      GainerCountdown(targetAt: targetAt)
+        .font(font)
+        .foregroundStyle(Color("GainerAccent"))
+    case .paused(let remaining):
       Text(String(format: "%d:%02d", remaining / 60, remaining % 60))
-        .font(large ? .system(size: 44, weight: .bold) : .title3.weight(.bold))
+        .font(font)
         .monospacedDigit()
         .foregroundStyle(Color("GainerAccent"))
         .accessibilityLabel("Pausenzeit angehalten")
+    case .expired:
+      Text("0:00")
+        .font(font)
+        .monospacedDigit()
+        .foregroundStyle(Color("GainerAccent"))
+        .accessibilityLabel("Pause abgelaufen")
+    }
+  }
+}
+
+/// Linke Seite der kompakten und minimalen Dynamic Island: Pausenring oder Icon.
+private struct GainerIslandLeading: View {
+  let state: GainerWorkoutActivityAttributes.ContentState
+
+  var body: some View {
+    if case .running(let targetAt) = GainerRestPhase(state) {
+      ProgressView(
+        timerInterval: Date.now...max(targetAt, Date.now),
+        countsDown: true
+      )
+      .progressViewStyle(.circular)
+      .labelsHidden()
+      .tint(Color("GainerAccent"))
+      .frame(width: 18, height: 18)
+    } else {
+      GainerAppIconImage(size: 18)
     }
   }
 }

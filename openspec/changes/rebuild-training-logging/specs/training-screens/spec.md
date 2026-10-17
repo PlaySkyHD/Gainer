@@ -113,14 +113,19 @@ Der Planeditor SHALL einen großen Titel, darunter eine Karte „Training beginn
 
 ### Requirement: Live-Activity-Layout
 
-Die Live Activity SHALL auf dem Sperrbildschirm eine dunkle Karte mit App-Icon und Trainingstitel links oben, verstrichener Zeit rechts oben und mittig groß dem aktuellen Übungsnamen mit „Satz x von y“ zeigen; bei laufender Pause steht darüber ein großer Countdown und darunter weiterhin Übung und nächster Satz. Ohne Details zeigt die Karte statt der Übung groß die Trainingszeit; sie ist nie leer.
+Die Sperrbildschirm-Karte SHALL ohne Abschneiden in die von iOS erlaubte Höhe passen: oben App-Icon und Trainingstitel, während einer Pause rechtsbündig die Trainingszeit; darunter links die Pause mit Fortschrittsbalken (ohne Pause die Übung), rechts Satzposition mit Satzpunkten, Zielwert und „Übung x/y“. Die kompakte Dynamic Island zeigt links Pausenring oder Icon und rechts Countdown oder Trainingszeit.
 
 #### Scenario: Pause mit Übung
 - **GIVEN** Details aktiv, Training „Legs 2“, Beinbeuger mit zwei Sätzen, der erste erfasst, Pause läuft mit 0:32
 - **WHEN** das iPhone gesperrt ist
-- **THEN** zeigt die Karte den Countdown 0:32 groß und darunter „Beinbeuger - Sitzen“ und „Satz 2 von 2“
+- **THEN** zeigt die Karte links den Countdown 0:32 groß in Akzentfarbe mit Fortschrittsbalken und rechts „Beinbeuger - Sitzen“, „Satz 2 von 2“ mit Satzpunkten und den Zielwert, sofern vorhanden
 
 #### Scenario: Sperrbildschirm mit Details
 - **GIVEN** Detailfreigabe aktiv, Training „Legs 2“, Übung „Beinbeuger - Sitzen“, erster von zwei Sätzen, kein Timer
 - **WHEN** das iPhone gesperrt ist
 - **THEN** zeigt die Karte „Legs 2“, die Trainingszeit, „Beinbeuger - Sitzen“ und „Satz 1 von 2“
+
+#### Scenario: Details abgeschaltet
+- **GIVEN** Details sind abgeschaltet und eine Pause läuft
+- **WHEN** das iPhone gesperrt ist
+- **THEN** zeigt die Karte „Pause“, den Countdown und die Trainingszeit, ohne Übung, Satzposition und Zielwert
