@@ -7,6 +7,8 @@ import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/ui/core/components/components.dart';
+import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/body/health/health_review_screen.dart';
 import 'package:gainer_mobile/ui/features/body/health/health_review_view_model.dart';
 
@@ -48,6 +50,47 @@ class _HealthFake implements HealthPlatform {
 }
 
 void main() {
+  for (final brightness in [Brightness.light, Brightness.dark]) {
+    testWidgets('health review matches golden in ${brightness.name} mode', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final database = LocalDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final store = LocalSyncStore(database: database, accountId: accountId);
+      final coordinator = HealthReviewCoordinator(
+        store: store,
+        bodyRepository: BodyRepository(store: store),
+        platform: _HealthFake(),
+        accountId: accountId,
+        currentSessionIdentity: () =>
+            const HealthSessionIdentity(accountId: accountId, generation: 1),
+      );
+      final viewModel = HealthReviewViewModel(coordinator);
+      await tester.pumpWidget(
+        CupertinoApp(
+          debugShowCheckedModeBanner: false,
+          theme: GainerTheme.forBrightness(brightness),
+          home: HealthReviewScreen(viewModel: viewModel),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Health-Proben laden'));
+      await tester.pumpAndSettle();
+
+      await expectLater(
+        find.byType(HealthReviewScreen),
+        matchesGoldenFile(
+          'goldens/health_review_screen_${brightness.name}.png',
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('Health screen explains empty results after an explicit query', (
     tester,
   ) async {
@@ -157,7 +200,7 @@ void main() {
       await tester.tap(find.text('Auswahl übernehmen'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(CupertinoAlertDialog), findsOneWidget);
+      expect(find.byType(GainerStackedDialog<bool>), findsOneWidget);
       expect(find.text('Check-in an diesem Tag vorhanden'), findsOneWidget);
       await tester.tap(find.text('Überspringen'));
       await tester.pumpAndSettle();

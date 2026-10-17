@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/models/api/api_models.dart';
+import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'progress_view_model.dart';
 
@@ -46,72 +47,68 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
     );
     final selectedName = selected.isEmpty ? null : selected.first.name;
     final data = model.exerciseProgress;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-          context,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: CupertinoColors.separator
-              .resolveFrom(context)
-              .withValues(alpha: .25),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Übungsfortschritt',
-            style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Geschätztes 1RM aus deinen abgeschlossenen Sätzen',
-            style: TextStyle(color: GainerTheme.secondaryText(context)),
-          ),
-          const SizedBox(height: 14),
-          _exercisePicker(context, model, selectedName),
-          if (model.isExerciseCatalogStale ||
-              model.exerciseOptionsErrorMessage != null) ...[
-            const SizedBox(height: 8),
-            _StatusLine(
-              text:
-                  model.exerciseOptionsErrorMessage ??
-                  'Gespeicherte Übungsliste · möglicherweise veraltet',
+    final colors = GainerDesign.colorsOf(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: GainerSpacing.s),
+      child: GainerCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Übungsfortschritt',
+              style: GainerTypography.cardTitle.copyWith(
+                color: colors.primaryText,
+              ),
             ),
-            if (model.exerciseOptionsErrorMessage != null)
-              CupertinoButton(
-                minimumSize: const Size(double.infinity, 48),
-                onPressed: model.isLoadingExerciseOptions
-                    ? null
-                    : () => model.loadExerciseOptions(refresh: true),
-                child: const Text('Übungsliste erneut laden'),
+            const SizedBox(height: 4),
+            Text(
+              'Geschätztes 1RM aus deinen abgeschlossenen Sätzen',
+              style: GainerTypography.label.copyWith(
+                color: colors.secondaryText,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _exercisePicker(context, model, selectedName),
+            if (model.isExerciseCatalogStale ||
+                model.exerciseOptionsErrorMessage != null) ...[
+              const SizedBox(height: 8),
+              _StatusLine(
+                text:
+                    model.exerciseOptionsErrorMessage ??
+                    'Gespeicherte Übungsliste · möglicherweise veraltet',
+              ),
+              if (model.exerciseOptionsErrorMessage != null)
+                GainerPillButton(
+                  label: 'Übungsliste erneut laden',
+                  variant: GainerPillVariant.tonal,
+                  expand: true,
+                  onPressed: model.isLoadingExerciseOptions
+                      ? null
+                      : () => model.loadExerciseOptions(refresh: true),
+                ),
+            ],
+            const SizedBox(height: 12),
+            _WindowPicker(
+              selected: model.selectedProgressWindow,
+              onChanged: model.selectProgressWindow,
+            ),
+            const SizedBox(height: 14),
+            if (model.isExerciseProgressStale)
+              _StatusLine(
+                text: model.exerciseProgressCachedAtUtc == null
+                    ? 'Gespeicherter Stand · möglicherweise veraltet'
+                    : 'Gespeicherter Stand vom ${_formatDate(model.exerciseProgressCachedAtUtc!)} · möglicherweise veraltet',
+              ),
+            if (model.exerciseProgressErrorMessage case final error?)
+              _StatusLine(text: error),
+            ..._progressBody(context, model, selectedName),
+            if (model.isLoadingExerciseProgress && data != null)
+              const Align(
+                alignment: Alignment.centerRight,
+                child: CupertinoActivityIndicator(),
               ),
           ],
-          const SizedBox(height: 12),
-          _WindowPicker(
-            selected: model.selectedProgressWindow,
-            onChanged: model.selectProgressWindow,
-          ),
-          const SizedBox(height: 14),
-          if (model.isExerciseProgressStale)
-            _StatusLine(
-              text: model.exerciseProgressCachedAtUtc == null
-                  ? 'Gespeicherter Stand · möglicherweise veraltet'
-                  : 'Gespeicherter Stand vom ${_formatDate(model.exerciseProgressCachedAtUtc!)} · möglicherweise veraltet',
-            ),
-          if (model.exerciseProgressErrorMessage case final error?)
-            _StatusLine(text: error),
-          ..._progressBody(context, model, selectedName),
-          if (model.isLoadingExerciseProgress && data != null)
-            const Align(
-              alignment: Alignment.centerRight,
-              child: CupertinoActivityIndicator(),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -128,7 +125,8 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
     child: CupertinoButton(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       minimumSize: const Size(double.infinity, 48),
-      color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
+      color: GainerDesign.colorsOf(context).elevatedSurface,
+      borderRadius: GainerRadii.pill,
       onPressed: model.isLoadingExerciseOptions || model.exerciseOptions.isEmpty
           ? null
           : _chooseExercise,
@@ -141,11 +139,17 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
                   : selectedName ?? _chooseExerciseLabel,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: CupertinoTheme.of(context).textTheme.textStyle,
+              style: GainerTypography.body.copyWith(
+                color: GainerDesign.colorsOf(context).primaryText,
+              ),
             ),
           ),
           const SizedBox(width: 6),
-          const Icon(CupertinoIcons.chevron_down, size: 14),
+          Icon(
+            CupertinoIcons.chevron_down,
+            size: 14,
+            color: GainerDesign.colorsOf(context).secondaryText,
+          ),
         ],
       ),
     ),
@@ -226,7 +230,7 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
             'Min. ${minimumEstimate.toStringAsFixed(1)} kg',
             softWrap: true,
             style: TextStyle(
-              color: GainerTheme.secondaryText(context),
+              color: GainerDesign.colorsOf(context).secondaryText,
               fontSize: 12,
             ),
           ),
@@ -237,7 +241,7 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
             softWrap: true,
             textAlign: TextAlign.right,
             style: TextStyle(
-              color: GainerTheme.secondaryText(context),
+              color: GainerDesign.colorsOf(context).secondaryText,
               fontSize: 12,
             ),
           ),
@@ -252,8 +256,8 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
         child: CustomPaint(
           painter: _OneRepMaxChartPainter(
             points,
-            CupertinoTheme.of(context).primaryColor,
-            GainerTheme.secondaryText(context),
+            GainerDesign.colorsOf(context).accent,
+            GainerDesign.colorsOf(context).secondaryText,
           ),
         ),
       ),
@@ -265,7 +269,7 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
             _formatDate(points.first.completedAtUtc),
             softWrap: true,
             style: TextStyle(
-              color: GainerTheme.secondaryText(context),
+              color: GainerDesign.colorsOf(context).secondaryText,
               fontSize: 12,
             ),
           ),
@@ -276,7 +280,7 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
             softWrap: true,
             textAlign: TextAlign.right,
             style: TextStyle(
-              color: GainerTheme.secondaryText(context),
+              color: GainerDesign.colorsOf(context).secondaryText,
               fontSize: 12,
             ),
           ),
@@ -286,13 +290,15 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
     const SizedBox(height: 8),
     Text(
       'Bestes geschätztes 1RM · ${bestEstimate.toStringAsFixed(1)} kg',
-      style: CupertinoTheme.of(context).textTheme.textStyle
-          .copyWith(fontWeight: FontWeight.w600),
+      style: GainerTypography.body.copyWith(
+        fontWeight: FontWeight.w600,
+        color: GainerDesign.colorsOf(context).primaryText,
+      ),
     ),
     if (data.bestSet case final best?)
       Text(
         'Bestleistung am ${_formatDate(best.completedAtUtc)} · ${best.weightKg.toStringAsFixed(1)} kg × ${best.repetitions}',
-        style: TextStyle(color: GainerTheme.secondaryText(context)),
+        style: TextStyle(color: GainerDesign.colorsOf(context).secondaryText),
       ),
   ];
 
@@ -349,81 +355,69 @@ class _ExercisePickerPageState extends State<_ExercisePickerPage> {
   @override
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
+    final colors = GainerDesign.colorsOf(context);
     final options = widget.options
         .where((item) => item.name.toLowerCase().contains(query))
         .toList(growable: false);
-    return CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(
-        middle: const Text(_chooseExerciseLabel),
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
+    return GainerScaffold(
+      title: _chooseExerciseLabel,
+      trailing: [
+        GainerPillButton(
+          label: 'Abbrechen',
+          variant: GainerPillVariant.tonal,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Abbrechen'),
         ),
-      ),
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: CupertinoSearchTextField(
-                controller: _search,
-                placeholder: 'Übung suchen',
-                onChanged: (_) => setState(() {}),
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: options.length,
-                itemBuilder: (context, index) {
-                  final option = options[index];
-                  return CupertinoButton(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                    minimumSize: const Size(double.infinity, 48),
-                    onPressed: () => Navigator.of(context).pop(option.id),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            option.name,
-                            textAlign: TextAlign.left,
-                            style: CupertinoTheme.of(context)
-                                .textTheme
-                                .textStyle,
+      ],
+      children: [
+        GainerSearchField(
+          controller: _search,
+          placeholder: 'Übung suchen',
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: GainerSpacing.s),
+        if (options.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('Keine passende Übung gefunden.'),
+          )
+        else
+          GainerGroupedSection(
+            children: [
+              for (final option in options)
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: GainerSpacing.m,
+                    vertical: 12,
+                  ),
+                  minimumSize: const Size(double.infinity, 44),
+                  onPressed: () => Navigator.of(context).pop(option.id),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          option.name,
+                          textAlign: TextAlign.left,
+                          style: GainerTypography.body.copyWith(
+                            color: colors.primaryText,
                           ),
                         ),
-                        if (option.isCustom)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 10),
-                            child: Text(
-                              'Eigene',
-                              style: TextStyle(
-                                color: GainerTheme.secondaryText(context),
-                              ),
-                            ),
+                      ),
+                      if (option.isCustom)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: Text(
+                            'Eigene',
+                            style: TextStyle(color: colors.secondaryText),
                           ),
-                        if (option.id == widget.selectedId)
-                          Icon(
-                            CupertinoIcons.check_mark,
-                            color: CupertinoTheme.of(context).primaryColor,
-                          ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-            if (options.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('Keine passende Übung gefunden.'),
-              ),
-          ],
-        ),
-      ),
+                        ),
+                      if (option.id == widget.selectedId)
+                        Icon(CupertinoIcons.check_mark, color: colors.accent),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+      ],
     );
   }
 }
@@ -462,37 +456,27 @@ class _WindowPicker extends StatelessWidget {
 
   Widget _compactButton(BuildContext context, MapEntry<String, String> entry) {
     final isSelected = selected == entry.key;
+    final colors = GainerDesign.colorsOf(context);
     return CupertinoButton(
       minimumSize: const Size(48, 48),
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      color: isSelected
-          ? GainerTheme.actionColor(context)
-          : CupertinoColors.tertiarySystemFill.resolveFrom(context),
+      color: isSelected ? colors.accent : colors.elevatedSurface,
+      borderRadius: GainerRadii.pill,
       onPressed: () => onChanged(entry.key),
       child: Text(
         entry.value,
         style: TextStyle(
-          color: isSelected
-              ? CupertinoColors.white
-              : CupertinoColors.label.resolveFrom(context),
+          color: isSelected ? colors.onAccent : colors.primaryText,
           fontWeight: isSelected ? FontWeight.w600 : null,
         ),
       ),
     );
   }
 
-  Widget _segmentedPicker() => CupertinoSlidingSegmentedControl<String>(
-    groupValue: selected,
-    children: {
-      for (final entry in _labels.entries)
-        entry.key: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          child: Text(entry.value, maxLines: 1),
-        ),
-    },
-    onValueChanged: (value) {
-      if (value != null) onChanged(value);
-    },
+  Widget _segmentedPicker() => GainerSegmentedControl<String>(
+    value: selected,
+    options: _labels,
+    onChanged: onChanged,
   );
 }
 
@@ -504,7 +488,10 @@ class _StatusLine extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 8),
     child: Text(
       text,
-      style: TextStyle(color: GainerTheme.secondaryText(context), fontSize: 13),
+      style: TextStyle(
+        color: GainerDesign.colorsOf(context).secondaryText,
+        fontSize: 13,
+      ),
       semanticsLabel: text,
     ),
   );
