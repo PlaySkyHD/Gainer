@@ -8,6 +8,7 @@ import 'package:gainer_mobile/data/services/auth/mobile_auth_controller.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/platform/pigeon_native_features_platform.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -133,6 +134,133 @@ void main() {
       }
     },
   );
+
+  group('native training route', () {
+    NativeAppRouteRequest route({
+      NativeRouteSource source = NativeRouteSource.liveActivity,
+    }) => NativeAppRouteRequest(
+      destination: NativeAppRoute.training,
+      source: source,
+      createdAtUtc: DateTime.now().toUtc(),
+    );
+
+    test(
+      'Live Activity opens the active workout of the current account',
+      () async {
+        final secure = _MemorySecureSession();
+        final controller = _controller(
+          secure: secure,
+          databases: <String, LocalDatabase>{},
+          apiFactory: _FakeApiFactory(),
+        );
+        try {
+          await controller.initialize();
+          await controller.login('a@example.test', 'password');
+          final account = controller.account!;
+          final workout = await account.training.startEmpty(title: 'Push');
+          await account.activeWorkout.load();
+
+          await controller.onRouteRequested(route());
+
+          expect(controller.shell.selectedArea, MobileArea.training);
+          expect(controller.shell.takeRequestedWorkout(), workout.workoutId);
+        } finally {
+          await controller.logout();
+          controller.dispose();
+        }
+      },
+    );
+
+    test('without an active workout only the training tab opens', () async {
+      final controller = _controller(
+        secure: _MemorySecureSession(),
+        databases: <String, LocalDatabase>{},
+        apiFactory: _FakeApiFactory(),
+      );
+      try {
+        await controller.initialize();
+        await controller.login('a@example.test', 'password');
+
+        await controller.onRouteRequested(route());
+
+        expect(controller.shell.selectedArea, MobileArea.training);
+        expect(controller.shell.takeRequestedWorkout(), isNull);
+      } finally {
+        await controller.logout();
+        controller.dispose();
+      }
+    });
+
+    test('a widget route never opens a workout, only the tab', () async {
+      final controller = _controller(
+        secure: _MemorySecureSession(),
+        databases: <String, LocalDatabase>{},
+        apiFactory: _FakeApiFactory(),
+      );
+      try {
+        await controller.initialize();
+        await controller.login('a@example.test', 'password');
+        final account = controller.account!;
+        await account.training.startEmpty(title: 'Push');
+        await account.activeWorkout.load();
+
+        await controller.onRouteRequested(
+          route(source: NativeRouteSource.widget),
+        );
+
+        expect(controller.shell.selectedArea, MobileArea.training);
+        expect(controller.shell.takeRequestedWorkout(), isNull);
+      } finally {
+        await controller.logout();
+        controller.dispose();
+      }
+    });
+
+    test('a signed-out app rejects the route and mutates nothing', () async {
+      final controller = _controller(
+        secure: _MemorySecureSession(),
+        databases: <String, LocalDatabase>{},
+        apiFactory: _FakeApiFactory(),
+      );
+      try {
+        await controller.initialize();
+        expect(() => controller.onRouteRequested(route()), throwsStateError);
+
+        expect(controller.shell.selectedArea, MobileArea.progress);
+        expect(controller.shell.takeRequestedWorkout(), isNull);
+      } finally {
+        controller.dispose();
+      }
+    });
+
+    test(
+      'another account never receives the previous account workout',
+      () async {
+        final databases = <String, LocalDatabase>{};
+        final controller = _controller(
+          secure: _MemorySecureSession(),
+          databases: databases,
+          apiFactory: _FakeApiFactory(),
+        );
+        try {
+          await controller.initialize();
+          await controller.login('a@example.test', 'password');
+          await controller.account!.training.startEmpty(title: 'Push');
+          await controller.account!.activeWorkout.load();
+          await controller.logout();
+
+          await controller.login('b@example.test', 'password');
+          await controller.onRouteRequested(route());
+
+          expect(controller.account?.session.userId, _accountB);
+          expect(controller.shell.takeRequestedWorkout(), isNull);
+        } finally {
+          await controller.logout();
+          controller.dispose();
+        }
+      },
+    );
+  });
 }
 
 const _accountA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

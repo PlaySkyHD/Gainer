@@ -64,6 +64,7 @@ enum _WorkoutMenuAction {
   reorder,
   toggleWeightUnit,
   toggleRir,
+  toggleLiveActivityDetails,
   delete,
 }
 
@@ -249,6 +250,14 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             icon: CupertinoIcons.gauge,
             value: _WorkoutMenuAction.toggleRir,
           ),
+          GainerSheetAction(
+            label: _viewModel.liveActivityDetails
+                ? 'Details auf Sperrbildschirm aus'
+                : 'Details auf Sperrbildschirm an',
+            icon: CupertinoIcons.lock,
+            value: _WorkoutMenuAction.toggleLiveActivityDetails,
+            hint: 'Zeigt Training, Übung und Satzposition, nie Gewichte.',
+          ),
         ],
       ],
     );
@@ -277,6 +286,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         );
       case _WorkoutMenuAction.toggleRir:
         await _viewModel.setShowRir(!_viewModel.showRir);
+      case _WorkoutMenuAction.toggleLiveActivityDetails:
+        await _viewModel.setLiveActivityDetails(
+          !_viewModel.liveActivityDetails,
+        );
       case _WorkoutMenuAction.delete:
         await _confirmDelete();
       case null:

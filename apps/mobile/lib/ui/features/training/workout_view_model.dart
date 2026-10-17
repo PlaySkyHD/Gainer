@@ -29,7 +29,7 @@ class WorkoutViewModel extends ChangeNotifier {
     required this.repository,
     required this.activeWorkout,
     required this.workoutId,
-  }) : _preferences = TrainingPreferences(store: repository.store);
+  }) : _preferences = repository.preferences;
 
   final TrainingLogRepository repository;
   final ActiveWorkoutController activeWorkout;
@@ -60,6 +60,9 @@ class WorkoutViewModel extends ChangeNotifier {
   WeightUnit get weightUnit => _settings.weightUnit;
 
   bool get showRir => _settings.showRir;
+
+  /// Details auf dem Sperrbildschirm freigegeben (Training, Übung, Satzposition).
+  bool get liveActivityDetails => _settings.liveActivityDetails;
 
   /// Vorwerte je Block-ID, eine Position je Satz. `null` ohne Vorwert.
   Map<String, List<LoggedSet?>> get previousValues {
@@ -142,6 +145,9 @@ class WorkoutViewModel extends ChangeNotifier {
 
   Future<void> setShowRir(bool showRir) =>
       _updateSettings(_settings.copyWith(showRir: showRir));
+
+  Future<void> setLiveActivityDetails(bool enabled) =>
+      _updateSettings(_settings.copyWith(liveActivityDetails: enabled));
 
   Future<void> _updateSettings(TrainingPreferenceValues values) async {
     if (values == _settings) return;

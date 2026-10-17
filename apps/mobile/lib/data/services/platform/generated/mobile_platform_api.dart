@@ -322,6 +322,167 @@ class PlatformWorkoutExportResult {
   }
 }
 
+class PlatformLiveActivityDetail {
+  PlatformLiveActivityDetail({
+    required this.title,
+    required this.exerciseName,
+    required this.setIndex,
+    required this.setCount,
+  });
+
+  String title;
+
+  String exerciseName;
+
+  int setIndex;
+
+  int setCount;
+
+  List<Object?> _toList() {
+    return <Object?>[title, exerciseName, setIndex, setCount];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformLiveActivityDetail decode(Object result) {
+    result as List<Object?>;
+    return PlatformLiveActivityDetail(
+      title: result[0]! as String,
+      exerciseName: result[1]! as String,
+      setIndex: result[2]! as int,
+      setCount: result[3]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformLiveActivityDetail ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(title, other.title) &&
+        _deepEquals(exerciseName, other.exerciseName) &&
+        _deepEquals(setIndex, other.setIndex) &&
+        _deepEquals(setCount, other.setCount);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformLiveActivityDetail(title: $title, exerciseName: $exerciseName, setIndex: $setIndex, setCount: $setCount)';
+  }
+}
+
+/// Neutraler Zustand der Trainings-Live-Activity. Restzeiten werden aus dem
+/// Zielzeitpunkt berechnet, nicht hochgezählt.
+class PlatformLiveActivityState {
+  PlatformLiveActivityState({
+    required this.sessionId,
+    required this.timerPhase,
+    required this.startedAtUtcEpochMilliseconds,
+    required this.expired,
+    required this.staleAtUtcEpochMilliseconds,
+    this.timerTargetAtUtcEpochMilliseconds,
+    this.pausedRemainingSeconds,
+    this.detail,
+  });
+
+  String sessionId;
+
+  /// One of `ready`, `running`, `paused`, `expired`.
+  String timerPhase;
+
+  int startedAtUtcEpochMilliseconds;
+
+  bool expired;
+
+  int staleAtUtcEpochMilliseconds;
+
+  int? timerTargetAtUtcEpochMilliseconds;
+
+  int? pausedRemainingSeconds;
+
+  PlatformLiveActivityDetail? detail;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      sessionId,
+      timerPhase,
+      startedAtUtcEpochMilliseconds,
+      expired,
+      staleAtUtcEpochMilliseconds,
+      timerTargetAtUtcEpochMilliseconds,
+      pausedRemainingSeconds,
+      detail,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformLiveActivityState decode(Object result) {
+    result as List<Object?>;
+    return PlatformLiveActivityState(
+      sessionId: result[0]! as String,
+      timerPhase: result[1]! as String,
+      startedAtUtcEpochMilliseconds: result[2]! as int,
+      expired: result[3]! as bool,
+      staleAtUtcEpochMilliseconds: result[4]! as int,
+      timerTargetAtUtcEpochMilliseconds: result[5] as int?,
+      pausedRemainingSeconds: result[6] as int?,
+      detail: result[7] as PlatformLiveActivityDetail?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformLiveActivityState ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(timerPhase, other.timerPhase) &&
+        _deepEquals(
+          startedAtUtcEpochMilliseconds,
+          other.startedAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(expired, other.expired) &&
+        _deepEquals(
+          staleAtUtcEpochMilliseconds,
+          other.staleAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(
+          timerTargetAtUtcEpochMilliseconds,
+          other.timerTargetAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(pausedRemainingSeconds, other.pausedRemainingSeconds) &&
+        _deepEquals(detail, other.detail);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformLiveActivityState(sessionId: $sessionId, timerPhase: $timerPhase, startedAtUtcEpochMilliseconds: $startedAtUtcEpochMilliseconds, expired: $expired, staleAtUtcEpochMilliseconds: $staleAtUtcEpochMilliseconds, timerTargetAtUtcEpochMilliseconds: $timerTargetAtUtcEpochMilliseconds, pausedRemainingSeconds: $pausedRemainingSeconds, detail: $detail)';
+  }
+}
+
 class PlatformRoute {
   PlatformRoute({
     required this.destination,
@@ -401,8 +562,14 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is PlatformWorkoutExportResult) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    } else if (value is PlatformRoute) {
+    } else if (value is PlatformLiveActivityDetail) {
       buffer.putUint8(134);
+      writeValue(buffer, value.encode());
+    } else if (value is PlatformLiveActivityState) {
+      buffer.putUint8(135);
+      writeValue(buffer, value.encode());
+    } else if (value is PlatformRoute) {
+      buffer.putUint8(136);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -426,6 +593,10 @@ class _PigeonCodec extends StandardMessageCodec {
       case 133:
         return PlatformWorkoutExportResult.decode(readValue(buffer)!);
       case 134:
+        return PlatformLiveActivityDetail.decode(readValue(buffer)!);
+      case 135:
+        return PlatformLiveActivityState.decode(readValue(buffer)!);
+      case 136:
         return PlatformRoute.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -911,13 +1082,7 @@ class MobilePlatformApi {
     );
   }
 
-  Future<bool> startLiveActivity(
-    String sessionId,
-    String status,
-    int startedAtUtcEpochMilliseconds,
-    int? restEndsAtUtcEpochMilliseconds,
-    int staleAtUtcEpochMilliseconds,
-  ) async {
+  Future<bool> startLiveActivity(PlatformLiveActivityState state) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.startLiveActivity$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -926,13 +1091,7 @@ class MobilePlatformApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[
-        sessionId,
-        status,
-        startedAtUtcEpochMilliseconds,
-        restEndsAtUtcEpochMilliseconds,
-        staleAtUtcEpochMilliseconds,
-      ],
+      <Object?>[state],
     );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
@@ -944,13 +1103,7 @@ class MobilePlatformApi {
     return pigeonVar_replyValue! as bool;
   }
 
-  Future<bool> updateLiveActivity(
-    String sessionId,
-    String status,
-    int startedAtUtcEpochMilliseconds,
-    int? restEndsAtUtcEpochMilliseconds,
-    int staleAtUtcEpochMilliseconds,
-  ) async {
+  Future<bool> updateLiveActivity(PlatformLiveActivityState state) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.updateLiveActivity$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -959,13 +1112,7 @@ class MobilePlatformApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[
-        sessionId,
-        status,
-        startedAtUtcEpochMilliseconds,
-        restEndsAtUtcEpochMilliseconds,
-        staleAtUtcEpochMilliseconds,
-      ],
+      <Object?>[state],
     );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 

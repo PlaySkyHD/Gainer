@@ -72,13 +72,9 @@ class ActiveWorkoutController extends ChangeNotifier {
     timer.dispose();
   }
 
-  bool _sameAs(Workout? workout) {
-    final current = _active;
-    if (current == null || workout == null) return current == workout;
-    return current.workoutId == workout.workoutId &&
-        current.title == workout.title &&
-        current.startedAtUtc == workout.startedAtUtc;
-  }
+  /// Vollständiger Vergleich, damit auch Satz- und Übungsänderungen die
+  /// Beobachter erreichen (z. B. die Live Activity).
+  bool _sameAs(Workout? workout) => _active == workout;
 
   /// Hält genau einen Timer für das aktive Training. Verschwindet das Training
   /// ohne [endRestTimer], etwa durch Sync, wird der Timer hier beendet.

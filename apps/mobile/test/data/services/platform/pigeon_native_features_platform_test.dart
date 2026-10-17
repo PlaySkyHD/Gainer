@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/pigeon_native_features_platform.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/domain/models/timer/rest_timer_state.dart';
 
 class _FakeMobilePlatformApi extends MobilePlatformApi {
   String? barcode;
@@ -25,7 +26,7 @@ class _FakeMobilePlatformApi extends MobilePlatformApi {
     syncVersion: 1,
   );
   final List<(int, int, int, List<String>)> snapshots = [];
-  final List<(String, String, int, int, int?, int)> liveActivityCalls = [];
+  final List<(String, PlatformLiveActivityState)> liveActivityCalls = [];
   final List<String> endedActivities = [];
   int clearedSnapshots = 0;
 
@@ -102,40 +103,14 @@ class _FakeMobilePlatformApi extends MobilePlatformApi {
   }
 
   @override
-  Future<bool> startLiveActivity(
-    String sessionId,
-    String status,
-    int startedAtUtcEpochMilliseconds,
-    int? restEndsAtUtcEpochMilliseconds,
-    int staleAtUtcEpochMilliseconds,
-  ) async {
-    liveActivityCalls.add((
-      'start',
-      sessionId,
-      status == 'rest' ? 1 : 0,
-      startedAtUtcEpochMilliseconds,
-      restEndsAtUtcEpochMilliseconds,
-      staleAtUtcEpochMilliseconds,
-    ));
+  Future<bool> startLiveActivity(PlatformLiveActivityState state) async {
+    liveActivityCalls.add(('start', state));
     return true;
   }
 
   @override
-  Future<bool> updateLiveActivity(
-    String sessionId,
-    String status,
-    int startedAtUtcEpochMilliseconds,
-    int? restEndsAtUtcEpochMilliseconds,
-    int staleAtUtcEpochMilliseconds,
-  ) async {
-    liveActivityCalls.add((
-      'update',
-      sessionId,
-      status == 'rest' ? 1 : 0,
-      startedAtUtcEpochMilliseconds,
-      restEndsAtUtcEpochMilliseconds,
-      staleAtUtcEpochMilliseconds,
-    ));
+  Future<bool> updateLiveActivity(PlatformLiveActivityState state) async {
+    liveActivityCalls.add(('update', state));
     return true;
   }
 
@@ -243,10 +218,16 @@ void main() {
       final staleAt = updateAt.add(const Duration(hours: 1));
       final liveState = LiveActivityState(
         sessionId: '849da1bf-4326-4bfb-b06e-80f994f80044',
-        status: LiveActivityStatus.rest,
+        timerPhase: RestTimerPhase.running,
         startedAtUtc: updateAt,
         staleAtUtc: staleAt,
-        restEndsAtUtc: restEnd,
+        timerTargetAtUtc: restEnd,
+        detail: const LiveActivityDetail(
+          title: 'Pull',
+          exerciseName: 'Latzug',
+          setIndex: 1,
+          setCount: 3,
+        ),
       );
       await platform.publish(
         NeutralExtensionSnapshot(
@@ -266,8 +247,16 @@ void main() {
       expect(api.snapshots.single.$2, 4);
       expect(api.snapshots.single.$4, ['checkIn', 'training']);
       expect(api.liveActivityCalls.map((call) => call.$1), ['start', 'update']);
-      expect(api.liveActivityCalls.first.$3, 1);
-      expect(api.liveActivityCalls.first.$5, restEnd.millisecondsSinceEpoch);
+      final sent = api.liveActivityCalls.first.$2;
+      expect(sent.timerPhase, 'running');
+      expect(sent.expired, isFalse);
+      expect(
+        sent.timerTargetAtUtcEpochMilliseconds,
+        restEnd.millisecondsSinceEpoch,
+      );
+      expect(sent.pausedRemainingSeconds, isNull);
+      expect(sent.detail?.exerciseName, 'Latzug');
+      expect(sent.detail?.setIndex, 1);
       expect(api.endedActivities, [liveState.sessionId, '*']);
       expect(api.clearedSnapshots, 1);
     },

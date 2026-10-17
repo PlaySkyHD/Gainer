@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../../domain/models/timer/rest_timer_state.dart';
 import 'generated/mobile_platform_api.dart';
 
 abstract interface class CapturePlatform {
@@ -131,22 +132,85 @@ class WorkoutExportReceipt {
   final int syncVersion;
 }
 
-enum LiveActivityStatus { workout, rest }
+/// Detailangaben der Live Activity. Nur bei ausdrücklicher Freigabe gesetzt;
+/// Gewichte und Wiederholungen gehören nie hierher.
+class LiveActivityDetail {
+  const LiveActivityDetail({
+    required this.title,
+    required this.exerciseName,
+    required this.setIndex,
+    required this.setCount,
+  });
 
+  final String title;
+  final String exerciseName;
+  final int setIndex;
+  final int setCount;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LiveActivityDetail &&
+      other.title == title &&
+      other.exerciseName == exerciseName &&
+      other.setIndex == setIndex &&
+      other.setCount == setCount;
+
+  @override
+  int get hashCode => Object.hash(title, exerciseName, setIndex, setCount);
+}
+
+/// Neutraler Zustand einer Trainings-Live-Activity. Er enthält keine Gewichte,
+/// Wiederholungen oder Kontodaten; die Restzeit leitet die Oberfläche aus dem
+/// Zielzeitpunkt ab.
 class LiveActivityState {
   const LiveActivityState({
     required this.sessionId,
-    required this.status,
+    required this.timerPhase,
     required this.startedAtUtc,
     required this.staleAtUtc,
-    this.restEndsAtUtc,
+    this.timerTargetAtUtc,
+    this.pausedRemainingSeconds,
+    this.detail,
   });
 
+  /// Workout-ID; eine Activity je Training.
   final String sessionId;
-  final LiveActivityStatus status;
+  final RestTimerPhase timerPhase;
   final DateTime startedAtUtc;
-  final DateTime? restEndsAtUtc;
   final DateTime staleAtUtc;
+
+  /// Nur im Zustand laufender Pause.
+  final DateTime? timerTargetAtUtc;
+
+  /// Nur im Zustand pausierter Pause.
+  final int? pausedRemainingSeconds;
+
+  /// Nur bei Detailfreigabe und vorhandenen Übungen.
+  final LiveActivityDetail? detail;
+
+  bool get expired => timerPhase == RestTimerPhase.expired;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LiveActivityState &&
+      other.sessionId == sessionId &&
+      other.timerPhase == timerPhase &&
+      other.startedAtUtc == startedAtUtc &&
+      other.staleAtUtc == staleAtUtc &&
+      other.timerTargetAtUtc == timerTargetAtUtc &&
+      other.pausedRemainingSeconds == pausedRemainingSeconds &&
+      other.detail == detail;
+
+  @override
+  int get hashCode => Object.hash(
+    sessionId,
+    timerPhase,
+    startedAtUtc,
+    staleAtUtc,
+    timerTargetAtUtc,
+    pausedRemainingSeconds,
+    detail,
+  );
 }
 
 enum NativeAppRoute { training, checkIn, nutrition }
