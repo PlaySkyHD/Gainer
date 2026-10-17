@@ -17,7 +17,7 @@ import 'sync_payload_codec.dart';
 const nativeSyncProtocolVersion = 2;
 
 const _syncLeaseKey = 'sync-lease';
-const _pullCursorKey = 'pull-cursor';
+const _pullCursorKey = pullCursorMetadataKey;
 
 enum SyncRunState {
   idle,
@@ -353,12 +353,13 @@ class SyncRepository implements MobileSyncActions {
     final candidates = await _oldestReadyPerAggregate(timestamp);
     for (final record in candidates) {
       await _refreshSyncLease();
-      final syncing = _copyMutation(
-        record,
-        status: LocalMutationStatus.syncing,
-        lastErrorCode: null,
+      // Claim re-reads the entry in a transaction: the body sent is the one
+      // stored now, and no later edit can coalesce into it once it is claimed.
+      final syncing = await store.claimMutationForSending(
+        record.mutationId,
+        now: timestamp,
       );
-      await store.updateMutation(syncing);
+      if (syncing == null) continue;
       try {
         final request = _toRequest(syncing, clientId);
         final response = await api.pushMutation(

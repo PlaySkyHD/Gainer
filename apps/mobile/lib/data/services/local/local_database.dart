@@ -32,6 +32,9 @@ class LocalOutbox extends Table {
   IntColumn get attemptCount => integer().withDefault(const Constant(0))();
   TextColumn get nextAttemptAtUtc => text().nullable()();
   TextColumn get lastErrorCode => text().nullable()();
+  // Set once when the entry is claimed for sending and never cleared. Only
+  // entries without it may be coalesced: a sent mutation id must keep its body.
+  TextColumn get sentAtUtc => text().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {mutationId};
@@ -79,6 +82,11 @@ class InstallationMetadata extends Table {
   Set<Column<Object>> get primaryKey => {key};
 }
 
+/// Sync metadata key holding the training schema version of an account
+/// database. Databases without it predate the training rebuild (D11).
+const trainingSchemaVersionKey = 'training-schema-version';
+const currentTrainingSchemaVersion = 2;
+
 @DriftDatabase(
   tables: [
     LocalResources,
@@ -121,11 +129,20 @@ class LocalDatabase extends _$LocalDatabase {
   }
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) => m.createAll(),
+    onCreate: (m) async {
+      await m.createAll();
+      // A new database has no training data from before the rebuild.
+      await into(localSyncMetadata).insert(
+        LocalSyncMetadataCompanion.insert(
+          key: trainingSchemaVersionKey,
+          valueJson: '$currentTrainingSchemaVersion',
+        ),
+      );
+    },
     onUpgrade: (m, from, to) async {
       // Version 1 already had a durable outbox. Version 2 adds retry state;
       // these additive columns preserve all queued rows during upgrade.
@@ -133,6 +150,14 @@ class LocalDatabase extends _$LocalDatabase {
         await m.addColumn(localOutbox, localOutbox.attemptCount);
         await m.addColumn(localOutbox, localOutbox.nextAttemptAtUtc);
         await m.addColumn(localOutbox, localOutbox.lastErrorCode);
+      }
+      // Entries queued before this version may already have been sent, so
+      // they are marked as sent and never coalesced.
+      if (from < 3) {
+        await m.addColumn(localOutbox, localOutbox.sentAtUtc);
+        await customStatement(
+          'UPDATE local_outbox SET sent_at_utc = created_at_utc',
+        );
       }
     },
     beforeOpen: (details) async {
