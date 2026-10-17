@@ -4,7 +4,6 @@ export type Session = components["schemas"]["SessionResponse"];
 export type AccountSummary = components["schemas"]["AccountSummaryResponse"];
 export type Invitation = components["schemas"]["InvitationResponse"];
 export type DashboardInsights = components["schemas"]["DashboardInsightsResponse"];
-export type ExerciseProgress = components["schemas"]["ExerciseProgressResponse"];
 export type CoachAnswer = components["schemas"]["CoachResponse"];
 export type FoodCatalogProduct = components["schemas"]["FoodCatalogProductResponse"];
 export type FoodCatalogSearch = components["schemas"]["FoodCatalogSearchResponse"];
@@ -86,22 +85,11 @@ export async function acceptInvitation(token: string, password: string): Promise
 }
 
 export async function getDashboardInsights(days = 30): Promise<DashboardInsights> {
-  const response = await fetch(`/api/v1/insights/dashboard?days=${days}`, {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Berlin";
+  const response = await fetch(`/api/v1/insights/dashboard?days=${days}&timeZone=${encodeURIComponent(zone)}`, {
     credentials: "include", cache: "no-store",
   });
   return readJson<DashboardInsights>(response);
-}
-
-export async function getExerciseProgress(
-  exerciseId: string,
-  window: "7" | "30" | "90" | "all",
-): Promise<ExerciseProgress> {
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Berlin";
-  const response = await fetch(
-    `/api/v1/insights/exercises/${exerciseId}/progress?window=${window}&timeZone=${encodeURIComponent(zone)}`,
-    { credentials: "include", cache: "no-store" },
-  );
-  return readJson<ExerciseProgress>(response);
 }
 
 export async function askCoach(question: string): Promise<CoachAnswer> {

@@ -193,7 +193,6 @@ export async function finishPwaHandoverTarget(
       if (status.unresolvedCount > 0 || status.conflictCount > 0) {
         throw new Error("Lokale PWA-Änderungen sind hinzugekommen. Die Rückübernahme bleibt bis zur Recovery gesperrt.");
       }
-      await validateImmutableLocalHistory(database, stage);
       recovery = { ...recovery, phase: "ready" };
       await database.syncMeta.put({ key: recoveryKey, value: recovery });
       recovery = { ...recovery, phase: "completing" };
@@ -278,17 +277,6 @@ async function recoverOrphanedPushes(database: AccountDatabase): Promise<void> {
     nextAttemptAtUtc: null,
     lastErrorCode: "handover_recovered_push",
   })));
-}
-
-async function validateImmutableLocalHistory(database: AccountDatabase, stage: AccountDatabase): Promise<void> {
-  const local = await database.workouts.toArray() as { id: string; envelope: { workingCopy: { status?: string } } }[];
-  for (const item of local) {
-    if (item.envelope.workingCopy.status?.toLowerCase() !== "completed") continue;
-    const staged = await stage.workouts.get(item.id) as { envelope?: { workingCopy?: unknown } } | undefined;
-    if (staged && JSON.stringify(item.envelope.workingCopy) !== JSON.stringify(staged.envelope?.workingCopy)) {
-      throw new Error("Ein lokaler abgeschlossener Workout-Snapshot weicht vom Server ab. Er bleibt erhalten; die Übergabe wird nicht abgeschlossen.");
-    }
-  }
 }
 
 function stagingDatabaseName(accountId: string, handoverId: string, targetClientId: string): string {
