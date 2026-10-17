@@ -10,7 +10,8 @@ import 'rest_timer_controller.dart';
 import 'rest_timer_format.dart';
 import 'rest_timer_toggle_button.dart';
 
-/// Öffnet die große Timeransicht als Sheet. X beendet den Timer und schließt das Sheet.
+/// Öffnet die große Timeransicht als Sheet. X beendet den Timer und schließt das Sheet;
+/// Wischen nach unten minimiert nur, der Timer läuft weiter.
 Future<void> showRestTimerSheet(
   BuildContext context,
   RestTimerController controller,
@@ -22,8 +23,72 @@ Future<void> showRestTimerSheet(
   }
   return showCupertinoModalPopup<void>(
     context: context,
-    builder: (_) => RestTimerSheet(controller: controller),
+    builder: (_) =>
+        _SwipeToDismiss(child: RestTimerSheet(controller: controller)),
   );
+}
+
+/// Lässt das Sheet dem Finger nach unten folgen. Weit genug oder schnell
+/// genug gewischt schließt es, sonst federt es zurück.
+class _SwipeToDismiss extends StatefulWidget {
+  const _SwipeToDismiss({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SwipeToDismiss> createState() => _SwipeToDismissState();
+}
+
+class _SwipeToDismissState extends State<_SwipeToDismiss>
+    with SingleTickerProviderStateMixin {
+  static const _dismissVelocity = 700.0;
+  static const _dismissFraction = 0.25;
+
+  late final AnimationController _settle = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+  )..addListener(() => setState(() => _offset = _settleFrom * _settle.value));
+
+  double _offset = 0;
+  double _settleFrom = 0;
+  var _dismissed = false;
+
+  void _onUpdate(DragUpdateDetails details) {
+    _settle.stop();
+    setState(() => _offset = math.max(0, _offset + details.delta.dy));
+  }
+
+  void _onEnd(DragEndDetails details) {
+    final height = context.size?.height ?? 1;
+    final velocity = details.primaryVelocity ?? 0;
+    if (!_dismissed &&
+        (velocity > _dismissVelocity || _offset > height * _dismissFraction)) {
+      _dismissed = true;
+      Navigator.of(context).pop();
+      return;
+    }
+    _settleFrom = _offset;
+    _settle.reverse(from: 1);
+  }
+
+  @override
+  void dispose() {
+    _settle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragUpdate: _onUpdate,
+      onVerticalDragEnd: _onEnd,
+      child: Transform.translate(
+        offset: Offset(0, _offset),
+        child: widget.child,
+      ),
+    );
+  }
 }
 
 class RestTimerSheet extends StatefulWidget {
@@ -84,6 +149,14 @@ class _RestTimerSheetState extends State<RestTimerSheet> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Container(
+                    width: 36,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: colors.separator,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
                   Row(
                     children: [
                       const Spacer(),
