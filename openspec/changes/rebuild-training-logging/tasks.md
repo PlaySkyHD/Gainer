@@ -82,8 +82,8 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 
 - [x] 12.1 „Heute“/Fortschritt (`progress_screen`, `exercise_progress_section`) auf Komponenten und Farbrollen umstellen; bestehende Widget-Tests unverändert grün, Golden-Tests Hell/Dunkel.
 - [x] 12.2 Check-in und Apple-Health-Review (`body_screen`, `health_review_screen_cupertino`) umstellen; bestehende Widget-Tests unverändert grün, Golden-Tests Hell/Dunkel.
-- [ ] 12.3 Ernährung (`nutrition_screen_cupertino`) umstellen; bestehende Widget-Tests unverändert grün, Golden-Tests Hell/Dunkel.
-- [ ] 12.4 Coach, Mehr-Menü, Sync & Gerätewechsel, Anmeldung und Kontoverwaltung umstellen; bestehende Widget-Tests unverändert grün, Golden-Tests Hell/Dunkel.
+- [x] 12.3 Ernährung (`nutrition_screen_cupertino`) umstellen; bestehende Widget-Tests unverändert grün, Golden-Tests Hell/Dunkel.
+- [x] 12.4 Coach, Mehr-Menü, Sync & Gerätewechsel, Anmeldung und Kontoverwaltung umstellen; bestehende Widget-Tests unverändert grün, Golden-Tests Hell/Dunkel.
 - [ ] 12.5 Home-Screen-Widget der Widget-Extension auf die Farbrollen umstellen; Xcode-Build und Widget-Vorschau in beiden Modi geprüft.
 
 ## 13. Integrationsabnahme

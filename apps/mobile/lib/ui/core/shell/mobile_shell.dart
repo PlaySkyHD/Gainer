@@ -11,6 +11,7 @@ import '../../features/nutrition/nutrition_screen.dart';
 import '../../features/progress/progress_screen.dart';
 import '../../features/sync/sync_screen.dart';
 import '../../features/training/training_screen.dart';
+import '../components/components.dart';
 import '../theme.dart';
 import '../view_models/mobile_shell_view_model.dart';
 import 'mobile_tab_scaffold.dart';
@@ -68,156 +69,115 @@ class _MoreScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(middle: Text('Mehr')),
-      child: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: CupertinoColors.secondarySystemGroupedBackground
-                        .resolveFrom(context),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: GainerTheme.actionColor(context),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          CupertinoIcons.person_fill,
-                          color: CupertinoColors.white,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              account.session.email,
-                              style: CupertinoTheme.of(context)
-                                  .textTheme
-                                  .navTitleTextStyle,
-                              softWrap: true,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              account.online
-                                  ? 'Angemeldetes Konto'
-                                  : 'Lokales Profil',
-                              style: TextStyle(
-                                color: GainerTheme.secondaryText(context),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+    final colors = GainerDesign.colorsOf(context);
+    return GainerScaffold(
+      title: 'Mehr',
+      children: [
+        GainerCard(
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: colors.accent,
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(height: 24),
-                CupertinoListSection.insetGrouped(
-                  backgroundColor: CupertinoTheme.of(context)
-                      .scaffoldBackgroundColor,
-                  header: Text(
-                    'KONTO & GERÄTE',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: GainerTheme.secondaryText(context),
-                    ),
-                  ),
+                child: Icon(CupertinoIcons.person_fill, color: colors.onAccent),
+              ),
+              const SizedBox(width: GainerSpacing.s),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CupertinoListTile(
-                      title: const Text('Sync & Gerätewechsel'),
-                      leading: const Icon(CupertinoIcons.arrow_2_squarepath),
-                      trailing: const CupertinoListTileChevron(),
-                      onTap: () => Navigator.of(context).push(
-                        CupertinoPageRoute<void>(
-                          builder: (_) => SyncScreen(
-                            sync: account.sync,
-                            isOnline: account.online,
-                            accountId: account.store.accountId,
-                            apiOrigin:
-                                account.api.configuration.canonicalApiOrigin,
-                            isScopeActive: account.isSessionActive,
-                          ),
-                        ),
+                    Text(
+                      account.session.email,
+                      style: GainerTypography.cardTitle.copyWith(
+                        color: colors.primaryText,
                       ),
+                      softWrap: true,
                     ),
-                    CupertinoListTile(
-                      title: const Text('Apple Health'),
-                      leading: const Icon(CupertinoIcons.heart),
-                      trailing: const CupertinoListTileChevron(),
-                      onTap: () => Navigator.of(context).push(
-                        CupertinoPageRoute<void>(
-                          builder: (_) => HealthReviewScreen(
-                            viewModel: account.healthViewModel,
-                          ),
-                        ),
+                    const SizedBox(height: GainerSpacing.xxs),
+                    Text(
+                      account.online ? 'Angemeldetes Konto' : 'Lokales Profil',
+                      style: GainerTypography.label.copyWith(
+                        color: colors.secondaryText,
                       ),
                     ),
                   ],
                 ),
-                CupertinoListSection.insetGrouped(
-                  backgroundColor: CupertinoTheme.of(context)
-                      .scaffoldBackgroundColor,
-                  header: Text(
-                    'WEITERE BEREICHE',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: GainerTheme.secondaryText(context),
-                    ),
-                  ),
-                  children: [
-                    CupertinoListTile(
-                      title: const Text('Coach'),
-                      leading: const Icon(CupertinoIcons.chat_bubble_2),
-                      trailing: const CupertinoListTileChevron(),
-                      onTap: () => Navigator.of(context).push(
-                        CupertinoPageRoute<void>(
-                          builder: (_) =>
-                              CoachScreen(viewModel: account.coachViewModel),
-                        ),
-                      ),
-                    ),
-                    if (account.session.isAccountOperator)
-                      CupertinoListTile(
-                        title: const Text('Kontoverwaltung'),
-                        leading: const Icon(CupertinoIcons.person_2),
-                        trailing: const CupertinoListTileChevron(),
-                        onTap: () => Navigator.of(context).push(
-                          CupertinoPageRoute<void>(
-                            builder: (_) =>
-                                AccountOperatorScreen(controller: controller),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                _SyncButton(account: account),
-                CupertinoButton(
-                  minimumSize: const Size(double.infinity, 48),
-                  onPressed: controller.logout,
-                  child: const Text('Abmelden'),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-      ),
+        const SizedBox(height: GainerSpacing.l),
+        GainerGroupedSection(
+          header: 'KONTO & GERÄTE',
+          children: [
+            GainerListRow(
+              title: 'Sync & Gerätewechsel',
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                CupertinoPageRoute<void>(
+                  builder: (_) => SyncScreen(
+                    sync: account.sync,
+                    isOnline: account.online,
+                    accountId: account.store.accountId,
+                    apiOrigin: account.api.configuration.canonicalApiOrigin,
+                    isScopeActive: account.isSessionActive,
+                  ),
+                ),
+              ),
+            ),
+            GainerListRow(
+              title: 'Apple Health',
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                CupertinoPageRoute<void>(
+                  builder: (_) =>
+                      HealthReviewScreen(viewModel: account.healthViewModel),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.l),
+        GainerGroupedSection(
+          header: 'WEITERE BEREICHE',
+          children: [
+            GainerListRow(
+              title: 'Coach',
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                CupertinoPageRoute<void>(
+                  builder: (_) =>
+                      CoachScreen(viewModel: account.coachViewModel),
+                ),
+              ),
+            ),
+            if (account.session.isAccountOperator)
+              GainerListRow(
+                title: 'Kontoverwaltung',
+                showChevron: true,
+                onTap: () => Navigator.of(context).push(
+                  CupertinoPageRoute<void>(
+                    builder: (_) =>
+                        AccountOperatorScreen(controller: controller),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.l),
+        _SyncButton(account: account),
+        const SizedBox(height: GainerSpacing.s),
+        GainerPillButton(
+          label: 'Abmelden',
+          variant: GainerPillVariant.tonal,
+          expand: true,
+          onPressed: controller.logout,
+        ),
+      ],
     );
   }
 }
@@ -269,28 +229,31 @@ class _SyncButtonState extends State<_SyncButton> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
     final enabled = widget.account.online && !_busy;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        CupertinoButton.filled(
-          minimumSize: const Size(double.infinity, 48),
+        GainerPillButton(
+          label: 'Jetzt synchronisieren',
+          expand: true,
           onPressed: enabled ? _sync : null,
-          child: _busy
-              ? const CupertinoActivityIndicator()
-              : Text(
-                  'Jetzt synchronisieren',
-                  style: TextStyle(
-                    color: enabled
-                        ? CupertinoColors.white
-                        : GainerTheme.secondaryText(context),
-                  ),
-                ),
         ),
+        if (_busy)
+          const Padding(
+            padding: EdgeInsets.only(top: GainerSpacing.s),
+            child: CupertinoActivityIndicator(),
+          ),
         if (_status case final value?)
           Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Text(value, textAlign: TextAlign.center),
+            padding: const EdgeInsets.only(top: GainerSpacing.s),
+            child: Text(
+              value,
+              textAlign: TextAlign.center,
+              style: GainerTypography.body.copyWith(
+                color: colors.secondaryText,
+              ),
+            ),
           ),
       ],
     );

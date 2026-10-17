@@ -27,37 +27,45 @@ class GainerListRow extends StatelessWidget {
           horizontal: GainerSpacing.m,
           vertical: 11,
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: GainerTypography.body.copyWith(
-                  color: colors.primaryText,
-                ),
-              ),
-            ),
-            if (value case final text?)
-              Padding(
-                padding: const EdgeInsets.only(left: GainerSpacing.xs),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Row(
+            children: [
+              Expanded(
                 child: Text(
-                  text,
-                  textAlign: TextAlign.end,
-                  style: GainerTypography.value.copyWith(
-                    color: colors.secondaryText,
+                  title,
+                  style: GainerTypography.body.copyWith(
+                    color: colors.primaryText,
                   ),
                 ),
               ),
-            if (showChevron)
-              Padding(
-                padding: const EdgeInsets.only(left: GainerSpacing.xs),
-                child: Icon(
-                  CupertinoIcons.chevron_forward,
-                  size: 16,
-                  color: colors.secondaryText,
+              if (value case final text?)
+                ConstrainedBox(
+                  // Long values wrap instead of overflowing the row.
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth * 0.6,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: GainerSpacing.xs),
+                    child: Text(
+                      text,
+                      textAlign: TextAlign.end,
+                      style: GainerTypography.value.copyWith(
+                        color: colors.secondaryText,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-          ],
+              if (showChevron)
+                Padding(
+                  padding: const EdgeInsets.only(left: GainerSpacing.xs),
+                  child: Icon(
+                    CupertinoIcons.chevron_forward,
+                    size: 16,
+                    color: colors.secondaryText,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
