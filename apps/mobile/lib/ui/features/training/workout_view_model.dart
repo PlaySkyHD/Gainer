@@ -1,9 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../data/repositories/training/training_preferences.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
-import '../../../domain/models/training/exercise_history.dart';
 import '../../../domain/models/training/previous_values.dart';
 import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
@@ -65,17 +66,6 @@ class WorkoutViewModel extends ChangeNotifier {
     final current = _workout;
     if (current == null) return const {};
     return previousValuesFor(current, _diary);
-  }
-
-  /// Verlauf der Übung eines Blocks aus den übrigen Trainings.
-  List<ExerciseHistoryEntry> historyFor(WorkoutBlock block) {
-    final current = _workout;
-    if (current == null) return const [];
-    return exerciseHistoryFor(
-      current: current,
-      sourceExerciseId: block.sourceExerciseId,
-      diary: _diary,
-    );
   }
 
   /// Übungsstammnotiz aus dem Katalog; nur lesend.
@@ -469,9 +459,12 @@ class WorkoutViewModel extends ChangeNotifier {
   ) {
     final index = _setIndex(blockId, setId);
     if (index < 0) return Future.value();
-    final set = _blockById(blockId)!.sets[index];
-    if (change(set) == set) return Future.value();
-    return _editBlock(
+    final block = _blockById(blockId)!;
+    final set = block.sets[index];
+    final updated = change(set);
+    if (updated == set) return Future.value();
+    final wasRecorded = isSetRecorded(set, block.exerciseTypeSnapshot);
+    final edited = _editBlock(
       blockId,
       (block) => block.copyWith(
         sets: [
@@ -480,6 +473,15 @@ class WorkoutViewModel extends ChangeNotifier {
         ],
       ),
     );
+    if (!wasRecorded && isSetRecorded(updated, block.exerciseTypeSnapshot)) {
+      // Ein abgelaufener Pausentimer kehrt erst zur Trainingszeit zurück, wenn
+      // ein Satz vollständig ist; Teileingaben tun das nicht.
+      final timer = activeWorkout.restTimer;
+      if (timer != null && timer.workoutId == workoutId) {
+        unawaited(timer.onSetRecorded());
+      }
+    }
+    return edited;
   }
 
   WorkoutBlock? _blockById(String blockId) {
@@ -526,6 +528,7 @@ class WorkoutViewModel extends ChangeNotifier {
       }
       return WorkoutFinishOutcome.failed;
     }
+    await activeWorkout.endRestTimer(workoutId);
     await activeWorkout.load();
     await _reloadSilently();
     return WorkoutFinishOutcome.finished;
@@ -543,6 +546,7 @@ class WorkoutViewModel extends ChangeNotifier {
       }
       return false;
     }
+    await activeWorkout.endRestTimer(workoutId);
     await activeWorkout.load();
     return true;
   }

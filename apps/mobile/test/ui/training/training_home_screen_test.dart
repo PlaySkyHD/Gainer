@@ -177,7 +177,14 @@ void main() {
     await tester.tap(find.text('Pläne'));
     await settle(tester);
     expect(find.text('Noch keine Trainings'), findsNothing);
-    expect(find.byIcon(CupertinoIcons.add), findsNothing);
+    // „Neuer Plan“ trägt das „+“; die Assertion war Platzhalterzeit.
+    expect(
+      find.descendant(
+        of: find.widgetWithText(GainerPillButton, 'Neuer Plan'),
+        matching: find.byIcon(CupertinoIcons.add),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('Statistik'));
     await settle(tester);

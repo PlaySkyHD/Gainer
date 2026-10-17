@@ -72,7 +72,10 @@ class TrainingHomeViewModel extends ChangeNotifier {
     } catch (_) {
       errorMessage = 'Das Training konnte nicht gelöscht werden.';
       await loadDiary();
+      await activeWorkout.load();
+      return;
     }
+    await activeWorkout.endRestTimer(workoutId);
     await activeWorkout.load();
   }
 

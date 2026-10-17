@@ -187,6 +187,7 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
               children: [
                 GainerPillButton(
                   label: 'Neuer Plan',
+                  icon: CupertinoIcons.add,
                   onPressed: () => _openEditor(null),
                 ),
                 GainerPillButton(

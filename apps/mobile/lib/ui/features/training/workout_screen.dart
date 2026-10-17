@@ -9,6 +9,11 @@ import '../../core/theme.dart';
 import 'active_workout_controller.dart';
 import 'exercise_picker_sheet.dart';
 import 'reorder_blocks_sheet.dart';
+import 'repeat_workout_sheet.dart';
+import 'rest_timer_bar.dart';
+import 'rest_timer_controller.dart';
+import 'rest_timer_sheet.dart';
+import 'save_workout_as_plan.dart';
 import 'set_row.dart';
 import 'training_format.dart';
 import 'workout_block_card.dart';
@@ -53,7 +58,14 @@ class WorkoutScreen extends StatefulWidget {
   State<WorkoutScreen> createState() => _WorkoutScreenState();
 }
 
-enum _WorkoutMenuAction { reorder, toggleWeightUnit, toggleRir, delete }
+enum _WorkoutMenuAction {
+  repeat,
+  savePlan,
+  reorder,
+  toggleWeightUnit,
+  toggleRir,
+  delete,
+}
 
 /// Antwort im Fehlwerte-Dialog beim Beenden.
 enum _FinishChoice { previousValues, anyway, continueTraining }
@@ -187,6 +199,13 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
   void _unfocus() => FocusManager.instance.primaryFocus?.unfocus();
 
+  /// Pausentimer des Trainings. Er existiert nur für das aktive Training.
+  RestTimerController? _restTimerFor(Workout workout) {
+    final timer = widget.activeWorkout.restTimer;
+    if (!workout.isActive || timer?.workoutId != workout.workoutId) return null;
+    return timer;
+  }
+
   Future<void> _showMenu(Workout workout) async {
     final choice = await showGainerActionSheet<_WorkoutMenuAction>(
       context: context,
@@ -200,6 +219,19 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         ),
       ],
       groups: [
+        [
+          if (!workout.isActive)
+            GainerSheetAction(
+              label: 'Training wiederholen',
+              icon: CupertinoIcons.arrow_2_circlepath,
+              value: _WorkoutMenuAction.repeat,
+            ),
+          GainerSheetAction(
+            label: 'Als Trainingsplan speichern',
+            icon: CupertinoIcons.square_list,
+            value: _WorkoutMenuAction.savePlan,
+          ),
+        ],
         [
           if (workout.exercises.length > 1)
             GainerSheetAction(
@@ -222,6 +254,19 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     );
     if (!mounted) return;
     switch (choice) {
+      case _WorkoutMenuAction.repeat:
+        await showRepeatWorkoutSheet(
+          context,
+          repository: widget.repository,
+          activeWorkout: widget.activeWorkout,
+          source: workout,
+        );
+      case _WorkoutMenuAction.savePlan:
+        await saveWorkoutAsPlanFlow(
+          context,
+          repository: widget.repository,
+          workout: workout,
+        );
       case _WorkoutMenuAction.reorder:
         await _reorderBlocks(workout);
       case _WorkoutMenuAction.toggleWeightUnit:
@@ -275,7 +320,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                       GainerToolbarAction(
                         icon: CupertinoIcons.timer,
                         semanticLabel: 'Timer',
-                        onPressed: () {},
+                        onPressed: workout == null || !workout.isActive
+                            ? null
+                            : () => _openTimer(workout),
                       ),
                       GainerToolbarAction(
                         icon: CupertinoIcons.ellipsis,
@@ -311,18 +358,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                     ],
                   ),
                 ),
-                ValueListenableBuilder<bool>(
-                  valueListenable: _editingNumber,
-                  builder: (context, editing, _) => editing
-                      ? TextFieldTapRegion(
-                          child: GainerNumericAccessoryBar(
-                            onPrevious: () => _moveFocus(forward: false),
-                            onNext: () => _moveFocus(forward: true),
-                            onDone: _unfocus,
-                            onHideKeyboard: _unfocus,
-                          ),
-                        )
-                      : const SizedBox.shrink(),
+                ListenableBuilder(
+                  listenable: widget.activeWorkout,
+                  builder: (context, _) => _bottomBar(_viewModel.workout),
                 ),
               ],
             ),
@@ -330,6 +368,45 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         );
       },
     );
+  }
+
+  /// Timer-Leiste und Zahlenleiste liegen in derselben Tap-Region wie die
+  /// Felder: Ein Tipp auf die Leiste nimmt dem Feld den Fokus nicht.
+  Widget _bottomBar(Workout? workout) {
+    final timer = workout == null ? null : _restTimerFor(workout);
+    return ValueListenableBuilder<bool>(
+      valueListenable: _editingNumber,
+      builder: (context, editing, _) {
+        if (timer == null && !editing) return const SizedBox.shrink();
+        return SafeArea(
+          top: false,
+          child: TextFieldTapRegion(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (timer != null)
+                  RestTimerBar(
+                    controller: timer,
+                    trainingStartedAtUtc: workout?.startedAtUtc,
+                  ),
+                if (editing)
+                  GainerNumericAccessoryBar(
+                    onPrevious: () => _moveFocus(forward: false),
+                    onNext: () => _moveFocus(forward: true),
+                    onDone: _unfocus,
+                    onHideKeyboard: _unfocus,
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openTimer(Workout workout) async {
+    final timer = _restTimerFor(workout);
+    if (timer != null) await showRestTimerSheet(context, timer);
   }
 
   /// Minimieren und Beenden (aktiv) bzw. Schließen (historisch). Die Pille

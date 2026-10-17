@@ -213,46 +213,6 @@ void main() {
     expect(set.repetitions, 6);
   });
 
-  test('Verlauf zeigt neueste Einheit zuerst und nur erfasste Sätze', () async {
-    await harness.seedWorkout(
-      title: 'Alt',
-      start: DateTime.utc(2026, 10, 1, 8),
-      end: DateTime.utc(2026, 10, 1, 9),
-      blocks: [
-        _block('a', _benchId, 'Bankdrücken', ExerciseKind.strength, [
-          const LoggedSet(setId: 'a1', weightKg: 60, repetitions: 10),
-        ]),
-      ],
-    );
-    await harness.seedWorkout(
-      title: 'Neu',
-      start: DateTime.utc(2026, 10, 9, 8),
-      end: DateTime.utc(2026, 10, 9, 9),
-      blocks: [
-        _block('n', _benchId, 'Bankdrücken', ExerciseKind.strength, [
-          const LoggedSet(setId: 'n1'),
-          const LoggedSet(setId: 'n2', weightKg: 70, repetitions: 5),
-        ]),
-      ],
-    );
-    final current = await harness.seedWorkout(
-      title: 'Heute',
-      start: DateTime.utc(2026, 10, 17, 8),
-      blocks: [
-        _block('b1', _benchId, 'Bankdrücken', ExerciseKind.strength, [
-          const LoggedSet(setId: 's1'),
-        ]),
-      ],
-    );
-    final model = await openModel(current.workoutId);
-
-    final history = model.historyFor(model.workout!.exercises.single);
-
-    expect(history.map((entry) => entry.workout.title), ['Neu', 'Alt']);
-    expect(history.first.sets.map((set) => set.setId), ['n2']);
-    expect(history.last.sets.single.weightKg, 60);
-  });
-
   test('Satz duplizieren, entfernen und verschieben', () async {
     final workout = await harness.seedWorkout(
       title: 'Push',
