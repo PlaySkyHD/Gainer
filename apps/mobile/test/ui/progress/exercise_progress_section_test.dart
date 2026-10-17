@@ -16,6 +16,7 @@ import 'package:gainer_mobile/ui/features/progress/progress_view_model.dart';
 const _account = '10000000-0000-4000-8000-000000000001';
 const _squat = '00000000-0000-4000-8000-000000000004';
 const _row = '00000000-0000-4000-8000-000000000005';
+const _workoutLatest = '30000000-0000-4000-8000-000000000002';
 
 void main() {
   testWidgets('exercise picker and period update real progress request', (
@@ -114,6 +115,94 @@ void main() {
     expect(find.text('Übungsfortschritt'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('shows records and bodyweight gaps as text', (tester) async {
+    tester.view.physicalSize = const Size(390, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final database = LocalDatabase(NativeDatabase.memory());
+    final store = LocalSyncStore(database: database, accountId: _account);
+    final api = _ProgressApi(bodyweightMissing: true, withRecords: true);
+    final model = ProgressViewModel(
+      InsightsRepository(api, store: store),
+      training: TrainingLogRepository(store: store, catalog: _FixtureCatalog()),
+    );
+    addTearDown(() async {
+      model.dispose();
+      api.close();
+      await database.close();
+    });
+
+    await _pumpSection(tester, model);
+
+    expect(
+      find.text('Für korrekte Werte fehlt ein Check-in mit Körpergewicht.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Bestes Set am 05.10.2026 · 110.0 kg × 3'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Effektives Gewicht: enthält bei Körpergewichtsübungen dein Körpergewicht.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Rekorde'), findsOneWidget);
+    expect(find.text('Gesamte Historie bis heute'), findsOneWidget);
+    expect(find.text('Geschätztes 1RM'), findsOneWidget);
+    expect(find.text('120.0 kg'), findsOneWidget);
+    expect(find.text('5'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('omits the records card and bodyweight hint when absent', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final database = LocalDatabase(NativeDatabase.memory());
+    final store = LocalSyncStore(database: database, accountId: _account);
+    final api = _ProgressApi();
+    final model = ProgressViewModel(
+      InsightsRepository(api, store: store),
+      training: TrainingLogRepository(store: store, catalog: _FixtureCatalog()),
+    );
+    addTearDown(() async {
+      model.dispose();
+      api.close();
+      await database.close();
+    });
+
+    await _pumpSection(tester, model);
+
+    expect(find.text('Rekorde'), findsNothing);
+    expect(
+      find.text('Für korrekte Werte fehlt ein Check-in mit Körpergewicht.'),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+}
+
+Future<void> _pumpSection(WidgetTester tester, ProgressViewModel model) async {
+  await tester.pumpWidget(
+    CupertinoApp(
+      home: CupertinoPageScaffold(
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [ExerciseProgressSection(viewModel: model)],
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
 }
 
 class _FixtureCatalog implements ExerciseCatalogProvider {
@@ -141,7 +230,7 @@ class _FixtureCatalog implements ExerciseCatalogProvider {
 }
 
 class _ProgressApi extends ApiClient {
-  _ProgressApi()
+  _ProgressApi({this.bodyweightMissing = false, this.withRecords = false})
     : super(
         configuration: ApiConfiguration(
           apiOrigin: Uri.parse('http://127.0.0.1:5099'),
@@ -150,6 +239,8 @@ class _ProgressApi extends ApiClient {
         ),
       );
   final requests = <(String, String)>[];
+  final bool bodyweightMissing;
+  final bool withRecords;
   @override
   Future<ApiExerciseProgress> getExerciseProgress({
     required String exerciseId,
@@ -169,20 +260,60 @@ class _ProgressApi extends ApiClient {
           workoutId: '30000000-0000-4000-8000-000000000002',
           completedAtUtc: DateTime.utc(2026, 10, 5),
           volumeKgRepetitions: 1100,
-          bestWeightKg: 110,
-          bestRepetitions: 3,
+          bodyweightMissing: bodyweightMissing,
+          maxWeightKg: 110,
+          maxRepetitions: 3,
           estimatedOneRepMaxKg: estimate + 10,
         ),
         ApiExerciseProgressPoint(
           workoutId: '30000000-0000-4000-8000-000000000001',
           completedAtUtc: DateTime.utc(2026, 10, 12),
           volumeKgRepetitions: 1000,
-          bestWeightKg: 100,
-          bestRepetitions: 3,
+          bodyweightMissing: bodyweightMissing,
+          maxWeightKg: 100,
+          maxRepetitions: 3,
           estimatedOneRepMaxKg: estimate,
         ),
       ],
-      bestSet: null,
+      volumeAlgorithmVersion: 'training-volume-v2',
+      estimatedOneRepMaxAlgorithmVersion: 'e1rm-epley-v2',
+      records: withRecords
+          ? const ApiExerciseRecords(
+              maxWeightKg: ApiRecordEvent(
+                workoutId: _workoutLatest,
+                value: 110,
+              ),
+              estimatedOneRepMaxKg: ApiRecordEvent(
+                workoutId: _workoutLatest,
+                value: 120,
+              ),
+              volumeKgRepetitions: ApiRecordEvent(
+                workoutId: _workoutLatest,
+                value: 1100,
+              ),
+              maxRepetitions: ApiRecordEvent(
+                workoutId: _workoutLatest,
+                value: 5,
+              ),
+              repetitionRecords: [],
+            )
+          : const ApiExerciseRecords(
+              maxWeightKg: null,
+              estimatedOneRepMaxKg: null,
+              volumeKgRepetitions: null,
+              maxRepetitions: null,
+              repetitionRecords: [],
+            ),
+      bestSet: withRecords
+          ? ApiBestSetInsight(
+              workoutId: _workoutLatest,
+              exerciseId: exerciseId,
+              completedAtUtc: DateTime.utc(2026, 10, 5),
+              effectiveWeightKg: 110,
+              repetitions: 3,
+              estimatedOneRepMaxKg: 120,
+            )
+          : null,
     );
   }
 }
