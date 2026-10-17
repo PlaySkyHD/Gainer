@@ -4,6 +4,9 @@ using Gainer.Core.Training;
 using Gainer.Infrastructure.Catalog;
 using Gainer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Gainer.IntegrationTests;
 
@@ -179,6 +182,195 @@ public sealed class ExerciseCatalogPersistenceTests
         Exercise stored = await context.Exercises.SingleAsync(item => item.Id == exerciseId);
         Assert.AreEqual("Original", stored.Name);
         Assert.AreEqual(1, stored.Version);
+    }
+
+    [TestMethod]
+    public async Task EveryBaseExerciseHasTypeBaseCategoriesAndFactorsInAllowedRange()
+    {
+        string connectionString = await CreateDatabaseAsync();
+        await using AppDbContext context = Fixture.CreateContext(connectionString, Guid.NewGuid());
+        List<Exercise> exercises = await context.Exercises
+            .IgnoreQueryFilters()
+            .Where(item => item.OwnerUserId == null)
+            .ToListAsync();
+        List<ExerciseCategoryAssignment> assignments = await context.ExerciseCategoryAssignments.ToListAsync();
+        HashSet<Guid> baseCategoryIds = (await context.ExerciseCategories
+            .Where(item => item.OwnerUserId == null)
+            .Select(item => item.Id)
+            .ToListAsync()).ToHashSet();
+
+        Assert.HasCount(ExerciseCatalogSnapshot.Document.Entries.Count, exercises);
+        foreach (Exercise exercise in exercises)
+        {
+            List<Guid> categoryIds = assignments
+                .Where(item => item.ExerciseId == exercise.Id)
+                .Select(item => item.CategoryId)
+                .ToList();
+            Assert.IsNotEmpty(categoryIds, exercise.Name);
+            Assert.IsTrue(categoryIds.All(baseCategoryIds.Contains), exercise.Name);
+            ExerciseCatalogEntry entry = ExerciseCatalogSnapshot.Document.Entries.Single(item => item.Id == exercise.Id);
+            Assert.AreEqual(ExerciseTypes.Parse(entry.ExerciseType), exercise.ExerciseType, exercise.Name);
+            Assert.HasCount(entry.CategoryKeys.Count, categoryIds, exercise.Name);
+            ExerciseFactors.EnsureValid(exercise.BodyweightFactor, exercise.WeightFactor);
+        }
+
+        Assert.HasCount(
+            ExerciseCatalogSnapshot.Document.Entries.Sum(item => item.CategoryKeys.Count),
+            assignments);
+    }
+
+    [TestMethod]
+    public async Task BaseCategoriesAreSeededAsBaseEntriesAndCannotBeChangedOrArchived()
+    {
+        string connectionString = await CreateDatabaseAsync();
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, Guid.NewGuid()))
+        {
+            List<ExerciseCategory> categories = await context.ExerciseCategories.ToListAsync();
+            Assert.HasCount(ExerciseCatalogSnapshot.Document.Categories.Count, categories);
+            Assert.IsTrue(categories.All(item =>
+                item.OwnerUserId == null &&
+                !item.IsArchived &&
+                item.CatalogVersion == ExerciseCatalogSnapshot.Document.CatalogVersion));
+        }
+
+        Guid userId = Guid.NewGuid();
+        await SeedUserAsync(connectionString, userId);
+        await using (AppDbContext renameContext = Fixture.CreateContext(connectionString, userId))
+        {
+            ExerciseCategory category = await renameContext.ExerciseCategories.FirstAsync(item => item.OwnerUserId == null);
+            category.Name = "Changed";
+            await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => renameContext.SaveChangesAsync());
+        }
+
+        await using AppDbContext archiveContext = Fixture.CreateContext(connectionString, userId);
+        ExerciseCategory archived = await archiveContext.ExerciseCategories.FirstAsync(item => item.OwnerUserId == null);
+        archived.IsArchived = true;
+        await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => archiveContext.SaveChangesAsync());
+    }
+
+    [TestMethod]
+    public async Task BaseExerciseTypeAndFactorsCannotBeChangedThroughPersistence()
+    {
+        string connectionString = await CreateDatabaseAsync();
+        Guid userId = Guid.NewGuid();
+        await SeedUserAsync(connectionString, userId);
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        Exercise exercise = await context.Exercises.FirstAsync(item => item.OwnerUserId == null);
+        exercise.ExerciseType = ExerciseType.Assisted;
+        exercise.WeightFactor = 2m;
+
+        await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => context.SaveChangesAsync());
+    }
+
+    [TestMethod]
+    public async Task CustomExerciseTypeFactorsAndOwnCategoriesPersistAndStayOwnerOnly()
+    {
+        string connectionString = await CreateDatabaseAsync();
+        Guid ownerId = Guid.NewGuid();
+        Guid otherId = Guid.NewGuid();
+        await SeedUserAsync(connectionString, ownerId);
+        await SeedUserAsync(connectionString, otherId);
+        Guid exerciseId = Guid.NewGuid();
+        Guid categoryId = Guid.NewGuid();
+        Guid baseCategoryId = ExerciseCatalogSnapshot.Document.CategoryId("legs");
+
+        await using (AppDbContext createContext = Fixture.CreateContext(connectionString, ownerId))
+        {
+            createContext.ExerciseCategories.Add(new ExerciseCategory
+            {
+                Id = categoryId,
+                OwnerUserId = ownerId,
+                Name = "Reha",
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow,
+                Version = 1,
+            });
+            createContext.Exercises.Add(new Exercise
+            {
+                Id = exerciseId,
+                OwnerUserId = ownerId,
+                Name = "Assisted Pull-Up",
+                ExerciseType = ExerciseType.Assisted,
+                Notes = "Band",
+                BodyweightFactor = 0.9m,
+                WeightFactor = 1.5m,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow,
+                Version = 1,
+            });
+            createContext.ExerciseCategoryAssignments.AddRange(
+                new ExerciseCategoryAssignment { ExerciseId = exerciseId, CategoryId = categoryId },
+                new ExerciseCategoryAssignment { ExerciseId = exerciseId, CategoryId = baseCategoryId });
+            await createContext.SaveChangesAsync();
+        }
+
+        await using (AppDbContext readContext = Fixture.CreateContext(connectionString, ownerId))
+        {
+            Exercise stored = await readContext.Exercises.SingleAsync(item => item.Id == exerciseId);
+            Assert.AreEqual(ExerciseType.Assisted, stored.ExerciseType);
+            Assert.AreEqual("Band", stored.Notes);
+            Assert.AreEqual(0.9m, stored.BodyweightFactor);
+            Assert.AreEqual(1.5m, stored.WeightFactor);
+            Assert.AreEqual(2, await readContext.ExerciseCategoryAssignments.CountAsync(item => item.ExerciseId == exerciseId));
+        }
+
+        await using AppDbContext otherContext = Fixture.CreateContext(connectionString, otherId);
+        ExerciseCategory foreignCategory = await otherContext.ExerciseCategories.SingleAsync(item => item.Id == categoryId);
+        foreignCategory.Name = "Stolen";
+        await Assert.ThrowsAsync<UserIsolationViolationException>(() => otherContext.SaveChangesAsync());
+    }
+
+    [TestMethod]
+    public async Task InvalidFactorsAreRejectedByDatabaseConstraints()
+    {
+        string connectionString = await CreateDatabaseAsync();
+        Guid ownerId = Guid.NewGuid();
+        await SeedUserAsync(connectionString, ownerId);
+
+        foreach ((decimal? bodyweightFactor, decimal? weightFactor) in new (decimal?, decimal?)[] { (1.01m, null), (-0.01m, null), (null, 0m), (null, 10.01m) })
+        {
+            await using AppDbContext context = Fixture.CreateContext(connectionString, ownerId);
+            context.Exercises.Add(new Exercise
+            {
+                Id = Guid.NewGuid(),
+                OwnerUserId = ownerId,
+                Name = "Invalid Factor",
+                BodyweightFactor = bodyweightFactor,
+                WeightFactor = weightFactor,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow,
+                Version = 1,
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        }
+    }
+
+    [TestMethod]
+    public async Task MigrationGivesExistingCustomExercisesTheStrengthType()
+    {
+        string connectionString = await CreateDatabaseAsync();
+        Guid ownerId = Guid.NewGuid();
+        Guid exerciseId = Guid.NewGuid();
+        await SeedUserAsync(connectionString, ownerId);
+        await using AppDbContext context = Fixture.CreateContext(connectionString, ownerId);
+        List<string> migrations = context.Database.GetMigrations().ToList();
+        string migration = migrations.Single(item => item.EndsWith("_AddExerciseTypesAndCategories", StringComparison.Ordinal));
+        string previous = migrations[migrations.IndexOf(migration) - 1];
+
+        await context.GetInfrastructure().GetRequiredService<IMigrator>().MigrateAsync(previous);
+        await context.Database.ExecuteSqlRawAsync(
+            "INSERT INTO training.exercises (\"Id\", \"OwnerUserId\", \"Name\", \"IsArchived\", \"CreatedAtUtc\", \"UpdatedAtUtc\", \"Version\") " +
+            "VALUES ({0}, {1}, {2}, FALSE, now(), now(), 1)",
+            exerciseId,
+            ownerId,
+            "Existing Custom");
+
+        await context.Database.MigrateAsync();
+        context.ChangeTracker.Clear();
+        Exercise migrated = await context.Exercises.SingleAsync(item => item.Id == exerciseId);
+        Assert.AreEqual(ExerciseType.Strength, migrated.ExerciseType);
+        Assert.IsNull(migrated.BodyweightFactor);
+        Assert.IsNull(migrated.WeightFactor);
     }
 
     private static async Task<string> CreateDatabaseAsync()

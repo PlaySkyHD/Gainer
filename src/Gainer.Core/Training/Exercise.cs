@@ -18,6 +18,16 @@ public sealed class Exercise
 
     public string? Equipment { get; set; }
 
+    public ExerciseType ExerciseType { get; set; } = ExerciseType.Strength;
+
+    public string? Notes { get; set; }
+
+    /// <summary>Share of the body weight that counts as load, 0 to 1 inclusive.</summary>
+    public decimal? BodyweightFactor { get; set; }
+
+    /// <summary>Multiplier for the added weight, greater than 0 and at most 10.</summary>
+    public decimal? WeightFactor { get; set; }
+
     public bool IsArchived { get; set; }
 
     public string? CatalogVersion { get; init; }

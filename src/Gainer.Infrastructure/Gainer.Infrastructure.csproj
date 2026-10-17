@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Catalog\exercise-catalog.v1.json" />
+    <EmbeddedResource Include="Catalog\exercise-catalog.v2.json" />
   </ItemGroup>
 
   <PropertyGroup>
