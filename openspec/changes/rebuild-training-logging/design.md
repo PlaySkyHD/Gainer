@@ -45,8 +45,9 @@ Neue Sync-Operationen ersetzen `startWorkout`/`editWorkout`/`completeWorkout`/`d
 |---|---|---|
 | `createWorkout` | vollständiger Snapshot (leer, aus Plan oder aus Wiederholung vom Client aufgebaut) | Workout = 0 |
 | `saveWorkout` | vollständiger Snapshot inklusive Metadaten und optional `EndedAtUtc` | Workout = Basisversion |
-| `finishWorkout` | Snapshot plus Endzeit; schreibt Rotationsfortschritt, wenn der Plan in der Rotation ist | Workout und ggf. Rotation |
 | `deleteWorkout` | nur ID | Workout = Basisversion; erzeugt Tombstone |
+
+Beenden ist ein `saveWorkout` mit gesetztem `endedAtUtc`, „Training fortsetzen“ ein `saveWorkout` mit `endedAtUtc = null`. Eine eigene Abschlussoperation entfällt, weil der Rotationsvorschlag laut D5 aus den beendeten Trainings abgeleitet und nicht gespeichert wird.
 
 Der Server baut Pläne **nicht** selbst in Workouts um; der Client erzeugt den Snapshot (offline-fähig). Der Server validiert: Eigentum an Workout/Plan/Quell-Workout, referenzierte Übungen sind Basisübungen oder eigene (auch archivierte, für Historie), Wertebereiche, Endzeit > Startzeit, höchstens ein aktives Workout pro Nutzer (partieller Unique-Index auf `UserId` WHERE `EndedAtUtc IS NULL AND DeletedAtUtc IS NULL`).
 
