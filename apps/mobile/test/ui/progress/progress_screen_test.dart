@@ -10,6 +10,26 @@ import 'package:gainer_mobile/ui/features/progress/progress_screen.dart';
 import 'package:gainer_mobile/ui/features/progress/progress_view_model.dart';
 
 void main() {
+  for (final brightness in [Brightness.light, Brightness.dark]) {
+    testWidgets('progress screen matches golden in ${brightness.name} mode', (
+      tester,
+    ) async {
+      _useGoldenPhone(tester);
+      final api = _DashboardApi((_) async => _insights(trendKgPerWeek: -0.4));
+      final model = ProgressViewModel(InsightsRepository(api));
+      addTearDown(model.dispose);
+      addTearDown(api.close);
+
+      await _pumpGolden(tester, brightness, ProgressScreen(viewModel: model));
+
+      await expectLater(
+        find.byType(ProgressScreen),
+        matchesGoldenFile('goldens/progress_screen_${brightness.name}.png'),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('dashboard shows weight, training, nutrition and trend values', (
     tester,
   ) async {
@@ -321,6 +341,28 @@ void main() {
 Finder _chartLabel(String label) => find.byWidgetPredicate(
   (widget) => widget is Semantics && widget.properties.label == label,
 );
+
+void _useGoldenPhone(WidgetTester tester) {
+  tester.view.physicalSize = const Size(390, 844);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+Future<void> _pumpGolden(
+  WidgetTester tester,
+  Brightness brightness,
+  Widget screen,
+) async {
+  await tester.pumpWidget(
+    CupertinoApp(
+      debugShowCheckedModeBanner: false,
+      theme: GainerTheme.forBrightness(brightness),
+      home: screen,
+    ),
+  );
+  await tester.pumpAndSettle();
+}
 
 void _useTallView(WidgetTester tester) {
   tester.view.physicalSize = const Size(800, 2600);
