@@ -356,7 +356,7 @@ public sealed class SyncPersistenceTests
         var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
 
         RegisteredSyncClient first = await registry.RegisterAsync(new RegisterSyncClientCommand(
-            firstId, "Phone", 1, false));
+            firstId, "Phone", 2, false));
         RegisteredSyncClient second = await registry.RegisterAsync(new RegisterSyncClientCommand(
             secondId, "Laptop", 2, false));
         Assert.IsTrue(first.IsActiveWriter);
@@ -594,7 +594,7 @@ public sealed class SyncPersistenceTests
         new(
             mutationId,
             new CanonicalMutationContent(
-                2,
+                3,
                 clientId,
                 sequence,
                 operation,

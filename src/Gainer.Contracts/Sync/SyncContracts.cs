@@ -5,8 +5,12 @@ namespace Gainer.Contracts.Sync;
 
 public static class SyncProtocol
 {
-    public const int PreviousVersion = 1;
-    public const int CurrentVersion = 2;
+    /// <summary>Oldest protocol still accepted for non-training operations such as nutrition.</summary>
+    public const int PreviousVersion = 2;
+    public const int CurrentVersion = 3;
+
+    /// <summary>Lowest protocol that may send training payloads (rebuilt workout, plan and exercise contract).</summary>
+    public const int TrainingContractVersion = 3;
     public const int MaximumResourcesPerMutation = 100;
     public const int MaximumBatchesPerPull = 200;
 }
