@@ -241,13 +241,22 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// Ablauf während die App geöffnet ist: einmal Ton und Haptik. Im
-  /// Hintergrund übernimmt die lokale Benachrichtigung.
+  /// Ablauf: Die geplante Benachrichtigung bleibt bestehen, sie ist das
+  /// Tonsignal. Bei geöffneter App kommt nur die Haptik dazu; einen eigenen Ton
+  /// spielt die App nur, wenn keine Benachrichtigung erscheinen kann.
   void _expire(DateTime at) {
-    final foreground = _foreground;
-    unawaited(_commit(_state.expire(now: at)));
-    if (!foreground) return;
-    alerts.playExpiry().catchError((Object _) {});
+    _state = _state.expire(now: at);
+    _syncTicker();
+    notifyListeners();
+    unawaited(_persist(_state));
+    if (!_foreground) return;
+    unawaited(_alertForeground());
+  }
+
+  Future<void> _alertForeground() async {
+    final notified = await _notificationsAllowed();
+    if (_ended || !_foreground) return;
+    if (!notified) alerts.playExpiry().catchError((Object _) {});
     haptics.perform(HapticIntent.timerComplete).catchError((Object _) {});
   }
 
