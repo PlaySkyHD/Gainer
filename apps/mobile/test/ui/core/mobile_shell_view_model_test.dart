@@ -18,4 +18,17 @@ void main() {
     expect(MobileArea.values[MobileArea.nutrition.index], MobileArea.nutrition);
     model.dispose();
   });
+
+  test('an open workout request is delivered exactly once', () {
+    final model = MobileShellViewModel();
+    var notifications = 0;
+    model.addListener(() => notifications++);
+
+    expect(model.takeRequestedWorkout(), isNull);
+    model.requestOpenWorkout('workout-1');
+    expect(notifications, 1);
+    expect(model.takeRequestedWorkout(), 'workout-1');
+    expect(model.takeRequestedWorkout(), isNull);
+    model.dispose();
+  });
 }

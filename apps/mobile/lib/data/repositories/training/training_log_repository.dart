@@ -9,6 +9,7 @@ import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
 import '../sync/local_sync_store.dart';
 import 'api_exercise_catalog_provider.dart';
+import 'training_preferences.dart';
 
 const _workoutType = 'workout';
 const _planType = 'training-plan';
@@ -42,6 +43,11 @@ class TrainingLogRepository {
 
   final LocalSyncStore store;
   final ExerciseCatalogProvider catalog;
+
+  /// Trainingseinstellungen des Kontos; ein gemeinsamer Stand für alle Beobachter.
+  late final TrainingPreferences preferences = TrainingPreferences(
+    store: store,
+  );
   final IdFactory _ids;
   final DateTime Function() _clock;
 

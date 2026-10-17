@@ -364,6 +364,130 @@ struct PlatformWorkoutExportResult: Hashable, CustomStringConvertible {
 }
 
 /// Generated class from Pigeon that represents data sent in messages.
+struct PlatformLiveActivityDetail: Hashable, CustomStringConvertible {
+  var title: String
+  var exerciseName: String
+  var setIndex: Int64
+  var setCount: Int64
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformLiveActivityDetail? {
+    let title = pigeonVar_list[0] as! String
+    let exerciseName = pigeonVar_list[1] as! String
+    let setIndex = pigeonVar_list[2] as! Int64
+    let setCount = pigeonVar_list[3] as! Int64
+
+    return PlatformLiveActivityDetail(
+      title: title,
+      exerciseName: exerciseName,
+      setIndex: setIndex,
+      setCount: setCount
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      title,
+      exerciseName,
+      setIndex,
+      setCount,
+    ]
+  }
+  static func == (lhs: PlatformLiveActivityDetail, rhs: PlatformLiveActivityDetail) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.title, rhs.title) && MobilePlatformApiPigeonInternal.deepEquals(lhs.exerciseName, rhs.exerciseName) && MobilePlatformApiPigeonInternal.deepEquals(lhs.setIndex, rhs.setIndex) && MobilePlatformApiPigeonInternal.deepEquals(lhs.setCount, rhs.setCount)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformLiveActivityDetail")
+    MobilePlatformApiPigeonInternal.deepHash(value: title, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: exerciseName, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: setIndex, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: setCount, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformLiveActivityDetail(title: \(String(describing: title)), exerciseName: \(String(describing: exerciseName)), setIndex: \(String(describing: setIndex)), setCount: \(String(describing: setCount)))"
+  }
+}
+
+/// Neutraler Zustand der Trainings-Live-Activity. Restzeiten werden aus dem
+/// Zielzeitpunkt berechnet, nicht hochgezählt.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformLiveActivityState: Hashable, CustomStringConvertible {
+  var sessionId: String
+  /// One of `ready`, `running`, `paused`, `expired`.
+  var timerPhase: String
+  var startedAtUtcEpochMilliseconds: Int64
+  var expired: Bool
+  var staleAtUtcEpochMilliseconds: Int64
+  var timerTargetAtUtcEpochMilliseconds: Int64? = nil
+  var pausedRemainingSeconds: Int64? = nil
+  var detail: PlatformLiveActivityDetail? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformLiveActivityState? {
+    let sessionId = pigeonVar_list[0] as! String
+    let timerPhase = pigeonVar_list[1] as! String
+    let startedAtUtcEpochMilliseconds = pigeonVar_list[2] as! Int64
+    let expired = pigeonVar_list[3] as! Bool
+    let staleAtUtcEpochMilliseconds = pigeonVar_list[4] as! Int64
+    let timerTargetAtUtcEpochMilliseconds: Int64? = nilOrValue(pigeonVar_list[5])
+    let pausedRemainingSeconds: Int64? = nilOrValue(pigeonVar_list[6])
+    let detail: PlatformLiveActivityDetail? = nilOrValue(pigeonVar_list[7])
+
+    return PlatformLiveActivityState(
+      sessionId: sessionId,
+      timerPhase: timerPhase,
+      startedAtUtcEpochMilliseconds: startedAtUtcEpochMilliseconds,
+      expired: expired,
+      staleAtUtcEpochMilliseconds: staleAtUtcEpochMilliseconds,
+      timerTargetAtUtcEpochMilliseconds: timerTargetAtUtcEpochMilliseconds,
+      pausedRemainingSeconds: pausedRemainingSeconds,
+      detail: detail
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      sessionId,
+      timerPhase,
+      startedAtUtcEpochMilliseconds,
+      expired,
+      staleAtUtcEpochMilliseconds,
+      timerTargetAtUtcEpochMilliseconds,
+      pausedRemainingSeconds,
+      detail,
+    ]
+  }
+  static func == (lhs: PlatformLiveActivityState, rhs: PlatformLiveActivityState) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.sessionId, rhs.sessionId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.timerPhase, rhs.timerPhase) && MobilePlatformApiPigeonInternal.deepEquals(lhs.startedAtUtcEpochMilliseconds, rhs.startedAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.expired, rhs.expired) && MobilePlatformApiPigeonInternal.deepEquals(lhs.staleAtUtcEpochMilliseconds, rhs.staleAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.timerTargetAtUtcEpochMilliseconds, rhs.timerTargetAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.pausedRemainingSeconds, rhs.pausedRemainingSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.detail, rhs.detail)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformLiveActivityState")
+    MobilePlatformApiPigeonInternal.deepHash(value: sessionId, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: timerPhase, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: startedAtUtcEpochMilliseconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: expired, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: staleAtUtcEpochMilliseconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: timerTargetAtUtcEpochMilliseconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: pausedRemainingSeconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: detail, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformLiveActivityState(sessionId: \(String(describing: sessionId)), timerPhase: \(String(describing: timerPhase)), startedAtUtcEpochMilliseconds: \(String(describing: startedAtUtcEpochMilliseconds)), expired: \(String(describing: expired)), staleAtUtcEpochMilliseconds: \(String(describing: staleAtUtcEpochMilliseconds)), timerTargetAtUtcEpochMilliseconds: \(String(describing: timerTargetAtUtcEpochMilliseconds)), pausedRemainingSeconds: \(String(describing: pausedRemainingSeconds)), detail: \(String(describing: detail)))"
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
 struct PlatformRoute: Hashable, CustomStringConvertible {
   var destination: String
   var source: String
@@ -426,6 +550,10 @@ private class MobilePlatformApiPigeonCodecReader: FlutterStandardReader {
     case 133:
       return PlatformWorkoutExportResult.fromList(self.readValue() as! [Any?])
     case 134:
+      return PlatformLiveActivityDetail.fromList(self.readValue() as! [Any?])
+    case 135:
+      return PlatformLiveActivityState.fromList(self.readValue() as! [Any?])
+    case 136:
       return PlatformRoute.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -450,8 +578,14 @@ private class MobilePlatformApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? PlatformWorkoutExportResult {
       super.writeByte(133)
       super.writeValue(value.toList())
-    } else if let value = value as? PlatformRoute {
+    } else if let value = value as? PlatformLiveActivityDetail {
       super.writeByte(134)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformLiveActivityState {
+      super.writeByte(135)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformRoute {
+      super.writeByte(136)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -500,8 +634,8 @@ protocol MobilePlatformApi {
   func exportCompletedWorkout(accountId: String, workoutId: String, syncVersion: Int64, startedAtUtcEpochMilliseconds: Int64, completedAtUtcEpochMilliseconds: Int64) async throws -> PlatformWorkoutExportResult
   func publishNeutralExtensionSnapshot(schemaVersion: Int64, generation: Int64, updatedAtUtcEpochMilliseconds: Int64, availableRoutes: [String]) async throws
   func clearExtensionSnapshot(minimumGeneration: Int64) async throws
-  func startLiveActivity(sessionId: String, status: String, startedAtUtcEpochMilliseconds: Int64, restEndsAtUtcEpochMilliseconds: Int64?, staleAtUtcEpochMilliseconds: Int64) async throws -> Bool
-  func updateLiveActivity(sessionId: String, status: String, startedAtUtcEpochMilliseconds: Int64, restEndsAtUtcEpochMilliseconds: Int64?, staleAtUtcEpochMilliseconds: Int64) async throws -> Bool
+  func startLiveActivity(state: PlatformLiveActivityState) async throws -> Bool
+  func updateLiveActivity(state: PlatformLiveActivityState) async throws -> Bool
   func endLiveActivity(sessionId: String) async throws
   func endAllLiveActivities() async throws
   func readPendingRoute() async throws -> PlatformRoute?
@@ -878,14 +1012,10 @@ class MobilePlatformApiSetup {
     if let api = api {
       startLiveActivityChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
-        let sessionIdArg = args[0] as! String
-        let statusArg = args[1] as! String
-        let startedAtUtcEpochMillisecondsArg = args[2] as! Int64
-        let restEndsAtUtcEpochMillisecondsArg: Int64? = nilOrValue(args[3])
-        let staleAtUtcEpochMillisecondsArg = args[4] as! Int64
+        let stateArg = args[0] as! PlatformLiveActivityState
         Task { @MainActor in
           do {
-            let result = try await api.startLiveActivity(sessionId: sessionIdArg, status: statusArg, startedAtUtcEpochMilliseconds: startedAtUtcEpochMillisecondsArg, restEndsAtUtcEpochMilliseconds: restEndsAtUtcEpochMillisecondsArg, staleAtUtcEpochMilliseconds: staleAtUtcEpochMillisecondsArg)
+            let result = try await api.startLiveActivity(state: stateArg)
             reply(wrapResult(result))
           } catch {
             reply(wrapError(error))
@@ -899,14 +1029,10 @@ class MobilePlatformApiSetup {
     if let api = api {
       updateLiveActivityChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
-        let sessionIdArg = args[0] as! String
-        let statusArg = args[1] as! String
-        let startedAtUtcEpochMillisecondsArg = args[2] as! Int64
-        let restEndsAtUtcEpochMillisecondsArg: Int64? = nilOrValue(args[3])
-        let staleAtUtcEpochMillisecondsArg = args[4] as! Int64
+        let stateArg = args[0] as! PlatformLiveActivityState
         Task { @MainActor in
           do {
-            let result = try await api.updateLiveActivity(sessionId: sessionIdArg, status: statusArg, startedAtUtcEpochMilliseconds: startedAtUtcEpochMillisecondsArg, restEndsAtUtcEpochMilliseconds: restEndsAtUtcEpochMillisecondsArg, staleAtUtcEpochMilliseconds: staleAtUtcEpochMillisecondsArg)
+            let result = try await api.updateLiveActivity(state: stateArg)
             reply(wrapResult(result))
           } catch {
             reply(wrapError(error))

@@ -28,6 +28,7 @@ import '../../services/local/local_database.dart';
 import '../../services/local/pending_handover_secret_store.dart';
 import '../../services/native/native_feature_lifecycle_coordinator.dart';
 import '../../services/native/rest_timer_alert_port.dart';
+import '../../services/native/training_live_activity_coordinator.dart';
 import '../../services/platform/pigeon_native_features_platform.dart';
 import '../../services/platform/platform_ports.dart';
 import '../platform/pigeon_pending_handover_secret_store.dart';
@@ -319,6 +320,13 @@ class MobileAuthController extends ChangeNotifier
       throw StateError('The account changed before the native route opened.');
     }
     shell.selectTab(index);
+    // Die Live Activity öffnet das aktive Training; sonst bleibt es beim Tab.
+    final active = routeScope.activeWorkout.active;
+    if (request.source == NativeRouteSource.liveActivity &&
+        request.destination == NativeAppRoute.training &&
+        active != null) {
+      shell.requestOpenWorkout(active.workoutId);
+    }
   }
 
   Future<void> _openAccount(ApiSession session, {required bool online}) async {
@@ -412,6 +420,13 @@ class MobileAuthController extends ChangeNotifier
       healthViewModel: healthViewModel,
       progressViewModel: progressViewModel,
       coachViewModel: coachViewModel,
+      trainingLiveActivity: TrainingLiveActivityCoordinator(
+        activeWorkout: activeWorkout,
+        platform: nativeFeatures,
+        preferences: training.preferences,
+        isSessionActive: () =>
+            identical(account, nextScope) && _sessionGeneration == generation,
+      ),
       nativeLifecycle: NativeFeatureLifecycleCoordinator(
         installationDatabase: installDb,
         body: bodyViewModel,
@@ -425,7 +440,11 @@ class MobileAuthController extends ChangeNotifier
     account = nextScope;
     nextScope.nativeLifecycle.activate();
     unawaited(nextScope.syncScheduler.start());
-    unawaited(nextScope.activeWorkout.load());
+    unawaited(
+      nextScope.activeWorkout.load().whenComplete(
+        nextScope.trainingLiveActivity.activate,
+      ),
+    );
     state = online
         ? MobileAuthState.signedIn
         : MobileAuthState.offlineKnownUser;
@@ -535,6 +554,7 @@ class AccountScope {
     required this.progressViewModel,
     required this.coachViewModel,
     required this.nativeLifecycle,
+    required this.trainingLiveActivity,
   }) {
     _localCommitSubscription = store.committedMutations.listen((mutation) {
       if (mutation.accountId == session.userId && isSessionActive()) {
@@ -559,6 +579,7 @@ class AccountScope {
   final ProgressViewModel progressViewModel;
   final CoachViewModel coachViewModel;
   final NativeFeatureLifecycleCoordinator nativeLifecycle;
+  final TrainingLiveActivityCoordinator trainingLiveActivity;
   Future<SyncRunReport>? _syncInFlight;
   late final StreamSubscription<LocalMutation> _localCommitSubscription;
 
@@ -614,6 +635,7 @@ class AccountScope {
 
   Future<void> dispose({bool closeApi = true}) async {
     await _localCommitSubscription.cancel();
+    await trainingLiveActivity.dispose();
     activeWorkout.dispose();
     await syncScheduler.dispose();
     final syncRun = _syncInFlight;

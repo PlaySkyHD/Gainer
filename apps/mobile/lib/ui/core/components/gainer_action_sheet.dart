@@ -10,12 +10,16 @@ final class GainerSheetAction<T> {
     required this.icon,
     required this.value,
     this.destructive = false,
+    this.hint,
   });
 
   final String label;
   final IconData icon;
   final T value;
   final bool destructive;
+
+  /// Kurzer Hinweis unter dem Titel der Aktion.
+  final String? hint;
 }
 
 /// Zeigt das Sheet; liefert die gewählte Aktion oder null bei Schließen ohne Auswahl.
@@ -222,6 +226,7 @@ class _GroupRow<T> extends StatelessWidget {
     return Semantics(
       button: true,
       label: action.label,
+      hint: action.hint,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -236,13 +241,26 @@ class _GroupRow<T> extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    action.label,
-                    style: GainerTypography.body.copyWith(
-                      color: action.destructive
-                          ? colors.destructive
-                          : colors.primaryText,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        action.label,
+                        style: GainerTypography.body.copyWith(
+                          color: action.destructive
+                              ? colors.destructive
+                              : colors.primaryText,
+                        ),
+                      ),
+                      if (action.hint case final hint?)
+                        Text(
+                          hint,
+                          style: GainerTypography.label.copyWith(
+                            color: colors.secondaryText,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 Icon(

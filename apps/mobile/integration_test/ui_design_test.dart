@@ -16,6 +16,7 @@ import 'package:gainer_mobile/data/services/auth/mobile_auth_controller.dart';
 import 'package:gainer_mobile/data/services/auth/sync_foreground_scheduler.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/native/native_feature_lifecycle_coordinator.dart';
+import 'package:gainer_mobile/data/services/native/training_live_activity_coordinator.dart';
 import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
@@ -331,6 +332,7 @@ Future<UiDesignFixture> createUiDesignFixture() async {
           HealthSessionIdentity(accountId: _accountId, generation: 1),
     ),
   );
+  final activeWorkout = ActiveWorkoutController(trainingLog);
   final account = AccountScope(
     session: session,
     generation: 1,
@@ -343,11 +345,17 @@ Future<UiDesignFixture> createUiDesignFixture() async {
     online: false,
     bodyViewModel: body,
     training: trainingLog,
-    activeWorkout: ActiveWorkoutController(trainingLog),
+    activeWorkout: activeWorkout,
     nutritionViewModel: nutrition,
     healthViewModel: health,
     progressViewModel: progress,
     coachViewModel: CoachViewModel(CoachRepository(api)),
+    trainingLiveActivity: TrainingLiveActivityCoordinator(
+      activeWorkout: activeWorkout,
+      platform: native,
+      preferences: trainingLog.preferences,
+      isSessionActive: isActive,
+    ),
     nativeLifecycle: NativeFeatureLifecycleCoordinator(
       installationDatabase: database,
       body: body,

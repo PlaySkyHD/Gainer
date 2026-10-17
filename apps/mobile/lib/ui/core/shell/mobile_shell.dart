@@ -12,6 +12,7 @@ import '../../features/progress/progress_screen.dart';
 import '../../features/sync/sync_screen.dart';
 import '../../features/training/compact_training_bar.dart';
 import '../../features/training/training_home_screen.dart';
+import '../../features/training/workout_screen.dart';
 import '../components/components.dart';
 import '../theme.dart';
 import '../view_models/mobile_shell_view_model.dart';
@@ -29,38 +30,104 @@ class MobileShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<MobileShellViewModel>.value(
-      value: controller.shell,
-      child: Consumer<MobileShellViewModel>(
-        builder: (context, model, _) => MobileTabScaffold(
-          model: model,
-          compactTrainingBar: CompactTrainingBar(
-            activeWorkout: account.activeWorkout,
-            repository: account.training,
-          ),
-          tabBuilder: (context, area) => CupertinoTabView(
-            builder: (context) => switch (area) {
-              MobileArea.training => TrainingHomeScreen(
-                repository: account.training,
-                activeWorkout: account.activeWorkout,
-              ),
-              MobileArea.nutrition => NutritionScreen(
-                viewModel: account.nutritionViewModel,
-              ),
-              MobileArea.body => BodyScreen(viewModel: account.bodyViewModel),
-              MobileArea.progress => ProgressScreen(
-                viewModel: account.progressViewModel,
-              ),
-              MobileArea.more => _MoreScreen(
-                controller: controller,
-                account: account,
-              ),
-            },
+    return _ActiveWorkoutOpener(
+      model: controller.shell,
+      account: account,
+      child: ChangeNotifierProvider<MobileShellViewModel>.value(
+        value: controller.shell,
+        child: Consumer<MobileShellViewModel>(
+          builder: (context, model, _) => MobileTabScaffold(
+            model: model,
+            compactTrainingBar: CompactTrainingBar(
+              activeWorkout: account.activeWorkout,
+              repository: account.training,
+            ),
+            tabBuilder: (context, area) => CupertinoTabView(
+              builder: (context) => switch (area) {
+                MobileArea.training => TrainingHomeScreen(
+                  repository: account.training,
+                  activeWorkout: account.activeWorkout,
+                ),
+                MobileArea.nutrition => NutritionScreen(
+                  viewModel: account.nutritionViewModel,
+                ),
+                MobileArea.body => BodyScreen(viewModel: account.bodyViewModel),
+                MobileArea.progress => ProgressScreen(
+                  viewModel: account.progressViewModel,
+                ),
+                MobileArea.more => _MoreScreen(
+                  controller: controller,
+                  account: account,
+                ),
+              },
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Öffnet das aktive Training, wenn der Controller es nach einem Tab-Wechsel
+/// angefordert hat. Nur ein Training des aktuellen, noch aktiven Kontos.
+class _ActiveWorkoutOpener extends StatefulWidget {
+  const _ActiveWorkoutOpener({
+    required this.model,
+    required this.account,
+    required this.child,
+  });
+
+  final MobileShellViewModel model;
+  final AccountScope account;
+  final Widget child;
+
+  @override
+  State<_ActiveWorkoutOpener> createState() => _ActiveWorkoutOpenerState();
+}
+
+class _ActiveWorkoutOpenerState extends State<_ActiveWorkoutOpener> {
+  @override
+  void initState() {
+    super.initState();
+    widget.model.addListener(_handleRequest);
+  }
+
+  @override
+  void didUpdateWidget(_ActiveWorkoutOpener oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.model, widget.model)) {
+      oldWidget.model.removeListener(_handleRequest);
+      widget.model.addListener(_handleRequest);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.model.removeListener(_handleRequest);
+    super.dispose();
+  }
+
+  void _handleRequest() {
+    final workoutId = widget.model.takeRequestedWorkout();
+    if (workoutId == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final account = widget.account;
+      if (!account.isSessionActive() ||
+          account.activeWorkout.active?.workoutId != workoutId) {
+        return;
+      }
+      openWorkoutScreen(
+        context,
+        repository: account.training,
+        activeWorkout: account.activeWorkout,
+        workoutId: workoutId,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _MoreScreen extends StatelessWidget {
