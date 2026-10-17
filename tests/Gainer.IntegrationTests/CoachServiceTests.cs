@@ -127,7 +127,7 @@ public sealed class CoachServiceTests
 
     private sealed class FakeInsights : IInsightQueries
     {
-        public Task<DashboardInsightSnapshot> DashboardAsync(DateOnly through, int days, CancellationToken cancellationToken = default)
+        public Task<DashboardInsightSnapshot> DashboardAsync(DateOnly through, int days, TimeZoneInfo timeZone, CancellationToken cancellationToken = default)
         {
             DateOnly from = through.AddDays(1 - days);
             WeightInsights weight = InsightAlgorithms.Weight([
@@ -137,16 +137,16 @@ public sealed class CoachServiceTests
                 5, from, through, null, new WeightPoint(through, 81m), [],
                 InsightAlgorithms.Weight([], through.AddDays(-6), through), weight,
                 InsightAlgorithms.Nutrition([], from, through),
-                InsightAlgorithms.Training([], []), 0));
+                InsightAlgorithms.Training([], 0), 0));
         }
 
         public Task<ExerciseProgressSnapshot> ExerciseProgressAsync(Guid exerciseId, int? windowDays, DateTime throughUtc, TimeZoneInfo timeZone, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ExerciseProgressSnapshot(5, exerciseId, windowDays, DateTime.UnixEpoch, throughUtc, [], null));
+            Task.FromResult(new ExerciseProgressSnapshot(5, exerciseId, windowDays, DateTime.UnixEpoch, throughUtc, [], null, EmptyRecords));
     }
 
     private sealed class NoDataInsights : IInsightQueries
     {
-        public Task<DashboardInsightSnapshot> DashboardAsync(DateOnly through, int days, CancellationToken cancellationToken = default)
+        public Task<DashboardInsightSnapshot> DashboardAsync(DateOnly through, int days, TimeZoneInfo timeZone, CancellationToken cancellationToken = default)
         {
             DateOnly from = through.AddDays(1 - days);
             return Task.FromResult(new DashboardInsightSnapshot(
@@ -154,16 +154,16 @@ public sealed class CoachServiceTests
                 InsightAlgorithms.Weight([], through.AddDays(-6), through),
                 InsightAlgorithms.Weight([], from, through),
                 InsightAlgorithms.Nutrition([], from, through),
-                InsightAlgorithms.Training([], []), 0));
+                InsightAlgorithms.Training([], 0), 0));
         }
 
         public Task<ExerciseProgressSnapshot> ExerciseProgressAsync(Guid exerciseId, int? windowDays, DateTime throughUtc, TimeZoneInfo timeZone, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ExerciseProgressSnapshot(5, exerciseId, windowDays, DateTime.UnixEpoch, throughUtc, [], null));
+            Task.FromResult(new ExerciseProgressSnapshot(5, exerciseId, windowDays, DateTime.UnixEpoch, throughUtc, [], null, EmptyRecords));
     }
 
     private sealed class NutritionInsightsStub : IInsightQueries
     {
-        public Task<DashboardInsightSnapshot> DashboardAsync(DateOnly through, int days, CancellationToken cancellationToken = default)
+        public Task<DashboardInsightSnapshot> DashboardAsync(DateOnly through, int days, TimeZoneInfo timeZone, CancellationToken cancellationToken = default)
         {
             DateOnly from = through.AddDays(1 - days);
             NutritionInsights nutrition = InsightAlgorithms.Nutrition([
@@ -174,11 +174,11 @@ public sealed class CoachServiceTests
                 7, from, through, null, null, [],
                 InsightAlgorithms.Weight([], through.AddDays(-6), through),
                 InsightAlgorithms.Weight([], from, through), nutrition,
-                InsightAlgorithms.Training([], []), 0));
+                InsightAlgorithms.Training([], 0), 0));
         }
 
         public Task<ExerciseProgressSnapshot> ExerciseProgressAsync(Guid exerciseId, int? windowDays, DateTime throughUtc, TimeZoneInfo timeZone, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ExerciseProgressSnapshot(7, exerciseId, windowDays, DateTime.UnixEpoch, throughUtc, [], null));
+            Task.FromResult(new ExerciseProgressSnapshot(7, exerciseId, windowDays, DateTime.UnixEpoch, throughUtc, [], null, EmptyRecords));
     }
 
     private sealed class FakeHistory : IWorkoutHistoryQueries
@@ -193,6 +193,8 @@ public sealed class CoachServiceTests
         public Task<ExerciseCatalogPage> SearchAsync(ExerciseCatalogFilter filter, CancellationToken cancellationToken = default) =>
             Task.FromResult(new ExerciseCatalogPage([], 0, filter.Limit, 0, []));
     }
+
+    private static readonly ExerciseRecords EmptyRecords = new([], [], [], [], []);
 
     private sealed class FixedTimeProvider : TimeProvider
     {

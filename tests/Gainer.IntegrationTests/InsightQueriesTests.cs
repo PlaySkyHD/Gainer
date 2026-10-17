@@ -15,6 +15,7 @@ public sealed class InsightQueriesTests
 {
     private static PostgreSqlTestFixture? fixture;
     private static PostgreSqlTestFixture Fixture => fixture!;
+    private static readonly TimeZoneInfo Berlin = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
 
     [ClassInitialize]
     public static async Task StartAsync(TestContext context)
@@ -37,8 +38,8 @@ public sealed class InsightQueriesTests
         Guid exerciseId = Guid.NewGuid();
         await SeedCheckInsAndWorkoutAsync(connectionString, firstUser, exerciseId);
         await using AppDbContext first = Fixture.CreateContext(connectionString, firstUser);
-        DashboardInsightSnapshot dashboard = await new InsightQueries(first)
-            .DashboardAsync(new DateOnly(2026, 8, 18), 7);
+        DashboardInsightSnapshot dashboard = await new InsightQueries(first, new TestUserContext(firstUser))
+            .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin);
         Assert.AreEqual(0, dashboard.AsOfRevision);
         Assert.AreEqual(2, dashboard.Weight.ObservedDays);
         Assert.AreEqual(80.5m, dashboard.Weight.AverageKg);
@@ -46,8 +47,8 @@ public sealed class InsightQueriesTests
         Assert.AreEqual(1800m, dashboard.Training.VolumeKgRepetitions);
 
         await using AppDbContext second = Fixture.CreateContext(connectionString, secondUser);
-        DashboardInsightSnapshot isolated = await new InsightQueries(second)
-            .DashboardAsync(new DateOnly(2026, 8, 18), 7);
+        DashboardInsightSnapshot isolated = await new InsightQueries(second, new TestUserContext(secondUser))
+            .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin);
         Assert.AreEqual(0, isolated.Weight.ObservedDays);
         Assert.AreEqual(0, isolated.Training.WorkoutCount);
     }
@@ -89,8 +90,8 @@ public sealed class InsightQueriesTests
         }
 
         await using AppDbContext first = Fixture.CreateContext(connectionString, firstUser);
-        DashboardInsightSnapshot dashboard = await new InsightQueries(first)
-            .DashboardAsync(new DateOnly(2026, 8, 18), 2);
+        DashboardInsightSnapshot dashboard = await new InsightQueries(first, new TestUserContext(firstUser))
+            .DashboardAsync(new DateOnly(2026, 8, 18), 2, Berlin);
         Assert.AreEqual(1550m, dashboard.Nutrition.CaloriesKcal.Value);
         Assert.AreEqual(180m, dashboard.Nutrition.ProteinGrams.Value);
         Assert.AreEqual(1, dashboard.Nutrition.ProteinGrams.ObservedDays);
@@ -98,8 +99,8 @@ public sealed class InsightQueriesTests
         Assert.AreEqual(1, dashboard.Nutrition.LegacyCheckInDays);
 
         await using AppDbContext second = Fixture.CreateContext(connectionString, secondUser);
-        DashboardInsightSnapshot isolated = await new InsightQueries(second)
-            .DashboardAsync(new DateOnly(2026, 8, 18), 2);
+        DashboardInsightSnapshot isolated = await new InsightQueries(second, new TestUserContext(secondUser))
+            .DashboardAsync(new DateOnly(2026, 8, 18), 2, Berlin);
         Assert.AreEqual(0, isolated.Nutrition.ObservedDays);
         Assert.AreEqual(0, isolated.Nutrition.MealDiaryDays);
     }
@@ -111,16 +112,16 @@ public sealed class InsightQueriesTests
         Guid exerciseId = Guid.NewGuid();
         await SeedCheckInsAndWorkoutAsync(connectionString, userId, exerciseId);
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
-        ExerciseProgressSnapshot result = await new InsightQueries(context).ExerciseProgressAsync(
+        ExerciseProgressSnapshot result = await new InsightQueries(context, new TestUserContext(userId)).ExerciseProgressAsync(
             exerciseId,
             7,
             new DateTime(2026, 8, 18, 22, 30, 0, DateTimeKind.Utc),
-            TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin"));
+            Berlin);
         Assert.HasCount(1, result.Points);
         Assert.AreEqual(1800m, result.Points[0].VolumeKgRepetitions);
         Assert.AreEqual(140m, result.BestSet!.EstimatedOneRepMaxKg);
 
-        ExerciseProgressSnapshot missing = await new InsightQueries(context).ExerciseProgressAsync(
+        ExerciseProgressSnapshot missing = await new InsightQueries(context, new TestUserContext(userId)).ExerciseProgressAsync(
             Guid.NewGuid(), 30, new DateTime(2026, 8, 18, 22, 30, 0, DateTimeKind.Utc), TimeZoneInfo.Utc);
         Assert.IsEmpty(missing.Points);
         Assert.IsNull(missing.BestSet);
@@ -224,6 +225,8 @@ public sealed class InsightQueriesTests
         WeightKg = weight,
         Repetitions = reps,
     };
+
+    private sealed record TestUserContext(Guid? UserId) : IUserContext;
 
     private static async Task<(string ConnectionString, Guid FirstUser, Guid SecondUser)> CreateDatabaseAsync()
     {

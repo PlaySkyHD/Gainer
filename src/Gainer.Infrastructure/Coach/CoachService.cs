@@ -17,6 +17,9 @@ public sealed partial class CoachService(
     private const int MaximumRounds = 3;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>Gleiche Zeitzone wie die Insights-Endpunkte ohne expliziten Parameter.</summary>
+    private static TimeZoneInfo CoachTimeZone { get; } = TimeZoneInfo.FindSystemTimeZoneById(TrainingStatistics.DefaultTimeZoneId);
+
     public async Task<CoachAnswer> AnswerAsync(string question, CancellationToken cancellationToken = default)
     {
         string normalized = question.Trim();
@@ -193,7 +196,7 @@ public sealed partial class CoachService(
         if (data.Training.BestSet is { } best)
             facts.Add(Fact(data, $"training.e1rm.{best.ExerciseId:N}.{days}", "strength", "Best estimated one-rep max",
                 best.EstimatedOneRepMaxKg, null, "kg", $"last {days} days", data.Training.EstimatedOneRepMaxAlgorithmVersion));
-        return new ToolResult(data.AsOfRevision, facts, []);
+        return new ToolResult(data.AsOfRevision, facts, BodyweightGaps(data.Training.BodyweightMissing));
     }
 
     private async Task<ToolResult> ExerciseProgress(JsonElement args, CancellationToken cancellationToken)
@@ -207,12 +210,21 @@ public sealed partial class CoachService(
         if (!allowed.Items.Any(item => item.Id == exerciseId))
             throw new CoachResponseValidationException("Exercise id is not approved for this user.");
         ExerciseProgressSnapshot data = await insights.ExerciseProgressAsync(
-            exerciseId, days, timeProvider.GetUtcNow().UtcDateTime, TimeZoneInfo.Utc, cancellationToken);
-        if (data.BestSet is null) return new ToolResult(data.AsOfRevision, [], ["No completed sets are available for this exercise."]);
-        return new ToolResult(data.AsOfRevision, [new CoachFact(
-            $"exercise:{exerciseId:N}:e1rm:{days?.ToString() ?? "all"}", "strength", "Exercise best estimated one-rep max",
-            data.BestSet.EstimatedOneRepMaxKg, null, "kg", days is null ? "all time" : $"last {days} days",
-            InsightAlgorithmVersions.EstimatedOneRepMax)], []);
+            exerciseId, days, timeProvider.GetUtcNow().UtcDateTime, CoachTimeZone, cancellationToken);
+        string scope = days?.ToString() ?? "all";
+        var facts = new List<CoachFact>();
+        if (data.BestSet is { } best) facts.Add(new CoachFact(
+            $"exercise:{exerciseId:N}:e1rm:{scope}", "strength", "Exercise best estimated one-rep max",
+            TrainingStatistics.RoundForOutput(best.EstimatedOneRepMaxKg), null, "kg",
+            days is null ? "all time" : $"last {days} days", InsightAlgorithmVersions.EstimatedOneRepMax));
+        AddRecordFact(facts, exerciseId, data, RecordKind.MaxWeight, "record.maxWeight", "Current max weight record", "kg");
+        AddRecordFact(facts, exerciseId, data, RecordKind.EstimatedOneRepMax, "record.e1rm", "Current estimated one-rep max record", "kg");
+        AddRecordFact(facts, exerciseId, data, RecordKind.Volume, "record.volume", "Current volume record", "kg·repetitions");
+        AddRecordFact(facts, exerciseId, data, RecordKind.MaxRepetitions, "record.maxRepetitions", "Current max repetitions record", "repetitions");
+        var gaps = new List<string>();
+        if (facts.Count == 0) gaps.Add("No completed sets are available for this exercise.");
+        if (data.Points.Any(item => item.BodyweightMissing)) gaps.AddRange(BodyweightGaps(true));
+        return new ToolResult(data.AsOfRevision, facts, gaps);
     }
 
     private async Task<ToolResult> Compare(JsonElement args, CancellationToken cancellationToken)
@@ -235,7 +247,20 @@ public sealed partial class CoachService(
     }
 
     private async Task<DashboardInsightSnapshot> Dashboard(int days, CancellationToken cancellationToken) =>
-        await insights.DashboardAsync(DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime), days, cancellationToken);
+        await insights.DashboardAsync(
+            DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime), days, CoachTimeZone, cancellationToken);
+
+    private static IReadOnlyList<string> BodyweightGaps(bool missing) => missing
+        ? ["Body weight is missing for some sessions; a check-in is needed for complete values."]
+        : [];
+
+    private static void AddRecordFact(List<CoachFact> facts, Guid exerciseId, ExerciseProgressSnapshot data,
+        RecordKind kind, string key, string label, string unit)
+    {
+        if (data.Records.Current(kind) is { } record) facts.Add(new CoachFact(
+            $"exercise:{exerciseId:N}:{key}", "strength", label, TrainingStatistics.RoundForOutput(record.Value),
+            null, unit, "all time", kind == RecordKind.MaxRepetitions ? null : InsightAlgorithmVersions.EstimatedOneRepMax));
+    }
 
     private static CoachAnswer Validate(ModelAnswer model, IReadOnlyDictionary<string, CoachFact> facts, long revision)
     {
@@ -315,7 +340,7 @@ public sealed partial class CoachService(
     private static CoachFact Fact(
         DashboardInsightSnapshot data, string suffix, string kind, string label, decimal? number, string? text,
         string? unit, string period, string? algorithm) =>
-        new($"rev:{data.AsOfRevision}:{suffix}", kind, label, number, text, unit, period, algorithm);
+        new($"rev:{data.AsOfRevision}:{suffix}", kind, label, TrainingStatistics.RoundForOutput(number), text, unit, period, algorithm);
 
     private static void AddMetric(List<CoachFact> facts, DashboardInsightSnapshot data, string suffix, string label,
         decimal? value, string unit, int days, string algorithm)

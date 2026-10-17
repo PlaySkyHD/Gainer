@@ -5,8 +5,8 @@ public static class InsightAlgorithmVersions
     public const string WeightAverage = "weight-average-v1";
     public const string WeightTrend = "weight-trend-ols-v1";
     public const string NutritionAverage = "nutrition-average-v2-diary-priority";
-    public const string TrainingVolume = "training-volume-v1";
-    public const string EstimatedOneRepMax = "e1rm-epley-v1";
+    public const string TrainingVolume = "training-volume-v2";
+    public const string EstimatedOneRepMax = "e1rm-epley-v2";
 }
 
 public sealed record WeightPoint(DateOnly Date, decimal WeightKg);
@@ -53,28 +53,14 @@ public sealed record NutritionInsights(
     MetricAverage CarbohydrateGrams,
     MetricAverage FatGrams);
 
-public sealed record SetPerformance(
-    Guid WorkoutId,
-    Guid ExerciseId,
-    DateTime CompletedAtUtc,
-    decimal? WeightKg,
-    int? Repetitions);
-
-public sealed record BestSet(
-    Guid WorkoutId,
-    Guid ExerciseId,
-    DateTime CompletedAtUtc,
-    decimal WeightKg,
-    int Repetitions,
-    decimal EstimatedOneRepMaxKg);
-
 public sealed record TrainingInsights(
     string VolumeAlgorithmVersion,
     string EstimatedOneRepMaxAlgorithmVersion,
     string VolumeUnit,
     int WorkoutCount,
     decimal VolumeKgRepetitions,
-    BestSet? BestSet);
+    BestSet? BestSet,
+    bool BodyweightMissing);
 
 public static class InsightAlgorithms
 {
@@ -138,43 +124,15 @@ public static class InsightAlgorithms
             Average(points.Select(item => item.FatGrams)));
     }
 
-    public static TrainingInsights Training(
-        IReadOnlyCollection<SetPerformance> sets,
-        IReadOnlyCollection<Guid> completedWorkoutIds)
-    {
-        SetPerformance[] valid = sets.Where(item =>
-            item.WeightKg is > 0 && item.Repetitions is > 0).ToArray();
-        decimal volume = Round(valid.Sum(item => item.WeightKg!.Value * item.Repetitions!.Value));
-        BestSet? best = valid
-            .Where(item => item.Repetitions is >= 1 and <= 12)
-            .Select(item => new BestSet(
-                item.WorkoutId,
-                item.ExerciseId,
-                item.CompletedAtUtc,
-                item.WeightKg!.Value,
-                item.Repetitions!.Value,
-                Round(Epley(item.WeightKg.Value, item.Repetitions.Value))))
-            .OrderByDescending(item => item.EstimatedOneRepMaxKg)
-            .ThenByDescending(item => item.WeightKg)
-            .ThenByDescending(item => item.Repetitions)
-            .ThenByDescending(item => item.CompletedAtUtc)
-            .ThenBy(item => item.WorkoutId)
-            .FirstOrDefault();
-        return new TrainingInsights(
-            InsightAlgorithmVersions.TrainingVolume,
-            InsightAlgorithmVersions.EstimatedOneRepMax,
-            "kg·repetitions",
-            completedWorkoutIds.Distinct().Count(),
-            volume,
-            best);
-    }
-
-    public static decimal Epley(decimal weightKg, int repetitions)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(weightKg);
-        if (repetitions is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(repetitions));
-        return weightKg * (1m + repetitions / 30m);
-    }
+    /// <summary>Aggregiert die Blöcke beendeter Trainings im Zeitraum; <paramref name="workoutCount"/> zählt die Trainings.</summary>
+    public static TrainingInsights Training(IReadOnlyCollection<BlockStatistics> blocks, int workoutCount) => new(
+        InsightAlgorithmVersions.TrainingVolume,
+        InsightAlgorithmVersions.EstimatedOneRepMax,
+        "kg·repetitions",
+        workoutCount,
+        blocks.Sum(block => block.VolumeKg),
+        TrainingStatistics.BestOf(blocks.Select(block => block.Best)),
+        blocks.Any(block => block.BodyweightMissing));
 
     private static decimal OlsSlopePerDay(WeightPoint[] points)
     {
