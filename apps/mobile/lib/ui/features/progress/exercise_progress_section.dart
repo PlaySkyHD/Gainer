@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/models/api/api_models.dart';
@@ -221,86 +223,126 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
     List<ApiExerciseProgressPoint> points,
     double minimumEstimate,
     double bestEstimate,
-  ) => [
-    const SizedBox(height: 8),
-    Row(
-      children: [
-        Expanded(
-          child: Text(
-            'Min. ${minimumEstimate.toStringAsFixed(1)} kg',
-            softWrap: true,
-            style: TextStyle(
-              color: GainerDesign.colorsOf(context).secondaryText,
-              fontSize: 12,
+  ) {
+    final maxWeight = _maxOf(data.points.map((item) => item.maxWeightKg));
+    final maxRepetitions = data.points.isEmpty
+        ? null
+        : data.points.map((item) => item.maxRepetitions).reduce(math.max);
+    return [
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Min. ${minimumEstimate.toStringAsFixed(1)} kg',
+              softWrap: true,
+              style: TextStyle(
+                color: GainerDesign.colorsOf(context).secondaryText,
+                fontSize: 12,
+              ),
             ),
           ),
-        ),
-        Expanded(
-          child: Text(
-            'Max. ${bestEstimate.toStringAsFixed(1)} kg',
-            softWrap: true,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              color: GainerDesign.colorsOf(context).secondaryText,
-              fontSize: 12,
+          Expanded(
+            child: Text(
+              'Max. ${bestEstimate.toStringAsFixed(1)} kg',
+              softWrap: true,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: GainerDesign.colorsOf(context).secondaryText,
+                fontSize: 12,
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-    Semantics(
-      label: _chartDescription(points),
-      child: SizedBox(
-        height: 136,
-        width: double.infinity,
-        child: CustomPaint(
-          painter: _OneRepMaxChartPainter(
-            points,
-            GainerDesign.colorsOf(context).accent,
-            GainerDesign.colorsOf(context).secondaryText,
+        ],
+      ),
+      Semantics(
+        label: _chartDescription(points),
+        child: SizedBox(
+          height: 136,
+          width: double.infinity,
+          child: CustomPaint(
+            painter: _OneRepMaxChartPainter(
+              points,
+              GainerDesign.colorsOf(context).accent,
+              GainerDesign.colorsOf(context).secondaryText,
+            ),
           ),
         ),
       ),
-    ),
-    Row(
-      children: [
-        Expanded(
-          child: Text(
-            _formatDate(points.first.completedAtUtc),
-            softWrap: true,
-            style: TextStyle(
-              color: GainerDesign.colorsOf(context).secondaryText,
-              fontSize: 12,
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              _formatDate(points.first.completedAtUtc),
+              softWrap: true,
+              style: TextStyle(
+                color: GainerDesign.colorsOf(context).secondaryText,
+                fontSize: 12,
+              ),
             ),
           ),
-        ),
-        Expanded(
-          child: Text(
-            _formatDate(points.last.completedAtUtc),
-            softWrap: true,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              color: GainerDesign.colorsOf(context).secondaryText,
-              fontSize: 12,
+          Expanded(
+            child: Text(
+              _formatDate(points.last.completedAtUtc),
+              softWrap: true,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: GainerDesign.colorsOf(context).secondaryText,
+                fontSize: 12,
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-    const SizedBox(height: 8),
-    Text(
-      'Bestes geschätztes 1RM · ${bestEstimate.toStringAsFixed(1)} kg',
-      style: GainerTypography.body.copyWith(
-        fontWeight: FontWeight.w600,
-        color: GainerDesign.colorsOf(context).primaryText,
+        ],
       ),
-    ),
-    if (data.bestSet case final best?)
+      const SizedBox(height: 12),
+      Row(
+        children: [
+          Expanded(
+            child: _Figure(
+              label: 'Max. Gewicht',
+              value: maxWeight == null
+                  ? '–'
+                  : '${maxWeight.toStringAsFixed(1)} kg',
+            ),
+          ),
+          Expanded(
+            child: _Figure(
+              label: 'Max. Wdh.',
+              value: '${maxRepetitions ?? '–'}',
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
       Text(
-        'Bestleistung am ${_formatDate(best.completedAtUtc)} · ${best.weightKg.toStringAsFixed(1)} kg × ${best.repetitions}',
-        style: TextStyle(color: GainerDesign.colorsOf(context).secondaryText),
+        'Bestes geschätztes 1RM · ${bestEstimate.toStringAsFixed(1)} kg',
+        style: GainerTypography.body.copyWith(
+          fontWeight: FontWeight.w600,
+          color: GainerDesign.colorsOf(context).primaryText,
+        ),
       ),
-  ];
+      if (data.bestSet case final best?) ...[
+        Text(
+          'Bestes Set am ${_formatDate(best.completedAtUtc)} · ${best.effectiveWeightKg.toStringAsFixed(1)} kg × ${best.repetitions}',
+          style: TextStyle(color: GainerDesign.colorsOf(context).secondaryText),
+        ),
+        Text(
+          'Effektives Gewicht: enthält bei Körpergewichtsübungen dein Körpergewicht.',
+          style: GainerTypography.label.copyWith(
+            color: GainerDesign.colorsOf(context).secondaryText,
+          ),
+        ),
+      ],
+      if (data.points.any((item) => item.bodyweightMissing)) ...[
+        const SizedBox(height: 10),
+        const BodyweightMissingHint(),
+      ],
+      if (_hasRecords(data.records)) ...[
+        const SizedBox(height: 14),
+        _RecordsCard(records: data.records, points: data.points),
+      ],
+    ];
+  }
 
   Future<void> _chooseExercise() async {
     final chosen = await Navigator.of(context).push<String>(
@@ -560,6 +602,174 @@ class _OneRepMaxChartPainter extends CustomPainter {
 
 String _chartDescription(List<ApiExerciseProgressPoint> points) =>
     'Geschätzter Einwiederholungswert im Verlauf. ${points.map((point) => '${_formatDate(point.completedAtUtc)}: ${point.estimatedOneRepMaxKg!.toStringAsFixed(1)} kg').join(', ')}';
+double? _maxOf(Iterable<double?> values) =>
+    values.whereType<double>().fold<double?>(
+      null,
+      (best, value) => best == null || value > best ? value : best,
+    );
+
+bool _hasRecords(ApiExerciseRecords records) =>
+    records.maxWeightKg != null ||
+    records.estimatedOneRepMaxKg != null ||
+    records.volumeKgRepetitions != null ||
+    records.maxRepetitions != null;
+
+DateTime? _completedAtFor(
+  List<ApiExerciseProgressPoint> points,
+  String workoutId,
+) {
+  for (final point in points) {
+    if (point.workoutId == workoutId) return point.completedAtUtc;
+  }
+  return null;
+}
+
+/// Textlicher Hinweis, damit fehlendes Körpergewicht nicht nur über Farbe erkennbar ist.
+class BodyweightMissingHint extends StatelessWidget {
+  const BodyweightMissingHint({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          CupertinoIcons.exclamationmark_circle,
+          size: 16,
+          color: colors.warning,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            'Für korrekte Werte fehlt ein Check-in mit Körpergewicht.',
+            style: GainerTypography.label.copyWith(color: colors.primaryText),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Figure extends StatelessWidget {
+  const _Figure({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GainerTypography.label.copyWith(color: colors.secondaryText),
+        ),
+        Text(
+          value,
+          style: GainerTypography.value.copyWith(color: colors.primaryText),
+        ),
+      ],
+    );
+  }
+}
+
+class _RecordsCard extends StatelessWidget {
+  const _RecordsCard({required this.records, required this.points});
+  final ApiExerciseRecords records;
+  final List<ApiExerciseProgressPoint> points;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final rows = <(String, String, String)>[
+      if (records.maxWeightKg case final record?)
+        (
+          'Max. Gewicht',
+          '${record.value.toStringAsFixed(1)} kg',
+          record.workoutId,
+        ),
+      if (records.estimatedOneRepMaxKg case final record?)
+        (
+          'Geschätztes 1RM',
+          '${record.value.toStringAsFixed(1)} kg',
+          record.workoutId,
+        ),
+      if (records.volumeKgRepetitions case final record?)
+        (
+          'Volumen',
+          '${record.value.toStringAsFixed(0)} kg × Wdh.',
+          record.workoutId,
+        ),
+      if (records.maxRepetitions case final record?)
+        ('Max. Wdh.', record.value.toStringAsFixed(0), record.workoutId),
+    ];
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.elevatedSurface,
+        borderRadius: BorderRadius.circular(GainerRadii.card),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(GainerSpacing.m),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Rekorde',
+              style: GainerTypography.body.copyWith(
+                fontWeight: FontWeight.w600,
+                color: colors.primaryText,
+              ),
+            ),
+            Text(
+              'Gesamte Historie bis heute',
+              style: GainerTypography.label.copyWith(
+                color: colors.secondaryText,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (final (label, value, workoutId) in rows)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: TextStyle(color: colors.secondaryText),
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          value,
+                          style: GainerTypography.body.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: colors.primaryText,
+                          ),
+                        ),
+                        if (_completedAtFor(points, workoutId) case final date?)
+                          Text(
+                            _formatDate(date),
+                            style: GainerTypography.label.copyWith(
+                              color: colors.secondaryText,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 String _formatDate(DateTime date) {
   final localDate = date.toLocal();
   return '${localDate.day.toString().padLeft(2, '0')}.${localDate.month.toString().padLeft(2, '0')}.${localDate.year}';

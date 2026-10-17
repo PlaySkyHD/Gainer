@@ -156,13 +156,22 @@ class _ProgressScreenState extends State<ProgressScreen> {
   ) => _Card(
     title: 'Training',
     subtitle: '${data.workoutsLast7Days} Workouts in den letzten 7 Tagen',
-    child: _MetricRow(
-      metrics: [
-        ('Workouts gesamt', '${data.training.workoutCount}'),
-        (
-          'Trainingsvolumen',
-          '${data.training.volumeKgRepetitions.toStringAsFixed(0)} kg × Wdh.',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _MetricRow(
+          metrics: [
+            ('Workouts gesamt', '${data.training.workoutCount}'),
+            (
+              'Trainingsvolumen',
+              '${data.training.volumeKgRepetitions.toStringAsFixed(0)} kg × Wdh.',
+            ),
+          ],
         ),
+        if (data.training.bodyweightMissing) ...[
+          const SizedBox(height: 10),
+          const BodyweightMissingHint(),
+        ],
       ],
     ),
   );

@@ -71,6 +71,7 @@ void main() {
               'workoutCount': 2,
               'volumeKgRepetitions': 4200,
               'bestSet': null,
+              'bodyweightMissing': false,
             },
             'workoutsLast7Days': 2,
           });

@@ -165,6 +165,58 @@ void main() {
       await closeDatabase(database);
     },
   );
+
+  test(
+    'exercise analytics cache ignores v1 entries and older algorithm versions',
+    () async {
+      final database = open('versioned');
+      final store = LocalSyncStore(database: database, accountId: _accountA);
+      final repository = InsightsRepository(unusedApi(), store: store);
+      await store.writeSyncMetadata('local-cache:insights:exercise:v1', {
+        'schemaVersion': 1,
+        'entries': {
+          '$_exerciseA:30': {
+            'schemaVersion': 1,
+            'cachedAtUtc': DateTime.utc(2026, 10, 14).toIso8601String(),
+            'payload': _progress(_exerciseA, 30).toJson(),
+          },
+        },
+      });
+      expect(
+        await repository.readCachedExerciseProgress(
+          exerciseId: _exerciseA,
+          window: '30',
+        ),
+        isNull,
+      );
+
+      final outdated = ApiExerciseProgress(
+        asOfRevision: 19,
+        exerciseId: _exerciseA,
+        windowDays: 30,
+        fromUtc: DateTime.utc(2026, 9, 14),
+        throughUtc: DateTime.utc(2026, 10, 14),
+        volumeAlgorithmVersion: 'training-volume-v1',
+        estimatedOneRepMaxAlgorithmVersion: 'e1rm-epley-v1',
+        points: const [],
+        bestSet: null,
+        records: _emptyRecords,
+      );
+      await repository.cacheExerciseProgress(
+        exerciseId: _exerciseA,
+        window: '30',
+        value: outdated,
+      );
+      expect(
+        await repository.readCachedExerciseProgress(
+          exerciseId: _exerciseA,
+          window: '30',
+        ),
+        isNull,
+      );
+      await closeDatabase(database);
+    },
+  );
 }
 
 ApiExerciseProgress _progress(String exerciseId, int window) =>
@@ -174,18 +226,30 @@ ApiExerciseProgress _progress(String exerciseId, int window) =>
       windowDays: window,
       fromUtc: DateTime.utc(2026, 9, 14),
       throughUtc: DateTime.utc(2026, 10, 14),
+      volumeAlgorithmVersion: 'training-volume-v2',
+      estimatedOneRepMaxAlgorithmVersion: 'e1rm-epley-v2',
+      records: _emptyRecords,
       points: [
         ApiExerciseProgressPoint(
           workoutId: '00000000-0000-4000-8000-000000000099',
           completedAtUtc: DateTime.utc(2026, 10, 12),
           volumeKgRepetitions: 825,
-          bestWeightKg: 75,
-          bestRepetitions: 5,
+          bodyweightMissing: false,
+          maxWeightKg: 75,
+          maxRepetitions: 5,
           estimatedOneRepMaxKg: 82.5,
         ),
       ],
       bestSet: null,
     );
+
+const _emptyRecords = ApiExerciseRecords(
+  maxWeightKg: null,
+  estimatedOneRepMaxKg: null,
+  volumeKgRepetitions: null,
+  maxRepetitions: null,
+  repetitionRecords: [],
+);
 
 class _CatalogApi extends ApiClient {
   _CatalogApi()

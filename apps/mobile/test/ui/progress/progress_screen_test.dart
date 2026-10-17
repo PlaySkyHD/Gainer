@@ -292,6 +292,25 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('dashboard names missing bodyweight in text, not only color', (
+    tester,
+  ) async {
+    _useTallView(tester);
+    final api = _DashboardApi((_) async => _insights(bodyweightMissing: true));
+    final model = ProgressViewModel(InsightsRepository(api));
+    addTearDown(model.dispose);
+    addTearDown(api.close);
+
+    await _pumpScreen(tester, model);
+
+    expect(
+      find.text('Für korrekte Werte fehlt ein Check-in mit Körpergewicht.'),
+      findsOneWidget,
+    );
+    expect(find.text('Trainingsvolumen'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('weight chart paints a single point and a flat series', (
     tester,
   ) async {
@@ -392,6 +411,7 @@ ApiDashboardInsights _insights({
   ],
   double? trendKgPerWeek = 0.25,
   ApiActiveGoalInsight? activeGoal,
+  bool bodyweightMissing = false,
 }) => ApiDashboardInsights(
   asOfRevision: 7,
   from: '2026-09-16',
@@ -424,9 +444,14 @@ ApiDashboardInsights _insights({
     carbohydrateGrams: ApiMetricAverage(observedDays: 9),
     fatGrams: ApiMetricAverage(observedDays: 9),
   ),
-  training: const ApiTrainingInsights(
+  training: ApiTrainingInsights(
     workoutCount: 12,
     volumeKgRepetitions: 4200.4,
+    volumeAlgorithmVersion: 'training-volume-v2',
+    estimatedOneRepMaxAlgorithmVersion: 'e1rm-epley-v2',
+    volumeUnit: 'kg-repetitions',
+    bestSet: null,
+    bodyweightMissing: bodyweightMissing,
   ),
   workoutsLast7Days: 4,
   activeGoal:
@@ -467,7 +492,15 @@ ApiDashboardInsights _emptyInsights() => const ApiDashboardInsights(
     carbohydrateGrams: ApiMetricAverage(observedDays: 0),
     fatGrams: ApiMetricAverage(observedDays: 0),
   ),
-  training: ApiTrainingInsights(workoutCount: 0, volumeKgRepetitions: 0),
+  training: ApiTrainingInsights(
+    workoutCount: 0,
+    volumeKgRepetitions: 0,
+    volumeAlgorithmVersion: 'training-volume-v2',
+    estimatedOneRepMaxAlgorithmVersion: 'e1rm-epley-v2',
+    volumeUnit: 'kg-repetitions',
+    bestSet: null,
+    bodyweightMissing: false,
+  ),
   workoutsLast7Days: 0,
 );
 

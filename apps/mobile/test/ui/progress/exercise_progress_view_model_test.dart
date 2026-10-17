@@ -149,11 +149,21 @@ ApiExerciseProgress _sample(String exerciseId, int window) =>
           workoutId: '30000000-0000-4000-8000-000000000001',
           completedAtUtc: DateTime.utc(2026, 10, 12),
           volumeKgRepetitions: 1000,
-          bestWeightKg: 100,
-          bestRepetitions: 3,
+          bodyweightMissing: false,
+          maxWeightKg: 100,
+          maxRepetitions: 3,
           estimatedOneRepMaxKg: exerciseId == _row ? 105 : 110,
         ),
       ],
+      volumeAlgorithmVersion: 'training-volume-v2',
+      estimatedOneRepMaxAlgorithmVersion: 'e1rm-epley-v2',
+      records: const ApiExerciseRecords(
+        maxWeightKg: null,
+        estimatedOneRepMaxKg: null,
+        volumeKgRepetitions: null,
+        maxRepetitions: null,
+        repetitionRecords: [],
+      ),
       bestSet: null,
     );
 

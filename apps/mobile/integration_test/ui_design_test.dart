@@ -31,6 +31,7 @@ import 'package:gainer_mobile/ui/features/body/health/health_review_view_model.d
 import 'package:gainer_mobile/ui/features/coach/coach_view_model.dart';
 import 'package:gainer_mobile/ui/features/nutrition/nutrition_view_model.dart';
 import 'package:gainer_mobile/ui/features/progress/progress_view_model.dart';
+import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:integration_test/integration_test.dart';
 
 const _accountId = '00000000-0000-4000-8000-000000000003';
@@ -150,10 +151,7 @@ void main() {
 
     await _tapTab(tester, 'Training');
     await _capture(binding, 'tab-training');
-    expect(
-      find.text('Das Training wird gerade neu aufgebaut.'),
-      findsOneWidget,
-    );
+    expect(find.text('Noch keine Trainings'), findsOneWidget);
 
     await _tapTab(tester, 'Mehr');
     await _capture(binding, 'tab-mehr');
@@ -219,15 +217,9 @@ void main() {
     await _tapTab(tester, 'Training');
     await _scrollActiveListUntilVisible(
       tester,
-      find.byKey(const ValueKey('training-create-template-route')),
+      find.byKey(const ValueKey('training-start-empty')),
     );
-    await tester.tap(
-      find.byKey(const ValueKey('training-create-template-route')),
-    );
-    await tester.pumpAndSettle();
-    await _capture(binding, 'editor-dark-training');
-    await tester.tap(find.byKey(const ValueKey('training-cancel-template')));
-    await tester.pumpAndSettle();
+    await _capture(binding, 'diary-dark-training');
     expect(tester.takeException(), isNull);
   });
 }
@@ -351,6 +343,7 @@ Future<UiDesignFixture> createUiDesignFixture() async {
     online: false,
     bodyViewModel: body,
     training: trainingLog,
+    activeWorkout: ActiveWorkoutController(trainingLog),
     nutritionViewModel: nutrition,
     healthViewModel: health,
     progressViewModel: progress,
@@ -542,6 +535,11 @@ class _FixtureApi extends ApiClient {
     training: const ApiTrainingInsights(
       workoutCount: 6,
       volumeKgRepetitions: 12480,
+      volumeAlgorithmVersion: 'training-volume-v2',
+      estimatedOneRepMaxAlgorithmVersion: 'e1rm-epley-v2',
+      volumeUnit: 'kg-repetitions',
+      bestSet: null,
+      bodyweightMissing: false,
     ),
     workoutsLast7Days: 3,
     activeGoal: const ApiActiveGoalInsight(
@@ -568,8 +566,9 @@ class _FixtureApi extends ApiClient {
               '00000000-0000-4000-8000-${(index + 6).toString().padLeft(12, '0')}',
           completedAtUtc: now.subtract(Duration(days: day)),
           volumeKgRepetitions: 5400 + (index * 360),
-          bestWeightKg: 90 + (index * 2),
-          bestRepetitions: 8,
+          bodyweightMissing: false,
+          maxWeightKg: 90 + (index * 2),
+          maxRepetitions: 8,
           estimatedOneRepMaxKg: 114 + (index * 3),
         ),
     ];
@@ -581,12 +580,21 @@ class _FixtureApi extends ApiClient {
       fromUtc: now.subtract(Duration(days: days)),
       throughUtc: now,
       points: points,
+      volumeAlgorithmVersion: 'training-volume-v2',
+      estimatedOneRepMaxAlgorithmVersion: 'e1rm-epley-v2',
+      records: const ApiExerciseRecords(
+        maxWeightKg: null,
+        estimatedOneRepMaxKg: null,
+        volumeKgRepetitions: null,
+        maxRepetitions: null,
+        repetitionRecords: [],
+      ),
       bestSet: ApiBestSetInsight(
         workoutId: last.workoutId,
         exerciseId: exerciseId,
         completedAtUtc: last.completedAtUtc,
-        weightKg: last.bestWeightKg!,
-        repetitions: last.bestRepetitions!,
+        effectiveWeightKg: last.maxWeightKg!,
+        repetitions: last.maxRepetitions,
         estimatedOneRepMaxKg: last.estimatedOneRepMaxKg!,
       ),
     );

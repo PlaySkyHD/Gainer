@@ -23,9 +23,13 @@ class CachedDashboardInsights {
 class InsightsRepository {
   const InsightsRepository(this.api, {this.store});
 
-  static const _exerciseProgressCacheKey = 'local-cache:insights:exercise:v1';
-  static const _dashboardCacheKey = 'local-cache:insights:dashboard:v1';
-  static const _cacheSchemaVersion = 1;
+  // Die Schlüssel und das Schema sind versioniert, damit v1-Antworten
+  // (vor training-volume-v2 / e1rm-epley-v2) nicht gelesen werden.
+  static const _exerciseProgressCacheKey = 'local-cache:insights:exercise:v2';
+  static const _dashboardCacheKey = 'local-cache:insights:dashboard:v2';
+  static const _cacheSchemaVersion = 2;
+  static const _volumeAlgorithmVersion = 'training-volume-v2';
+  static const _estimatedOneRepMaxAlgorithmVersion = 'e1rm-epley-v2';
   static const _maxExerciseProgressEntries = 64;
   static const _maxDashboardEntries = 8;
   static const _supportedWindows = {'7', '30', '90', 'all'};
@@ -56,12 +60,16 @@ class InsightsRepository {
     final cachedAt = DateTime.tryParse(entry['cachedAtUtc'] as String)?.toUtc();
     if (cachedAt == null) return null;
     try {
-      return CachedDashboardInsights(
-        value: ApiDashboardInsights.fromJson(
-          entry['payload'] as Map<String, dynamic>,
-        ),
-        cachedAtUtc: cachedAt,
+      final value = ApiDashboardInsights.fromJson(
+        entry['payload'] as Map<String, dynamic>,
       );
+      if (!_matchesTrainingAlgorithms(
+        value.training.volumeAlgorithmVersion,
+        value.training.estimatedOneRepMaxAlgorithmVersion,
+      )) {
+        return null;
+      }
+      return CachedDashboardInsights(value: value, cachedAtUtc: cachedAt);
     } on Object {
       return null;
     }
@@ -132,7 +140,11 @@ class InsightsRepository {
         entry['payload'] as Map<String, dynamic>,
       );
       if (value.exerciseId.toLowerCase() != exerciseId.toLowerCase() ||
-          !_matchesWindow(value.windowDays, window)) {
+          !_matchesWindow(value.windowDays, window) ||
+          !_matchesTrainingAlgorithms(
+            value.volumeAlgorithmVersion,
+            value.estimatedOneRepMaxAlgorithmVersion,
+          )) {
         return null;
       }
       return CachedExerciseProgress(value: value, cachedAtUtc: cachedAt);
@@ -207,6 +219,10 @@ class InsightsRepository {
 
   String _entryKey(String exerciseId, String window) =>
       '${exerciseId.toLowerCase()}:$window';
+
+  bool _matchesTrainingAlgorithms(String volumeVersion, String e1rmVersion) =>
+      volumeVersion == _volumeAlgorithmVersion &&
+      e1rmVersion == _estimatedOneRepMaxAlgorithmVersion;
 
   bool _matchesWindow(int? windowDays, String window) =>
       window == 'all' ? windowDays == null : windowDays == int.parse(window);
