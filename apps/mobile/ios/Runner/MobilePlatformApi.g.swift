@@ -369,6 +369,11 @@ struct PlatformLiveActivityDetail: Hashable, CustomStringConvertible {
   var exerciseName: String
   var setIndex: Int64
   var setCount: Int64
+  /// 1-basierte Position der Übung im Training.
+  var exerciseIndex: Int64? = nil
+  var exerciseCount: Int64? = nil
+  /// Zielwert des nächsten Satzes aus dem Vorwert, z. B. „Ziel 60 kg × 10“.
+  var targetText: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -377,12 +382,18 @@ struct PlatformLiveActivityDetail: Hashable, CustomStringConvertible {
     let exerciseName = pigeonVar_list[1] as! String
     let setIndex = pigeonVar_list[2] as! Int64
     let setCount = pigeonVar_list[3] as! Int64
+    let exerciseIndex: Int64? = nilOrValue(pigeonVar_list[4])
+    let exerciseCount: Int64? = nilOrValue(pigeonVar_list[5])
+    let targetText: String? = nilOrValue(pigeonVar_list[6])
 
     return PlatformLiveActivityDetail(
       title: title,
       exerciseName: exerciseName,
       setIndex: setIndex,
-      setCount: setCount
+      setCount: setCount,
+      exerciseIndex: exerciseIndex,
+      exerciseCount: exerciseCount,
+      targetText: targetText
     )
   }
   func toList() -> [Any?] {
@@ -391,13 +402,16 @@ struct PlatformLiveActivityDetail: Hashable, CustomStringConvertible {
       exerciseName,
       setIndex,
       setCount,
+      exerciseIndex,
+      exerciseCount,
+      targetText,
     ]
   }
   static func == (lhs: PlatformLiveActivityDetail, rhs: PlatformLiveActivityDetail) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return MobilePlatformApiPigeonInternal.deepEquals(lhs.title, rhs.title) && MobilePlatformApiPigeonInternal.deepEquals(lhs.exerciseName, rhs.exerciseName) && MobilePlatformApiPigeonInternal.deepEquals(lhs.setIndex, rhs.setIndex) && MobilePlatformApiPigeonInternal.deepEquals(lhs.setCount, rhs.setCount)
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.title, rhs.title) && MobilePlatformApiPigeonInternal.deepEquals(lhs.exerciseName, rhs.exerciseName) && MobilePlatformApiPigeonInternal.deepEquals(lhs.setIndex, rhs.setIndex) && MobilePlatformApiPigeonInternal.deepEquals(lhs.setCount, rhs.setCount) && MobilePlatformApiPigeonInternal.deepEquals(lhs.exerciseIndex, rhs.exerciseIndex) && MobilePlatformApiPigeonInternal.deepEquals(lhs.exerciseCount, rhs.exerciseCount) && MobilePlatformApiPigeonInternal.deepEquals(lhs.targetText, rhs.targetText)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -406,10 +420,13 @@ struct PlatformLiveActivityDetail: Hashable, CustomStringConvertible {
     MobilePlatformApiPigeonInternal.deepHash(value: exerciseName, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: setIndex, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: setCount, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: exerciseIndex, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: exerciseCount, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: targetText, hasher: &hasher)
   }
 
   public var description: String {
-    return "PlatformLiveActivityDetail(title: \(String(describing: title)), exerciseName: \(String(describing: exerciseName)), setIndex: \(String(describing: setIndex)), setCount: \(String(describing: setCount)))"
+    return "PlatformLiveActivityDetail(title: \(String(describing: title)), exerciseName: \(String(describing: exerciseName)), setIndex: \(String(describing: setIndex)), setCount: \(String(describing: setCount)), exerciseIndex: \(String(describing: exerciseIndex)), exerciseCount: \(String(describing: exerciseCount)), targetText: \(String(describing: targetText)))"
   }
 }
 
@@ -426,6 +443,8 @@ struct PlatformLiveActivityState: Hashable, CustomStringConvertible {
   var staleAtUtcEpochMilliseconds: Int64
   var timerTargetAtUtcEpochMilliseconds: Int64? = nil
   var pausedRemainingSeconds: Int64? = nil
+  /// Dauer der aktuellen Pause in Sekunden; fehlt ohne Pause.
+  var restDurationSeconds: Int64? = nil
   var detail: PlatformLiveActivityDetail? = nil
 
 
@@ -438,7 +457,8 @@ struct PlatformLiveActivityState: Hashable, CustomStringConvertible {
     let staleAtUtcEpochMilliseconds = pigeonVar_list[4] as! Int64
     let timerTargetAtUtcEpochMilliseconds: Int64? = nilOrValue(pigeonVar_list[5])
     let pausedRemainingSeconds: Int64? = nilOrValue(pigeonVar_list[6])
-    let detail: PlatformLiveActivityDetail? = nilOrValue(pigeonVar_list[7])
+    let restDurationSeconds: Int64? = nilOrValue(pigeonVar_list[7])
+    let detail: PlatformLiveActivityDetail? = nilOrValue(pigeonVar_list[8])
 
     return PlatformLiveActivityState(
       sessionId: sessionId,
@@ -448,6 +468,7 @@ struct PlatformLiveActivityState: Hashable, CustomStringConvertible {
       staleAtUtcEpochMilliseconds: staleAtUtcEpochMilliseconds,
       timerTargetAtUtcEpochMilliseconds: timerTargetAtUtcEpochMilliseconds,
       pausedRemainingSeconds: pausedRemainingSeconds,
+      restDurationSeconds: restDurationSeconds,
       detail: detail
     )
   }
@@ -460,6 +481,7 @@ struct PlatformLiveActivityState: Hashable, CustomStringConvertible {
       staleAtUtcEpochMilliseconds,
       timerTargetAtUtcEpochMilliseconds,
       pausedRemainingSeconds,
+      restDurationSeconds,
       detail,
     ]
   }
@@ -467,7 +489,7 @@ struct PlatformLiveActivityState: Hashable, CustomStringConvertible {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return MobilePlatformApiPigeonInternal.deepEquals(lhs.sessionId, rhs.sessionId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.timerPhase, rhs.timerPhase) && MobilePlatformApiPigeonInternal.deepEquals(lhs.startedAtUtcEpochMilliseconds, rhs.startedAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.expired, rhs.expired) && MobilePlatformApiPigeonInternal.deepEquals(lhs.staleAtUtcEpochMilliseconds, rhs.staleAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.timerTargetAtUtcEpochMilliseconds, rhs.timerTargetAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.pausedRemainingSeconds, rhs.pausedRemainingSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.detail, rhs.detail)
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.sessionId, rhs.sessionId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.timerPhase, rhs.timerPhase) && MobilePlatformApiPigeonInternal.deepEquals(lhs.startedAtUtcEpochMilliseconds, rhs.startedAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.expired, rhs.expired) && MobilePlatformApiPigeonInternal.deepEquals(lhs.staleAtUtcEpochMilliseconds, rhs.staleAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.timerTargetAtUtcEpochMilliseconds, rhs.timerTargetAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.pausedRemainingSeconds, rhs.pausedRemainingSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.restDurationSeconds, rhs.restDurationSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.detail, rhs.detail)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -479,11 +501,12 @@ struct PlatformLiveActivityState: Hashable, CustomStringConvertible {
     MobilePlatformApiPigeonInternal.deepHash(value: staleAtUtcEpochMilliseconds, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: timerTargetAtUtcEpochMilliseconds, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: pausedRemainingSeconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: restDurationSeconds, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: detail, hasher: &hasher)
   }
 
   public var description: String {
-    return "PlatformLiveActivityState(sessionId: \(String(describing: sessionId)), timerPhase: \(String(describing: timerPhase)), startedAtUtcEpochMilliseconds: \(String(describing: startedAtUtcEpochMilliseconds)), expired: \(String(describing: expired)), staleAtUtcEpochMilliseconds: \(String(describing: staleAtUtcEpochMilliseconds)), timerTargetAtUtcEpochMilliseconds: \(String(describing: timerTargetAtUtcEpochMilliseconds)), pausedRemainingSeconds: \(String(describing: pausedRemainingSeconds)), detail: \(String(describing: detail)))"
+    return "PlatformLiveActivityState(sessionId: \(String(describing: sessionId)), timerPhase: \(String(describing: timerPhase)), startedAtUtcEpochMilliseconds: \(String(describing: startedAtUtcEpochMilliseconds)), expired: \(String(describing: expired)), staleAtUtcEpochMilliseconds: \(String(describing: staleAtUtcEpochMilliseconds)), timerTargetAtUtcEpochMilliseconds: \(String(describing: timerTargetAtUtcEpochMilliseconds)), pausedRemainingSeconds: \(String(describing: pausedRemainingSeconds)), restDurationSeconds: \(String(describing: restDurationSeconds)), detail: \(String(describing: detail)))"
   }
 }
 
