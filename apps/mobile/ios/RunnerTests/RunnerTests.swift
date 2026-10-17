@@ -357,6 +357,30 @@ class RunnerTests: XCTestCase {
     XCTAssertTrue(center.pending.isEmpty, "A late schedule from the canceled timer generation must stay canceled.")
   }
 
+  func testTimerNotificationShowsBannerWithSoundWhileAppIsOpen() {
+    XCTAssertEqual(
+      TimerNotificationDelegate.presentationOptions(forIdentifier: "com.gainer.mobile.pause.\(notificationKey(for: "workout-a")).4"),
+      [.banner, .sound, .list]
+    )
+    XCTAssertNil(TimerNotificationDelegate.presentationOptions(forIdentifier: "com.gainer.mobile.other.4"))
+    XCTAssertNil(TimerNotificationDelegate.presentationOptions(forIdentifier: "reminder.weekly"))
+  }
+
+  func testTimerNotificationTextIsNeutralAndUsesTheAgreedWording() async throws {
+    let suiteName = "NativeTimerNotificationsTests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let center = FakeLocalNotificationCenter()
+    let notifications = NativeTimerNotifications(notificationCenter: center, defaults: defaults)
+    let target = Int64(Date().addingTimeInterval(120).timeIntervalSince1970 * 1000)
+
+    try await notifications.schedule(workoutId: "workout-a", generation: 1, targetAtUtcEpochMilliseconds: target)
+
+    let request = try XCTUnwrap(center.pending.values.first)
+    XCTAssertEqual(request.content.title, "Pause vorbei")
+    XCTAssertEqual(request.content.body, "Weiter mit dem nächsten Satz.")
+  }
+
   private func notificationKey(for value: String) -> String {
     let digest = SHA256.hash(data: Data(value.utf8))
     return digest.map { String(format: "%02x", $0) }.joined()

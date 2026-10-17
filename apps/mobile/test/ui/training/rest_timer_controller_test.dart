@@ -166,26 +166,86 @@ void main() {
   });
 
   group('Ablauf signalisieren', () {
-    testWidgets('Ablauf im Vordergrund spielt Ton und Haptik genau einmal', (
-      tester,
-    ) {
+    testWidgets(
+      'Ablauf im Vordergrund mit Berechtigung: Haptik genau einmal, kein App-Ton',
+      (tester) {
+        return runRestTimerTest((fixture) async {
+          final controller = fixture.controllerFor();
+          await controller.load();
+          await controller.start();
+
+          await advanceRestTimer(tester, fixture.clock, 180);
+
+          expect(controller.phase, RestTimerPhase.expired);
+          expect(controller.remainingSeconds, 0);
+          expect(fixture.alerts.plays, 0);
+          expect(fixture.haptics.intents, [HapticIntent.timerComplete]);
+
+          await advanceRestTimer(tester, fixture.clock, 30);
+          expect(controller.phase, RestTimerPhase.expired);
+          expect(controller.remainingSeconds, 0);
+          expect(fixture.alerts.plays, 0);
+          expect(fixture.haptics.intents, hasLength(1));
+        });
+      },
+    );
+
+    testWidgets(
+      'Ablauf im Vordergrund nach Rückkehr aus dem Hintergrund: weiterhin kein App-Ton',
+      (tester) {
+        return runRestTimerTest((fixture) async {
+          final controller = fixture.controllerFor();
+          await controller.load();
+          await controller.selectShortcut(60);
+          await controller.start();
+
+          controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+          controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+          await tester.pump();
+          await advanceRestTimer(tester, fixture.clock, 60);
+
+          expect(controller.phase, RestTimerPhase.expired);
+          expect(fixture.alerts.plays, 0);
+          expect(fixture.haptics.intents, [HapticIntent.timerComplete]);
+        });
+      },
+    );
+
+    testWidgets(
+      'Ablauf im Vordergrund ohne Berechtigung: Ton und Haptik genau einmal',
+      (tester) {
+        return runRestTimerTest((fixture) async {
+          fixture.notifications.permission = false;
+          final controller = fixture.controllerFor();
+          await controller.load();
+          await controller.selectShortcut(60);
+          await controller.start();
+
+          await advanceRestTimer(tester, fixture.clock, 60);
+          expect(controller.phase, RestTimerPhase.expired);
+          expect(fixture.alerts.plays, 1);
+          expect(fixture.haptics.intents, [HapticIntent.timerComplete]);
+
+          await advanceRestTimer(tester, fixture.clock, 30);
+          expect(fixture.alerts.plays, 1);
+          expect(fixture.haptics.intents, hasLength(1));
+        });
+      },
+    );
+
+    testWidgets('Ablauf löscht die geplante Benachrichtigung nicht', (tester) {
       return runRestTimerTest((fixture) async {
         final controller = fixture.controllerFor();
         await controller.load();
+        await controller.selectShortcut(60);
         await controller.start();
+        final cancelsBefore = fixture.notifications.cancelCount;
 
-        await advanceRestTimer(tester, fixture.clock, 180);
+        await advanceRestTimer(tester, fixture.clock, 60);
 
         expect(controller.phase, RestTimerPhase.expired);
-        expect(controller.remainingSeconds, 0);
-        expect(fixture.alerts.plays, 1);
-        expect(fixture.haptics.intents, [HapticIntent.timerComplete]);
-
-        await advanceRestTimer(tester, fixture.clock, 30);
-        expect(controller.phase, RestTimerPhase.expired);
-        expect(controller.remainingSeconds, 0);
-        expect(fixture.alerts.plays, 1);
-        expect(fixture.haptics.intents, hasLength(1));
+        expect(fixture.notifications.cancelCount, cancelsBefore);
+        expect(fixture.notifications.scheduled, hasLength(1));
       });
     });
 
@@ -254,6 +314,8 @@ void main() {
           await controller.selectShortcut(60);
           await controller.start();
 
+          expect(fixture.notifications.scheduled, hasLength(1));
+
           controller.didChangeAppLifecycleState(AppLifecycleState.paused);
           await advanceRestTimer(tester, fixture.clock, 120);
           controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
@@ -314,15 +376,16 @@ void main() {
         await first.load();
         await first.start();
         await advanceRestTimer(tester, fixture.clock, 200);
-        expect(fixture.alerts.plays, 1);
+        expect(fixture.haptics.intents, [HapticIntent.timerComplete]);
 
         final restarted = fixture.controllerFor();
         await restarted.load();
 
         expect(restarted.phase, RestTimerPhase.expired);
         expect(restarted.remainingSeconds, 0);
-        // Der Ton gehört zum Ablauf im Vordergrund und wird nach dem Neustart nicht wiederholt.
-        expect(fixture.alerts.plays, 1);
+        // Ablauf und Haptik gehören zum Vordergrund und werden nach dem Neustart nicht wiederholt.
+        expect(fixture.alerts.plays, 0);
+        expect(fixture.haptics.intents, hasLength(1));
       });
     });
   });
