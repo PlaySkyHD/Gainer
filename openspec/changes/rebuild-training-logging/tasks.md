@@ -36,7 +36,7 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 
 ## 6. Flutter: Domäne, lokale Daten, Sync
 
-- [ ] 6.1 `domain/models/training/` auf Workout/Block/Satz/Plan/Übung/Kategorie gemäß D1, D5 und D6 neu aufbauen inklusive Satztyp, Superset-Gruppierung, Satzbeschriftung (W/1/D/2) und Erfassungsregel je Übungstyp; Dart-Unit-Tests für die zugehörigen Spec-Szenarien grün.
+- [x] 6.1 `domain/models/training/` auf Workout/Block/Satz/Plan/Übung/Kategorie gemäß D1, D5 und D6 neu aufbauen inklusive Satztyp, Superset-Gruppierung, Satzbeschriftung (W/1/D/2) und Erfassungsregel je Übungstyp; Dart-Unit-Tests für die zugehörigen Spec-Szenarien grün.
 - [ ] 6.2 Einmalige lokale Bereinigung bei erhöhter Trainings-Schemaversion (D11) implementieren; Persistenztest: alte Trainings-Envelopes, Outbox-Einträge und Konflikte werden in einer Transaktion entfernt, andere Fachbereiche bleiben unberührt.
 - [ ] 6.3 `sync_payload_codec.dart` auf die neuen Operationen umstellen; Codec-Tests gegen Backend-Fixtures grün.
 - [ ] 6.4 Coalescing nicht gesendeter `saveWorkout`-Einträge in `LocalSyncStore.commitMutation` implementieren (D3); Persistenztests: 50 Feldänderungen ergeben eine ausstehende Mutation, bereits gesendete Einträge bleiben unverändert, Prozessende nach Bestätigung verliert keinen Wert.
@@ -44,7 +44,7 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 
 ## 7. Flutter: Vorwerte und Statistik
 
-- [ ] 7.1 Vorwertermittlung mit Quellen „nach Übung“, „nach Plan“, „nach Training“ und Fallback implementieren (D7); Unit-Tests für alle Szenarien der Requirement „Vorwertquelle“ grün.
+- [x] 7.1 Vorwertermittlung mit Quellen „nach Übung“, „nach Plan“, „nach Training“ und Fallback implementieren (D7); Unit-Tests für alle Szenarien der Requirement „Vorwertquelle“ grün.
 - [ ] 7.2 Dart-Kennzahlen inklusive Körpergewicht aus lokal vorhandenen Check-ins gegen `contracts/fixtures/training-statistics.json` implementieren; Flutter-Unit-Tests lesen die Fixture und sind grün.
 
 ## 8. Flutter: Designsystem

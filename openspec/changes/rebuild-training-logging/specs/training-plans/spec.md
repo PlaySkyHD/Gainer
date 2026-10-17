@@ -27,7 +27,7 @@ Der Nutzer SHALL eigene Pläne mit Name, Notiz, Vorwertquelle und einer geordnet
 
 ### Requirement: Planeinträge
 
-Ein Planeintrag SHALL aus Übung, Anzahl Aufwärmsätze (0–20, Standard 0), Anzahl Arbeitssätze (0–50, Standard 3), Notiz und optionaler Superset-ID bestehen. Mindestens ein Satz je Eintrag MUST vorhanden sein. Supersets werden wie im Training über benachbarte Einträge mit gleicher ID gebildet.
+Ein Planeintrag SHALL aus Übung, Anzahl Aufwärmsätze (0–20, Standard 0), Anzahl Arbeitssätze (0–50, Standard 3), Notiz und optionaler Superset-ID bestehen. Je Eintrag MUST mindestens ein und höchstens 50 Sätze insgesamt vorhanden sein. Supersets werden wie im Training über benachbarte Einträge mit gleicher ID gebildet.
 
 #### Scenario: Neuer Eintrag mit Standardwerten
 - **GIVEN** ein Plan im Editor
