@@ -55,6 +55,34 @@ void main() {
   );
 
   expectGoldenVariants(
+    'gainer_list_row_states',
+    () => Column(
+      children: [
+        GainerListRow(
+          title: 'Sync & Gerätewechsel',
+          leadingIcon: CupertinoIcons.arrow_2_squarepath,
+          value: 'Aktiv',
+          showChevron: true,
+          onTap: () {},
+        ),
+        GainerListRow(
+          title: 'member@example.test',
+          subtitle: 'Aktiv',
+          leadingIcon: CupertinoIcons.person_2,
+          leadingIconBackground: const Color(0xFF34C759),
+          trailing: CupertinoSwitch(value: true, onChanged: (_) {}),
+        ),
+        GainerListRow(
+          title: 'Kontoverwaltung',
+          subtitle: 'Deaktiviert',
+          leadingIcon: CupertinoIcons.person_2,
+          trailing: CupertinoSwitch(value: false, onChanged: null),
+        ),
+      ],
+    ),
+  );
+
+  expectGoldenVariants(
     'gainer_toolbar_button',
     () => Row(
       children: [
@@ -102,8 +130,17 @@ void main() {
         ),
         const SizedBox(height: 12),
         const GainerPillButton(label: 'Deaktiviert', onPressed: null),
+        const SizedBox(height: 12),
+        GainerPillButton(
+          label: 'Hinzufügen',
+          icon: CupertinoIcons.add,
+          onPressed: () {},
+        ),
+        const SizedBox(height: 12),
+        GainerPillButton(label: 'Speichern', isLoading: true, onPressed: () {}),
       ],
     ),
+    animated: true,
   );
 
   expectGoldenVariants(

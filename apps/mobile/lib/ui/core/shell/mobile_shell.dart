@@ -116,6 +116,7 @@ class _MoreScreen extends StatelessWidget {
           children: [
             GainerListRow(
               title: 'Sync & Gerätewechsel',
+              leadingIcon: CupertinoIcons.arrow_2_squarepath,
               showChevron: true,
               onTap: () => Navigator.of(context).push(
                 CupertinoPageRoute<void>(
@@ -131,6 +132,7 @@ class _MoreScreen extends StatelessWidget {
             ),
             GainerListRow(
               title: 'Apple Health',
+              leadingIcon: CupertinoIcons.heart,
               showChevron: true,
               onTap: () => Navigator.of(context).push(
                 CupertinoPageRoute<void>(
@@ -147,6 +149,7 @@ class _MoreScreen extends StatelessWidget {
           children: [
             GainerListRow(
               title: 'Coach',
+              leadingIcon: CupertinoIcons.chat_bubble_2,
               showChevron: true,
               onTap: () => Navigator.of(context).push(
                 CupertinoPageRoute<void>(
@@ -158,6 +161,7 @@ class _MoreScreen extends StatelessWidget {
             if (account.session.isAccountOperator)
               GainerListRow(
                 title: 'Kontoverwaltung',
+                leadingIcon: CupertinoIcons.person_2,
                 showChevron: true,
                 onTap: () => Navigator.of(context).push(
                   CupertinoPageRoute<void>(
@@ -237,13 +241,9 @@ class _SyncButtonState extends State<_SyncButton> {
         GainerPillButton(
           label: 'Jetzt synchronisieren',
           expand: true,
+          isLoading: _busy,
           onPressed: enabled ? _sync : null,
         ),
-        if (_busy)
-          const Padding(
-            padding: EdgeInsets.only(top: GainerSpacing.s),
-            child: CupertinoActivityIndicator(),
-          ),
         if (_status case final value?)
           Padding(
             padding: const EdgeInsets.only(top: GainerSpacing.s),
