@@ -10,22 +10,37 @@ const _accountA = '00000000-0000-4000-8000-0000000000a1';
 const _accountB = '00000000-0000-4000-8000-0000000000b1';
 
 void main() {
-  test('Detailfreigabe ist standardmäßig aus und meldet Änderungen', () async {
+  test('Detailfreigabe ist standardmäßig an und meldet Änderungen', () async {
     final database = LocalDatabase(NativeDatabase.memory());
     final preferences = TrainingPreferences(
       store: LocalSyncStore(database: database, accountId: _accountA),
     );
     addTearDown(database.close);
 
-    expect((await preferences.read()).liveActivityDetails, isFalse);
-    expect(preferences.liveActivityDetails.value, isFalse);
+    expect((await preferences.read()).liveActivityDetails, isTrue);
+    expect(preferences.liveActivityDetails.value, isTrue);
 
     await preferences.write(
-      const TrainingPreferenceValues(liveActivityDetails: true),
+      const TrainingPreferenceValues(liveActivityDetails: false),
     );
 
-    expect(preferences.liveActivityDetails.value, isTrue);
-    expect((await preferences.read()).liveActivityDetails, isTrue);
+    expect(preferences.liveActivityDetails.value, isFalse);
+    expect((await preferences.read()).liveActivityDetails, isFalse);
+  });
+
+  test('ein gespeichertes Aus bleibt aus, auch mit neuem Standard', () async {
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    await TrainingPreferences(
+      store: LocalSyncStore(database: database, accountId: _accountA),
+    ).write(const TrainingPreferenceValues(liveActivityDetails: false));
+
+    final preferences = TrainingPreferences(
+      store: LocalSyncStore(database: database, accountId: _accountA),
+    );
+
+    expect((await preferences.read()).liveActivityDetails, isFalse);
+    expect(preferences.liveActivityDetails.value, isFalse);
   });
 
   test('Detailfreigabe bleibt nach einem Neustart erhalten', () async {
@@ -57,12 +72,12 @@ void main() {
 
     await TrainingPreferences(
       store: LocalSyncStore(database: accountA, accountId: _accountA),
-    ).write(const TrainingPreferenceValues(liveActivityDetails: true));
+    ).write(const TrainingPreferenceValues(liveActivityDetails: false));
 
     final other = TrainingPreferences(
       store: LocalSyncStore(database: accountB, accountId: _accountB),
     );
-    expect((await other.read()).liveActivityDetails, isFalse);
-    expect(other.liveActivityDetails.value, isFalse);
+    expect((await other.read()).liveActivityDetails, isTrue);
+    expect(other.liveActivityDetails.value, isTrue);
   });
 }

@@ -64,9 +64,7 @@ final class NativeTimerNotifications {
 
     let identifier = "\(identifierPrefix)\(workoutKey).\(generation)"
     defaults.set(generation, forKey: generationKey)
-    let target = Date(timeIntervalSince1970: TimeInterval(targetAtUtcEpochMilliseconds) / 1000)
-    let delay = target.timeIntervalSinceNow
-    guard delay > 0 else {
+    guard let delay = Self.triggerInterval(targetAtUtcEpochMilliseconds: targetAtUtcEpochMilliseconds) else {
       let pending = await notificationCenter.pendingNotificationRequests()
       let pendingIdentifiers = pending.map(\.identifier)
       let deliveredIdentifiers = await notificationCenter.deliveredNotificationIdentifiers()
@@ -81,7 +79,7 @@ final class NativeTimerNotifications {
     content.title = "Pause vorbei"
     content.body = "Weiter mit dem nächsten Satz."
     content.sound = .default
-    let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, delay), repeats: false)
+    let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
     try await notificationCenter.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
     let latestGeneration = defaults.object(forKey: generationKey) as? Int64 ?? generation
     let latestCancelledGeneration = defaults.object(forKey: cancelledKey) as? Int64
@@ -97,6 +95,15 @@ final class NativeTimerNotifications {
     }
     notificationCenter.removePendingNotificationRequests(withIdentifiers: staleIdentifiers)
     notificationCenter.removeDeliveredNotifications(withIdentifiers: staleIdentifiers)
+  }
+
+  /// Sekunden bis zum Pausenende, exakt aus dem absoluten Zielzeitpunkt. Ohne
+  /// Aufrunden, damit die Benachrichtigung zum selben Zeitpunkt wie die Live
+  /// Activity erscheint. Nil, wenn der Zeitpunkt schon vergangen ist.
+  nonisolated static func triggerInterval(targetAtUtcEpochMilliseconds: Int64, now: Date = Date()) -> TimeInterval? {
+    let target = Date(timeIntervalSince1970: TimeInterval(targetAtUtcEpochMilliseconds) / 1000)
+    let interval = target.timeIntervalSince(now)
+    return interval > 0 ? interval : nil
   }
 
   func cancel(workoutId: String) async {

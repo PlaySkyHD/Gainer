@@ -494,4 +494,27 @@ private final class FakeLocalNotificationCenter: LocalNotificationCenter {
   func deliveredNotificationIdentifiers() async -> [String] {
     deliveredIdentifiers
   }
+
+  func testPauseNotificationTriggerUsesExactTargetWithoutRounding() throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let target = Int64(now.timeIntervalSince1970 * 1000) + 90_250
+    let interval = try XCTUnwrap(
+      NativeTimerNotifications.triggerInterval(targetAtUtcEpochMilliseconds: target, now: now)
+    )
+    XCTAssertEqual(interval, 90.25, accuracy: 0.0001)
+
+    let subSecond = Int64(now.timeIntervalSince1970 * 1000) + 300
+    XCTAssertEqual(
+      try XCTUnwrap(NativeTimerNotifications.triggerInterval(targetAtUtcEpochMilliseconds: subSecond, now: now)),
+      0.3,
+      accuracy: 0.0001
+    )
+  }
+
+  func testPauseNotificationTriggerRejectsElapsedTarget() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let elapsed = Int64(now.timeIntervalSince1970 * 1000)
+    XCTAssertNil(NativeTimerNotifications.triggerInterval(targetAtUtcEpochMilliseconds: elapsed, now: now))
+    XCTAssertNil(NativeTimerNotifications.triggerInterval(targetAtUtcEpochMilliseconds: elapsed - 5_000, now: now))
+  }
 }
