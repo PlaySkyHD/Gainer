@@ -71,7 +71,8 @@ enum _WorkoutMenuAction {
 /// Antwort im Fehlwerte-Dialog beim Beenden.
 enum _FinishChoice { previousValues, anyway, continueTraining }
 
-class _WorkoutScreenState extends State<WorkoutScreen> {
+class _WorkoutScreenState extends State<WorkoutScreen>
+    with WidgetsBindingObserver {
   late final WorkoutViewModel _viewModel;
 
   /// Zahl der Zahlenfelder mit Fokus; die Leiste über der Tastatur hängt daran.
@@ -87,11 +88,21 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       activeWorkout: widget.activeWorkout,
       workoutId: widget.workoutId,
     );
+    WidgetsBinding.instance.addObserver(this);
     _viewModel.load();
+  }
+
+  /// Kehrt die App zurück, ohne dass vorher eine Tastatur sichtbar war, hat kein
+  /// Feld den Fokus; sonst öffnet iOS die Tastatur ungefragt.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    if (View.of(context).viewInsets.bottom <= 0) _unfocus();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _viewModel.dispose();
     _editingNumber.dispose();
     _fieldFocus.dispose();
@@ -183,7 +194,23 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   void _moveFocus({required bool forward}) {
     final workout = _viewModel.workout;
     if (workout == null) return;
-    _fieldFocus.move(_fieldOrder(workout), forward: forward);
+    if (_fieldFocus.move(_fieldOrder(workout), forward: forward)) {
+      _revealFocusedField();
+    }
+  }
+
+  /// Scrollt das neu fokussierte Feld in den sichtbaren Bereich der Liste. Die
+  /// Liste endet oberhalb von Timer- und Zubehörleiste, daher liegt es danach
+  /// nicht hinter ihnen.
+  void _revealFocusedField() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final focusContext = FocusManager.instance.primaryFocus?.context;
+      if (!mounted || focusContext == null) return;
+      Scrollable.ensureVisible(
+        focusContext,
+        duration: const Duration(milliseconds: 200),
+      );
+    });
   }
 
   Iterable<(String, SetField)> _fieldOrder(Workout workout) sync* {

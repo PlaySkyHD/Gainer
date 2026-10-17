@@ -11,7 +11,7 @@ final class TrainingPreferenceValues {
   const TrainingPreferenceValues({
     this.showRir = false,
     this.weightUnit = WeightUnit.kg,
-    this.liveActivityDetails = false,
+    this.liveActivityDetails = true,
   });
 
   final bool showRir;
@@ -58,7 +58,7 @@ class TrainingPreferences {
 
   /// Aktueller Wert der Detailfreigabe. Die Live Activity beobachtet ihn, damit
   /// eine Änderung sofort ankommt.
-  final ValueNotifier<bool> liveActivityDetails = ValueNotifier(false);
+  final ValueNotifier<bool> liveActivityDetails = ValueNotifier(true);
 
   Future<TrainingPreferenceValues> read() async {
     final raw = await store.readSyncMetadata(_preferencesKey);
@@ -85,7 +85,9 @@ class TrainingPreferences {
               .where((unit) => unit.name == unitName)
               .firstOrNull ??
           WeightUnit.kg,
-      liveActivityDetails: raw['liveActivityDetails'] == true,
+      liveActivityDetails: raw['liveActivityDetails'] is bool
+          ? raw['liveActivityDetails'] as bool
+          : true,
     );
   }
 }
