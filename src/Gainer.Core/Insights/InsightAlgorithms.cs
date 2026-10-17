@@ -58,8 +58,7 @@ public sealed record SetPerformance(
     Guid ExerciseId,
     DateTime CompletedAtUtc,
     decimal? WeightKg,
-    int? Repetitions,
-    bool IsCompleted);
+    int? Repetitions);
 
 public sealed record BestSet(
     Guid WorkoutId,
@@ -143,7 +142,7 @@ public static class InsightAlgorithms
         IReadOnlyCollection<SetPerformance> sets,
         IReadOnlyCollection<Guid> completedWorkoutIds)
     {
-        SetPerformance[] valid = sets.Where(item => item.IsCompleted &&
+        SetPerformance[] valid = sets.Where(item =>
             item.WeightKg is > 0 && item.Repetitions is > 0).ToArray();
         decimal volume = Round(valid.Sum(item => item.WeightKg!.Value * item.Repetitions!.Value));
         BestSet? best = valid

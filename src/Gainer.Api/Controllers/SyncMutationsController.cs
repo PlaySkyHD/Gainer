@@ -74,12 +74,25 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         {
             return SyncValidationProblem(exception.Message, exception.Errors);
         }
-        catch (Exception exception) when (exception is BodyGoalValidationException
-                                          or WorkoutTemplateValidationException
-                                          or WorkoutRotationValidationException
-                                          or WorkoutValidationException)
+        catch (WorkoutValidationException exception)
+        {
+            return SyncValidationProblem(exception.Message, exception.Errors);
+        }
+        catch (TrainingPlanValidationException exception)
+        {
+            return SyncValidationProblem(exception.Message, exception.Errors);
+        }
+        catch (WorkoutRotationValidationException exception)
+        {
+            return SyncValidationProblem(exception.Message, exception.Errors);
+        }
+        catch (Exception exception) when (exception is BodyGoalValidationException)
         {
             return SyncProblem(StatusCodes.Status422UnprocessableEntity, "validation_failed", exception.Message);
+        }
+        catch (ActiveWorkoutExistsException)
+        {
+            return SyncProblem(StatusCodes.Status409Conflict, "active_workout_exists", "The user already has an active workout.");
         }
         catch (Exception exception) when (exception is DailyCheckInConflictException
                                           or DailyCheckInNotFoundException
@@ -88,8 +101,8 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
                                           or ExerciseCategoryConflictException
                                           or ExerciseCategoryNotFoundException
                                           or BodyGoalConflictException
-                                          or WorkoutTemplateConflictException
-                                          or WorkoutTemplateNotFoundException
+                                          or TrainingPlanConflictException
+                                          or TrainingPlanNotFoundException
                                           or WorkoutRotationConflictException
                                           or WorkoutRotationNotFoundException
                                           or WorkoutConflictException

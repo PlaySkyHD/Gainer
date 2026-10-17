@@ -37,8 +37,8 @@ public sealed class InsightQueries(AppDbContext context) : IInsightQueries
         DateTime workoutFromUtc = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         DateTime workoutThroughUtc = through.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         Guid[] workoutIds = await context.Workouts.AsNoTracking()
-            .Where(item => item.Status == WorkoutStatus.Completed &&
-                item.CompletedAtUtc >= workoutFromUtc && item.CompletedAtUtc < workoutThroughUtc)
+            .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null &&
+                item.EndedAtUtc >= workoutFromUtc && item.EndedAtUtc < workoutThroughUtc)
             .Select(item => item.Id)
             .ToArrayAsync(cancellationToken);
         List<SetRow> sets = await CompletedSets(workoutIds, cancellationToken);
@@ -93,11 +93,12 @@ public sealed class InsightQueries(AppDbContext context) : IInsightQueries
             from workout in context.Workouts.AsNoTracking()
             join exercise in context.WorkoutExercises.AsNoTracking() on workout.Id equals exercise.WorkoutId
             join set in context.WorkoutSets.AsNoTracking() on exercise.Id equals set.WorkoutExerciseId
-            where workout.Status == WorkoutStatus.Completed && exercise.SourceExerciseId == exerciseId &&
-                  workout.CompletedAtUtc >= fromUtc && workout.CompletedAtUtc < endExclusiveUtc && set.IsCompleted
+            where workout.EndedAtUtc != null && workout.DeletedAtUtc == null && exercise.SourceExerciseId == exerciseId &&
+                  workout.EndedAtUtc >= fromUtc && workout.EndedAtUtc < endExclusiveUtc &&
+                  set.SetType != WorkoutSetType.Warmup && set.WeightKg != null && set.Repetitions > 0
             select new SetRow(
-                workout.Id, exerciseId, workout.CompletedAtUtc!.Value,
-                set.WeightKg, set.Repetitions, set.IsCompleted))
+                workout.Id, exerciseId, workout.EndedAtUtc!.Value,
+                set.WeightKg, set.Repetitions))
             .ToListAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -137,14 +138,15 @@ public sealed class InsightQueries(AppDbContext context) : IInsightQueries
             from exercise in context.WorkoutExercises.AsNoTracking()
             join set in context.WorkoutSets.AsNoTracking() on exercise.Id equals set.WorkoutExerciseId
             join workout in context.Workouts.AsNoTracking() on exercise.WorkoutId equals workout.Id
-            where workoutIds.Contains(workout.Id) && set.IsCompleted && exercise.SourceExerciseId != null
+            where workoutIds.Contains(workout.Id) && set.SetType != WorkoutSetType.Warmup &&
+                  set.WeightKg != null && set.Repetitions > 0
             select new SetRow(
-                workout.Id, exercise.SourceExerciseId!.Value, workout.CompletedAtUtc!.Value,
-                set.WeightKg, set.Repetitions, set.IsCompleted))
+                workout.Id, exercise.SourceExerciseId, workout.EndedAtUtc!.Value,
+                set.WeightKg, set.Repetitions))
             .ToListAsync(cancellationToken);
 
     private static SetPerformance ToPerformance(SetRow row) => new(
-        row.WorkoutId, row.ExerciseId, row.CompletedAtUtc, row.WeightKg, row.Repetitions, row.IsCompleted);
+        row.WorkoutId, row.ExerciseId, row.CompletedAtUtc, row.WeightKg, row.Repetitions);
 
     private static NutritionPoint[] ProjectNutrition(
         IReadOnlyCollection<DailyCheckIn> checkIns,
@@ -179,6 +181,5 @@ public sealed class InsightQueries(AppDbContext context) : IInsightQueries
         Guid ExerciseId,
         DateTime CompletedAtUtc,
         decimal? WeightKg,
-        int? Repetitions,
-        bool IsCompleted);
+        int? Repetitions);
 }

@@ -46,10 +46,10 @@ public sealed class InsightAlgorithmTests
         Guid exercise = Guid.NewGuid();
         DateTime completed = new(2026, 8, 18, 12, 0, 0, DateTimeKind.Utc);
         TrainingInsights result = InsightAlgorithms.Training([
-            new(workout, exercise, completed, 100m, 10, true),
-            new(workout, exercise, completed, 90m, 13, true),
-            new(workout, exercise, completed, 0m, 8, true),
-            new(Guid.NewGuid(), exercise, completed, 200m, 5, false),
+            new(workout, exercise, completed, 100m, 10),
+            new(workout, exercise, completed, 90m, 13),
+            new(workout, exercise, completed, 0m, 8),
+            new(Guid.NewGuid(), exercise, completed, null, 5),
         ], [workout]);
         Assert.AreEqual("training-volume-v1", result.VolumeAlgorithmVersion);
         Assert.AreEqual(2170m, result.VolumeKgRepetitions);

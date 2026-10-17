@@ -45,9 +45,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 
     public DbSet<ExerciseCategoryAssignment> ExerciseCategoryAssignments => Set<ExerciseCategoryAssignment>();
 
-    public DbSet<WorkoutTemplate> WorkoutTemplates => Set<WorkoutTemplate>();
+    public DbSet<TrainingPlan> TrainingPlans => Set<TrainingPlan>();
 
-    public DbSet<WorkoutTemplateItem> WorkoutTemplateItems => Set<WorkoutTemplateItem>();
+    public DbSet<TrainingPlanEntry> TrainingPlanEntries => Set<TrainingPlanEntry>();
 
     public DbSet<WorkoutRotation> WorkoutRotations => Set<WorkoutRotation>();
 
@@ -328,52 +328,63 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 })));
         });
 
-        modelBuilder.Entity<WorkoutTemplate>(template =>
+        modelBuilder.Entity<TrainingPlan>(plan =>
         {
-            template.ToTable("workout_templates", DatabaseSchemas.Training, table =>
-                table.HasCheckConstraint("CK_workout_templates_name", NameNotBlankCheck));
-            template.HasKey(item => item.Id);
-            template.Property(item => item.Name).HasMaxLength(160).IsRequired();
-            template.Property(item => item.Version).IsConcurrencyToken();
-            template.HasIndex(item => new { item.UserId, item.Name });
-            template.HasOne<AppUser>()
+            plan.ToTable("training_plans", DatabaseSchemas.Training, table =>
+            {
+                table.HasCheckConstraint("CK_training_plans_name", NameNotBlankCheck);
+                table.HasCheckConstraint("CK_training_plans_sort_order", PositionNonNegativeCheck.Replace("Position", "SortOrder"));
+                table.HasCheckConstraint(
+                    "CK_training_plans_previous_value_source",
+                    "\"PreviousValueSource\" IN ('exercise', 'plan', 'workout')");
+            });
+            plan.HasKey(item => item.Id);
+            plan.HasAlternateKey(item => new { item.UserId, item.Id });
+            plan.Property(item => item.UserId).ValueGeneratedNever();
+            plan.Property(item => item.Name).HasMaxLength(160).IsRequired();
+            plan.Property(item => item.Notes).HasMaxLength(2_000);
+            plan.Property(item => item.PreviousValueSource)
+                .HasConversion(new ValueConverter<PreviousValueSource, string>(
+                    value => PreviousValueSources.ToStorageValue(value),
+                    value => PreviousValueSources.Parse(value)))
+                .HasMaxLength(16)
+                .IsRequired();
+            plan.Property(item => item.Version).IsConcurrencyToken();
+            plan.HasIndex(item => new { item.UserId, item.SortOrder });
+            plan.HasOne<AppUser>()
                 .WithMany()
                 .HasForeignKey(item => item.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<WorkoutTemplateItem>(item =>
+        modelBuilder.Entity<TrainingPlanEntry>(entry =>
         {
-            item.ToTable("workout_template_items", DatabaseSchemas.Training, table =>
+            entry.ToTable("training_plan_entries", DatabaseSchemas.Training, table =>
             {
-                table.HasCheckConstraint("CK_workout_template_items_position", PositionNonNegativeCheck);
-                table.HasCheckConstraint("CK_workout_template_items_sets", "\"PlannedSets\" > 0");
+                table.HasCheckConstraint("CK_training_plan_entries_position", PositionNonNegativeCheck);
+                table.HasCheckConstraint("CK_training_plan_entries_warmup_sets", "\"WarmupSets\" BETWEEN 0 AND 20");
+                table.HasCheckConstraint("CK_training_plan_entries_working_sets", "\"WorkingSets\" BETWEEN 0 AND 50");
                 table.HasCheckConstraint(
-                    "CK_workout_template_items_repetitions",
-                    "\"MinimumRepetitions\" > 0 AND \"MaximumRepetitions\" >= \"MinimumRepetitions\"");
-                table.HasCheckConstraint(
-                    "CK_workout_template_items_rir",
-                    "\"TargetRir\" IS NULL OR (\"TargetRir\" >= 0 AND \"TargetRir\" <= 10)");
-                table.HasCheckConstraint(
-                    "CK_workout_template_items_rest",
-                    "\"RestSeconds\" IS NULL OR \"RestSeconds\" >= 0");
+                    "CK_training_plan_entries_sets",
+                    "\"WarmupSets\" + \"WorkingSets\" BETWEEN 1 AND 50");
             });
-            item.HasKey(value => value.Id);
-            item.Property(value => value.TargetRir).HasPrecision(4, 2);
-            item.Property(value => value.Notes).HasMaxLength(2_000);
-            item.HasIndex(value => new { value.TemplateId, value.Position }).IsUnique();
-            item.HasIndex(value => new { value.UserId, value.TemplateId });
-            item.HasOne<WorkoutTemplate>()
+            entry.HasKey(item => item.Id);
+            entry.Property(item => item.UserId).ValueGeneratedNever();
+            entry.Property(item => item.Notes).HasMaxLength(2_000);
+            entry.HasIndex(item => new { item.PlanId, item.Position }).IsUnique();
+            entry.HasIndex(item => new { item.UserId, item.PlanId });
+            entry.HasOne<TrainingPlan>()
                 .WithMany()
-                .HasForeignKey(value => value.TemplateId)
+                .HasForeignKey(item => new { item.UserId, item.PlanId })
+                .HasPrincipalKey(item => new { item.UserId, item.Id })
                 .OnDelete(DeleteBehavior.Cascade);
-            item.HasOne<Exercise>()
+            entry.HasOne<Exercise>()
                 .WithMany()
-                .HasForeignKey(value => value.ExerciseId)
+                .HasForeignKey(item => item.ExerciseId)
                 .OnDelete(DeleteBehavior.Restrict);
-            item.HasOne<AppUser>()
+            entry.HasOne<AppUser>()
                 .WithMany()
-                .HasForeignKey(value => value.UserId)
+                .HasForeignKey(item => item.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -387,10 +398,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 .WithMany()
                 .HasForeignKey(item => item.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
-            rotation.HasOne<WorkoutTemplate>()
-                .WithMany()
-                .HasForeignKey(item => item.LastCompletedTemplateId)
-                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<WorkoutRotationItem>(item =>
@@ -399,16 +406,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_workout_rotation_items_position", PositionNonNegativeCheck));
             item.HasKey(value => value.Id);
             item.HasIndex(value => new { value.RotationId, value.Position }).IsUnique();
-            item.HasIndex(value => new { value.RotationId, value.TemplateId }).IsUnique();
+            item.HasIndex(value => new { value.RotationId, value.PlanId }).IsUnique();
             item.HasIndex(value => new { value.UserId, value.RotationId });
             item.HasOne<WorkoutRotation>()
                 .WithMany()
                 .HasForeignKey(value => value.RotationId)
                 .OnDelete(DeleteBehavior.Cascade);
-            item.HasOne<WorkoutTemplate>()
+            item.HasOne<TrainingPlan>()
                 .WithMany()
-                .HasForeignKey(value => value.TemplateId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .HasForeignKey(value => new { value.UserId, value.PlanId })
+                .HasPrincipalKey(value => new { value.UserId, value.Id })
+                .OnDelete(DeleteBehavior.Restrict);
             item.HasOne<AppUser>()
                 .WithMany()
                 .HasForeignKey(value => value.UserId)
@@ -419,27 +427,44 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         {
             workout.ToTable("workouts", DatabaseSchemas.Training, table =>
             {
-                table.HasCheckConstraint("CK_workouts_template_name", "length(trim(\"TemplateNameSnapshot\")) > 0");
+                table.HasCheckConstraint("CK_workouts_title", NameNotBlankCheck.Replace("Name", "Title"));
                 table.HasCheckConstraint(
-                    "CK_workouts_status",
-                    "(\"Status\" = 'Running' AND \"CompletedAtUtc\" IS NULL AND \"DiscardedAtUtc\" IS NULL) OR " +
-                    "(\"Status\" = 'Completed' AND \"CompletedAtUtc\" IS NOT NULL AND \"DiscardedAtUtc\" IS NULL) OR " +
-                    "(\"Status\" = 'Discarded' AND \"CompletedAtUtc\" IS NULL AND \"DiscardedAtUtc\" IS NOT NULL)");
+                    "CK_workouts_end_after_start",
+                    "\"EndedAtUtc\" IS NULL OR \"EndedAtUtc\" > \"StartedAtUtc\"");
+                table.HasCheckConstraint(
+                    "CK_workouts_previous_value_source",
+                    "\"PreviousValueSource\" IN ('exercise', 'plan', 'workout')");
             });
             workout.HasKey(item => item.Id);
             workout.HasAlternateKey(item => new { item.UserId, item.Id });
             workout.Property(item => item.UserId).ValueGeneratedNever();
-            workout.Property(item => item.TemplateNameSnapshot).HasMaxLength(160).IsRequired();
-            workout.Property(item => item.Status).HasConversion<string>().HasMaxLength(16);
+            workout.Property(item => item.Title).HasMaxLength(160).IsRequired();
+            workout.Property(item => item.Notes).HasMaxLength(2_000);
+            workout.Property(item => item.PreviousValueSource)
+                .HasConversion(new ValueConverter<PreviousValueSource, string>(
+                    value => PreviousValueSources.ToStorageValue(value),
+                    value => PreviousValueSources.Parse(value)))
+                .HasMaxLength(16)
+                .IsRequired();
             workout.Property(item => item.Version).IsConcurrencyToken();
-            workout.HasIndex(item => new { item.UserId, item.CompletedAtUtc }).IsDescending(false, true);
+            workout.HasIndex(item => item.UserId)
+                .IsUnique()
+                .HasDatabaseName("UX_workouts_one_active_per_user")
+                .HasFilter("\"EndedAtUtc\" IS NULL AND \"DeletedAtUtc\" IS NULL");
+            workout.HasIndex(item => new { item.UserId, item.EndedAtUtc }).IsDescending(false, true);
             workout.HasOne<AppUser>()
                 .WithMany()
                 .HasForeignKey(item => item.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
-            workout.HasOne<WorkoutTemplate>()
+            workout.HasOne<TrainingPlan>()
                 .WithMany()
-                .HasForeignKey(item => item.SourceTemplateId)
+                .HasForeignKey(item => new { item.UserId, item.SourcePlanId })
+                .HasPrincipalKey(item => new { item.UserId, item.Id })
+                .OnDelete(DeleteBehavior.Restrict);
+            workout.HasOne<Workout>()
+                .WithMany()
+                .HasForeignKey(item => new { item.UserId, item.SourceWorkoutId })
+                .HasPrincipalKey(item => new { item.UserId, item.Id })
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -449,26 +474,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             {
                 table.HasCheckConstraint("CK_workout_exercises_name", "length(trim(\"ExerciseNameSnapshot\")) > 0");
                 table.HasCheckConstraint("CK_workout_exercises_position", PositionNonNegativeCheck);
-                table.HasCheckConstraint("CK_workout_exercises_sets", "\"PlannedSets\" > 0");
-                table.HasCheckConstraint(
-                    "CK_workout_exercises_repetitions",
-                    "\"MinimumRepetitions\" > 0 AND \"MaximumRepetitions\" >= \"MinimumRepetitions\"");
-                table.HasCheckConstraint(
-                    "CK_workout_exercises_rir",
-                    "\"TargetRir\" IS NULL OR (\"TargetRir\" >= 0 AND \"TargetRir\" <= 10)");
-                table.HasCheckConstraint(
-                    "CK_workout_exercises_rest",
-                    "\"RestSeconds\" IS NULL OR \"RestSeconds\" >= 0");
             });
             exercise.HasKey(item => item.Id);
             exercise.HasAlternateKey(item => new { item.UserId, item.Id });
             exercise.Property(item => item.UserId).ValueGeneratedNever();
             exercise.Property(item => item.ExerciseNameSnapshot).HasMaxLength(160).IsRequired();
-            exercise.Property(item => item.TargetRir).HasPrecision(4, 2);
+            exercise.Property(item => item.ExerciseTypeSnapshot)
+                .HasConversion(new ValueConverter<ExerciseType, string>(
+                    value => ExerciseTypes.ToStorageValue(value),
+                    value => ExerciseTypes.Parse(value)))
+                .HasMaxLength(32)
+                .IsRequired();
             exercise.Property(item => item.Notes).HasMaxLength(2_000);
             exercise.HasIndex(item => new { item.WorkoutId, item.Position }).IsUnique();
-            exercise.HasIndex(item => new { item.UserId, item.SourceExerciseId, item.WorkoutCompletedAtUtc })
-                .IsDescending(false, false, true);
+            exercise.HasIndex(item => new { item.UserId, item.SourceExerciseId });
             exercise.HasOne<Workout>()
                 .WithMany()
                 .HasForeignKey(item => new { item.UserId, item.WorkoutId })
@@ -489,16 +508,25 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             set.ToTable("workout_sets", DatabaseSchemas.Training, table =>
             {
                 table.HasCheckConstraint("CK_workout_sets_position", PositionNonNegativeCheck);
-                table.HasCheckConstraint("CK_workout_sets_weight", "\"WeightKg\" IS NULL OR \"WeightKg\" >= 0");
-                table.HasCheckConstraint("CK_workout_sets_repetitions", "\"Repetitions\" IS NULL OR \"Repetitions\" > 0");
-                table.HasCheckConstraint("CK_workout_sets_rir", "\"Rir\" IS NULL OR (\"Rir\" >= 0 AND \"Rir\" <= 10)");
                 table.HasCheckConstraint(
-                    "CK_workout_sets_completion",
-                    "(\"IsCompleted\" = FALSE AND \"CompletedAtUtc\" IS NULL) OR " +
-                    "(\"IsCompleted\" = TRUE AND \"CompletedAtUtc\" IS NOT NULL AND \"WeightKg\" IS NOT NULL AND \"Repetitions\" IS NOT NULL)");
+                    "CK_workout_sets_type",
+                    "\"SetType\" IN ('normal', 'warmup', 'dropset')");
+                table.HasCheckConstraint(
+                    "CK_workout_sets_weight",
+                    "\"WeightKg\" IS NULL OR (\"WeightKg\" >= 0 AND \"WeightKg\" <= 10000)");
+                table.HasCheckConstraint(
+                    "CK_workout_sets_repetitions",
+                    "\"Repetitions\" IS NULL OR (\"Repetitions\" >= 0 AND \"Repetitions\" <= 10000)");
+                table.HasCheckConstraint("CK_workout_sets_rir", "\"Rir\" IS NULL OR (\"Rir\" >= 0 AND \"Rir\" <= 10)");
             });
             set.HasKey(item => item.Id);
             set.Property(item => item.UserId).ValueGeneratedNever();
+            set.Property(item => item.SetType)
+                .HasConversion(new ValueConverter<WorkoutSetType, string>(
+                    value => WorkoutSetTypes.ToStorageValue(value),
+                    value => WorkoutSetTypes.ParseOrNormal(value)))
+                .HasMaxLength(16)
+                .IsRequired();
             set.Property(item => item.WeightKg).HasPrecision(7, 2);
             set.Property(item => item.Rir).HasPrecision(4, 2);
             set.Property(item => item.Notes).HasMaxLength(2_000);

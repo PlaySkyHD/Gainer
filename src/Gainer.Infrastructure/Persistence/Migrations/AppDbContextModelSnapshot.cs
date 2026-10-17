@@ -1387,30 +1387,145 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Gainer.Core.Training.TrainingPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("PreviousValueSource")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "SortOrder");
+
+                    b.ToTable("training_plans", "training", t =>
+                        {
+                            t.HasCheckConstraint("CK_training_plans_name", "length(trim(\"Name\")) > 0");
+
+                            t.HasCheckConstraint("CK_training_plans_previous_value_source", "\"PreviousValueSource\" IN ('exercise', 'plan', 'workout')");
+
+                            t.HasCheckConstraint("CK_training_plans_sort_order", "\"SortOrder\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Core.Training.TrainingPlanEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ExerciseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("SupersetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("WarmupSets")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WorkingSets")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExerciseId");
+
+                    b.HasIndex("PlanId", "Position")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "PlanId");
+
+                    b.ToTable("training_plan_entries", "training", t =>
+                        {
+                            t.HasCheckConstraint("CK_training_plan_entries_position", "\"Position\" >= 0");
+
+                            t.HasCheckConstraint("CK_training_plan_entries_sets", "\"WarmupSets\" + \"WorkingSets\" BETWEEN 1 AND 50");
+
+                            t.HasCheckConstraint("CK_training_plan_entries_warmup_sets", "\"WarmupSets\" BETWEEN 0 AND 20");
+
+                            t.HasCheckConstraint("CK_training_plan_entries_working_sets", "\"WorkingSets\" BETWEEN 0 AND 50");
+                        });
+                });
+
             modelBuilder.Entity("Gainer.Core.Training.Workout", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("CompletedAtUtc")
+                    b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("DiscardedAtUtc")
+                    b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("SourceTemplateId")
+                    b.Property<DateTime?>("EndedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("PreviousValueSource")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid?>("SourcePlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SourceWorkoutId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("StartedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
-
-                    b.Property<string>("TemplateNameSnapshot")
+                    b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
@@ -1427,16 +1542,25 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceTemplateId");
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_workouts_one_active_per_user")
+                        .HasFilter("\"EndedAtUtc\" IS NULL AND \"DeletedAtUtc\" IS NULL");
 
-                    b.HasIndex("UserId", "CompletedAtUtc")
+                    b.HasIndex("UserId", "EndedAtUtc")
                         .IsDescending(false, true);
+
+                    b.HasIndex("UserId", "SourcePlanId");
+
+                    b.HasIndex("UserId", "SourceWorkoutId");
 
                     b.ToTable("workouts", "training", t =>
                         {
-                            t.HasCheckConstraint("CK_workouts_status", "(\"Status\" = 'Running' AND \"CompletedAtUtc\" IS NULL AND \"DiscardedAtUtc\" IS NULL) OR (\"Status\" = 'Completed' AND \"CompletedAtUtc\" IS NOT NULL AND \"DiscardedAtUtc\" IS NULL) OR (\"Status\" = 'Discarded' AND \"CompletedAtUtc\" IS NULL AND \"DiscardedAtUtc\" IS NOT NULL)");
+                            t.HasCheckConstraint("CK_workouts_end_after_start", "\"EndedAtUtc\" IS NULL OR \"EndedAtUtc\" > \"StartedAtUtc\"");
 
-                            t.HasCheckConstraint("CK_workouts_template_name", "length(trim(\"TemplateNameSnapshot\")) > 0");
+                            t.HasCheckConstraint("CK_workouts_previous_value_source", "\"PreviousValueSource\" IN ('exercise', 'plan', 'workout')");
+
+                            t.HasCheckConstraint("CK_workouts_title", "length(trim(\"Title\")) > 0");
                         });
                 });
 
@@ -1451,37 +1575,26 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
-                    b.Property<int>("MaximumRepetitions")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("MinimumRepetitions")
-                        .HasColumnType("integer");
+                    b.Property<string>("ExerciseTypeSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<int>("PlannedSets")
-                        .HasColumnType("integer");
-
                     b.Property<int>("Position")
                         .HasColumnType("integer");
 
-                    b.Property<int?>("RestSeconds")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid?>("SourceExerciseId")
+                    b.Property<Guid>("SourceExerciseId")
                         .HasColumnType("uuid");
 
-                    b.Property<decimal?>("TargetRir")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("numeric(4,2)");
+                    b.Property<Guid?>("SupersetId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("WorkoutCompletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("WorkoutId")
                         .HasColumnType("uuid");
@@ -1490,27 +1603,18 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("SourceExerciseId");
 
+                    b.HasIndex("UserId", "SourceExerciseId");
+
                     b.HasIndex("UserId", "WorkoutId");
 
                     b.HasIndex("WorkoutId", "Position")
                         .IsUnique();
-
-                    b.HasIndex("UserId", "SourceExerciseId", "WorkoutCompletedAtUtc")
-                        .IsDescending(false, false, true);
 
                     b.ToTable("workout_exercises", "training", t =>
                         {
                             t.HasCheckConstraint("CK_workout_exercises_name", "length(trim(\"ExerciseNameSnapshot\")) > 0");
 
                             t.HasCheckConstraint("CK_workout_exercises_position", "\"Position\" >= 0");
-
-                            t.HasCheckConstraint("CK_workout_exercises_repetitions", "\"MinimumRepetitions\" > 0 AND \"MaximumRepetitions\" >= \"MinimumRepetitions\"");
-
-                            t.HasCheckConstraint("CK_workout_exercises_rest", "\"RestSeconds\" IS NULL OR \"RestSeconds\" >= 0");
-
-                            t.HasCheckConstraint("CK_workout_exercises_rir", "\"TargetRir\" IS NULL OR (\"TargetRir\" >= 0 AND \"TargetRir\" <= 10)");
-
-                            t.HasCheckConstraint("CK_workout_exercises_sets", "\"PlannedSets\" > 0");
                         });
                 });
 
@@ -1522,9 +1626,6 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastCompletedTemplateId")
-                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -1538,8 +1639,6 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("LastCompletedTemplateId");
-
                     b.HasIndex("UserId")
                         .IsUnique();
 
@@ -1552,13 +1651,13 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Position")
                         .HasColumnType("integer");
 
                     b.Property<Guid>("RotationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("TemplateId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("UserId")
@@ -1566,13 +1665,13 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TemplateId");
+                    b.HasIndex("RotationId", "PlanId")
+                        .IsUnique();
 
                     b.HasIndex("RotationId", "Position")
                         .IsUnique();
 
-                    b.HasIndex("RotationId", "TemplateId")
-                        .IsUnique();
+                    b.HasIndex("UserId", "PlanId");
 
                     b.HasIndex("UserId", "RotationId");
 
@@ -1588,12 +1687,6 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("CompletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsCompleted")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
@@ -1607,6 +1700,11 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("Rir")
                         .HasPrecision(4, 2)
                         .HasColumnType("numeric(4,2)");
+
+                    b.Property<string>("SetType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
@@ -1632,113 +1730,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
                     b.ToTable("workout_sets", "training", t =>
                         {
-                            t.HasCheckConstraint("CK_workout_sets_completion", "(\"IsCompleted\" = FALSE AND \"CompletedAtUtc\" IS NULL) OR (\"IsCompleted\" = TRUE AND \"CompletedAtUtc\" IS NOT NULL AND \"WeightKg\" IS NOT NULL AND \"Repetitions\" IS NOT NULL)");
-
                             t.HasCheckConstraint("CK_workout_sets_position", "\"Position\" >= 0");
 
-                            t.HasCheckConstraint("CK_workout_sets_repetitions", "\"Repetitions\" IS NULL OR \"Repetitions\" > 0");
+                            t.HasCheckConstraint("CK_workout_sets_repetitions", "\"Repetitions\" IS NULL OR (\"Repetitions\" >= 0 AND \"Repetitions\" <= 10000)");
 
                             t.HasCheckConstraint("CK_workout_sets_rir", "\"Rir\" IS NULL OR (\"Rir\" >= 0 AND \"Rir\" <= 10)");
 
-                            t.HasCheckConstraint("CK_workout_sets_weight", "\"WeightKg\" IS NULL OR \"WeightKg\" >= 0");
-                        });
-                });
+                            t.HasCheckConstraint("CK_workout_sets_type", "\"SetType\" IN ('normal', 'warmup', 'dropset')");
 
-            modelBuilder.Entity("Gainer.Core.Training.WorkoutTemplate", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsArchived")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("character varying(160)");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "Name");
-
-                    b.ToTable("workout_templates", "training", t =>
-                        {
-                            t.HasCheckConstraint("CK_workout_templates_name", "length(trim(\"Name\")) > 0");
-                        });
-                });
-
-            modelBuilder.Entity("Gainer.Core.Training.WorkoutTemplateItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ExerciseId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("MaximumRepetitions")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("MinimumRepetitions")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<int>("PlannedSets")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Position")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("RestSeconds")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal?>("TargetRir")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("numeric(4,2)");
-
-                    b.Property<Guid>("TemplateId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ExerciseId");
-
-                    b.HasIndex("TemplateId", "Position")
-                        .IsUnique();
-
-                    b.HasIndex("UserId", "TemplateId");
-
-                    b.ToTable("workout_template_items", "training", t =>
-                        {
-                            t.HasCheckConstraint("CK_workout_template_items_position", "\"Position\" >= 0");
-
-                            t.HasCheckConstraint("CK_workout_template_items_repetitions", "\"MinimumRepetitions\" > 0 AND \"MaximumRepetitions\" >= \"MinimumRepetitions\"");
-
-                            t.HasCheckConstraint("CK_workout_template_items_rest", "\"RestSeconds\" IS NULL OR \"RestSeconds\" >= 0");
-
-                            t.HasCheckConstraint("CK_workout_template_items_rir", "\"TargetRir\" IS NULL OR (\"TargetRir\" >= 0 AND \"TargetRir\" <= 10)");
-
-                            t.HasCheckConstraint("CK_workout_template_items_sets", "\"PlannedSets\" > 0");
+                            t.HasCheckConstraint("CK_workout_sets_weight", "\"WeightKg\" IS NULL OR (\"WeightKg\" >= 0 AND \"WeightKg\" <= 10000)");
                         });
                 });
 
@@ -2197,13 +2197,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Gainer.Core.Training.Workout", b =>
+            modelBuilder.Entity("Gainer.Core.Training.TrainingPlan", b =>
                 {
-                    b.HasOne("Gainer.Core.Training.WorkoutTemplate", null)
-                        .WithMany()
-                        .HasForeignKey("SourceTemplateId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -2211,12 +2206,56 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Gainer.Core.Training.TrainingPlanEntry", b =>
+                {
+                    b.HasOne("Gainer.Core.Training.Exercise", null)
+                        .WithMany()
+                        .HasForeignKey("ExerciseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Core.Training.TrainingPlan", null)
+                        .WithMany()
+                        .HasForeignKey("UserId", "PlanId")
+                        .HasPrincipalKey("UserId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Training.Workout", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Core.Training.TrainingPlan", null)
+                        .WithMany()
+                        .HasForeignKey("UserId", "SourcePlanId")
+                        .HasPrincipalKey("UserId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Gainer.Core.Training.Workout", null)
+                        .WithMany()
+                        .HasForeignKey("UserId", "SourceWorkoutId")
+                        .HasPrincipalKey("UserId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("Gainer.Core.Training.WorkoutExercise", b =>
                 {
                     b.HasOne("Gainer.Core.Training.Exercise", null)
                         .WithMany()
                         .HasForeignKey("SourceExerciseId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
                         .WithMany()
@@ -2234,11 +2273,6 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Gainer.Core.Training.WorkoutRotation", b =>
                 {
-                    b.HasOne("Gainer.Core.Training.WorkoutTemplate", null)
-                        .WithMany()
-                        .HasForeignKey("LastCompletedTemplateId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -2254,16 +2288,17 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Gainer.Core.Training.WorkoutTemplate", null)
-                        .WithMany()
-                        .HasForeignKey("TemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Core.Training.TrainingPlan", null)
+                        .WithMany()
+                        .HasForeignKey("UserId", "PlanId")
+                        .HasPrincipalKey("UserId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
@@ -2286,36 +2321,6 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UserId", "WorkoutId")
                         .HasPrincipalKey("UserId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Gainer.Core.Training.WorkoutTemplate", b =>
-                {
-                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Gainer.Core.Training.WorkoutTemplateItem", b =>
-                {
-                    b.HasOne("Gainer.Core.Training.Exercise", null)
-                        .WithMany()
-                        .HasForeignKey("ExerciseId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Gainer.Core.Training.WorkoutTemplate", null)
-                        .WithMany()
-                        .HasForeignKey("TemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
