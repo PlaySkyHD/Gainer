@@ -60,16 +60,25 @@ class TrainingPreferences {
   /// eine Änderung sofort ankommt.
   final ValueNotifier<bool> liveActivityDetails = ValueNotifier(true);
 
+  /// Aktuelle Gewichtseinheit. Die Live Activity zeigt Zielwerte darin an und
+  /// folgt Änderungen sofort.
+  final ValueNotifier<WeightUnit> weightUnit = ValueNotifier(WeightUnit.kg);
+
   Future<TrainingPreferenceValues> read() async {
     final raw = await store.readSyncMetadata(_preferencesKey);
     final values = _decode(raw);
-    liveActivityDetails.value = values.liveActivityDetails;
+    _publish(values);
     return values;
   }
 
   Future<void> write(TrainingPreferenceValues values) async {
     await store.writeSyncMetadata(_preferencesKey, values.toJson());
+    _publish(values);
+  }
+
+  void _publish(TrainingPreferenceValues values) {
     liveActivityDetails.value = values.liveActivityDetails;
+    weightUnit.value = values.weightUnit;
   }
 
   static TrainingPreferenceValues _decode(Object? raw) {

@@ -81,12 +81,17 @@ struct GainerPendingRoute: Codable, Equatable {
 @available(iOS 17.0, *)
 struct GainerWorkoutActivityAttributes: ActivityAttributes {
   struct ContentState: Codable, Hashable {
-    /// Nur bei ausdrücklicher Detailfreigabe. Gewichte und Wiederholungen gehören nie hierher.
+    /// Nur bei ausdrücklicher Detailfreigabe. Erfasste Ist-Werte gehören nie hierher;
+    /// `targetText` ist nur der Zielwert des nächsten Satzes aus dem Vorwert.
     struct Detail: Codable, Hashable {
       let title: String
       let exerciseName: String
       let setIndex: Int
       let setCount: Int
+      /// Optional, damit ältere Zustände ohne diese Felder weiter decodierbar bleiben.
+      let exerciseIndex: Int?
+      let exerciseCount: Int?
+      let targetText: String?
     }
 
     let startedAt: Date
@@ -95,6 +100,8 @@ struct GainerWorkoutActivityAttributes: ActivityAttributes {
     /// Only while a rest runs; the system renders the countdown from it.
     let timerTargetAt: Date?
     let pausedRemainingSeconds: Int?
+    /// Dauer der aktuellen Pause; Grundlage des Fortschrittsbalkens. Optional wie oben.
+    let restDurationSeconds: Int?
     let expired: Bool
     let detail: Detail?
   }
