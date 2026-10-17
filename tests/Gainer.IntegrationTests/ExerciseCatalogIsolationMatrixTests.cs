@@ -90,7 +90,7 @@ public sealed class ExerciseCatalogIsolationMatrixTests
             var command = new ProcessSyncMutationCommand(
                 Guid.NewGuid(),
                 new CanonicalMutationContent(
-                    2,
+                    3,
                     clientId,
                     sequence,
                     operation,

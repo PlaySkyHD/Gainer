@@ -433,7 +433,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         new(
             mutationId,
             new CanonicalMutationContent(
-                2,
+                3,
                 clientId,
                 sequence,
                 operation,

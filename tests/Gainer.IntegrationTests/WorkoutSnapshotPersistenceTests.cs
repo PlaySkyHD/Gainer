@@ -304,34 +304,6 @@ public sealed class WorkoutSnapshotPersistenceTests
     }
 
     [TestMethod]
-    public async Task PreviousPerformanceUsesLatestFinishedOwnWorkoutWithCountingSetsOnly()
-    {
-        (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
-        Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, firstUser, 1);
-        Guid sourceExerciseId = exerciseIds[0];
-        DateTime day = new(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc);
-        await AddWorkoutAsync(connectionString, firstUser, sourceExerciseId, day, day.AddHours(1), 100m, 8, WorkoutSetType.Normal);
-        await AddWorkoutAsync(connectionString, firstUser, sourceExerciseId, day.AddDays(1), day.AddDays(1).AddHours(1), 60m, 10, WorkoutSetType.Warmup);
-        await AddWorkoutAsync(connectionString, firstUser, sourceExerciseId, day.AddDays(2), null, 110m, 8, WorkoutSetType.Normal);
-        await AddWorkoutAsync(connectionString, secondUser, sourceExerciseId, day.AddDays(3), day.AddDays(3).AddHours(1), 200m, 8, WorkoutSetType.Normal);
-
-        await using (AppDbContext firstContext = Fixture.CreateContext(connectionString, firstUser))
-        {
-            PreviousExercisePerformance? previous = await new PreviousPerformanceQueries(firstContext).GetAsync(
-                sourceExerciseId, new DateTime(2026, 8, 10, 0, 0, 0, DateTimeKind.Utc));
-            Assert.IsNotNull(previous);
-            Assert.AreEqual(100m, previous.Sets[0].WeightKg);
-            Assert.HasCount(1, previous.Sets);
-        }
-        await using (AppDbContext secondContext = Fixture.CreateContext(connectionString, secondUser))
-        {
-            PreviousExercisePerformance? previous = await new PreviousPerformanceQueries(secondContext).GetAsync(
-                sourceExerciseId, new DateTime(2026, 8, 10, 0, 0, 0, DateTimeKind.Utc));
-            Assert.AreEqual(200m, previous?.Sets[0].WeightKg);
-        }
-    }
-
-    [TestMethod]
     public async Task HistoryCountsOnlyWorkingSetsWithWeightAndRepetitions()
     {
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();

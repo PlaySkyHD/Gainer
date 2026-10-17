@@ -23,6 +23,17 @@ public sealed class SyncMutationProcessor(
 {
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
+    /// <summary>Operations of the rebuilt training contract and of the contract it replaces; older clients must upgrade before sending them.</summary>
+    private static readonly HashSet<string> TrainingOperations = new(StringComparer.Ordinal)
+    {
+        "createWorkout", "saveWorkout", "deleteWorkout", "startWorkout", "editWorkout", "completeWorkout", "discardWorkout",
+        "createTrainingPlan", "updateTrainingPlan", "archiveTrainingPlan", "reorderTrainingPlans",
+        "saveWorkoutTemplate", "archiveWorkoutTemplate", "saveWorkoutRotation",
+        "createCustomExercise", "updateCustomExercise", "archiveCustomExercise",
+        "createExerciseCategory", "updateExerciseCategory", "archiveExerciseCategory",
+        "mergeExercises",
+    };
+
     public async Task<ProcessedSyncMutationResult> ProcessAsync(
         ProcessSyncMutationCommand command,
         CancellationToken cancellationToken = default)
@@ -207,6 +218,11 @@ public sealed class SyncMutationProcessor(
             throw new SyncMutationValidationException("invalid_envelope", "The mutation envelope is invalid.");
         }
         if (command.Content.ProtocolVersion is not (SyncProtocol.CurrentVersion or SyncProtocol.PreviousVersion))
+        {
+            throw new SyncUpgradeRequiredException();
+        }
+        if (command.Content.ProtocolVersion < SyncProtocol.TrainingContractVersion &&
+            TrainingOperations.Contains(command.Content.Operation))
         {
             throw new SyncUpgradeRequiredException();
         }

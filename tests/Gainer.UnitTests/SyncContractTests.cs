@@ -8,7 +8,7 @@ namespace Gainer.UnitTests;
 [TestClass]
 public sealed class SyncContractTests
 {
-    private static readonly int[] ExpectedProtocolWindow = [1, 2];
+    private static readonly int[] ExpectedProtocolWindow = [2, 3];
 
     [TestMethod]
     public void ClientRequestsCannotSelectAUserIdentity()

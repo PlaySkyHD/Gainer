@@ -47,7 +47,6 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<IWorkoutRotationQueries, WorkoutRotationQueries>();
         builder.Services.AddScoped<IWorkoutRotationHandler, WorkoutRotationHandler>();
         builder.Services.AddScoped<IWorkoutMutationHandler, WorkoutMutationHandler>();
-        builder.Services.AddScoped<IPreviousPerformanceQueries, PreviousPerformanceQueries>();
         builder.Services.AddScoped<IWorkoutHistoryQueries, WorkoutHistoryQueries>();
         builder.Services.AddScoped<ISyncMutationExecutor, SyncMutationExecutor>();
         builder.Services.AddScoped<ISyncMutationProcessor, SyncMutationProcessor>();

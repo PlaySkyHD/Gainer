@@ -194,6 +194,20 @@ public sealed class SyncMutationExecutor(
                             payload.PlanIds ?? []), cancellationToken);
                     return Result(collector, snapshot);
                 }
+            case "mergeExercises":
+                {
+                    MergeExercisesPayload payload = Deserialize<MergeExercisesPayload>(content.Payload);
+                    if (payload.SourceExerciseId == payload.TargetExerciseId)
+                    {
+                        throw new SyncMutationValidationException("invalid_merge", "The source and target exercise must differ.");
+                    }
+                    long? targetBaseVersion = MergeExpectations(content, payload);
+                    _ = await new ExerciseMergeMutationHandler(context, userContext, timeProvider, collector)
+                        .MergeAsync(MergeExercisesMutation.Create(
+                            Metadata(mutationId, content), payload.SourceExerciseId, payload.SourceBaseVersion,
+                            payload.TargetExerciseId, targetBaseVersion), cancellationToken);
+                    return Result(collector);
+                }
             case "saveNutritionDay":
                 {
                     SaveNutritionDayPayload payload = Deserialize<SaveNutritionDayPayload>(content.Payload);
@@ -350,6 +364,36 @@ public sealed class SyncMutationExecutor(
         }
     }
 
+    /// <summary>The source expectation is required; the target expectation is only declared for own target exercises.</summary>
+    private static long? MergeExpectations(CanonicalMutationContent content, MergeExercisesPayload payload)
+    {
+        var mismatch = new SyncMutationValidationException(
+            "resource_expectation_mismatch",
+            "The payload does not match its declared resource expectations.");
+        string customExercise = ResourceKind.CustomExercise.ToString();
+        bool sourceDeclared = false;
+        long? targetBaseVersion = null;
+        foreach (CanonicalResourceVersion resource in content.Resources)
+        {
+            if (!string.Equals(resource.ResourceType, customExercise, StringComparison.Ordinal)) throw mismatch;
+            if (!sourceDeclared && resource.ResourceId == payload.SourceExerciseId
+                && resource.BaseVersion == payload.SourceBaseVersion)
+            {
+                sourceDeclared = true;
+            }
+            else if (targetBaseVersion is null && resource.ResourceId == payload.TargetExerciseId)
+            {
+                targetBaseVersion = resource.BaseVersion;
+            }
+            else
+            {
+                throw mismatch;
+            }
+        }
+        if (!sourceDeclared) throw mismatch;
+        return targetBaseVersion;
+    }
+
     private static void ValidateExpectations(
         CanonicalMutationContent content,
         List<(ResourceKind Kind, Guid Id, long Version)> expected)
@@ -417,6 +461,7 @@ public sealed class SyncMutationExecutor(
     private sealed record CreateExerciseCategoryPayload(Guid CategoryId, string Name);
     private sealed record UpdateExerciseCategoryPayload(Guid CategoryId, long BaseVersion, string Name);
     private sealed record ArchiveExerciseCategoryPayload(Guid CategoryId, long BaseVersion);
+    private sealed record MergeExercisesPayload(Guid SourceExerciseId, long SourceBaseVersion, Guid TargetExerciseId);
     private sealed record ActivateBodyGoalPayload(
         Guid GoalId,
         string Kind,
