@@ -72,7 +72,7 @@ Beim Fokus auf ein Zahlenfeld SHALL über der Ziffernblock-Tastatur eine Leiste 
 
 ### Requirement: Kompakte und große Timeransicht
 
-Die kompakte Timerleiste SHALL am unteren Rand mit Griff, Start/Stopp-Button links, Countdown mittig und Schließen rechts liegen; der Stopp-Zustand ist orange. Hochziehen oder Antippen öffnet die große Ansicht mit Ring-Fortschritt, großem Countdown, „−15s“, rundem Start/Stopp-Button, „+15s“ und einer Reihe runder Shortcut-Buttons mit „+“ zum Anlegen.
+Die kompakte Timerleiste SHALL am unteren Rand mit Griff, Start/Stopp-Button links, Countdown mittig und Schließen rechts liegen; der Stopp-Zustand ist orange. Hochziehen oder Antippen öffnet die große Ansicht mit Griff, Ring-Fortschritt, großem Countdown, „−15s“, rundem Start/Stopp-Button, „+15s“ und einer Reihe runder Shortcut-Buttons mit „+“ zum Anlegen.
 
 #### Scenario: Große Ansicht öffnen
 - **GIVEN** die kompakte Leiste zeigt 03:00 im Bereit-Zustand
@@ -83,6 +83,11 @@ Die kompakte Timerleiste SHALL am unteren Rand mit Griff, Start/Stopp-Button lin
 - **GIVEN** die große Ansicht mit laufendem Timer
 - **WHEN** Zeit vergeht
 - **THEN** nimmt der Ring proportional ab und der zentrale Button ist orange mit Stopp-Symbol
+
+#### Scenario: Große Ansicht nach unten wischen
+- **GIVEN** die große Ansicht mit laufendem Timer
+- **WHEN** der Nutzer sie nach unten wischt
+- **THEN** schließt sie sich zur kompakten Leiste und der Timer läuft weiter
 
 ### Requirement: Übungsauswahl
 
