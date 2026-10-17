@@ -123,6 +123,91 @@ function Write-ManagedOutputPreview {
     }
 }
 
+function New-ManagedProcess {
+    param(
+        [Parameter(Mandatory)][string] $Executable,
+        [Parameter(Mandatory)][string[]] $Arguments,
+        [string] $WorkingDirectory
+    )
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $Executable
+    if ($WorkingDirectory) {
+        if (-not [System.IO.Path]::IsPathFullyQualified($WorkingDirectory) -or
+            -not (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+            throw "Managed process working directory must be an existing absolute directory: $WorkingDirectory"
+        }
+        $startInfo.WorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path
+    }
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add($argument) }
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    return $process
+}
+
+function Get-OpenManagedReads {
+    param([Parameter(Mandatory)][hashtable] $State)
+    for ($index = 0; $index -lt 2; $index++) {
+        if ($State.Open[$index]) { $State.Pending[$index] }
+    }
+}
+
+function Update-ManagedStallClock {
+    param([Parameter(Mandatory)][hashtable] $State, [AllowEmptyString()][string] $Line)
+    if ($State.StallEnd.IsMatch($Line)) { $State.StallClock = $null }
+    elseif ($State.StallStart.IsMatch($Line)) { $State.StallClock = [System.Diagnostics.Stopwatch]::StartNew() }
+}
+
+function Read-ReadyManagedLines {
+    # Consumes every line already available on one stream; a null line marks its end.
+    param([Parameter(Mandatory)][hashtable] $State, [Parameter(Mandatory)][int] $Index)
+    while ($State.Open[$Index] -and $State.Pending[$Index].IsCompleted) {
+        $line = $State.Pending[$Index].GetAwaiter().GetResult()
+        if ($null -eq $line) {
+            $State.Open[$Index] = $false
+            return
+        }
+        [void]$State.Buffers[$Index].AppendLine($line)
+        Update-ManagedStallClock $State $line
+        $State.Pending[$Index] = $State.Readers[$Index].ReadLineAsync()
+    }
+}
+
+function Wait-ManagedStreams {
+    # Returns 'ended' when both streams closed, 'timeout' or 'stalled' otherwise.
+    param(
+        [Parameter(Mandatory)][hashtable] $State,
+        [Parameter(Mandatory)][int] $TimeoutSeconds,
+        [Parameter(Mandatory)][int] $StallTimeoutSeconds
+    )
+    while ($State.Open[0] -or $State.Open[1]) {
+        if ($State.Timer.Elapsed.TotalSeconds -ge $TimeoutSeconds) { return 'timeout' }
+        if ($null -ne $State.StallClock -and $State.StallClock.Elapsed.TotalSeconds -ge $StallTimeoutSeconds) { return 'stalled' }
+        [void][System.Threading.Tasks.Task]::WaitAny([System.Threading.Tasks.Task[]]@(Get-OpenManagedReads $State), 250)
+        Read-ReadyManagedLines $State 0
+        Read-ReadyManagedLines $State 1
+    }
+    return 'ended'
+}
+
+function Complete-ManagedProcess {
+    param(
+        [Parameter(Mandatory)][System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)][string] $Outcome,
+        [Parameter(Mandatory)][double] $RemainingSeconds,
+        [Parameter(Mandatory)][string] $Label
+    )
+    if ($Outcome -eq 'ended' -and $Process.WaitForExit([int][Math]::Max(1000, $RemainingSeconds * 1000))) {
+        return @{ TimedOut = $false; Stalled = $false; TerminationConfirmed = $true }
+    }
+    $stalled = $Outcome -eq 'stalled'
+    $reason = if ($stalled) { 'stalled' } else { 'timed out' }
+    Write-Warning "Managed command $reason; terminating only its process tree: $Label"
+    return @{ TimedOut = -not $stalled; Stalled = $stalled; TerminationConfirmed = (Stop-ManagedProcessTree $Process) }
+}
+
 function Invoke-ManagedProcessWithStallGuard {
     # Like Invoke-ManagedProcess, but reads output line by line so a known
     # waiting state (StallStartPattern) that is not resolved by a progress line
@@ -139,72 +224,33 @@ function Invoke-ManagedProcessWithStallGuard {
         [int] $OutputPreviewLimit = 12000,
         [string] $WorkingDirectory
     )
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $Executable
-    if ($WorkingDirectory) {
-        if (-not [System.IO.Path]::IsPathFullyQualified($WorkingDirectory) -or
-            -not (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-            throw "Managed process working directory must be an existing absolute directory: $WorkingDirectory"
-        }
-        $startInfo.WorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path
+    $process = New-ManagedProcess $Executable $Arguments $WorkingDirectory
+    $state = @{
+        Timer = [System.Diagnostics.Stopwatch]::StartNew()
+        Buffers = @([System.Text.StringBuilder]::new(), [System.Text.StringBuilder]::new())
+        Open = @($true, $true)
+        StallStart = $StallStartPattern
+        StallEnd = $StallEndPattern
+        StallClock = $null
     }
-    $startInfo.UseShellExecute = $false
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add($argument) }
-    $process = [System.Diagnostics.Process]::new()
-    $process.StartInfo = $startInfo
-    $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    $stdout = [System.Text.StringBuilder]::new()
-    $stderr = [System.Text.StringBuilder]::new()
     Write-Information "MANAGED COMMAND START utc=$([DateTime]::UtcNow.ToString('o')) label=$Label timeout_seconds=$TimeoutSeconds stall_timeout_seconds=$StallTimeoutSeconds" -InformationAction Continue
     try {
         if (-not $process.Start()) { throw "Could not start managed command '$Label'." }
-        $readers = @($process.StandardOutput, $process.StandardError)
-        $buffers = @($stdout, $stderr)
-        $pending = @($readers[0].ReadLineAsync(), $readers[1].ReadLineAsync())
-        $open = @($true, $true)
-        $stallClock = $null
-        $timedOut = $false
-        $stalled = $false
-        while ($open[0] -or $open[1]) {
-            if ($timer.Elapsed.TotalSeconds -ge $TimeoutSeconds) { $timedOut = $true; break }
-            if ($null -ne $stallClock -and $stallClock.Elapsed.TotalSeconds -ge $StallTimeoutSeconds) { $stalled = $true; break }
-            $waiting = @(for ($i = 0; $i -lt 2; $i++) { if ($open[$i]) { $pending[$i] } })
-            [void][System.Threading.Tasks.Task]::WaitAny([System.Threading.Tasks.Task[]]$waiting, 250)
-            for ($i = 0; $i -lt 2; $i++) {
-                while ($open[$i] -and $pending[$i].IsCompleted) {
-                    $line = $pending[$i].GetAwaiter().GetResult()
-                    if ($null -eq $line) { $open[$i] = $false; break }
-                    [void]$buffers[$i].AppendLine($line)
-                    if ($StallEndPattern.IsMatch($line)) { $stallClock = $null }
-                    elseif ($StallStartPattern.IsMatch($line)) { $stallClock = [System.Diagnostics.Stopwatch]::StartNew() }
-                    $pending[$i] = $readers[$i].ReadLineAsync()
-                }
-            }
-        }
-        $terminationConfirmed = $true
-        if ($timedOut -or $stalled) {
-            $reason = if ($stalled) { 'stalled' } else { 'timed out' }
-            Write-Warning "Managed command $reason; terminating only its process tree: $Label"
-            $terminationConfirmed = Stop-ManagedProcessTree $process
-        }
-        else {
-            $terminationConfirmed = $process.WaitForExit([int][Math]::Max(1000, ($TimeoutSeconds - $timer.Elapsed.TotalSeconds) * 1000))
-            if (-not $terminationConfirmed) {
-                $timedOut = $true
-                $terminationConfirmed = Stop-ManagedProcessTree $process
-            }
-        }
+        $state.Readers = @($process.StandardOutput, $process.StandardError)
+        $state.Pending = @($state.Readers[0].ReadLineAsync(), $state.Readers[1].ReadLineAsync())
+        $outcome = Wait-ManagedStreams $state $TimeoutSeconds $StallTimeoutSeconds
+        $end = Complete-ManagedProcess $process $outcome ($TimeoutSeconds - $state.Timer.Elapsed.TotalSeconds) $Label
         $exited = $process.HasExited
         if ($exited) { [void]$process.WaitForExit(1000) }
-        $drainTasks = @(for ($i = 0; $i -lt 2; $i++) { if ($open[$i]) { $pending[$i] } })
-        $drainConfirmed = if ($drainTasks.Count -eq 0) { $true } else { Wait-ManagedOutputDrain ([System.Threading.Tasks.Task[]]$drainTasks) 3000 }
-        $timer.Stop()
-        Write-ManagedOutputPreview $Label $stdout.ToString() $stderr.ToString() $OutputPreviewLimit
+        $drainTasks = @(Get-OpenManagedReads $state)
+        $drainConfirmed = $drainTasks.Count -eq 0 -or (Wait-ManagedOutputDrain ([System.Threading.Tasks.Task[]]$drainTasks) 3000)
+        $state.Timer.Stop()
+        $outText = $state.Buffers[0].ToString()
+        $errText = $state.Buffers[1].ToString()
+        Write-ManagedOutputPreview $Label $outText $errText $OutputPreviewLimit
         $exitCode = if ($exited) { $process.ExitCode } else { $null }
-        Write-Information "MANAGED COMMAND END utc=$([DateTime]::UtcNow.ToString('o')) label=$Label elapsed_seconds=$([Math]::Round($timer.Elapsed.TotalSeconds, 2)) timed_out=$timedOut stalled=$stalled exit_code=$exitCode termination_confirmed=$terminationConfirmed output_drained=$drainConfirmed" -InformationAction Continue
-        return [pscustomobject]@{ TimedOut = $timedOut; Stalled = $stalled; ExitCode = $exitCode; TerminationConfirmed = $terminationConfirmed; OutputDrained = $drainConfirmed; Stdout = $stdout.ToString(); Stderr = $stderr.ToString() }
+        Write-Information "MANAGED COMMAND END utc=$([DateTime]::UtcNow.ToString('o')) label=$Label elapsed_seconds=$([Math]::Round($state.Timer.Elapsed.TotalSeconds, 2)) timed_out=$($end.TimedOut) stalled=$($end.Stalled) exit_code=$exitCode termination_confirmed=$($end.TerminationConfirmed) output_drained=$drainConfirmed" -InformationAction Continue
+        return [pscustomobject]@{ TimedOut = $end.TimedOut; Stalled = $end.Stalled; ExitCode = $exitCode; TerminationConfirmed = $end.TerminationConfirmed; OutputDrained = $drainConfirmed; Stdout = $outText; Stderr = $errText }
     }
     finally { $process.Dispose() }
 }
@@ -219,21 +265,7 @@ function Invoke-ManagedProcess {
         [int] $OutputPreviewLimit = 12000,
         [string] $WorkingDirectory
     )
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $Executable
-    if ($WorkingDirectory) {
-        if (-not [System.IO.Path]::IsPathFullyQualified($WorkingDirectory) -or
-            -not (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-            throw "Managed process working directory must be an existing absolute directory: $WorkingDirectory"
-        }
-        $startInfo.WorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path
-    }
-    $startInfo.UseShellExecute = $false
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add($argument) }
-    $process = [System.Diagnostics.Process]::new()
-    $process.StartInfo = $startInfo
+    $process = New-ManagedProcess $Executable $Arguments $WorkingDirectory
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     Write-Information "MANAGED COMMAND START utc=$([DateTime]::UtcNow.ToString('o')) label=$Label timeout_seconds=$TimeoutSeconds" -InformationAction Continue
     try {
