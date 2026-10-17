@@ -125,10 +125,20 @@ Auf unterstützten iPhones SHALL während eines aktiven Trainings eine Live Acti
 
 ### Requirement: Datenschutz der Live Activity
 
-Ohne ausdrückliche Freigabe DÜRFEN Systemflächen nur allgemeinen Trainings-/Pausenstatus und Zeiten zeigen. Mit Freigabe SHALL zusätzlich Trainingstitel, aktuelle Übung und Satzposition (z. B. „Satz 2 von 4“) erscheinen; Gewichte und Wiederholungen nie.
+Die Detailanzeige ist standardmäßig aktiv und SHALL Trainingstitel, aktuelle Übung und Satzposition (z. B. „Satz 2 von 4“) zeigen – auch nach erfasstem Satz und während einer Pause (dann der als Nächstes anstehende Satz). Der Nutzer kann sie abschalten; dann DÜRFEN Systemflächen nur Trainings-/Pausenstatus und Zeiten zeigen. Gewichte und Wiederholungen MUST NOT erscheinen.
+
+#### Scenario: Übung nach erfasstem Satz
+- **GIVEN** Standardeinstellung, Training „Pull“, Latzug mit drei Sätzen, der erste ist erfasst
+- **WHEN** das iPhone gesperrt wird, mit oder ohne laufende Pause
+- **THEN** zeigt die Live Activity „Latzug“ und „Satz 2 von 3“ und die Zeit, aber kein Gewicht
+
+#### Scenario: Details abgeschaltet
+- **GIVEN** der Nutzer hat „Details auf Sperrbildschirm“ abgeschaltet
+- **WHEN** das iPhone gesperrt wird
+- **THEN** zeigt die Live Activity nur „Training“ bzw. „Pause“ und die Zeiten, ohne Übungsnamen
 
 #### Scenario: Detailfreigabe aktiv
-- **GIVEN** die Detailfreigabe ist aktiv und der Nutzer trainiert Latzug im Training „Pull“ im ersten von drei Sätzen
+- **GIVEN** die Detailanzeige ist aktiv und der Nutzer trainiert Latzug im Training „Pull“ im ersten von drei Sätzen
 - **WHEN** das iPhone gesperrt wird
 - **THEN** zeigt die Live Activity „Pull“, „Latzug“, „Satz 1 von 3“ und die Zeit, aber kein Gewicht
 
