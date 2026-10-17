@@ -127,6 +127,7 @@ class _TrainingHomeScreenState extends State<TrainingHomeScreen> {
             ),
             TrainingSegment.plans => TrainingPlansSection(
               repository: widget.repository,
+              activeWorkout: widget.activeWorkout,
             ),
             TrainingSegment.statistics => TrainingStatisticsSection(
               repository: widget.repository,

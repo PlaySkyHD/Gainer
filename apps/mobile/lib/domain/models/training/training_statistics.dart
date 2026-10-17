@@ -243,6 +243,29 @@ List<ExerciseStats> workoutExerciseStats(
   ];
 }
 
+/// Kennzahlen je Training und Übung (`sourceExerciseId`), chronologisch. Nur
+/// beendete, nicht gelöschte Trainings; Trainings ohne gezählten Satz fehlen.
+/// Grundlage für Rekorde und die Übungsstatistik, damit die Formeln nur hier leben.
+Map<String, List<ExerciseWorkoutTotals>> exerciseTotalsPerWorkout(
+  List<Workout> workouts, {
+  required List<DailyCheckIn> checkIns,
+  required List<CatalogExercise> catalog,
+  LocalDayOf localDayOf = deviceLocalDay,
+  bool includeWarmups = false,
+}) {
+  final history = _exerciseHistory(
+    workouts,
+    checkIns: checkIns,
+    catalog: catalog,
+    localDayOf: localDayOf,
+    includeWarmups: includeWarmups,
+  );
+  return {
+    for (final entry in history.entries)
+      if (entry.value.isNotEmpty) entry.key: entry.value,
+  };
+}
+
 /// Rekordverläufe je Übung (`sourceExerciseId`). Nur beendete, nicht gelöschte Trainings.
 Map<String, ExerciseRecords> exerciseRecords(
   List<Workout> workouts, {
@@ -251,18 +274,37 @@ Map<String, ExerciseRecords> exerciseRecords(
   LocalDayOf localDayOf = deviceLocalDay,
   bool includeWarmups = false,
 }) {
-  final finished = _finishedChronological(workouts);
-  final catalogById = _catalogIndex(catalog);
+  final history = _exerciseHistory(
+    workouts,
+    checkIns: checkIns,
+    catalog: catalog,
+    localDayOf: localDayOf,
+    includeWarmups: includeWarmups,
+  );
+  return {
+    for (final entry in history.entries) entry.key: _recordsFor(entry.value),
+  };
+}
 
-  final perWorkout = <String, List<_ExerciseTotals>>{};
-  final sets = <String, List<SetResult>>{};
-  for (final workout in finished) {
+/// Alle Übungen der beendeten Trainings, auch ohne gezählten Satz (leere Liste).
+Map<String, List<ExerciseWorkoutTotals>> _exerciseHistory(
+  List<Workout> workouts, {
+  required List<DailyCheckIn> checkIns,
+  required List<CatalogExercise> catalog,
+  required LocalDayOf localDayOf,
+  required bool includeWarmups,
+}) {
+  final catalogById = _catalogIndex(catalog);
+  final history = <String, List<ExerciseWorkoutTotals>>{};
+  for (final workout in _finishedChronological(workouts)) {
     final bodyweightKg = bodyweightForWorkout(
       workout,
       checkIns,
       localDayOf: localDayOf,
     );
-    final totals = <String, _ExerciseTotals>{};
+    final sets = <String, List<SetResult>>{};
+    final names = <String, String>{};
+    final missing = <String>{};
     for (final block in workout.exercises) {
       final stats = _blockStats(
         workout,
@@ -271,25 +313,27 @@ Map<String, ExerciseRecords> exerciseRecords(
         catalogById: catalogById,
         includeWarmups: includeWarmups,
       );
-      sets.putIfAbsent(block.sourceExerciseId, () => []).addAll(stats.sets);
+      final exerciseId = block.sourceExerciseId;
+      history.putIfAbsent(exerciseId, () => []);
+      sets.putIfAbsent(exerciseId, () => []).addAll(stats.sets);
       if (stats.sets.isEmpty) continue;
-      totals
-          .putIfAbsent(
-            block.sourceExerciseId,
-            () => _ExerciseTotals(workout.workoutId),
-          )
-          .add(stats);
+      names[exerciseId] = block.exerciseNameSnapshot;
+      if (stats.bodyweightMissing) missing.add(exerciseId);
     }
-    totals.forEach(
-      (sourceExerciseId, total) =>
-          perWorkout.putIfAbsent(sourceExerciseId, () => []).add(total),
-    );
+    for (final entry in sets.entries) {
+      if (entry.value.isEmpty) continue;
+      history[entry.key]!.add(
+        ExerciseWorkoutTotals(
+          workoutId: workout.workoutId,
+          startedAtUtc: workout.startedAtUtc,
+          exerciseName: names[entry.key]!,
+          sets: entry.value,
+          bodyweightMissing: missing.contains(entry.key),
+        ),
+      );
+    }
   }
-
-  return {
-    for (final entry in sets.entries)
-      entry.key: _recordsFor(perWorkout[entry.key] ?? const [], entry.value),
-  };
+  return history;
 }
 
 /// Zusammenfassung eines beendeten Trainings. [history] darf das Training selbst enthalten.
@@ -388,47 +432,53 @@ WorkoutCounts workoutCounts(
   return WorkoutCounts(total: finished.length, thisWeek: thisWeek);
 }
 
-class _ExerciseTotals {
-  _ExerciseTotals(this.workoutId);
+/// Kennzahlen eines Trainings für eine Übung. Mehrere Blöcke derselben Übung
+/// im Training sind zusammengefasst. Enthält nur erfasste Sätze.
+class ExerciseWorkoutTotals {
+  const ExerciseWorkoutTotals({
+    required this.workoutId,
+    required this.startedAtUtc,
+    required this.exerciseName,
+    required this.sets,
+    required this.bodyweightMissing,
+  });
 
   final String workoutId;
-  int setCount = 0;
-  int maxRepetitions = 0;
-  double volumeKg = 0;
-  double? maxWeightKg;
-  double? estimatedOneRepMaxKg;
+  final DateTime startedAtUtc;
 
-  void add(ExerciseStats stats) {
-    setCount += stats.setCount;
-    volumeKg += stats.volumeKg;
-    if (stats.maxRepetitions > maxRepetitions) {
-      maxRepetitions = stats.maxRepetitions;
-    }
-    maxWeightKg = _maxOrNull([?maxWeightKg, ?stats.maxWeightKg]);
-    estimatedOneRepMaxKg = _maxOrNull([
-      ?estimatedOneRepMaxKg,
-      ?stats.estimatedOneRepMaxKg,
-    ]);
-  }
+  /// Name aus dem jüngsten Block dieser Übung im Training.
+  final String exerciseName;
+  final List<SetResult> sets;
+
+  /// Mindestens ein Block dieser Übung hat keinen Körpergewichtswert, obwohl er nötig wäre.
+  final bool bodyweightMissing;
+
+  int get setCount => sets.length;
+
+  int get maxRepetitions =>
+      sets.fold(0, (max, set) => set.repetitions > max ? set.repetitions : max);
+
+  double get volumeKg => sets.fold<double>(0, (sum, set) => sum + set.volumeKg);
+
+  double? get maxWeightKg =>
+      _maxOrNull(sets.map((set) => set.effectiveWeightKg));
+
+  double? get estimatedOneRepMaxKg =>
+      _maxOrNull(sets.map((set) => set.estimatedOneRepMaxKg));
 }
 
-ExerciseRecords _recordsFor(
-  List<_ExerciseTotals> entries,
-  List<SetResult> sets,
-) {
+ExerciseRecords _recordsFor(List<ExerciseWorkoutTotals> entries) {
+  final sets = [for (final entry in entries) ...entry.sets];
   return ExerciseRecords(
     maxWeight: _strictRecords([
       for (final entry in entries)
-        if (entry.maxWeightKg != null)
-          RecordEvent(workoutId: entry.workoutId, value: entry.maxWeightKg!),
+        if (entry.maxWeightKg case final value?)
+          RecordEvent(workoutId: entry.workoutId, value: value),
     ]),
     estimatedOneRepMax: _strictRecords([
       for (final entry in entries)
-        if (entry.estimatedOneRepMaxKg != null)
-          RecordEvent(
-            workoutId: entry.workoutId,
-            value: entry.estimatedOneRepMaxKg!,
-          ),
+        if (entry.estimatedOneRepMaxKg case final value?)
+          RecordEvent(workoutId: entry.workoutId, value: value),
     ]),
     volume: _strictRecords([
       for (final entry in entries)
