@@ -57,6 +57,8 @@ Referenz: `native-mobile-client`; Tasks einzeln anhand der Paritätsmatrix abneh
 
 ## 6. M3: Native Kamera, Haptik und Timer
 
+> Timer-Tasks 6.4 und 6.5 sowie Live-Activity-Tasks 7.2, 7.3 und 7.6 (Workout-/Pausenanteil) werden durch `rebuild-training-logging` (Gruppe 11) umgesetzt und abgenommen.
+
 Referenz: `apple-native-training`; nach den jeweiligen Fachjourneys.
 
 - [ ] 6.1 AVFoundation-Barcode-/Capture- und PHPicker-Brücken mit Berechtigungsbeschreibungen implementieren; tatsächliche iPhone-Kamera, Ablehnung, Abbruch und Resume ohne doppelte Kamerasession prüfen.
