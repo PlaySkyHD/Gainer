@@ -38,4 +38,5 @@ public enum ResourceKind
     NutritionDay = 7,
     ReusableMeal = 8,
     NutritionTargetSchedule = 9,
+    ExerciseCategory = 10,
 }

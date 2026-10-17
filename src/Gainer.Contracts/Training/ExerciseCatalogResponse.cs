@@ -9,10 +9,21 @@ public sealed record ExerciseCatalogItemResponse(
     string? Equipment,
     bool IsCustom,
     string? CatalogVersion,
-    long Version);
+    long Version,
+    string ExerciseType,
+    string? Notes,
+    decimal? BodyweightFactor,
+    decimal? WeightFactor,
+    IReadOnlyList<Guid> CategoryIds);
+
+public sealed record ExerciseCategoryResponse(
+    Guid Id,
+    string Name,
+    bool IsBase);
 
 public sealed record ExerciseCatalogResponse(
     IReadOnlyList<ExerciseCatalogItemResponse> Items,
     int Offset,
     int Limit,
-    int Total);
+    int Total,
+    IReadOnlyList<ExerciseCategoryResponse> Categories);

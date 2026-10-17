@@ -68,6 +68,33 @@ public sealed class SyncMutationExecutor(
                             Metadata(mutationId, content), payload.ExerciseId, payload.BaseVersion), cancellationToken);
                     return Result(collector, snapshot);
                 }
+            case "createExerciseCategory":
+                {
+                    CreateExerciseCategoryPayload payload = Deserialize<CreateExerciseCategoryPayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.ExerciseCategory, payload.CategoryId, 0);
+                    ExerciseCategorySnapshot snapshot = await new ExerciseCategoryMutationHandler(context, userContext, timeProvider, collector)
+                        .CreateAsync(CreateExerciseCategoryMutation.Create(
+                            Metadata(mutationId, content), payload.CategoryId, payload.Name), cancellationToken);
+                    return Result(collector, snapshot);
+                }
+            case "updateExerciseCategory":
+                {
+                    UpdateExerciseCategoryPayload payload = Deserialize<UpdateExerciseCategoryPayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.ExerciseCategory, payload.CategoryId, payload.BaseVersion);
+                    ExerciseCategorySnapshot snapshot = await new ExerciseCategoryMutationHandler(context, userContext, timeProvider, collector)
+                        .UpdateAsync(UpdateExerciseCategoryMutation.Create(
+                            Metadata(mutationId, content), payload.CategoryId, payload.BaseVersion, payload.Name), cancellationToken);
+                    return Result(collector, snapshot);
+                }
+            case "archiveExerciseCategory":
+                {
+                    ArchiveExerciseCategoryPayload payload = Deserialize<ArchiveExerciseCategoryPayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.ExerciseCategory, payload.CategoryId, payload.BaseVersion);
+                    ExerciseCategorySnapshot snapshot = await new ExerciseCategoryMutationHandler(context, userContext, timeProvider, collector)
+                        .ArchiveAsync(ArchiveExerciseCategoryMutation.Create(
+                            Metadata(mutationId, content), payload.CategoryId, payload.BaseVersion), cancellationToken);
+                    return Result(collector, snapshot);
+                }
             case "activateBodyGoal":
                 {
                     ActivateBodyGoalPayload payload = Deserialize<ActivateBodyGoalPayload>(content.Payload);
@@ -376,6 +403,9 @@ public sealed class SyncMutationExecutor(
     private sealed record CreateCustomExercisePayload(Guid ExerciseId, CustomExerciseValues Values);
     private sealed record UpdateCustomExercisePayload(Guid ExerciseId, long BaseVersion, CustomExerciseValues Values);
     private sealed record ArchiveCustomExercisePayload(Guid ExerciseId, long BaseVersion);
+    private sealed record CreateExerciseCategoryPayload(Guid CategoryId, string Name);
+    private sealed record UpdateExerciseCategoryPayload(Guid CategoryId, long BaseVersion, string Name);
+    private sealed record ArchiveExerciseCategoryPayload(Guid CategoryId, long BaseVersion);
     private sealed record ActivateBodyGoalPayload(
         Guid GoalId,
         string Kind,
