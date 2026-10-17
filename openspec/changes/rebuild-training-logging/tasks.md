@@ -75,8 +75,8 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 
 - [x] 11.1 Lokalen Timerzustand mit Generation und kontogebundenen Shortcuts umsetzen (D8); Unit-Tests für manuellen Start, ±15 s, Stop/Start, X setzt auf Ausgangsdauer, Ablauf auf 0:00 bis zum nächsten erfassten Satz und Wiederherstellung nach Prozessende.
 - [x] 11.2 Große Timeransicht und kompakte Leiste über der Tastatur umsetzen, Ton und Haptik bei Ablauf im Vordergrund, lokale Benachrichtigung im Hintergrund; Widget-Test, dass Eingabefokus und Werte beim Öffnen/Schließen erhalten bleiben.
-- [ ] 11.3 Live Activity auf „eine Activity pro Training“ umstellen (D9) inklusive Detailfreigabe, Ende bei Beenden/Löschen/Logout/Kontowechsel und Bereinigung veralteter Activities; Swift- und Pigeon-Tests sowie Coordinator-Tests grün.
-- [ ] 11.5 Ablauf-Benachrichtigung „Pause vorbei“ auch bei geöffneter App anzeigen (UNUserNotificationCenterDelegate `willPresent` mit Banner und Ton nur für Timer-Benachrichtigungen), im Vordergrund nur Haptik statt zweitem App-Ton, ohne Berechtigung App-Ton als Ersatz; Dart-Tests für die Signalwahl und Swift-Unit-Test in `RunnerTests` für die Präsentationsoptionen.
+- [x] 11.3 Live Activity auf „eine Activity pro Training“ umstellen (D9) inklusive Detailfreigabe, Ende bei Beenden/Löschen/Logout/Kontowechsel und Bereinigung veralteter Activities; Swift- und Pigeon-Tests sowie Coordinator-Tests grün.
+- [x] 11.5 Ablauf-Benachrichtigung „Pause vorbei“ auch bei geöffneter App anzeigen (UNUserNotificationCenterDelegate `willPresent` mit Banner und Ton nur für Timer-Benachrichtigungen), im Vordergrund nur Haptik statt zweitem App-Ton, ohne Berechtigung App-Ton als Ersatz; Dart-Tests für die Signalwahl und Swift-Unit-Test in `RunnerTests` für die Präsentationsoptionen.
 - [ ] 11.4 Auf einem physischen iPhone mit Dynamic Island und einem ohne (oder Simulator) Bildschirmaufnahmen von App → Home → Sperrbildschirm für die Zustände „ohne Pause“, „Pause läuft“, „pausiert“, „abgelaufen“ und „beendet“ erstellen; Ergebnis im Change-Ordner dokumentieren.
 
 ## 12. Bestehende Bereiche im neuen Design
@@ -92,7 +92,7 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 - [ ] 13.1 End-to-End auf einem physischen iPhone: Offline ein Training aus einem Plan starten, Sätze eintragen, App beenden, neu öffnen, beenden mit Fehlwerte-Dialog, online gehen und prüfen, dass das Backend genau ein Workout mit identischen Werten und Kennzahlen liefert.
 - [ ] 13.2 Kontoisolation End-to-End mit zwei Konten auf demselben Gerät prüfen: Nach Kontowechsel sind weder Trainings, Vorwerte, Timer-Shortcuts noch Live Activity des vorherigen Kontos sichtbar.
 - [ ] 13.3 Auf einem physischen iPhone alle Hauptbereiche in Hell und Dunkel sowie mit größter Textgröße und VoiceOver durchgehen; Screenshots je Bereich im Change-Ordner ablegen.
-- [ ] 13.4 `pwsh ./scripts/verify.ps1`, Flutter-Analyse und -Tests sowie Mobile-CI vollständig grün; `graphify update .` ausgeführt.
+- [x] 13.4 `pwsh ./scripts/verify.ps1`, Flutter-Analyse und -Tests sowie Mobile-CI vollständig grün; `graphify update .` ausgeführt.
 
 ## Workflow follow-up
 
