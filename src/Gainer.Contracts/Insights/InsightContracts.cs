@@ -26,11 +26,12 @@ public sealed record NutritionInsightsResponse(
     MetricAverageResponse CarbohydrateGrams,
     MetricAverageResponse FatGrams);
 
+/// <summary>Bester Satz; <c>EffectiveWeightKg</c> enthält Zusatz-, Körpergewichtsanteil bzw. Unterstützung.</summary>
 public sealed record BestSetResponse(
     Guid WorkoutId,
     Guid ExerciseId,
     DateTime CompletedAtUtc,
-    decimal WeightKg,
+    decimal EffectiveWeightKg,
     int Repetitions,
     decimal EstimatedOneRepMaxKg);
 
@@ -40,7 +41,8 @@ public sealed record TrainingInsightsResponse(
     string VolumeUnit,
     int WorkoutCount,
     decimal VolumeKgRepetitions,
-    BestSetResponse? BestSet);
+    BestSetResponse? BestSet,
+    bool BodyweightMissing);
 
 public sealed record ActiveGoalInsightResponse(
     Guid GoalId,
@@ -69,9 +71,22 @@ public sealed record ExerciseProgressPointResponse(
     Guid WorkoutId,
     DateTime CompletedAtUtc,
     decimal VolumeKgRepetitions,
-    decimal? BestWeightKg,
-    int? BestRepetitions,
-    decimal? EstimatedOneRepMaxKg);
+    decimal? MaxWeightKg,
+    int MaxRepetitions,
+    decimal? EstimatedOneRepMaxKg,
+    bool BodyweightMissing);
+
+public sealed record RecordEventResponse(Guid WorkoutId, decimal Value);
+
+public sealed record RepetitionRecordResponse(int Repetitions, decimal? MaxWeightKg);
+
+/// <summary>Aktuelle Rekorde je Übung über die gesamte Historie; <c>null</c> ohne erfassten Satz.</summary>
+public sealed record ExerciseRecordsResponse(
+    RecordEventResponse? MaxWeightKg,
+    RecordEventResponse? EstimatedOneRepMaxKg,
+    RecordEventResponse? VolumeKgRepetitions,
+    RecordEventResponse? MaxRepetitions,
+    IReadOnlyList<RepetitionRecordResponse> RepetitionRecords);
 
 public sealed record ExerciseProgressResponse(
     long AsOfRevision,
@@ -79,5 +94,8 @@ public sealed record ExerciseProgressResponse(
     int? WindowDays,
     DateTime FromUtc,
     DateTime ThroughUtc,
+    string VolumeAlgorithmVersion,
+    string EstimatedOneRepMaxAlgorithmVersion,
     IReadOnlyList<ExerciseProgressPointResponse> Points,
-    BestSetResponse? BestSet);
+    BestSetResponse? BestSet,
+    ExerciseRecordsResponse Records);

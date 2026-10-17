@@ -26,8 +26,8 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 ## 4. Kennzahlen (Backend)
 
 - [x] 4.1 Gemeinsame Fixture `contracts/fixtures/training-statistics.json` mit allen Rechenszenarien der Spec `training-statistics` (inklusive Check-ins für das maßgebliche Körpergewicht) und den Erfassungsregeln aus `set-logging` anlegen (D7).
-- [ ] 4.2 `InsightAlgorithms` auf `training-volume-v2`/`e1rm-epley-v2` mit effektivem Gewicht (Körpergewicht aus jüngstem Check-in am oder vor dem Trainingstag), Satztypfilter, Wiederholungsrekorden und Rekordverlauf umstellen; `Gainer.UnitTests` lesen die Fixture und sind grün.
-- [ ] 4.3 `InsightQueries`, `InsightContracts` und die Coach-Werkzeuge auf die neuen Kennzahlen umstellen; Integrationstest bestätigt, dass gelöschte und laufende Workouts sowie fremde Daten nicht einfließen.
+- [x] 4.2 `InsightAlgorithms` auf `training-volume-v2`/`e1rm-epley-v2` mit effektivem Gewicht (Körpergewicht aus jüngstem Check-in am oder vor dem Trainingstag), Satztypfilter, Wiederholungsrekorden und Rekordverlauf umstellen; `Gainer.UnitTests` lesen die Fixture und sind grün.
+- [x] 4.3 `InsightQueries`, `InsightContracts` und die Coach-Werkzeuge auf die neuen Kennzahlen umstellen; Integrationstest bestätigt, dass gelöschte und laufende Workouts sowie fremde Daten nicht einfließen.
 
 ## 5. Verträge und Web
 

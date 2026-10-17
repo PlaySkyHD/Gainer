@@ -17,11 +17,13 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
     public async Task<ActionResult<DashboardInsightsResponse>> Dashboard(
         [FromQuery] DateOnly? through = null,
         [FromQuery] int days = 30,
+        [FromQuery] string timeZone = TrainingStatistics.DefaultTimeZoneId,
         CancellationToken cancellationToken = default)
     {
         if (days is < 1 or > 365) return Validation("days", "Days must be between 1 and 365.");
+        if (ResolveTimeZone(timeZone, out TimeZoneInfo zone) is { } error) return error;
         DateOnly end = through ?? DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
-        return Ok(ToResponse(await queries.DashboardAsync(end, days, cancellationToken)));
+        return Ok(ToResponse(await queries.DashboardAsync(end, days, zone, cancellationToken)));
     }
 
     [HttpGet("exercises/{exerciseId:guid}/progress")]
@@ -29,7 +31,7 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
     public async Task<ActionResult<ExerciseProgressResponse>> ExerciseProgress(
         Guid exerciseId,
         [FromQuery] string window = "30",
-        [FromQuery] string timeZone = "Europe/Berlin",
+        [FromQuery] string timeZone = TrainingStatistics.DefaultTimeZoneId,
         CancellationToken cancellationToken = default)
     {
         int? windowDays = window.ToLowerInvariant() switch
@@ -41,10 +43,7 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
             _ => -1,
         };
         if (windowDays == -1) return Validation("window", "Window must be 7, 30, 90 or all.");
-        TimeZoneInfo zone;
-        try { zone = TimeZoneInfo.FindSystemTimeZoneById(timeZone); }
-        catch (TimeZoneNotFoundException) { return Validation("timeZone", "The time zone is unknown."); }
-        catch (InvalidTimeZoneException) { return Validation("timeZone", "The time zone is invalid."); }
+        if (ResolveTimeZone(timeZone, out TimeZoneInfo zone) is { } error) return error;
         ExerciseProgressSnapshot result = await queries.ExerciseProgressAsync(
             exerciseId, windowDays, timeProvider.GetUtcNow().UtcDateTime, zone, cancellationToken);
         return Ok(new ExerciseProgressResponse(
@@ -53,10 +52,30 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
             result.WindowDays,
             result.FromUtc,
             result.ThroughUtc,
+            InsightAlgorithmVersions.TrainingVolume,
+            InsightAlgorithmVersions.EstimatedOneRepMax,
             result.Points.Select(item => new ExerciseProgressPointResponse(
-                item.WorkoutId, item.CompletedAtUtc, item.VolumeKgRepetitions,
-                item.BestWeightKg, item.BestRepetitions, item.EstimatedOneRepMaxKg)).ToList(),
-            Best(result.BestSet)));
+                item.WorkoutId,
+                item.CompletedAtUtc,
+                TrainingStatistics.RoundForOutput(item.VolumeKgRepetitions),
+                TrainingStatistics.RoundForOutput(item.MaxWeightKg),
+                item.MaxRepetitions,
+                TrainingStatistics.RoundForOutput(item.EstimatedOneRepMaxKg),
+                item.BodyweightMissing)).ToList(),
+            Best(result.BestSet),
+            Records(result.Records)));
+    }
+
+    private ActionResult? ResolveTimeZone(string timeZone, out TimeZoneInfo zone)
+    {
+        zone = TimeZoneInfo.Utc;
+        try
+        {
+            zone = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
+            return null;
+        }
+        catch (TimeZoneNotFoundException) { return Validation("timeZone", "The time zone is unknown."); }
+        catch (InvalidTimeZoneException) { return Validation("timeZone", "The time zone is invalid."); }
     }
 
     private ActionResult Validation(string key, string message)
@@ -83,8 +102,9 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
             Metric(result.Nutrition.CarbohydrateGrams), Metric(result.Nutrition.FatGrams)),
         new TrainingInsightsResponse(
             result.Training.VolumeAlgorithmVersion, result.Training.EstimatedOneRepMaxAlgorithmVersion,
-            result.Training.VolumeUnit, result.Training.WorkoutCount, result.Training.VolumeKgRepetitions,
-            Best(result.Training.BestSet)),
+            result.Training.VolumeUnit, result.Training.WorkoutCount,
+            TrainingStatistics.RoundForOutput(result.Training.VolumeKgRepetitions),
+            Best(result.Training.BestSet), result.Training.BodyweightMissing),
         result.WorkoutsLast7Days);
 
     private static WeightInsightsResponse Weight(WeightInsights value) => new(
@@ -93,7 +113,20 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
             value.Coverage, value.AverageKg, value.TrendKgPerWeek);
 
     private static MetricAverageResponse Metric(MetricAverage value) => new(value.Value, value.ObservedDays);
+
     private static BestSetResponse? Best(BestSet? value) => value is null ? null : new(
-        value.WorkoutId, value.ExerciseId, value.CompletedAtUtc, value.WeightKg,
-        value.Repetitions, value.EstimatedOneRepMaxKg);
+        value.WorkoutId, value.ExerciseId, value.CompletedAtUtc,
+        TrainingStatistics.RoundForOutput(value.EffectiveWeightKg), value.Repetitions,
+        TrainingStatistics.RoundForOutput(value.EstimatedOneRepMaxKg));
+
+    private static ExerciseRecordsResponse Records(ExerciseRecords value) => new(
+        Event(value.Current(RecordKind.MaxWeight), RecordKind.MaxWeight),
+        Event(value.Current(RecordKind.EstimatedOneRepMax), RecordKind.EstimatedOneRepMax),
+        Event(value.Current(RecordKind.Volume), RecordKind.Volume),
+        Event(value.Current(RecordKind.MaxRepetitions), RecordKind.MaxRepetitions),
+        value.RepetitionRecords.Select(item => new RepetitionRecordResponse(
+            item.Repetitions, TrainingStatistics.RoundForOutput(item.MaxWeightKg))).ToList());
+
+    private static RecordEventResponse? Event(RecordEvent? value, RecordKind kind) => value is null ? null : new(
+        value.WorkoutId, kind == RecordKind.MaxRepetitions ? value.Value : TrainingStatistics.RoundForOutput(value.Value));
 }

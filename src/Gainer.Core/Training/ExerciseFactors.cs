@@ -25,7 +25,8 @@ public static class ExerciseFactors
         }
     }
 
-    private static decimal DefaultBodyweightFactor(ExerciseType type) => type switch
+    /// <summary>Körpergewichtsanteil ohne eigenen oder Katalogwert: Kraft 0 %, alle anderen Typen 100 %.</summary>
+    public static decimal DefaultBodyweightFactor(ExerciseType type) => type switch
     {
         ExerciseType.BodyweightLoaded or ExerciseType.BodyweightOnly or ExerciseType.Assisted => 1m,
         _ => 0m,
