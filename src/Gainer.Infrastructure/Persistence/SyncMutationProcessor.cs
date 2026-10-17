@@ -95,16 +95,20 @@ public sealed class SyncMutationProcessor(
             await transaction.CommitAsync(cancellationToken);
             return new ProcessedSyncMutationResult(command.MutationId, false, revision, execution.Changes);
         }
+        catch (ActiveWorkoutExistsException)
+        {
+            throw new SyncMutationConflictException("active_workout_exists", "The user already has an active workout.");
+        }
         catch (Exception exception) when (exception is DailyCheckInConflictException or CustomExerciseConflictException or
             ExerciseCategoryConflictException or
-            BodyGoalConflictException or WorkoutTemplateConflictException or WorkoutRotationConflictException or WorkoutConflictException or
+            BodyGoalConflictException or TrainingPlanConflictException or WorkoutRotationConflictException or WorkoutConflictException or
             NutritionDayConflictException or ReusableMealConflictException or NutritionTargetScheduleConflictException)
         {
             throw new SyncMutationConflictException("stale_base_version", "The resource changed since the supplied base version.");
         }
         catch (Exception exception) when (exception is DailyCheckInNotFoundException or CustomExerciseNotFoundException or
             ExerciseCategoryNotFoundException or
-            WorkoutTemplateNotFoundException or WorkoutRotationNotFoundException or WorkoutNotFoundException or NutritionDayNotFoundException or
+            TrainingPlanNotFoundException or WorkoutRotationNotFoundException or WorkoutNotFoundException or NutritionDayNotFoundException or
             ReusableMealNotFoundException or NutritionTargetScheduleNotFoundException)
         {
             throw new SyncMutationConflictException("resource_not_found", "The resource is no longer available.");

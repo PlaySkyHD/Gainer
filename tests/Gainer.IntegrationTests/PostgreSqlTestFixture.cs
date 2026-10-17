@@ -44,7 +44,6 @@ internal sealed class PostgreSqlTestFixture : IAsyncDisposable
                 DatabaseSchemaVersion.MigrationHistorySchema))
             .AddInterceptors(
                 new UtcTimestampInterceptor(),
-                new WorkoutHistoryProtectionInterceptor(),
                 new UserOwnershipInterceptor(userContext))
             .Options;
         return new AppDbContext(options, userContext);

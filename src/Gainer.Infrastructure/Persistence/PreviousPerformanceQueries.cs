@@ -17,15 +17,22 @@ public sealed class PreviousPerformanceQueries(AppDbContext context) : IPrevious
             from exercise in context.WorkoutExercises.AsNoTracking()
             join workout in context.Workouts.AsNoTracking() on exercise.WorkoutId equals workout.Id
             where exercise.SourceExerciseId == sourceExerciseId
-                  && workout.Status == WorkoutStatus.Completed
-                  && workout.CompletedAtUtc < beforeUtc
-            orderby workout.CompletedAtUtc descending, workout.Id descending
+                  && workout.EndedAtUtc != null && workout.DeletedAtUtc == null
+                  && workout.EndedAtUtc < beforeUtc
+                  && context.WorkoutSets.Any(set => set.WorkoutExerciseId == exercise.Id
+                      && set.SetType != WorkoutSetType.Warmup
+                      && set.WeightKg != null
+                      && set.Repetitions > 0)
+            orderby workout.EndedAtUtc descending, workout.Id descending
             select new { Workout = workout, Exercise = exercise })
             .FirstOrDefaultAsync(cancellationToken);
-        if (latest?.Workout.CompletedAtUtc is not { } completedAt) return null;
+        if (latest?.Workout.EndedAtUtc is not { } endedAt) return null;
 
         List<PreviousSetPerformance> sets = await context.WorkoutSets.AsNoTracking()
-            .Where(item => item.WorkoutExerciseId == latest.Exercise.Id && item.IsCompleted)
+            .Where(item => item.WorkoutExerciseId == latest.Exercise.Id
+                && item.SetType != WorkoutSetType.Warmup
+                && item.WeightKg != null
+                && item.Repetitions > 0)
             .OrderBy(item => item.Position)
             .Select(item => new PreviousSetPerformance(
                 item.WeightKg!.Value,
@@ -33,6 +40,6 @@ public sealed class PreviousPerformanceQueries(AppDbContext context) : IPrevious
                 item.Rir,
                 item.Position))
             .ToListAsync(cancellationToken);
-        return new PreviousExercisePerformance(sourceExerciseId, latest.Workout.Id, completedAt, sets);
+        return new PreviousExercisePerformance(sourceExerciseId, latest.Workout.Id, endedAt, sets);
     }
 }

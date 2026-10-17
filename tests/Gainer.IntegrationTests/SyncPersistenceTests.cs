@@ -196,7 +196,7 @@ public sealed class SyncPersistenceTests
     }
 
     [TestMethod]
-    public async Task OfflineWorkoutCompletionReplaysAfterLostAcknowledgementAndRejectsChangedRetryAndForeignId()
+    public async Task OfflineWorkoutEndReplaysAfterLostAcknowledgementAndRejectsChangedRetryAndForeignId()
     {
         (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
         Guid firstClient = Guid.NewGuid();
@@ -204,104 +204,36 @@ public sealed class SyncPersistenceTests
         await RegisterActiveClientAsync(connectionString, firstUser, firstClient);
         await RegisterActiveClientAsync(connectionString, secondUser, secondClient);
 
-        Guid exerciseId = Guid.NewGuid();
-        Guid templateId = Guid.NewGuid();
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, firstUser))
+        Guid exerciseId;
+        await using (AppDbContext catalog = Fixture.CreateContext(connectionString, firstUser))
         {
-            seed.Exercises.Add(new Exercise
-            {
-                Id = exerciseId,
-                OwnerUserId = firstUser,
-                Name = "Bench press",
-                TargetMuscle = "Chest",
-                MuscleGroup = "Chest",
-                Equipment = "Barbell",
-                CatalogVersion = null,
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow,
-                Version = 1,
-            });
-            seed.WorkoutTemplates.Add(new WorkoutTemplate
-            {
-                Id = templateId,
-                Name = "Push",
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow,
-                Version = 1,
-            });
-            seed.WorkoutTemplateItems.Add(new WorkoutTemplateItem
-            {
-                Id = Guid.NewGuid(),
-                TemplateId = templateId,
-                ExerciseId = exerciseId,
-                Position = 0,
-                PlannedSets = 1,
-                MinimumRepetitions = 6,
-                MaximumRepetitions = 10,
-            });
-            await seed.SaveChangesAsync();
+            exerciseId = await catalog.Exercises.Where(item => item.OwnerUserId == null)
+                .Select(item => item.Id).FirstAsync();
         }
 
         Guid workoutId = Guid.NewGuid();
-        Guid startMutationId = Guid.NewGuid();
-        Guid editMutationId = Guid.NewGuid();
-        Guid completeMutationId = Guid.NewGuid();
-        ProcessSyncMutationCommand start = Command(
-            startMutationId, firstClient, 1, "startWorkout", "Workout", workoutId, 0,
-            new { workoutId, templateId });
+        Guid createMutationId = Guid.NewGuid();
+        Guid endMutationId = Guid.NewGuid();
+        DateTime started = new(2026, 8, 18, 17, 0, 0, DateTimeKind.Utc);
         Guid workoutExerciseId = Guid.NewGuid();
         Guid setId = Guid.NewGuid();
-        ProcessSyncMutationCommand edit = Command(
-            editMutationId, firstClient, 2, "editWorkout", "Workout", workoutId, 1,
-            new
-            {
-                workoutId,
-                baseVersion = 1,
-                exercises = new[]
-                {
-                    new
-                    {
-                        workoutExerciseId,
-                        sourceExerciseId = exerciseId,
-                        exerciseNameSnapshot = "untrusted client name",
-                        plannedSets = 1,
-                        minimumRepetitions = 6,
-                        maximumRepetitions = 10,
-                        targetRir = (decimal?)2,
-                        restSeconds = (int?)120,
-                        notes = (string?)null,
-                        sets = new[]
-                        {
-                            new
-                            {
-                                setId,
-                                weightKg = (decimal?)100,
-                                repetitions = (int?)8,
-                                rir = (decimal?)2,
-                                notes = (string?)null,
-                                isCompleted = true,
-                                completedAtUtc = (DateTime?)null,
-                            },
-                        },
-                    },
-                },
-            },
-            startMutationId);
-        ProcessSyncMutationCommand complete = Command(
-            completeMutationId, firstClient, 3, "completeWorkout", "Workout", workoutId, 2,
-            new { workoutId, baseVersion = 2, rotationId = (Guid?)null, rotationBaseVersion = (long?)null },
-            editMutationId);
+        ProcessSyncMutationCommand create = Command(
+            createMutationId, firstClient, 1, "createWorkout", "Workout", workoutId, 0,
+            new { workout = WorkoutPayload(workoutId, started, null, exerciseId, workoutExerciseId, setId, 100, 8) });
+        ProcessSyncMutationCommand end = Command(
+            endMutationId, firstClient, 2, "saveWorkout", "Workout", workoutId, 1,
+            new { baseVersion = 1, workout = WorkoutPayload(workoutId, started, started.AddMinutes(45), exerciseId, workoutExerciseId, setId, 100, 8) },
+            createMutationId);
 
         await using (AppDbContext apply = Fixture.CreateContext(connectionString, firstUser))
         {
             var user = new UserContext(firstUser);
             var processor = new SyncMutationProcessor(
                 apply, user, new SyncMutationExecutor(apply, user, TimeProvider.System), TimeProvider.System);
-            await processor.ProcessAsync(start);
-            await processor.ProcessAsync(edit);
-            ProcessedSyncMutationResult applied = await processor.ProcessAsync(complete);
+            await processor.ProcessAsync(create);
+            ProcessedSyncMutationResult applied = await processor.ProcessAsync(end);
             Assert.IsFalse(applied.Replayed);
-            Assert.AreEqual(3, applied.Revision);
+            Assert.AreEqual(2, applied.Revision);
         }
 
         await using (AppDbContext retry = Fixture.CreateContext(connectionString, firstUser))
@@ -309,16 +241,16 @@ public sealed class SyncPersistenceTests
             var user = new UserContext(firstUser);
             var processor = new SyncMutationProcessor(
                 retry, user, new SyncMutationExecutor(retry, user, TimeProvider.System), TimeProvider.System);
-            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(complete);
+            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(end);
             Assert.IsTrue(replayed.Replayed);
-            Assert.AreEqual(3, replayed.Revision);
-            Assert.AreEqual(WorkoutStatus.Completed, (await retry.Workouts.SingleAsync()).Status);
-            Assert.AreEqual(3, await retry.ProcessedMutations.CountAsync());
+            Assert.AreEqual(2, replayed.Revision);
+            Assert.IsNotNull((await retry.Workouts.SingleAsync()).EndedAtUtc);
+            Assert.AreEqual(2, await retry.ProcessedMutations.CountAsync());
 
             ProcessSyncMutationCommand changedRetry = Command(
-                completeMutationId, firstClient, 3, "completeWorkout", "Workout", workoutId, 1,
-                new { workoutId, baseVersion = 1, rotationId = (Guid?)null, rotationBaseVersion = (long?)null },
-                editMutationId);
+                endMutationId, firstClient, 2, "saveWorkout", "Workout", workoutId, 1,
+                new { baseVersion = 1, workout = WorkoutPayload(workoutId, started, null, exerciseId, workoutExerciseId, setId, 100, 8) },
+                createMutationId);
             SyncMutationConflictException changed = await Assert.ThrowsAsync<SyncMutationConflictException>(
                 () => processor.ProcessAsync(changedRetry));
             Assert.AreEqual("mutation_id_reused", changed.Code);
@@ -329,11 +261,11 @@ public sealed class SyncPersistenceTests
             var user = new UserContext(secondUser);
             var processor = new SyncMutationProcessor(
                 foreign, user, new SyncMutationExecutor(foreign, user, TimeProvider.System), TimeProvider.System);
-            ProcessSyncMutationCommand foreignEdit = Command(
-                Guid.NewGuid(), secondClient, 1, "editWorkout", "Workout", workoutId, 3,
-                new { workoutId, baseVersion = 3, exercises = Array.Empty<object>() });
+            ProcessSyncMutationCommand foreignSave = Command(
+                Guid.NewGuid(), secondClient, 1, "saveWorkout", "Workout", workoutId, 2,
+                new { baseVersion = 2, workout = WorkoutPayload(workoutId, started, null, exerciseId, workoutExerciseId, setId, 100, 8) });
             SyncMutationConflictException denied = await Assert.ThrowsAsync<SyncMutationConflictException>(
-                () => processor.ProcessAsync(foreignEdit));
+                () => processor.ProcessAsync(foreignSave));
             Assert.AreEqual("resource_not_found", denied.Code);
         }
     }
@@ -604,6 +536,50 @@ public sealed class SyncPersistenceTests
                 null,
                 payload));
     }
+
+    private static object WorkoutPayload(
+        Guid workoutId,
+        DateTime startedAtUtc,
+        DateTime? endedAtUtc,
+        Guid exerciseId,
+        Guid workoutExerciseId,
+        Guid setId,
+        decimal weightKg,
+        int repetitions) => new
+        {
+            workoutId,
+            title = "Push",
+            notes = (string?)null,
+            startedAtUtc,
+            endedAtUtc,
+            previousValueSource = "exercise",
+            sourcePlanId = (Guid?)null,
+            sourceWorkoutId = (Guid?)null,
+            exercises = new[]
+        {
+            new
+            {
+                workoutExerciseId,
+                sourceExerciseId = exerciseId,
+                exerciseNameSnapshot = "Bench press",
+                exerciseTypeSnapshot = "strength",
+                notes = (string?)null,
+                supersetId = (Guid?)null,
+                sets = new[]
+                {
+                    new
+                    {
+                        setId,
+                        setType = "normal",
+                        weightKg = (decimal?)weightKg,
+                        repetitions = (int?)repetitions,
+                        rir = (decimal?)2,
+                        notes = (string?)null,
+                    },
+                },
+            },
+        },
+        };
 
     private static ProcessSyncMutationCommand Command(
         Guid mutationId,

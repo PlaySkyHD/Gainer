@@ -117,23 +117,72 @@ public sealed class SyncMutationExecutor(
                             payload.TargetWeightKg, payload.StartDate, payload.TargetDate, expected), cancellationToken);
                     return Result(collector, snapshot);
                 }
-            case "saveWorkoutTemplate":
+            case "createWorkout":
                 {
-                    SaveWorkoutTemplatePayload payload = Deserialize<SaveWorkoutTemplatePayload>(content.Payload);
-                    ValidateExpectation(content, ResourceKind.WorkoutTemplate, payload.TemplateId, payload.BaseVersion);
-                    WorkoutTemplateSnapshot snapshot = await new WorkoutTemplateMutationHandler(context, userContext, timeProvider, collector)
-                        .SaveAsync(SaveWorkoutTemplateMutation.Create(
-                            Metadata(mutationId, content), payload.TemplateId, payload.BaseVersion, payload.Name, payload.Items), cancellationToken);
+                    CreateWorkoutPayload payload = Deserialize<CreateWorkoutPayload>(content.Payload);
+                    WorkoutValues workout = RequiredWorkout(payload.Workout);
+                    ValidateExpectation(content, ResourceKind.Workout, workout.WorkoutId, 0);
+                    WorkoutSnapshot snapshot = await new WorkoutMutationHandler(context, userContext, timeProvider, collector)
+                        .CreateAsync(CreateWorkoutMutation.Create(Metadata(mutationId, content), workout), cancellationToken);
                     return Result(collector, snapshot);
                 }
-            case "archiveWorkoutTemplate":
+            case "saveWorkout":
                 {
-                    ArchiveWorkoutTemplatePayload payload = Deserialize<ArchiveWorkoutTemplatePayload>(content.Payload);
-                    ValidateExpectation(content, ResourceKind.WorkoutTemplate, payload.TemplateId, payload.BaseVersion);
-                    WorkoutTemplateSnapshot snapshot = await new WorkoutTemplateMutationHandler(context, userContext, timeProvider, collector)
-                        .ArchiveAsync(ArchiveWorkoutTemplateMutation.Create(
-                            Metadata(mutationId, content), payload.TemplateId, payload.BaseVersion), cancellationToken);
+                    SaveWorkoutPayload payload = Deserialize<SaveWorkoutPayload>(content.Payload);
+                    WorkoutValues workout = RequiredWorkout(payload.Workout);
+                    ValidateExpectation(content, ResourceKind.Workout, workout.WorkoutId, payload.BaseVersion);
+                    WorkoutSnapshot snapshot = await new WorkoutMutationHandler(context, userContext, timeProvider, collector)
+                        .SaveAsync(SaveWorkoutMutation.Create(Metadata(mutationId, content), payload.BaseVersion, workout), cancellationToken);
                     return Result(collector, snapshot);
+                }
+            case "deleteWorkout":
+                {
+                    DeleteWorkoutPayload payload = Deserialize<DeleteWorkoutPayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.Workout, payload.WorkoutId, payload.BaseVersion);
+                    _ = await new WorkoutMutationHandler(context, userContext, timeProvider, collector)
+                        .DeleteAsync(DeleteWorkoutMutation.Create(
+                            Metadata(mutationId, content), payload.WorkoutId, payload.BaseVersion), cancellationToken);
+                    return Result(collector);
+                }
+            case "createTrainingPlan":
+                {
+                    CreateTrainingPlanPayload payload = Deserialize<CreateTrainingPlanPayload>(content.Payload);
+                    TrainingPlanValues plan = RequiredPlan(payload.Plan);
+                    ValidateExpectation(content, ResourceKind.TrainingPlan, plan.PlanId, 0);
+                    TrainingPlanSnapshot snapshot = await new TrainingPlanMutationHandler(context, userContext, timeProvider, collector)
+                        .CreateAsync(CreateTrainingPlanMutation.Create(Metadata(mutationId, content), plan), cancellationToken);
+                    return Result(collector, snapshot);
+                }
+            case "updateTrainingPlan":
+                {
+                    UpdateTrainingPlanPayload payload = Deserialize<UpdateTrainingPlanPayload>(content.Payload);
+                    TrainingPlanValues plan = RequiredPlan(payload.Plan);
+                    ValidateExpectation(content, ResourceKind.TrainingPlan, plan.PlanId, payload.BaseVersion);
+                    TrainingPlanSnapshot snapshot = await new TrainingPlanMutationHandler(context, userContext, timeProvider, collector)
+                        .UpdateAsync(UpdateTrainingPlanMutation.Create(Metadata(mutationId, content), payload.BaseVersion, plan), cancellationToken);
+                    return Result(collector, snapshot);
+                }
+            case "archiveTrainingPlan":
+                {
+                    ArchiveTrainingPlanPayload payload = Deserialize<ArchiveTrainingPlanPayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.TrainingPlan, payload.PlanId, payload.BaseVersion);
+                    TrainingPlanSnapshot snapshot = await new TrainingPlanMutationHandler(context, userContext, timeProvider, collector)
+                        .ArchiveAsync(ArchiveTrainingPlanMutation.Create(
+                            Metadata(mutationId, content), payload.PlanId, payload.BaseVersion), cancellationToken);
+                    return Result(collector, snapshot);
+                }
+            case "reorderTrainingPlans":
+                {
+                    ReorderTrainingPlansPayload payload = Deserialize<ReorderTrainingPlansPayload>(content.Payload);
+                    if (payload.Plans is null) throw new SyncMutationValidationException(InvalidPayloadCode, "The plan list is missing.");
+                    ValidateExpectations(content, payload.Plans
+                        .Select(item => (ResourceKind.TrainingPlan, item.PlanId, item.BaseVersion)).ToList());
+                    IReadOnlyList<TrainingPlanSnapshot> snapshots = await new TrainingPlanMutationHandler(context, userContext, timeProvider, collector)
+                        .ReorderAsync(ReorderTrainingPlansMutation.Create(
+                            Metadata(mutationId, content),
+                            payload.Plans.Select(item => new TrainingPlanVersion(item.PlanId, item.BaseVersion)).ToArray()), cancellationToken);
+                    _ = snapshots;
+                    return Result(collector);
                 }
             case "saveWorkoutRotation":
                 {
@@ -141,52 +190,8 @@ public sealed class SyncMutationExecutor(
                     ValidateExpectation(content, ResourceKind.WorkoutRotation, payload.RotationId, payload.BaseVersion);
                     WorkoutRotationSnapshot snapshot = await new WorkoutRotationHandler(context, userContext, timeProvider, collector)
                         .SaveAsync(SaveWorkoutRotationMutation.Create(
-                            Metadata(mutationId, content), payload.RotationId, payload.BaseVersion, payload.Entries), cancellationToken);
-                    return Result(collector, snapshot);
-                }
-            case "startWorkout":
-                {
-                    StartWorkoutPayload payload = Deserialize<StartWorkoutPayload>(content.Payload);
-                    ValidateExpectation(content, ResourceKind.Workout, payload.WorkoutId, 0);
-                    WorkoutSnapshot snapshot = await new WorkoutMutationHandler(context, userContext, timeProvider, collector)
-                        .StartAsync(StartWorkoutMutation.Create(
-                            Metadata(mutationId, content), payload.WorkoutId, payload.TemplateId), cancellationToken);
-                    return Result(collector, snapshot);
-                }
-            case "editWorkout":
-                {
-                    EditWorkoutPayload payload = Deserialize<EditWorkoutPayload>(content.Payload);
-                    ValidateExpectation(content, ResourceKind.Workout, payload.WorkoutId, payload.BaseVersion);
-                    WorkoutSnapshot snapshot = await new WorkoutMutationHandler(context, userContext, timeProvider, collector)
-                        .EditAsync(EditWorkoutMutation.Create(
-                            Metadata(mutationId, content), payload.WorkoutId, payload.BaseVersion, payload.Exercises), cancellationToken);
-                    return Result(collector, snapshot);
-                }
-            case "completeWorkout":
-                {
-                    CompleteWorkoutPayload payload = Deserialize<CompleteWorkoutPayload>(content.Payload);
-                    var expectations = new List<(ResourceKind Kind, Guid Id, long Version)>
-                    {
-                        (ResourceKind.Workout, payload.WorkoutId, payload.BaseVersion),
-                    };
-                    if (payload.RotationId is { } rotationId && payload.RotationBaseVersion is { } rotationVersion)
-                    {
-                        expectations.Add((ResourceKind.WorkoutRotation, rotationId, rotationVersion));
-                    }
-                    ValidateExpectations(content, expectations);
-                    CompleteWorkoutResult result = await new WorkoutMutationHandler(context, userContext, timeProvider, collector)
-                        .CompleteAsync(CompleteWorkoutMutation.Create(
-                            Metadata(mutationId, content), payload.WorkoutId, payload.BaseVersion,
-                            payload.RotationId, payload.RotationBaseVersion), cancellationToken);
-                    return Result(collector, result.Workout);
-                }
-            case "discardWorkout":
-                {
-                    DiscardWorkoutPayload payload = Deserialize<DiscardWorkoutPayload>(content.Payload);
-                    ValidateExpectation(content, ResourceKind.Workout, payload.WorkoutId, payload.BaseVersion);
-                    WorkoutSnapshot snapshot = await new WorkoutMutationHandler(context, userContext, timeProvider, collector)
-                        .DiscardAsync(DiscardWorkoutMutation.Create(
-                            Metadata(mutationId, content), payload.WorkoutId, payload.BaseVersion), cancellationToken);
+                            Metadata(mutationId, content), payload.RotationId, payload.BaseVersion,
+                            payload.PlanIds ?? []), cancellationToken);
                     return Result(collector, snapshot);
                 }
             case "saveNutritionDay":
@@ -272,6 +277,12 @@ public sealed class SyncMutationExecutor(
                 throw new SyncMutationValidationException("unsupported_operation", "The mutation operation is not supported.");
         }
     }
+
+    private static WorkoutValues RequiredWorkout(WorkoutValues? workout) =>
+        workout ?? throw new SyncMutationValidationException(InvalidPayloadCode, "The workout is missing.");
+
+    private static TrainingPlanValues RequiredPlan(TrainingPlanValues? plan) =>
+        plan ?? throw new SyncMutationValidationException(InvalidPayloadCode, "The training plan is missing.");
 
     private static NutritionTargetVersionDraft[] ToTargetVersionDrafts(NutritionTargetVersionPayload[] orderedPayloads) =>
         orderedPayloads.Select((item, index) =>
@@ -415,27 +426,18 @@ public sealed class SyncMutationExecutor(
         DateOnly? TargetDate,
         Guid? ExpectedActiveGoalId,
         long? ExpectedActiveGoalVersion);
-    private sealed record SaveWorkoutTemplatePayload(
-        Guid TemplateId,
-        long BaseVersion,
-        string Name,
-        IReadOnlyList<WorkoutTemplateItemValues> Items);
-    private sealed record ArchiveWorkoutTemplatePayload(Guid TemplateId, long BaseVersion);
+    private sealed record CreateWorkoutPayload(WorkoutValues? Workout);
+    private sealed record SaveWorkoutPayload(long BaseVersion, WorkoutValues? Workout);
+    private sealed record DeleteWorkoutPayload(Guid WorkoutId, long BaseVersion);
+    private sealed record CreateTrainingPlanPayload(TrainingPlanValues? Plan);
+    private sealed record UpdateTrainingPlanPayload(long BaseVersion, TrainingPlanValues? Plan);
+    private sealed record ArchiveTrainingPlanPayload(Guid PlanId, long BaseVersion);
+    private sealed record ReorderTrainingPlansPayload(IReadOnlyList<ReorderTrainingPlanItemPayload>? Plans);
+    private sealed record ReorderTrainingPlanItemPayload(Guid PlanId, long BaseVersion);
     private sealed record SaveWorkoutRotationPayload(
         Guid RotationId,
         long BaseVersion,
-        IReadOnlyList<WorkoutRotationEntry> Entries);
-    private sealed record StartWorkoutPayload(Guid WorkoutId, Guid TemplateId);
-    private sealed record EditWorkoutPayload(
-        Guid WorkoutId,
-        long BaseVersion,
-        IReadOnlyList<WorkoutExerciseSnapshotValues> Exercises);
-    private sealed record CompleteWorkoutPayload(
-        Guid WorkoutId,
-        long BaseVersion,
-        Guid? RotationId,
-        long? RotationBaseVersion);
-    private sealed record DiscardWorkoutPayload(Guid WorkoutId, long BaseVersion);
+        IReadOnlyList<Guid>? PlanIds);
     private sealed record SaveNutritionDayPayload(
         Guid NutritionDayId,
         DateOnly LocalDate,

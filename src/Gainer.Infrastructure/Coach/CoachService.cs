@@ -171,9 +171,9 @@ public sealed partial class CoachService(
             "workout",
             $"Recent workout {index + 1}",
             item.CompletedSetCount,
-            item.TemplateNameSnapshot,
+            item.Title,
             "completed sets",
-            item.CompletedAtUtc.ToString("O", CultureInfo.InvariantCulture),
+            item.EndedAtUtc.ToString("O", CultureInfo.InvariantCulture),
             null)).ToList();
         DashboardInsightSnapshot dashboard = await Dashboard(30, cancellationToken);
         return new ToolResult(dashboard.AsOfRevision, facts, facts.Count == 0 ? ["No completed workouts are available."] : []);

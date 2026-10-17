@@ -365,12 +365,17 @@ public sealed class ExerciseCatalogPersistenceTests
             ownerId,
             "Existing Custom");
 
-        await context.Database.MigrateAsync();
+        await context.GetInfrastructure().GetRequiredService<IMigrator>().MigrateAsync(migration);
         context.ChangeTracker.Clear();
         Exercise migrated = await context.Exercises.SingleAsync(item => item.Id == exerciseId);
         Assert.AreEqual(ExerciseType.Strength, migrated.ExerciseType);
         Assert.IsNull(migrated.BodyweightFactor);
         Assert.IsNull(migrated.WeightFactor);
+
+        // RebuildTrainingModel resets own exercises together with the training data (D11).
+        await context.Database.MigrateAsync();
+        context.ChangeTracker.Clear();
+        Assert.IsFalse(await context.Exercises.AnyAsync(item => item.Id == exerciseId));
     }
 
     private static async Task<string> CreateDatabaseAsync()

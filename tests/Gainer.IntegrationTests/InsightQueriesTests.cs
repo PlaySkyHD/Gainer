@@ -179,10 +179,11 @@ public sealed class InsightQueriesTests
         context.Workouts.Add(new Workout
         {
             Id = workoutId,
-            TemplateNameSnapshot = "Snapshot",
-            Status = WorkoutStatus.Completed,
+            Title = "Snapshot",
             StartedAtUtc = completed.AddHours(-1),
-            CompletedAtUtc = completed,
+            EndedAtUtc = completed,
+            PreviousValueSource = PreviousValueSource.Exercise,
+            CreatedAtUtc = completed.AddHours(-1),
             UpdatedAtUtc = completed,
             Version = 2,
         });
@@ -192,15 +193,12 @@ public sealed class InsightQueriesTests
             WorkoutId = workoutId,
             SourceExerciseId = exerciseId,
             ExerciseNameSnapshot = "Bench",
+            ExerciseTypeSnapshot = ExerciseType.Strength,
             Position = 0,
-            PlannedSets = 2,
-            MinimumRepetitions = 5,
-            MaximumRepetitions = 12,
-            WorkoutCompletedAtUtc = completed,
         });
         context.WorkoutSets.AddRange(
-            Set(workoutId, workoutExerciseId, 0, 100m, 6, completed),
-            Set(workoutId, workoutExerciseId, 1, 100m, 12, completed));
+            Set(workoutId, workoutExerciseId, 0, 100m, 6),
+            Set(workoutId, workoutExerciseId, 1, 100m, 12));
         await context.SaveChangesAsync();
     }
 
@@ -216,16 +214,15 @@ public sealed class InsightQueriesTests
         Version = 1,
     };
 
-    private static WorkoutSet Set(Guid workoutId, Guid exerciseId, int position, decimal weight, int reps, DateTime completed) => new()
+    private static WorkoutSet Set(Guid workoutId, Guid exerciseId, int position, decimal weight, int reps) => new()
     {
         Id = Guid.NewGuid(),
         WorkoutId = workoutId,
         WorkoutExerciseId = exerciseId,
         Position = position,
+        SetType = WorkoutSetType.Normal,
         WeightKg = weight,
         Repetitions = reps,
-        IsCompleted = true,
-        CompletedAtUtc = completed,
     };
 
     private static async Task<(string ConnectionString, Guid FirstUser, Guid SecondUser)> CreateDatabaseAsync()

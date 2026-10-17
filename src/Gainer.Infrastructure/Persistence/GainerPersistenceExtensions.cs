@@ -28,7 +28,6 @@ public static class GainerPersistenceExtensions
         string connectionName = DefaultConnectionName)
     {
         builder.Services.AddSingleton<UtcTimestampInterceptor>();
-        builder.Services.AddSingleton<WorkoutHistoryProtectionInterceptor>();
         builder.Services.AddScoped<UserOwnershipInterceptor>();
         builder.Services.AddScoped<IAccountInvitationService, AccountInvitationService>();
         builder.Services.AddScoped<IAccountStatusService, AccountStatusService>();
@@ -44,7 +43,8 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<IExerciseCatalogQueries, ExerciseCatalogQueries>();
         builder.Services.AddScoped<IExerciseResolver, ExerciseCatalogQueries>();
         builder.Services.AddScoped<ICustomExerciseMutationHandler, CustomExerciseMutationHandler>();
-        builder.Services.AddScoped<IWorkoutTemplateMutationHandler, WorkoutTemplateMutationHandler>();
+        builder.Services.AddScoped<ITrainingPlanMutationHandler, TrainingPlanMutationHandler>();
+        builder.Services.AddScoped<IWorkoutRotationQueries, WorkoutRotationQueries>();
         builder.Services.AddScoped<IWorkoutRotationHandler, WorkoutRotationHandler>();
         builder.Services.AddScoped<IWorkoutMutationHandler, WorkoutMutationHandler>();
         builder.Services.AddScoped<IPreviousPerformanceQueries, PreviousPerformanceQueries>();
@@ -75,7 +75,6 @@ public static class GainerPersistenceExtensions
                 DatabaseSchemaVersion.MigrationHistorySchema));
             options.AddInterceptors(
                 serviceProvider.GetRequiredService<UtcTimestampInterceptor>(),
-                serviceProvider.GetRequiredService<WorkoutHistoryProtectionInterceptor>(),
                 serviceProvider.GetRequiredService<UserOwnershipInterceptor>());
         });
 
