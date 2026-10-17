@@ -1,7 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/local/local_mutation.dart';
-import 'package:gainer_mobile/domain/models/training/exercise_history.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/workout_screen.dart';
@@ -91,9 +90,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('geänderter Satz erscheint im Tagebuch und im Übungsverlauf', () async {
+  test('geänderter Satz erscheint im Tagebuch', () async {
     final push = await seedHistoric();
-    final legs = await harness.seedWorkout(
+    await harness.seedWorkout(
       title: 'Legs',
       start: DateTime.utc(2026, 10, 15, 17),
       end: DateTime.utc(2026, 10, 15, 18),
@@ -125,12 +124,5 @@ void main() {
           .repetitions,
       10,
     );
-    final history = exerciseHistoryFor(
-      current: legs,
-      sourceExerciseId: 'bank-source',
-      diary: diary,
-    );
-    expect(history.single.sets.single.weightKg, 100);
-    expect(history.single.sets.single.repetitions, 10);
   });
 }

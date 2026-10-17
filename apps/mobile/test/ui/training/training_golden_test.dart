@@ -247,12 +247,7 @@ void main() {
       final active = ActiveWorkoutController(harness.repository);
       addTearDown(active.dispose);
       await tester.runAsync(() async {
-        await harness.seedWorkout(
-          title: 'Push',
-          start: DateTime.now().toUtc().subtract(
-            const Duration(minutes: 12, seconds: 34),
-          ),
-        );
+        await harness.seedWorkout(title: 'Push', start: _goldenBarStart);
         await active.load();
       });
       final model = MobileShellViewModel();
@@ -266,6 +261,7 @@ void main() {
             compactTrainingBar: CompactTrainingBar(
               activeWorkout: active,
               repository: harness.repository,
+              clock: () => _goldenBarNow,
             ),
             tabBuilder: (context, area) => const CupertinoPageScaffold(
               child: Center(child: Text('Heute-Inhalt')),
@@ -487,4 +483,9 @@ WorkoutBlock _squatBlock(LoggedSet first, [LoggedSet? second]) => WorkoutBlock(
   exerciseNameSnapshot: 'Kniebeuge',
   exerciseTypeSnapshot: ExerciseKind.strength,
   sets: [first, ?second],
+);
+
+final _goldenBarStart = DateTime.utc(2026, 10, 17, 8);
+final _goldenBarNow = _goldenBarStart.add(
+  const Duration(minutes: 12, seconds: 34),
 );

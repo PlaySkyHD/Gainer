@@ -8,7 +8,10 @@ import 'package:gainer_mobile/data/services/native/rest_timer_alert_port.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/domain/models/timer/rest_timer_shortcuts.dart';
 import 'package:gainer_mobile/domain/models/timer/rest_timer_state.dart';
+import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/rest_timer_controller.dart';
+
+import 'training_test_support.dart';
 
 const restTimerAccountId = '00000000-0000-4000-8000-000000000011';
 const restTimerWorkoutId = '00000000-0000-4000-8000-000000000010';
@@ -181,3 +184,21 @@ Future<void> advanceRestTimer(
 Widget restTimerHost({required Widget child}) {
   return Align(alignment: Alignment.bottomCenter, child: child);
 }
+
+/// Aktives Training mit Pausentimern aus dem Fixture, so wie der `AccountScope`
+/// sie in der App erzeugt.
+ActiveWorkoutController activeWorkoutWithTimers(
+  TrainingHarness harness,
+  RestTimerFixture fixture,
+) => ActiveWorkoutController(
+  harness.repository,
+  restTimerFactory: (workoutId) => RestTimerController(
+    workoutId: workoutId,
+    store: fixture.store,
+    notifications: fixture.notifications,
+    haptics: fixture.haptics,
+    alerts: fixture.alerts,
+    clock: fixture.clock.read,
+    observeLifecycle: false,
+  ),
+);

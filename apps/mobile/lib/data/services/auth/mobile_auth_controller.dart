@@ -9,6 +9,7 @@ import '../../../ui/features/coach/coach_view_model.dart';
 import '../../../ui/features/nutrition/nutrition_view_model.dart';
 import '../../../ui/features/progress/progress_view_model.dart';
 import '../../../ui/features/training/active_workout_controller.dart';
+import '../../../ui/features/training/rest_timer_controller.dart';
 import '../../models/api/api_models.dart';
 import '../../models/local/local_mutation.dart';
 import '../../repositories/body/body_repository.dart';
@@ -18,6 +19,7 @@ import '../../repositories/nutrition/api_nutrition_online_provider.dart';
 import '../../repositories/nutrition/nutrition_repository.dart';
 import '../../repositories/sync/local_sync_store.dart';
 import '../../repositories/sync/sync_repository.dart';
+import '../../repositories/timer/rest_timer_store.dart';
 import '../../repositories/training/api_exercise_catalog_provider.dart';
 import '../../repositories/training/training_log_repository.dart';
 import '../../services/api/api_client.dart';
@@ -25,6 +27,7 @@ import '../../services/api/api_session_service.dart';
 import '../../services/local/local_database.dart';
 import '../../services/local/pending_handover_secret_store.dart';
 import '../../services/native/native_feature_lifecycle_coordinator.dart';
+import '../../services/native/rest_timer_alert_port.dart';
 import '../../services/platform/pigeon_native_features_platform.dart';
 import '../../services/platform/platform_ports.dart';
 import '../platform/pigeon_pending_handover_secret_store.dart';
@@ -341,7 +344,17 @@ class MobileAuthController extends ChangeNotifier
       store: store,
       catalog: ApiExerciseCatalogProvider(api, store: store),
     );
-    final activeWorkout = ActiveWorkoutController(training);
+    final restTimerStore = RestTimerStore(store: store);
+    final activeWorkout = ActiveWorkoutController(
+      training,
+      restTimerFactory: (workoutId) => RestTimerController(
+        workoutId: workoutId,
+        store: restTimerStore,
+        notifications: nativeFeatures,
+        haptics: haptics,
+        alerts: const SystemRestTimerAlertPort(),
+      ),
+    );
     final nutrition = NutritionRepository(
       store: store,
       online: online ? ApiNutritionOnlineProvider(api) : null,
