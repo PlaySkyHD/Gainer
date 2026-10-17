@@ -5,6 +5,7 @@ import 'package:gainer_mobile/data/repositories/training/training_preferences.da
 import 'package:gainer_mobile/data/services/native/training_live_activity_coordinator.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/domain/models/timer/rest_timer_state.dart';
+import 'package:gainer_mobile/domain/models/training/workout_input.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/rest_timer_controller.dart';
@@ -105,6 +106,7 @@ void main() {
       isSessionActive: () => true,
       preferences: harness.repository.preferences,
       clock: fixture.clock.read,
+      readHistory: () => harness.repository.readDiary(),
     );
   });
 
@@ -410,4 +412,92 @@ void main() {
       expect(updates.last.pausedRemainingSeconds, 195);
     },
   );
+
+  /// Abgeschlossenes Training vor dem aktiven; es liefert die Vorwerte.
+  Future<void> seedPreviousWorkout(List<WorkoutBlock> blocks) async {
+    final start = _now.subtract(const Duration(days: 2));
+    await harness.seedWorkout(
+      title: 'Pull',
+      start: start,
+      end: start.add(const Duration(hours: 1)),
+      blocks: blocks,
+    );
+  }
+
+  group('Zielwert, Übungsposition und Pausendauer', () {
+    test(
+      'Zielwert des nächsten Satzes stammt aus dem letzten Training in kg',
+      () async {
+        await setDetails(true);
+        await seedPreviousWorkout([_block('Latzug', recorded: 3)]);
+        await startTraining(blocks: [_block('Latzug')]);
+
+        expect(platform.states.last.detail!.targetText, 'Ziel 40 kg × 10');
+      },
+    );
+
+    test('Gewichtseinheit lbs rechnet den Zielwert um', () async {
+      await harness.repository.preferences.write(
+        const TrainingPreferenceValues(
+          liveActivityDetails: true,
+          weightUnit: WeightUnit.lbs,
+        ),
+      );
+      await seedPreviousWorkout([_block('Latzug', recorded: 3)]);
+      await startTraining(blocks: [_block('Latzug')]);
+
+      expect(platform.states.last.detail!.targetText, 'Ziel 88,18 lbs × 10');
+    });
+
+    test('ohne Vorwert gibt es keinen Zielwert', () async {
+      await setDetails(true);
+      await startTraining(blocks: [_block('Latzug')]);
+
+      final detail = platform.states.last.detail!;
+      expect(detail.targetText, isNull);
+      expect(detail.exerciseIndex, 1);
+      expect(detail.exerciseCount, 1);
+    });
+
+    test('Übungsposition zählt die Übungen des Trainings', () async {
+      await setDetails(true);
+      final workout = await startTraining(
+        blocks: [_block('Latzug'), _block('Rudern')],
+      );
+      expect(platform.states.last.detail!.exerciseIndex, 1);
+      expect(platform.states.last.detail!.exerciseCount, 2);
+
+      await harness.repository.saveWorkout(
+        workout.copyWith(
+          exercises: [_block('Latzug', recorded: 3), _block('Rudern')],
+        ),
+      );
+      await active.load();
+      await _flush();
+
+      expect(platform.states.last.detail!.exerciseIndex, 2);
+      expect(platform.states.last.detail!.exerciseCount, 2);
+    });
+
+    test(
+      'Pausendauer ist mindestens die Basisdauer und folgt verlängerten Pausen',
+      () async {
+        await startTraining();
+        expect(platform.states.last.restDurationSeconds, isNull);
+
+        await active.restTimer!.start();
+        await _flush();
+        expect(platform.states.last.restDurationSeconds, 180);
+
+        await active.restTimer!.adjust(60);
+        await _flush();
+        expect(platform.states.last.restDurationSeconds, 240);
+
+        await active.restTimer!.stop();
+        await _flush();
+        expect(platform.states.last.timerPhase, RestTimerPhase.paused);
+        expect(platform.states.last.restDurationSeconds, 240);
+      },
+    );
+  });
 }

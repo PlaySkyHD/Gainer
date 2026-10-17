@@ -170,6 +170,7 @@ class PigeonNativeFeaturesPlatform
           ?.toUtc()
           .millisecondsSinceEpoch,
       pausedRemainingSeconds: state.pausedRemainingSeconds,
+      restDurationSeconds: state.restDurationSeconds,
       detail: detail == null
           ? null
           : PlatformLiveActivityDetail(
@@ -177,6 +178,9 @@ class PigeonNativeFeaturesPlatform
               exerciseName: detail.exerciseName,
               setIndex: detail.setIndex,
               setCount: detail.setCount,
+              exerciseIndex: detail.exerciseIndex,
+              exerciseCount: detail.exerciseCount,
+              targetText: detail.targetText,
             ),
     );
   }

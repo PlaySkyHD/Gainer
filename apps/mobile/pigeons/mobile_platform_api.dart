@@ -55,12 +55,22 @@ class PlatformLiveActivityDetail {
     required this.exerciseName,
     required this.setIndex,
     required this.setCount,
+    this.exerciseIndex,
+    this.exerciseCount,
+    this.targetText,
   });
 
   final String title;
   final String exerciseName;
   final int setIndex;
   final int setCount;
+
+  /// 1-basierte Position der Übung im Training.
+  final int? exerciseIndex;
+  final int? exerciseCount;
+
+  /// Zielwert des nächsten Satzes aus dem Vorwert, z. B. „Ziel 60 kg × 10“.
+  final String? targetText;
 }
 
 /// Neutraler Zustand der Trainings-Live-Activity. Restzeiten werden aus dem
@@ -74,6 +84,7 @@ class PlatformLiveActivityState {
     required this.staleAtUtcEpochMilliseconds,
     this.timerTargetAtUtcEpochMilliseconds,
     this.pausedRemainingSeconds,
+    this.restDurationSeconds,
     this.detail,
   });
 
@@ -86,6 +97,9 @@ class PlatformLiveActivityState {
   final int staleAtUtcEpochMilliseconds;
   final int? timerTargetAtUtcEpochMilliseconds;
   final int? pausedRemainingSeconds;
+
+  /// Dauer der aktuellen Pause in Sekunden; fehlt ohne Pause.
+  final int? restDurationSeconds;
   final PlatformLiveActivityDetail? detail;
 }
 

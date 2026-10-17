@@ -113,7 +113,7 @@ Der Planeditor SHALL einen großen Titel, darunter eine Karte „Training beginn
 
 ### Requirement: Live-Activity-Layout
 
-Die Sperrbildschirm-Karte SHALL ohne Abschneiden in die von iOS erlaubte Höhe passen: oben App-Icon und Trainingstitel, rechtsbündig die Trainingszeit; darunter links die Pause mit Fortschrittsbalken (ohne Pause die Übung), rechts Satzposition mit Satzpunkten, Zielwert und „Übung x/y“. Die kompakte Dynamic Island zeigt links Pausenring oder Icon und rechts Countdown oder Trainingszeit.
+Die Sperrbildschirm-Karte SHALL ohne Abschneiden in die von iOS erlaubte Höhe passen: oben App-Icon und Trainingstitel, während einer Pause rechtsbündig die Trainingszeit; darunter links die Pause mit Fortschrittsbalken (ohne Pause die Übung), rechts Satzposition mit Satzpunkten, Zielwert und „Übung x/y“. Die kompakte Dynamic Island zeigt links Pausenring oder Icon und rechts Countdown oder Trainingszeit.
 
 #### Scenario: Pause mit Übung
 - **GIVEN** Details aktiv, Training „Legs 2“, Beinbeuger mit zwei Sätzen, der erste erfasst, Pause läuft mit 0:32

@@ -99,6 +99,8 @@ final class NativeLiveActivities {
     let pausedRemaining = request.pausedRemainingSeconds.map { Int($0) }
     let targetIsValid = timerTargetAt.map { $0 > now && $0 <= horizon } ?? false
     let remainingIsValid = pausedRemaining.map { (0...maximumRestSeconds).contains($0) } ?? false
+    let restDuration = request.restDurationSeconds.map { Int($0) }
+    let restDurationIsValid = restDuration.map { (1...maximumRestSeconds).contains($0) } ?? true
 
     let phaseIsValid: Bool
     switch request.timerPhase {
@@ -111,14 +113,18 @@ final class NativeLiveActivities {
     default:
       phaseIsValid = false
     }
-    guard phaseIsValid, request.expired == (request.timerPhase == "expired") else { return nil }
+    guard phaseIsValid, restDurationIsValid, request.expired == (request.timerPhase == "expired")
+    else { return nil }
 
     let detail = request.detail.map {
       GainerWorkoutActivityAttributes.ContentState.Detail(
         title: $0.title,
         exerciseName: $0.exerciseName,
         setIndex: Int($0.setIndex),
-        setCount: Int($0.setCount)
+        setCount: Int($0.setCount),
+        exerciseIndex: $0.exerciseIndex.map { Int($0) },
+        exerciseCount: $0.exerciseCount.map { Int($0) },
+        targetText: $0.targetText
       )
     }
     let state = GainerWorkoutActivityAttributes.ContentState(
@@ -126,6 +132,7 @@ final class NativeLiveActivities {
       timerPhase: request.timerPhase,
       timerTargetAt: timerTargetAt,
       pausedRemainingSeconds: pausedRemaining,
+      restDurationSeconds: restDuration,
       expired: request.expired,
       detail: detail
     )

@@ -132,14 +132,18 @@ class WorkoutExportReceipt {
   final int syncVersion;
 }
 
-/// Detailangaben der Live Activity. Nur bei ausdrücklicher Freigabe gesetzt;
-/// Gewichte und Wiederholungen gehören nie hierher.
+/// Detailangaben der Live Activity. Nur bei ausdrücklicher Freigabe gesetzt.
+/// Erfasste Ist-Werte gehören nie hierher; [targetText] ist nur der Zielwert des
+/// nächsten Satzes aus dem Vorwert.
 class LiveActivityDetail {
   const LiveActivityDetail({
     required this.title,
     required this.exerciseName,
     required this.setIndex,
     required this.setCount,
+    this.exerciseIndex,
+    this.exerciseCount,
+    this.targetText,
   });
 
   final String title;
@@ -147,21 +151,39 @@ class LiveActivityDetail {
   final int setIndex;
   final int setCount;
 
+  /// 1-basierte Position der Übung im Training.
+  final int? exerciseIndex;
+  final int? exerciseCount;
+
+  /// Zielwert des nächsten Satzes aus dem Vorwert, z. B. „Ziel 60 kg × 10“.
+  final String? targetText;
+
   @override
   bool operator ==(Object other) =>
       other is LiveActivityDetail &&
       other.title == title &&
       other.exerciseName == exerciseName &&
       other.setIndex == setIndex &&
-      other.setCount == setCount;
+      other.setCount == setCount &&
+      other.exerciseIndex == exerciseIndex &&
+      other.exerciseCount == exerciseCount &&
+      other.targetText == targetText;
 
   @override
-  int get hashCode => Object.hash(title, exerciseName, setIndex, setCount);
+  int get hashCode => Object.hash(
+    title,
+    exerciseName,
+    setIndex,
+    setCount,
+    exerciseIndex,
+    exerciseCount,
+    targetText,
+  );
 }
 
-/// Neutraler Zustand einer Trainings-Live-Activity. Er enthält keine Gewichte,
-/// Wiederholungen oder Kontodaten; die Restzeit leitet die Oberfläche aus dem
-/// Zielzeitpunkt ab.
+/// Neutraler Zustand einer Trainings-Live-Activity. Er enthält keine erfassten
+/// Gewichte, Wiederholungen oder Kontodaten; die Restzeit leitet die Oberfläche
+/// aus dem Zielzeitpunkt ab.
 class LiveActivityState {
   const LiveActivityState({
     required this.sessionId,
@@ -170,6 +192,7 @@ class LiveActivityState {
     required this.staleAtUtc,
     this.timerTargetAtUtc,
     this.pausedRemainingSeconds,
+    this.restDurationSeconds,
     this.detail,
   });
 
@@ -185,6 +208,10 @@ class LiveActivityState {
   /// Nur im Zustand pausierter Pause.
   final int? pausedRemainingSeconds;
 
+  /// Dauer der aktuellen Pause (mindestens die Basisdauer); nur während einer
+  /// laufenden oder pausierten Pause gesetzt, dient dem Fortschrittsbalken.
+  final int? restDurationSeconds;
+
   /// Nur bei Detailfreigabe und vorhandenen Übungen.
   final LiveActivityDetail? detail;
 
@@ -199,6 +226,7 @@ class LiveActivityState {
       other.staleAtUtc == staleAtUtc &&
       other.timerTargetAtUtc == timerTargetAtUtc &&
       other.pausedRemainingSeconds == pausedRemainingSeconds &&
+      other.restDurationSeconds == restDurationSeconds &&
       other.detail == detail;
 
   @override
@@ -209,6 +237,7 @@ class LiveActivityState {
     staleAtUtc,
     timerTargetAtUtc,
     pausedRemainingSeconds,
+    restDurationSeconds,
     detail,
   );
 }

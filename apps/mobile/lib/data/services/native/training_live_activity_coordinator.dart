@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import '../../../data/repositories/training/training_preferences.dart';
 import '../../../domain/models/timer/rest_timer_state.dart';
+import '../../../domain/models/training/previous_values.dart';
+import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_rules.dart';
 import '../../../ui/features/training/active_workout_controller.dart';
@@ -9,7 +11,9 @@ import '../../../ui/features/training/rest_timer_controller.dart';
 import '../platform/platform_ports.dart';
 
 /// Hält genau eine Live Activity für das aktive Training des Kontos. Sie zeigt
-/// Trainingszeit, Pausenstatus und bei Freigabe Titel, Übung und Satzposition.
+/// Trainingszeit, Pausenstatus und bei Freigabe Titel, Übung, Satzposition und
+/// den Zielwert des nächsten Satzes aus dem Vorwert. Erfasste Werte erscheinen
+/// nie.
 ///
 /// Die Activity wird nur bei Änderungen des Zustands aktualisiert, nicht jede
 /// Sekunde: die Zeiten rendert das System aus den Zielzeitpunkten. Ist Live
@@ -23,6 +27,7 @@ class TrainingLiveActivityCoordinator {
     required this.isSessionActive,
     this.enabled = true,
     DateTime Function()? clock,
+    this.readHistory,
   }) : _clock = clock ?? DateTime.now;
 
   /// Gültigkeit ohne Pause: iOS markiert die Activity danach als veraltet.
@@ -32,14 +37,21 @@ class TrainingLiveActivityCoordinator {
   final LiveActivityPlatform platform;
   final bool Function() isSessionActive;
 
-  /// Trainingseinstellungen des Kontos. Die Detailfreigabe kommt von dort und
-  /// wird bei Änderungen sofort übernommen. Gewichte und Wiederholungen bleiben
-  /// unabhängig davon immer außen vor.
+  /// Trainingseinstellungen des Kontos. Die Detailfreigabe und die Gewichtseinheit
+  /// kommen von dort und werden bei Änderungen sofort übernommen.
   final TrainingPreferences preferences;
 
   /// Konfigurationsflag. `false` schaltet die Integration vollständig ab.
   final bool enabled;
   final DateTime Function() _clock;
+
+  /// Liefert das Tagebuch des Kontos für die Vorwerte. Fehlt es, gibt es keinen
+  /// Zielwert.
+  final Future<List<Workout>> Function()? readHistory;
+
+  /// Tagebuch ohne das aktive Training, einmal je Training geladen.
+  String? _historyWorkoutId;
+  List<Workout> _history = const [];
 
   RestTimerController? _timer;
   bool _activated = false;
@@ -66,6 +78,7 @@ class TrainingLiveActivityCoordinator {
     if (_disposed) return;
     activeWorkout.addListener(_onChanged);
     preferences.liveActivityDetails.addListener(_onChanged);
+    preferences.weightUnit.addListener(_onChanged);
     _attachTimer();
     _request();
   }
@@ -110,9 +123,28 @@ class TrainingLiveActivityCoordinator {
     if (_sessionId != null && _sessionId != workout.workoutId) {
       await _endOwned();
     }
+    if (preferences.liveActivityDetails.value) {
+      await _loadHistory(workout.workoutId);
+      if (_disposed) return;
+    }
     final state = _stateFor(workout);
     if (state == _sent) return;
     await _push(state);
+  }
+
+  /// Lädt das Tagebuch genau einmal je Training. Ein Lesefehler gilt als leer.
+  Future<void> _loadHistory(String workoutId) async {
+    final read = readHistory;
+    if (read == null || _historyWorkoutId == workoutId) return;
+    try {
+      _history = [
+        for (final candidate in await read())
+          if (candidate.workoutId != workoutId) candidate,
+      ];
+    } catch (_) {
+      _history = const [];
+    }
+    _historyWorkoutId = workoutId;
   }
 
   LiveActivityState _stateFor(Workout workout) {
@@ -136,6 +168,9 @@ class TrainingLiveActivityCoordinator {
       pausedRemainingSeconds: phase == RestTimerPhase.paused
           ? timerState?.pausedRemainingSeconds
           : null,
+      restDurationSeconds: timerState == null
+          ? null
+          : _restDurationFor(timerState, phase, now),
       staleAtUtc: staleAt,
       detail: preferences.liveActivityDetails.value
           ? _detailFor(workout)
@@ -143,24 +178,66 @@ class TrainingLiveActivityCoordinator {
     );
   }
 
+  /// Dauer der Pause für den Fortschrittsbalken; ohne laufende oder pausierte
+  /// Pause `null`. Nie kürzer als die Basisdauer.
+  int? _restDurationFor(
+    RestTimerState timer,
+    RestTimerPhase phase,
+    DateTime now,
+  ) => switch (phase) {
+    RestTimerPhase.running => math.max(
+      timer.baseDurationSeconds,
+      timer.remainingSecondsAt(now),
+    ),
+    RestTimerPhase.paused => math.max(
+      timer.baseDurationSeconds,
+      timer.pausedRemainingSeconds ?? 0,
+    ),
+    _ => null,
+  };
+
   /// Erste Übung mit unvollständigen Sätzen; sind alle vollständig, die letzte.
   LiveActivityDetail? _detailFor(Workout workout) {
     final blocks = workout.exercises;
     if (blocks.isEmpty) return null;
-    final block = blocks.firstWhere(
-      (block) => !isBlockComplete(block),
-      orElse: () => blocks.last,
-    );
+    final found = blocks.indexWhere((block) => !isBlockComplete(block));
+    final blockIndex = found >= 0 ? found : blocks.length - 1;
+    final block = blocks[blockIndex];
     final unrecorded = block.sets.indexWhere(
       (set) => !isSetRecorded(set, block.exerciseTypeSnapshot),
     );
     final position = unrecorded >= 0 ? unrecorded + 1 : block.sets.length;
+    final setIndex = math.max(position, 1);
     return LiveActivityDetail(
       title: workout.title,
       exerciseName: block.exerciseNameSnapshot,
-      setIndex: math.max(position, 1),
+      setIndex: setIndex,
       setCount: math.max(block.sets.length, 1),
+      exerciseIndex: blockIndex + 1,
+      exerciseCount: blocks.length,
+      targetText: _targetText(workout, block, setIndex),
     );
+  }
+
+  /// Zielwert des Satzes [setIndex] aus dem Vorwert; ohne Vorwert `null`.
+  String? _targetText(Workout workout, WorkoutBlock block, int setIndex) {
+    final previous = previousValuesFor(
+      workout,
+      _history,
+    )[block.workoutExerciseId];
+    final index = setIndex - 1;
+    if (previous == null || index < 0 || index >= previous.length) return null;
+    final set = previous[index];
+    if (set == null) return null;
+    final unit = preferences.weightUnit.value;
+    final weight = set.weightKg == null
+        ? null
+        : '${formatWeight(set.weightKg!, unit)} ${unit.label}';
+    final reps = set.repetitions;
+    if (weight != null && reps != null) return 'Ziel $weight × $reps';
+    if (weight != null) return 'Ziel $weight';
+    if (reps != null) return 'Ziel $reps Wdh.';
+    return null;
   }
 
   Future<void> _push(LiveActivityState state) async {
@@ -204,6 +281,7 @@ class TrainingLiveActivityCoordinator {
     _disposed = true;
     activeWorkout.removeListener(_onChanged);
     preferences.liveActivityDetails.removeListener(_onChanged);
+    preferences.weightUnit.removeListener(_onChanged);
     _timer?.removeListener(_onChanged);
     _timer = null;
     await _queue;

@@ -424,6 +424,7 @@ class MobileAuthController extends ChangeNotifier
         activeWorkout: activeWorkout,
         platform: nativeFeatures,
         preferences: training.preferences,
+        readHistory: training.readDiary,
         isSessionActive: () =>
             identical(account, nextScope) && _sessionGeneration == generation,
       ),

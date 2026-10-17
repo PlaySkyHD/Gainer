@@ -328,6 +328,9 @@ class PlatformLiveActivityDetail {
     required this.exerciseName,
     required this.setIndex,
     required this.setCount,
+    this.exerciseIndex,
+    this.exerciseCount,
+    this.targetText,
   });
 
   String title;
@@ -338,8 +341,24 @@ class PlatformLiveActivityDetail {
 
   int setCount;
 
+  /// 1-basierte Position der Übung im Training.
+  int? exerciseIndex;
+
+  int? exerciseCount;
+
+  /// Zielwert des nächsten Satzes aus dem Vorwert, z. B. „Ziel 60 kg × 10“.
+  String? targetText;
+
   List<Object?> _toList() {
-    return <Object?>[title, exerciseName, setIndex, setCount];
+    return <Object?>[
+      title,
+      exerciseName,
+      setIndex,
+      setCount,
+      exerciseIndex,
+      exerciseCount,
+      targetText,
+    ];
   }
 
   Object encode() {
@@ -353,6 +372,9 @@ class PlatformLiveActivityDetail {
       exerciseName: result[1]! as String,
       setIndex: result[2]! as int,
       setCount: result[3]! as int,
+      exerciseIndex: result[4] as int?,
+      exerciseCount: result[5] as int?,
+      targetText: result[6] as String?,
     );
   }
 
@@ -369,7 +391,10 @@ class PlatformLiveActivityDetail {
     return _deepEquals(title, other.title) &&
         _deepEquals(exerciseName, other.exerciseName) &&
         _deepEquals(setIndex, other.setIndex) &&
-        _deepEquals(setCount, other.setCount);
+        _deepEquals(setCount, other.setCount) &&
+        _deepEquals(exerciseIndex, other.exerciseIndex) &&
+        _deepEquals(exerciseCount, other.exerciseCount) &&
+        _deepEquals(targetText, other.targetText);
   }
 
   @override
@@ -378,7 +403,7 @@ class PlatformLiveActivityDetail {
 
   @override
   String toString() {
-    return 'PlatformLiveActivityDetail(title: $title, exerciseName: $exerciseName, setIndex: $setIndex, setCount: $setCount)';
+    return 'PlatformLiveActivityDetail(title: $title, exerciseName: $exerciseName, setIndex: $setIndex, setCount: $setCount, exerciseIndex: $exerciseIndex, exerciseCount: $exerciseCount, targetText: $targetText)';
   }
 }
 
@@ -393,6 +418,7 @@ class PlatformLiveActivityState {
     required this.staleAtUtcEpochMilliseconds,
     this.timerTargetAtUtcEpochMilliseconds,
     this.pausedRemainingSeconds,
+    this.restDurationSeconds,
     this.detail,
   });
 
@@ -411,6 +437,9 @@ class PlatformLiveActivityState {
 
   int? pausedRemainingSeconds;
 
+  /// Dauer der aktuellen Pause in Sekunden; fehlt ohne Pause.
+  int? restDurationSeconds;
+
   PlatformLiveActivityDetail? detail;
 
   List<Object?> _toList() {
@@ -422,6 +451,7 @@ class PlatformLiveActivityState {
       staleAtUtcEpochMilliseconds,
       timerTargetAtUtcEpochMilliseconds,
       pausedRemainingSeconds,
+      restDurationSeconds,
       detail,
     ];
   }
@@ -440,7 +470,8 @@ class PlatformLiveActivityState {
       staleAtUtcEpochMilliseconds: result[4]! as int,
       timerTargetAtUtcEpochMilliseconds: result[5] as int?,
       pausedRemainingSeconds: result[6] as int?,
-      detail: result[7] as PlatformLiveActivityDetail?,
+      restDurationSeconds: result[7] as int?,
+      detail: result[8] as PlatformLiveActivityDetail?,
     );
   }
 
@@ -470,6 +501,7 @@ class PlatformLiveActivityState {
           other.timerTargetAtUtcEpochMilliseconds,
         ) &&
         _deepEquals(pausedRemainingSeconds, other.pausedRemainingSeconds) &&
+        _deepEquals(restDurationSeconds, other.restDurationSeconds) &&
         _deepEquals(detail, other.detail);
   }
 
@@ -479,7 +511,7 @@ class PlatformLiveActivityState {
 
   @override
   String toString() {
-    return 'PlatformLiveActivityState(sessionId: $sessionId, timerPhase: $timerPhase, startedAtUtcEpochMilliseconds: $startedAtUtcEpochMilliseconds, expired: $expired, staleAtUtcEpochMilliseconds: $staleAtUtcEpochMilliseconds, timerTargetAtUtcEpochMilliseconds: $timerTargetAtUtcEpochMilliseconds, pausedRemainingSeconds: $pausedRemainingSeconds, detail: $detail)';
+    return 'PlatformLiveActivityState(sessionId: $sessionId, timerPhase: $timerPhase, startedAtUtcEpochMilliseconds: $startedAtUtcEpochMilliseconds, expired: $expired, staleAtUtcEpochMilliseconds: $staleAtUtcEpochMilliseconds, timerTargetAtUtcEpochMilliseconds: $timerTargetAtUtcEpochMilliseconds, pausedRemainingSeconds: $pausedRemainingSeconds, restDurationSeconds: $restDurationSeconds, detail: $detail)';
   }
 }
 
