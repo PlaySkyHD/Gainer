@@ -13,6 +13,8 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class TrainingSyncIsolationTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static PostgreSqlTestFixture? fixture;
     private static PostgreSqlTestFixture Fixture => fixture
@@ -96,8 +98,8 @@ public sealed class TrainingSyncIsolationTests
 
         // The owner's data stays untouched.
         await using AppDbContext check = Fixture.CreateContext(connectionString, owner);
-        Assert.IsNull((await check.Workouts.SingleAsync()).EndedAtUtc);
-        Assert.AreEqual(0, await check.Workouts.CountAsync(item => item.Title == "Stolen"));
+        Assert.IsNull((await check.Workouts.SingleAsync(TestContext.CancellationToken)).EndedAtUtc);
+        Assert.AreEqual(0, await check.Workouts.CountAsync(item => item.Title == "Stolen", TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -143,7 +145,7 @@ public sealed class TrainingSyncIsolationTests
         Assert.IsTrue(intruderRotation.Errors.ContainsKey("PlanIds"));
 
         await using AppDbContext check = Fixture.CreateContext(connectionString, owner);
-        Assert.AreEqual("Push", (await check.TrainingPlans.SingleAsync()).Name);
+        Assert.AreEqual("Push", (await check.TrainingPlans.SingleAsync(TestContext.CancellationToken)).Name);
     }
 
     [TestMethod]
@@ -185,14 +187,14 @@ public sealed class TrainingSyncIsolationTests
             MergeCommand(Guid.NewGuid(), ownerClient, 5, sourceId, 1, targetId, targetVersion: null));
 
         await using AppDbContext check = Fixture.CreateContext(connectionString, owner);
-        Assert.AreEqual(2, await check.WorkoutExercises.CountAsync(item => item.SourceExerciseId == targetId));
-        Assert.AreEqual(0, await check.WorkoutExercises.CountAsync(item => item.SourceExerciseId == sourceId));
-        Assert.IsTrue(await check.WorkoutExercises.AllAsync(item => item.ExerciseNameSnapshot == "Bench"));
-        Assert.AreEqual(2, await check.Workouts.CountAsync(item => item.Version == 2));
-        TrainingPlan plan = await check.TrainingPlans.SingleAsync();
+        Assert.AreEqual(2, await check.WorkoutExercises.CountAsync(item => item.SourceExerciseId == targetId, TestContext.CancellationToken));
+        Assert.AreEqual(0, await check.WorkoutExercises.CountAsync(item => item.SourceExerciseId == sourceId, TestContext.CancellationToken));
+        Assert.IsTrue(await check.WorkoutExercises.AllAsync(item => item.ExerciseNameSnapshot == "Bench", TestContext.CancellationToken));
+        Assert.AreEqual(2, await check.Workouts.CountAsync(item => item.Version == 2, TestContext.CancellationToken));
+        TrainingPlan plan = await check.TrainingPlans.SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual(2, plan.Version);
-        Assert.AreEqual(targetId, (await check.TrainingPlanEntries.SingleAsync()).ExerciseId);
-        Exercise source = await check.Exercises.SingleAsync(item => item.Id == sourceId);
+        Assert.AreEqual(targetId, (await check.TrainingPlanEntries.SingleAsync(TestContext.CancellationToken)).ExerciseId);
+        Exercise source = await check.Exercises.SingleAsync(item => item.Id == sourceId, TestContext.CancellationToken);
         Assert.IsTrue(source.IsArchived);
         Assert.AreEqual(2, source.Version);
         Assert.AreEqual("Bankdrücken LH", source.Name);
@@ -224,9 +226,9 @@ public sealed class TrainingSyncIsolationTests
         Assert.IsTrue(replay.Replayed);
         Assert.AreEqual(first.Revision, replay.Revision);
         await using AppDbContext check = Fixture.CreateContext(connectionString, owner);
-        Assert.AreEqual(2, (await check.Workouts.SingleAsync()).Version);
-        Assert.AreEqual(2, (await check.Exercises.SingleAsync(item => item.Id == sourceId)).Version);
-        Assert.AreEqual(1, await check.ChangeBatches.CountAsync(item => item.MutationId == mutationId));
+        Assert.AreEqual(2, (await check.Workouts.SingleAsync(TestContext.CancellationToken)).Version);
+        Assert.AreEqual(2, (await check.Exercises.SingleAsync(item => item.Id == sourceId, TestContext.CancellationToken)).Version);
+        Assert.AreEqual(1, await check.ChangeBatches.CountAsync(item => item.MutationId == mutationId, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -260,7 +262,7 @@ public sealed class TrainingSyncIsolationTests
         Assert.AreEqual("invalid_merge", identical.Code);
 
         await using AppDbContext check = Fixture.CreateContext(connectionString, owner);
-        Exercise unchanged = await check.Exercises.SingleAsync(item => item.Id == ownerSource);
+        Exercise unchanged = await check.Exercises.SingleAsync(item => item.Id == ownerSource, TestContext.CancellationToken);
         Assert.IsFalse(unchanged.IsArchived);
         Assert.AreEqual(1, unchanged.Version);
     }
@@ -285,8 +287,8 @@ public sealed class TrainingSyncIsolationTests
             MergeCommand(Guid.NewGuid(), ownerClient, 5, sourceId, 1, targetId, targetVersion: 1));
         Assert.IsTrue(merged.Changes.All(change => change.Resource.ResourceId != targetId));
         await using AppDbContext check = Fixture.CreateContext(connectionString, owner);
-        Assert.IsTrue((await check.Exercises.SingleAsync(item => item.Id == sourceId)).IsArchived);
-        Assert.AreEqual(1, (await check.Exercises.SingleAsync(item => item.Id == targetId)).Version);
+        Assert.IsTrue((await check.Exercises.SingleAsync(item => item.Id == sourceId, TestContext.CancellationToken)).IsArchived);
+        Assert.AreEqual(1, (await check.Exercises.SingleAsync(item => item.Id == targetId, TestContext.CancellationToken)).Version);
     }
 
     [TestMethod]
@@ -311,10 +313,10 @@ public sealed class TrainingSyncIsolationTests
             MergeCommand(Guid.NewGuid(), ownerClient, 3, sourceId, 1, targetId, targetVersion: null));
 
         await using AppDbContext check = Fixture.CreateContext(connectionString, intruder);
-        Assert.AreEqual(1, (await check.Workouts.SingleAsync()).Version);
-        Assert.AreEqual(targetId, (await check.WorkoutExercises.SingleAsync()).SourceExerciseId);
-        Assert.AreEqual(1, (await check.TrainingPlans.SingleAsync()).Version);
-        Assert.AreEqual(targetId, (await check.TrainingPlanEntries.SingleAsync()).ExerciseId);
+        Assert.AreEqual(1, (await check.Workouts.SingleAsync(TestContext.CancellationToken)).Version);
+        Assert.AreEqual(targetId, (await check.WorkoutExercises.SingleAsync(TestContext.CancellationToken)).SourceExerciseId);
+        Assert.AreEqual(1, (await check.TrainingPlans.SingleAsync(TestContext.CancellationToken)).Version);
+        Assert.AreEqual(targetId, (await check.TrainingPlanEntries.SingleAsync(TestContext.CancellationToken)).ExerciseId);
     }
 
     [TestMethod]
@@ -347,7 +349,7 @@ public sealed class TrainingSyncIsolationTests
             new { workoutId = deletedWorkoutId, baseVersion = 1 }));
 
         await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
-        List<SyncFeedChange> ownerChanges = (await new SyncChangeFeed(ownerContext).GetAsync(0, 200))
+        List<SyncFeedChange> ownerChanges = (await new SyncChangeFeed(ownerContext).GetAsync(0, 200, TestContext.CancellationToken))
             .Batches.SelectMany(batch => batch.Changes).ToList();
         SyncFeedChange activeWorkout = ownerChanges.Single(change => change.ResourceType == "Workout" && change.ResourceId == workoutId);
         Assert.IsFalse(activeWorkout.IsTombstone);
@@ -364,17 +366,17 @@ public sealed class TrainingSyncIsolationTests
         Assert.IsTrue(ownerChanges.Any(change => change.ResourceType == "ExerciseCategory" && change.ResourceId == categoryId));
 
         await using AppDbContext intruderContext = Fixture.CreateContext(connectionString, intruder);
-        List<SyncFeedChange> intruderChanges = (await new SyncChangeFeed(intruderContext).GetAsync(0, 200))
+        List<SyncFeedChange> intruderChanges = (await new SyncChangeFeed(intruderContext).GetAsync(0, 200, TestContext.CancellationToken))
             .Batches.SelectMany(batch => batch.Changes).ToList();
         Assert.HasCount(1, intruderChanges);
         Assert.AreEqual("CustomExercise", intruderChanges[0].ResourceType);
         Assert.IsFalse(intruderChanges.Any(change => change.ResourceId == workoutId || change.ResourceId == planId));
 
         var history = new WorkoutHistoryQueries(ownerContext);
-        IReadOnlyList<WorkoutHistorySummary> entries = await history.ListAsync(0, 10);
+        IReadOnlyList<WorkoutHistorySummary> entries = await history.ListAsync(0, 10, TestContext.CancellationToken);
         Assert.HasCount(1, entries);
         Assert.AreEqual(workoutId, entries[0].WorkoutId);
-        Assert.IsNull(await history.GetAsync(deletedWorkoutId));
+        Assert.IsNull(await history.GetAsync(deletedWorkoutId, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -401,8 +403,8 @@ public sealed class TrainingSyncIsolationTests
 
         await using (AppDbContext check = Fixture.CreateContext(connectionString, owner))
         {
-            Assert.AreEqual(0, await check.Workouts.CountAsync());
-            Assert.AreEqual(0, await check.ChangeBatches.CountAsync());
+            Assert.AreEqual(0, await check.Workouts.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(0, await check.ChangeBatches.CountAsync(TestContext.CancellationToken));
         }
 
         ProcessedSyncMutationResult accepted = await Process(connectionString, owner, ownerClient, WithProtocol(training, 3));
@@ -572,7 +574,7 @@ public sealed class TrainingSyncIsolationTests
         },
     };
 
-    private static object WithSource(object workout, Guid? planId = null, Guid? sourceWorkoutId = null)
+    private static System.Text.Json.Nodes.JsonObject WithSource(object workout, Guid? planId = null, Guid? sourceWorkoutId = null)
     {
         JsonElement element = JsonSerializer.SerializeToElement(workout, JsonOptions);
         var node = System.Text.Json.Nodes.JsonNode.Parse(element.GetRawText())!.AsObject();

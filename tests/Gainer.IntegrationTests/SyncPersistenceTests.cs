@@ -12,6 +12,8 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class SyncPersistenceTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly int[] ExpectedPositions = [0, 1];
     private static PostgreSqlTestFixture? fixture;
@@ -86,11 +88,11 @@ public sealed class SyncPersistenceTests
                 ResourceVersion = 2,
                 SnapshotJson = "{\"version\":2}",
             });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.CancellationToken);
 
         context.ChangeTracker.Clear();
-        ChangeBatch stored = await context.ChangeBatches.SingleAsync();
-        List<ChangeItem> items = await context.ChangeItems.OrderBy(item => item.Position).ToListAsync();
+        ChangeBatch stored = await context.ChangeBatches.SingleAsync(TestContext.CancellationToken);
+        List<ChangeItem> items = await context.ChangeItems.OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
         Assert.AreEqual(1, stored.Revision);
         CollectionAssert.AreEqual(ExpectedPositions, items.Select(item => item.Position).ToArray());
         Assert.IsTrue(items.All(item => item.BatchId == stored.Id));
@@ -104,7 +106,7 @@ public sealed class SyncPersistenceTests
         await InsertReceiptAsync(connectionString, firstUser, mutationId, revision: 1);
         await InsertReceiptAsync(connectionString, secondUser, mutationId, revision: 1);
         await using AppDbContext duplicate = Fixture.CreateContext(connectionString, firstUser);
-        SyncClient client = await duplicate.SyncClients.SingleAsync();
+        SyncClient client = await duplicate.SyncClients.SingleAsync(TestContext.CancellationToken);
         duplicate.ProcessedMutations.Add(new ProcessedMutation
         {
             MutationId = mutationId,
@@ -115,7 +117,7 @@ public sealed class SyncPersistenceTests
             Revision = 2,
             AppliedAtUtc = DateTime.UtcNow,
         });
-        await Assert.ThrowsAsync<DbUpdateException>(() => duplicate.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => duplicate.SaveChangesAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -135,7 +137,7 @@ public sealed class SyncPersistenceTests
             Revision = 1,
             AppliedAtUtc = DateTime.UtcNow,
         });
-        await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync(TestContext.CancellationToken));
 
         invalid.ChangeTracker.Clear();
         Guid batchId = Guid.NewGuid();
@@ -151,7 +153,7 @@ public sealed class SyncPersistenceTests
             IsTombstone = true,
             SnapshotJson = "{\"must\":\"be-null\"}",
         });
-        await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -169,7 +171,7 @@ public sealed class SyncPersistenceTests
             var user = new UserContext(userId);
             var processor = new SyncMutationProcessor(
                 firstContext, user, new SyncMutationExecutor(firstContext, user, TimeProvider.System), TimeProvider.System);
-            ProcessedSyncMutationResult applied = await processor.ProcessAsync(command);
+            ProcessedSyncMutationResult applied = await processor.ProcessAsync(command, TestContext.CancellationToken);
             Assert.IsFalse(applied.Replayed);
             Assert.AreEqual(1, applied.Revision);
             Assert.HasCount(1, applied.Changes);
@@ -179,19 +181,19 @@ public sealed class SyncPersistenceTests
             var user = new UserContext(userId);
             var processor = new SyncMutationProcessor(
                 replayContext, user, new SyncMutationExecutor(replayContext, user, TimeProvider.System), TimeProvider.System);
-            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(command);
+            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(command, TestContext.CancellationToken);
             Assert.IsTrue(replayed.Replayed);
             Assert.AreEqual(1, replayed.Revision);
-            Assert.AreEqual(1, await replayContext.DailyCheckIns.CountAsync());
-            Assert.AreEqual(1, await replayContext.ProcessedMutations.CountAsync());
-            Assert.AreEqual(1, await replayContext.ChangeBatches.CountAsync());
-            Assert.AreEqual(1, (await replayContext.UserSyncStates.SingleAsync()).CurrentRevision);
+            Assert.AreEqual(1, await replayContext.DailyCheckIns.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(1, await replayContext.ProcessedMutations.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(1, await replayContext.ChangeBatches.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(1, (await replayContext.UserSyncStates.SingleAsync(TestContext.CancellationToken)).CurrentRevision);
 
             ProcessSyncMutationCommand changed = CreateCheckInCommand(mutationId, clientId, checkInId, 90m);
             SyncMutationConflictException conflict = await Assert.ThrowsAsync<SyncMutationConflictException>(
-                () => processor.ProcessAsync(changed));
+                () => processor.ProcessAsync(changed, TestContext.CancellationToken));
             Assert.AreEqual("mutation_id_reused", conflict.Code);
-            Assert.AreEqual(82.5m, (await replayContext.DailyCheckIns.SingleAsync()).WeightKg);
+            Assert.AreEqual(82.5m, (await replayContext.DailyCheckIns.SingleAsync(TestContext.CancellationToken)).WeightKg);
         }
     }
 
@@ -208,7 +210,7 @@ public sealed class SyncPersistenceTests
         await using (AppDbContext catalog = Fixture.CreateContext(connectionString, firstUser))
         {
             exerciseId = await catalog.Exercises.Where(item => item.OwnerUserId == null)
-                .Select(item => item.Id).FirstAsync();
+                .Select(item => item.Id).FirstAsync(TestContext.CancellationToken);
         }
 
         Guid workoutId = Guid.NewGuid();
@@ -230,8 +232,8 @@ public sealed class SyncPersistenceTests
             var user = new UserContext(firstUser);
             var processor = new SyncMutationProcessor(
                 apply, user, new SyncMutationExecutor(apply, user, TimeProvider.System), TimeProvider.System);
-            await processor.ProcessAsync(create);
-            ProcessedSyncMutationResult applied = await processor.ProcessAsync(end);
+            await processor.ProcessAsync(create, TestContext.CancellationToken);
+            ProcessedSyncMutationResult applied = await processor.ProcessAsync(end, TestContext.CancellationToken);
             Assert.IsFalse(applied.Replayed);
             Assert.AreEqual(2, applied.Revision);
         }
@@ -241,18 +243,18 @@ public sealed class SyncPersistenceTests
             var user = new UserContext(firstUser);
             var processor = new SyncMutationProcessor(
                 retry, user, new SyncMutationExecutor(retry, user, TimeProvider.System), TimeProvider.System);
-            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(end);
+            ProcessedSyncMutationResult replayed = await processor.ProcessAsync(end, TestContext.CancellationToken);
             Assert.IsTrue(replayed.Replayed);
             Assert.AreEqual(2, replayed.Revision);
-            Assert.IsNotNull((await retry.Workouts.SingleAsync()).EndedAtUtc);
-            Assert.AreEqual(2, await retry.ProcessedMutations.CountAsync());
+            Assert.IsNotNull((await retry.Workouts.SingleAsync(TestContext.CancellationToken)).EndedAtUtc);
+            Assert.AreEqual(2, await retry.ProcessedMutations.CountAsync(TestContext.CancellationToken));
 
             ProcessSyncMutationCommand changedRetry = Command(
                 endMutationId, firstClient, 2, "saveWorkout", "Workout", workoutId, 1,
                 new { baseVersion = 1, workout = WorkoutPayload(workoutId, started, null, exerciseId, workoutExerciseId, setId, 100, 8) },
                 createMutationId);
             SyncMutationConflictException changed = await Assert.ThrowsAsync<SyncMutationConflictException>(
-                () => processor.ProcessAsync(changedRetry));
+                () => processor.ProcessAsync(changedRetry, TestContext.CancellationToken));
             Assert.AreEqual("mutation_id_reused", changed.Code);
         }
 
@@ -265,7 +267,7 @@ public sealed class SyncPersistenceTests
                 Guid.NewGuid(), secondClient, 1, "saveWorkout", "Workout", workoutId, 2,
                 new { baseVersion = 2, workout = WorkoutPayload(workoutId, started, null, exerciseId, workoutExerciseId, setId, 100, 8) });
             SyncMutationConflictException denied = await Assert.ThrowsAsync<SyncMutationConflictException>(
-                () => processor.ProcessAsync(foreignSave));
+                () => processor.ProcessAsync(foreignSave, TestContext.CancellationToken));
             Assert.AreEqual("resource_not_found", denied.Code);
         }
     }
@@ -283,7 +285,7 @@ public sealed class SyncPersistenceTests
             context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
         ProcessSyncMutationCommand inactive = CreateCheckInCommand(Guid.NewGuid(), inactiveClient, Guid.NewGuid(), 80m);
         SyncMutationConflictException inactiveError = await Assert.ThrowsAsync<SyncMutationConflictException>(
-            () => processor.ProcessAsync(inactive));
+            () => processor.ProcessAsync(inactive, TestContext.CancellationToken));
         Assert.AreEqual("inactive_client", inactiveError.Code);
 
         ProcessSyncMutationCommand unsupported = new(
@@ -294,13 +296,13 @@ public sealed class SyncPersistenceTests
                 null,
                 JsonDocument.Parse("{}").RootElement.Clone()));
         SyncMutationValidationException invalid = await Assert.ThrowsAsync<SyncMutationValidationException>(
-            () => processor.ProcessAsync(unsupported));
+            () => processor.ProcessAsync(unsupported, TestContext.CancellationToken));
         Assert.AreEqual("unsupported_operation", invalid.Code);
         context.ChangeTracker.Clear();
-        Assert.AreEqual(0, await context.ProcessedMutations.CountAsync());
-        Assert.AreEqual(0, await context.ChangeBatches.CountAsync());
-        Assert.AreEqual(0, await context.DailyCheckIns.CountAsync());
-        Assert.AreEqual(0, (await context.UserSyncStates.SingleAsync()).CurrentRevision);
+        Assert.AreEqual(0, await context.ProcessedMutations.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(0, await context.ChangeBatches.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(0, await context.DailyCheckIns.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(0, (await context.UserSyncStates.SingleAsync(TestContext.CancellationToken)).CurrentRevision);
     }
 
     [TestMethod]
@@ -319,14 +321,14 @@ public sealed class SyncPersistenceTests
 
         await using AppDbContext firstContext = Fixture.CreateContext(connectionString, firstUser);
         var feed = new SyncChangeFeed(firstContext);
-        SyncChangeFeedPage firstPage = await feed.GetAsync(0, 1);
+        SyncChangeFeedPage firstPage = await feed.GetAsync(0, 1, TestContext.CancellationToken);
         Assert.AreEqual(1, firstPage.NextCursor);
         Assert.IsTrue(firstPage.HasMore);
         Assert.HasCount(1, firstPage.Batches);
         Assert.HasCount(2, firstPage.Batches[0].Changes);
         Assert.AreEqual(firstResource, firstPage.Batches[0].Changes[0].ResourceId);
 
-        SyncChangeFeedPage secondPage = await feed.GetAsync(firstPage.NextCursor, 1);
+        SyncChangeFeedPage secondPage = await feed.GetAsync(firstPage.NextCursor, 1, TestContext.CancellationToken);
         Assert.AreEqual(2, secondPage.NextCursor);
         Assert.IsFalse(secondPage.HasMore);
         Assert.HasCount(1, secondPage.Batches);
@@ -335,13 +337,13 @@ public sealed class SyncPersistenceTests
         Assert.IsTrue(tombstone.IsTombstone);
         Assert.IsNull(tombstone.Snapshot);
 
-        SyncChangeFeedPage replay = await feed.GetAsync(secondPage.NextCursor, 1);
+        SyncChangeFeedPage replay = await feed.GetAsync(secondPage.NextCursor, 1, TestContext.CancellationToken);
         Assert.AreEqual(2, replay.NextCursor);
         Assert.IsFalse(replay.HasMore);
         Assert.IsEmpty(replay.Batches);
 
         await using AppDbContext secondContext = Fixture.CreateContext(connectionString, secondUser);
-        SyncChangeFeedPage secondUserPage = await new SyncChangeFeed(secondContext).GetAsync(0, 10);
+        SyncChangeFeedPage secondUserPage = await new SyncChangeFeed(secondContext).GetAsync(0, 10, TestContext.CancellationToken);
         Assert.HasCount(1, secondUserPage.Batches);
         Assert.AreEqual("DailyCheckIn", secondUserPage.Batches[0].Changes.Single().ResourceType);
     }
@@ -356,17 +358,17 @@ public sealed class SyncPersistenceTests
         var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
 
         RegisteredSyncClient first = await registry.RegisterAsync(new RegisterSyncClientCommand(
-            firstId, "Phone", 2, false));
+            firstId, "Phone", 2, false), TestContext.CancellationToken);
         RegisteredSyncClient second = await registry.RegisterAsync(new RegisterSyncClientCommand(
-            secondId, "Laptop", 2, false));
+            secondId, "Laptop", 2, false), TestContext.CancellationToken);
         Assert.IsTrue(first.IsActiveWriter);
         Assert.IsFalse(second.IsActiveWriter);
-        Assert.AreEqual(firstId, (await context.UserSyncStates.SingleAsync()).ActiveClientId);
+        Assert.AreEqual(firstId, (await context.UserSyncStates.SingleAsync(TestContext.CancellationToken)).ActiveClientId);
 
         RegisteredSyncClient takeover = await registry.RegisterAsync(new RegisterSyncClientCommand(
-            secondId, "Laptop", 2, true));
+            secondId, "Laptop", 2, true), TestContext.CancellationToken);
         Assert.IsTrue(takeover.IsActiveWriter);
-        UserSyncState state = await context.UserSyncStates.SingleAsync();
+        UserSyncState state = await context.UserSyncStates.SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual(secondId, state.ActiveClientId);
         Assert.AreEqual(2, state.Version);
     }
@@ -378,10 +380,10 @@ public sealed class SyncPersistenceTests
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
         var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
         SyncUpgradeRequiredException error = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(() =>
-            registry.RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Old browser", 0, true)));
+            registry.RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Old browser", 0, true), TestContext.CancellationToken));
         Assert.AreEqual("upgrade_required", error.Code);
-        Assert.AreEqual(0, await context.SyncClients.CountAsync());
-        Assert.AreEqual(0, await context.UserSyncStates.CountAsync());
+        Assert.AreEqual(0, await context.SyncClients.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(0, await context.UserSyncStates.CountAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -398,26 +400,26 @@ public sealed class SyncPersistenceTests
         ProcessSyncMutationCommand blocked = CreateCheckInCommand(
             Guid.NewGuid(), clientId, Guid.NewGuid(), 81m, sequence: 1, dependsOn: Guid.NewGuid());
         SyncMutationConflictException dependencyError = await Assert.ThrowsAsync<SyncMutationConflictException>(
-            () => processor.ProcessAsync(blocked));
+            () => processor.ProcessAsync(blocked, TestContext.CancellationToken));
         Assert.AreEqual("dependency_not_applied", dependencyError.Code);
 
         Guid checkInId = Guid.NewGuid();
         ProcessSyncMutationCommand independent = CreateCheckInCommand(
             Guid.NewGuid(), clientId, checkInId, 82m, sequence: 2);
-        ProcessedSyncMutationResult applied = await processor.ProcessAsync(independent);
+        ProcessedSyncMutationResult applied = await processor.ProcessAsync(independent, TestContext.CancellationToken);
         Assert.AreEqual(1, applied.Revision);
 
         ProcessSyncMutationCommand stale = CorrectCheckInCommand(
             Guid.NewGuid(), clientId, checkInId, 2, 83m, sequence: 3);
         SyncMutationConflictException staleError = await Assert.ThrowsAsync<SyncMutationConflictException>(
-            () => processor.ProcessAsync(stale));
+            () => processor.ProcessAsync(stale, TestContext.CancellationToken));
         Assert.AreEqual("stale_base_version", staleError.Code);
 
         context.ChangeTracker.Clear();
-        Assert.AreEqual(82m, (await context.DailyCheckIns.SingleAsync()).WeightKg);
-        Assert.AreEqual(1, await context.ProcessedMutations.CountAsync());
-        Assert.AreEqual(1, await context.ChangeBatches.CountAsync());
-        Assert.AreEqual(1, (await context.UserSyncStates.SingleAsync()).CurrentRevision);
+        Assert.AreEqual(82m, (await context.DailyCheckIns.SingleAsync(TestContext.CancellationToken)).WeightKg);
+        Assert.AreEqual(1, await context.ProcessedMutations.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(1, await context.ChangeBatches.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(1, (await context.UserSyncStates.SingleAsync(TestContext.CancellationToken)).CurrentRevision);
     }
 
     private static async Task InsertReceiptAsync(string connectionString, Guid userId, Guid mutationId, long revision)

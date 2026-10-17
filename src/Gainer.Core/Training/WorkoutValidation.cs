@@ -107,30 +107,7 @@ public static class WorkoutValidation
         var sets = new List<WorkoutSetValues>(exercise.Sets.Count);
         for (int index = 0; index < exercise.Sets.Count; index++)
         {
-            WorkoutSetValues set = exercise.Sets[index];
-            string setPrefix = $"{prefix}.Sets[{index}]";
-            if (set.SetId == Guid.Empty || !setIds.Add(set.SetId))
-            {
-                errors[$"{setPrefix}.SetId"] = "Set identifiers must be non-empty and unique.";
-            }
-            if (set.WeightKg is { } weight && (weight < 0 || weight > MaximumWeightKg))
-            {
-                errors[$"{setPrefix}.WeightKg"] = "Weight must be between 0 and 10000 kg.";
-            }
-            if (set.Repetitions is { } repetitions && (repetitions < 0 || repetitions > MaximumRepetitions))
-            {
-                errors[$"{setPrefix}.Repetitions"] = "Repetitions must be between 0 and 10000.";
-            }
-            if (set.Rir is { } rir && (rir < 0 || rir > MaximumRir))
-            {
-                errors[$"{setPrefix}.Rir"] = "RIR must be between 0 and 10.";
-            }
-            ValidateNotes(set.Notes, $"{setPrefix}.Notes", errors);
-            sets.Add(set with
-            {
-                SetType = WorkoutSetTypes.ToStorageValue(WorkoutSetTypes.ParseOrNormal(set.SetType)),
-                Notes = NormalizeText(set.Notes),
-            });
+            sets.Add(NormalizeSet(exercise.Sets[index], $"{prefix}.Sets[{index}]", setIds, errors));
         }
 
         return new WorkoutExerciseValues(
@@ -141,6 +118,36 @@ public static class WorkoutValidation
             NormalizeText(exercise.Notes),
             exercise.SupersetId,
             sets);
+    }
+
+    private static WorkoutSetValues NormalizeSet(
+        WorkoutSetValues set,
+        string setPrefix,
+        HashSet<Guid> setIds,
+        Dictionary<string, string> errors)
+    {
+        if (set.SetId == Guid.Empty || !setIds.Add(set.SetId))
+        {
+            errors[$"{setPrefix}.SetId"] = "Set identifiers must be non-empty and unique.";
+        }
+        if (set.WeightKg is { } weight && (weight < 0 || weight > MaximumWeightKg))
+        {
+            errors[$"{setPrefix}.WeightKg"] = "Weight must be between 0 and 10000 kg.";
+        }
+        if (set.Repetitions is { } repetitions && (repetitions < 0 || repetitions > MaximumRepetitions))
+        {
+            errors[$"{setPrefix}.Repetitions"] = "Repetitions must be between 0 and 10000.";
+        }
+        if (set.Rir is { } rir && (rir < 0 || rir > MaximumRir))
+        {
+            errors[$"{setPrefix}.Rir"] = "RIR must be between 0 and 10.";
+        }
+        ValidateNotes(set.Notes, $"{setPrefix}.Notes", errors);
+        return set with
+        {
+            SetType = WorkoutSetTypes.ToStorageValue(WorkoutSetTypes.ParseOrNormal(set.SetType)),
+            Notes = NormalizeText(set.Notes),
+        };
     }
 
     private static void ValidateNotes(string? notes, string key, Dictionary<string, string> errors)

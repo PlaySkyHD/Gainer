@@ -14,6 +14,8 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class ExerciseCatalogPersistenceTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     private static PostgreSqlTestFixture? fixture;
 
     private static PostgreSqlTestFixture Fixture =>
@@ -45,7 +47,7 @@ public sealed class ExerciseCatalogPersistenceTests
             .IgnoreQueryFilters()
             .Where(item => item.OwnerUserId == null)
             .OrderBy(item => item.Id)
-            .ToListAsync();
+            .ToListAsync(TestContext.CancellationToken);
 
         Assert.HasCount(ExerciseCatalogSnapshot.Document.Entries.Count, exercises);
         CollectionAssert.AreEqual(
@@ -73,14 +75,14 @@ public sealed class ExerciseCatalogPersistenceTests
             Search: "Bench",
             MuscleGroup: "Chest",
             Equipment: "Barbell",
-            Limit: 10));
+            Limit: 10), TestContext.CancellationToken);
 
         Assert.AreEqual(2, page.Total);
         Assert.IsTrue(page.Items.Any(item => item.Name == "Barbell Bench Press" && !item.IsCustom));
         Assert.IsTrue(page.Items.Any(item => item.Name == "My Bench Variation" && item.IsCustom));
         Assert.IsFalse(page.Items.Any(item => item.Name.Contains("Secret", StringComparison.Ordinal)));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            queries.SearchAsync(new ExerciseCatalogFilter(Limit: 101)));
+            queries.SearchAsync(new ExerciseCatalogFilter(Limit: 101), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -90,10 +92,10 @@ public sealed class ExerciseCatalogPersistenceTests
         Guid userId = Guid.NewGuid();
         await SeedUserAsync(connectionString, userId);
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
-        Exercise exercise = await context.Exercises.FirstAsync(item => item.OwnerUserId == null);
+        Exercise exercise = await context.Exercises.FirstAsync(item => item.OwnerUserId == null, TestContext.CancellationToken);
         exercise.Name = "Changed";
 
-        await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => context.SaveChangesAsync());
+        await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => context.SaveChangesAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -115,7 +117,7 @@ public sealed class ExerciseCatalogPersistenceTests
             CustomExerciseSnapshot created = await handler.CreateAsync(CreateCustomExerciseMutation.Create(
                 Metadata(),
                 exerciseId,
-                new CustomExerciseValues("  My Fly  ", "strength", MuscleGroup: "Chest", Equipment: "Cable")));
+                new CustomExerciseValues("  My Fly  ", "strength", MuscleGroup: "Chest", Equipment: "Cable")), TestContext.CancellationToken);
             Assert.AreEqual("My Fly", created.Values.Name);
             Assert.AreEqual(1, created.Version);
         }
@@ -123,7 +125,7 @@ public sealed class ExerciseCatalogPersistenceTests
         await using (AppDbContext otherContext = Fixture.CreateContext(connectionString, otherId))
         {
             var otherQueries = new ExerciseCatalogQueries(otherContext, new TestUserContext(otherId));
-            Assert.IsNull(await otherQueries.ResolveAsync(exerciseId, includeArchived: true));
+            Assert.IsNull(await otherQueries.ResolveAsync(exerciseId, includeArchived: true, TestContext.CancellationToken));
             var handler = new CustomExerciseMutationHandler(
                 otherContext,
                 new TestUserContext(otherId),
@@ -133,7 +135,7 @@ public sealed class ExerciseCatalogPersistenceTests
                     Metadata(),
                     exerciseId,
                     1,
-                    new CustomExerciseValues("Stolen", "strength"))));
+                    new CustomExerciseValues("Stolen", "strength")), TestContext.CancellationToken));
         }
 
         await using (AppDbContext archiveContext = Fixture.CreateContext(connectionString, ownerId))
@@ -143,7 +145,7 @@ public sealed class ExerciseCatalogPersistenceTests
                 new TestUserContext(ownerId),
                 new FixedTimeProvider(new DateTimeOffset(2026, 8, 19, 12, 0, 0, TimeSpan.Zero)));
             CustomExerciseSnapshot archived = await handler.ArchiveAsync(
-                ArchiveCustomExerciseMutation.Create(Metadata(), exerciseId, 1));
+                ArchiveCustomExerciseMutation.Create(Metadata(), exerciseId, 1), TestContext.CancellationToken);
             Assert.IsTrue(archived.IsArchived);
             Assert.AreEqual(2, archived.Version);
         }
@@ -151,11 +153,11 @@ public sealed class ExerciseCatalogPersistenceTests
         await using (AppDbContext readContext = Fixture.CreateContext(connectionString, ownerId))
         {
             var queries = new ExerciseCatalogQueries(readContext, new TestUserContext(ownerId));
-            Assert.IsNull(await queries.ResolveAsync(exerciseId, includeArchived: false));
-            ExerciseCatalogItem? historicalReference = await queries.ResolveAsync(exerciseId, includeArchived: true);
+            Assert.IsNull(await queries.ResolveAsync(exerciseId, includeArchived: false, TestContext.CancellationToken));
+            ExerciseCatalogItem? historicalReference = await queries.ResolveAsync(exerciseId, includeArchived: true, TestContext.CancellationToken);
             Assert.IsNotNull(historicalReference);
             Assert.AreEqual("My Fly", historicalReference.Name);
-            ExerciseCatalogPage selectable = await queries.SearchAsync(new ExerciseCatalogFilter(Search: "My Fly"));
+            ExerciseCatalogPage selectable = await queries.SearchAsync(new ExerciseCatalogFilter(Search: "My Fly"), TestContext.CancellationToken);
             Assert.AreEqual(0, selectable.Total);
         }
     }
@@ -170,16 +172,16 @@ public sealed class ExerciseCatalogPersistenceTests
         await using AppDbContext context = Fixture.CreateContext(connectionString, ownerId);
         var handler = new CustomExerciseMutationHandler(context, new TestUserContext(ownerId), TimeProvider.System);
         await Assert.ThrowsAsync<CustomExerciseValidationException>(() => handler.CreateAsync(
-            CreateCustomExerciseMutation.Create(Metadata(), exerciseId, new CustomExerciseValues("  ", "strength"))));
-        Assert.AreEqual(0, await context.Exercises.CountAsync(item => item.OwnerUserId == ownerId));
+            CreateCustomExerciseMutation.Create(Metadata(), exerciseId, new CustomExerciseValues("  ", "strength")), TestContext.CancellationToken));
+        Assert.AreEqual(0, await context.Exercises.CountAsync(item => item.OwnerUserId == ownerId, TestContext.CancellationToken));
 
         CustomExerciseSnapshot created = await handler.CreateAsync(CreateCustomExerciseMutation.Create(
-            Metadata(), exerciseId, new CustomExerciseValues("Original", "strength")));
+            Metadata(), exerciseId, new CustomExerciseValues("Original", "strength")), TestContext.CancellationToken);
         await Assert.ThrowsAsync<CustomExerciseConflictException>(() => handler.UpdateAsync(
             UpdateCustomExerciseMutation.Create(
-                Metadata(), exerciseId, created.Version + 1, new CustomExerciseValues("Changed", "strength"))));
+                Metadata(), exerciseId, created.Version + 1, new CustomExerciseValues("Changed", "strength")), TestContext.CancellationToken));
         context.ChangeTracker.Clear();
-        Exercise stored = await context.Exercises.SingleAsync(item => item.Id == exerciseId);
+        Exercise stored = await context.Exercises.SingleAsync(item => item.Id == exerciseId, TestContext.CancellationToken);
         Assert.AreEqual("Original", stored.Name);
         Assert.AreEqual(1, stored.Version);
     }
@@ -192,12 +194,12 @@ public sealed class ExerciseCatalogPersistenceTests
         List<Exercise> exercises = await context.Exercises
             .IgnoreQueryFilters()
             .Where(item => item.OwnerUserId == null)
-            .ToListAsync();
-        List<ExerciseCategoryAssignment> assignments = await context.ExerciseCategoryAssignments.ToListAsync();
+            .ToListAsync(TestContext.CancellationToken);
+        List<ExerciseCategoryAssignment> assignments = await context.ExerciseCategoryAssignments.ToListAsync(TestContext.CancellationToken);
         HashSet<Guid> baseCategoryIds = (await context.ExerciseCategories
             .Where(item => item.OwnerUserId == null)
             .Select(item => item.Id)
-            .ToListAsync()).ToHashSet();
+            .ToListAsync(TestContext.CancellationToken)).ToHashSet();
 
         Assert.HasCount(ExerciseCatalogSnapshot.Document.Entries.Count, exercises);
         foreach (Exercise exercise in exercises)
@@ -225,7 +227,7 @@ public sealed class ExerciseCatalogPersistenceTests
         string connectionString = await CreateDatabaseAsync();
         await using (AppDbContext context = Fixture.CreateContext(connectionString, Guid.NewGuid()))
         {
-            List<ExerciseCategory> categories = await context.ExerciseCategories.ToListAsync();
+            List<ExerciseCategory> categories = await context.ExerciseCategories.ToListAsync(TestContext.CancellationToken);
             Assert.HasCount(ExerciseCatalogSnapshot.Document.Categories.Count, categories);
             Assert.IsTrue(categories.All(item =>
                 item.OwnerUserId == null &&
@@ -237,15 +239,15 @@ public sealed class ExerciseCatalogPersistenceTests
         await SeedUserAsync(connectionString, userId);
         await using (AppDbContext renameContext = Fixture.CreateContext(connectionString, userId))
         {
-            ExerciseCategory category = await renameContext.ExerciseCategories.FirstAsync(item => item.OwnerUserId == null);
+            ExerciseCategory category = await renameContext.ExerciseCategories.FirstAsync(item => item.OwnerUserId == null, TestContext.CancellationToken);
             category.Name = "Changed";
-            await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => renameContext.SaveChangesAsync());
+            await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => renameContext.SaveChangesAsync(TestContext.CancellationToken));
         }
 
         await using AppDbContext archiveContext = Fixture.CreateContext(connectionString, userId);
-        ExerciseCategory archived = await archiveContext.ExerciseCategories.FirstAsync(item => item.OwnerUserId == null);
+        ExerciseCategory archived = await archiveContext.ExerciseCategories.FirstAsync(item => item.OwnerUserId == null, TestContext.CancellationToken);
         archived.IsArchived = true;
-        await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => archiveContext.SaveChangesAsync());
+        await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => archiveContext.SaveChangesAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -255,11 +257,11 @@ public sealed class ExerciseCatalogPersistenceTests
         Guid userId = Guid.NewGuid();
         await SeedUserAsync(connectionString, userId);
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
-        Exercise exercise = await context.Exercises.FirstAsync(item => item.OwnerUserId == null);
+        Exercise exercise = await context.Exercises.FirstAsync(item => item.OwnerUserId == null, TestContext.CancellationToken);
         exercise.ExerciseType = ExerciseType.Assisted;
         exercise.WeightFactor = 2m;
 
-        await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => context.SaveChangesAsync());
+        await Assert.ThrowsAsync<BaseExerciseImmutableException>(() => context.SaveChangesAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -301,23 +303,23 @@ public sealed class ExerciseCatalogPersistenceTests
             createContext.ExerciseCategoryAssignments.AddRange(
                 new ExerciseCategoryAssignment { ExerciseId = exerciseId, CategoryId = categoryId },
                 new ExerciseCategoryAssignment { ExerciseId = exerciseId, CategoryId = baseCategoryId });
-            await createContext.SaveChangesAsync();
+            await createContext.SaveChangesAsync(TestContext.CancellationToken);
         }
 
         await using (AppDbContext readContext = Fixture.CreateContext(connectionString, ownerId))
         {
-            Exercise stored = await readContext.Exercises.SingleAsync(item => item.Id == exerciseId);
+            Exercise stored = await readContext.Exercises.SingleAsync(item => item.Id == exerciseId, TestContext.CancellationToken);
             Assert.AreEqual(ExerciseType.Assisted, stored.ExerciseType);
             Assert.AreEqual("Band", stored.Notes);
             Assert.AreEqual(0.9m, stored.BodyweightFactor);
             Assert.AreEqual(1.5m, stored.WeightFactor);
-            Assert.AreEqual(2, await readContext.ExerciseCategoryAssignments.CountAsync(item => item.ExerciseId == exerciseId));
+            Assert.AreEqual(2, await readContext.ExerciseCategoryAssignments.CountAsync(item => item.ExerciseId == exerciseId, TestContext.CancellationToken));
         }
 
         await using AppDbContext otherContext = Fixture.CreateContext(connectionString, otherId);
-        ExerciseCategory foreignCategory = await otherContext.ExerciseCategories.SingleAsync(item => item.Id == categoryId);
+        ExerciseCategory foreignCategory = await otherContext.ExerciseCategories.SingleAsync(item => item.Id == categoryId, TestContext.CancellationToken);
         foreignCategory.Name = "Stolen";
-        await Assert.ThrowsAsync<UserIsolationViolationException>(() => otherContext.SaveChangesAsync());
+        await Assert.ThrowsAsync<UserIsolationViolationException>(() => otherContext.SaveChangesAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -341,7 +343,7 @@ public sealed class ExerciseCatalogPersistenceTests
                 UpdatedAtUtc = DateTime.UtcNow,
                 Version = 1,
             });
-            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(TestContext.CancellationToken));
         }
     }
 
@@ -357,7 +359,7 @@ public sealed class ExerciseCatalogPersistenceTests
         string migration = migrations.Single(item => item.EndsWith("_AddExerciseTypesAndCategories", StringComparison.Ordinal));
         string previous = migrations[migrations.IndexOf(migration) - 1];
 
-        await context.GetInfrastructure().GetRequiredService<IMigrator>().MigrateAsync(previous);
+        await context.GetInfrastructure().GetRequiredService<IMigrator>().MigrateAsync(previous, TestContext.CancellationToken);
         await context.Database.ExecuteSqlRawAsync(
             "INSERT INTO training.exercises (\"Id\", \"OwnerUserId\", \"Name\", \"IsArchived\", \"CreatedAtUtc\", \"UpdatedAtUtc\", \"Version\") " +
             "VALUES ({0}, {1}, {2}, FALSE, now(), now(), 1)",
@@ -365,17 +367,17 @@ public sealed class ExerciseCatalogPersistenceTests
             ownerId,
             "Existing Custom");
 
-        await context.GetInfrastructure().GetRequiredService<IMigrator>().MigrateAsync(migration);
+        await context.GetInfrastructure().GetRequiredService<IMigrator>().MigrateAsync(migration, TestContext.CancellationToken);
         context.ChangeTracker.Clear();
-        Exercise migrated = await context.Exercises.SingleAsync(item => item.Id == exerciseId);
+        Exercise migrated = await context.Exercises.SingleAsync(item => item.Id == exerciseId, TestContext.CancellationToken);
         Assert.AreEqual(ExerciseType.Strength, migrated.ExerciseType);
         Assert.IsNull(migrated.BodyweightFactor);
         Assert.IsNull(migrated.WeightFactor);
 
         // RebuildTrainingModel resets own exercises together with the training data (D11).
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.CancellationToken);
         context.ChangeTracker.Clear();
-        Assert.IsFalse(await context.Exercises.AnyAsync(item => item.Id == exerciseId));
+        Assert.IsFalse(await context.Exercises.AnyAsync(item => item.Id == exerciseId, TestContext.CancellationToken));
     }
 
     private static async Task<string> CreateDatabaseAsync()

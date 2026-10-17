@@ -12,7 +12,7 @@ namespace Gainer.IntegrationTests;
 
 [TestClass]
 [DoNotParallelize]
-public sealed class ExerciseCatalogIsolationMatrixTests
+public sealed partial class ExerciseCatalogIsolationMatrixTests
 {
     private static PostgreSqlTestFixture? fixture;
     private static PostgreSqlTestFixture Fixture => fixture
@@ -46,7 +46,7 @@ public sealed class ExerciseCatalogIsolationMatrixTests
         await TwoUserApiIsolationMatrix.VerifyAsync(scenario);
     }
 
-    private abstract class ScenarioBase(string connectionString, Guid first, Guid second)
+    private abstract partial class ScenarioBase(string connectionString, Guid first, Guid second)
     {
         private readonly Dictionary<Guid, long> sequences = [];
 
@@ -60,9 +60,15 @@ public sealed class ExerciseCatalogIsolationMatrixTests
 
         public Guid SecondUser { get; } = second;
 
-        public System.Text.RegularExpressions.Regex FirstUserSecretPattern { get; } = new("first-(user|private)", RegexOptions.IgnoreCase);
+        public System.Text.RegularExpressions.Regex FirstUserSecretPattern { get; } = FirstUserSecretRegex();
 
-        public System.Text.RegularExpressions.Regex SecondUserSecretPattern { get; } = new("second-(user|private)", RegexOptions.IgnoreCase);
+        public System.Text.RegularExpressions.Regex SecondUserSecretPattern { get; } = SecondUserSecretRegex();
+
+        [GeneratedRegex("first-(user|private)", RegexOptions.IgnoreCase)]
+        private static partial System.Text.RegularExpressions.Regex FirstUserSecretRegex();
+
+        [GeneratedRegex("second-(user|private)", RegexOptions.IgnoreCase)]
+        private static partial System.Text.RegularExpressions.Regex SecondUserSecretRegex();
 
         protected static async Task<(string ConnectionString, Guid First, Guid Second)> CreateDatabaseAsync()
         {

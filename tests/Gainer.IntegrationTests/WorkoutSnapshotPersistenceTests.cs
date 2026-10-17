@@ -10,9 +10,13 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class WorkoutSnapshotPersistenceTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     private static PostgreSqlTestFixture? fixture;
     private static PostgreSqlTestFixture Fixture => fixture
         ?? throw new InvalidOperationException("The PostgreSQL fixture has not started.");
+
+    private static readonly string[] ExpectedSetTypes = ["warmup", "warmup", "normal", "normal", "normal"];
 
     [ClassInitialize]
     public static async Task StartAsync(TestContext context)
@@ -36,13 +40,13 @@ public sealed class WorkoutSnapshotPersistenceTests
         var collector = new ChangeCollector();
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
         WorkoutSnapshot snapshot = await Handler(context, userId, collector).CreateAsync(
-            CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Leeres Training", Started, null, [])));
+            CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Leeres Training", Started, null, [])), TestContext.CancellationToken);
 
         Assert.AreEqual(1, snapshot.Version);
         Assert.IsEmpty(snapshot.Exercises);
         Assert.IsNull(snapshot.EndedAtUtc);
         Assert.HasCount(1, collector.Changes);
-        Assert.AreEqual("Leeres Training", (await context.Workouts.SingleAsync()).Title);
+        Assert.AreEqual("Leeres Training", (await context.Workouts.SingleAsync(TestContext.CancellationToken)).Title);
     }
 
     [TestMethod]
@@ -59,15 +63,15 @@ public sealed class WorkoutSnapshotPersistenceTests
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
         WorkoutSnapshot snapshot = await Handler(context, userId).CreateAsync(CreateWorkoutMutation.Create(
             Metadata(),
-            Values(workoutId, "Push", Started, null, [Block(exerciseIds[0], "Bench", sets)], sourcePlanId: await PlanAsync(connectionString, userId, exerciseIds[0]))));
+            Values(workoutId, "Push", Started, null, [Block(exerciseIds[0], "Bench", sets)], sourcePlanId: await PlanAsync(connectionString, userId, exerciseIds[0]))), TestContext.CancellationToken);
 
         WorkoutExerciseValues block = snapshot.Exercises.Single();
         CollectionAssert.AreEqual(
-            new[] { "warmup", "warmup", "normal", "normal", "normal" },
+            ExpectedSetTypes,
             block.Sets.Select(item => item.SetType).ToArray());
         Assert.IsNotNull(snapshot.SourcePlanId);
         Assert.AreEqual("exercise", snapshot.PreviousValueSource);
-        Assert.AreEqual(5, await context.WorkoutSets.CountAsync(item => item.WorkoutId == workoutId));
+        Assert.AreEqual(5, await context.WorkoutSets.CountAsync(item => item.WorkoutId == workoutId, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -80,12 +84,12 @@ public sealed class WorkoutSnapshotPersistenceTests
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(sourceId, "Push", Started, Started.AddHours(1),
-            [Block(exerciseIds[0], "Bench", [Set("warmup", 60m, 10), Set("normal", 100m, 8)])])));
+            [Block(exerciseIds[0], "Bench", [Set("warmup", 60m, 10), Set("normal", 100m, 8)])])), TestContext.CancellationToken);
 
         WorkoutSnapshot repeated = await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(
             repeatId, "Push", Started.AddDays(1), null,
             [Block(exerciseIds[0], "Bench", [Set("warmup", null, null), Set("normal", null, null)])],
-            sourceWorkoutId: sourceId)));
+            sourceWorkoutId: sourceId)), TestContext.CancellationToken);
 
         Assert.AreEqual(sourceId, repeated.SourceWorkoutId);
         Assert.HasCount(2, repeated.Exercises[0].Sets);
@@ -104,16 +108,16 @@ public sealed class WorkoutSnapshotPersistenceTests
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Push", Started, Started.AddHours(1),
             [new WorkoutExerciseValues(exerciseEntryId, exerciseIds[0], "Bench", "strength", null, null,
-                [new WorkoutSetValues(setId, "normal", 100m, 8, null, null)])])));
+                [new WorkoutSetValues(setId, "normal", 100m, 8, null, null)])])), TestContext.CancellationToken);
 
         WorkoutSnapshot edited = await handler.SaveAsync(SaveWorkoutMutation.Create(Metadata(), 1, Values(
             workoutId, "Push", Started, Started.AddHours(1),
             [new WorkoutExerciseValues(exerciseEntryId, exerciseIds[0], "Bench", "strength", null, null,
-                [new WorkoutSetValues(setId, "normal", 100m, 10, null, null)])])));
+                [new WorkoutSetValues(setId, "normal", 100m, 10, null, null)])])), TestContext.CancellationToken);
 
         Assert.AreEqual(2, edited.Version);
         Assert.AreEqual(10, edited.Exercises[0].Sets[0].Repetitions);
-        Assert.AreEqual(10, (await context.WorkoutSets.SingleAsync()).Repetitions);
+        Assert.AreEqual(10, (await context.WorkoutSets.SingleAsync(TestContext.CancellationToken)).Repetitions);
     }
 
     [TestMethod]
@@ -123,14 +127,14 @@ public sealed class WorkoutSnapshotPersistenceTests
         Guid workoutId = Guid.NewGuid();
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
-        await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Push", Started, null, [])));
+        await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Push", Started, null, [])), TestContext.CancellationToken);
 
         WorkoutSnapshot ended = await handler.SaveAsync(SaveWorkoutMutation.Create(Metadata(), 1,
-            Values(workoutId, "Push", Started, Started.AddMinutes(50), [])));
+            Values(workoutId, "Push", Started, Started.AddMinutes(50), [])), TestContext.CancellationToken);
         Assert.AreEqual(Started.AddMinutes(50), ended.EndedAtUtc);
 
         WorkoutSnapshot resumed = await handler.SaveAsync(SaveWorkoutMutation.Create(Metadata(), 2,
-            Values(workoutId, "Push", Started, null, [])));
+            Values(workoutId, "Push", Started, null, [])), TestContext.CancellationToken);
         Assert.IsNull(resumed.EndedAtUtc);
         Assert.AreEqual(3, resumed.Version);
     }
@@ -143,17 +147,17 @@ public sealed class WorkoutSnapshotPersistenceTests
         Guid secondId = Guid.NewGuid();
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
-        await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(firstId, "Push", Started, null, [])));
+        await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(firstId, "Push", Started, null, [])), TestContext.CancellationToken);
 
         await Assert.ThrowsAsync<ActiveWorkoutExistsException>(() => handler.CreateAsync(
-            CreateWorkoutMutation.Create(Metadata(), Values(secondId, "Pull", Started.AddHours(20), null, []))));
+            CreateWorkoutMutation.Create(Metadata(), Values(secondId, "Pull", Started.AddHours(20), null, [])), TestContext.CancellationToken));
         context.ChangeTracker.Clear();
-        Assert.AreEqual(1, await context.Workouts.CountAsync(item => item.EndedAtUtc == null));
+        Assert.AreEqual(1, await context.Workouts.CountAsync(item => item.EndedAtUtc == null, TestContext.CancellationToken));
 
         // A finished workout does not block a new active one.
-        await handler.SaveAsync(SaveWorkoutMutation.Create(Metadata(), 1, Values(firstId, "Push", Started, Started.AddHours(1), [])));
-        await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(secondId, "Pull", Started.AddDays(1), null, [])));
-        Assert.AreEqual(2, await context.Workouts.CountAsync());
+        await handler.SaveAsync(SaveWorkoutMutation.Create(Metadata(), 1, Values(firstId, "Push", Started, Started.AddHours(1), [])), TestContext.CancellationToken);
+        await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(secondId, "Pull", Started.AddDays(1), null, [])), TestContext.CancellationToken);
+        Assert.AreEqual(2, await context.Workouts.CountAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -163,13 +167,13 @@ public sealed class WorkoutSnapshotPersistenceTests
         Guid workoutId = Guid.NewGuid();
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
-        await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Push", Started, Started.AddHours(1), [])));
+        await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Push", Started, Started.AddHours(1), [])), TestContext.CancellationToken);
 
         WorkoutValidationException error = await Assert.ThrowsAsync<WorkoutValidationException>(() => handler.SaveAsync(
-            SaveWorkoutMutation.Create(Metadata(), 1, Values(workoutId, "Push", Started, Started.AddMinutes(-30), []))));
+            SaveWorkoutMutation.Create(Metadata(), 1, Values(workoutId, "Push", Started, Started.AddMinutes(-30), [])), TestContext.CancellationToken));
         Assert.IsTrue(error.Errors.ContainsKey("EndedAtUtc"));
         context.ChangeTracker.Clear();
-        Workout stored = await context.Workouts.SingleAsync();
+        Workout stored = await context.Workouts.SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual(1, stored.Version);
         Assert.AreEqual(Started.AddHours(1), stored.EndedAtUtc);
     }
@@ -182,20 +186,20 @@ public sealed class WorkoutSnapshotPersistenceTests
         Guid workoutId = Guid.NewGuid();
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
         await Handler(context, userId).CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(
-            workoutId, "Push", Started, Started.AddHours(1), [Block(exerciseIds[0], "Bench", [Set("normal", 100m, 8)])])));
+            workoutId, "Push", Started, Started.AddHours(1), [Block(exerciseIds[0], "Bench", [Set("normal", 100m, 8)])])), TestContext.CancellationToken);
         var collector = new ChangeCollector();
         var handler = Handler(context, userId, collector);
 
-        DeleteWorkoutResult deleted = await handler.DeleteAsync(DeleteWorkoutMutation.Create(Metadata(), workoutId, 1));
+        DeleteWorkoutResult deleted = await handler.DeleteAsync(DeleteWorkoutMutation.Create(Metadata(), workoutId, 1), TestContext.CancellationToken);
 
         Assert.AreEqual(2, deleted.Version);
         Assert.HasCount(1, collector.Changes);
         Assert.IsInstanceOfType<DeletedResourceChange>(collector.Changes[0]);
-        Assert.IsFalse(await context.Workouts.AnyAsync(item => item.Id == workoutId && item.DeletedAtUtc == null));
-        Assert.IsEmpty(await context.WorkoutSets.Where(item => item.WorkoutId == workoutId).ToListAsync());
-        Assert.IsFalse((await new WorkoutHistoryQueries(context).ListAsync(0, 100)).Any(item => item.WorkoutId == workoutId));
-        Assert.IsNull(await new WorkoutHistoryQueries(context).GetAsync(workoutId));
-        await Assert.ThrowsAsync<WorkoutNotFoundException>(() => handler.DeleteAsync(DeleteWorkoutMutation.Create(Metadata(), workoutId, 2)));
+        Assert.IsFalse(await context.Workouts.AnyAsync(item => item.Id == workoutId && item.DeletedAtUtc == null, TestContext.CancellationToken));
+        Assert.IsEmpty(await context.WorkoutSets.Where(item => item.WorkoutId == workoutId).ToListAsync(TestContext.CancellationToken));
+        Assert.IsFalse((await new WorkoutHistoryQueries(context).ListAsync(0, 100, TestContext.CancellationToken)).Any(item => item.WorkoutId == workoutId));
+        Assert.IsNull(await new WorkoutHistoryQueries(context).GetAsync(workoutId, TestContext.CancellationToken));
+        await Assert.ThrowsAsync<WorkoutNotFoundException>(() => handler.DeleteAsync(DeleteWorkoutMutation.Create(Metadata(), workoutId, 2), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -216,44 +220,44 @@ public sealed class WorkoutSnapshotPersistenceTests
                 UpdatedAtUtc = Started,
                 Version = 1,
             });
-            await owner3.SaveChangesAsync();
+            await owner3.SaveChangesAsync(TestContext.CancellationToken);
         }
         Guid planId = await PlanAsync(connectionString, firstUser, ownCustomExercise);
         Guid sourceWorkoutId = Guid.NewGuid();
         await using (AppDbContext owner = Fixture.CreateContext(connectionString, firstUser))
         {
             await Handler(owner, firstUser).CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(
-                sourceWorkoutId, "Old", Started.AddDays(-2), Started.AddDays(-2).AddHours(1), [])));
+                sourceWorkoutId, "Old", Started.AddDays(-2), Started.AddDays(-2).AddHours(1), [])), TestContext.CancellationToken);
             await Handler(owner, firstUser).CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(
-                workoutId, "Push", Started, null, [])));
+                workoutId, "Push", Started, null, [])), TestContext.CancellationToken);
         }
 
         await using AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser);
         var intruder = Handler(foreign, secondUser);
         await Assert.ThrowsAsync<WorkoutNotFoundException>(() => intruder.SaveAsync(SaveWorkoutMutation.Create(
-            Metadata(), 1, Values(workoutId, "Stolen", Started, null, []))));
-        await Assert.ThrowsAsync<WorkoutNotFoundException>(() => intruder.DeleteAsync(DeleteWorkoutMutation.Create(Metadata(), workoutId, 1)));
+            Metadata(), 1, Values(workoutId, "Stolen", Started, null, [])), TestContext.CancellationToken));
+        await Assert.ThrowsAsync<WorkoutNotFoundException>(() => intruder.DeleteAsync(DeleteWorkoutMutation.Create(Metadata(), workoutId, 1), TestContext.CancellationToken));
 
         WorkoutValidationException foreignPlan = await Assert.ThrowsAsync<WorkoutValidationException>(() => intruder.CreateAsync(
-            CreateWorkoutMutation.Create(Metadata(), Values(Guid.NewGuid(), "Push", Started, null, [], sourcePlanId: planId))));
+            CreateWorkoutMutation.Create(Metadata(), Values(Guid.NewGuid(), "Push", Started, null, [], sourcePlanId: planId)), TestContext.CancellationToken));
         WorkoutValidationException unknownPlan = await Assert.ThrowsAsync<WorkoutValidationException>(() => intruder.CreateAsync(
-            CreateWorkoutMutation.Create(Metadata(), Values(Guid.NewGuid(), "Push", Started, null, [], sourcePlanId: Guid.NewGuid()))));
+            CreateWorkoutMutation.Create(Metadata(), Values(Guid.NewGuid(), "Push", Started, null, [], sourcePlanId: Guid.NewGuid())), TestContext.CancellationToken));
         Assert.AreEqual(foreignPlan.Errors["SourcePlanId"], unknownPlan.Errors["SourcePlanId"]);
 
         WorkoutValidationException foreignSource = await Assert.ThrowsAsync<WorkoutValidationException>(() => intruder.CreateAsync(
-            CreateWorkoutMutation.Create(Metadata(), Values(Guid.NewGuid(), "Push", Started, null, [], sourceWorkoutId: sourceWorkoutId))));
+            CreateWorkoutMutation.Create(Metadata(), Values(Guid.NewGuid(), "Push", Started, null, [], sourceWorkoutId: sourceWorkoutId)), TestContext.CancellationToken));
         Assert.IsTrue(foreignSource.Errors.ContainsKey("SourceWorkoutId"));
 
         WorkoutValidationException foreignExercise = await Assert.ThrowsAsync<WorkoutValidationException>(() => intruder.CreateAsync(
             CreateWorkoutMutation.Create(Metadata(), Values(Guid.NewGuid(), "Push", Started, null,
-                [Block(ownCustomExercise, "Bench", [Set("normal", 100m, 8)])]))));
+                [Block(ownCustomExercise, "Bench", [Set("normal", 100m, 8)])])), TestContext.CancellationToken));
         WorkoutValidationException unknownExercise = await Assert.ThrowsAsync<WorkoutValidationException>(() => intruder.CreateAsync(
             CreateWorkoutMutation.Create(Metadata(), Values(Guid.NewGuid(), "Push", Started, null,
-                [Block(Guid.NewGuid(), "Bench", [Set("normal", 100m, 8)])]))));
+                [Block(Guid.NewGuid(), "Bench", [Set("normal", 100m, 8)])])), TestContext.CancellationToken));
         Assert.AreEqual(foreignExercise.Errors["Exercises.SourceExerciseId"], unknownExercise.Errors["Exercises.SourceExerciseId"]);
 
         await using AppDbContext owner2 = Fixture.CreateContext(connectionString, firstUser);
-        Assert.AreEqual("Push", (await owner2.Workouts.SingleAsync(item => item.Id == workoutId)).Title);
+        Assert.AreEqual("Push", (await owner2.Workouts.SingleAsync(item => item.Id == workoutId, TestContext.CancellationToken)).Title);
     }
 
     [TestMethod]
@@ -265,17 +269,17 @@ public sealed class WorkoutSnapshotPersistenceTests
         await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
         {
             context.Workouts.Add(Workout(workoutId, "Push", Started, null));
-            await context.SaveChangesAsync();
+            await context.SaveChangesAsync(TestContext.CancellationToken);
         }
         await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
         {
             context.Workouts.Add(Workout(Guid.NewGuid(), "Second active", Started, null));
-            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(TestContext.CancellationToken));
         }
         await using (AppDbContext context = Fixture.CreateContext(connectionString, otherUser))
         {
             context.Workouts.Add(Workout(Guid.NewGuid(), "Ends before start", Started, Started.AddMinutes(-1)));
-            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(TestContext.CancellationToken));
         }
         await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
         {
@@ -299,7 +303,7 @@ public sealed class WorkoutSnapshotPersistenceTests
                 WeightKg = 100,
                 Repetitions = 10_001,
             });
-            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(TestContext.CancellationToken));
         }
     }
 
@@ -312,9 +316,9 @@ public sealed class WorkoutSnapshotPersistenceTests
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
         await Handler(context, userId).CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(
             workoutId, "Push", Started, Started.AddHours(1),
-            [Block(exerciseIds[0], "Bench", [Set("warmup", 40m, 10), Set("normal", 100m, 8), Set("normal", null, 5), Set("dropset", 80m, 6)])])));
+            [Block(exerciseIds[0], "Bench", [Set("warmup", 40m, 10), Set("normal", 100m, 8), Set("normal", null, 5), Set("dropset", 80m, 6)])])), TestContext.CancellationToken);
 
-        WorkoutHistorySummary summary = (await new WorkoutHistoryQueries(context).ListAsync(0, 10)).Single();
+        WorkoutHistorySummary summary = (await new WorkoutHistoryQueries(context).ListAsync(0, 10, TestContext.CancellationToken)).Single();
         Assert.AreEqual(2, summary.CompletedSetCount);
         Assert.AreEqual(Started.AddHours(1), summary.EndedAtUtc);
     }

@@ -16,6 +16,8 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class PostgreSqlMigrationTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     private static PostgreSqlTestFixture? fixture;
     private string? connectionString;
 
@@ -53,16 +55,16 @@ public sealed class PostgreSqlMigrationTests
     {
         await using AppDbContext context = Fixture.CreateContext(ConnectionString);
 
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.CancellationToken);
         context.Users.AddRange(
             new AppUser { Id = Guid.NewGuid(), UserName = "user-a" },
             new AppUser { Id = Guid.NewGuid(), UserName = "user-b" });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.CancellationToken);
 
-        Assert.AreEqual(2, await context.Users.CountAsync());
+        Assert.AreEqual(2, await context.Users.CountAsync(TestContext.CancellationToken));
         CollectionAssert.AreEquivalent(DatabaseSchemas.All.ToArray(), await ReadSchemasAsync());
         CollectionAssert.Contains(
-            (await context.Database.GetAppliedMigrationsAsync()).ToArray(),
+            (await context.Database.GetAppliedMigrationsAsync(TestContext.CancellationToken)).ToArray(),
             DatabaseSchemaVersion.RequiredMigration);
     }
 
@@ -71,9 +73,9 @@ public sealed class PostgreSqlMigrationTests
     {
         await using AppDbContext context = Fixture.CreateContext(ConnectionString);
 
-        await context.Database.MigrateAsync();
-        await context.Database.MigrateAsync();
-        string[] migrations = (await context.Database.GetAppliedMigrationsAsync()).ToArray();
+        await context.Database.MigrateAsync(TestContext.CancellationToken);
+        await context.Database.MigrateAsync(TestContext.CancellationToken);
+        string[] migrations = (await context.Database.GetAppliedMigrationsAsync(TestContext.CancellationToken)).ToArray();
 
         CollectionAssert.AreEqual(context.Database.GetMigrations().ToArray(), migrations);
     }
@@ -83,8 +85,8 @@ public sealed class PostgreSqlMigrationTests
     {
         await using AppDbContext context = Fixture.CreateContext(ConnectionString);
 
-        bool canConnect = await context.Database.CanConnectAsync();
-        string[] appliedMigrations = (await context.Database.GetAppliedMigrationsAsync()).ToArray();
+        bool canConnect = await context.Database.CanConnectAsync(TestContext.CancellationToken);
+        string[] appliedMigrations = (await context.Database.GetAppliedMigrationsAsync(TestContext.CancellationToken)).ToArray();
 
         Assert.IsTrue(canConnect);
         Assert.IsEmpty(appliedMigrations);
@@ -101,10 +103,10 @@ public sealed class PostgreSqlMigrationTests
             .Build();
         var healthCheck = new DatabaseSchemaReadinessHealthCheck(configuration);
 
-        HealthCheckResult beforeMigration = await healthCheck.CheckHealthAsync(new HealthCheckContext());
+        HealthCheckResult beforeMigration = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
         await using AppDbContext context = Fixture.CreateContext(ConnectionString);
-        await context.Database.MigrateAsync();
-        HealthCheckResult afterMigration = await healthCheck.CheckHealthAsync(new HealthCheckContext());
+        await context.Database.MigrateAsync(TestContext.CancellationToken);
+        HealthCheckResult afterMigration = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
 
         Assert.AreEqual(HealthStatus.Unhealthy, beforeMigration.Status);
         Assert.AreEqual(HealthStatus.Healthy, afterMigration.Status);
@@ -121,7 +123,7 @@ public sealed class PostgreSqlMigrationTests
         Guid clientId = Guid.NewGuid();
         await using (AppDbContext previous = Fixture.CreateContext(ConnectionString))
         {
-            await ((IInfrastructure<IServiceProvider>)previous).Instance.GetRequiredService<IMigrator>().MigrateAsync(previousMigration);
+            await ((IInfrastructure<IServiceProvider>)previous).Instance.GetRequiredService<IMigrator>().MigrateAsync(previousMigration, TestContext.CancellationToken);
             previous.Users.Add(new AppUser
             {
                 Id = userId,
@@ -133,12 +135,12 @@ public sealed class PostgreSqlMigrationTests
                 SecurityStamp = Guid.NewGuid().ToString("N"),
                 ConcurrencyStamp = Guid.NewGuid().ToString("N"),
             });
-            await previous.SaveChangesAsync();
+            await previous.SaveChangesAsync(TestContext.CancellationToken);
         }
 
         await using (NpgsqlConnection connection = new(ConnectionString))
         {
-            await connection.OpenAsync();
+            await connection.OpenAsync(TestContext.CancellationToken);
             await ExecuteAsync(connection, """
                 INSERT INTO training.workout_templates ("Id", "Name", "IsArchived", "CreatedAtUtc", "UpdatedAtUtc", "Version", "UserId")
                 VALUES (gen_random_uuid(), 'Legacy plan', FALSE, now(), now(), 1, @user);
@@ -169,7 +171,7 @@ public sealed class PostgreSqlMigrationTests
                 RegisteredAtUtc = DateTime.UtcNow,
                 LastSeenAtUtc = DateTime.UtcNow,
             });
-            await previous.SaveChangesAsync();
+            await previous.SaveChangesAsync(TestContext.CancellationToken);
             previous.UserSyncStates.Add(new UserSyncState
             {
                 CurrentRevision = 1,
@@ -205,17 +207,17 @@ public sealed class PostgreSqlMigrationTests
                 ResourceVersion = 2,
                 SnapshotJson = "{\"version\":2}",
             });
-            await previous.SaveChangesAsync();
+            await previous.SaveChangesAsync(TestContext.CancellationToken);
         }
 
         await using (AppDbContext context = Fixture.CreateContext(ConnectionString))
         {
-            await context.Database.MigrateAsync();
+            await context.Database.MigrateAsync(TestContext.CancellationToken);
         }
 
         await using (NpgsqlConnection connection = new(ConnectionString))
         {
-            await connection.OpenAsync();
+            await connection.OpenAsync(TestContext.CancellationToken);
             Assert.AreEqual(0L, await ScalarAsync(connection, "SELECT COUNT(*) FROM training.workouts"));
             Assert.AreEqual(0L, await ScalarAsync(connection, "SELECT COUNT(*) FROM training.workout_exercises"));
             Assert.AreEqual(0L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sync.change_items WHERE \"ResourceType\" = 'Workout'"));
@@ -225,8 +227,8 @@ public sealed class PostgreSqlMigrationTests
         }
         await using (AppDbContext context = Fixture.CreateContext(ConnectionString, userId))
         {
-            Assert.AreEqual(0, await context.TrainingPlans.CountAsync());
-            Assert.AreEqual(0, await context.Workouts.CountAsync());
+            Assert.AreEqual(0, await context.TrainingPlans.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(0, await context.Workouts.CountAsync(TestContext.CancellationToken));
         }
     }
 
@@ -246,15 +248,15 @@ public sealed class PostgreSqlMigrationTests
     private async Task<string[]> ReadSchemasAsync()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.CancellationToken);
         const string query =
             "SELECT schema_name FROM information_schema.schemata " +
             "WHERE schema_name = ANY (@schemas) ORDER BY schema_name";
         await using var command = new NpgsqlCommand(query, connection);
         command.Parameters.AddWithValue("schemas", DatabaseSchemas.All.ToArray());
-        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(TestContext.CancellationToken);
         var schemas = new List<string>();
-        while (await reader.ReadAsync())
+        while (await reader.ReadAsync(TestContext.CancellationToken))
         {
             schemas.Add(reader.GetString(0));
         }

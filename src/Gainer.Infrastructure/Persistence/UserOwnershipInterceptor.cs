@@ -80,8 +80,8 @@ internal sealed class UserOwnershipInterceptor(IUserContext userContext) : SaveC
     /// <summary>Own exercises may take base or own, non-archived categories; base exercises are immutable.</summary>
     private void EnforceAssignmentOwnership(
         EntityEntry<ExerciseCategoryAssignment>[] assignments,
-        IReadOnlyDictionary<Guid, Exercise> exercises,
-        IReadOnlyDictionary<Guid, ExerciseCategory> categories)
+        Dictionary<Guid, Exercise> exercises,
+        Dictionary<Guid, ExerciseCategory> categories)
     {
         Guid currentUserId = userContext.UserId ?? throw new UserIsolationViolationException();
         foreach (EntityEntry<ExerciseCategoryAssignment> entry in assignments)

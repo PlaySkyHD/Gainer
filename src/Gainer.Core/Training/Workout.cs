@@ -68,17 +68,11 @@ public static class WorkoutSetTypes
 
     public static bool TryParse(string? value, out WorkoutSetType type)
     {
-        foreach (WorkoutSetType candidate in Enum.GetValues<WorkoutSetType>())
-        {
-            if (string.Equals(value, ToStorageValue(candidate), StringComparison.OrdinalIgnoreCase))
-            {
-                type = candidate;
-                return true;
-            }
-        }
-
-        type = default;
-        return false;
+        WorkoutSetType[] matches = Enum.GetValues<WorkoutSetType>()
+            .Where(candidate => string.Equals(value, ToStorageValue(candidate), StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        type = matches.Length > 0 ? matches[0] : default;
+        return matches.Length > 0;
     }
 }
 
@@ -105,17 +99,11 @@ public static class PreviousValueSources
 
     public static bool TryParse(string? value, out PreviousValueSource source)
     {
-        foreach (PreviousValueSource candidate in Enum.GetValues<PreviousValueSource>())
-        {
-            if (string.Equals(value, ToStorageValue(candidate), StringComparison.Ordinal))
-            {
-                source = candidate;
-                return true;
-            }
-        }
-
-        source = default;
-        return false;
+        PreviousValueSource[] matches = Enum.GetValues<PreviousValueSource>()
+            .Where(candidate => string.Equals(value, ToStorageValue(candidate), StringComparison.Ordinal))
+            .ToArray();
+        source = matches.Length > 0 ? matches[0] : default;
+        return matches.Length > 0;
     }
 }
 

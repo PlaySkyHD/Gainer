@@ -14,6 +14,8 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class TrainingStatisticsIsolationTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     private static readonly TimeZoneInfo Berlin = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
     private static readonly Guid BenchPress = Guid.Parse("0159d8e1-ec7a-527a-9887-5cb4f70b1c83");
     private static readonly Guid PullUp = Guid.Parse("42ce4803-05e3-5f07-92b6-326c9aa95658");
@@ -46,24 +48,24 @@ public sealed class TrainingStatisticsIsolationTests
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (100m, 5));
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 17, 18), Utc(2026, 8, 17, 19), Utc(2026, 8, 19, 8), (300m, 5));
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 20), null, null, (400m, 5));
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
         await using (AppDbContext seed = Fixture.CreateContext(connectionString, other))
         {
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (500m, 5));
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
         await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
         var ownerQueries = new InsightQueries(ownerContext, new TestUserContext(owner));
-        ExerciseProgressSnapshot progress = await ownerQueries.ExerciseProgressAsync(exerciseId, null, ThroughUtc, Berlin);
+        ExerciseProgressSnapshot progress = await ownerQueries.ExerciseProgressAsync(exerciseId, null, ThroughUtc, Berlin, TestContext.CancellationToken);
         Assert.HasCount(1, progress.Points);
         Assert.AreEqual(100m, progress.Points[0].MaxWeightKg);
         Assert.AreEqual(100m, progress.Records.Current(RecordKind.MaxWeight)!.Value);
         Assert.AreEqual(116.67m, TrainingStatistics.RoundForOutput(progress.Records.Current(RecordKind.EstimatedOneRepMax)!.Value));
         Assert.AreEqual(5m, progress.Records.Current(RecordKind.MaxRepetitions)!.Value);
 
-        DashboardInsightSnapshot dashboard = await ownerQueries.DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin);
+        DashboardInsightSnapshot dashboard = await ownerQueries.DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(1, dashboard.Training.WorkoutCount);
         Assert.AreEqual(500m, dashboard.Training.VolumeKgRepetitions);
         Assert.IsFalse(dashboard.Training.BodyweightMissing);
@@ -78,25 +80,25 @@ public sealed class TrainingStatisticsIsolationTests
         {
             seed.DailyCheckIns.Add(CheckIn(new DateOnly(2026, 8, 17), 80m));
             AddFinishedWorkout(seed, exerciseId, ExerciseType.BodyweightLoaded, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (10m, 5));
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
         await using (AppDbContext seed = Fixture.CreateContext(connectionString, other))
         {
             seed.DailyCheckIns.Add(CheckIn(new DateOnly(2026, 8, 17), 100m));
             AddFinishedWorkout(seed, exerciseId, ExerciseType.BodyweightLoaded, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (10m, 5));
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
         await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
         ExerciseProgressSnapshot ownerProgress = await new InsightQueries(ownerContext, new TestUserContext(owner))
-            .ExerciseProgressAsync(exerciseId, null, ThroughUtc, Berlin);
+            .ExerciseProgressAsync(exerciseId, null, ThroughUtc, Berlin, TestContext.CancellationToken);
         Assert.HasCount(1, ownerProgress.Points);
         Assert.AreEqual(105m, TrainingStatistics.RoundForOutput(ownerProgress.Points[0].EstimatedOneRepMaxKg!.Value));
         Assert.IsFalse(ownerProgress.Points[0].BodyweightMissing);
 
         await using AppDbContext otherContext = Fixture.CreateContext(connectionString, other);
         ExerciseProgressSnapshot otherProgress = await new InsightQueries(otherContext, new TestUserContext(other))
-            .ExerciseProgressAsync(exerciseId, null, ThroughUtc, Berlin);
+            .ExerciseProgressAsync(exerciseId, null, ThroughUtc, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(128.33m, TrainingStatistics.RoundForOutput(otherProgress.Points[0].EstimatedOneRepMaxKg!.Value));
     }
 
@@ -108,17 +110,17 @@ public sealed class TrainingStatisticsIsolationTests
         await using (AppDbContext seed = Fixture.CreateContext(connectionString, other))
         {
             seed.DailyCheckIns.Add(CheckIn(new DateOnly(2026, 8, 17), 100m));
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
         await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
         {
             AddFinishedWorkout(seed, exerciseId, ExerciseType.BodyweightOnly, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (null, 10));
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
         await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
         DashboardInsightSnapshot dashboard = await new InsightQueries(ownerContext, new TestUserContext(owner))
-            .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin);
+            .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin, TestContext.CancellationToken);
         Assert.IsTrue(dashboard.Training.BodyweightMissing);
         Assert.AreEqual(0m, dashboard.Training.VolumeKgRepetitions);
     }
@@ -131,12 +133,12 @@ public sealed class TrainingStatisticsIsolationTests
         await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
         {
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (100m, 5), (90m, 8));
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
         await using (AppDbContext seed = Fixture.CreateContext(connectionString, other))
         {
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (500m, 5));
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
         await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
@@ -151,10 +153,10 @@ public sealed class TrainingStatisticsIsolationTests
             new EmptyHistory(),
             new SingleExercise(exerciseId),
             new FixedTimeProvider(ThroughUtc));
-        CoachAnswer answer = await coach.AnswerAsync("Wie entwickelt sich meine Übung?");
+        CoachAnswer answer = await coach.AnswerAsync("Wie entwickelt sich meine Übung?", TestContext.CancellationToken);
 
         ExerciseProgressSnapshot query = await new InsightQueries(context, new TestUserContext(owner))
-            .ExerciseProgressAsync(exerciseId, 30, ThroughUtc, Berlin);
+            .ExerciseProgressAsync(exerciseId, 30, ThroughUtc, Berlin, TestContext.CancellationToken);
         decimal? coachBest = answer.Facts.Single(item => item.FactId == $"exercise:{exerciseId:N}:e1rm:30").NumericValue;
         decimal? coachRecord = answer.Facts.Single(item => item.FactId == $"exercise:{exerciseId:N}:record.e1rm").NumericValue;
         Assert.AreEqual(TrainingStatistics.RoundForOutput(query.BestSet!.EstimatedOneRepMaxKg), coachBest);

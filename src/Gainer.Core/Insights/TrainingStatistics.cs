@@ -172,7 +172,7 @@ public static class TrainingStatistics
         return (weightKg ?? 0m) * weightFactor + bodyweightPart;
     }
 
-    private static ExerciseWorkoutTotals Totals(IReadOnlyList<BlockStatistics> blocks) => new(
+    private static ExerciseWorkoutTotals Totals(BlockStatistics[] blocks) => new(
         blocks[0].WorkoutId,
         blocks[0].CompletedAtUtc,
         blocks.Sum(block => block.SetCount),
@@ -183,7 +183,7 @@ public static class TrainingStatistics
         blocks.Any(block => block.BodyweightMissing),
         BestOf(blocks.Select(block => block.Best)));
 
-    private static IReadOnlyList<TrainingWorkoutInput> Chronological(IEnumerable<TrainingWorkoutInput> workouts) =>
+    private static TrainingWorkoutInput[] Chronological(IEnumerable<TrainingWorkoutInput> workouts) =>
         workouts.Where(IsCounted).OrderBy(item => item.StartedAtUtc).ThenBy(item => item.WorkoutId).ToArray();
 
     internal static decimal? MaxOrNull(IEnumerable<decimal?> values)
@@ -283,7 +283,15 @@ public sealed record BlockStatistics(
 
     public decimal? MaxWeightKg => TrainingStatistics.MaxOrNull(Sets.Select(set => (decimal?)set.EffectiveWeightKg));
 
-    public decimal? AverageWeightKg => Sets.Count == 0 ? null : TotalRepetitions == 0 ? 0m : VolumeKg / TotalRepetitions;
+    public decimal? AverageWeightKg
+    {
+        get
+        {
+            if (Sets.Count == 0) return null;
+            if (TotalRepetitions == 0) return 0m;
+            return VolumeKg / TotalRepetitions;
+        }
+    }
 
     public decimal? EstimatedOneRepMaxKg => TrainingStatistics.MaxOrNull(Sets.Select(set => (decimal?)set.EstimatedOneRepMaxKg));
 
@@ -344,7 +352,11 @@ public sealed record ExerciseRecords(
         _ => MaxRepetitions,
     };
 
-    public RecordEvent? Current(RecordKind kind) => Events(kind).LastOrDefault();
+    public RecordEvent? Current(RecordKind kind)
+    {
+        IReadOnlyList<RecordEvent> events = Events(kind);
+        return events.Count == 0 ? null : events[^1];
+    }
 }
 
 public sealed record ExerciseHistory(IReadOnlyList<ExerciseWorkoutTotals> Workouts, IReadOnlyList<RecordedSet> Sets)
