@@ -53,7 +53,7 @@ void main() {
       );
       await tester.pumpWidget(const SizedBox());
       active.dispose();
-    });
+    }, tags: ['golden']);
 
     testWidgets('minimierte Leiste zeigt Pausen-Restzeit $name', (
       tester,
@@ -99,7 +99,7 @@ void main() {
       );
       await tester.pumpWidget(const SizedBox());
       active.dispose();
-    });
+    }, tags: ['golden']);
   }
 }
 

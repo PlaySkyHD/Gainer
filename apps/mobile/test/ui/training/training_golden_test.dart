@@ -66,7 +66,7 @@ void main() {
         find.byType(TrainingHomeScreen),
         matchesGoldenFile('goldens/training_diary_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Tagebuch leer $name', (tester) async {
       _phoneSize(tester);
@@ -92,7 +92,7 @@ void main() {
         find.byType(TrainingHomeScreen),
         matchesGoldenFile('goldens/training_diary_empty_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     for (final (variant, scale) in const [
       ('active', 1.0),
@@ -141,7 +141,7 @@ void main() {
           find.byType(WorkoutScreen),
           matchesGoldenFile('goldens/workout_${label}_$name.png'),
         );
-      });
+      }, tags: ['golden']);
     }
 
     testWidgets('Übungskarten mit Vorwerten und Superset $name', (
@@ -174,7 +174,7 @@ void main() {
         find.byType(WorkoutScreen),
         matchesGoldenFile('goldens/workout_blocks_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Metadatenkarte $name', (tester) async {
       _phoneSize(tester);
@@ -204,7 +204,7 @@ void main() {
         find.byType(WorkoutMetadataCard),
         matchesGoldenFile('goldens/workout_metadata_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Satzzeile bei großer Schrift $name', (tester) async {
       _phoneSize(tester);
@@ -235,7 +235,7 @@ void main() {
         find.byType(SetRow).first,
         matchesGoldenFile('goldens/set_row_scale13_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('kompakte Trainingsleiste über der Tableiste $name', (
       tester,
@@ -276,7 +276,7 @@ void main() {
         find.byType(MobileTabScaffold),
         matchesGoldenFile('goldens/compact_training_bar_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Übungsmenü als Sheet $name', (tester) async {
       final ctx = await _openPlanningWorkout(tester, brightness);
@@ -289,7 +289,7 @@ void main() {
         matchesGoldenFile('goldens/workout_block_menu_$name.png'),
       );
       await ctx.dispose();
-    });
+    }, tags: ['golden']);
 
     testWidgets('Neuordnen-Sheet $name', (tester) async {
       final ctx = await _openPlanningWorkout(tester, brightness);
@@ -304,7 +304,7 @@ void main() {
         matchesGoldenFile('goldens/workout_reorder_$name.png'),
       );
       await ctx.dispose();
-    });
+    }, tags: ['golden']);
 
     testWidgets('Fehlwerte-Dialog $name', (tester) async {
       final ctx = await _openPlanningWorkout(tester, brightness);
@@ -317,7 +317,7 @@ void main() {
         matchesGoldenFile('goldens/workout_missing_values_$name.png'),
       );
       await ctx.dispose();
-    });
+    }, tags: ['golden']);
 
     testWidgets('Zusammenfassung mit neuem Rekord $name', (tester) async {
       _phoneSize(tester);
@@ -366,7 +366,7 @@ void main() {
         find.byType(WorkoutSummaryScreen),
         matchesGoldenFile('goldens/workout_summary_$name.png'),
       );
-    });
+    }, tags: ['golden']);
   }
 }
 

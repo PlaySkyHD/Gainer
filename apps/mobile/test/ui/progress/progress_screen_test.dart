@@ -27,7 +27,7 @@ void main() {
         matchesGoldenFile('goldens/progress_screen_${brightness.name}.png'),
       );
       expect(tester.takeException(), isNull);
-    });
+    }, tags: ['golden']);
   }
 
   testWidgets('dashboard shows weight, training, nutrition and trend values', (

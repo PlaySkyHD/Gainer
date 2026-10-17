@@ -73,7 +73,7 @@ void expectGoldenVariants(
         matchesGoldenFile('goldens/${name}_${variant.suffix}.png'),
       );
       expect(tester.takeException(), isNull);
-    });
+    }, tags: ['golden']);
   }
 }
 
