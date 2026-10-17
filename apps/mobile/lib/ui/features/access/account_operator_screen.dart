@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../../../data/models/api/api_models.dart';
 import '../../../data/services/auth/mobile_auth_controller.dart';
+import '../../core/components/components.dart';
+import '../../core/theme.dart';
 
 class AccountOperatorScreen extends StatefulWidget {
   const AccountOperatorScreen({required this.controller, super.key});
@@ -108,19 +110,41 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
     }
   }
 
-  List<Widget> _invitationChildren(Uri link) => [
-    const SizedBox(height: 8),
-    const Text('Diesen Link einmalig sicher an die Person weitergeben.'),
-    Text(link.toString()),
+  List<Widget> _invitationChildren(Uri link, GainerColors colors) => [
+    Padding(
+      padding: const EdgeInsets.fromLTRB(
+        GainerSpacing.m,
+        GainerSpacing.xs,
+        GainerSpacing.m,
+        0,
+      ),
+      child: Text(
+        'Diesen Link einmalig sicher an die Person weitergeben.',
+        style: GainerTypography.body.copyWith(color: colors.secondaryText),
+      ),
+    ),
+    Padding(
+      padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.m),
+      child: Text(
+        link.toString(),
+        style: GainerTypography.body.copyWith(color: colors.primaryText),
+      ),
+    ),
     if (_invitationExpiresAt case final expires?)
-      Text('Gültig bis ${expires.toLocal()}'),
-    CupertinoButton(
-      onPressed: () => Clipboard.setData(ClipboardData(text: link.toString())),
-      child: const Text('Einladungslink kopieren'),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.m),
+        child: Text(
+          'Gültig bis ${expires.toLocal()}',
+          style: GainerTypography.label.copyWith(color: colors.secondaryText),
+        ),
+      ),
+    GainerListRow(
+      title: 'Einladungslink kopieren',
+      onTap: () => Clipboard.setData(ClipboardData(text: link.toString())),
     ),
   ];
 
-  List<Widget> _accountChildren() {
+  List<Widget> _accountChildren(GainerColors colors) {
     if (_loading) {
       return const [
         Padding(
@@ -129,18 +153,27 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
         ),
       ];
     }
-    return [for (final account in _accounts) _accountTile(account)];
+    return [for (final account in _accounts) _accountRow(account, colors)];
   }
 
-  Widget _accountTile(ApiAccountSummary account) => CupertinoListTile(
-    title: Text(account.email),
-    subtitle: Text(account.isActive ? 'Aktiv' : 'Deaktiviert'),
-    trailing: CupertinoSwitch(
-      value: account.isActive,
-      onChanged: _isOwnAccount(account) || _busy
-          ? null
-          : (value) => _setStatus(account, value),
-    ),
+  Widget _accountRow(ApiAccountSummary account, GainerColors colors) => Row(
+    children: [
+      Expanded(
+        child: GainerListRow(
+          title: account.email,
+          value: account.isActive ? 'Aktiv' : 'Deaktiviert',
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(right: GainerSpacing.m),
+        child: CupertinoSwitch(
+          value: account.isActive,
+          onChanged: _isOwnAccount(account) || _busy
+              ? null
+              : (value) => _setStatus(account, value),
+        ),
+      ),
+    ],
   );
 
   bool _isOwnAccount(ApiAccountSummary account) =>
@@ -148,47 +181,87 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
       widget.controller.account?.session.userId.toLowerCase();
 
   @override
-  Widget build(BuildContext context) => CupertinoPageScaffold(
-    navigationBar: const CupertinoNavigationBar(
-      middle: Text('Kontoverwaltung'),
-    ),
-    child: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Text('Einladung ausstellen', style: TextStyle(fontSize: 20)),
-          const SizedBox(height: 12),
-          CupertinoTextField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            placeholder: 'E-Mail-Adresse',
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _createInvitation(),
-          ),
-          const SizedBox(height: 8),
-          CupertinoButton.filled(
-            onPressed: _busy ? null : _createInvitation,
-            child: const Text('Einladung erstellen'),
-          ),
-          if (_issuedInvitation case final link?) ..._invitationChildren(link),
-          if (_error case final message?) ...[
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: TextStyle(
-                color: CupertinoColors.systemRed.resolveFrom(context),
-              ),
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return CupertinoPageScaffold(
+      backgroundColor: colors.background,
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text('Kontoverwaltung'),
+        backgroundColor: colors.background,
+      ),
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(GainerSpacing.m),
+          children: [
+            GainerGroupedSection(
+              header: 'Einladung ausstellen',
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(GainerSpacing.m),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      CupertinoTextField(
+                        controller: _email,
+                        keyboardType: TextInputType.emailAddress,
+                        placeholder: 'E-Mail-Adresse',
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _createInvitation(),
+                        style: GainerTypography.body.copyWith(
+                          color: colors.primaryText,
+                        ),
+                        placeholderStyle: GainerTypography.body.copyWith(
+                          color: colors.placeholderText,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: GainerSpacing.m,
+                          vertical: GainerSpacing.s,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.elevatedSurface,
+                          borderRadius: BorderRadius.circular(
+                            GainerRadii.field,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: GainerSpacing.s),
+                      GainerPillButton(
+                        label: 'Einladung erstellen',
+                        expand: true,
+                        onPressed: _busy ? null : _createInvitation,
+                      ),
+                    ],
+                  ),
+                ),
+                if (_issuedInvitation case final link?)
+                  ..._invitationChildren(link, colors),
+                if (_error case final message?)
+                  Padding(
+                    padding: const EdgeInsets.all(GainerSpacing.m),
+                    child: Text(
+                      message,
+                      style: GainerTypography.body.copyWith(
+                        color: colors.destructive,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: GainerSpacing.l),
+            GainerGroupedSection(
+              header: 'Konten',
+              children: _accountChildren(colors),
+            ),
+            const SizedBox(height: GainerSpacing.m),
+            GainerPillButton(
+              label: 'Liste aktualisieren',
+              variant: GainerPillVariant.tonal,
+              expand: true,
+              onPressed: _loading || _busy ? null : _load,
             ),
           ],
-          const SizedBox(height: 26),
-          const Text('Konten', style: TextStyle(fontSize: 20)),
-          ..._accountChildren(),
-          CupertinoButton(
-            onPressed: _loading || _busy ? null : _load,
-            child: const Text('Liste aktualisieren'),
-          ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
