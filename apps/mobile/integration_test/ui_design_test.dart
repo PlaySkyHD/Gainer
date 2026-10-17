@@ -9,7 +9,8 @@ import 'package:gainer_mobile/data/repositories/insights/insights_repository.dar
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/repositories/sync/sync_repository.dart';
-import 'package:gainer_mobile/data/repositories/training/training_repository.dart';
+import 'package:gainer_mobile/data/repositories/training/api_exercise_catalog_provider.dart';
+import 'package:gainer_mobile/data/repositories/training/training_log_repository.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
 import 'package:gainer_mobile/data/services/auth/mobile_auth_controller.dart';
 import 'package:gainer_mobile/data/services/auth/sync_foreground_scheduler.dart';
@@ -19,7 +20,9 @@ import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_a
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
-import 'package:gainer_mobile/domain/models/training/training.dart';
+import 'package:gainer_mobile/domain/models/training/exercise_catalog_model.dart';
+import 'package:gainer_mobile/domain/models/training/training_plan_model.dart';
+import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/core/shell/mobile_shell.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
@@ -28,7 +31,6 @@ import 'package:gainer_mobile/ui/features/body/health/health_review_view_model.d
 import 'package:gainer_mobile/ui/features/coach/coach_view_model.dart';
 import 'package:gainer_mobile/ui/features/nutrition/nutrition_view_model.dart';
 import 'package:gainer_mobile/ui/features/progress/progress_view_model.dart';
-import 'package:gainer_mobile/ui/features/training/training_view_model.dart';
 import 'package:integration_test/integration_test.dart';
 
 const _accountId = '00000000-0000-4000-8000-000000000003';
@@ -148,30 +150,10 @@ void main() {
 
     await _tapTab(tester, 'Training');
     await _capture(binding, 'tab-training');
-    await _scrollActiveListUntilVisible(
-      tester,
-      find.byKey(const ValueKey('training-create-template-route')),
-    );
-    await tester.tap(
-      find.byKey(const ValueKey('training-create-template-route')),
-    );
-    await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey('training-cancel-template')),
+      find.text('Das Training wird gerade neu aufgebaut.'),
       findsOneWidget,
     );
-    await _capture(binding, 'editor-training');
-    await _tapTab(tester, 'Mehr');
-    await _tapTab(tester, 'Training');
-    expect(
-      find.byKey(const ValueKey('training-cancel-template')),
-      findsOneWidget,
-    );
-    await tester.tap(find.byKey(const ValueKey('training-cancel-template')));
-    await tester.pumpAndSettle();
-    _resetActiveListScroll(tester);
-    await tester.pumpAndSettle();
-    expect(find.text('Dein Training'), findsOneWidget);
 
     await _tapTab(tester, 'Mehr');
     await _capture(binding, 'tab-mehr');
@@ -283,26 +265,25 @@ Future<UiDesignFixture> createUiDesignFixture() async {
     sleepMinutes: 438,
   );
 
-  final trainingRepository = TrainingRepository(
+  final trainingLog = TrainingLogRepository(
     store: store,
     catalog: _FixtureExerciseCatalog(),
   );
-  final templateId = await trainingRepository.saveTemplate(
-    name: 'Ganzkörper A',
-    items: const [
-      TrainingTemplateItem(
-        id: 'template-item-1',
-        exerciseId: '00000000-0000-4000-8000-000000000004',
-        plannedSets: 3,
-        minimumRepetitions: 8,
-        maximumRepetitions: 10,
-        targetRir: 2,
-        restSeconds: 120,
-        notes: null,
-      ),
-    ],
+  final plan = await trainingLog.createPlan(
+    TrainingPlanModel(
+      planId: '00000000-0000-4000-8000-000000000006',
+      name: 'Ganzkörper A',
+      previousValueSource: PreviousValueSource.exercise,
+      entries: [
+        PlanEntry(
+          entryId: 'plan-entry-1',
+          exerciseId: '00000000-0000-4000-8000-000000000004',
+          workingSets: 3,
+        ),
+      ],
+    ),
   );
-  await trainingRepository.saveRotation([templateId]);
+  await trainingLog.saveRotation([plan.planId]);
   final nutritionRepository = NutritionRepository(store: store);
   final today = _date(DateTime.now());
   await nutritionRepository.saveEntry(
@@ -325,14 +306,13 @@ Future<UiDesignFixture> createUiDesignFixture() async {
   );
 
   final body = BodyViewModel(bodyRepository);
-  final training = TrainingViewModel(trainingRepository);
   final nutrition = NutritionViewModel(
     repository: nutritionRepository,
     localDate: today,
   );
   final progress = ProgressViewModel(
     InsightsRepository(api, store: store),
-    trainingRepository: trainingRepository,
+    training: trainingLog,
   );
   final sync = SyncRepository(
     store: store,
@@ -370,20 +350,17 @@ Future<UiDesignFixture> createUiDesignFixture() async {
     isSessionActive: isActive,
     online: false,
     bodyViewModel: body,
-    trainingViewModel: training,
+    training: trainingLog,
     nutritionViewModel: nutrition,
     healthViewModel: health,
     progressViewModel: progress,
     coachViewModel: CoachViewModel(CoachRepository(api)),
     nativeLifecycle: NativeFeatureLifecycleCoordinator(
       installationDatabase: database,
-      training: training,
       body: body,
       nutrition: nutrition,
       snapshots: native,
-      activities: native,
       haptics: native,
-      notifications: native,
       isSessionActive: isActive,
     ),
   );
@@ -618,18 +595,26 @@ class _FixtureApi extends ApiClient {
 
 class _FixtureExerciseCatalog implements ExerciseCatalogProvider {
   @override
-  Future<List<ExerciseCatalogEntry>> loadExercises() async => const [
-    ExerciseCatalogEntry(
-      id: '00000000-0000-4000-8000-000000000004',
-      name: 'Kniebeuge',
-      catalogVersion: 1,
-    ),
-    ExerciseCatalogEntry(
-      id: '00000000-0000-4000-8000-000000000005',
-      name: 'Rudern',
-      catalogVersion: 1,
-    ),
-  ];
+  bool get lastLoadWasStale => false;
+
+  @override
+  Future<BaseCatalog> loadBaseCatalog() async => const BaseCatalog(
+    exercises: [
+      CatalogExercise(
+        id: '00000000-0000-4000-8000-000000000004',
+        name: 'Kniebeuge',
+        exerciseType: ExerciseKind.strength,
+        isBase: true,
+      ),
+      CatalogExercise(
+        id: '00000000-0000-4000-8000-000000000005',
+        name: 'Rudern',
+        exerciseType: ExerciseKind.strength,
+        isBase: true,
+      ),
+    ],
+    categories: [],
+  );
 }
 
 class _FixtureNativeFeatures

@@ -4,10 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/repositories/insights/insights_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
-import 'package:gainer_mobile/data/repositories/training/training_repository.dart';
+import 'package:gainer_mobile/data/repositories/training/api_exercise_catalog_provider.dart';
+import 'package:gainer_mobile/data/repositories/training/training_log_repository.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
-import 'package:gainer_mobile/domain/models/training/training.dart';
+import 'package:gainer_mobile/domain/models/training/exercise_catalog_model.dart';
+import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/progress/exercise_progress_section.dart';
 import 'package:gainer_mobile/ui/features/progress/progress_view_model.dart';
 
@@ -24,13 +26,13 @@ void main() {
     final database = LocalDatabase(NativeDatabase.memory());
     final store = LocalSyncStore(database: database, accountId: _account);
     final api = _ProgressApi();
-    final training = TrainingRepository(
+    final training = TrainingLogRepository(
       store: store,
       catalog: _FixtureCatalog(),
     );
     final model = ProgressViewModel(
       InsightsRepository(api, store: store),
-      trainingRepository: training,
+      training: training,
     );
     addTearDown(() async {
       model.dispose();
@@ -77,13 +79,13 @@ void main() {
     final database = LocalDatabase(NativeDatabase.memory());
     final store = LocalSyncStore(database: database, accountId: _account);
     final api = _ProgressApi();
-    final training = TrainingRepository(
+    final training = TrainingLogRepository(
       store: store,
       catalog: _FixtureCatalog(),
     );
     final model = ProgressViewModel(
       InsightsRepository(api, store: store),
-      trainingRepository: training,
+      training: training,
     );
     addTearDown(() async {
       model.dispose();
@@ -116,10 +118,26 @@ void main() {
 
 class _FixtureCatalog implements ExerciseCatalogProvider {
   @override
-  Future<List<ExerciseCatalogEntry>> loadExercises() async => const [
-    ExerciseCatalogEntry(id: _squat, name: 'Kniebeuge', catalogVersion: 1),
-    ExerciseCatalogEntry(id: _row, name: 'Rudern', catalogVersion: 1),
-  ];
+  bool get lastLoadWasStale => false;
+
+  @override
+  Future<BaseCatalog> loadBaseCatalog() async => const BaseCatalog(
+    exercises: [
+      CatalogExercise(
+        id: _squat,
+        name: 'Kniebeuge',
+        exerciseType: ExerciseKind.strength,
+        isBase: true,
+      ),
+      CatalogExercise(
+        id: _row,
+        name: 'Rudern',
+        exerciseType: ExerciseKind.strength,
+        isBase: true,
+      ),
+    ],
+    categories: [],
+  );
 }
 
 class _ProgressApi extends ApiClient {

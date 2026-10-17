@@ -194,9 +194,9 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
         for (final workout in vm.completedWorkouts)
           _actionCard(
             context,
-            title: workout.value.templateNameSnapshot,
+            title: workout.value.title,
             detail:
-                '${_localTime(DateTime.parse(workout.value.startedAtUtc))} · ${_localTime(DateTime.parse(workout.value.completedAtUtc!))}',
+                '${_localTime(workout.value.startedAtUtc)} · ${_localTime(workout.value.endedAtUtc!)}',
             actionLabel: 'Workout nach Apple Health exportieren',
             icon: CupertinoIcons.arrow_up_doc,
             onPressed: vm.isLoading ? null : () => _export(workout),

@@ -1,9 +1,14 @@
+import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/training_plan_model.dart';
+import '../../../domain/models/training/workout_model.dart';
 import '../../models/local/local_mutation.dart';
 
 const _bodyGoalType = 'body-goal';
 const _dailyCheckInType = 'daily-check-in';
 const _customExerciseType = 'custom-exercise';
-const _workoutTemplateType = 'workout-template';
+const _exerciseCategoryType = 'exercise-category';
+const _trainingPlanType = 'training-plan';
+const _workoutType = 'workout';
 const _workoutRotationType = 'workout-rotation';
 const _nutritionDayType = 'nutrition-day';
 const _reusableMealType = 'reusable-meal';
@@ -17,9 +22,10 @@ class SyncPayloadCodec {
         'BodyGoal' => _bodyGoalType,
         'DailyCheckIn' => _dailyCheckInType,
         'CustomExercise' => _customExerciseType,
-        'WorkoutTemplate' => _workoutTemplateType,
+        'ExerciseCategory' => _exerciseCategoryType,
+        'TrainingPlan' => _trainingPlanType,
         'WorkoutRotation' => _workoutRotationType,
-        'Workout' => 'workout',
+        'Workout' => _workoutType,
         'NutritionDay' => _nutritionDayType,
         'ReusableMeal' => _reusableMealType,
         'NutritionTargetSchedule' => _nutritionTargetScheduleType,
@@ -39,19 +45,30 @@ class SyncPayloadCodec {
             : 'correctDailyCheckIn';
       case _customExerciseType:
         return _customExerciseOperation(mutation, body);
-      case _workoutTemplateType:
-        return mutation.operation == LocalMutationOperation.update &&
-                body['isArchived'] == true
-            ? 'archiveWorkoutTemplate'
-            : 'saveWorkoutTemplate';
+      case _exerciseCategoryType:
+        return switch (mutation.operation) {
+          LocalMutationOperation.create => 'createExerciseCategory',
+          _ =>
+            body['isArchived'] == true
+                ? 'archiveExerciseCategory'
+                : 'updateExerciseCategory',
+        };
+      case _trainingPlanType:
+        return switch (mutation.operation) {
+          LocalMutationOperation.create => 'createTrainingPlan',
+          LocalMutationOperation.reorder => 'reorderTrainingPlans',
+          _ =>
+            body['isArchived'] == true
+                ? 'archiveTrainingPlan'
+                : 'updateTrainingPlan',
+        };
       case _workoutRotationType:
         return 'saveWorkoutRotation';
-      case 'workout':
+      case _workoutType:
         return switch (mutation.operation) {
-          LocalMutationOperation.create => 'startWorkout',
-          LocalMutationOperation.complete => 'completeWorkout',
-          LocalMutationOperation.discard => 'discardWorkout',
-          _ => 'editWorkout',
+          LocalMutationOperation.create => 'createWorkout',
+          LocalMutationOperation.delete => 'deleteWorkout',
+          _ => 'saveWorkout',
         };
       case _nutritionDayType:
         return mutation.operation == LocalMutationOperation.delete
@@ -72,12 +89,14 @@ class SyncPayloadCodec {
     LocalMutation mutation,
     Map<String, dynamic> body,
   ) {
-    if (mutation.operation == LocalMutationOperation.create) {
-      return 'createCustomExercise';
-    }
-    return body['isArchived'] == true
-        ? 'archiveCustomExercise'
-        : 'updateCustomExercise';
+    return switch (mutation.operation) {
+      LocalMutationOperation.create => 'createCustomExercise',
+      LocalMutationOperation.merge => 'mergeExercises',
+      _ =>
+        body['isArchived'] == true
+            ? 'archiveCustomExercise'
+            : 'updateCustomExercise',
+    };
   }
 
   static Object? serverPayload(
@@ -92,11 +111,13 @@ class SyncPayloadCodec {
         return _customExercisePayload(mutation, body, baseVersion);
       case _bodyGoalType:
         return _bodyGoalPayload(mutation, body);
-      case _workoutTemplateType:
-        return _workoutTemplatePayload(mutation, body, baseVersion);
+      case _exerciseCategoryType:
+        return _exerciseCategoryPayload(mutation, body, baseVersion);
+      case _trainingPlanType:
+        return _trainingPlanPayload(mutation, body, baseVersion);
       case _workoutRotationType:
         return _workoutRotationPayload(mutation, body, baseVersion);
-      case 'workout':
+      case _workoutType:
         return _workoutPayload(mutation, body, baseVersion);
       case _nutritionDayType:
         return _nutritionDayPayload(mutation, body, baseVersion);
@@ -138,23 +159,47 @@ class SyncPayloadCodec {
     int baseVersion,
   ) {
     final id = mutation.aggregateId;
+    if (mutation.operation == LocalMutationOperation.merge) {
+      return {
+        'sourceExerciseId': id,
+        'sourceBaseVersion': baseVersion,
+        'targetExerciseId': body['targetExerciseId'],
+      };
+    }
     if (mutation.operation != LocalMutationOperation.create &&
         body['isArchived'] == true) {
       return {'exerciseId': id, 'baseVersion': baseVersion};
     }
-    final values = {
-      for (final key in [
-        'name',
-        'description',
-        'targetMuscle',
-        'muscleGroup',
-        'equipment',
-      ])
-        if (body.containsKey(key)) key: body[key],
-    };
+    final values = _compact({
+      'name': body['name'],
+      'exerciseType': body['exerciseType'],
+      'description': body['description'],
+      'targetMuscle': body['targetMuscle'],
+      'muscleGroup': body['muscleGroup'],
+      'equipment': body['equipment'],
+      'notes': body['notes'],
+      'bodyweightFactor': body['bodyweightFactor'],
+      'weightFactor': body['weightFactor'],
+      'categoryIds': body['categoryIds'],
+    });
     return mutation.operation == LocalMutationOperation.create
         ? {'exerciseId': id, 'values': values}
         : {'exerciseId': id, 'baseVersion': baseVersion, 'values': values};
+  }
+
+  static Object? _exerciseCategoryPayload(
+    LocalMutation mutation,
+    Map<String, dynamic> body,
+    int baseVersion,
+  ) {
+    final id = mutation.aggregateId;
+    if (mutation.operation == LocalMutationOperation.create) {
+      return {'categoryId': id, 'name': body['name']};
+    }
+    if (body['isArchived'] == true) {
+      return {'categoryId': id, 'baseVersion': baseVersion};
+    }
+    return {'categoryId': id, 'baseVersion': baseVersion, 'name': body['name']};
   }
 
   static Object? _bodyGoalPayload(
@@ -176,35 +221,51 @@ class SyncPayloadCodec {
     };
   }
 
-  static Object? _workoutTemplatePayload(
+  static Object? _trainingPlanPayload(
     LocalMutation mutation,
     Map<String, dynamic> body,
     int baseVersion,
   ) {
     final id = mutation.aggregateId;
+    if (mutation.operation == LocalMutationOperation.reorder) {
+      return {
+        'plans': _mappedList(
+          body['plans'],
+          (plan) => {
+            'planId': plan['planId'],
+            'baseVersion': plan['baseVersion'],
+          },
+        ),
+      };
+    }
     if (mutation.operation == LocalMutationOperation.update &&
         body['isArchived'] == true) {
-      return {'templateId': id, 'baseVersion': baseVersion};
+      return {'planId': id, 'baseVersion': baseVersion};
     }
-    return {
-      'templateId': id,
-      'baseVersion': baseVersion,
-      'name': body['name'],
-      'items': _mappedList(
-        body['items'],
-        (item) => {
-          'itemId': item['id'],
-          'exerciseId': item['exerciseId'],
-          'plannedSets': item['plannedSets'],
-          'minimumRepetitions': item['minimumRepetitions'],
-          'maximumRepetitions': item['maximumRepetitions'],
-          'targetRir': item['targetRir'],
-          'restSeconds': item['restSeconds'],
-          'notes': item['notes'],
-        },
-      ),
-    };
+    final plan = _trainingPlanValue(body);
+    return mutation.operation == LocalMutationOperation.create
+        ? {'plan': plan}
+        : {'baseVersion': baseVersion, 'plan': plan};
   }
+
+  static Map<String, Object?> _trainingPlanValue(Map<String, dynamic> body) =>
+      _compact({
+        'planId': body['planId'],
+        'name': body['name'],
+        'notes': body['notes'],
+        'previousValueSource': body['previousValueSource'],
+        'entries': _mappedList(
+          body['entries'],
+          (entry) => _compact({
+            'entryId': entry['entryId'],
+            'exerciseId': entry['exerciseId'],
+            'warmupSets': entry['warmupSets'],
+            'workingSets': entry['workingSets'],
+            'notes': entry['notes'],
+            'supersetId': entry['supersetId'],
+          }),
+        ),
+      });
 
   static Object? _workoutRotationPayload(
     LocalMutation mutation,
@@ -214,10 +275,7 @@ class SyncPayloadCodec {
     return {
       'rotationId': mutation.aggregateId,
       'baseVersion': baseVersion,
-      'entries': _mappedList(
-        body['entries'],
-        (entry) => {'itemId': entry['id'], 'templateId': entry['templateId']},
-      ),
+      'planIds': body['planIds'],
     };
   }
 
@@ -227,54 +285,55 @@ class SyncPayloadCodec {
     int baseVersion,
   ) {
     final id = mutation.aggregateId;
-    if (mutation.operation == LocalMutationOperation.create) {
-      return {'workoutId': id, 'templateId': body['sourceTemplateId']};
-    }
-    if (mutation.operation == LocalMutationOperation.complete) {
-      final rotation = body['rotation'];
-      return {
-        'workoutId': id,
-        'baseVersion': baseVersion,
-        'rotationId': rotation is Map<String, dynamic> ? rotation['id'] : null,
-        'rotationBaseVersion': rotation is Map<String, dynamic>
-            ? rotation['serverVersion']
-            : null,
-      };
-    }
-    if (mutation.operation == LocalMutationOperation.discard) {
+    if (mutation.operation == LocalMutationOperation.delete) {
       return {'workoutId': id, 'baseVersion': baseVersion};
     }
-    return {
-      'workoutId': id,
-      'baseVersion': baseVersion,
-      'exercises': _mappedList(
-        body['exercises'],
-        (exercise) => {
-          'workoutExerciseId': exercise['id'],
-          'sourceExerciseId': exercise['sourceExerciseId'],
-          'exerciseNameSnapshot': exercise['exerciseNameSnapshot'],
-          'plannedSets': exercise['plannedSets'],
-          'minimumRepetitions': exercise['minimumRepetitions'],
-          'maximumRepetitions': exercise['maximumRepetitions'],
-          'targetRir': exercise['targetRir'],
-          'restSeconds': exercise['restSeconds'],
-          'notes': exercise['notes'],
-          'sets': _mappedList(
-            exercise['sets'],
-            (set) => {
-              'setId': set['id'],
-              'weightKg': set['weightKg'],
-              'repetitions': set['repetitions'],
-              'rir': set['rir'],
-              'notes': set['notes'],
-              'isCompleted': set['isCompleted'],
-              'completedAtUtc': set['completedAtUtc'],
-            },
-          ),
-        },
-      ),
-    };
+    final workout = _workoutValue(body);
+    return mutation.operation == LocalMutationOperation.create
+        ? {'workout': workout}
+        : {'baseVersion': baseVersion, 'workout': workout};
   }
+
+  static Map<String, Object?> _workoutValue(Map<String, dynamic> body) =>
+      _compact({
+        'workoutId': body['workoutId'],
+        'title': body['title'],
+        'notes': body['notes'],
+        'startedAtUtc': body['startedAtUtc'],
+        'endedAtUtc': body['endedAtUtc'],
+        'previousValueSource': body['previousValueSource'],
+        'sourcePlanId': body['sourcePlanId'],
+        'sourceWorkoutId': body['sourceWorkoutId'],
+        'exercises': _mappedList(
+          body['exercises'],
+          (exercise) => _compact({
+            'workoutExerciseId': exercise['workoutExerciseId'],
+            'sourceExerciseId': exercise['sourceExerciseId'],
+            'exerciseNameSnapshot': exercise['exerciseNameSnapshot'],
+            'exerciseTypeSnapshot': exercise['exerciseTypeSnapshot'],
+            'notes': exercise['notes'],
+            'supersetId': exercise['supersetId'],
+            'sets': _mappedList(
+              exercise['sets'],
+              (set) => _compact({
+                'setId': set['setId'],
+                'setType': set['setType'],
+                'weightKg': set['weightKg'],
+                'repetitions': set['repetitions'],
+                'rir': set['rir'],
+                'notes': set['notes'],
+              }),
+            ),
+          }),
+        ),
+      });
+
+  /// Optionale Felder ohne Wert fehlen in der Payload, wie der Vertrag sie
+  /// vorsieht; ein Update ersetzt die Werte vollständig.
+  static Map<String, Object?> _compact(Map<String, Object?> source) => {
+    for (final entry in source.entries)
+      if (entry.value != null) entry.key: entry.value,
+  };
 
   static Object? _nutritionDayPayload(
     LocalMutation mutation,
@@ -391,14 +450,48 @@ class SyncPayloadCodec {
     return source.cast<Map<String, dynamic>>().map(map).toList(growable: false);
   }
 
+  /// Prüft einen normalisierten Trainings-Snapshot gegen das lokale Modell.
+  /// Ein unlesbarer Snapshot (z. B. unbekannter Übungstyp) bricht den Pull ab,
+  /// damit der Cursor nicht über ihn hinweg vorrückt.
+  static void verifyTrainingSnapshot(String resourceType, Object? snapshot) {
+    switch (resourceType) {
+      case 'Workout':
+        Workout.fromJson(_mapValue(snapshot));
+      case 'TrainingPlan':
+        TrainingPlanModel.fromJson(_mapValue(snapshot));
+      case 'WorkoutRotation':
+        RotationModel.fromJson(_mapValue(snapshot));
+      case 'CustomExercise':
+        CatalogExercise.fromJson(_mapValue(snapshot));
+      case 'ExerciseCategory':
+        CatalogCategory.fromJson(_mapValue(snapshot));
+    }
+  }
+
+  /// Snapshots der Trainingstypen behalten ihre Modell-IDs, weil die lokalen
+  /// Modelle sie unverändert lesen. Nur Server-Metadaten wie `version` fallen weg.
   static Object? normalizeSnapshot(String resourceType, Object? snapshotValue) {
     if (snapshotValue is! Map<String, dynamic>) return snapshotValue;
     final snapshot = Map<String, dynamic>.from(snapshotValue);
+    if (resourceType == 'ExerciseCategory') {
+      return {
+        'id': snapshot['categoryId'],
+        'name': snapshot['name'],
+        'isBase': false,
+        'isArchived': snapshot['isArchived'] ?? false,
+        'createdAtUtc': snapshot['createdAtUtc'],
+        'updatedAtUtc': snapshot['updatedAtUtc'],
+      };
+    }
     if (resourceType == 'DailyCheckIn' || resourceType == 'CustomExercise') {
       final values = snapshot['values'];
       if (values is Map<String, dynamic>) {
         return {
           ...values,
+          if (resourceType == 'CustomExercise') ...{
+            'id': snapshot['exerciseId'],
+            'isBase': false,
+          },
           for (final key in [
             'localDate',
             'isArchived',
@@ -412,62 +505,12 @@ class SyncPayloadCodec {
     for (final key in [
       'version',
       'goalId',
-      'templateId',
-      'rotationId',
-      'workoutId',
       'nutritionDayId',
       'reusableMealId',
       'nutritionTargetScheduleId',
     ]) {
       snapshot.remove(key);
     }
-    _normalizeNestedSnapshotIds(resourceType, snapshot);
     return snapshot;
-  }
-
-  static void _normalizeNestedSnapshotIds(
-    String resourceType,
-    Map<String, dynamic> snapshot,
-  ) {
-    if (resourceType == 'WorkoutTemplate') {
-      snapshot['items'] = _normalizeNestedIds(snapshot['items'], 'itemId');
-    } else if (resourceType == 'WorkoutRotation') {
-      snapshot['entries'] = _normalizeNestedIds(snapshot['entries'], 'itemId');
-    } else if (resourceType == 'Workout') {
-      snapshot['exercises'] = _normalizeNestedIds(
-        snapshot['exercises'],
-        'workoutExerciseId',
-        nestedKey: 'sets',
-        nestedIdKey: 'setId',
-      );
-    }
-  }
-
-  static List<Map<String, dynamic>> _normalizeNestedIds(
-    Object? value,
-    String idKey, {
-    String? nestedKey,
-    String? nestedIdKey,
-  }) {
-    if (value is! List ||
-        value.any((entry) => entry is! Map<String, dynamic>)) {
-      throw const FormatException('Expected a list of sync snapshot objects.');
-    }
-    return value
-        .cast<Map<String, dynamic>>()
-        .map((source) {
-          final item = Map<String, dynamic>.from(source);
-          if (item.containsKey(idKey)) {
-            item['id'] = item.remove(idKey);
-          }
-          if (nestedKey != null && item.containsKey(nestedKey)) {
-            item[nestedKey] = _normalizeNestedIds(
-              item[nestedKey],
-              nestedIdKey!,
-            );
-          }
-          return item;
-        })
-        .toList(growable: false);
   }
 }

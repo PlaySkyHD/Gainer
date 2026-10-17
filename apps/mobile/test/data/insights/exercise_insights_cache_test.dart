@@ -10,6 +10,7 @@ import 'package:gainer_mobile/data/services/api/api_client.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:path/path.dart' as p;
 
+const _categoryA = '00000000-0000-4000-8000-000000000301';
 const _accountA = 'a1234567-1234-4234-8234-123456789abc';
 const _accountB = 'b1234567-1234-4234-8234-123456789abc';
 const _exerciseA = '00000000-0000-4000-8000-000000000001';
@@ -152,11 +153,13 @@ void main() {
       final api = _CatalogApi();
       clients.add(api);
       final provider = ApiExerciseCatalogProvider(api, store: store);
-      expect((await provider.loadExercises()).single.name, 'Squat');
+      expect((await provider.loadBaseCatalog()).exercises.single.name, 'Squat');
       expect(provider.lastLoadWasStale, isFalse);
       api.fail = true;
       final offline = ApiExerciseCatalogProvider(api, store: store);
-      expect((await offline.loadExercises()).single.id, _exerciseA);
+      final cached = await offline.loadBaseCatalog();
+      expect(cached.exercises.single.id, _exerciseA);
+      expect(cached.categories.single.name, 'Beine');
       expect(offline.lastLoadWasStale, isTrue);
       expect(offline.lastLoadedAtUtc, isNotNull);
       await closeDatabase(database);
@@ -217,12 +220,17 @@ class _CatalogApi extends ApiClient {
           name: 'Squat',
           isCustom: false,
           version: 2,
+          exerciseType: 'strength',
           targetMuscle: 'Quadriceps',
+          categoryIds: [_categoryA],
         ),
       ],
       offset: offset,
       limit: limit,
       total: 1,
+      categories: const [
+        ApiExerciseCategory(id: _categoryA, name: 'Beine', isBase: true),
+      ],
     );
   }
 }

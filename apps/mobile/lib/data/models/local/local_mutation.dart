@@ -13,7 +13,10 @@ enum LocalMutationStatus {
   failed,
 }
 
-enum LocalMutationOperation { create, update, delete, complete, discard }
+/// `update` also covers archiving and finishing or resuming a workout; the
+/// codec picks the server operation from the body. `merge` and `reorder` span
+/// several resources and carry their own payload.
+enum LocalMutationOperation { create, update, delete, merge, reorder }
 
 class LocalMutation {
   LocalMutation({

@@ -3,7 +3,7 @@ import '../../services/api/api_client.dart';
 import '../../services/local/pending_handover_secret_store.dart';
 import 'local_sync_store.dart';
 
-const nativeHandoverSyncProtocolVersion = 2;
+const nativeHandoverSyncProtocolVersion = 3;
 
 /// Crash-safe native ownership transfer. Every identity needed to retry a
 /// request is written to the purpose-bound secure record before network I/O.
