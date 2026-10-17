@@ -5,10 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/repositories/insights/insights_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
-import 'package:gainer_mobile/data/repositories/training/training_repository.dart';
+import 'package:gainer_mobile/data/repositories/training/api_exercise_catalog_provider.dart';
+import 'package:gainer_mobile/data/repositories/training/training_log_repository.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
-import 'package:gainer_mobile/domain/models/training/training.dart';
+import 'package:gainer_mobile/domain/models/training/exercise_catalog_model.dart';
+import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/progress/progress_view_model.dart';
 
 const _account = '10000000-0000-4000-8000-000000000001';
@@ -27,13 +29,13 @@ void main() {
     database = LocalDatabase(NativeDatabase.memory());
     store = LocalSyncStore(database: database, accountId: _account);
     api = _ProgressApi();
-    final training = TrainingRepository(
+    final training = TrainingLogRepository(
       store: store,
       catalog: _FixtureCatalog(),
     );
     model = ProgressViewModel(
       InsightsRepository(api, store: store),
-      trainingRepository: training,
+      training: training,
     );
   });
 
@@ -91,9 +93,15 @@ void main() {
     () async {
       await model.loadExerciseOptions(refresh: true);
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      final training = model.trainingRepository!;
-      final customId = await training.createCustomExercise(
-        const ExerciseValues(name: 'Kurzhantelzug'),
+      final training = model.training!;
+      final customId = training.newId();
+      await training.createCustomExercise(
+        CatalogExercise(
+          id: customId,
+          name: 'Kurzhantelzug',
+          exerciseType: ExerciseKind.strength,
+          isBase: false,
+        ),
       );
       await model.loadExerciseOptions(refresh: true);
       expect(model.exerciseOptions.any((item) => item.id == customId), isTrue);
@@ -151,10 +159,26 @@ ApiExerciseProgress _sample(String exerciseId, int window) =>
 
 class _FixtureCatalog implements ExerciseCatalogProvider {
   @override
-  Future<List<ExerciseCatalogEntry>> loadExercises() async => const [
-    ExerciseCatalogEntry(id: _squat, name: 'Kniebeuge', catalogVersion: 1),
-    ExerciseCatalogEntry(id: _row, name: 'Rudern', catalogVersion: 1),
-  ];
+  bool get lastLoadWasStale => false;
+
+  @override
+  Future<BaseCatalog> loadBaseCatalog() async => const BaseCatalog(
+    exercises: [
+      CatalogExercise(
+        id: _squat,
+        name: 'Kniebeuge',
+        exerciseType: ExerciseKind.strength,
+        isBase: true,
+      ),
+      CatalogExercise(
+        id: _row,
+        name: 'Rudern',
+        exerciseType: ExerciseKind.strength,
+        isBase: true,
+      ),
+    ],
+    categories: [],
+  );
 }
 
 class _ProgressApi extends ApiClient {

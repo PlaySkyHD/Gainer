@@ -10,7 +10,7 @@ import '../../features/coach/coach_screen.dart';
 import '../../features/nutrition/nutrition_screen.dart';
 import '../../features/progress/progress_screen.dart';
 import '../../features/sync/sync_screen.dart';
-import '../../features/training/training_screen.dart';
+import '../../features/training/training_placeholder_screen.dart';
 import '../components/components.dart';
 import '../theme.dart';
 import '../view_models/mobile_shell_view_model.dart';
@@ -40,9 +40,7 @@ class MobileShell extends StatelessWidget {
           compactTrainingBar: compactTrainingBar,
           tabBuilder: (context, area) => CupertinoTabView(
             builder: (context) => switch (area) {
-              MobileArea.training => TrainingScreen(
-                viewModel: account.trainingViewModel,
-              ),
+              MobileArea.training => const TrainingPlaceholderScreen(),
               MobileArea.nutrition => NutritionScreen(
                 viewModel: account.nutritionViewModel,
               ),

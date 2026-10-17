@@ -137,6 +137,13 @@ void validateCatalogExercise(CatalogExercise exercise) {
   _throwIfAny(fields);
 }
 
+/// Prüft eine eigene Kategorie gegen die Vertragsgrenzen.
+void validateCatalogCategory(CatalogCategory category) {
+  final fields = <String, String>{};
+  _checkName(category.name, 'name', fields);
+  _throwIfAny(fields);
+}
+
 void _checkName(String value, String key, Map<String, String> fields) {
   final length = value.trim().length;
   if (length < 1 || length > _maxNameLength) {

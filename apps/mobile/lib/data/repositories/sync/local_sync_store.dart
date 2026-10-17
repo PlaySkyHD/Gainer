@@ -67,18 +67,17 @@ void _validateHealthLedgerKeys(
 
 List<(String, LocalAggregateEnvelope<Object?>, String)> _encodeRelatedEnvelopes(
   String aggregateId,
-  Map<String, LocalAggregateEnvelope<Object?>> relatedEnvelopes,
+  List<(String, LocalAggregateEnvelope<Object?>)> relatedEnvelopes,
 ) {
   final relatedJson = <(String, LocalAggregateEnvelope<Object?>, String)>[];
-  for (final entry in relatedEnvelopes.entries) {
-    final related = entry.value;
+  for (final (relatedType, related) in relatedEnvelopes) {
     if (related.aggregateId == aggregateId ||
         related.syncState != LocalSyncState.pending ||
-        entry.key.trim().isEmpty ||
+        relatedType.trim().isEmpty ||
         !RegExp(LocalDatabase.accountIdPattern).hasMatch(related.aggregateId)) {
       throw ArgumentError('A related mutation envelope is invalid.');
     }
-    relatedJson.add((entry.key, related, related.encode()));
+    relatedJson.add((relatedType, related, related.encode()));
   }
   return relatedJson;
 }
@@ -144,7 +143,7 @@ class LocalSyncStore {
     required int? baseVersion,
     required Object? body,
     required LocalAggregateEnvelope<Object?> envelope,
-    Map<String, LocalAggregateEnvelope<Object?>> relatedEnvelopes = const {},
+    List<(String, LocalAggregateEnvelope<Object?>)> relatedEnvelopes = const [],
     String? dependsOnMutationId,
     DateTime? createdAtUtc,
     Map<String, Object?> localMetadataWrites = const {},
@@ -797,7 +796,7 @@ class InstallationIdentityStore {
           RegExp(LocalDatabase.accountIdPattern).hasMatch(existing.value)) {
         return existing.value;
       }
-      final id = _newUuidV4();
+      final id = newUuidV4();
       await database
           .into(database.installationMetadata)
           .insertOnConflictUpdate(
@@ -811,7 +810,7 @@ class InstallationIdentityStore {
   }
 }
 
-String _newUuidV4() {
+String newUuidV4() {
   final random = Random.secure();
   final bytes = List<int>.generate(16, (_) => random.nextInt(256));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;

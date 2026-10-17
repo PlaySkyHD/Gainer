@@ -37,10 +37,15 @@ class ApiExerciseCatalogItem {
     required this.name,
     required this.isCustom,
     required this.version,
+    required this.exerciseType,
     this.description,
     this.targetMuscle,
     this.muscleGroup,
     this.equipment,
+    this.notes,
+    this.bodyweightFactor,
+    this.weightFactor,
+    this.categoryIds = const [],
     this.catalogVersion,
   });
 
@@ -50,6 +55,11 @@ class ApiExerciseCatalogItem {
   final String? targetMuscle;
   final String? muscleGroup;
   final String? equipment;
+  final String exerciseType;
+  final String? notes;
+  final double? bodyweightFactor;
+  final double? weightFactor;
+  final List<String> categoryIds;
   final bool isCustom;
   final String? catalogVersion;
   final int version;
@@ -62,9 +72,36 @@ class ApiExerciseCatalogItem {
         targetMuscle: json['targetMuscle'] as String?,
         muscleGroup: json['muscleGroup'] as String?,
         equipment: json['equipment'] as String?,
+        exerciseType: _requiredString(json, 'exerciseType'),
+        notes: json['notes'] as String?,
+        bodyweightFactor: (json['bodyweightFactor'] as num?)?.toDouble(),
+        weightFactor: (json['weightFactor'] as num?)?.toDouble(),
+        categoryIds: [
+          for (final id in (json['categoryIds'] as List<Object?>? ?? const []))
+            id! as String,
+        ],
         isCustom: _requiredBool(json, 'isCustom'),
         catalogVersion: json['catalogVersion'] as String?,
         version: _requiredInt(json, 'version'),
+      );
+}
+
+class ApiExerciseCategory {
+  const ApiExerciseCategory({
+    required this.id,
+    required this.name,
+    required this.isBase,
+  });
+
+  final String id;
+  final String name;
+  final bool isBase;
+
+  factory ApiExerciseCategory.fromJson(Map<String, dynamic> json) =>
+      ApiExerciseCategory(
+        id: _requiredString(json, 'id'),
+        name: _requiredString(json, 'name'),
+        isBase: _requiredBool(json, 'isBase'),
       );
 }
 
@@ -74,18 +111,25 @@ class ApiExerciseCatalogResponse {
     required this.offset,
     required this.limit,
     required this.total,
+    required this.categories,
   });
 
   final List<ApiExerciseCatalogItem> items;
   final int offset;
   final int limit;
   final int total;
+  final List<ApiExerciseCategory> categories;
 
   factory ApiExerciseCatalogResponse.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'];
     if (rawItems is! List ||
         rawItems.any((item) => item is! Map<String, dynamic>)) {
       throw const FormatException('Invalid exercise catalog items.');
+    }
+    final rawCategories = json['categories'];
+    if (rawCategories is! List ||
+        rawCategories.any((item) => item is! Map<String, dynamic>)) {
+      throw const FormatException('Invalid exercise categories.');
     }
     return ApiExerciseCatalogResponse(
       items: rawItems
@@ -95,6 +139,10 @@ class ApiExerciseCatalogResponse {
       offset: _requiredInt(json, 'offset'),
       limit: _requiredInt(json, 'limit'),
       total: _requiredInt(json, 'total'),
+      categories: rawCategories
+          .cast<Map<String, dynamic>>()
+          .map(ApiExerciseCategory.fromJson)
+          .toList(growable: false),
     );
   }
 }
@@ -734,11 +782,12 @@ class ApiInvitation {
 
 /// Error fields are read from both top-level API extensions and ProblemDetails.
 class ApiProblem {
-  const ApiProblem({this.title, this.detail, this.code});
+  const ApiProblem({this.title, this.detail, this.code, this.errors});
 
   final String? title;
   final String? detail;
   final String? code;
+  final Map<String, Object?>? errors;
 
   String get message => detail ?? title ?? 'Die Anfrage ist fehlgeschlagen.';
 
@@ -752,6 +801,9 @@ class ApiProblem {
           (extensions is Map<String, dynamic>
               ? extensions['code'] as String?
               : null),
+      errors: json['errors'] is Map<String, dynamic>
+          ? Map<String, Object?>.from(json['errors'] as Map<String, dynamic>)
+          : null,
     );
   }
 }

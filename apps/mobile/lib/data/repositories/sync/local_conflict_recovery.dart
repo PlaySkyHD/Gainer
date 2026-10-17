@@ -149,16 +149,12 @@ extension LocalConflictRecovery on LocalSyncStore {
         throw StateError('Local mutation is no longer available.');
       }
       final old = rows.first;
-      if (conflict.aggregateType == 'workout' &&
-          envelope.workingCopy is Map<String, dynamic> &&
-          ['completed', 'discarded'].contains(
-            ((envelope.workingCopy as Map<String, dynamic>)['status'] ?? '')
-                .toString()
-                .toLowerCase(),
-          )) {
-        throw StateError(
-          'Completed or discarded workouts cannot be reapplied.',
-        );
+      // Resending the same payload cannot fix these; the user must change data first.
+      if (const {
+        'active_workout_exists',
+        'validation_failed',
+      }.contains(conflict.code)) {
+        throw StateError('This conflict cannot be retried automatically.');
       }
       final payload = jsonDecode(old.payloadJson) as Map<String, dynamic>;
       payload['baseVersion'] = envelope.serverVersion;
@@ -212,7 +208,8 @@ String _serverType(String aggregateType) => switch (aggregateType) {
   'body-goal' => 'BodyGoal',
   'daily-check-in' => 'DailyCheckIn',
   'custom-exercise' => 'CustomExercise',
-  'workout-template' => 'WorkoutTemplate',
+  'exercise-category' => 'ExerciseCategory',
+  'training-plan' => 'TrainingPlan',
   'workout-rotation' => 'WorkoutRotation',
   'workout' => 'Workout',
   'nutrition-day' => 'NutritionDay',

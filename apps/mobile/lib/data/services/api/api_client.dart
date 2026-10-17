@@ -10,7 +10,7 @@ import '../../models/api/sync_api_models.dart';
 
 const csrfHeaderName = 'X-CSRF-TOKEN';
 const accountIdentityHeaderName = 'X-Gainer-Account-Id';
-const syncProtocolVersion = 2;
+const syncProtocolVersion = 3;
 
 class ApiConfiguration {
   ApiConfiguration({
@@ -40,11 +40,15 @@ class ApiException implements Exception {
     required this.statusCode,
     required this.code,
     required this.message,
+    this.errors,
   });
 
   final int? statusCode;
   final String code;
   final String message;
+
+  /// Feldfehler eines `validation_failed`-Problems, nach Feldschlüssel.
+  final Map<String, Object?>? errors;
 
   @override
   String toString() => message;
@@ -563,6 +567,7 @@ class ApiClient {
           statusCode: status,
           code: problem.code ?? 'http_$status',
           message: problem.message,
+          errors: problem.errors,
         );
       }
       return response;

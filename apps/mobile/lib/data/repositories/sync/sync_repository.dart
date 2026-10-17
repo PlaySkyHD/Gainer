@@ -14,7 +14,9 @@ import 'local_sync_store.dart';
 import 'native_handover_repository.dart';
 import 'sync_payload_codec.dart';
 
-const nativeSyncProtocolVersion = 2;
+/// Trainingsoperationen verlangen Protokollversion 3; sonst antwortet der
+/// Server mit `upgrade_required`.
+const nativeSyncProtocolVersion = 3;
 
 const _syncLeaseKey = 'sync-lease';
 const _pullCursorKey = pullCursorMetadataKey;
@@ -757,6 +759,7 @@ class SyncRepository implements MobileSyncActions {
       change.resourceType,
       change.snapshot,
     );
+    SyncPayloadCodec.verifyTrainingSnapshot(change.resourceType, snapshot);
     LocalAggregateEnvelope<Object?> envelope;
     if (existing != null && pending.isNotEmpty) {
       final old = LocalAggregateEnvelope<Object?>.fromJson(
@@ -908,6 +911,32 @@ class SyncRepository implements MobileSyncActions {
       );
       return null;
     }
+    if (error.statusCode == 422 && error.code == 'validation_failed') {
+      // Field errors cannot be fixed by resending the same payload, so they
+      // stay visible as a conflict on the aggregate until the user decides.
+      await store.upsertConflict(
+        LocalConflictRecord(
+          conflictId: mutation.mutationId,
+          aggregateType: mutation.aggregateType,
+          aggregateId: mutation.aggregateId,
+          createdAtUtc: now,
+          code: error.code,
+          detail: {
+            'message': error.message,
+            'mutationId': mutation.mutationId,
+            'errors': error.errors ?? const {},
+          },
+        ),
+      );
+      await store.updateMutation(
+        _copyMutation(
+          mutation,
+          status: LocalMutationStatus.conflict,
+          lastErrorCode: error.code,
+        ),
+      );
+      return null;
+    }
     if (error.statusCode == 422) {
       await store.updateMutation(
         _copyMutation(
@@ -1033,20 +1062,29 @@ class SyncRepository implements MobileSyncActions {
         ),
       );
     }
-    if (mutation.aggregateType == 'workout' &&
-        mutation.operation == LocalMutationOperation.complete) {
-      final rotation = body['rotation'];
-      if (rotation is Map<String, dynamic> &&
-          rotation['id'] is String &&
-          rotation['serverVersion'] is int) {
+    if (mutation.operation == LocalMutationOperation.reorder) {
+      // The reorder mutation locks every plan it reorders, not only the first.
+      resources.clear();
+      for (final plan in body['plans'] as List<Object?>) {
+        final map = plan! as Map<String, dynamic>;
         resources.add(
           SyncResourceVersionRequest(
-            resourceType: 'WorkoutRotation',
-            resourceId: rotation['id'] as String,
-            baseVersion: rotation['serverVersion'] as int,
+            resourceType: 'TrainingPlan',
+            resourceId: map['planId'] as String,
+            baseVersion: map['baseVersion'] as int,
           ),
         );
       }
+    }
+    if (mutation.operation == LocalMutationOperation.merge &&
+        body['targetBaseVersion'] is int) {
+      resources.add(
+        SyncResourceVersionRequest(
+          resourceType: 'CustomExercise',
+          resourceId: body['targetExerciseId'] as String,
+          baseVersion: body['targetBaseVersion'] as int,
+        ),
+      );
     }
     return SyncMutationRequest(
       protocolVersion: nativeSyncProtocolVersion,
@@ -1099,7 +1137,8 @@ String _resourceTypeForAggregate(String aggregateType) =>
       'body-goal' => 'BodyGoal',
       'daily-check-in' => 'DailyCheckIn',
       'custom-exercise' => 'CustomExercise',
-      'workout-template' => 'WorkoutTemplate',
+      'exercise-category' => 'ExerciseCategory',
+      'training-plan' => 'TrainingPlan',
       'workout-rotation' => 'WorkoutRotation',
       'workout' => 'Workout',
       'nutrition-day' => 'NutritionDay',

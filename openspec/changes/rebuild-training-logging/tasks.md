@@ -38,9 +38,9 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 
 - [x] 6.1 `domain/models/training/` auf Workout/Block/Satz/Plan/Übung/Kategorie gemäß D1, D5 und D6 neu aufbauen inklusive Satztyp, Superset-Gruppierung, Satzbeschriftung (W/1/D/2) und Erfassungsregel je Übungstyp; Dart-Unit-Tests für die zugehörigen Spec-Szenarien grün.
 - [x] 6.2 Einmalige lokale Bereinigung bei erhöhter Trainings-Schemaversion (D11) implementieren; Persistenztest: alte Trainings-Envelopes, Outbox-Einträge und Konflikte werden in einer Transaktion entfernt, andere Fachbereiche bleiben unberührt.
-- [ ] 6.3 `sync_payload_codec.dart` auf die neuen Operationen umstellen; Codec-Tests gegen Backend-Fixtures grün.
+- [x] 6.3 `sync_payload_codec.dart` auf die neuen Operationen umstellen; Codec-Tests gegen Backend-Fixtures grün.
 - [x] 6.4 Coalescing nicht gesendeter `saveWorkout`-Einträge in `LocalSyncStore.commitMutation` implementieren (D3); Persistenztests: 50 Feldänderungen ergeben eine ausstehende Mutation, bereits gesendete Einträge bleiben unverändert, Prozessende nach Bestätigung verliert keinen Wert.
-- [ ] 6.5 `TrainingRepository` neu aufbauen: leeres Training, Planstart, Wiederholen, Speichern, Beenden, Löschen, Training als Plan speichern, Merge, Pläne, Rotation, Übungen und Kategorien; Repository-Tests mit Offline-Szenarien und Kontowechsel A/B grün.
+- [x] 6.5 `TrainingRepository` neu aufbauen: leeres Training, Planstart, Wiederholen, Speichern, Beenden, Löschen, Training als Plan speichern, Merge, Pläne, Rotation, Übungen und Kategorien; Repository-Tests mit Offline-Szenarien und Kontowechsel A/B grün.
 
 ## 7. Flutter: Vorwerte und Statistik
 

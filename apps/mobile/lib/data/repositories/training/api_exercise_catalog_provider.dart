@@ -1,51 +1,71 @@
-import '../../../domain/models/training/training.dart';
+import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/workout_model.dart';
 import '../../models/api/api_models.dart';
 import '../../services/api/api_client.dart';
 import '../sync/local_sync_store.dart';
-import 'training_repository.dart';
+
+/// Unveränderlicher Basiskatalog. Eigene Übungen und Kategorien kommen aus
+/// dem lokalen Konto-Store, nicht aus diesem Katalog.
+class BaseCatalog {
+  const BaseCatalog({required this.exercises, required this.categories});
+
+  final List<CatalogExercise> exercises;
+  final List<CatalogCategory> categories;
+}
+
+abstract interface class ExerciseCatalogProvider {
+  /// True, wenn der letzte Abruf nicht frisch war und ein Cache-Stand dient.
+  bool get lastLoadWasStale;
+
+  Future<BaseCatalog> loadBaseCatalog();
+}
 
 class ApiExerciseCatalogProvider implements ExerciseCatalogProvider {
   ApiExerciseCatalogProvider(this.api, {this.store});
 
-  static const _cacheKey = 'local-cache:exercise-catalog:v1';
+  static const _cacheKey = 'local-cache:exercise-catalog:v2';
   final ApiClient api;
   final LocalSyncStore? store;
 
+  @override
   bool lastLoadWasStale = false;
   DateTime? lastLoadedAtUtc;
 
   @override
-  Future<List<ExerciseCatalogEntry>> loadExercises() async {
+  Future<BaseCatalog> loadBaseCatalog() async {
     try {
-      final items = await _fetchAllItems();
-      final exercises = _toDomain(items);
+      final page = await _fetchBase();
       lastLoadWasStale = false;
       lastLoadedAtUtc = DateTime.now().toUtc();
       final accountStore = store;
       if (accountStore != null) {
         try {
           await accountStore.writeSyncMetadata(_cacheKey, {
-            'schemaVersion': 1,
+            'schemaVersion': 2,
             'cachedAtUtc': lastLoadedAtUtc!.toIso8601String(),
-            'items': items,
+            'exercises': [for (final item in page.exercises) item.toJson()],
+            'categories': [for (final item in page.categories) item.toJson()],
           });
         } on Object {
           // The fresh catalog remains usable if local cache writing fails.
         }
       }
-      return List.unmodifiable(exercises);
+      return page;
     } on Object {
       final cached = await _readCache();
       if (cached == null) rethrow;
       lastLoadWasStale = true;
       lastLoadedAtUtc = cached.$1;
-      return List.unmodifiable(_toDomain(cached.$2));
+      return cached.$2;
     }
   }
 
-  Future<List<Map<String, dynamic>>> _fetchAllItems() async {
+  /// Liest alle Seiten und übernimmt nur Basiseinträge; eigene Übungen des
+  /// Kontos liefert der Store.
+  Future<BaseCatalog> _fetchBase() async {
     const pageSize = 100;
-    final items = <Map<String, dynamic>>[];
+    final items = <ApiExerciseCatalogItem>[];
+    var categories = const <ApiExerciseCategory>[];
     var offset = 0;
     int? total;
     while (true) {
@@ -54,7 +74,8 @@ class ApiExerciseCatalogProvider implements ExerciseCatalogProvider {
         throw const FormatException('Exercise catalog pages changed mid-read.');
       }
       total = page.total;
-      items.addAll(page.items.map(_serializeItem));
+      if (offset == 0) categories = page.categories;
+      items.addAll(page.items);
       offset += page.items.length;
       if (offset >= page.total) break;
       if (page.items.isEmpty) {
@@ -64,75 +85,68 @@ class ApiExerciseCatalogProvider implements ExerciseCatalogProvider {
     if (items.length != total) {
       throw const FormatException('Exercise catalog is incomplete.');
     }
-    return items;
+    return _toDomain(items, categories);
   }
 
-  Future<(DateTime, List<Map<String, dynamic>>)?> _readCache() async {
+  Future<(DateTime, BaseCatalog)?> _readCache() async {
     final accountStore = store;
     if (accountStore == null) return null;
     final raw = await accountStore.readSyncMetadata(_cacheKey);
     if (raw is! Map<String, dynamic> ||
-        raw['schemaVersion'] != 1 ||
-        raw['items'] is! List ||
-        raw['items'].any((item) => item is! Map<String, dynamic>)) {
+        raw['schemaVersion'] != 2 ||
+        raw['exercises'] is! List ||
+        raw['categories'] is! List) {
       return null;
     }
     final timestamp = raw['cachedAtUtc'];
     if (timestamp is! String) return null;
     final cachedAt = DateTime.tryParse(timestamp)?.toUtc();
     if (cachedAt == null) return null;
-    final items = (raw['items'] as List)
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .toList(growable: false);
     try {
-      _toDomain(items);
+      final catalog = BaseCatalog(
+        exercises: [
+          for (final item in raw['exercises'] as List)
+            CatalogExercise.fromJson(Map<String, dynamic>.from(item as Map)),
+        ],
+        categories: [
+          for (final item in raw['categories'] as List)
+            CatalogCategory.fromJson(Map<String, dynamic>.from(item as Map)),
+        ],
+      );
+      return (cachedAt, catalog);
     } on Object {
       return null;
     }
-    return (cachedAt, items);
   }
 
-  List<ExerciseCatalogEntry> _toDomain(List<Map<String, dynamic>> items) =>
-      items
-          .map((item) {
-            final id = item['id'];
-            final name = item['name'];
-            final version = item['version'];
-            if (id is! String ||
-                !RegExp(
-                  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-                ).hasMatch(id) ||
-                name is! String ||
-                name.trim().isEmpty ||
-                version is! int) {
-              throw const FormatException(
-                'Invalid cached exercise catalog item.',
-              );
-            }
-            return ExerciseCatalogEntry(
-              id: id,
-              name: name,
-              description: _stringOrNull(item['description']),
-              targetMuscle: _stringOrNull(item['targetMuscle']),
-              muscleGroup: _stringOrNull(item['muscleGroup']),
-              equipment: _stringOrNull(item['equipment']),
-              catalogVersion: version,
-            );
-          })
-          .toList(growable: false);
-
-  String? _stringOrNull(Object? value) {
-    if (value == null || value is String) return value as String?;
-    throw const FormatException('Invalid cached exercise catalog text.');
+  BaseCatalog _toDomain(
+    List<ApiExerciseCatalogItem> items,
+    List<ApiExerciseCategory> categories,
+  ) {
+    return BaseCatalog(
+      exercises: [
+        for (final item in items)
+          if (!item.isCustom)
+            CatalogExercise(
+              id: item.id,
+              name: item.name,
+              exerciseType: ExerciseKind.fromWireValue(item.exerciseType),
+              description: item.description,
+              targetMuscle: item.targetMuscle,
+              muscleGroup: item.muscleGroup,
+              equipment: item.equipment,
+              notes: item.notes,
+              bodyweightFactor: item.bodyweightFactor,
+              weightFactor: item.weightFactor,
+              categoryIds: item.categoryIds,
+              isBase: true,
+            ),
+      ],
+      categories: [
+        for (final category in categories)
+          if (category.isBase)
+            CatalogCategory(id: category.id, name: category.name, isBase: true),
+      ],
+    );
   }
-
-  Map<String, dynamic> _serializeItem(ApiExerciseCatalogItem item) => {
-    'id': item.id,
-    'name': item.name,
-    'description': item.description,
-    'targetMuscle': item.targetMuscle,
-    'muscleGroup': item.muscleGroup,
-    'equipment': item.equipment,
-    'version': item.version,
-  };
 }

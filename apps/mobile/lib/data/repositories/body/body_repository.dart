@@ -153,7 +153,9 @@ class BodyRepository {
         aggregateId: goalId,
         workingCopy: newGoal.toJson(),
       ),
-      relatedEnvelopes: related,
+      relatedEnvelopes: [
+        for (final entry in related.entries) (entry.key, entry.value),
+      ],
       dependsOnMutationId: dependency,
       createdAtUtc: now,
       afterEnvelopeWriteForTesting: transactionFaultForTesting,
