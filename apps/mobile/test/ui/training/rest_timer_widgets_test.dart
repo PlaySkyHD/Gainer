@@ -161,4 +161,39 @@ void main() {
       expect(find.text('+15s'), findsNothing);
     });
   });
+
+  testWidgets('Wischen nach unten minimiert, der Timer läuft weiter', (tester) {
+    return runRestTimerTest((fixture) async {
+      final controller = fixture.controllerFor();
+      await controller.load();
+      await controller.start();
+      await tester.pumpWidget(
+        trainingTestApp(
+          home: Builder(
+            builder: (context) => CupertinoButton(
+              onPressed: () => showRestTimerSheet(context, controller),
+              child: const Text('Öffnen'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Öffnen'));
+      await tester.pumpAndSettle();
+
+      // Ein kurzer, langsamer Zug federt zurück.
+      await tester.timedDrag(
+        find.text('+15s'),
+        const Offset(0, 30),
+        const Duration(milliseconds: 600),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('+15s'), findsOneWidget);
+
+      await tester.fling(find.text('+15s'), const Offset(0, 300), 1500);
+      await tester.pumpAndSettle();
+
+      expect(find.text('+15s'), findsNothing);
+      expect(controller.phase, RestTimerPhase.running);
+    });
+  });
 }
