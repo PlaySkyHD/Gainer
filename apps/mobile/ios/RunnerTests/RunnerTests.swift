@@ -366,6 +366,7 @@ class RunnerTests: XCTestCase {
     XCTAssertNil(TimerNotificationDelegate.presentationOptions(forIdentifier: "reminder.weekly"))
   }
 
+  @MainActor
   func testTimerNotificationTextIsNeutralAndUsesTheAgreedWording() async throws {
     let suiteName = "NativeTimerNotificationsTests.\(UUID().uuidString)"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

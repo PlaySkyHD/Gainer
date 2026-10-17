@@ -22,7 +22,7 @@ extension UNUserNotificationCenter: LocalNotificationCenter {
 
 @MainActor
 final class NativeTimerNotifications {
-  static let timerIdentifierPrefix = "com.gainer.mobile.pause."
+  nonisolated static let timerIdentifierPrefix = "com.gainer.mobile.pause."
 
   private let notificationCenter: LocalNotificationCenter
   private let defaults: UserDefaults
