@@ -96,8 +96,8 @@ class _MoreScreen extends StatelessWidget {
                       Container(
                         width: 48,
                         height: 48,
-                        decoration: const BoxDecoration(
-                          color: GainerTheme.actionColor,
+                        decoration: BoxDecoration(
+                          color: GainerTheme.actionColor(context),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(

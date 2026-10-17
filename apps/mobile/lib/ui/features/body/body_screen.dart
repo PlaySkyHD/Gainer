@@ -103,7 +103,7 @@ class _BodyScreenState extends State<BodyScreen> {
                   ConstrainedBox(
                     constraints: const BoxConstraints(minHeight: 52),
                     child: CupertinoButton.filled(
-                      color: GainerTheme.actionColor,
+                      color: GainerTheme.actionColor(context),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 12,

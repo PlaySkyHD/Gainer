@@ -218,7 +218,7 @@ class _TrainingScreenState extends State<TrainingScreen> {
         key: ValueKey('training-start-next-${next.id}'),
         minimumSize: const Size.square(48),
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        color: GainerTheme.actionColor,
+        color: GainerTheme.actionColor(context),
         onPressed: model.isSaving ? null : () => model.start(next.id),
         child: Text(
           'Start',
@@ -248,7 +248,7 @@ class _TrainingScreenState extends State<TrainingScreen> {
           key: ValueKey('training-start-template-${template.id}'),
           minimumSize: const Size.square(48),
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          color: GainerTheme.actionColor,
+          color: GainerTheme.actionColor(context),
           onPressed: model.isSaving ? null : () => model.start(template.id),
           child: Text(
             'Start',
@@ -339,7 +339,7 @@ class _TrainingScreenState extends State<TrainingScreen> {
         CupertinoButton(
           key: const ValueKey('training-complete-workout'),
           minimumSize: const Size.square(52),
-          color: GainerTheme.actionColor,
+          color: GainerTheme.actionColor(context),
           onPressed: model.isSaving ? null : model.finish,
           child: Text(
             'Workout abschließen',
@@ -866,7 +866,7 @@ class _EmptyCard extends StatelessWidget {
           const SizedBox(height: 8),
           CupertinoButton(
             minimumSize: const Size.square(48),
-            color: GainerTheme.actionColor,
+            color: GainerTheme.actionColor(context),
             onPressed: onPressed,
             child: Text(
               actionLabel!,

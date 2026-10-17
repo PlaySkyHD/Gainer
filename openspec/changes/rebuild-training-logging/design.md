@@ -111,7 +111,7 @@ Startwerte der Farbrollen (in der Umsetzung per Kontrastmessung zu bestätigen):
 | Primärtext | `#FFFFFF` | `#191C1D` |
 | Sekundärtext | `#A1A1A6` | `#5F6869` |
 | Platzhalter/Vorwert | `#5E5E63` | `#B4BCBD` |
-| Akzent | `#54D9E6` | `#00848F` |
+| Akzent | `#54D9E6` | `#00828D` |
 | Inhalt auf Akzent | `#00363B` | `#FFFFFF` |
 | Timer-Stopp / Warnung | `#FFA400` | `#E9651F` |
 | Destruktiv | `#FF453A` | `#DD2C00` |

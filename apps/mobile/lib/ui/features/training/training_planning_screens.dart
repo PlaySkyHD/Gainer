@@ -102,7 +102,7 @@ class _TrainingExerciseLibraryScreenState
                         key: const ValueKey('training-new-custom-exercise'),
                         minimumSize: const Size.square(48),
                         padding: const EdgeInsets.symmetric(horizontal: 14),
-                        color: GainerTheme.actionColor,
+                        color: GainerTheme.actionColor(context),
                         onPressed: () => _editExercise(context, null),
                         child: const Text(
                           _customExerciseLabel,
@@ -338,7 +338,7 @@ class _TrainingExerciseEditorScreenState
                 CupertinoButton(
                   key: const ValueKey('training-save-exercise'),
                   minimumSize: const Size.square(52),
-                  color: GainerTheme.actionColor,
+                  color: GainerTheme.actionColor(context),
                   onPressed: _saving ? null : _save,
                   child: _saving
                       ? CupertinoActivityIndicator(
@@ -452,7 +452,7 @@ class _TrainingTemplateLibraryScreenState
                         key: const ValueKey('training-template-new'),
                         minimumSize: const Size.square(48),
                         padding: const EdgeInsets.symmetric(horizontal: 14),
-                        color: GainerTheme.actionColor,
+                        color: GainerTheme.actionColor(context),
                         onPressed: () => _openEditor(context, null),
                         child: const Text(
                           'Neue Vorlage',
@@ -568,7 +568,7 @@ class _TrainingTemplateLibraryScreenState
       CupertinoButton(
         key: const ValueKey('training-save-rotation'),
         minimumSize: const Size.square(52),
-        color: GainerTheme.actionColor,
+        color: GainerTheme.actionColor(context),
         onPressed: model.isSaving ? null : _saveRotation,
         child: Text(
           'Rotation speichern',
@@ -831,7 +831,7 @@ class _TrainingTemplateEditorScreenState
   Widget _saveButton(BuildContext context) => CupertinoButton(
     key: const ValueKey('training-create-template'),
     minimumSize: const Size.square(52),
-    color: GainerTheme.actionColor,
+    color: GainerTheme.actionColor(context),
     onPressed: _saving || _items.isEmpty ? null : _save,
     child: _saving
         ? CupertinoActivityIndicator(color: GainerTheme.secondaryText(context))
@@ -1449,7 +1449,7 @@ class _PlanningEmptyCard extends StatelessWidget {
           const SizedBox(height: 8),
           CupertinoButton(
             minimumSize: const Size.square(48),
-            color: GainerTheme.actionColor,
+            color: GainerTheme.actionColor(context),
             onPressed: onPressed,
             child: Text(
               actionLabel!,
@@ -1479,7 +1479,7 @@ class _FilterChip extends StatelessWidget {
       minimumSize: const Size.square(48),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       color: selected
-          ? GainerTheme.actionColor
+          ? GainerTheme.actionColor(context)
           : CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
               context,
             ),
@@ -1529,7 +1529,7 @@ class _NextBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
     decoration: BoxDecoration(
-      color: GainerTheme.actionColor,
+      color: GainerTheme.actionColor(context),
       borderRadius: BorderRadius.circular(20),
     ),
     child: const Text(

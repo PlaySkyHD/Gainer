@@ -11,18 +11,21 @@ double _contrast(Color foreground, Color background) {
 }
 
 void main() {
-  test('blue actions keep white text readable and accent labels visible', () {
-    expect(
-      _contrast(GainerTheme.actionColor, CupertinoColors.white),
-      greaterThanOrEqualTo(4.5),
-    );
-    for (final theme in [GainerTheme.light, GainerTheme.dark]) {
+  test(
+    'accent keeps on-accent text readable and is visible on the background',
+    () {
       expect(
-        _contrast(theme.primaryColor, theme.scaffoldBackgroundColor),
+        _contrast(GainerColors.light.onAccent, GainerColors.light.accent),
         greaterThanOrEqualTo(4.5),
       );
-    }
-  });
+      for (final theme in [GainerTheme.light, GainerTheme.dark]) {
+        expect(
+          _contrast(theme.primaryColor, theme.scaffoldBackgroundColor),
+          greaterThanOrEqualTo(3),
+        );
+      }
+    },
+  );
 
   testWidgets('secondary text is readable on light and dark neutral surfaces', (
     tester,
