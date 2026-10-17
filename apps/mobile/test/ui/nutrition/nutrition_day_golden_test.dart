@@ -154,6 +154,6 @@ void main() {
         matchesGoldenFile('goldens/nutrition_day_${variant.name}.png'),
       );
       viewModel.dispose();
-    });
+    }, tags: ['golden']);
   }
 }

@@ -34,7 +34,7 @@ void main() {
         find.byType(TrainingStatisticsSection),
         matchesGoldenFile('goldens/statistics_list_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Übungsstatistik Graph $name', (tester) async {
       _phoneSize(tester);
@@ -59,7 +59,7 @@ void main() {
         find.byType(ExerciseStatisticsScreen),
         matchesGoldenFile('goldens/exercise_statistics_chart_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Übungsstatistik Rekorde $name', (tester) async {
       _phoneSize(tester);
@@ -85,7 +85,7 @@ void main() {
         find.byType(ExerciseStatisticsScreen),
         matchesGoldenFile('goldens/exercise_statistics_records_$name.png'),
       );
-    });
+    }, tags: ['golden']);
   }
 }
 

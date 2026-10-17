@@ -88,7 +88,7 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull);
-    });
+    }, tags: ['golden']);
   }
 
   testWidgets('Health screen explains empty results after an explicit query', (

@@ -120,6 +120,15 @@ Associated Domains entitlement, a matching `apple-app-site-association` file
 on the existing HTTPS host, and a verified device install/open test before
 they can be claimed as supported.
 
+## Golden tests
+
+Golden tests (`matchesGoldenFile`, tagged `golden` in `dart_test.yaml`) compare
+widget renders against PNGs in `test/**/goldens/` that were generated on Linux;
+macOS rasterizes differently, so the macOS CI job excludes them with
+`flutter test --exclude-tags golden`. They are checked in the Sonar app pipeline
+(`sonar-app.yml`, Ubuntu), and locally on Linux with `flutter test --tags golden`.
+Regenerate references only on Linux with `flutter test --update-goldens --tags golden`.
+
 ## Architecture boundary
 
 The Cupertino shell is driven by `MobileShellViewModel` and provided with

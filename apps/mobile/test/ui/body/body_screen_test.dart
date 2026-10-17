@@ -52,7 +52,7 @@ void main() {
         matchesGoldenFile('goldens/body_screen_${brightness.name}.png'),
       );
       expect(tester.takeException(), isNull);
-    });
+    }, tags: ['golden']);
   }
 
   test(

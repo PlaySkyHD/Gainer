@@ -33,7 +33,7 @@ void main() {
         matchesGoldenFile('goldens/auth_screen_${brightness.name}.png'),
       );
       expect(tester.takeException(), isNull);
-    });
+    }, tags: ['golden']);
 
     testWidgets(
       'account operator screen matches golden in ${brightness.name} mode',
@@ -60,6 +60,7 @@ void main() {
         );
         expect(tester.takeException(), isNull);
       },
+      tags: ['golden'],
     );
   }
 }

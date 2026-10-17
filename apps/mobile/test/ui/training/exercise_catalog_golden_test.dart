@@ -45,7 +45,7 @@ void main() {
         find.byType(CupertinoPageScaffold),
         matchesGoldenFile('goldens/exercise_library_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Übungseditor $name', (tester) async {
       usePhoneSize(tester);
@@ -77,7 +77,7 @@ void main() {
         find.byType(CupertinoPageScaffold),
         matchesGoldenFile('goldens/exercise_editor_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Kategorien $name', (tester) async {
       usePhoneSize(tester);
@@ -105,6 +105,6 @@ void main() {
         find.byType(CupertinoPageScaffold),
         matchesGoldenFile('goldens/category_library_$name.png'),
       );
-    });
+    }, tags: ['golden']);
   }
 }

@@ -23,7 +23,7 @@ void main() {
           matchesGoldenFile('goldens/rest_timer_bar_ready_$name.png'),
         );
       });
-    });
+    }, tags: ['golden']);
 
     testWidgets('Pausenleiste laufend $name', (tester) {
       return runRestTimerTest((fixture) async {
@@ -39,7 +39,7 @@ void main() {
           matchesGoldenFile('goldens/rest_timer_bar_running_$name.png'),
         );
       });
-    });
+    }, tags: ['golden']);
 
     testWidgets('Pausenleiste abgelaufen $name', (tester) {
       return runRestTimerTest((fixture) async {
@@ -55,7 +55,7 @@ void main() {
           matchesGoldenFile('goldens/rest_timer_bar_expired_$name.png'),
         );
       });
-    });
+    }, tags: ['golden']);
 
     testWidgets('Timeransicht bereit $name', (tester) {
       return runRestTimerTest((fixture) async {
@@ -69,7 +69,7 @@ void main() {
           matchesGoldenFile('goldens/rest_timer_sheet_ready_$name.png'),
         );
       });
-    });
+    }, tags: ['golden']);
 
     testWidgets('Timeransicht laufend $name', (tester) {
       return runRestTimerTest((fixture) async {
@@ -85,7 +85,7 @@ void main() {
           matchesGoldenFile('goldens/rest_timer_sheet_running_$name.png'),
         );
       });
-    });
+    }, tags: ['golden']);
   }
 }
 

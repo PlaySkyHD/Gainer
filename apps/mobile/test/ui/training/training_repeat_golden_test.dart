@@ -52,7 +52,7 @@ void main() {
         find.byType(CupertinoApp),
         matchesGoldenFile('goldens/repeat_workout_sheet_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Tagebuch-Kontextmenü $name', (tester) async {
       _phoneSize(tester);
@@ -92,7 +92,7 @@ void main() {
         find.byType(CupertinoApp),
         matchesGoldenFile('goldens/training_diary_context_$name.png'),
       );
-    });
+    }, tags: ['golden']);
   }
 }
 

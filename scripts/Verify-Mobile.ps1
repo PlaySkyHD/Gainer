@@ -474,7 +474,9 @@ function Invoke-FlutterChecksPhase {
         }
         Invoke-Checked $dartCommand @('format', '--output=none', '--set-exit-if-changed', 'lib', 'test', 'pigeons')
         Invoke-Checked $flutterCommand @('analyze', '--fatal-infos')
-        Invoke-Checked $flutterCommand @('test')
+        # Goldens are Linux references; rasterization differs on macOS, so the
+        # Sonar app pipeline (ubuntu) runs them instead.
+        Invoke-Checked $flutterCommand @('test', '--exclude-tags', 'golden')
     }
     finally {
         Pop-Location

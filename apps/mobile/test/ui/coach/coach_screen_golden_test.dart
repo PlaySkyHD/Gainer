@@ -51,7 +51,7 @@ void main() {
         matchesGoldenFile('goldens/coach_screen_${brightness.name}.png'),
       );
       expect(tester.takeException(), isNull);
-    });
+    }, tags: ['golden']);
   }
 }
 

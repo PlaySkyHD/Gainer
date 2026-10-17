@@ -73,7 +73,7 @@ void main() {
         find.byType(CupertinoPageScaffold),
         matchesGoldenFile('goldens/training_plans_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Planeditor $name', (tester) async {
       usePhoneSize(tester);
@@ -117,7 +117,7 @@ void main() {
         find.byType(CupertinoPageScaffold),
         matchesGoldenFile('goldens/plan_editor_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Übungsauswahl Kategorien $name', (tester) async {
       usePhoneSize(tester);
@@ -137,7 +137,7 @@ void main() {
         find.byType(CupertinoApp),
         matchesGoldenFile('goldens/exercise_picker_categories_$name.png'),
       );
-    });
+    }, tags: ['golden']);
 
     testWidgets('Übungsauswahl Suchtreffer im Supersatz-Modus $name', (
       tester,
@@ -169,7 +169,7 @@ void main() {
         find.byType(CupertinoApp),
         matchesGoldenFile('goldens/exercise_picker_superset_search_$name.png'),
       );
-    });
+    }, tags: ['golden']);
   }
 }
 
