@@ -222,12 +222,12 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       groups: [
         [
           if (!workout.isActive)
-            GainerSheetAction(
+            const GainerSheetAction(
               label: 'Training wiederholen',
               icon: CupertinoIcons.arrow_2_circlepath,
               value: _WorkoutMenuAction.repeat,
             ),
-          GainerSheetAction(
+          const GainerSheetAction(
             label: 'Als Trainingsplan speichern',
             icon: CupertinoIcons.square_list,
             value: _WorkoutMenuAction.savePlan,
@@ -235,7 +235,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         ],
         [
           if (workout.exercises.length > 1)
-            GainerSheetAction(
+            const GainerSheetAction(
               label: 'Übungen neu anordnen',
               icon: CupertinoIcons.arrow_up_arrow_down,
               value: _WorkoutMenuAction.reorder,
@@ -323,54 +323,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             bottom: false,
             child: Column(
               children: [
-                _Header(
-                  leading: _leading(workout),
-                  title: workout == null
-                      ? ''
-                      : formatShortDate(workout.startedAtUtc.toLocal()),
-                  trailing: GainerToolbarGroup(
-                    actions: [
-                      GainerToolbarAction(
-                        icon: CupertinoIcons.timer,
-                        semanticLabel: 'Timer',
-                        onPressed: workout == null || !workout.isActive
-                            ? null
-                            : () => _openTimer(workout),
-                      ),
-                      GainerToolbarAction(
-                        icon: CupertinoIcons.ellipsis,
-                        semanticLabel: 'Weitere Aktionen',
-                        onPressed: workout == null
-                            ? null
-                            : () => _showMenu(workout),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      GainerSpacing.m,
-                      GainerSpacing.xs,
-                      GainerSpacing.m,
-                      GainerSpacing.l,
-                    ),
-                    children: [
-                      if (_viewModel.errorMessage case final message?) ...[
-                        _NoticeCard(
-                          message: message,
-                          onRetry: _viewModel.hasUnsavedChanges
-                              ? _viewModel.retrySave
-                              : null,
-                        ),
-                        const SizedBox(height: GainerSpacing.s),
-                      ],
-                      if (workout == null && _viewModel.isLoading)
-                        const Center(child: CupertinoActivityIndicator()),
-                      if (workout != null) ..._content(workout),
-                    ],
-                  ),
-                ),
+                _header(workout),
+                Expanded(child: _contentList(workout)),
                 ListenableBuilder(
                   listenable: widget.activeWorkout,
                   builder: (context, _) => _bottomBar(_viewModel.workout),
@@ -380,6 +334,54 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _header(Workout? workout) {
+    return _Header(
+      leading: _leading(workout),
+      title: workout == null
+          ? ''
+          : formatShortDate(workout.startedAtUtc.toLocal()),
+      trailing: GainerToolbarGroup(
+        actions: [
+          GainerToolbarAction(
+            icon: CupertinoIcons.timer,
+            semanticLabel: 'Timer',
+            onPressed: workout == null || !workout.isActive
+                ? null
+                : () => _openTimer(workout),
+          ),
+          GainerToolbarAction(
+            icon: CupertinoIcons.ellipsis,
+            semanticLabel: 'Weitere Aktionen',
+            onPressed: workout == null ? null : () => _showMenu(workout),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _contentList(Workout? workout) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        GainerSpacing.m,
+        GainerSpacing.xs,
+        GainerSpacing.m,
+        GainerSpacing.l,
+      ),
+      children: [
+        if (_viewModel.errorMessage case final message?) ...[
+          _NoticeCard(
+            message: message,
+            onRetry: _viewModel.hasUnsavedChanges ? _viewModel.retrySave : null,
+          ),
+          const SizedBox(height: GainerSpacing.s),
+        ],
+        if (workout == null && _viewModel.isLoading)
+          const Center(child: CupertinoActivityIndicator()),
+        if (workout != null) ..._content(workout),
+      ],
     );
   }
 
@@ -496,37 +498,41 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         Padding(
           padding: const EdgeInsets.only(bottom: GainerSpacing.s),
           child: group.isSuperset
-              ? DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border(left: BorderSide(color: accent, width: 3)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: GainerSpacing.xs),
-                    child: Column(
-                      children: [
-                        for (
-                          var position = 0;
-                          position < group.blockIndexes.length;
-                          position++
-                        )
-                          Padding(
-                            padding: EdgeInsets.only(
-                              bottom: position == group.blockIndexes.length - 1
-                                  ? 0
-                                  : GainerSpacing.s,
-                            ),
-                            child: _blockCard(
-                              workout.exercises[group.blockIndexes[position]],
-                              supersetLabel: group.labelAt(position),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                )
+              ? _supersetBlock(workout, group, accent)
               : _blockCard(workout.exercises[group.blockIndexes.single]),
         ),
     ];
+  }
+
+  Widget _supersetBlock(Workout workout, SupersetGroup group, Color accent) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(left: BorderSide(color: accent, width: 3)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.only(left: GainerSpacing.xs),
+        child: Column(
+          children: [
+            for (
+              var position = 0;
+              position < group.blockIndexes.length;
+              position++
+            )
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: position == group.blockIndexes.length - 1
+                      ? 0
+                      : GainerSpacing.s,
+                ),
+                child: _blockCard(
+                  workout.exercises[group.blockIndexes[position]],
+                  supersetLabel: group.labelAt(position),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _blockCard(WorkoutBlock block, {String? supersetLabel}) {

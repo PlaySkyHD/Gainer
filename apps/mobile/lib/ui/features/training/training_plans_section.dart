@@ -169,6 +169,36 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
     ];
   }
 
+  List<Widget> _stateChildren(
+    List<TrainingPlanModel> plans,
+    String? nextId,
+    GainerColors colors,
+  ) {
+    if (_viewModel.isLoading && _viewModel.plans.isEmpty) {
+      return const [Center(child: CupertinoActivityIndicator())];
+    }
+    if (_viewModel.errorMessage != null) {
+      return [
+        GainerCard(
+          child: Text(
+            _viewModel.errorMessage!,
+            textAlign: TextAlign.center,
+            style: GainerTypography.body.copyWith(color: colors.secondaryText),
+          ),
+        ),
+      ];
+    }
+    return [
+      if (nextId != null && !_editing) _buildNextCard(plans, nextId, colors),
+      if (plans.isEmpty)
+        _buildEmpty(colors)
+      else if (_editing)
+        _buildEditableList(plans)
+      else
+        _buildList(plans, nextId, colors),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -177,7 +207,6 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
         final plans = _orderedPlans();
         final nextId = _viewModel.nextPlanId;
         final colors = GainerDesign.colorsOf(context);
-        final loading = _viewModel.isLoading && _viewModel.plans.isEmpty;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -205,28 +234,7 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
               ],
             ),
             const SizedBox(height: GainerSpacing.m),
-            if (loading)
-              const Center(child: CupertinoActivityIndicator())
-            else if (_viewModel.errorMessage != null)
-              GainerCard(
-                child: Text(
-                  _viewModel.errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: GainerTypography.body.copyWith(
-                    color: colors.secondaryText,
-                  ),
-                ),
-              )
-            else ...[
-              if (nextId != null && !_editing)
-                _buildNextCard(plans, nextId, colors),
-              if (plans.isEmpty)
-                _buildEmpty(colors)
-              else if (_editing)
-                _buildEditableList(plans)
-              else
-                _buildList(plans, nextId, colors),
-            ],
+            ..._stateChildren(plans, nextId, colors),
             const SizedBox(height: GainerSpacing.l),
             _buildCatalogSection(),
           ],

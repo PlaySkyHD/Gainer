@@ -136,7 +136,9 @@ class RestTimerState {
         }
         return _copy(pausedRemainingSeconds: remaining);
       case RestTimerPhase.expired:
-        throw RestTimerException('Cannot adjust a timer that is expired.');
+        throw const RestTimerException(
+          'Cannot adjust a timer that is expired.',
+        );
     }
   }
 
@@ -270,11 +272,11 @@ class RestTimerState {
   }
 }
 
-int _clamp(int value, int min, int max) => value < min
-    ? min
-    : value > max
-    ? max
-    : value;
+int _clamp(int value, int min, int max) {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
 
 void _requireDuration(int seconds) {
   if (seconds < restTimerMinSeconds || seconds > restTimerMaxSeconds) {

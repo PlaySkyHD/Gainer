@@ -8,6 +8,8 @@ import 'save_workout_as_plan.dart';
 import 'training_format.dart';
 import 'training_home_view_model.dart';
 
+const _deleteLabel = 'Löschen';
+
 enum _DiaryAction { repeat, savePlan, delete }
 
 /// Tagebuch: Trainings nach Monat gruppiert, neueste zuerst.
@@ -227,7 +229,7 @@ class _DiaryRow extends StatelessWidget {
         padding: const EdgeInsets.only(right: GainerSpacing.m),
         color: colors.destructive,
         child: Text(
-          'Löschen',
+          _deleteLabel,
           style: GainerTypography.body.copyWith(
             color: CupertinoColors.white,
             fontWeight: FontWeight.w600,
@@ -250,20 +252,20 @@ class _DiaryRow extends StatelessWidget {
       title: workout.title,
       groups: [
         [
-          GainerSheetAction(
+          const GainerSheetAction(
             label: 'Wiederholen',
             icon: CupertinoIcons.arrow_2_circlepath,
             value: _DiaryAction.repeat,
           ),
-          GainerSheetAction(
+          const GainerSheetAction(
             label: 'Als Trainingsplan speichern',
             icon: CupertinoIcons.square_list,
             value: _DiaryAction.savePlan,
           ),
         ],
         [
-          GainerSheetAction(
-            label: 'Löschen',
+          const GainerSheetAction(
+            label: _deleteLabel,
             icon: CupertinoIcons.trash,
             value: _DiaryAction.delete,
             destructive: true,
@@ -422,7 +424,7 @@ Future<bool> _confirmDelete(BuildContext context, Workout workout) async {
     message:
         '„${workout.title}“ verschwindet sofort aus dem Tagebuch und wird beim nächsten Sync entfernt.',
     actions: const [
-      GainerDialogAction(label: 'Löschen', value: true, destructive: true),
+      GainerDialogAction(label: _deleteLabel, value: true, destructive: true),
       GainerDialogAction(label: 'Abbrechen', value: false),
     ],
   );

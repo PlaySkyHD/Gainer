@@ -329,7 +329,7 @@ class TrainingLogRepository {
     if (planIdsInOrder.length != active.length ||
         planIdsInOrder.toSet().length != planIdsInOrder.length ||
         !planIdsInOrder.every(activeIds.contains)) {
-      throw WorkoutValidationException({
+      throw const WorkoutValidationException({
         'planIds':
             'Die Reihenfolge muss alle aktiven Pläne genau einmal enthalten.',
       });
@@ -537,6 +537,41 @@ class TrainingLogRepository {
       throw StateError('Quelle und Ziel müssen verschieden sein.');
     }
     final source = await _requireOwnExercise(sourceExerciseId);
+    final sourceExercise = _requireMergeableSource(source);
+    if (!(await readExercises()).any((item) => item.id == targetExerciseId)) {
+      throw StateError('Das Ziel ist nicht verfügbar.');
+    }
+    final targetRow = await store.readAggregate(
+      _customExerciseType,
+      targetExerciseId,
+    );
+
+    final related = [
+      ...await _workoutsReferencingExercise(sourceExerciseId, targetExerciseId),
+      ...await _plansReferencingExercise(sourceExerciseId, targetExerciseId),
+    ];
+
+    final archivedSource = sourceExercise.copyWith(isArchived: true).toJson();
+    await _commit(
+      aggregateType: _customExerciseType,
+      aggregateId: sourceExerciseId,
+      operation: LocalMutationOperation.merge,
+      baseVersion: source.serverVersion,
+      body: {
+        ...archivedSource,
+        'targetExerciseId': targetExerciseId,
+        'targetBaseVersion': targetRow?.serverVersion,
+      },
+      envelope: _pending(sourceExerciseId, source, archivedSource),
+      related: related,
+    );
+  }
+
+  // Interna
+
+  CatalogExercise _requireMergeableSource(
+    LocalAggregateEnvelope<Object?> source,
+  ) {
     if (source.serverVersion == null ||
         source.syncState != LocalSyncState.clean) {
       throw StateError(
@@ -547,14 +582,14 @@ class TrainingLogRepository {
     if (sourceExercise.isArchived) {
       throw StateError('Die Quelle ist bereits archiviert.');
     }
-    if (!(await readExercises()).any((item) => item.id == targetExerciseId)) {
-      throw StateError('Das Ziel ist nicht verfügbar.');
-    }
-    final targetRow = await store.readAggregate(
-      _customExerciseType,
-      targetExerciseId,
-    );
+    return sourceExercise;
+  }
 
+  Future<List<(String, LocalAggregateEnvelope<Object?>)>>
+  _workoutsReferencingExercise(
+    String sourceExerciseId,
+    String targetExerciseId,
+  ) async {
     final related = <(String, LocalAggregateEnvelope<Object?>)>[];
     for (final workout in await _allWorkouts()) {
       if (workout.deletedAtUtc != null ||
@@ -577,6 +612,15 @@ class TrainingLogRepository {
         _pending(workout.workoutId, row!, rewritten.toJson()),
       ));
     }
+    return related;
+  }
+
+  Future<List<(String, LocalAggregateEnvelope<Object?>)>>
+  _plansReferencingExercise(
+    String sourceExerciseId,
+    String targetExerciseId,
+  ) async {
+    final related = <(String, LocalAggregateEnvelope<Object?>)>[];
     for (final plan in await _allPlans()) {
       if (!plan.entries.any((entry) => entry.exerciseId == sourceExerciseId)) {
         continue;
@@ -592,24 +636,8 @@ class TrainingLogRepository {
       final row = await store.readAggregate(_planType, plan.planId);
       related.add((_planType, _pending(plan.planId, row!, rewritten.toJson())));
     }
-
-    final archivedSource = sourceExercise.copyWith(isArchived: true).toJson();
-    await _commit(
-      aggregateType: _customExerciseType,
-      aggregateId: sourceExerciseId,
-      operation: LocalMutationOperation.merge,
-      baseVersion: source.serverVersion,
-      body: {
-        ...archivedSource,
-        'targetExerciseId': targetExerciseId,
-        'targetBaseVersion': targetRow?.serverVersion,
-      },
-      envelope: _pending(sourceExerciseId, source, archivedSource),
-      related: related,
-    );
+    return related;
   }
-
-  // Interna
 
   Future<List<TrainingPlanModel>> _allPlans() async => [
     for (final row in await store.readAggregates(_planType)) _planOf(row),
@@ -699,7 +727,7 @@ class TrainingLogRepository {
       for (final category in await readCategories()) category.id,
     };
     if (!categoryIds.every(available.contains)) {
-      throw WorkoutValidationException({
+      throw const WorkoutValidationException({
         'categoryIds': 'Eine Kategorie ist nicht verfügbar.',
       });
     }

@@ -269,32 +269,8 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
     }
     if (data == null) return const Center(child: CupertinoActivityIndicator());
 
-    final searching = _query.trim().isNotEmpty;
-    if (searching) {
-      final matches = _visibleExercises(data);
-      if (matches.isEmpty) {
-        return _message(colors, 'Keine Treffer für „${_query.trim()}“.');
-      }
-      return _list([for (final exercise in matches) _exerciseRow(exercise)]);
-    }
-
-    if (_browsing) {
-      final exercises = _visibleExercises(data);
-      return _list([
-        GainerListRow(
-          title: 'Kategorien',
-          leadingIcon: CupertinoIcons.chevron_back,
-          onTap: () => setState(() {
-            _browsing = false;
-            _category = null;
-          }),
-        ),
-        if (exercises.isEmpty)
-          _messageRow(colors, 'Keine Übungen in dieser Kategorie.')
-        else
-          for (final exercise in exercises) _exerciseRow(exercise),
-      ]);
-    }
+    if (_query.trim().isNotEmpty) return _searchBody(colors, data);
+    if (_browsing) return _categoryBody(colors, data);
 
     return _list([
       if (data.recent.isNotEmpty) ...[
@@ -316,6 +292,32 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
             _category = category;
           }),
         ),
+    ]);
+  }
+
+  Widget _searchBody(GainerColors colors, _PickerData data) {
+    final matches = _visibleExercises(data);
+    if (matches.isEmpty) {
+      return _message(colors, 'Keine Treffer für „${_query.trim()}“.');
+    }
+    return _list([for (final exercise in matches) _exerciseRow(exercise)]);
+  }
+
+  Widget _categoryBody(GainerColors colors, _PickerData data) {
+    final exercises = _visibleExercises(data);
+    return _list([
+      GainerListRow(
+        title: 'Kategorien',
+        leadingIcon: CupertinoIcons.chevron_back,
+        onTap: () => setState(() {
+          _browsing = false;
+          _category = null;
+        }),
+      ),
+      if (exercises.isEmpty)
+        _messageRow(colors, 'Keine Übungen in dieser Kategorie.')
+      else
+        for (final exercise in exercises) _exerciseRow(exercise),
     ]);
   }
 

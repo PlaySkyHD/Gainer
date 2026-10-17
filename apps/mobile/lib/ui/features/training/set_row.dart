@@ -421,13 +421,11 @@ class _NumberInputState<T> extends State<_NumberInput<T>> {
   /// Akzentlinie darunter, ein Fehler eine rote.
   BoxDecoration _underline(GainerColors colors, {required bool error}) {
     final visible = error || _focused;
+    final color = error ? colors.destructive : colors.accent;
     return BoxDecoration(
       border: Border(
         bottom: visible
-            ? BorderSide(
-                color: error ? colors.destructive : colors.accent,
-                width: 1.5,
-              )
+            ? BorderSide(color: color, width: 1.5)
             : BorderSide.none,
       ),
     );

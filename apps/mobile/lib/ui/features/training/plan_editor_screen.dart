@@ -202,26 +202,36 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
     );
     if (edit == null || !mounted) return;
     _changed(() {
-      final supersetId = entry.supersetId;
       final updated = edit.entry;
       if (updated == null) {
         _entries = [..._entries]..removeAt(index);
         return;
       }
-      _entries = [
-        for (var i = 0; i < _entries.length; i++)
-          if (i == index)
-            edit.unlinkSuperset && supersetId != null
-                ? updated.copyWith(supersetId: () => null)
-                : updated
-          else if (edit.unlinkSuperset &&
-              supersetId != null &&
-              _entries[i].supersetId == supersetId)
-            _entries[i].copyWith(supersetId: () => null)
-          else
-            _entries[i],
-      ];
+      _entries = _entriesWithEdit(
+        index,
+        updated,
+        supersetId: entry.supersetId,
+        unlinkSuperset: edit.unlinkSuperset,
+      );
     });
+  }
+
+  List<PlanEntry> _entriesWithEdit(
+    int index,
+    PlanEntry updated, {
+    required String? supersetId,
+    required bool unlinkSuperset,
+  }) {
+    final unlink = unlinkSuperset && supersetId != null;
+    return [
+      for (var i = 0; i < _entries.length; i++)
+        if (i == index)
+          unlink ? updated.copyWith(supersetId: () => null) : updated
+        else if (unlink && _entries[i].supersetId == supersetId)
+          _entries[i].copyWith(supersetId: () => null)
+        else
+          _entries[i],
+    ];
   }
 
   Future<void> _startPlan() async {
@@ -298,34 +308,38 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
             onPressed: _dirty || _persisted == null ? _save : null,
           ),
         ],
-        children: _loading
-            ? const [Center(child: CupertinoActivityIndicator())]
-            : _loadError != null
-            ? [_buildMessage(_loadError!)]
-            : [
-                _buildStartCard(canStart),
-                const SizedBox(height: GainerSpacing.m),
-                _buildDetailsCard(),
-                const SizedBox(height: GainerSpacing.m),
-                ..._buildEntries(),
-                const SizedBox(height: GainerSpacing.s),
-                GainerPillButton(
-                  label: '+ Übung hinzufügen',
-                  variant: GainerPillVariant.tonal,
-                  expand: true,
-                  onPressed: _addExercise,
-                ),
-                if (_saveError != null || _errors['entries'] != null) ...[
-                  const SizedBox(height: GainerSpacing.m),
-                  _buildError(_saveError ?? _errors['entries']!),
-                ],
-                if (_savedNotice) ...[
-                  const SizedBox(height: GainerSpacing.m),
-                  _buildNotice('Gespeichert.'),
-                ],
-              ],
+        children: _buildChildren(canStart),
       ),
     );
+  }
+
+  List<Widget> _buildChildren(bool canStart) {
+    if (_loading) {
+      return const [Center(child: CupertinoActivityIndicator())];
+    }
+    if (_loadError != null) return [_buildMessage(_loadError!)];
+    return [
+      _buildStartCard(canStart),
+      const SizedBox(height: GainerSpacing.m),
+      _buildDetailsCard(),
+      const SizedBox(height: GainerSpacing.m),
+      ..._buildEntries(),
+      const SizedBox(height: GainerSpacing.s),
+      GainerPillButton(
+        label: '+ Übung hinzufügen',
+        variant: GainerPillVariant.tonal,
+        expand: true,
+        onPressed: _addExercise,
+      ),
+      if (_saveError != null || _errors['entries'] != null) ...[
+        const SizedBox(height: GainerSpacing.m),
+        _buildError(_saveError ?? _errors['entries']!),
+      ],
+      if (_savedNotice) ...[
+        const SizedBox(height: GainerSpacing.m),
+        _buildNotice('Gespeichert.'),
+      ],
+    ];
   }
 
   Widget _buildStartCard(bool canStart) {
