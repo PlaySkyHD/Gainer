@@ -266,4 +266,77 @@ void main() {
       );
     });
   });
+
+  group('Kennzahlen je Training und Übung', () {
+    test('fasst Blöcke derselben Übung je Training zusammen und sortiert chronologisch', () {
+      final later = _workout(
+        'w2',
+        startedAt: start.add(const Duration(days: 2)),
+        endedAt: start.add(const Duration(days: 2, hours: 1)),
+        sets: [_set('c', 80, 6)],
+      );
+      final earlier = _workout(
+        'w1',
+        startedAt: start,
+        endedAt: start.add(const Duration(hours: 1)),
+        sets: [
+          _set('a', 50, 10),
+          _set('b', 60, 5, type: SetType.warmup),
+        ],
+      );
+      final openWorkout = _workout(
+        'w3',
+        startedAt: start.add(const Duration(days: 3)),
+        sets: [_set('d', 90, 1)],
+      );
+
+      final totals = exerciseTotalsPerWorkout(
+        [later, earlier, openWorkout],
+        checkIns: const [],
+        catalog: const [_bench],
+      );
+
+      final bench = totals[_bench.id]!;
+      expect([for (final t in bench) t.workoutId], ['w1', 'w2']);
+      final first = bench.first;
+      expect(first.exerciseName, 'Bankdrücken');
+      expect(
+        first.setCount,
+        1,
+        reason: 'Aufwärmsatz ist standardmäßig ausgeschlossen',
+      );
+      expect(first.volumeKg, 500);
+      expect(first.maxWeightKg, 50);
+      expect(first.estimatedOneRepMaxKg, closeTo(66.67, 0.01));
+      expect(first.maxRepetitions, 10);
+    });
+
+    test('Rekorde leiten sich aus denselben Kennzahlen ab', () {
+      final workout = _workout(
+        'w1',
+        startedAt: start,
+        endedAt: start.add(const Duration(hours: 1)),
+        sets: [_set('a', 100, 8)],
+      );
+      const catalog = [_bench];
+      final totals = exerciseTotalsPerWorkout(
+        [workout],
+        checkIns: const [],
+        catalog: catalog,
+      )[_bench.id]!.single;
+      final records = exerciseRecords(
+        [workout],
+        checkIns: const [],
+        catalog: catalog,
+      )[_bench.id]!;
+
+      expect(records.maxWeight.single.value, totals.maxWeightKg);
+      expect(
+        records.estimatedOneRepMax.single.value,
+        totals.estimatedOneRepMaxKg,
+      );
+      expect(records.volume.single.value, totals.volumeKg);
+      expect(records.repRecords[8], 100);
+    });
+  });
 }

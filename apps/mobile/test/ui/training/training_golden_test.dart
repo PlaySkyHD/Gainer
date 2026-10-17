@@ -1,10 +1,13 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/core/shell/mobile_tab_scaffold.dart';
 import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/compact_training_bar.dart';
+import 'package:gainer_mobile/ui/features/training/set_row.dart';
 import 'package:gainer_mobile/ui/features/training/training_home_screen.dart';
+import 'package:gainer_mobile/ui/features/training/workout_metadata_card.dart';
 import 'package:gainer_mobile/ui/features/training/workout_screen.dart';
 
 import 'training_test_support.dart';
@@ -139,6 +142,99 @@ void main() {
       });
     }
 
+    testWidgets('Übungskarten mit Vorwerten und Superset $name', (
+      tester,
+    ) async {
+      _phoneSize(tester);
+      final harness = await tester.runAsync(TrainingHarness.create);
+      if (harness == null) throw StateError('Harness nicht erstellt.');
+      addTearDown(() => tester.runAsync(harness.dispose));
+      final active = ActiveWorkoutController(harness.repository);
+      addTearDown(active.dispose);
+      final workoutId = await tester.runAsync(
+        () => _seedPlanningWorkout(harness, active),
+      );
+
+      await tester.pumpWidget(
+        trainingTestApp(
+          brightness: brightness,
+          home: WorkoutScreen(
+            repository: harness.repository,
+            activeWorkout: active,
+            workoutId: workoutId!,
+          ),
+        ),
+      );
+      await settle(tester);
+
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(WorkoutScreen),
+        matchesGoldenFile('goldens/workout_blocks_$name.png'),
+      );
+    });
+
+    testWidgets('Metadatenkarte $name', (tester) async {
+      _phoneSize(tester);
+      final harness = await tester.runAsync(TrainingHarness.create);
+      if (harness == null) throw StateError('Harness nicht erstellt.');
+      addTearDown(() => tester.runAsync(harness.dispose));
+      final active = ActiveWorkoutController(harness.repository);
+      addTearDown(active.dispose);
+      final workoutId = await tester.runAsync(
+        () => _seedPlanningWorkout(harness, active),
+      );
+
+      await tester.pumpWidget(
+        trainingTestApp(
+          brightness: brightness,
+          home: WorkoutScreen(
+            repository: harness.repository,
+            activeWorkout: active,
+            workoutId: workoutId!,
+          ),
+        ),
+      );
+      await settle(tester);
+
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(WorkoutMetadataCard),
+        matchesGoldenFile('goldens/workout_metadata_$name.png'),
+      );
+    });
+
+    testWidgets('Satzzeile bei großer Schrift $name', (tester) async {
+      _phoneSize(tester);
+      final harness = await tester.runAsync(TrainingHarness.create);
+      if (harness == null) throw StateError('Harness nicht erstellt.');
+      addTearDown(() => tester.runAsync(harness.dispose));
+      final active = ActiveWorkoutController(harness.repository);
+      addTearDown(active.dispose);
+      final workoutId = await tester.runAsync(
+        () => _seedPlanningWorkout(harness, active),
+      );
+
+      await tester.pumpWidget(
+        trainingTestApp(
+          brightness: brightness,
+          textScale: 1.3,
+          home: WorkoutScreen(
+            repository: harness.repository,
+            activeWorkout: active,
+            workoutId: workoutId!,
+          ),
+        ),
+      );
+      await settle(tester);
+
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(SetRow).first,
+        matchesGoldenFile('goldens/set_row_scale13_$name.png'),
+      );
+    });
+
     testWidgets('kompakte Trainingsleiste über der Tableiste $name', (
       tester,
     ) async {
@@ -184,6 +280,68 @@ void main() {
       );
     });
   }
+}
+
+/// Vorjahr-Training mit 100 kg × 8 und 100 kg × 7 als Vorwerte, dazu ein
+/// aktives Training mit einem Block ohne Eingaben, einem teilweise erfassten
+/// Block und einem Superset.
+Future<String> _seedPlanningWorkout(
+  TrainingHarness harness,
+  ActiveWorkoutController active,
+) async {
+  await harness.seedWorkout(
+    title: 'Push A',
+    start: DateTime.utc(2026, 10, 10, 8),
+    end: DateTime.utc(2026, 10, 10, 9),
+    blocks: [
+      WorkoutBlock(
+        workoutExerciseId: 'old-bench',
+        sourceExerciseId: 'bench',
+        exerciseNameSnapshot: 'Bankdrücken',
+        exerciseTypeSnapshot: ExerciseKind.strength,
+        sets: const [
+          LoggedSet(setId: 'old-1', weightKg: 100, repetitions: 8),
+          LoggedSet(setId: 'old-2', weightKg: 100, repetitions: 7),
+        ],
+      ),
+    ],
+  );
+  final workout = await harness.seedWorkout(
+    title: 'Push B',
+    start: DateTime.utc(2026, 10, 16, 18),
+    blocks: [
+      WorkoutBlock(
+        workoutExerciseId: 'bench',
+        sourceExerciseId: 'bench',
+        exerciseNameSnapshot: 'Bankdrücken',
+        exerciseTypeSnapshot: ExerciseKind.strength,
+        sets: const [
+          LoggedSet(setId: 'bench-1'),
+          LoggedSet(setId: 'bench-2', weightKg: 102.5, repetitions: 6),
+        ],
+      ),
+      WorkoutBlock(
+        workoutExerciseId: 'curl',
+        sourceExerciseId: 'curl',
+        exerciseNameSnapshot: 'Bizepscurl',
+        exerciseTypeSnapshot: ExerciseKind.strength,
+        supersetId: 'ss',
+        sets: const [LoggedSet(setId: 'curl-1')],
+      ),
+      WorkoutBlock(
+        workoutExerciseId: 'triceps',
+        sourceExerciseId: 'triceps',
+        exerciseNameSnapshot: 'Trizepsdrücken',
+        exerciseTypeSnapshot: ExerciseKind.strength,
+        supersetId: 'ss',
+        sets: const [
+          LoggedSet(setId: 'triceps-1', weightKg: 20, repetitions: 12),
+        ],
+      ),
+    ],
+  );
+  await active.load();
+  return workout.workoutId;
 }
 
 void _phoneSize(WidgetTester tester) {

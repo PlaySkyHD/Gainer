@@ -180,11 +180,6 @@ void main() {
 
     await tester.tap(find.text('Statistik'));
     await settle(tester);
-    expect(
-      find.text(
-        'Statistiken erscheinen hier, sobald die Auswertung verfügbar ist.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('Noch keine Statistik'), findsOneWidget);
   });
 }

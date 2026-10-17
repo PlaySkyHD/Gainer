@@ -1,12 +1,16 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
+import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
+import '../../../domain/models/training/workout_rules.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'active_workout_controller.dart';
+import 'set_row.dart';
 import 'training_format.dart';
 import 'workout_block_card.dart';
+import 'workout_metadata_card.dart';
 import 'workout_view_model.dart';
 
 /// Öffnet ein Training als Vollbild-Modal über der Shell.
@@ -46,8 +50,15 @@ class WorkoutScreen extends StatefulWidget {
   State<WorkoutScreen> createState() => _WorkoutScreenState();
 }
 
+enum _WorkoutMenuAction { toggleWeightUnit, toggleRir, delete }
+
 class _WorkoutScreenState extends State<WorkoutScreen> {
   late final WorkoutViewModel _viewModel;
+
+  /// Zahl der Zahlenfelder mit Fokus; die Leiste über der Tastatur hängt daran.
+  int _numericFocusCount = 0;
+  final ValueNotifier<bool> _editingNumber = ValueNotifier(false);
+  final SetFieldFocus _fieldFocus = SetFieldFocus();
 
   @override
   void initState() {
@@ -63,6 +74,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   @override
   void dispose() {
     _viewModel.dispose();
+    _editingNumber.dispose();
+    _fieldFocus.dispose();
     super.dispose();
   }
 
@@ -73,20 +86,79 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     if (outcome == WorkoutFinishOutcome.finished && mounted) _close();
   }
 
+  void _onEditingChanged(bool focused) {
+    _numericFocusCount = (_numericFocusCount + (focused ? 1 : -1)).clamp(
+      0,
+      1 << 20,
+    );
+    _editingNumber.value = _numericFocusCount > 0;
+  }
+
+  /// Kg → Wdh. → (RIR) → Kg des nächsten Satzes → … in Lesereihenfolge.
+  void _moveFocus({required bool forward}) {
+    final workout = _viewModel.workout;
+    if (workout == null) return;
+    _fieldFocus.move(_fieldOrder(workout), forward: forward);
+  }
+
+  Iterable<(String, SetField)> _fieldOrder(Workout workout) sync* {
+    for (final block in workout.exercises) {
+      for (final set in block.sets) {
+        if (block.exerciseTypeSnapshot != ExerciseKind.bodyweightOnly) {
+          yield (set.setId, SetField.weight);
+        }
+        yield (set.setId, SetField.repetitions);
+        if (_viewModel.showRir) yield (set.setId, SetField.rir);
+      }
+    }
+  }
+
+  void _unfocus() => FocusManager.instance.primaryFocus?.unfocus();
+
   Future<void> _showMenu(Workout workout) async {
-    final choice = await showGainerActionSheet<bool>(
+    final choice = await showGainerActionSheet<_WorkoutMenuAction>(
       context: context,
       title: workout.title,
       quickActions: const [
         GainerSheetAction(
           label: 'Löschen',
           icon: CupertinoIcons.trash,
-          value: true,
+          value: _WorkoutMenuAction.delete,
           destructive: true,
         ),
       ],
+      groups: [
+        [
+          GainerSheetAction(
+            label: 'Gewichtseinheit: ${_viewModel.weightUnit.label}',
+            icon: CupertinoIcons.arrow_2_squarepath,
+            value: _WorkoutMenuAction.toggleWeightUnit,
+          ),
+          GainerSheetAction(
+            label: _viewModel.showRir ? 'RIR ausblenden' : 'RIR anzeigen',
+            icon: CupertinoIcons.gauge,
+            value: _WorkoutMenuAction.toggleRir,
+          ),
+        ],
+      ],
     );
-    if (choice != true || !mounted) return;
+    if (!mounted) return;
+    switch (choice) {
+      case _WorkoutMenuAction.toggleWeightUnit:
+        await _viewModel.setWeightUnit(
+          _viewModel.weightUnit == WeightUnit.kg
+              ? WeightUnit.lbs
+              : WeightUnit.kg,
+        );
+      case _WorkoutMenuAction.toggleRir:
+        await _viewModel.setShowRir(!_viewModel.showRir);
+      case _WorkoutMenuAction.delete:
+        await _confirmDelete();
+      case null:
+    }
+  }
+
+  Future<void> _confirmDelete() async {
     final confirmed = await showGainerStackedDialog<bool>(
       context: context,
       title: 'Training löschen?',
@@ -155,9 +227,22 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                       ],
                       if (workout == null && _viewModel.isLoading)
                         const Center(child: CupertinoActivityIndicator()),
-                      if (workout != null) ..._content(context, workout),
+                      if (workout != null) ..._content(workout),
                     ],
                   ),
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: _editingNumber,
+                  builder: (context, editing, _) => editing
+                      ? TextFieldTapRegion(
+                          child: GainerNumericAccessoryBar(
+                            onPrevious: () => _moveFocus(forward: false),
+                            onNext: () => _moveFocus(forward: true),
+                            onDone: _unfocus,
+                            onHideKeyboard: _unfocus,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ],
             ),
@@ -187,33 +272,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     return _AccentCloseButton(onPressed: _close);
   }
 
-  List<Widget> _content(BuildContext context, Workout workout) {
-    final colors = GainerDesign.colorsOf(context);
-    final started = formatClockTime(workout.startedAtUtc.toLocal());
-    final status = workout.endedAtUtc == null
-        ? 'Start $started · läuft'
-        : 'Start $started · Ende ${formatClockTime(workout.endedAtUtc!.toLocal())}';
+  List<Widget> _content(Workout workout) {
     return [
-      GainerCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              workout.title,
-              style: GainerTypography.cardTitle.copyWith(
-                color: colors.primaryText,
-              ),
-            ),
-            const SizedBox(height: GainerSpacing.xxs),
-            Text(
-              status,
-              style: GainerTypography.label.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-          ],
-        ),
-      ),
+      WorkoutMetadataCard(viewModel: _viewModel, workout: workout),
       const SizedBox(height: GainerSpacing.m),
       if (workout.exercises.isEmpty)
         Padding(
@@ -221,15 +282,65 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           child: Text(
             'Noch keine Übungen.',
             textAlign: TextAlign.center,
-            style: GainerTypography.body.copyWith(color: colors.secondaryText),
+            style: GainerTypography.body.copyWith(
+              color: GainerDesign.colorsOf(context).secondaryText,
+            ),
           ),
         ),
-      for (final block in workout.exercises)
+      ..._blocks(workout),
+    ];
+  }
+
+  /// Benachbarte Blöcke mit gleichem Superset stehen in einer gemeinsamen
+  /// Gruppe mit Akzentlinie; die Karten tragen ihre Buchstaben A, B, …
+  List<Widget> _blocks(Workout workout) {
+    final accent = GainerDesign.colorsOf(context).accent;
+    return [
+      for (final group in supersetGroups(workout.exercises))
         Padding(
           padding: const EdgeInsets.only(bottom: GainerSpacing.s),
-          child: WorkoutBlockCard(block: block),
+          child: group.isSuperset
+              ? DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(left: BorderSide(color: accent, width: 3)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: GainerSpacing.xs),
+                    child: Column(
+                      children: [
+                        for (
+                          var position = 0;
+                          position < group.blockIndexes.length;
+                          position++
+                        )
+                          Padding(
+                            padding: EdgeInsets.only(
+                              bottom: position == group.blockIndexes.length - 1
+                                  ? 0
+                                  : GainerSpacing.s,
+                            ),
+                            child: _blockCard(
+                              workout.exercises[group.blockIndexes[position]],
+                              supersetLabel: group.labelAt(position),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                )
+              : _blockCard(workout.exercises[group.blockIndexes.single]),
         ),
     ];
+  }
+
+  Widget _blockCard(WorkoutBlock block, {String? supersetLabel}) {
+    return WorkoutBlockCard(
+      viewModel: _viewModel,
+      block: block,
+      fieldFocus: _fieldFocus,
+      supersetLabel: supersetLabel,
+      onEditingChanged: _onEditingChanged,
+    );
   }
 }
 
