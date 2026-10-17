@@ -13,39 +13,32 @@ import '../../features/sync/sync_screen.dart';
 import '../../features/training/training_screen.dart';
 import '../theme.dart';
 import '../view_models/mobile_shell_view_model.dart';
+import 'mobile_tab_scaffold.dart';
 
 class MobileShell extends StatelessWidget {
   const MobileShell({
     required this.controller,
     required this.account,
+    this.compactTrainingBar,
     super.key,
   });
 
   final MobileAuthController controller;
   final AccountScope account;
 
+  /// Slot über der Tableiste für die kompakte Trainingsleiste; standardmäßig leer.
+  final Widget? compactTrainingBar;
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<MobileShellViewModel>.value(
       value: controller.shell,
       child: Consumer<MobileShellViewModel>(
-        builder: (context, model, _) => CupertinoTabScaffold(
-          controller: model.tabController,
-          tabBar: CupertinoTabBar(
-            currentIndex: model.selectedIndex,
-            inactiveColor: GainerTheme.secondaryText(context),
-            onTap: model.selectTab,
-            items: [
-              for (final area in MobileArea.values)
-                BottomNavigationBarItem(
-                  icon: Icon(area.icon),
-                  label: area.label,
-                  tooltip: area.label,
-                ),
-            ],
-          ),
-          tabBuilder: (context, index) => CupertinoTabView(
-            builder: (context) => switch (MobileArea.values[index]) {
+        builder: (context, model, _) => MobileTabScaffold(
+          model: model,
+          compactTrainingBar: compactTrainingBar,
+          tabBuilder: (context, area) => CupertinoTabView(
+            builder: (context) => switch (area) {
               MobileArea.training => TrainingScreen(
                 viewModel: account.trainingViewModel,
               ),

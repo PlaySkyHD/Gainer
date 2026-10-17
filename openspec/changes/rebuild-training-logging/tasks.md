@@ -50,8 +50,8 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 ## 8. Flutter: Designsystem
 
 - [x] 8.1 Token-Modell (Farbrollen Hell/Dunkel, Rundungen, Abstände, Typografie) gemäß D12 implementieren und `GainerTheme` ersetzen; automatisierter Kontrasttest prüft alle Rollenpaare beider Modi gegen die Werte der Spec `mobile-design-system`.
-- [ ] 8.2 Komponentenbibliothek aus D13 umsetzen (Scaffold mit großem Titel, Karten/gruppierte Sektionen, Toolbar- und Pillen-Buttons, Action-Sheet, gestapelter Dialog, Suchfeld, Segment-Control, Ziffernblock-Zubehörleiste); Golden-Tests je Komponente in Hell und Dunkel sowie mit großer Schrift grün.
-- [ ] 8.3 Schwebende Tableiste mit hervorgehobenem aktiven Tab und Platz für die kompakte Trainingsleiste in `MobileShell` umsetzen; Widget-Test für Tabwechsel und Golden-Test beider Modi.
+- [x] 8.2 Komponentenbibliothek aus D13 umsetzen (Scaffold mit großem Titel, Karten/gruppierte Sektionen, Toolbar- und Pillen-Buttons, Action-Sheet, gestapelter Dialog, Suchfeld, Segment-Control, Ziffernblock-Zubehörleiste); Golden-Tests je Komponente in Hell und Dunkel sowie mit großer Schrift grün.
+- [x] 8.3 Schwebende Tableiste mit hervorgehobenem aktiven Tab und Platz für die kompakte Trainingsleiste in `MobileShell` umsetzen; Widget-Test für Tabwechsel und Golden-Test beider Modi.
 - [x] 8.4 Prüfung ergänzen, die fest codierte Farben außerhalb von `ui/core/theme/` verbietet; Analyse schlägt bei Verstoß fehl.
 
 ## 9. Flutter: Tagebuch und aktives Training
