@@ -10,7 +10,8 @@ import '../../features/coach/coach_screen.dart';
 import '../../features/nutrition/nutrition_screen.dart';
 import '../../features/progress/progress_screen.dart';
 import '../../features/sync/sync_screen.dart';
-import '../../features/training/training_placeholder_screen.dart';
+import '../../features/training/compact_training_bar.dart';
+import '../../features/training/training_home_screen.dart';
 import '../components/components.dart';
 import '../theme.dart';
 import '../view_models/mobile_shell_view_model.dart';
@@ -20,15 +21,11 @@ class MobileShell extends StatelessWidget {
   const MobileShell({
     required this.controller,
     required this.account,
-    this.compactTrainingBar,
     super.key,
   });
 
   final MobileAuthController controller;
   final AccountScope account;
-
-  /// Slot über der Tableiste für die kompakte Trainingsleiste; standardmäßig leer.
-  final Widget? compactTrainingBar;
 
   @override
   Widget build(BuildContext context) {
@@ -37,10 +34,16 @@ class MobileShell extends StatelessWidget {
       child: Consumer<MobileShellViewModel>(
         builder: (context, model, _) => MobileTabScaffold(
           model: model,
-          compactTrainingBar: compactTrainingBar,
+          compactTrainingBar: CompactTrainingBar(
+            activeWorkout: account.activeWorkout,
+            repository: account.training,
+          ),
           tabBuilder: (context, area) => CupertinoTabView(
             builder: (context) => switch (area) {
-              MobileArea.training => const TrainingPlaceholderScreen(),
+              MobileArea.training => TrainingHomeScreen(
+                repository: account.training,
+                activeWorkout: account.activeWorkout,
+              ),
               MobileArea.nutrition => NutritionScreen(
                 viewModel: account.nutritionViewModel,
               ),
