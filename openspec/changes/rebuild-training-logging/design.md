@@ -87,6 +87,8 @@ Der Pausentimer ist Gerätezustand: Er wird nicht mehr im Workout-Aggregat (`res
 
 *Alternative:* Timer im Workout belassen (Ist-Zustand). Verworfen, weil jede ±15 s-Aktion eine Workout-Version erzeugen würde und Timerdaten auf einem anderen Gerät ohnehin wertlos sind.
 
+Ablauf: Die lokale Benachrichtigung zum Zielzeitpunkt ist das einzige Tonsignal. Ein `UNUserNotificationCenterDelegate` zeigt Timer-Benachrichtigungen (Identifier-Präfix des Timers) auch im Vordergrund als Banner mit Ton; andere Benachrichtigungen behalten ihr bisheriges Verhalten. Die App ergänzt im Vordergrund nur Haptik und spielt den eigenen Ton nur, wenn Benachrichtigungen nicht erlaubt sind – so gibt es nie zwei Töne.
+
 ### D9 – Live Activity: eine Activity pro Training
 
 Die bestehende Bridge (`NativeLiveActivities.swift`, Pigeon `MobilePlatformApi`) wird von „Pause“ auf „Training“ umgestellt: Start beim ersten Öffnen eines aktiven Trainings (sofern erlaubt), Content-State `{startedAt, timerState, timerTargetAt?, pausedRemaining?, expired, detail?}`. Trainingszeit und Countdown werden über `Text(timerInterval:)` systemseitig gerendert, damit keine Hintergrundausführung nötig ist. Ende bei Beenden, Löschen, Logout und Kontowechsel über den vorhandenen `NativeFeatureLifecycleCoordinator`. Details nur mit Freigabe (bestehende Einstellung).

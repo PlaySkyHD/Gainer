@@ -76,6 +76,7 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 - [x] 11.1 Lokalen Timerzustand mit Generation und kontogebundenen Shortcuts umsetzen (D8); Unit-Tests für manuellen Start, ±15 s, Stop/Start, X setzt auf Ausgangsdauer, Ablauf auf 0:00 bis zum nächsten erfassten Satz und Wiederherstellung nach Prozessende.
 - [x] 11.2 Große Timeransicht und kompakte Leiste über der Tastatur umsetzen, Ton und Haptik bei Ablauf im Vordergrund, lokale Benachrichtigung im Hintergrund; Widget-Test, dass Eingabefokus und Werte beim Öffnen/Schließen erhalten bleiben.
 - [ ] 11.3 Live Activity auf „eine Activity pro Training“ umstellen (D9) inklusive Detailfreigabe, Ende bei Beenden/Löschen/Logout/Kontowechsel und Bereinigung veralteter Activities; Swift- und Pigeon-Tests sowie Coordinator-Tests grün.
+- [ ] 11.5 Ablauf-Benachrichtigung „Pause vorbei“ auch bei geöffneter App anzeigen (UNUserNotificationCenterDelegate `willPresent` mit Banner und Ton nur für Timer-Benachrichtigungen), im Vordergrund nur Haptik statt zweitem App-Ton, ohne Berechtigung App-Ton als Ersatz; Dart-Tests für die Signalwahl und Swift-Unit-Test in `RunnerTests` für die Präsentationsoptionen.
 - [ ] 11.4 Auf einem physischen iPhone mit Dynamic Island und einem ohne (oder Simulator) Bildschirmaufnahmen von App → Home → Sperrbildschirm für die Zustände „ohne Pause“, „Pause läuft“, „pausiert“, „abgelaufen“ und „beendet“ erstellen; Ergebnis im Change-Ordner dokumentieren.
 
 ## 12. Bestehende Bereiche im neuen Design

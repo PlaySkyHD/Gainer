@@ -54,12 +54,22 @@ Schließen (X) MUST den Timer beenden und die Timeransicht schließen. Beim erne
 
 ### Requirement: Ablauf signalisieren
 
-Beim Ablauf SHALL die App einen kurzen Ton und eine Haptik auslösen, wenn sie im Vordergrund ist, und andernfalls eine lokale Benachrichtigung zeigen, sofern erlaubt. Die Anzeige MUST 0:00 zeigen, bis der nächste Satz vollständig erfasst ist oder der Nutzer den Timer schließt; negative Restzeiten DÜRFEN nicht erscheinen.
+Beim Ablauf SHALL die App eine lokale Benachrichtigung „Pause vorbei“ mit Ton zeigen – im Hintergrund, auf dem Sperrbildschirm und auch bei geöffneter App –, sofern Benachrichtigungen erlaubt sind; bei geöffneter App zusätzlich eine Haptik. Ohne Berechtigung MUST die geöffnete App ersatzweise einen kurzen Ton abspielen. Die Anzeige MUST 0:00 zeigen, bis der nächste Satz vollständig erfasst ist oder der Nutzer den Timer schließt; negative Restzeiten DÜRFEN nicht erscheinen.
 
 #### Scenario: Ablauf im Vordergrund
-- **GIVEN** ein laufender Timer und die App ist geöffnet
+- **GIVEN** ein laufender Timer, Benachrichtigungen sind erlaubt und die App ist geöffnet
 - **WHEN** die Restzeit 0 erreicht
-- **THEN** ertönt ein kurzer Ton, die Anzeige bleibt auf 0:00 und es startet kein neuer Timer
+- **THEN** erscheint die Benachrichtigung „Pause vorbei“ als Banner mit Ton, das Gerät gibt eine Haptik, es ertönt kein zweiter Ton aus der App, die Anzeige bleibt auf 0:00 und es startet kein neuer Timer
+
+#### Scenario: Ablauf im Hintergrund
+- **GIVEN** ein laufender Timer, Benachrichtigungen sind erlaubt und die App ist im Hintergrund oder das iPhone gesperrt
+- **WHEN** die Restzeit 0 erreicht
+- **THEN** erscheint die Benachrichtigung „Pause vorbei“ mit Ton, auch wenn die App nicht ausgeführt wird
+
+#### Scenario: Benachrichtigung entfällt nach Stop oder Schließen
+- **GIVEN** ein laufender Timer mit geplanter Benachrichtigung
+- **WHEN** der Nutzer Stop oder X tippt, das Training beendet oder löscht oder das Konto wechselt
+- **THEN** wird die geplante Benachrichtigung entfernt und erscheint später nicht
 
 #### Scenario: Rückkehr zur Trainingszeit
 - **GIVEN** ein abgelaufener Timer mit Anzeige 0:00
@@ -68,8 +78,8 @@ Beim Ablauf SHALL die App einen kurzen Ton und eine Haptik auslösen, wenn sie i
 
 #### Scenario: Benachrichtigungen verweigert
 - **GIVEN** der Nutzer hat Benachrichtigungen verweigert
-- **WHEN** ein Timer im Hintergrund abläuft
-- **THEN** wird das Training nicht blockiert und die App zeigt beim Öffnen den abgelaufenen Zustand
+- **WHEN** ein Timer bei geöffneter App abläuft
+- **THEN** spielt die App einen kurzen Ton und eine Haptik ab, das Training wird nicht blockiert und bei späterem Öffnen aus dem Hintergrund zeigt die App den abgelaufenen Zustand
 
 ### Requirement: Eine Timerwahrheit
 
