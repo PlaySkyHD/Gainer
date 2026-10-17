@@ -49,6 +49,46 @@ class PlatformWorkoutExportResult {
   final int syncVersion;
 }
 
+class PlatformLiveActivityDetail {
+  const PlatformLiveActivityDetail({
+    required this.title,
+    required this.exerciseName,
+    required this.setIndex,
+    required this.setCount,
+  });
+
+  final String title;
+  final String exerciseName;
+  final int setIndex;
+  final int setCount;
+}
+
+/// Neutraler Zustand der Trainings-Live-Activity. Restzeiten werden aus dem
+/// Zielzeitpunkt berechnet, nicht hochgezählt.
+class PlatformLiveActivityState {
+  const PlatformLiveActivityState({
+    required this.sessionId,
+    required this.timerPhase,
+    required this.startedAtUtcEpochMilliseconds,
+    required this.expired,
+    required this.staleAtUtcEpochMilliseconds,
+    this.timerTargetAtUtcEpochMilliseconds,
+    this.pausedRemainingSeconds,
+    this.detail,
+  });
+
+  final String sessionId;
+
+  /// One of `ready`, `running`, `paused`, `expired`.
+  final String timerPhase;
+  final int startedAtUtcEpochMilliseconds;
+  final bool expired;
+  final int staleAtUtcEpochMilliseconds;
+  final int? timerTargetAtUtcEpochMilliseconds;
+  final int? pausedRemainingSeconds;
+  final PlatformLiveActivityDetail? detail;
+}
+
 class PlatformRoute {
   const PlatformRoute({
     required this.destination,
@@ -152,22 +192,10 @@ abstract class MobilePlatformApi {
   void clearExtensionSnapshot(int minimumGeneration);
 
   @async
-  bool startLiveActivity(
-    String sessionId,
-    String status,
-    int startedAtUtcEpochMilliseconds,
-    int? restEndsAtUtcEpochMilliseconds,
-    int staleAtUtcEpochMilliseconds,
-  );
+  bool startLiveActivity(PlatformLiveActivityState state);
 
   @async
-  bool updateLiveActivity(
-    String sessionId,
-    String status,
-    int startedAtUtcEpochMilliseconds,
-    int? restEndsAtUtcEpochMilliseconds,
-    int staleAtUtcEpochMilliseconds,
-  );
+  bool updateLiveActivity(PlatformLiveActivityState state);
 
   @async
   void endLiveActivity(String sessionId);

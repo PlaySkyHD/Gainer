@@ -409,7 +409,10 @@ void main() {
       250,
       scrollable: _verticalScrollable(),
     );
-    await tester.drag(find.byType(ListView).first, const Offset(0, -320));
+    await tester.drag(
+      find.byType(CustomScrollView).first,
+      const Offset(0, -320),
+    );
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(

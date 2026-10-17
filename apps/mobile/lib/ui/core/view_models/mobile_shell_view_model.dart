@@ -22,6 +22,7 @@ class MobileShellViewModel extends ChangeNotifier {
 
   late final CupertinoTabController _tabController;
   int _selectedIndex = MobileArea.progress.index;
+  String? _requestedWorkoutId;
 
   int get selectedIndex => _selectedIndex;
   MobileArea get selectedArea => MobileArea.values[_selectedIndex];
@@ -40,6 +41,19 @@ class MobileShellViewModel extends ChangeNotifier {
       return;
     }
     _tabController.index = index;
+  }
+
+  /// Bittet darum, nach dem Tab-Wechsel das Training mit dieser ID zu öffnen.
+  void requestOpenWorkout(String workoutId) {
+    _requestedWorkoutId = workoutId;
+    notifyListeners();
+  }
+
+  /// Liefert die offene Training-Anfrage einmal und löscht sie danach.
+  String? takeRequestedWorkout() {
+    final workoutId = _requestedWorkoutId;
+    _requestedWorkoutId = null;
+    return workoutId;
   }
 
   @override

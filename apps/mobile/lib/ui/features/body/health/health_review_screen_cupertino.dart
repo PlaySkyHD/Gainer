@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../../data/repositories/health/health_review_coordinator.dart';
 import '../../../../data/services/platform/platform_ports.dart';
+import '../../../core/components/components.dart';
+import '../../../core/theme.dart';
 import 'health_review_view_model.dart';
 
 class HealthReviewScreen extends StatefulWidget {
@@ -40,56 +42,42 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
     builder: (context, _) {
       final vm = widget.viewModel;
       final review = vm.review;
-      return CupertinoPageScaffold(
-        navigationBar: const CupertinoNavigationBar(
-          middle: Text('Apple Health'),
-        ),
-        child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      return GainerScaffold(
+        title: 'Apple Health',
+        children: [
+          _notice(
+            context,
+            'Health-Daten werden nur nach deiner Aktion geprüft. Leere Ergebnisse sagen nicht aus, ob der Zugriff verweigert wurde.',
+          ),
+          GainerGroupedSection(
+            header: 'Gewicht übernehmen',
             children: [
-              _notice(
-                context,
-                'Health-Daten werden nur nach deiner Aktion geprüft. Leere Ergebnisse sagen nicht aus, ob der Zugriff verweigert wurde.',
-              ),
-              _heading(context, 'Gewicht übernehmen'),
               _field(context, _from, 'Von (JJJJ-MM-TT)'),
               _field(context, _to, 'Bis (JJJJ-MM-TT)'),
-              CupertinoButton.filled(
-                onPressed: vm.isLoading
-                    ? null
-                    : () => vm.prepareReview(
-                        fromLocalDate: _from.text,
-                        toLocalDate: _to.text,
-                      ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(CupertinoIcons.heart),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Health-Proben laden',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (review != null) ..._reviewChildren(context, vm, review),
-              if (vm.lastResults.isNotEmpty)
-                ..._importStatusChildren(context, vm),
-              if (vm.errorMessage != null)
-                _notice(context, vm.errorMessage!, isError: true),
-              ..._workoutExportChildren(context, vm),
-              if (vm.isLoading)
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Center(child: CupertinoActivityIndicator()),
-                ),
             ],
           ),
-        ),
+          const SizedBox(height: GainerSpacing.s),
+          GainerPillButton(
+            label: 'Health-Proben laden',
+            expand: true,
+            onPressed: vm.isLoading
+                ? null
+                : () => vm.prepareReview(
+                    fromLocalDate: _from.text,
+                    toLocalDate: _to.text,
+                  ),
+          ),
+          if (review != null) ..._reviewChildren(context, vm, review),
+          if (vm.lastResults.isNotEmpty) ..._importStatusChildren(context, vm),
+          if (vm.errorMessage != null)
+            _notice(context, vm.errorMessage!, isError: true),
+          ..._workoutExportChildren(context, vm),
+          if (vm.isLoading)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(child: CupertinoActivityIndicator()),
+            ),
+        ],
       );
     },
   );
@@ -104,45 +92,55 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
       'Prüfe Gewicht, Messzeit und Quelle. Erst bestätigte Einträge werden an den Gainer-Sync vorgemerkt.',
     ),
     if (review.samples.isEmpty)
-      _dataCard(
-        context,
-        'Keine Werte im Zeitraum gefunden.',
-        'Das bedeutet nicht automatisch, dass der Zugriff verweigert wurde.',
+      GainerGroupedSection(
+        children: [
+          _dataCard(
+            context,
+            'Keine Werte im Zeitraum gefunden.',
+            'Das bedeutet nicht automatisch, dass der Zugriff verweigert wurde.',
+          ),
+        ],
       ),
-    for (final sample in review.samples)
-      _switchRow(
-        context,
-        title: '${sample.weightKilograms.toStringAsFixed(2)} kg',
-        detail: '${_localTime(sample.measuredAtUtc)} · ${sample.sourceName}',
-        value: vm.selectedProbeIds.contains(sample.uuid),
-        onChanged: (value) => vm.selectSample(sample.uuid, value),
-      ),
-    _switchRow(
-      context,
-      title: 'Ich bestätige, dass ausgewählte Check-ins zu meinem Gainer-Konto synchronisiert werden können.',
-      value: vm.serverSyncNoticeAccepted,
-      enabled: vm.selectedProbeIds.isNotEmpty,
-      onChanged: vm.acceptServerSyncNotice,
+    GainerGroupedSection(
+      children: [
+        for (final sample in review.samples)
+          _switchRow(
+            context,
+            title: '${sample.weightKilograms.toStringAsFixed(2)} kg',
+            detail:
+                '${_localTime(sample.measuredAtUtc)} · ${sample.sourceName}',
+            value: vm.selectedProbeIds.contains(sample.uuid),
+            onChanged: (value) => vm.selectSample(sample.uuid, value),
+          ),
+        _switchRow(
+          context,
+          title: 'Ich bestätige, dass ausgewählte Check-ins zu meinem Gainer-Konto synchronisiert werden können.',
+          value: vm.serverSyncNoticeAccepted,
+          enabled: vm.selectedProbeIds.isNotEmpty,
+          onChanged: vm.acceptServerSyncNotice,
+        ),
+      ],
     ),
+    const SizedBox(height: GainerSpacing.s),
     Row(
       children: [
-        CupertinoButton(
-          onPressed: vm.cancelReview,
-          child: const Text('Prüfung abbrechen'),
+        Expanded(
+          child: GainerPillButton(
+            label: 'Prüfung abbrechen',
+            variant: GainerPillVariant.tonal,
+            onPressed: vm.cancelReview,
+          ),
         ),
-        const Spacer(),
-        Flexible(
-          child: CupertinoButton.filled(
+        const SizedBox(width: GainerSpacing.xs),
+        Expanded(
+          child: GainerPillButton(
+            label: 'Auswahl übernehmen',
             onPressed:
                 vm.isLoading ||
                     !vm.serverSyncNoticeAccepted ||
                     vm.selectedProbeIds.isEmpty
                 ? null
                 : _confirmImport,
-            child: const Text(
-              'Auswahl übernehmen',
-              textAlign: TextAlign.center,
-            ),
           ),
         ),
       ],
@@ -153,39 +151,58 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
     BuildContext context,
     HealthReviewViewModel vm,
   ) => [
-    _heading(context, 'Importstatus'),
-    for (final result in vm.lastResults)
-      _dataCard(
-        context,
-        _status(result.status),
-        '${result.sample.weightKilograms.toStringAsFixed(2)} kg · ${_localTime(result.sample.measuredAtUtc)}',
-      ),
+    GainerGroupedSection(
+      header: 'Importstatus',
+      children: [
+        for (final result in vm.lastResults)
+          _dataCard(
+            context,
+            _status(result.status),
+            '${result.sample.weightKilograms.toStringAsFixed(2)} kg · ${_localTime(result.sample.measuredAtUtc)}',
+          ),
+      ],
+    ),
   ];
 
   List<Widget> _workoutExportChildren(
     BuildContext context,
     HealthReviewViewModel vm,
   ) => [
-    _heading(context, 'Abgeschlossene Workouts exportieren'),
-    const Text(
-      'Nur serverbestätigte eigene Workouts werden angeboten. Es werden keine geschätzten Kalorien oder Pulswerte ergänzt.',
+    GainerGroupedSection(
+      header: 'Abgeschlossene Workouts exportieren',
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            GainerSpacing.m,
+            GainerSpacing.xs,
+            GainerSpacing.m,
+            GainerSpacing.xs,
+          ),
+          child: Text(
+            'Nur serverbestätigte eigene Workouts werden angeboten. Es werden keine geschätzten Kalorien oder Pulswerte ergänzt.',
+            style: GainerTypography.label.copyWith(
+              color: GainerDesign.colorsOf(context).secondaryText,
+            ),
+          ),
+        ),
+        if (vm.completedWorkouts.isEmpty)
+          _dataCard(
+            context,
+            'Keine serverbestätigten abgeschlossenen Workouts verfügbar.',
+            '',
+          ),
+        for (final workout in vm.completedWorkouts)
+          _actionCard(
+            context,
+            title: workout.value.title,
+            detail:
+                '${_localTime(workout.value.startedAtUtc)} · ${_localTime(workout.value.endedAtUtc!)}',
+            actionLabel: 'Workout nach Apple Health exportieren',
+            icon: CupertinoIcons.arrow_up_doc,
+            onPressed: vm.isLoading ? null : () => _export(workout),
+          ),
+      ],
     ),
-    if (vm.completedWorkouts.isEmpty)
-      _dataCard(
-        context,
-        'Keine serverbestätigten abgeschlossenen Workouts verfügbar.',
-        '',
-      ),
-    for (final workout in vm.completedWorkouts)
-      _actionCard(
-        context,
-        title: workout.value.templateNameSnapshot,
-        detail:
-            '${_localTime(DateTime.parse(workout.value.startedAtUtc))} · ${_localTime(DateTime.parse(workout.value.completedAtUtc!))}',
-        actionLabel: 'Workout nach Apple Health exportieren',
-        icon: CupertinoIcons.arrow_up_doc,
-        onPressed: vm.isLoading ? null : () => _export(workout),
-      ),
   ];
 
   Future<void> _confirmImport() async {
@@ -198,28 +215,19 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
         .toList();
     for (final conflict in conflicts) {
       if (!mounted) return;
-      final replace = await showCupertinoDialog<bool>(
+      final replace = await showGainerStackedDialog<bool>(
         context: context,
-        builder: (context) => CupertinoAlertDialog(
-          title: const Text('Check-in an diesem Tag vorhanden'),
-          content: Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              'Für ${HealthReviewCoordinator.localDateForSample(conflict.sample)} gibt es bereits einen Check-in. Soll nur das Gewicht durch ${conflict.sample.weightKilograms.toStringAsFixed(2)} kg ersetzt werden? Andere Check-in-Werte bleiben erhalten.',
-            ),
+        title: 'Check-in an diesem Tag vorhanden',
+        message:
+            'Für ${HealthReviewCoordinator.localDateForSample(conflict.sample)} gibt es bereits einen Check-in. Soll nur das Gewicht durch ${conflict.sample.weightKilograms.toStringAsFixed(2)} kg ersetzt werden? Andere Check-in-Werte bleiben erhalten.',
+        actions: const [
+          GainerDialogAction(label: 'Überspringen', value: false),
+          GainerDialogAction(
+            label: 'Gewicht ersetzen',
+            value: true,
+            destructive: true,
           ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Überspringen'),
-            ),
-            CupertinoDialogAction(
-              isDefaultAction: true,
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Gewicht ersetzen'),
-            ),
-          ],
-        ),
+        ],
       );
       if (!mounted) return;
       await widget.viewModel.confirmImport(
@@ -230,28 +238,14 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
   }
 
   Future<void> _export(CompletedWorkoutCandidate workout) async {
-    final confirmed = await showCupertinoDialog<bool>(
+    final confirmed = await showGainerStackedDialog<bool>(
       context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('Workout nach Apple Health exportieren?'),
-        content: const Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: Text(
-            'Beginn, Ende und Trainingsart werden geschrieben. Der Export ist optional und wiederholbar, falls die Bestätigung verloren geht.',
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Abbrechen'),
-          ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Export bestätigen'),
-          ),
-        ],
-      ),
+      title: 'Workout nach Apple Health exportieren?',
+      message: 'Beginn, Ende und Trainingsart werden geschrieben. Der Export ist optional und wiederholbar, falls die Bestätigung verloren geht.',
+      actions: const [
+        GainerDialogAction(label: 'Abbrechen', value: false),
+        GainerDialogAction(label: 'Export bestätigen', value: true),
+      ],
     );
     if (confirmed != true || !mounted) return;
     final receipt = await widget.viewModel.exportWorkout(
@@ -259,108 +253,101 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
       confirmed: true,
     );
     if (!mounted || receipt == null) return;
-    await showCupertinoDialog<void>(
+    await showGainerStackedDialog<bool>(
       context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('Apple Health'),
-        content: Text(
-          receipt.status == HealthExportStatus.saved
-              ? 'Workout in Apple Health gespeichert.'
-              : 'Workout war bereits in Apple Health vorhanden.',
-        ),
-        actions: [
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fertig'),
-          ),
-        ],
-      ),
+      title: 'Apple Health',
+      message: receipt.status == HealthExportStatus.saved
+          ? 'Workout in Apple Health gespeichert.'
+          : 'Workout war bereits in Apple Health vorhanden.',
+      actions: const [GainerDialogAction(label: 'Fertig', value: true)],
     );
   }
 }
-
-Widget _heading(BuildContext context, String title) => Padding(
-  padding: const EdgeInsets.fromLTRB(2, 20, 2, 8),
-  child: Text(
-    title,
-    style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
-  ),
-);
 
 Widget _field(
   BuildContext context,
   TextEditingController controller,
   String label,
-) => Padding(
-  padding: const EdgeInsets.symmetric(vertical: 5),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label),
-      const SizedBox(height: 5),
-      CupertinoTextField(
-        controller: controller,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        decoration: BoxDecoration(
-          color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-            context,
-          ),
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-    ],
-  ),
-);
-
-Widget _notice(
-  BuildContext context,
-  String text, {
-  bool isError = false,
-}) => Container(
-  margin: const EdgeInsets.symmetric(vertical: 6),
-  padding: const EdgeInsets.all(12),
-  decoration: BoxDecoration(
-    color: (isError ? CupertinoColors.systemRed : CupertinoColors.systemBlue)
-        .resolveFrom(context)
-        .withValues(alpha: .12),
-    borderRadius: BorderRadius.circular(12),
-  ),
-  child: Text(
-    text,
-    style: TextStyle(
-      color: isError ? CupertinoColors.systemRed.resolveFrom(context) : null,
+) {
+  final colors = GainerDesign.colorsOf(context);
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(
+      GainerSpacing.m,
+      GainerSpacing.xs,
+      GainerSpacing.m,
+      GainerSpacing.xs,
     ),
-  ),
-);
-
-Widget _dataCard(BuildContext context, String title, String detail) =>
-    Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-          context,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GainerTypography.label.copyWith(color: colors.secondaryText),
         ),
-        borderRadius: BorderRadius.circular(12),
+        const SizedBox(height: 5),
+        CupertinoTextField(
+          controller: controller,
+          style: GainerTypography.body.copyWith(color: colors.primaryText),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: colors.elevatedSurface,
+            borderRadius: BorderRadius.circular(GainerRadii.field),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _notice(BuildContext context, String text, {bool isError = false}) {
+  final colors = GainerDesign.colorsOf(context);
+  final tint = isError ? colors.destructive : colors.accent;
+  return Container(
+    margin: const EdgeInsets.symmetric(vertical: 6),
+    padding: const EdgeInsets.all(GainerSpacing.s),
+    decoration: BoxDecoration(
+      color: tint.withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(GainerRadii.field),
+    ),
+    child: Text(
+      text,
+      style: GainerTypography.body.copyWith(
+        color: isError ? colors.destructive : colors.primaryText,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title),
-          if (detail.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                detail,
-                style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
-                  color: CupertinoColors.secondaryLabel.resolveFrom(context),
-                ),
+    ),
+  );
+}
+
+Widget _dataCard(BuildContext context, String title, String detail) {
+  final colors = GainerDesign.colorsOf(context);
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(
+      GainerSpacing.m,
+      10,
+      GainerSpacing.m,
+      10,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: GainerTypography.body.copyWith(color: colors.primaryText),
+        ),
+        if (detail.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              detail,
+              style: GainerTypography.label.copyWith(
+                color: colors.secondaryText,
               ),
             ),
-        ],
-      ),
-    );
+          ),
+      ],
+    ),
+  );
+}
 
 Widget _switchRow(
   BuildContext context, {
@@ -369,42 +356,45 @@ Widget _switchRow(
   required bool value,
   bool enabled = true,
   required ValueChanged<bool> onChanged,
-}) => Container(
-  margin: const EdgeInsets.symmetric(vertical: 4),
-  padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-  decoration: BoxDecoration(
-    color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-      context,
+}) {
+  final colors = GainerDesign.colorsOf(context);
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(
+      GainerSpacing.m,
+      10,
+      GainerSpacing.xs,
+      10,
     ),
-    borderRadius: BorderRadius.circular(12),
-  ),
-  child: Row(
-    children: [
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title),
-            if (detail != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  detail,
-                  style: CupertinoTheme.of(context).textTheme.textStyle
-                      .copyWith(
-                        color: CupertinoColors.secondaryLabel.resolveFrom(
-                          context,
-                        ),
-                      ),
+    child: Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: GainerTypography.body.copyWith(
+                  color: colors.primaryText,
                 ),
               ),
-          ],
+              if (detail != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    detail,
+                    style: GainerTypography.label.copyWith(
+                      color: colors.secondaryText,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
-      ),
-      CupertinoSwitch(value: value, onChanged: enabled ? onChanged : null),
-    ],
-  ),
-);
+        CupertinoSwitch(value: value, onChanged: enabled ? onChanged : null),
+      ],
+    ),
+  );
+}
 
 Widget _actionCard(
   BuildContext context, {
@@ -413,40 +403,50 @@ Widget _actionCard(
   required String actionLabel,
   required IconData icon,
   required VoidCallback? onPressed,
-}) => Container(
-  margin: const EdgeInsets.symmetric(vertical: 4),
-  padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-  decoration: BoxDecoration(
-    color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-      context,
+}) {
+  final colors = GainerDesign.colorsOf(context);
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(
+      GainerSpacing.m,
+      10,
+      GainerSpacing.xs,
+      10,
     ),
-    borderRadius: BorderRadius.circular(12),
-  ),
-  child: Row(
-    children: [
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title),
-            const SizedBox(height: 3),
-            Text(
-              detail,
-              style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
-                color: CupertinoColors.secondaryLabel.resolveFrom(context),
+    child: Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: GainerTypography.body.copyWith(
+                  color: colors.primaryText,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 3),
+              Text(
+                detail,
+                style: GainerTypography.label.copyWith(
+                  color: colors.secondaryText,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      CupertinoButton(
-        padding: const EdgeInsets.all(8),
-        onPressed: onPressed,
-        child: Semantics(label: actionLabel, button: true, child: Icon(icon)),
-      ),
-    ],
-  ),
-);
+        CupertinoButton(
+          padding: const EdgeInsets.all(8),
+          onPressed: onPressed,
+          child: Semantics(
+            label: actionLabel,
+            button: true,
+            child: Icon(icon, color: colors.accent),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
 String _date(DateTime value) =>
     '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';

@@ -57,6 +57,7 @@ class _GainerMobileAppState extends State<GainerMobileApp>
     return CupertinoApp(
       title: 'Gainer',
       theme: GainerTheme.forBrightness(_brightness),
+      builder: (context, child) => GainerDesign(child: child!),
       supportedLocales: const [Locale('de')],
       localizationsDelegates: const [
         GlobalWidgetsLocalizations.delegate,

@@ -26,6 +26,26 @@ const _resourceChangedMessage =
     'A local resource changed during the transaction.';
 const _localWritesFrozenKey = 'local-writes-frozen';
 const _accountOwnerIdKey = 'account-owner-id';
+const pullCursorMetadataKey = 'pull-cursor';
+
+/// Local aggregate types of the training model before the rebuild, plus the
+/// new ones. Tombstones store server resource names instead.
+const _trainingAggregateTypes = [
+  'workout',
+  'workout-template',
+  'workout-rotation',
+  'custom-exercise',
+  'training-plan',
+  'exercise-category',
+];
+const _trainingResourceTypes = [
+  'Workout',
+  'WorkoutTemplate',
+  'WorkoutRotation',
+  'CustomExercise',
+  'TrainingPlan',
+  'ExerciseCategory',
+];
 
 void _requireMutationGuard(bool Function()? mutationGuard) {
   if (mutationGuard != null && !mutationGuard()) {
@@ -47,18 +67,17 @@ void _validateHealthLedgerKeys(
 
 List<(String, LocalAggregateEnvelope<Object?>, String)> _encodeRelatedEnvelopes(
   String aggregateId,
-  Map<String, LocalAggregateEnvelope<Object?>> relatedEnvelopes,
+  List<(String, LocalAggregateEnvelope<Object?>)> relatedEnvelopes,
 ) {
   final relatedJson = <(String, LocalAggregateEnvelope<Object?>, String)>[];
-  for (final entry in relatedEnvelopes.entries) {
-    final related = entry.value;
+  for (final (relatedType, related) in relatedEnvelopes) {
     if (related.aggregateId == aggregateId ||
         related.syncState != LocalSyncState.pending ||
-        entry.key.trim().isEmpty ||
+        relatedType.trim().isEmpty ||
         !RegExp(LocalDatabase.accountIdPattern).hasMatch(related.aggregateId)) {
       throw ArgumentError('A related mutation envelope is invalid.');
     }
-    relatedJson.add((entry.key, related, related.encode()));
+    relatedJson.add((relatedType, related, related.encode()));
   }
   return relatedJson;
 }
@@ -124,7 +143,7 @@ class LocalSyncStore {
     required int? baseVersion,
     required Object? body,
     required LocalAggregateEnvelope<Object?> envelope,
-    Map<String, LocalAggregateEnvelope<Object?>> relatedEnvelopes = const {},
+    List<(String, LocalAggregateEnvelope<Object?>)> relatedEnvelopes = const [],
     String? dependsOnMutationId,
     DateTime? createdAtUtc,
     Map<String, Object?> localMetadataWrites = const {},
@@ -181,6 +200,11 @@ class LocalSyncStore {
         );
       }
       final sequence = await _nextOutboxSequence(aggregateType, aggregateId);
+      final tail =
+          aggregateType == 'workout' &&
+              operation == LocalMutationOperation.update
+          ? await _unsentWorkoutUpdateTail(aggregateId)
+          : null;
 
       await database
           .into(database.localResources)
@@ -205,22 +229,65 @@ class LocalSyncStore {
             );
       }
       afterEnvelopeWriteForTesting?.call();
-      await database
-          .into(database.localOutbox)
-          .insert(
-            LocalOutboxCompanion.insert(
-              mutationId: mutationId,
-              accountId: accountId,
-              aggregateType: aggregateType,
-              aggregateId: aggregateId,
-              sequence: sequence,
-              status: LocalMutationStatus.pending.name,
-              createdAtUtc: created.toIso8601String(),
-              payloadJson: payloadJson,
-              baseVersion: Value(baseVersion),
-              dependsOnMutationId: Value(dependsOnMutationId),
-            ),
-          );
+      final LocalMutation committedMutation;
+      if (tail != null) {
+        // Coalesced: the pending entry keeps its mutation id, sequence and
+        // base version, and only the body it will send changes.
+        final tailBaseVersion =
+            (jsonDecode(tail.payloadJson)
+                    as Map<String, dynamic>)['baseVersion']
+                as int?;
+        await (database.update(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(accountId) &
+                  t.mutationId.equals(tail.mutationId),
+            ))
+            .write(
+              LocalOutboxCompanion(
+                payloadJson: Value(
+                  jsonEncode({
+                    'operation': operation.name,
+                    'baseVersion': tailBaseVersion,
+                    'body': body,
+                  }),
+                ),
+              ),
+            );
+        committedMutation = _mutationFromRow(
+          await (database.select(
+            database.localOutbox,
+          )..where((t) => t.mutationId.equals(tail.mutationId))).getSingle(),
+        );
+      } else {
+        await database
+            .into(database.localOutbox)
+            .insert(
+              LocalOutboxCompanion.insert(
+                mutationId: mutationId,
+                accountId: accountId,
+                aggregateType: aggregateType,
+                aggregateId: aggregateId,
+                sequence: sequence,
+                status: LocalMutationStatus.pending.name,
+                createdAtUtc: created.toIso8601String(),
+                payloadJson: payloadJson,
+                baseVersion: Value(baseVersion),
+                dependsOnMutationId: Value(dependsOnMutationId),
+              ),
+            );
+        committedMutation = LocalMutation(
+          mutationId: mutationId,
+          accountId: accountId,
+          aggregateType: aggregateType,
+          aggregateId: aggregateId,
+          sequence: sequence,
+          status: LocalMutationStatus.pending,
+          createdAtUtc: created,
+          operation: operation,
+          baseVersion: baseVersion,
+          body: jsonDecode(payloadJson)['body'],
+        );
+      }
       for (final entry in localMetadataWrites.entries) {
         await database
             .into(database.localSyncMetadata)
@@ -232,18 +299,7 @@ class LocalSyncStore {
             );
       }
       _requireMutationGuard(mutationGuard);
-      return LocalMutation(
-        mutationId: mutationId,
-        accountId: accountId,
-        aggregateType: aggregateType,
-        aggregateId: aggregateId,
-        sequence: sequence,
-        status: LocalMutationStatus.pending,
-        createdAtUtc: created,
-        operation: operation,
-        baseVersion: baseVersion,
-        body: jsonDecode(payloadJson)['body'],
-      );
+      return committedMutation;
     });
     _committedMutations.add(committed);
     return committed;
@@ -345,6 +401,54 @@ class LocalSyncStore {
     return row == null ? null : _mutationFromRow(row);
   }
 
+  /// Moves a pending entry to `syncing` and returns the stored copy in one
+  /// transaction. The sender must use the returned copy: it carries the body
+  /// that is persisted now, and a coalesced edit cannot land after the claim.
+  Future<LocalMutation?> claimMutationForSending(
+    String mutationId, {
+    required DateTime now,
+  }) {
+    return database.transaction(() async {
+      await _bindAccountInTransaction();
+      final row =
+          await (database.select(database.localOutbox)..where(
+                (t) =>
+                    t.accountId.equals(accountId) &
+                    t.mutationId.equals(mutationId),
+              ))
+              .getSingleOrNull();
+      if (row == null || row.status != LocalMutationStatus.pending.name) {
+        return null;
+      }
+      final nextAttempt = row.nextAttemptAtUtc;
+      if (nextAttempt != null &&
+          DateTime.parse(nextAttempt).toUtc().isAfter(now.toUtc())) {
+        return null;
+      }
+      await (database.update(database.localOutbox)..where(
+            (t) =>
+                t.accountId.equals(accountId) & t.mutationId.equals(mutationId),
+          ))
+          .write(
+            LocalOutboxCompanion(
+              status: Value(LocalMutationStatus.syncing.name),
+              lastErrorCode: const Value<String?>(null),
+              sentAtUtc: Value(row.sentAtUtc ?? now.toUtc().toIso8601String()),
+            ),
+          );
+      return _mutationFromRow(
+        await (database.select(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(accountId) &
+                  t.mutationId.equals(mutationId),
+            ))
+            .getSingle(),
+      );
+    });
+  }
+
+  /// Status writes never touch the body. Stale copies held by a sender must
+  /// not overwrite a body that a later edit coalesced into the pending entry.
   Future<void> updateMutation(LocalMutation mutation) async {
     await ensureAccountBound();
     if (mutation.accountId != accountId) {
@@ -366,9 +470,82 @@ class LocalSyncStore {
             ),
             lastErrorCode: Value(mutation.lastErrorCode),
             baseVersion: Value(mutation.baseVersion),
-            payloadJson: Value(mutation.encodePayload()),
           ),
         );
+  }
+
+  /// The last outbox entry of a workout, if it is an update that has never
+  /// been claimed for sending. Only such an entry may take a new body (D3).
+  Future<LocalOutboxData?> _unsentWorkoutUpdateTail(String aggregateId) async {
+    final tail =
+        await (database.select(database.localOutbox)
+              ..where(
+                (t) =>
+                    t.accountId.equals(accountId) &
+                    t.aggregateType.equals('workout') &
+                    t.aggregateId.equals(aggregateId),
+              )
+              ..orderBy([(t) => OrderingTerm.desc(t.sequence)])
+              ..limit(1))
+            .getSingleOrNull();
+    if (tail == null ||
+        tail.status != LocalMutationStatus.pending.name ||
+        tail.sentAtUtc != null ||
+        tail.attemptCount != 0 ||
+        tail.nextAttemptAtUtc != null ||
+        tail.lastErrorCode != null) {
+      return null;
+    }
+    final payload = jsonDecode(tail.payloadJson) as Map<String, dynamic>;
+    return payload['operation'] == LocalMutationOperation.update.name
+        ? tail
+        : null;
+  }
+
+  /// One-time reset of training data after the training rebuild (D11). Runs
+  /// before any other access; it removes training envelopes, outbox entries,
+  /// conflicts and tombstones and resets the global pull cursor so the server
+  /// delivers the current training state again. Other areas are untouched.
+  /// Idempotent: once the schema version is stored, nothing changes.
+  Future<void> migrateTrainingSchema({
+    void Function()? afterFirstDeleteForTesting,
+  }) {
+    return database.transaction(() async {
+      await _bindAccountInTransaction();
+      final versionRow =
+          await (database.select(database.localSyncMetadata)
+                ..where((t) => t.key.equals(trainingSchemaVersionKey)))
+              .getSingleOrNull();
+      final stored = versionRow == null
+          ? null
+          : jsonDecode(versionRow.valueJson);
+      if (stored is int && stored >= currentTrainingSchemaVersion) return;
+
+      await (database.delete(
+        database.localResources,
+      )..where((t) => t.aggregateType.isIn(_trainingAggregateTypes))).go();
+      afterFirstDeleteForTesting?.call();
+      await (database.delete(
+        database.localOutbox,
+      )..where((t) => t.aggregateType.isIn(_trainingAggregateTypes))).go();
+      await (database.delete(
+        database.localConflicts,
+      )..where((t) => t.aggregateType.isIn(_trainingAggregateTypes))).go();
+      await (database.delete(
+        database.localTombstones,
+      )..where((t) => t.resourceType.isIn(_trainingResourceTypes))).go();
+      await (database.delete(
+        database.localSyncMetadata,
+      )..where((t) => t.key.equals(pullCursorMetadataKey))).go();
+      await database
+          .into(database.localSyncMetadata)
+          .insertOnConflictUpdate(
+            LocalSyncMetadataCompanion.insert(
+              key: trainingSchemaVersionKey,
+              valueJson: jsonEncode(currentTrainingSchemaVersion),
+            ),
+          );
+    });
   }
 
   Future<void> deleteMutation(String mutationId) async {
@@ -467,8 +644,11 @@ class LocalSyncStore {
 
   /// Binds this SQLite file to the first authenticated account that opens it.
   /// A copied/restored file can never be used with another account's session.
+  /// The account session opens its store through this call, so the training
+  /// reset also runs on app start before any repository reads local data.
   Future<void> ensureAccountBound() async {
     await database.transaction(_bindAccountInTransaction);
+    await migrateTrainingSchema();
   }
 
   /// Freezes local writes only after every mutation has reached the server and
@@ -534,6 +714,7 @@ class LocalSyncStore {
     if ({
       _accountOwnerIdKey,
       _localWritesFrozenKey,
+      trainingSchemaVersionKey,
       'sync-lease',
     }.contains(key)) {
       throw ArgumentError.value(
@@ -615,7 +796,7 @@ class InstallationIdentityStore {
           RegExp(LocalDatabase.accountIdPattern).hasMatch(existing.value)) {
         return existing.value;
       }
-      final id = _newUuidV4();
+      final id = newUuidV4();
       await database
           .into(database.installationMetadata)
           .insertOnConflictUpdate(
@@ -629,7 +810,7 @@ class InstallationIdentityStore {
   }
 }
 
-String _newUuidV4() {
+String newUuidV4() {
   final random = Random.secure();
   final bytes = List<int>.generate(16, (_) => random.nextInt(256));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;

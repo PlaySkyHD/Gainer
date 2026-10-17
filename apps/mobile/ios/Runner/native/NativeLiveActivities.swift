@@ -4,35 +4,28 @@ import Foundation
 @available(iOS 17.0, *)
 @MainActor
 final class NativeLiveActivities {
+  private typealias Activity = ActivityKit.Activity<GainerWorkoutActivityAttributes>
+
+  private static let maximumRestSeconds = 30 * 60
+  private static let maximumValidity: TimeInterval = 24 * 60 * 60
+
   private let now: () -> Date
 
   init(now: @escaping () -> Date = Date.init) {
     self.now = now
   }
 
-  func start(
-    sessionId: String,
-    status: String,
-    startedAtUtcEpochMilliseconds: Int64,
-    restEndsAtUtcEpochMilliseconds: Int64?,
-    staleAtUtcEpochMilliseconds: Int64
-  ) async throws -> Bool {
+  /// Startet die Activity des Trainings oder aktualisiert sie. Activities anderer
+  /// Trainings oder Konten werden vorher beendet, damit höchstens eine übrig bleibt.
+  func start(_ request: PlatformLiveActivityState) async throws -> Bool {
     guard ActivityAuthorizationInfo().areActivitiesEnabled,
-      let state = Self.makeState(
-        status: status,
-        startedAtUtcEpochMilliseconds: startedAtUtcEpochMilliseconds,
-        restEndsAtUtcEpochMilliseconds: restEndsAtUtcEpochMilliseconds,
-        staleAtUtcEpochMilliseconds: staleAtUtcEpochMilliseconds,
-        now: now()
-      ),
-      let attributes = Self.makeAttributes(sessionId: sessionId)
+      let attributes = Self.makeAttributes(sessionId: request.sessionId),
+      let content = Self.makeContent(request, now: now())
     else { return false }
 
-    let content = ActivityContent(state: state.state, staleDate: state.staleAt)
+    await endActivities { $0.attributes.sessionId != attributes.sessionId }
 
-    if let activity = Activity<GainerWorkoutActivityAttributes>.activities.first(where: {
-      $0.attributes.sessionId == attributes.sessionId
-    }) {
+    if let activity = Self.activity(sessionId: attributes.sessionId) {
       await activity.update(content)
       return true
     }
@@ -41,52 +34,42 @@ final class NativeLiveActivities {
     return true
   }
 
-  func update(
-    sessionId: String,
-    status: String,
-    startedAtUtcEpochMilliseconds: Int64,
-    restEndsAtUtcEpochMilliseconds: Int64?,
-    staleAtUtcEpochMilliseconds: Int64
-  ) async throws -> Bool {
-    guard let attributes = Self.makeAttributes(sessionId: sessionId),
-      let state = Self.makeState(
-      status: status,
-      startedAtUtcEpochMilliseconds: startedAtUtcEpochMilliseconds,
-      restEndsAtUtcEpochMilliseconds: restEndsAtUtcEpochMilliseconds,
-      staleAtUtcEpochMilliseconds: staleAtUtcEpochMilliseconds,
-      now: now()
-    ) else { return false }
+  func update(_ request: PlatformLiveActivityState) async throws -> Bool {
+    guard let attributes = Self.makeAttributes(sessionId: request.sessionId),
+      let content = Self.makeContent(request, now: now()),
+      let activity = Self.activity(sessionId: attributes.sessionId)
+    else { return false }
 
-    guard let activity = Activity<GainerWorkoutActivityAttributes>.activities.first(where: {
-      $0.attributes.sessionId == attributes.sessionId
-    }) else { return false }
-
-    await activity.update(ActivityContent(state: state.state, staleDate: state.staleAt))
+    await activity.update(content)
     return true
   }
 
   func end(sessionId: String) async {
     guard let attributes = Self.makeAttributes(sessionId: sessionId) else { return }
-    let activities = Activity<GainerWorkoutActivityAttributes>.activities.filter {
-      $0.attributes.sessionId == attributes.sessionId
-    }
-    for activity in activities {
-      await activity.end(nil, dismissalPolicy: .immediate)
-    }
+    await endActivities { $0.attributes.sessionId == attributes.sessionId }
   }
 
   func endAll() async {
-    for activity in Activity<GainerWorkoutActivityAttributes>.activities {
+    await endActivities { _ in true }
+  }
+
+  /// Beendet Activities, deren Gültigkeit abgelaufen ist, etwa nach einem Prozessende.
+  func reconcileStaleActivities() async {
+    let instant = now()
+    await endActivities { activity in
+      guard let staleDate = activity.content.staleDate else { return false }
+      return staleDate <= instant
+    }
+  }
+
+  private func endActivities(where shouldEnd: (Activity) -> Bool) async {
+    for activity in Activity.activities where shouldEnd(activity) {
       await activity.end(nil, dismissalPolicy: .immediate)
     }
   }
 
-  func reconcileStaleActivities() async {
-    let instant = now()
-    for activity in Activity<GainerWorkoutActivityAttributes>.activities {
-      guard let staleDate = activity.content.staleDate, staleDate <= instant else { continue }
-      await activity.end(nil, dismissalPolicy: .immediate)
-    }
+  private static func activity(sessionId: String) -> Activity? {
+    Activity.activities.first { $0.attributes.sessionId == sessionId }
   }
 
   private static func makeAttributes(sessionId: String) -> GainerWorkoutActivityAttributes? {
@@ -94,37 +77,58 @@ final class NativeLiveActivities {
     return GainerWorkoutActivityAttributes(sessionId: sessionId.lowercased())
   }
 
-  private static func makeState(
-    status: String,
-    startedAtUtcEpochMilliseconds: Int64,
-    restEndsAtUtcEpochMilliseconds: Int64?,
-    staleAtUtcEpochMilliseconds: Int64,
+  /// Prüft den Zustand aus dem Dart-Aufruf. Ungültige Werte liefern nil, damit
+  /// die Anzeige nie aus unplausiblen Zeiten entsteht.
+  private static func makeContent(
+    _ request: PlatformLiveActivityState,
     now: Date
-  ) -> (state: GainerWorkoutActivityAttributes.ContentState, staleAt: Date)? {
-    guard status == "workout" || status == "rest",
-      startedAtUtcEpochMilliseconds > 0,
-      startedAtUtcEpochMilliseconds <= Int64(now.addingTimeInterval(300).timeIntervalSince1970 * 1000),
-      staleAtUtcEpochMilliseconds > Int64(now.timeIntervalSince1970 * 1000),
-      staleAtUtcEpochMilliseconds > startedAtUtcEpochMilliseconds,
-      staleAtUtcEpochMilliseconds <= Int64(now.addingTimeInterval(24 * 60 * 60).timeIntervalSince1970 * 1000)
+  ) -> ActivityContent<GainerWorkoutActivityAttributes.ContentState>? {
+    let horizon = now.addingTimeInterval(maximumValidity)
+    let startedAt = Date(timeIntervalSince1970: Double(request.startedAtUtcEpochMilliseconds) / 1000)
+    let staleAt = Date(timeIntervalSince1970: Double(request.staleAtUtcEpochMilliseconds) / 1000)
+    guard request.startedAtUtcEpochMilliseconds > 0,
+      startedAt <= now.addingTimeInterval(300),
+      staleAt > now,
+      staleAt > startedAt,
+      staleAt <= horizon
     else { return nil }
 
-    let restEnd = restEndsAtUtcEpochMilliseconds.map { Date(timeIntervalSince1970: Double($0) / 1000) }
-    if status == "rest" {
-      guard let restEnd, restEnd > now,
-        restEnd <= now.addingTimeInterval(24 * 60 * 60)
-      else { return nil }
-    } else if restEnd != nil {
-      return nil
+    let timerTargetAt = request.timerTargetAtUtcEpochMilliseconds.map {
+      Date(timeIntervalSince1970: Double($0) / 1000)
     }
+    let pausedRemaining = request.pausedRemainingSeconds.map { Int($0) }
+    let targetIsValid = timerTargetAt.map { $0 > now && $0 <= horizon } ?? false
+    let remainingIsValid = pausedRemaining.map { (0...maximumRestSeconds).contains($0) } ?? false
 
-    return (
-      GainerWorkoutActivityAttributes.ContentState(
-        status: status,
-        startedAt: Date(timeIntervalSince1970: Double(startedAtUtcEpochMilliseconds) / 1000),
-        restEndsAt: restEnd
-      ),
-      Date(timeIntervalSince1970: Double(staleAtUtcEpochMilliseconds) / 1000)
+    let phaseIsValid: Bool
+    switch request.timerPhase {
+    case "running":
+      phaseIsValid = targetIsValid && pausedRemaining == nil
+    case "paused":
+      phaseIsValid = timerTargetAt == nil && remainingIsValid
+    case "ready", "expired":
+      phaseIsValid = timerTargetAt == nil && pausedRemaining == nil
+    default:
+      phaseIsValid = false
+    }
+    guard phaseIsValid, request.expired == (request.timerPhase == "expired") else { return nil }
+
+    let detail = request.detail.map {
+      GainerWorkoutActivityAttributes.ContentState.Detail(
+        title: $0.title,
+        exerciseName: $0.exerciseName,
+        setIndex: Int($0.setIndex),
+        setCount: Int($0.setCount)
+      )
+    }
+    let state = GainerWorkoutActivityAttributes.ContentState(
+      startedAt: startedAt,
+      timerPhase: request.timerPhase,
+      timerTargetAt: timerTargetAt,
+      pausedRemainingSeconds: pausedRemaining,
+      expired: request.expired,
+      detail: detail
     )
+    return ActivityContent(state: state, staleDate: staleAt)
   }
 }

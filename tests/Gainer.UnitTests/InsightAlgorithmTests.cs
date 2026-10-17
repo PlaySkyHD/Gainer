@@ -40,21 +40,22 @@ public sealed class InsightAlgorithmTests
     }
 
     [TestMethod]
-    public void TrainingIgnoresInvalidSetsAndUsesEpleyOnlyThroughTwelveRepetitions()
+    public void TrainingAggregatesRecordedSetsWithVersionedEpleyEstimate()
     {
         Guid workout = Guid.NewGuid();
         Guid exercise = Guid.NewGuid();
         DateTime completed = new(2026, 8, 18, 12, 0, 0, DateTimeKind.Utc);
-        TrainingInsights result = InsightAlgorithms.Training([
-            new(workout, exercise, completed, 100m, 10, true),
-            new(workout, exercise, completed, 90m, 13, true),
-            new(workout, exercise, completed, 0m, 8, true),
-            new(Guid.NewGuid(), exercise, completed, 200m, 5, false),
-        ], [workout]);
-        Assert.AreEqual("training-volume-v1", result.VolumeAlgorithmVersion);
+        BlockStatistics block = new(workout, completed, Guid.NewGuid(), exercise, [
+            new RecordedSet(100m, 10),
+            new RecordedSet(90m, 13),
+            new RecordedSet(0m, 8),
+        ], null, false);
+        TrainingInsights result = InsightAlgorithms.Training([block], 1);
+        Assert.AreEqual("training-volume-v2", result.VolumeAlgorithmVersion);
+        Assert.AreEqual("e1rm-epley-v2", result.EstimatedOneRepMaxAlgorithmVersion);
         Assert.AreEqual(2170m, result.VolumeKgRepetitions);
-        Assert.AreEqual(133.33m, result.BestSet!.EstimatedOneRepMaxKg);
+        Assert.AreEqual(133.33m, TrainingStatistics.RoundForOutput(result.BestSet!.EstimatedOneRepMaxKg));
         Assert.AreEqual(1, result.WorkoutCount);
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => InsightAlgorithms.Epley(100m, 13));
+        Assert.IsFalse(result.BodyweightMissing);
     }
 }

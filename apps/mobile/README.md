@@ -67,9 +67,9 @@ change retains the full XCTest suite and uploads its result bundle when one is
 produced.
 
 The iOS simulator gate captures the five fixture-backed tabs and exercise trend
-chart in light and dark appearance. It also captures check-in, nutrition, and
-training editors in both appearances, plus the goal editor and date picker in
-light appearance, at `artifacts/mobile/ui-captures/`.
+chart in light and dark appearance. It also captures check-in and nutrition editors in
+both appearances, plus the goal editor, date picker, workout screen, and
+minimized workout bar in light appearance, at `artifacts/mobile/ui-captures/`.
 These PNGs use the simulator's native system font and are the visual-review
 artifacts; widget-test renderer previews are not used as evidence of native
 typography or appearance.
@@ -119,6 +119,15 @@ not configured yet. They require the final signed app identifier, an
 Associated Domains entitlement, a matching `apple-app-site-association` file
 on the existing HTTPS host, and a verified device install/open test before
 they can be claimed as supported.
+
+## Golden tests
+
+Golden tests (`matchesGoldenFile`, tagged `golden` in `dart_test.yaml`) compare
+widget renders against PNGs in `test/**/goldens/` that were generated on Linux;
+macOS rasterizes differently, so the macOS CI job excludes them with
+`flutter test --exclude-tags golden`. They are checked in the Sonar app pipeline
+(`sonar-app.yml`, Ubuntu), and locally on Linux with `flutter test --tags golden`.
+Regenerate references only on Linux with `flutter test --update-goldens --tags golden`.
 
 ## Architecture boundary
 

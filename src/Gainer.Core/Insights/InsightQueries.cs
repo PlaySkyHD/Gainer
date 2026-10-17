@@ -19,9 +19,10 @@ public sealed record ExerciseProgressPoint(
     Guid WorkoutId,
     DateTime CompletedAtUtc,
     decimal VolumeKgRepetitions,
-    decimal? BestWeightKg,
-    int? BestRepetitions,
-    decimal? EstimatedOneRepMaxKg);
+    decimal? MaxWeightKg,
+    int MaxRepetitions,
+    decimal? EstimatedOneRepMaxKg,
+    bool BodyweightMissing);
 
 public sealed record ExerciseProgressSnapshot(
     long AsOfRevision,
@@ -30,13 +31,15 @@ public sealed record ExerciseProgressSnapshot(
     DateTime FromUtc,
     DateTime ThroughUtc,
     IReadOnlyList<ExerciseProgressPoint> Points,
-    BestSet? BestSet);
+    BestSet? BestSet,
+    ExerciseRecords Records);
 
 public interface IInsightQueries
 {
     Task<DashboardInsightSnapshot> DashboardAsync(
         DateOnly through,
         int days,
+        TimeZoneInfo timeZone,
         CancellationToken cancellationToken = default);
 
     Task<ExerciseProgressSnapshot> ExerciseProgressAsync(

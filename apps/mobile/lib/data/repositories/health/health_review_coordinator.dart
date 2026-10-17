@@ -1,4 +1,4 @@
-import '../../../domain/models/training/training.dart';
+import '../../../domain/models/training/workout_model.dart';
 import '../../services/platform/platform_ports.dart';
 import '../body/body_repository.dart';
 import '../sync/local_sync_store.dart';
@@ -48,7 +48,7 @@ class CompletedWorkoutCandidate {
     required this.serverVersion,
   });
   final String id;
-  final WorkoutRecord value;
+  final Workout value;
   final int serverVersion;
 }
 
@@ -197,8 +197,8 @@ class HealthReviewCoordinator {
       if (version == null || version <= 0) continue;
       final serverSnapshot = row.serverSnapshot;
       if (serverSnapshot is! Map<String, dynamic>) continue;
-      final workout = WorkoutRecord.fromJson(serverSnapshot);
-      if (workout.isCompleted && workout.completedAtUtc != null) {
+      final workout = Workout.fromJson(serverSnapshot);
+      if (workout.endedAtUtc != null && workout.deletedAtUtc == null) {
         values.add(
           CompletedWorkoutCandidate(
             id: row.aggregateId,
@@ -208,11 +208,7 @@ class HealthReviewCoordinator {
         );
       }
     }
-    values.sort(
-      (a, b) => (b.value.completedAtUtc ?? '').compareTo(
-        a.value.completedAtUtc ?? '',
-      ),
-    );
+    values.sort((a, b) => b.value.endedAtUtc!.compareTo(a.value.endedAtUtc!));
     return List.unmodifiable(values);
   }
 
@@ -246,13 +242,13 @@ class HealthReviewCoordinator {
     if (rawServerSnapshot is! Map<String, dynamic>) {
       throw StateError('Das Workout wurde noch nicht vom Server bestätigt.');
     }
-    final data = WorkoutRecord.fromJson(rawServerSnapshot);
-    if (!data.isCompleted || data.completedAtUtc == null) {
+    final data = Workout.fromJson(rawServerSnapshot);
+    final endedAt = data.endedAtUtc;
+    if (endedAt == null || data.deletedAtUtc != null) {
       throw StateError('Nur abgeschlossene Workouts dürfen exportiert werden.');
     }
-    final start = DateTime.tryParse(data.startedAtUtc)?.toUtc();
-    final end = DateTime.tryParse(data.completedAtUtc!)?.toUtc();
-    if (start == null || end == null || !start.isBefore(end)) {
+    final start = data.startedAtUtc;
+    if (!start.isBefore(endedAt)) {
       throw StateError('Workout-Zeiten sind ungültig.');
     }
     final available = await platform.isAvailable();
@@ -265,10 +261,10 @@ class HealthReviewCoordinator {
     final request = CompletedWorkoutHealthExport(
       accountId: accountId,
       workoutId: workoutId,
-      status: data.status.toLowerCase(),
+      status: 'completed',
       serverVersion: row.serverVersion!,
       startedAtUtc: start,
-      completedAtUtc: end,
+      completedAtUtc: endedAt,
     );
     try {
       final receipt = await platform.exportCompletedWorkout(request);

@@ -2,6 +2,8 @@
 
 Diese Capability definiert den stabilen Übungskatalog, wiederverwendbare Trainingsvorlagen und eine einfache nutzergebundene Workout-Rotation für die MVP-Kernreise.
 
+> **Abgelöst:** Die Anforderungen dieser Capability werden durch die Change `rebuild-training-logging` (Capabilities `training-session`, `set-logging`, `training-plans`, `exercise-catalog`, `rest-timer`, `training-statistics`) ersetzt. Beim Archivieren dieser Change wird diese Capability nicht übernommen.
+
 ## ADDED Requirements
 
 ### Requirement: Übungskatalog mit stabilen Identitäten

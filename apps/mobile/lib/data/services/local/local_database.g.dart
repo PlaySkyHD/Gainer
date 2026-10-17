@@ -503,6 +503,17 @@ class $LocalOutboxTable extends LocalOutbox
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _sentAtUtcMeta = const VerificationMeta(
+    'sentAtUtc',
+  );
+  @override
+  late final GeneratedColumn<String> sentAtUtc = GeneratedColumn<String>(
+    'sent_at_utc',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     mutationId,
@@ -519,6 +530,7 @@ class $LocalOutboxTable extends LocalOutbox
     attemptCount,
     nextAttemptAtUtc,
     lastErrorCode,
+    sentAtUtc,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -662,6 +674,12 @@ class $LocalOutboxTable extends LocalOutbox
         ),
       );
     }
+    if (data.containsKey('sent_at_utc')) {
+      context.handle(
+        _sentAtUtcMeta,
+        sentAtUtc.isAcceptableOrUnknown(data['sent_at_utc']!, _sentAtUtcMeta),
+      );
+    }
     return context;
   }
 
@@ -731,6 +749,10 @@ class $LocalOutboxTable extends LocalOutbox
         DriftSqlType.string,
         data['${effectivePrefix}last_error_code'],
       ),
+      sentAtUtc: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sent_at_utc'],
+      ),
     );
   }
 
@@ -755,6 +777,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
   final int attemptCount;
   final String? nextAttemptAtUtc;
   final String? lastErrorCode;
+  final String? sentAtUtc;
   const LocalOutboxData({
     required this.mutationId,
     required this.accountId,
@@ -770,6 +793,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     required this.attemptCount,
     this.nextAttemptAtUtc,
     this.lastErrorCode,
+    this.sentAtUtc,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -797,6 +821,9 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     }
     if (!nullToAbsent || lastErrorCode != null) {
       map['last_error_code'] = Variable<String>(lastErrorCode);
+    }
+    if (!nullToAbsent || sentAtUtc != null) {
+      map['sent_at_utc'] = Variable<String>(sentAtUtc);
     }
     return map;
   }
@@ -827,6 +854,9 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       lastErrorCode: lastErrorCode == null && nullToAbsent
           ? const Value.absent()
           : Value(lastErrorCode),
+      sentAtUtc: sentAtUtc == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sentAtUtc),
     );
   }
 
@@ -852,6 +882,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       attemptCount: serializer.fromJson<int>(json['attemptCount']),
       nextAttemptAtUtc: serializer.fromJson<String?>(json['nextAttemptAtUtc']),
       lastErrorCode: serializer.fromJson<String?>(json['lastErrorCode']),
+      sentAtUtc: serializer.fromJson<String?>(json['sentAtUtc']),
     );
   }
   @override
@@ -872,6 +903,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       'attemptCount': serializer.toJson<int>(attemptCount),
       'nextAttemptAtUtc': serializer.toJson<String?>(nextAttemptAtUtc),
       'lastErrorCode': serializer.toJson<String?>(lastErrorCode),
+      'sentAtUtc': serializer.toJson<String?>(sentAtUtc),
     };
   }
 
@@ -890,6 +922,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     int? attemptCount,
     Value<String?> nextAttemptAtUtc = const Value.absent(),
     Value<String?> lastErrorCode = const Value.absent(),
+    Value<String?> sentAtUtc = const Value.absent(),
   }) => LocalOutboxData(
     mutationId: mutationId ?? this.mutationId,
     accountId: accountId ?? this.accountId,
@@ -913,6 +946,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     lastErrorCode: lastErrorCode.present
         ? lastErrorCode.value
         : this.lastErrorCode,
+    sentAtUtc: sentAtUtc.present ? sentAtUtc.value : this.sentAtUtc,
   );
   LocalOutboxData copyWithCompanion(LocalOutboxCompanion data) {
     return LocalOutboxData(
@@ -952,6 +986,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       lastErrorCode: data.lastErrorCode.present
           ? data.lastErrorCode.value
           : this.lastErrorCode,
+      sentAtUtc: data.sentAtUtc.present ? data.sentAtUtc.value : this.sentAtUtc,
     );
   }
 
@@ -971,7 +1006,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
           ..write('dependsOnMutationId: $dependsOnMutationId, ')
           ..write('attemptCount: $attemptCount, ')
           ..write('nextAttemptAtUtc: $nextAttemptAtUtc, ')
-          ..write('lastErrorCode: $lastErrorCode')
+          ..write('lastErrorCode: $lastErrorCode, ')
+          ..write('sentAtUtc: $sentAtUtc')
           ..write(')'))
         .toString();
   }
@@ -992,6 +1028,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     attemptCount,
     nextAttemptAtUtc,
     lastErrorCode,
+    sentAtUtc,
   );
   @override
   bool operator ==(Object other) =>
@@ -1010,7 +1047,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
           other.dependsOnMutationId == this.dependsOnMutationId &&
           other.attemptCount == this.attemptCount &&
           other.nextAttemptAtUtc == this.nextAttemptAtUtc &&
-          other.lastErrorCode == this.lastErrorCode);
+          other.lastErrorCode == this.lastErrorCode &&
+          other.sentAtUtc == this.sentAtUtc);
 }
 
 class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
@@ -1028,6 +1066,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
   final Value<int> attemptCount;
   final Value<String?> nextAttemptAtUtc;
   final Value<String?> lastErrorCode;
+  final Value<String?> sentAtUtc;
   final Value<int> rowid;
   const LocalOutboxCompanion({
     this.mutationId = const Value.absent(),
@@ -1044,6 +1083,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     this.attemptCount = const Value.absent(),
     this.nextAttemptAtUtc = const Value.absent(),
     this.lastErrorCode = const Value.absent(),
+    this.sentAtUtc = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalOutboxCompanion.insert({
@@ -1061,6 +1101,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     this.attemptCount = const Value.absent(),
     this.nextAttemptAtUtc = const Value.absent(),
     this.lastErrorCode = const Value.absent(),
+    this.sentAtUtc = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : mutationId = Value(mutationId),
        accountId = Value(accountId),
@@ -1085,6 +1126,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     Expression<int>? attemptCount,
     Expression<String>? nextAttemptAtUtc,
     Expression<String>? lastErrorCode,
+    Expression<String>? sentAtUtc,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1103,6 +1145,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
       if (attemptCount != null) 'attempt_count': attemptCount,
       if (nextAttemptAtUtc != null) 'next_attempt_at_utc': nextAttemptAtUtc,
       if (lastErrorCode != null) 'last_error_code': lastErrorCode,
+      if (sentAtUtc != null) 'sent_at_utc': sentAtUtc,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1122,6 +1165,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     Value<int>? attemptCount,
     Value<String?>? nextAttemptAtUtc,
     Value<String?>? lastErrorCode,
+    Value<String?>? sentAtUtc,
     Value<int>? rowid,
   }) {
     return LocalOutboxCompanion(
@@ -1139,6 +1183,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
       attemptCount: attemptCount ?? this.attemptCount,
       nextAttemptAtUtc: nextAttemptAtUtc ?? this.nextAttemptAtUtc,
       lastErrorCode: lastErrorCode ?? this.lastErrorCode,
+      sentAtUtc: sentAtUtc ?? this.sentAtUtc,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1190,6 +1235,9 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     if (lastErrorCode.present) {
       map['last_error_code'] = Variable<String>(lastErrorCode.value);
     }
+    if (sentAtUtc.present) {
+      map['sent_at_utc'] = Variable<String>(sentAtUtc.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1213,6 +1261,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
           ..write('attemptCount: $attemptCount, ')
           ..write('nextAttemptAtUtc: $nextAttemptAtUtc, ')
           ..write('lastErrorCode: $lastErrorCode, ')
+          ..write('sentAtUtc: $sentAtUtc, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2616,6 +2665,7 @@ typedef $$LocalOutboxTableCreateCompanionBuilder =
       Value<int> attemptCount,
       Value<String?> nextAttemptAtUtc,
       Value<String?> lastErrorCode,
+      Value<String?> sentAtUtc,
       Value<int> rowid,
     });
 typedef $$LocalOutboxTableUpdateCompanionBuilder =
@@ -2634,6 +2684,7 @@ typedef $$LocalOutboxTableUpdateCompanionBuilder =
       Value<int> attemptCount,
       Value<String?> nextAttemptAtUtc,
       Value<String?> lastErrorCode,
+      Value<String?> sentAtUtc,
       Value<int> rowid,
     });
 
@@ -2713,6 +2764,11 @@ class $$LocalOutboxTableFilterComposer
 
   ColumnFilters<String> get lastErrorCode => $composableBuilder(
     column: $table.lastErrorCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sentAtUtc => $composableBuilder(
+    column: $table.sentAtUtc,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2795,6 +2851,11 @@ class $$LocalOutboxTableOrderingComposer
     column: $table.lastErrorCode,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get sentAtUtc => $composableBuilder(
+    column: $table.sentAtUtc,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LocalOutboxTableAnnotationComposer
@@ -2869,6 +2930,9 @@ class $$LocalOutboxTableAnnotationComposer
     column: $table.lastErrorCode,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get sentAtUtc =>
+      $composableBuilder(column: $table.sentAtUtc, builder: (column) => column);
 }
 
 class $$LocalOutboxTableTableManager
@@ -2916,6 +2980,7 @@ class $$LocalOutboxTableTableManager
                 Value<int> attemptCount = const Value.absent(),
                 Value<String?> nextAttemptAtUtc = const Value.absent(),
                 Value<String?> lastErrorCode = const Value.absent(),
+                Value<String?> sentAtUtc = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalOutboxCompanion(
                 mutationId: mutationId,
@@ -2932,6 +2997,7 @@ class $$LocalOutboxTableTableManager
                 attemptCount: attemptCount,
                 nextAttemptAtUtc: nextAttemptAtUtc,
                 lastErrorCode: lastErrorCode,
+                sentAtUtc: sentAtUtc,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2950,6 +3016,7 @@ class $$LocalOutboxTableTableManager
                 Value<int> attemptCount = const Value.absent(),
                 Value<String?> nextAttemptAtUtc = const Value.absent(),
                 Value<String?> lastErrorCode = const Value.absent(),
+                Value<String?> sentAtUtc = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalOutboxCompanion.insert(
                 mutationId: mutationId,
@@ -2966,6 +3033,7 @@ class $$LocalOutboxTableTableManager
                 attemptCount: attemptCount,
                 nextAttemptAtUtc: nextAttemptAtUtc,
                 lastErrorCode: lastErrorCode,
+                sentAtUtc: sentAtUtc,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

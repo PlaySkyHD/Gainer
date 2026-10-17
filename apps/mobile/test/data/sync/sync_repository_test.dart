@@ -29,6 +29,7 @@ void main() {
   late bool failMutation;
   late String? mutationFailureCode;
   late int mutationFailureStatus;
+  Map<String, Object?>? mutationFailureErrors;
   late String? pullFailureCode;
   late int pullFailureStatus;
   late bool switchAntiforgeryAfterRegistration;
@@ -37,6 +38,9 @@ void main() {
   late String sessionUserId;
   late String antiforgeryUserId;
   late String pullResourceType;
+  String? pullResourceId;
+  Map<String, Object?>? pullSnapshot;
+  bool pullTombstone = false;
   late int pullVersion;
   late int handoverBeginStatus;
   late List<Map<String, dynamic>> handoverBeginRequests;
@@ -62,6 +66,7 @@ void main() {
     failMutation = false;
     mutationFailureCode = null;
     mutationFailureStatus = 503;
+    mutationFailureErrors = null;
     pullFailureCode = null;
     pullFailureStatus = 409;
     switchAntiforgeryAfterRegistration = false;
@@ -70,6 +75,9 @@ void main() {
     sessionUserId = accountId;
     antiforgeryUserId = accountId;
     pullResourceType = 'DailyCheckIn';
+    pullResourceId = null;
+    pullSnapshot = null;
+    pullTombstone = false;
     pullVersion = 1;
     handoverBeginStatus = 200;
     handoverBeginRequests = [];
@@ -125,7 +133,7 @@ void main() {
             jsonEncode({
               'clientId': clientId,
               'displayName': 'Gainer iPhone',
-              'protocolVersion': 2,
+              'protocolVersion': 3,
               'isActiveWriter': activeWriter,
               'registeredAtUtc': '2026-10-12T10:00:00Z',
               'lastSeenAtUtc': '2026-10-12T10:00:00Z',
@@ -154,10 +162,11 @@ void main() {
             jsonEncode({
               'code': mutationFailureCode ?? 'temporary_unavailable',
               'message': 'Retry later.',
+              'errors': ?mutationFailureErrors,
             }),
           );
         } else {
-          expect(body['protocolVersion'], 2);
+          expect(body['protocolVersion'], 3);
           expect(body['clientSequence'], 1);
           expect(body['resources'].single['resourceType'], 'DailyCheckIn');
           expect(body['operation'], 'createDailyCheckIn');
@@ -193,7 +202,7 @@ void main() {
           pullCursor = pullRevision;
           request.response.write(
             jsonEncode({
-              'protocolVersion': 2,
+              'protocolVersion': 3,
               'nextCursor': pullRevision,
               'hasMore': false,
               'batches': [
@@ -209,15 +218,18 @@ void main() {
                   'changes': [
                     {
                       'resourceType': pullResourceType,
-                      'resourceId': checkInId,
+                      'resourceId': pullResourceId ?? checkInId,
                       'version': pullVersion,
-                      'isTombstone': false,
-                      'snapshot': {
-                        'localDate': '2026-10-12',
-                        'values': {'weightKg': 81.5},
-                        'createdAtUtc': '2026-10-12T10:00:00Z',
-                        'updatedAtUtc': '2026-10-12T10:00:00Z',
-                      },
+                      'isTombstone': pullTombstone,
+                      'snapshot': pullTombstone
+                          ? null
+                          : pullSnapshot ??
+                                {
+                                  'localDate': '2026-10-12',
+                                  'values': {'weightKg': 81.5},
+                                  'createdAtUtc': '2026-10-12T10:00:00Z',
+                                  'updatedAtUtc': '2026-10-12T10:00:00Z',
+                                },
                     },
                   ],
                 },
@@ -227,7 +239,7 @@ void main() {
         } else {
           request.response.write(
             jsonEncode({
-              'protocolVersion': 2,
+              'protocolVersion': 3,
               'nextCursor': after,
               'hasMore': false,
               'batches': [],
@@ -702,6 +714,308 @@ void main() {
       await database.close();
     },
   );
+
+  Future<void> pullTrainingSnapshot({
+    required String resourceType,
+    required String resourceId,
+    required String aggregateType,
+    required Map<String, Object?> snapshot,
+  }) async {
+    pullResourceType = resourceType;
+    pullResourceId = resourceId;
+    pullSnapshot = snapshot;
+    final (store, database, api, repository) = await fixture();
+    await repository.synchronize();
+    final saved = await store.readAggregate(aggregateType, resourceId);
+    expect(saved?.aggregateId, resourceId);
+    expect(saved?.serverVersion, 1);
+    expect(saved?.serverSnapshot, isNotNull);
+    expect(saved?.syncState, LocalSyncState.clean);
+    expect(await store.readSyncMetadata('pull-cursor'), 1);
+    api.close();
+    await database.close();
+  }
+
+  const workoutId = '44444444-4444-4444-8444-444444444444';
+  final workoutSnapshot = <String, Object?>{
+    'workoutId': workoutId,
+    'title': 'Push',
+    'notes': null,
+    'startedAtUtc': '2026-10-17T08:00:00Z',
+    'endedAtUtc': '2026-10-17T09:00:00Z',
+    'previousValueSource': 'exercise',
+    'sourcePlanId': null,
+    'sourceWorkoutId': null,
+    'exercises': [
+      {
+        'workoutExerciseId': '55555555-5555-4555-8555-555555555555',
+        'sourceExerciseId': '66666666-6666-4666-8666-666666666666',
+        'exerciseNameSnapshot': 'Bankdrücken',
+        'exerciseTypeSnapshot': 'strength',
+        'notes': null,
+        'supersetId': null,
+        'sets': [
+          {
+            'setId': '77777777-7777-4777-8777-777777777777',
+            'setType': 'future-type',
+            'weightKg': 80,
+            'repetitions': 5,
+            'rir': null,
+            'notes': null,
+          },
+        ],
+      },
+    ],
+    'createdAtUtc': '2026-10-17T08:00:00Z',
+    'updatedAtUtc': '2026-10-17T09:00:00Z',
+  };
+
+  test(
+    'pulls a workout snapshot and reads unknown set types as normal',
+    () async {
+      await pullTrainingSnapshot(
+        resourceType: 'Workout',
+        resourceId: workoutId,
+        aggregateType: 'workout',
+        snapshot: workoutSnapshot,
+      );
+    },
+  );
+
+  test('pulls a training plan snapshot', () async {
+    await pullTrainingSnapshot(
+      resourceType: 'TrainingPlan',
+      resourceId: '88888888-8888-4888-8888-888888888888',
+      aggregateType: 'training-plan',
+      snapshot: {
+        'planId': '88888888-8888-4888-8888-888888888888',
+        'name': 'Push A',
+        'notes': null,
+        'previousValueSource': 'plan',
+        'entries': <Object?>[],
+        'sortOrder': 0,
+        'isArchived': true,
+        'createdAtUtc': '2026-10-17T08:00:00Z',
+        'updatedAtUtc': '2026-10-17T08:00:00Z',
+      },
+    );
+  });
+
+  test('pulls a rotation snapshot', () async {
+    await pullTrainingSnapshot(
+      resourceType: 'WorkoutRotation',
+      resourceId: '99999999-9999-4999-8999-999999999999',
+      aggregateType: 'workout-rotation',
+      snapshot: {
+        'rotationId': '99999999-9999-4999-8999-999999999999',
+        'planIds': <Object?>[],
+        'updatedAtUtc': '2026-10-17T08:00:00Z',
+      },
+    );
+  });
+
+  test('pulls a custom exercise snapshot', () async {
+    await pullTrainingSnapshot(
+      resourceType: 'CustomExercise',
+      resourceId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      aggregateType: 'custom-exercise',
+      snapshot: {
+        'exerciseId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        'values': {'name': 'Rudern', 'exerciseType': 'strength'},
+        'isArchived': false,
+        'createdAtUtc': '2026-10-17T08:00:00Z',
+        'updatedAtUtc': '2026-10-17T08:00:00Z',
+      },
+    );
+  });
+
+  test('pulls an exercise category snapshot', () async {
+    await pullTrainingSnapshot(
+      resourceType: 'ExerciseCategory',
+      resourceId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      aggregateType: 'exercise-category',
+      snapshot: {
+        'categoryId': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        'name': 'Beine',
+        'isArchived': false,
+        'createdAtUtc': '2026-10-17T08:00:00Z',
+        'updatedAtUtc': '2026-10-17T08:00:00Z',
+      },
+    );
+  });
+
+  test(
+    'a deleted workout pulls as a tombstone and removes the local copy',
+    () async {
+      pullResourceType = 'Workout';
+      pullResourceId = workoutId;
+      pullTombstone = true;
+      final (store, database, api, repository) = await fixture();
+      await repository.synchronize();
+      expect(await store.readAggregate('workout', workoutId), isNull);
+      expect(await store.hasTombstone('Workout', workoutId), isTrue);
+      expect(await store.readSyncMetadata('pull-cursor'), 1);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test('an archived plan arrives as a snapshot, not as a tombstone', () async {
+    await pullTrainingSnapshot(
+      resourceType: 'TrainingPlan',
+      resourceId: '88888888-8888-4888-8888-888888888888',
+      aggregateType: 'training-plan',
+      snapshot: {
+        'planId': '88888888-8888-4888-8888-888888888888',
+        'name': 'Alt',
+        'notes': null,
+        'previousValueSource': 'exercise',
+        'entries': <Object?>[],
+        'sortOrder': 1,
+        'isArchived': true,
+        'createdAtUtc': '2026-10-17T08:00:00Z',
+        'updatedAtUtc': '2026-10-17T08:00:00Z',
+      },
+    );
+  });
+
+  test(
+    'a custom exercise with an unknown exercise type rejects the batch',
+    () async {
+      pullResourceType = 'CustomExercise';
+      pullResourceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      pullSnapshot = {
+        'exerciseId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        'values': {'name': 'Neu', 'exerciseType': 'unknown'},
+        'isArchived': false,
+        'createdAtUtc': '2026-10-17T08:00:00Z',
+        'updatedAtUtc': '2026-10-17T08:00:00Z',
+      };
+      final (store, database, api, repository) = await fixture();
+      await expectLater(repository.synchronize(), throwsFormatException);
+      expect(await store.readSyncMetadata('pull-cursor'), isNull);
+      expect(
+        await store.readAggregate(
+          'custom-exercise',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        ),
+        isNull,
+      );
+      api.close();
+      await database.close();
+    },
+  );
+
+  const workoutAggregateId = '44444444-4444-4444-8444-444444444445';
+  final workoutWorkingCopy = <String, Object?>{
+    'workoutId': workoutAggregateId,
+    'title': 'Push',
+    'notes': null,
+    'startedAtUtc': '2026-10-17T08:00:00Z',
+    'endedAtUtc': '2026-10-17T07:00:00Z',
+    'previousValueSource': 'exercise',
+    'sourcePlanId': null,
+    'sourceWorkoutId': null,
+    'exercises': <Object?>[],
+    'deletedAtUtc': null,
+  };
+
+  Future<void> commitWorkoutUpdate(LocalSyncStore store) async {
+    await store.commitMutation(
+      mutationId: mutationId,
+      aggregateType: 'workout',
+      aggregateId: workoutAggregateId,
+      operation: LocalMutationOperation.update,
+      baseVersion: 1,
+      body: workoutWorkingCopy,
+      envelope: LocalAggregateEnvelope<Object?>(
+        aggregateId: workoutAggregateId,
+        serverSnapshot: {...workoutWorkingCopy, 'endedAtUtc': null},
+        workingCopy: workoutWorkingCopy,
+        serverVersion: 1,
+        optimisticVersion: 2,
+        syncState: LocalSyncState.pending,
+      ),
+    );
+  }
+
+  int workoutPushCount() => received
+      .where(
+        (request) =>
+            request.method == 'PUT' &&
+            request.uri.path.startsWith('/api/v1/sync/mutations/'),
+      )
+      .length;
+
+  test('409 active_workout_exists keeps a visible, non-retried conflict and does not resend', () async {
+    mutationFailureCode = 'active_workout_exists';
+    mutationFailureStatus = 409;
+    final (store, database, api, repository) = await fixture();
+    await commitWorkoutUpdate(store);
+
+    await repository.synchronize();
+    await repository.synchronize();
+
+    expect(workoutPushCount(), 1);
+    final conflict =
+        (await database.select(database.localConflicts).get()).single;
+    expect(conflict.code, 'active_workout_exists');
+    expect(conflict.aggregateType, 'workout');
+    expect(conflict.aggregateId, workoutAggregateId);
+    final outbox = (await store.readOutbox()).single;
+    expect(outbox.status, LocalMutationStatus.conflict);
+    expect(outbox.lastErrorCode, 'active_workout_exists');
+    final local = await store.readAggregate('workout', workoutAggregateId);
+    expect(local?.workingCopy, workoutWorkingCopy);
+    await expectLater(
+      store.retryConflictOnCurrentServerVersion(
+        conflictId: conflict.conflictId,
+        replacementMutationId: 'e1234567-1234-4234-8234-123456789abc',
+        createdAtUtc: DateTime.utc(2026, 10, 17),
+      ),
+      throwsStateError,
+    );
+    api.close();
+    await database.close();
+  });
+
+  test('422 validation_failed stores the field errors as a conflict and does not resend', () async {
+    mutationFailureCode = 'validation_failed';
+    mutationFailureStatus = 422;
+    mutationFailureErrors = {
+      'EndedAtUtc': ['The end time must be after the start time.'],
+    };
+    final (store, database, api, repository) = await fixture();
+    await commitWorkoutUpdate(store);
+
+    await repository.synchronize();
+    await repository.synchronize();
+
+    expect(workoutPushCount(), 1);
+    final conflict =
+        (await database.select(database.localConflicts).get()).single;
+    expect(conflict.code, 'validation_failed');
+    expect(conflict.aggregateId, workoutAggregateId);
+    final detail = jsonDecode(conflict.detailJson) as Map<String, dynamic>;
+    expect(detail['errors'], {
+      'EndedAtUtc': ['The end time must be after the start time.'],
+    });
+    final outbox = (await store.readOutbox()).single;
+    expect(outbox.status, LocalMutationStatus.conflict);
+    expect(outbox.lastErrorCode, 'validation_failed');
+    final local = await store.readAggregate('workout', workoutAggregateId);
+    expect(local?.workingCopy, workoutWorkingCopy);
+    await expectLater(
+      store.retryConflictOnCurrentServerVersion(
+        conflictId: conflict.conflictId,
+        replacementMutationId: 'e1234567-1234-4234-8234-123456789abc',
+        createdAtUtc: DateTime.utc(2026, 10, 17),
+      ),
+      throwsStateError,
+    );
+    api.close();
+    await database.close();
+  });
 
   test(
     'unknown sync resource rejects its batch and leaves cursor unchanged',

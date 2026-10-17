@@ -8,7 +8,8 @@ import '../../../ui/features/body/health/health_review_view_model.dart';
 import '../../../ui/features/coach/coach_view_model.dart';
 import '../../../ui/features/nutrition/nutrition_view_model.dart';
 import '../../../ui/features/progress/progress_view_model.dart';
-import '../../../ui/features/training/training_view_model.dart';
+import '../../../ui/features/training/active_workout_controller.dart';
+import '../../../ui/features/training/rest_timer_controller.dart';
 import '../../models/api/api_models.dart';
 import '../../models/local/local_mutation.dart';
 import '../../repositories/body/body_repository.dart';
@@ -18,14 +19,16 @@ import '../../repositories/nutrition/api_nutrition_online_provider.dart';
 import '../../repositories/nutrition/nutrition_repository.dart';
 import '../../repositories/sync/local_sync_store.dart';
 import '../../repositories/sync/sync_repository.dart';
+import '../../repositories/timer/rest_timer_store.dart';
 import '../../repositories/training/api_exercise_catalog_provider.dart';
-import '../../repositories/training/training_repository.dart';
+import '../../repositories/training/training_log_repository.dart';
 import '../../services/api/api_client.dart';
 import '../../services/api/api_session_service.dart';
 import '../../services/local/local_database.dart';
 import '../../services/local/pending_handover_secret_store.dart';
-import '../../services/native/best_effort_rest_timer_notification_port.dart';
 import '../../services/native/native_feature_lifecycle_coordinator.dart';
+import '../../services/native/rest_timer_alert_port.dart';
+import '../../services/native/training_live_activity_coordinator.dart';
 import '../../services/platform/pigeon_native_features_platform.dart';
 import '../../services/platform/platform_ports.dart';
 import '../platform/pigeon_pending_handover_secret_store.dart';
@@ -91,10 +94,8 @@ class MobileAuthController extends ChangeNotifier
     PendingHandoverSecretStore? handoverSecrets,
     PigeonNativeFeaturesPlatform? nativeFeatures,
     CapturePlatform? capture,
-    TimerNotificationPlatform? timerNotifications,
     HealthPlatform? health,
     ExtensionSnapshotPlatform? snapshots,
-    LiveActivityPlatform? activities,
     HapticsPlatform? haptics,
     Future<LocalDatabase> Function(String accountId)? accountDatabaseFactory,
     Future<LocalDatabase> Function()? installationDatabaseFactory,
@@ -103,15 +104,9 @@ class MobileAuthController extends ChangeNotifier
        handoverSecrets = handoverSecrets ?? PigeonPendingHandoverSecretStore(),
        nativeFeatures = nativeFeatures ?? PigeonNativeFeaturesPlatform(),
        capture = capture ?? nativeFeatures ?? PigeonNativeFeaturesPlatform(),
-       timerNotifications =
-           timerNotifications ??
-           nativeFeatures ??
-           PigeonNativeFeaturesPlatform(),
        health = health ?? nativeFeatures ?? PigeonNativeFeaturesPlatform(),
        snapshots =
            snapshots ?? nativeFeatures ?? PigeonNativeFeaturesPlatform(),
-       activities =
-           activities ?? nativeFeatures ?? PigeonNativeFeaturesPlatform(),
        haptics = haptics ?? nativeFeatures ?? PigeonNativeFeaturesPlatform(),
        accountDatabaseFactory =
            accountDatabaseFactory ?? LocalDatabase.openForAccount,
@@ -124,10 +119,8 @@ class MobileAuthController extends ChangeNotifier
   final PendingHandoverSecretStore handoverSecrets;
   final PigeonNativeFeaturesPlatform nativeFeatures;
   final CapturePlatform capture;
-  final TimerNotificationPlatform timerNotifications;
   final HealthPlatform health;
   final ExtensionSnapshotPlatform snapshots;
-  final LiveActivityPlatform activities;
   final HapticsPlatform haptics;
   final Future<LocalDatabase> Function(String accountId) accountDatabaseFactory;
   final Future<LocalDatabase> Function() installationDatabaseFactory;
@@ -327,6 +320,13 @@ class MobileAuthController extends ChangeNotifier
       throw StateError('The account changed before the native route opened.');
     }
     shell.selectTab(index);
+    // Die Live Activity öffnet das aktive Training; sonst bleibt es beim Tab.
+    final active = routeScope.activeWorkout.active;
+    if (request.source == NativeRouteSource.liveActivity &&
+        request.destination == NativeAppRoute.training &&
+        active != null) {
+      shell.requestOpenWorkout(active.workoutId);
+    }
   }
 
   Future<void> _openAccount(ApiSession session, {required bool online}) async {
@@ -348,16 +348,20 @@ class MobileAuthController extends ChangeNotifier
       handoverSecrets: handoverSecrets,
     );
     final body = BodyRepository(store: store);
-    late final TrainingViewModel trainingViewModel;
-    final training = TrainingRepository(
+    final training = TrainingLogRepository(
       store: store,
       catalog: ApiExerciseCatalogProvider(api, store: store),
-      notifications: BestEffortRestTimerNotificationPort(
-        timerNotifications,
-        onUnavailable: () => trainingViewModel.reportNotificationUnavailable(),
+    );
+    final restTimerStore = RestTimerStore(store: store);
+    final activeWorkout = ActiveWorkoutController(
+      training,
+      restTimerFactory: (workoutId) => RestTimerController(
+        workoutId: workoutId,
+        store: restTimerStore,
+        notifications: nativeFeatures,
+        haptics: haptics,
+        alerts: const SystemRestTimerAlertPort(),
       ),
-      onNotificationUnavailable: () =>
-          trainingViewModel.reportNotificationUnavailable(),
     );
     final nutrition = NutritionRepository(
       store: store,
@@ -365,7 +369,6 @@ class MobileAuthController extends ChangeNotifier
       capture: capture,
     );
     final bodyViewModel = BodyViewModel(body);
-    trainingViewModel = TrainingViewModel(training);
     final nutritionViewModel = NutritionViewModel(
       repository: nutrition,
       localDate: DateTime.now().toIso8601String().substring(0, 10),
@@ -396,7 +399,7 @@ class MobileAuthController extends ChangeNotifier
     );
     final progressViewModel = ProgressViewModel(
       InsightsRepository(api, store: store),
-      trainingRepository: training,
+      training: training,
     );
     final coachViewModel = CoachViewModel(CoachRepository(api));
     nextScope = AccountScope(
@@ -411,20 +414,25 @@ class MobileAuthController extends ChangeNotifier
           identical(account, nextScope) && _sessionGeneration == generation,
       online: online,
       bodyViewModel: bodyViewModel,
-      trainingViewModel: trainingViewModel,
+      training: training,
+      activeWorkout: activeWorkout,
       nutritionViewModel: nutritionViewModel,
       healthViewModel: healthViewModel,
       progressViewModel: progressViewModel,
       coachViewModel: coachViewModel,
+      trainingLiveActivity: TrainingLiveActivityCoordinator(
+        activeWorkout: activeWorkout,
+        platform: nativeFeatures,
+        preferences: training.preferences,
+        isSessionActive: () =>
+            identical(account, nextScope) && _sessionGeneration == generation,
+      ),
       nativeLifecycle: NativeFeatureLifecycleCoordinator(
         installationDatabase: installDb,
-        training: trainingViewModel,
         body: bodyViewModel,
         nutrition: nutritionViewModel,
         snapshots: snapshots,
-        activities: activities,
         haptics: haptics,
-        notifications: timerNotifications,
         isSessionActive: () =>
             identical(account, nextScope) && _sessionGeneration == generation,
       ),
@@ -432,6 +440,11 @@ class MobileAuthController extends ChangeNotifier
     account = nextScope;
     nextScope.nativeLifecycle.activate();
     unawaited(nextScope.syncScheduler.start());
+    unawaited(
+      nextScope.activeWorkout.load().whenComplete(
+        nextScope.trainingLiveActivity.activate,
+      ),
+    );
     state = online
         ? MobileAuthState.signedIn
         : MobileAuthState.offlineKnownUser;
@@ -534,12 +547,14 @@ class AccountScope {
     required this.isSessionActive,
     required this.online,
     required this.bodyViewModel,
-    required this.trainingViewModel,
+    required this.training,
+    required this.activeWorkout,
     required this.nutritionViewModel,
     required this.healthViewModel,
     required this.progressViewModel,
     required this.coachViewModel,
     required this.nativeLifecycle,
+    required this.trainingLiveActivity,
   }) {
     _localCommitSubscription = store.committedMutations.listen((mutation) {
       if (mutation.accountId == session.userId && isSessionActive()) {
@@ -557,12 +572,14 @@ class AccountScope {
   final bool Function() isSessionActive;
   final bool online;
   final BodyViewModel bodyViewModel;
-  final TrainingViewModel trainingViewModel;
+  final TrainingLogRepository training;
+  final ActiveWorkoutController activeWorkout;
   final NutritionViewModel nutritionViewModel;
   final HealthReviewViewModel healthViewModel;
   final ProgressViewModel progressViewModel;
   final CoachViewModel coachViewModel;
   final NativeFeatureLifecycleCoordinator nativeLifecycle;
+  final TrainingLiveActivityCoordinator trainingLiveActivity;
   Future<SyncRunReport>? _syncInFlight;
   late final StreamSubscription<LocalMutation> _localCommitSubscription;
 
@@ -609,8 +626,8 @@ class AccountScope {
     }.contains(report.state)) {
       await Future.wait([
         bodyViewModel.load(),
-        trainingViewModel.refreshAfterSync(),
         nutritionViewModel.load(),
+        activeWorkout.load(),
       ]);
     }
     return report;
@@ -618,6 +635,8 @@ class AccountScope {
 
   Future<void> dispose({bool closeApi = true}) async {
     await _localCommitSubscription.cancel();
+    await trainingLiveActivity.dispose();
+    activeWorkout.dispose();
     await syncScheduler.dispose();
     final syncRun = _syncInFlight;
     if (syncRun != null) {
@@ -629,7 +648,6 @@ class AccountScope {
     }
     await nativeLifecycle.disposeForSessionEnd();
     bodyViewModel.dispose();
-    trainingViewModel.dispose();
     nutritionViewModel.dispose();
     healthViewModel.dispose();
     progressViewModel.dispose();

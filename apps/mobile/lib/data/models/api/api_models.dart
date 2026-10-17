@@ -37,10 +37,15 @@ class ApiExerciseCatalogItem {
     required this.name,
     required this.isCustom,
     required this.version,
+    required this.exerciseType,
     this.description,
     this.targetMuscle,
     this.muscleGroup,
     this.equipment,
+    this.notes,
+    this.bodyweightFactor,
+    this.weightFactor,
+    this.categoryIds = const [],
     this.catalogVersion,
   });
 
@@ -50,6 +55,11 @@ class ApiExerciseCatalogItem {
   final String? targetMuscle;
   final String? muscleGroup;
   final String? equipment;
+  final String exerciseType;
+  final String? notes;
+  final double? bodyweightFactor;
+  final double? weightFactor;
+  final List<String> categoryIds;
   final bool isCustom;
   final String? catalogVersion;
   final int version;
@@ -62,9 +72,36 @@ class ApiExerciseCatalogItem {
         targetMuscle: json['targetMuscle'] as String?,
         muscleGroup: json['muscleGroup'] as String?,
         equipment: json['equipment'] as String?,
+        exerciseType: _requiredString(json, 'exerciseType'),
+        notes: json['notes'] as String?,
+        bodyweightFactor: (json['bodyweightFactor'] as num?)?.toDouble(),
+        weightFactor: (json['weightFactor'] as num?)?.toDouble(),
+        categoryIds: [
+          for (final id in (json['categoryIds'] as List<Object?>? ?? const []))
+            id! as String,
+        ],
         isCustom: _requiredBool(json, 'isCustom'),
         catalogVersion: json['catalogVersion'] as String?,
         version: _requiredInt(json, 'version'),
+      );
+}
+
+class ApiExerciseCategory {
+  const ApiExerciseCategory({
+    required this.id,
+    required this.name,
+    required this.isBase,
+  });
+
+  final String id;
+  final String name;
+  final bool isBase;
+
+  factory ApiExerciseCategory.fromJson(Map<String, dynamic> json) =>
+      ApiExerciseCategory(
+        id: _requiredString(json, 'id'),
+        name: _requiredString(json, 'name'),
+        isBase: _requiredBool(json, 'isBase'),
       );
 }
 
@@ -74,18 +111,25 @@ class ApiExerciseCatalogResponse {
     required this.offset,
     required this.limit,
     required this.total,
+    required this.categories,
   });
 
   final List<ApiExerciseCatalogItem> items;
   final int offset;
   final int limit;
   final int total;
+  final List<ApiExerciseCategory> categories;
 
   factory ApiExerciseCatalogResponse.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'];
     if (rawItems is! List ||
         rawItems.any((item) => item is! Map<String, dynamic>)) {
       throw const FormatException('Invalid exercise catalog items.');
+    }
+    final rawCategories = json['categories'];
+    if (rawCategories is! List ||
+        rawCategories.any((item) => item is! Map<String, dynamic>)) {
+      throw const FormatException('Invalid exercise categories.');
     }
     return ApiExerciseCatalogResponse(
       items: rawItems
@@ -95,6 +139,10 @@ class ApiExerciseCatalogResponse {
       offset: _requiredInt(json, 'offset'),
       limit: _requiredInt(json, 'limit'),
       total: _requiredInt(json, 'total'),
+      categories: rawCategories
+          .cast<Map<String, dynamic>>()
+          .map(ApiExerciseCategory.fromJson)
+          .toList(growable: false),
     );
   }
 }
@@ -401,8 +449,11 @@ class ApiExerciseProgress {
     required this.windowDays,
     required this.fromUtc,
     required this.throughUtc,
+    required this.volumeAlgorithmVersion,
+    required this.estimatedOneRepMaxAlgorithmVersion,
     required this.points,
     required this.bestSet,
+    required this.records,
   });
 
   final int asOfRevision;
@@ -410,8 +461,11 @@ class ApiExerciseProgress {
   final int? windowDays;
   final DateTime fromUtc;
   final DateTime throughUtc;
+  final String volumeAlgorithmVersion;
+  final String estimatedOneRepMaxAlgorithmVersion;
   final List<ApiExerciseProgressPoint> points;
   final ApiBestSetInsight? bestSet;
+  final ApiExerciseRecords records;
 
   factory ApiExerciseProgress.fromJson(Map<String, dynamic> json) {
     final rawPoints = json['points'];
@@ -426,6 +480,11 @@ class ApiExerciseProgress {
       windowDays: rawWindow == null ? null : _intValue(rawWindow, 'windowDays'),
       fromUtc: DateTime.parse(_requiredString(json, 'fromUtc')).toUtc(),
       throughUtc: DateTime.parse(_requiredString(json, 'throughUtc')).toUtc(),
+      volumeAlgorithmVersion: _requiredString(json, 'volumeAlgorithmVersion'),
+      estimatedOneRepMaxAlgorithmVersion: _requiredString(
+        json,
+        'estimatedOneRepMaxAlgorithmVersion',
+      ),
       points: rawPoints
           .cast<Map<String, dynamic>>()
           .map(ApiExerciseProgressPoint.fromJson)
@@ -435,6 +494,7 @@ class ApiExerciseProgress {
           : ApiBestSetInsight.fromJson(
               _objectValue(json['bestSet'], 'bestSet'),
             ),
+      records: ApiExerciseRecords.fromJson(_requiredObject(json, 'records')),
     );
   }
 
@@ -444,8 +504,11 @@ class ApiExerciseProgress {
     'windowDays': windowDays,
     'fromUtc': fromUtc.toIso8601String(),
     'throughUtc': throughUtc.toIso8601String(),
+    'volumeAlgorithmVersion': volumeAlgorithmVersion,
+    'estimatedOneRepMaxAlgorithmVersion': estimatedOneRepMaxAlgorithmVersion,
     'points': points.map((point) => point.toJson()).toList(growable: false),
     'bestSet': bestSet?.toJson(),
+    'records': records.toJson(),
   };
 }
 
@@ -454,17 +517,19 @@ class ApiExerciseProgressPoint {
     required this.workoutId,
     required this.completedAtUtc,
     required this.volumeKgRepetitions,
-    required this.bestWeightKg,
-    required this.bestRepetitions,
+    required this.maxWeightKg,
+    required this.maxRepetitions,
     required this.estimatedOneRepMaxKg,
+    required this.bodyweightMissing,
   });
 
   final String workoutId;
   final DateTime completedAtUtc;
   final double volumeKgRepetitions;
-  final double? bestWeightKg;
-  final int? bestRepetitions;
+  final double? maxWeightKg;
+  final int maxRepetitions;
   final double? estimatedOneRepMaxKg;
+  final bool bodyweightMissing;
 
   factory ApiExerciseProgressPoint.fromJson(Map<String, dynamic> json) =>
       ApiExerciseProgressPoint(
@@ -472,29 +537,30 @@ class ApiExerciseProgressPoint {
         completedAtUtc: DateTime.parse(_requiredString(json, 'completedAtUtc'))
             .toUtc(),
         volumeKgRepetitions: _requiredDouble(json, 'volumeKgRepetitions'),
-        bestWeightKg: _nullableDouble(json, 'bestWeightKg'),
-        bestRepetitions: json['bestRepetitions'] == null
-            ? null
-            : _intValue(json['bestRepetitions'], 'bestRepetitions'),
+        maxWeightKg: _nullableDouble(json, 'maxWeightKg'),
+        maxRepetitions: _requiredInt(json, 'maxRepetitions'),
         estimatedOneRepMaxKg: _nullableDouble(json, 'estimatedOneRepMaxKg'),
+        bodyweightMissing: _requiredBool(json, 'bodyweightMissing'),
       );
 
   Map<String, dynamic> toJson() => {
     'workoutId': workoutId,
     'completedAtUtc': completedAtUtc.toIso8601String(),
     'volumeKgRepetitions': volumeKgRepetitions,
-    'bestWeightKg': bestWeightKg,
-    'bestRepetitions': bestRepetitions,
+    'maxWeightKg': maxWeightKg,
+    'maxRepetitions': maxRepetitions,
     'estimatedOneRepMaxKg': estimatedOneRepMaxKg,
+    'bodyweightMissing': bodyweightMissing,
   };
 }
 
+/// Bestes Set; [effectiveWeightKg] enthält bei Körpergewichtsübungen den Körpergewichtsanteil.
 class ApiBestSetInsight {
   const ApiBestSetInsight({
     required this.workoutId,
     required this.exerciseId,
     required this.completedAtUtc,
-    required this.weightKg,
+    required this.effectiveWeightKg,
     required this.repetitions,
     required this.estimatedOneRepMaxKg,
   });
@@ -502,7 +568,7 @@ class ApiBestSetInsight {
   final String workoutId;
   final String exerciseId;
   final DateTime completedAtUtc;
-  final double weightKg;
+  final double effectiveWeightKg;
   final int repetitions;
   final double estimatedOneRepMaxKg;
 
@@ -512,7 +578,7 @@ class ApiBestSetInsight {
         exerciseId: _requiredString(json, 'exerciseId'),
         completedAtUtc: DateTime.parse(_requiredString(json, 'completedAtUtc'))
             .toUtc(),
-        weightKg: _requiredDouble(json, 'weightKg'),
+        effectiveWeightKg: _requiredDouble(json, 'effectiveWeightKg'),
         repetitions: _requiredInt(json, 'repetitions'),
         estimatedOneRepMaxKg: _requiredDouble(json, 'estimatedOneRepMaxKg'),
       );
@@ -521,11 +587,94 @@ class ApiBestSetInsight {
     'workoutId': workoutId,
     'exerciseId': exerciseId,
     'completedAtUtc': completedAtUtc.toIso8601String(),
-    'weightKg': weightKg,
+    'effectiveWeightKg': effectiveWeightKg,
     'repetitions': repetitions,
     'estimatedOneRepMaxKg': estimatedOneRepMaxKg,
   };
 }
+
+class ApiRecordEvent {
+  const ApiRecordEvent({required this.workoutId, required this.value});
+  final String workoutId;
+  final double value;
+
+  factory ApiRecordEvent.fromJson(Map<String, dynamic> json) => ApiRecordEvent(
+    workoutId: _requiredString(json, 'workoutId'),
+    value: _requiredDouble(json, 'value'),
+  );
+
+  Map<String, dynamic> toJson() => {'workoutId': workoutId, 'value': value};
+}
+
+class ApiRepetitionRecord {
+  const ApiRepetitionRecord({
+    required this.repetitions,
+    required this.maxWeightKg,
+  });
+  final int repetitions;
+  final double? maxWeightKg;
+
+  factory ApiRepetitionRecord.fromJson(Map<String, dynamic> json) =>
+      ApiRepetitionRecord(
+        repetitions: _requiredInt(json, 'repetitions'),
+        maxWeightKg: _nullableDouble(json, 'maxWeightKg'),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'repetitions': repetitions,
+    'maxWeightKg': maxWeightKg,
+  };
+}
+
+/// Rekorde gelten für die gesamte Historie bis zum Stichtag, nicht nur für das gewählte Fenster.
+class ApiExerciseRecords {
+  const ApiExerciseRecords({
+    required this.maxWeightKg,
+    required this.estimatedOneRepMaxKg,
+    required this.volumeKgRepetitions,
+    required this.maxRepetitions,
+    required this.repetitionRecords,
+  });
+
+  final ApiRecordEvent? maxWeightKg;
+  final ApiRecordEvent? estimatedOneRepMaxKg;
+  final ApiRecordEvent? volumeKgRepetitions;
+  final ApiRecordEvent? maxRepetitions;
+  final List<ApiRepetitionRecord> repetitionRecords;
+
+  factory ApiExerciseRecords.fromJson(Map<String, dynamic> json) {
+    final rawRepetitionRecords = json['repetitionRecords'];
+    if (rawRepetitionRecords is! List ||
+        rawRepetitionRecords.any((item) => item is! Map<String, dynamic>)) {
+      throw const FormatException('Invalid repetition records.');
+    }
+    return ApiExerciseRecords(
+      maxWeightKg: _nullableRecordEvent(json, 'maxWeightKg'),
+      estimatedOneRepMaxKg: _nullableRecordEvent(json, 'estimatedOneRepMaxKg'),
+      volumeKgRepetitions: _nullableRecordEvent(json, 'volumeKgRepetitions'),
+      maxRepetitions: _nullableRecordEvent(json, 'maxRepetitions'),
+      repetitionRecords: rawRepetitionRecords
+          .cast<Map<String, dynamic>>()
+          .map(ApiRepetitionRecord.fromJson)
+          .toList(growable: false),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'maxWeightKg': maxWeightKg?.toJson(),
+    'estimatedOneRepMaxKg': estimatedOneRepMaxKg?.toJson(),
+    'volumeKgRepetitions': volumeKgRepetitions?.toJson(),
+    'maxRepetitions': maxRepetitions?.toJson(),
+    'repetitionRecords': repetitionRecords
+        .map((record) => record.toJson())
+        .toList(growable: false),
+  };
+}
+
+ApiRecordEvent? _nullableRecordEvent(Map<String, dynamic> json, String name) =>
+    json[name] == null
+    ? null
+    : ApiRecordEvent.fromJson(_objectValue(json[name], name));
 
 class ApiWeightPoint {
   const ApiWeightPoint({required this.date, required this.weightKg});
@@ -637,15 +786,37 @@ class ApiMetricAverage {
 
 class ApiTrainingInsights {
   const ApiTrainingInsights({
+    required this.volumeAlgorithmVersion,
+    required this.estimatedOneRepMaxAlgorithmVersion,
+    required this.volumeUnit,
     required this.workoutCount,
     required this.volumeKgRepetitions,
+    required this.bestSet,
+    required this.bodyweightMissing,
   });
+  final String volumeAlgorithmVersion;
+  final String estimatedOneRepMaxAlgorithmVersion;
+  final String volumeUnit;
   final int workoutCount;
   final double volumeKgRepetitions;
+  final ApiBestSetInsight? bestSet;
+  final bool bodyweightMissing;
   factory ApiTrainingInsights.fromJson(Map<String, dynamic> json) =>
       ApiTrainingInsights(
+        volumeAlgorithmVersion: _requiredString(json, 'volumeAlgorithmVersion'),
+        estimatedOneRepMaxAlgorithmVersion: _requiredString(
+          json,
+          'estimatedOneRepMaxAlgorithmVersion',
+        ),
+        volumeUnit: _requiredString(json, 'volumeUnit'),
         workoutCount: _requiredInt(json, 'workoutCount'),
         volumeKgRepetitions: _requiredDouble(json, 'volumeKgRepetitions'),
+        bestSet: json['bestSet'] == null
+            ? null
+            : ApiBestSetInsight.fromJson(
+                _objectValue(json['bestSet'], 'bestSet'),
+              ),
+        bodyweightMissing: _requiredBool(json, 'bodyweightMissing'),
       );
 }
 
@@ -734,11 +905,12 @@ class ApiInvitation {
 
 /// Error fields are read from both top-level API extensions and ProblemDetails.
 class ApiProblem {
-  const ApiProblem({this.title, this.detail, this.code});
+  const ApiProblem({this.title, this.detail, this.code, this.errors});
 
   final String? title;
   final String? detail;
   final String? code;
+  final Map<String, Object?>? errors;
 
   String get message => detail ?? title ?? 'Die Anfrage ist fehlgeschlagen.';
 
@@ -752,6 +924,9 @@ class ApiProblem {
           (extensions is Map<String, dynamic>
               ? extensions['code'] as String?
               : null),
+      errors: json['errors'] is Map<String, dynamic>
+          ? Map<String, Object?>.from(json['errors'] as Map<String, dynamic>)
+          : null,
     );
   }
 }

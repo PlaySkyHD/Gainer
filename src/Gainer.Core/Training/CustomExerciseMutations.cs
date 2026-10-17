@@ -2,12 +2,18 @@ using Gainer.Core.Mutations;
 
 namespace Gainer.Core.Training;
 
+/// <summary>Editable values of a custom exercise; the exercise type is the stored value and has no fallback.</summary>
 public sealed record CustomExerciseValues(
     string Name,
+    string ExerciseType,
     string? Description = null,
     string? TargetMuscle = null,
     string? MuscleGroup = null,
-    string? Equipment = null);
+    string? Equipment = null,
+    string? Notes = null,
+    decimal? BodyweightFactor = null,
+    decimal? WeightFactor = null,
+    IReadOnlyList<Guid>? CategoryIds = null);
 
 public sealed record CreateCustomExerciseMutation : ITypedMutation<CustomExerciseSnapshot>
 {

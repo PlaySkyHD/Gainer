@@ -2,6 +2,8 @@
 
 Diese Capability definiert das offline-taugliche Durchführen von Workouts einschließlich Previous Performance, Satzprotokoll, Pausentimer und unveränderlicher Historie.
 
+> **Abgelöst:** Die Anforderungen dieser Capability werden durch die Change `rebuild-training-logging` (Capabilities `training-session`, `set-logging`, `training-plans`, `exercise-catalog`, `rest-timer`, `training-statistics`) ersetzt. Beim Archivieren dieser Change wird diese Capability nicht übernommen.
+
 ## ADDED Requirements
 
 ### Requirement: Workout aus einem Ausgangs-Snapshot starten

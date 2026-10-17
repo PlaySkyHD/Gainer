@@ -12,31 +12,28 @@ public sealed class WorkoutRotationHandler(
     TimeProvider timeProvider,
     IChangeCollector? changeCollector = null) : IWorkoutRotationHandler
 {
+    private const int MaximumPlans = 100;
+
     public async Task<WorkoutRotationSnapshot> SaveAsync(
         SaveWorkoutRotationMutation mutation,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(mutation);
-        _ = CurrentUserId();
-        Validate(mutation.Entries);
+        Guid userId = CurrentUserId();
+        ValidatePlanIds(mutation.PlanIds);
         DateTime now = timeProvider.GetUtcNow().UtcDateTime;
         await using IDbContextTransaction? transaction = context.Database.CurrentTransaction is null
             ? await context.Database.BeginTransactionAsync(cancellationToken)
             : null;
 
         WorkoutRotation rotation;
-        HashSet<Guid> previousTemplateIds = [];
         if (mutation.BaseVersion == 0)
         {
-            bool alreadyExists = await context.WorkoutRotations.AnyAsync(cancellationToken);
-            if (alreadyExists)
+            if (await context.WorkoutRotations.AnyAsync(cancellationToken))
             {
                 throw new WorkoutRotationConflictException("The user already has a workout rotation.");
             }
-            await EnsureTemplatesAreSelectableAsync(
-                mutation.Entries.Select(item => item.TemplateId).ToArray(),
-                previousTemplateIds,
-                cancellationToken);
+            await EnsurePlansSelectableAsync(userId, mutation.PlanIds, cancellationToken);
             rotation = new WorkoutRotation
             {
                 Id = mutation.RotationId,
@@ -55,158 +52,69 @@ public sealed class WorkoutRotationHandler(
             {
                 throw new WorkoutRotationConflictException("The rotation changed since the supplied base version.");
             }
+            await EnsurePlansSelectableAsync(userId, mutation.PlanIds, cancellationToken);
             List<WorkoutRotationItem> existing = await context.WorkoutRotationItems
                 .Where(item => item.RotationId == rotation.Id)
                 .ToListAsync(cancellationToken);
-            previousTemplateIds.UnionWith(existing.Select(item => item.TemplateId));
-            await EnsureTemplatesAreSelectableAsync(
-                mutation.Entries.Select(item => item.TemplateId).ToArray(),
-                previousTemplateIds,
-                cancellationToken);
+            // Removals are flushed before the replacement rows are inserted under the same unique positions.
             context.WorkoutRotationItems.RemoveRange(existing);
-            if (rotation.LastCompletedTemplateId is { } last &&
-                !mutation.Entries.Any(item => item.TemplateId == last))
-            {
-                rotation.LastCompletedTemplateId = null;
-            }
+            await SaveOrConflictAsync(cancellationToken);
             rotation.UpdatedAtUtc = now;
             rotation.Version++;
         }
 
-        if (mutation.BaseVersion > 0)
+        for (int position = 0; position < mutation.PlanIds.Count; position++)
         {
-            await SaveOrConflictAsync(cancellationToken);
-        }
-        for (int position = 0; position < mutation.Entries.Count; position++)
-        {
-            WorkoutRotationEntry entry = mutation.Entries[position];
             context.WorkoutRotationItems.Add(new WorkoutRotationItem
             {
-                Id = entry.ItemId,
+                Id = Guid.NewGuid(),
                 RotationId = rotation.Id,
-                TemplateId = entry.TemplateId,
+                PlanId = mutation.PlanIds[position],
                 Position = position,
             });
         }
         await SaveOrConflictAsync(cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
-        WorkoutRotationSnapshot snapshot = await SnapshotAsync(rotation, cancellationToken);
-        changeCollector?.CaptureUpsert(snapshot);
-        return snapshot;
-    }
 
-    public async Task<WorkoutRotationSnapshot> AdvanceAsync(
-        AdvanceWorkoutRotationMutation mutation,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(mutation);
-        _ = CurrentUserId();
-        WorkoutRotation rotation = await context.WorkoutRotations.SingleOrDefaultAsync(
-            item => item.Id == mutation.RotationId,
-            cancellationToken) ?? throw new WorkoutRotationNotFoundException();
-        if (rotation.Version != mutation.BaseVersion)
-        {
-            throw new WorkoutRotationConflictException("The rotation changed since the supplied base version.");
-        }
-        bool containsTemplate = await context.WorkoutRotationItems.AnyAsync(
-            item => item.RotationId == rotation.Id && item.TemplateId == mutation.CompletedTemplateId,
-            cancellationToken);
-        if (!containsTemplate)
-        {
-            throw new WorkoutRotationValidationException(new Dictionary<string, string>
-            {
-                [nameof(mutation.CompletedTemplateId)] = "The completed template is not part of this rotation.",
-            });
-        }
-        rotation.LastCompletedTemplateId = mutation.CompletedTemplateId;
-        rotation.UpdatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-        rotation.Version++;
-        await SaveOrConflictAsync(cancellationToken);
-        WorkoutRotationSnapshot snapshot = await SnapshotAsync(rotation, cancellationToken);
-        changeCollector?.CaptureUpsert(snapshot);
-        return snapshot;
-    }
-
-    public async Task<WorkoutRotationSnapshot?> GetAsync(CancellationToken cancellationToken = default)
-    {
-        _ = CurrentUserId();
-        WorkoutRotation? rotation = await context.WorkoutRotations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
-        return rotation is null ? null : await SnapshotAsync(rotation, cancellationToken);
-    }
-
-    private async Task<WorkoutRotationSnapshot> SnapshotAsync(
-        WorkoutRotation rotation,
-        CancellationToken cancellationToken)
-    {
-        List<RotationRow> rows = await (
-            from item in context.WorkoutRotationItems.AsNoTracking()
-            join template in context.WorkoutTemplates.AsNoTracking() on item.TemplateId equals template.Id
-            where item.RotationId == rotation.Id
-            orderby item.Position
-            select new RotationRow(item.Id, item.TemplateId, template.IsArchived))
-            .ToListAsync(cancellationToken);
-        Guid? nextTemplateId = FindNext(rows, rotation.LastCompletedTemplateId);
-        return new WorkoutRotationSnapshot(
+        var snapshot = new WorkoutRotationSnapshot(
             rotation.Id,
-            rows.Select(item => new WorkoutRotationEntry(item.ItemId, item.TemplateId)).ToList(),
-            rotation.LastCompletedTemplateId,
-            nextTemplateId,
-            rotation.CreatedAtUtc,
+            mutation.PlanIds.ToArray(),
             rotation.UpdatedAtUtc,
             rotation.Version);
+        changeCollector?.CaptureUpsert(snapshot);
+        return snapshot;
     }
 
-    private static Guid? FindNext(IReadOnlyList<RotationRow> rows, Guid? lastCompletedTemplateId)
+    /// <summary>Only own, non-archived plans without duplicates can be part of a rotation.</summary>
+    private async Task EnsurePlansSelectableAsync(Guid userId, IReadOnlyList<Guid> planIds, CancellationToken cancellationToken)
     {
-        if (!rows.Any(item => !item.IsArchived))
+        if (planIds.Count == 0)
         {
-            return null;
+            return;
         }
-        int lastIndex = lastCompletedTemplateId is null
-            ? -1
-            : rows.ToList().FindIndex(item => item.TemplateId == lastCompletedTemplateId);
-        for (int offset = 1; offset <= rows.Count; offset++)
+        Guid[] ids = planIds.ToArray();
+        int selectable = await context.TrainingPlans.AsNoTracking()
+            .Where(item => ids.Contains(item.Id) && item.UserId == userId && !item.IsArchived)
+            .CountAsync(cancellationToken);
+        if (selectable != ids.Length)
         {
-            RotationRow candidate = rows[(lastIndex + offset + rows.Count) % rows.Count];
-            if (!candidate.IsArchived)
+            throw new WorkoutRotationValidationException(new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                return candidate.TemplateId;
-            }
-        }
-        return null;
-    }
-
-    private async Task EnsureTemplatesAreSelectableAsync(
-        Guid[] templateIds,
-        HashSet<Guid> previouslyPresent,
-        CancellationToken cancellationToken)
-    {
-        List<WorkoutTemplate> templates = await context.WorkoutTemplates
-            .AsNoTracking()
-            .Where(item => templateIds.Contains(item.Id))
-            .ToListAsync(cancellationToken);
-        if (templates.Count != templateIds.Length ||
-            templates.Any(item => item.IsArchived && !previouslyPresent.Contains(item.Id)))
-        {
-            throw new WorkoutRotationValidationException(new Dictionary<string, string>
-            {
-                ["Entries.TemplateId"] = "Every template must belong to the user and be selectable.",
+                ["PlanIds"] = "Every plan must belong to the user and must not be archived.",
             });
         }
     }
 
-    private static void Validate(IReadOnlyList<WorkoutRotationEntry> entries)
+    private static void ValidatePlanIds(IReadOnlyList<Guid> planIds)
     {
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (entries.Count > 100)
+        if (planIds.Count > MaximumPlans)
         {
-            errors[nameof(entries)] = "A rotation cannot contain more than 100 templates.";
+            errors[nameof(SaveWorkoutRotationMutation.PlanIds)] = $"A rotation cannot contain more than {MaximumPlans} plans.";
         }
-        if (entries.Any(item => item.ItemId == Guid.Empty || item.TemplateId == Guid.Empty) ||
-            entries.Select(item => item.ItemId).Distinct().Count() != entries.Count ||
-            entries.Select(item => item.TemplateId).Distinct().Count() != entries.Count)
+        if (planIds.Any(item => item == Guid.Empty) || planIds.Distinct().Count() != planIds.Count)
         {
-            errors[nameof(entries)] = "Rotation item and template identifiers must be non-empty and unique.";
+            errors[nameof(SaveWorkoutRotationMutation.PlanIds)] = "Plan identifiers must be non-empty and unique.";
         }
         if (errors.Count > 0)
         {
@@ -232,6 +140,4 @@ public sealed class WorkoutRotationHandler(
 
     private Guid CurrentUserId() => userContext.UserId
         ?? throw new UnauthorizedAccessException("An authenticated user is required.");
-
-    private sealed record RotationRow(Guid ItemId, Guid TemplateId, bool IsArchived);
 }

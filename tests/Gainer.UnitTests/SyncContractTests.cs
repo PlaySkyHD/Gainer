@@ -8,7 +8,7 @@ namespace Gainer.UnitTests;
 [TestClass]
 public sealed class SyncContractTests
 {
-    private static readonly int[] ExpectedProtocolWindow = [1, 2];
+    private static readonly int[] ExpectedProtocolWindow = [2, 3];
 
     [TestMethod]
     public void ClientRequestsCannotSelectAUserIdentity()
@@ -31,13 +31,13 @@ public sealed class SyncContractTests
             SyncProtocol.CurrentVersion,
             Guid.NewGuid(),
             42,
-            "completeWorkout",
+            "saveWorkout",
             [
                 new ResourceVersionRequest("Workout", Guid.NewGuid(), 3),
-                new ResourceVersionRequest("WorkoutRotation", Guid.NewGuid(), 2),
+                new ResourceVersionRequest("TrainingPlan", Guid.NewGuid(), 2),
             ],
             dependency,
-            JsonDocument.Parse("{\"completedAtUtc\":\"2026-08-18T12:00:00Z\"}").RootElement.Clone());
+            JsonDocument.Parse("{\"workout\":{\"endedAtUtc\":\"2026-08-18T12:00:00Z\"}}").RootElement.Clone());
 
         Assert.AreEqual(dependency, request.DependsOnMutationId);
         Assert.HasCount(2, request.Resources);

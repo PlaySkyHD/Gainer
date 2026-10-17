@@ -25,6 +25,7 @@
 		F20000000000000000000022 /* WidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F10000000000000000000027 /* WidgetExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F30000000000000000000001 /* PrivacyInfo.xcprivacy in Runner Resources */ = {isa = PBXBuildFile; fileRef = F30000000000000000000011 /* Runner PrivacyInfo.xcprivacy */; };
 		F30000000000000000000002 /* PrivacyInfo.xcprivacy in WidgetExtension Resources */ = {isa = PBXBuildFile; fileRef = F30000000000000000000012 /* WidgetExtension PrivacyInfo.xcprivacy */; };
+		F20000000000000000000030 /* Assets.xcassets in WidgetExtension Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000050 /* Assets.xcassets */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
@@ -109,6 +110,7 @@
 		F10000000000000000000026 /* GainerWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GainerWidgets.swift; sourceTree = "<group>"; };
 		F10000000000000000000027 /* WidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = WidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F10000000000000000000028 /* WidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WidgetExtension.entitlements; sourceTree = "<group>"; };
+		F10000000000000000000050 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F10000000000000000000029 /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
 		F10000000000000000000045 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F30000000000000000000011 /* Runner PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -217,6 +219,7 @@
 			children = (
 				F30000000000000000000012 /* WidgetExtension PrivacyInfo.xcprivacy */,
 				F10000000000000000000026 /* GainerWidgets.swift */,
+				F10000000000000000000050 /* Assets.xcassets */,
 				F10000000000000000000028 /* WidgetExtension.entitlements */,
 				F10000000000000000000045 /* Info.plist */,
 			);
@@ -436,6 +439,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F30000000000000000000002 /* PrivacyInfo.xcprivacy in WidgetExtension Resources */,
+				F20000000000000000000030 /* Assets.xcassets in WidgetExtension Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

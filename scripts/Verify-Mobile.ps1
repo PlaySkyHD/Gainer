@@ -98,14 +98,35 @@ function Wait-ManagedOutputDrain {
     catch { return $false }
 }
 
-function Invoke-ManagedProcess {
+function Write-ManagedOutputPreview {
+    param(
+        [Parameter(Mandatory)][string] $Label,
+        [AllowEmptyString()][string] $Stdout,
+        [AllowEmptyString()][string] $Stderr,
+        [int] $OutputPreviewLimit = 12000
+    )
+    foreach ($stream in @(@{ Name = 'STDOUT'; Text = $Stdout }, @{ Name = 'STDERR'; Text = $Stderr })) {
+        if ($stream.Text) {
+            $preview = [string]$stream.Text
+            $wasTruncated = $preview.Length -gt $OutputPreviewLimit
+            if ($wasTruncated) {
+                $headLength = [int][Math]::Min(4000, [Math]::Floor($OutputPreviewLimit / 3))
+                $tailLength = $OutputPreviewLimit - $headLength
+                $preview = $preview.Substring(0, $headLength) +
+                    "`n... output omitted; final process output follows ...`n" +
+                    $preview.Substring($preview.Length - $tailLength)
+            }
+            Write-Information "MANAGED $($stream.Name) BEGIN label=$Label`n$preview" -InformationAction Continue
+            if ($wasTruncated) { Write-Information "MANAGED $($stream.Name) TRUNCATED label=$Label original_characters=$($stream.Text.Length) limit=$OutputPreviewLimit" -InformationAction Continue }
+            Write-Information "MANAGED $($stream.Name) END label=$Label" -InformationAction Continue
+        }
+    }
+}
+
+function New-ManagedProcess {
     param(
         [Parameter(Mandatory)][string] $Executable,
         [Parameter(Mandatory)][string[]] $Arguments,
-        [Parameter(Mandatory)][int] $TimeoutSeconds,
-        [Parameter(Mandatory)][string] $Label,
-        [switch] $SuppressOutputPreview,
-        [int] $OutputPreviewLimit = 12000,
         [string] $WorkingDirectory
     )
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -123,6 +144,128 @@ function Invoke-ManagedProcess {
     foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add($argument) }
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
+    return $process
+}
+
+function Get-OpenManagedReads {
+    param([Parameter(Mandatory)][hashtable] $State)
+    for ($index = 0; $index -lt 2; $index++) {
+        if ($State.Open[$index]) { $State.Pending[$index] }
+    }
+}
+
+function Update-ManagedStallClock {
+    param([Parameter(Mandatory)][hashtable] $State, [AllowEmptyString()][string] $Line)
+    if ($State.StallEnd.IsMatch($Line)) { $State.StallClock = $null }
+    elseif ($State.StallStart.IsMatch($Line)) { $State.StallClock = [System.Diagnostics.Stopwatch]::StartNew() }
+}
+
+function Read-ReadyManagedLines {
+    # Consumes every line already available on one stream; a null line marks its end.
+    param([Parameter(Mandatory)][hashtable] $State, [Parameter(Mandatory)][int] $Index)
+    while ($State.Open[$Index] -and $State.Pending[$Index].IsCompleted) {
+        $line = $State.Pending[$Index].GetAwaiter().GetResult()
+        if ($null -eq $line) {
+            $State.Open[$Index] = $false
+            return
+        }
+        [void]$State.Buffers[$Index].AppendLine($line)
+        Update-ManagedStallClock $State $line
+        $State.Pending[$Index] = $State.Readers[$Index].ReadLineAsync()
+    }
+}
+
+function Wait-ManagedStreams {
+    # Returns 'ended' when both streams closed, 'timeout' or 'stalled' otherwise.
+    param(
+        [Parameter(Mandatory)][hashtable] $State,
+        [Parameter(Mandatory)][int] $TimeoutSeconds,
+        [Parameter(Mandatory)][int] $StallTimeoutSeconds
+    )
+    while ($State.Open[0] -or $State.Open[1]) {
+        if ($State.Timer.Elapsed.TotalSeconds -ge $TimeoutSeconds) { return 'timeout' }
+        if ($null -ne $State.StallClock -and $State.StallClock.Elapsed.TotalSeconds -ge $StallTimeoutSeconds) { return 'stalled' }
+        [void][System.Threading.Tasks.Task]::WaitAny([System.Threading.Tasks.Task[]]@(Get-OpenManagedReads $State), 250)
+        Read-ReadyManagedLines $State 0
+        Read-ReadyManagedLines $State 1
+    }
+    return 'ended'
+}
+
+function Complete-ManagedProcess {
+    param(
+        [Parameter(Mandatory)][System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)][string] $Outcome,
+        [Parameter(Mandatory)][double] $RemainingSeconds,
+        [Parameter(Mandatory)][string] $Label
+    )
+    if ($Outcome -eq 'ended' -and $Process.WaitForExit([int][Math]::Max(1000, $RemainingSeconds * 1000))) {
+        return @{ TimedOut = $false; Stalled = $false; TerminationConfirmed = $true }
+    }
+    $stalled = $Outcome -eq 'stalled'
+    $reason = if ($stalled) { 'stalled' } else { 'timed out' }
+    Write-Warning "Managed command $reason; terminating only its process tree: $Label"
+    return @{ TimedOut = -not $stalled; Stalled = $stalled; TerminationConfirmed = (Stop-ManagedProcessTree $Process) }
+}
+
+function Invoke-ManagedProcessWithStallGuard {
+    # Like Invoke-ManagedProcess, but reads output line by line so a known
+    # waiting state (StallStartPattern) that is not resolved by a progress line
+    # (StallEndPattern) within StallTimeoutSeconds ends the process tree early
+    # and reports Stalled instead of consuming the whole budget.
+    param(
+        [Parameter(Mandatory)][string] $Executable,
+        [Parameter(Mandatory)][string[]] $Arguments,
+        [Parameter(Mandatory)][int] $TimeoutSeconds,
+        [Parameter(Mandatory)][string] $Label,
+        [Parameter(Mandatory)][regex] $StallStartPattern,
+        [Parameter(Mandatory)][regex] $StallEndPattern,
+        [Parameter(Mandatory)][int] $StallTimeoutSeconds,
+        [int] $OutputPreviewLimit = 12000,
+        [string] $WorkingDirectory
+    )
+    $process = New-ManagedProcess $Executable $Arguments $WorkingDirectory
+    $state = @{
+        Timer = [System.Diagnostics.Stopwatch]::StartNew()
+        Buffers = @([System.Text.StringBuilder]::new(), [System.Text.StringBuilder]::new())
+        Open = @($true, $true)
+        StallStart = $StallStartPattern
+        StallEnd = $StallEndPattern
+        StallClock = $null
+    }
+    Write-Information "MANAGED COMMAND START utc=$([DateTime]::UtcNow.ToString('o')) label=$Label timeout_seconds=$TimeoutSeconds stall_timeout_seconds=$StallTimeoutSeconds" -InformationAction Continue
+    try {
+        if (-not $process.Start()) { throw "Could not start managed command '$Label'." }
+        $state.Readers = @($process.StandardOutput, $process.StandardError)
+        $state.Pending = @($state.Readers[0].ReadLineAsync(), $state.Readers[1].ReadLineAsync())
+        $outcome = Wait-ManagedStreams $state $TimeoutSeconds $StallTimeoutSeconds
+        $end = Complete-ManagedProcess $process $outcome ($TimeoutSeconds - $state.Timer.Elapsed.TotalSeconds) $Label
+        $exited = $process.HasExited
+        if ($exited) { [void]$process.WaitForExit(1000) }
+        $drainTasks = @(Get-OpenManagedReads $state)
+        $drainConfirmed = $drainTasks.Count -eq 0 -or (Wait-ManagedOutputDrain ([System.Threading.Tasks.Task[]]$drainTasks) 3000)
+        $state.Timer.Stop()
+        $outText = $state.Buffers[0].ToString()
+        $errText = $state.Buffers[1].ToString()
+        Write-ManagedOutputPreview $Label $outText $errText $OutputPreviewLimit
+        $exitCode = if ($exited) { $process.ExitCode } else { $null }
+        Write-Information "MANAGED COMMAND END utc=$([DateTime]::UtcNow.ToString('o')) label=$Label elapsed_seconds=$([Math]::Round($state.Timer.Elapsed.TotalSeconds, 2)) timed_out=$($end.TimedOut) stalled=$($end.Stalled) exit_code=$exitCode termination_confirmed=$($end.TerminationConfirmed) output_drained=$drainConfirmed" -InformationAction Continue
+        return [pscustomobject]@{ TimedOut = $end.TimedOut; Stalled = $end.Stalled; ExitCode = $exitCode; TerminationConfirmed = $end.TerminationConfirmed; OutputDrained = $drainConfirmed; Stdout = $outText; Stderr = $errText }
+    }
+    finally { $process.Dispose() }
+}
+
+function Invoke-ManagedProcess {
+    param(
+        [Parameter(Mandatory)][string] $Executable,
+        [Parameter(Mandatory)][string[]] $Arguments,
+        [Parameter(Mandatory)][int] $TimeoutSeconds,
+        [Parameter(Mandatory)][string] $Label,
+        [switch] $SuppressOutputPreview,
+        [int] $OutputPreviewLimit = 12000,
+        [string] $WorkingDirectory
+    )
+    $process = New-ManagedProcess $Executable $Arguments $WorkingDirectory
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     Write-Information "MANAGED COMMAND START utc=$([DateTime]::UtcNow.ToString('o')) label=$Label timeout_seconds=$TimeoutSeconds" -InformationAction Continue
     try {
@@ -143,22 +286,7 @@ function Invoke-ManagedProcess {
         $outText = if ($stdoutTask.IsCompleted) { $stdoutTask.GetAwaiter().GetResult() } else { '' }
         $errText = if ($stderrTask.IsCompleted) { $stderrTask.GetAwaiter().GetResult() } else { '' }
         if (-not $SuppressOutputPreview) {
-            foreach ($stream in @(@{ Name = 'STDOUT'; Text = $outText }, @{ Name = 'STDERR'; Text = $errText })) {
-                if ($stream.Text) {
-                    $preview = [string]$stream.Text
-                    $wasTruncated = $preview.Length -gt $OutputPreviewLimit
-                    if ($wasTruncated) {
-                        $headLength = [int][Math]::Min(4000, [Math]::Floor($OutputPreviewLimit / 3))
-                        $tailLength = $OutputPreviewLimit - $headLength
-                        $preview = $preview.Substring(0, $headLength) +
-                            "`n... output omitted; final process output follows ...`n" +
-                            $preview.Substring($preview.Length - $tailLength)
-                    }
-                    Write-Information "MANAGED $($stream.Name) BEGIN label=$Label`n$preview" -InformationAction Continue
-                    if ($wasTruncated) { Write-Information "MANAGED $($stream.Name) TRUNCATED label=$Label original_characters=$($stream.Text.Length) limit=$OutputPreviewLimit" -InformationAction Continue }
-                    Write-Information "MANAGED $($stream.Name) END label=$Label" -InformationAction Continue
-                }
-            }
+            Write-ManagedOutputPreview $Label $outText $errText $OutputPreviewLimit
         }
         $exitCode = if ($exited) { $process.ExitCode } else { $null }
         Write-Information "MANAGED COMMAND END utc=$([DateTime]::UtcNow.ToString('o')) label=$Label elapsed_seconds=$([Math]::Round($timer.Elapsed.TotalSeconds, 2)) timed_out=$timedOut exit_code=$exitCode termination_confirmed=$terminationConfirmed output_drained=$drainConfirmed" -InformationAction Continue
@@ -474,7 +602,9 @@ function Invoke-FlutterChecksPhase {
         }
         Invoke-Checked $dartCommand @('format', '--output=none', '--set-exit-if-changed', 'lib', 'test', 'pigeons')
         Invoke-Checked $flutterCommand @('analyze', '--fatal-infos')
-        Invoke-Checked $flutterCommand @('test')
+        # Goldens are Linux references; rasterization differs on macOS, so the
+        # Sonar app pipeline (ubuntu) runs them instead.
+        Invoke-Checked $flutterCommand @('test', '--exclude-tags', 'golden')
     }
     finally {
         Pop-Location
@@ -664,6 +794,38 @@ function Invoke-NativeTestsPhase {
     }
 }
 
+function Stop-SimulatorRunnerApp {
+    # Native XCTest uses Runner.app as its test host on this same simulator, and a
+    # stalled capture attempt can leave the app running. A surviving process can
+    # make `simctl launch` reuse an app started without the integration-test
+    # entrypoint, so only this bundle on the exact owned simulator is terminated.
+    param(
+        [Parameter(Mandatory)][string] $SimulatorId,
+        [Parameter(Mandatory)][string] $BundleId
+    )
+    Write-Information "SIMULATOR APP TERMINATE START utc=$([DateTime]::UtcNow.ToString('o')) udid=$($SimulatorId) bundle=$BundleId" -InformationAction Continue
+    $terminateResult = Invoke-ManagedProcess '/usr/bin/xcrun' @(
+        'simctl', 'terminate', $SimulatorId, $BundleId
+    ) 20 'terminate prior Runner test-host process' -OutputPreviewLimit 2000
+    if ($terminateResult.TimedOut -or -not $terminateResult.TerminationConfirmed -or
+        -not $terminateResult.OutputDrained) {
+        throw 'Could not confirm bounded cleanup of the Runner test-host process.'
+    }
+    $terminationMessage = "$($terminateResult.Stdout)`n$($terminateResult.Stderr)"
+    $knownNotRunningMessage =
+        $terminationMessage -match '(?i)domain=NSPOSIXErrorDomain,\s*code=3' -and
+        $terminationMessage -match '(?i)(?:no such process|found nothing to terminate)'
+    if ($terminateResult.ExitCode -eq 0) {
+        Write-Information 'SIMULATOR APP TERMINATE END result=terminated' -InformationAction Continue
+    }
+    elseif ($terminateResult.ExitCode -eq 3 -and $knownNotRunningMessage) {
+        Write-Information 'SIMULATOR APP TERMINATE END result=not_running' -InformationAction Continue
+    }
+    else {
+        throw "Could not safely confirm the prior Runner process was absent: $($terminateResult.Stderr) $($terminateResult.Stdout)"
+    }
+}
+
 function Invoke-UiCapturePhase {
     Assert-PinnedFlutter
     Assert-IosBuildPrerequisites
@@ -713,8 +875,8 @@ function Invoke-UiCapturePhase {
     $expectedScreenshots = @(
         'tab-heute', 'tab-checkin', 'tab-essen', 'tab-training', 'tab-mehr',
         'tab-dark-heute', 'tab-dark-checkin', 'tab-dark-essen', 'tab-dark-training', 'tab-dark-mehr',
-        'sheet-checkin', 'sheet-goal', 'date-picker', 'editor-training', 'editor-essen',
-        'sheet-dark-checkin', 'editor-dark-essen', 'editor-dark-training',
+        'sheet-checkin', 'sheet-goal', 'date-picker', 'training-workout', 'training-minimized', 'editor-essen',
+        'sheet-dark-checkin', 'editor-dark-essen',
         'exercise-progress', 'exercise-dark-progress'
     )
     $captureRoot = Join-Path $repositoryRoot 'artifacts/mobile/ui-captures'
@@ -728,11 +890,7 @@ function Invoke-UiCapturePhase {
         }
     }
 
-    # Native XCTest uses Runner.app as its test host on this same simulator.
-    # A surviving host process can make `simctl launch` reuse an app that was
-    # started without the integration-test entrypoint, leaving Flutter's VM
-    # service discovery waiting forever. Terminate only this app on the exact
-    # workflow-owned simulator, after confirming its built bundle identity.
+    # Confirm the built bundle identity before terminating the app between attempts.
     $runnerInfoPlist = Join-Path $mobileRoot 'build/ios/iphonesimulator/Runner.app/Info.plist'
     if (-not (Test-Path -LiteralPath $runnerInfoPlist -PathType Leaf)) {
         throw "Built Runner app Info.plist is missing: '$runnerInfoPlist'."
@@ -742,42 +900,37 @@ function Invoke-UiCapturePhase {
         $appBundleId -notmatch '^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$') {
         throw "Built Runner app has an invalid CFBundleIdentifier '$appBundleId'."
     }
-    Write-Information "SIMULATOR APP TERMINATE START utc=$([DateTime]::UtcNow.ToString('o')) udid=$($simulatorState.simulatorId) bundle=$appBundleId" -InformationAction Continue
-    $terminateResult = Invoke-ManagedProcess '/usr/bin/xcrun' @(
-        'simctl', 'terminate', $simulatorState.simulatorId, $appBundleId
-    ) 20 'terminate prior Runner test-host process' -OutputPreviewLimit 2000
-    if ($terminateResult.TimedOut -or -not $terminateResult.TerminationConfirmed -or
-        -not $terminateResult.OutputDrained) {
-        throw 'Could not confirm bounded cleanup of the Runner test-host process.'
-    }
-    $terminationMessage = "$($terminateResult.Stdout)`n$($terminateResult.Stderr)"
-    $knownNotRunningMessage =
-        $terminationMessage -match '(?i)domain=NSPOSIXErrorDomain,\s*code=3' -and
-        $terminationMessage -match '(?i)(?:no such process|found nothing to terminate)'
-    if ($terminateResult.ExitCode -eq 0) {
-        Write-Information 'SIMULATOR APP TERMINATE END result=terminated' -InformationAction Continue
-    }
-    elseif ($terminateResult.ExitCode -eq 3 -and $knownNotRunningMessage) {
-        Write-Information 'SIMULATOR APP TERMINATE END result=not_running' -InformationAction Continue
-    }
-    else {
-        throw "Could not safely confirm the prior Runner process was absent: $($terminateResult.Stderr) $($terminateResult.Stdout)"
-    }
-
+    # On the CI simulator `flutter drive` occasionally launches the app but never
+    # discovers its Dart VM service and then waits until the phase budget is gone.
+    # That single, recognizable state is retried once after a fresh app launch;
+    # every other failure still fails the phase immediately.
+    $vmServiceWait = [regex]'Waiting for VM Service port to be available'
+    $vmServiceFound = [regex]'(?i)Connected to Flutter application|Dart VM [Ss]ervice (is listening|was found)|VM Service URL'
     Push-Location $mobileRoot
     try {
-        $commandBudget = [int][Math]::Floor($phaseBudgetSeconds - $phaseClock.Elapsed.TotalSeconds - 15)
-        if ($commandBudget -lt 30) { throw 'UI capture has insufficient time remaining for the simulator test.' }
-        $result = Invoke-ManagedProcess $flutterCommand @(
-            'drive',
-            '--driver=test_driver/ui_design_driver.dart',
-            '--target=integration_test/ui_design_test.dart',
-            '-d', $simulatorState.simulatorId,
-            '--no-pub',
-            '--verbose'
-        ) $commandBudget 'fixture-backed native iOS UI capture' -WorkingDirectory $mobileRoot -OutputPreviewLimit 20000
-        if ($result.TimedOut -or -not $result.TerminationConfirmed -or -not $result.OutputDrained -or $result.ExitCode -ne 0) {
-            throw 'Fixture-backed iOS UI capture failed or exceeded its remaining phase budget.'
+        for ($attempt = 1; $attempt -le 2; $attempt++) {
+            Stop-SimulatorRunnerApp $simulatorState.simulatorId $appBundleId
+            $commandBudget = [int][Math]::Floor($phaseBudgetSeconds - $phaseClock.Elapsed.TotalSeconds - 15)
+            if ($commandBudget -lt 30) { throw 'UI capture has insufficient time remaining for the simulator test.' }
+            $result = Invoke-ManagedProcessWithStallGuard $flutterCommand @(
+                'drive',
+                '--driver=test_driver/ui_design_driver.dart',
+                '--target=integration_test/ui_design_test.dart',
+                '-d', $simulatorState.simulatorId,
+                '--no-pub',
+                '--verbose'
+            ) $commandBudget "fixture-backed native iOS UI capture attempt=$attempt" `
+                -StallStartPattern $vmServiceWait -StallEndPattern $vmServiceFound -StallTimeoutSeconds 120 `
+                -WorkingDirectory $mobileRoot -OutputPreviewLimit 20000
+            $cleanlyEnded = $result.TerminationConfirmed -and $result.OutputDrained
+            if ($result.Stalled -and $cleanlyEnded -and $attempt -lt 2) {
+                Write-Information "UI CAPTURE RETRY utc=$([DateTime]::UtcNow.ToString('o')) reason=vm_service_not_discovered remaining_seconds=$([int]($phaseBudgetSeconds - $phaseClock.Elapsed.TotalSeconds))" -InformationAction Continue
+                continue
+            }
+            if ($result.Stalled -or $result.TimedOut -or -not $cleanlyEnded -or $result.ExitCode -ne 0) {
+                throw 'Fixture-backed iOS UI capture failed or exceeded its remaining phase budget.'
+            }
+            break
         }
     }
     finally {

@@ -2,152 +2,93 @@ using Gainer.Core.Mutations;
 
 namespace Gainer.Core.Training;
 
-public sealed record WorkoutSetSnapshotValues(
+public sealed record WorkoutSetValues(
     Guid SetId,
+    string SetType,
     decimal? WeightKg,
     int? Repetitions,
     decimal? Rir,
-    string? Notes,
-    bool IsCompleted,
-    DateTime? CompletedAtUtc = null);
+    string? Notes);
 
-public sealed record WorkoutExerciseSnapshotValues(
+public sealed record WorkoutExerciseValues(
     Guid WorkoutExerciseId,
-    Guid? SourceExerciseId,
+    Guid SourceExerciseId,
     string ExerciseNameSnapshot,
-    int PlannedSets,
-    int MinimumRepetitions,
-    int MaximumRepetitions,
-    decimal? TargetRir,
-    int? RestSeconds,
+    string ExerciseTypeSnapshot,
     string? Notes,
-    IReadOnlyList<WorkoutSetSnapshotValues> Sets);
+    Guid? SupersetId,
+    IReadOnlyList<WorkoutSetValues> Sets);
 
-public sealed record StartWorkoutMutation : ITypedMutation<WorkoutSnapshot>
-{
-    private StartWorkoutMutation(MutationMetadata metadata, Guid workoutId, Guid templateId)
-    {
-        Metadata = metadata;
-        WorkoutId = workoutId;
-        TemplateId = templateId;
-        Scope = AtomicMutationScope.Create(ResourceVersionExpectation.Create(
-            ResourceKey.Create(ResourceKind.Workout, workoutId), 0));
-    }
-    public MutationMetadata Metadata { get; }
-    public AtomicMutationScope Scope { get; }
-    public Guid WorkoutId { get; }
-    public Guid TemplateId { get; }
-    public static StartWorkoutMutation Create(MutationMetadata metadata, Guid workoutId, Guid templateId) =>
-        workoutId == Guid.Empty || templateId == Guid.Empty
-            ? throw new ArgumentException("Workout and template identifiers cannot be empty.")
-            : new(metadata, workoutId, templateId);
-}
-
-public sealed record EditWorkoutMutation : ITypedMutation<WorkoutSnapshot>
-{
-    private EditWorkoutMutation(
-        MutationMetadata metadata,
-        Guid workoutId,
-        long baseVersion,
-        IReadOnlyList<WorkoutExerciseSnapshotValues> exercises)
-    {
-        Metadata = metadata;
-        WorkoutId = workoutId;
-        BaseVersion = baseVersion;
-        Exercises = exercises;
-        Scope = AtomicMutationScope.Create(ResourceVersionExpectation.Create(
-            ResourceKey.Create(ResourceKind.Workout, workoutId), baseVersion));
-    }
-    public MutationMetadata Metadata { get; }
-    public AtomicMutationScope Scope { get; }
-    public Guid WorkoutId { get; }
-    public long BaseVersion { get; }
-    public IReadOnlyList<WorkoutExerciseSnapshotValues> Exercises { get; }
-    public static EditWorkoutMutation Create(
-        MutationMetadata metadata,
-        Guid workoutId,
-        long baseVersion,
-        IReadOnlyList<WorkoutExerciseSnapshotValues> exercises)
-    {
-        if (workoutId == Guid.Empty)
-        {
-            throw new ArgumentException("Workout identifier cannot be empty.", nameof(workoutId));
-        }
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
-        return new(metadata, workoutId, baseVersion, exercises);
-    }
-}
-
-public sealed record WorkoutSnapshot(
+/// <summary>Complete editable state of a workout; the client builds it and the server validates it as one aggregate.</summary>
+public sealed record WorkoutValues(
     Guid WorkoutId,
-    Guid? SourceTemplateId,
-    string TemplateNameSnapshot,
-    WorkoutStatus Status,
-    IReadOnlyList<WorkoutExerciseSnapshotValues> Exercises,
+    string Title,
+    string? Notes,
     DateTime StartedAtUtc,
-    DateTime? CompletedAtUtc,
-    DateTime? DiscardedAtUtc,
-    DateTime UpdatedAtUtc,
-    long Version) : IResourceSnapshot
-{
-    public ResourceKey Resource => ResourceKey.Create(ResourceKind.Workout, WorkoutId);
-}
+    DateTime? EndedAtUtc,
+    string PreviousValueSource,
+    Guid? SourcePlanId,
+    Guid? SourceWorkoutId,
+    IReadOnlyList<WorkoutExerciseValues> Exercises);
 
-public sealed record CompleteWorkoutMutation : ITypedMutation<CompleteWorkoutResult>
+public sealed record CreateWorkoutMutation : ITypedMutation<WorkoutSnapshot>
 {
-    private CompleteWorkoutMutation(
-        MutationMetadata metadata,
-        Guid workoutId,
-        long baseVersion,
-        Guid? rotationId,
-        long? rotationBaseVersion)
+    private CreateWorkoutMutation(MutationMetadata metadata, WorkoutValues workout)
     {
         Metadata = metadata;
-        WorkoutId = workoutId;
-        BaseVersion = baseVersion;
-        RotationId = rotationId;
-        RotationBaseVersion = rotationBaseVersion;
-        var expectations = new List<ResourceVersionExpectation>
-        {
-            ResourceVersionExpectation.Create(ResourceKey.Create(ResourceKind.Workout, workoutId), baseVersion),
-        };
-        if (rotationId is { } id && rotationBaseVersion is { } version)
-        {
-            expectations.Add(ResourceVersionExpectation.Create(ResourceKey.Create(ResourceKind.WorkoutRotation, id), version));
-        }
-        Scope = AtomicMutationScope.Create([.. expectations]);
+        Workout = workout;
+        Scope = AtomicMutationScope.Create(ResourceVersionExpectation.Create(
+            ResourceKey.Create(ResourceKind.Workout, workout.WorkoutId), 0));
     }
+
     public MutationMetadata Metadata { get; }
     public AtomicMutationScope Scope { get; }
-    public Guid WorkoutId { get; }
-    public long BaseVersion { get; }
-    public Guid? RotationId { get; }
-    public long? RotationBaseVersion { get; }
+    public WorkoutValues Workout { get; }
 
-    public static CompleteWorkoutMutation Create(
-        MutationMetadata metadata,
-        Guid workoutId,
-        long baseVersion,
-        Guid? rotationId = null,
-        long? rotationBaseVersion = null)
+    public static CreateWorkoutMutation Create(MutationMetadata metadata, WorkoutValues workout)
     {
-        if (workoutId == Guid.Empty) throw new ArgumentException("Workout identifier cannot be empty.", nameof(workoutId));
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
-        if ((rotationId is null) != (rotationBaseVersion is null) || rotationId == Guid.Empty || rotationBaseVersion is <= 0)
+        ArgumentNullException.ThrowIfNull(metadata);
+        ArgumentNullException.ThrowIfNull(workout);
+        if (workout.WorkoutId == Guid.Empty)
         {
-            throw new ArgumentException("Rotation id and positive version must be supplied together.");
+            throw new ArgumentException("The workout identifier cannot be empty.", nameof(workout));
         }
-        return new(metadata, workoutId, baseVersion, rotationId, rotationBaseVersion);
+        return new(metadata, workout);
     }
 }
 
-public sealed record CompleteWorkoutResult(
-    WorkoutSnapshot Workout,
-    WorkoutRotationSnapshot? Rotation);
-
-public sealed record DiscardWorkoutMutation : ITypedMutation<WorkoutSnapshot>
+public sealed record SaveWorkoutMutation : ITypedMutation<WorkoutSnapshot>
 {
-    private DiscardWorkoutMutation(MutationMetadata metadata, Guid workoutId, long baseVersion)
+    private SaveWorkoutMutation(MutationMetadata metadata, long baseVersion, WorkoutValues workout)
+    {
+        Metadata = metadata;
+        BaseVersion = baseVersion;
+        Workout = workout;
+        Scope = AtomicMutationScope.Create(ResourceVersionExpectation.Create(
+            ResourceKey.Create(ResourceKind.Workout, workout.WorkoutId), baseVersion));
+    }
+
+    public MutationMetadata Metadata { get; }
+    public AtomicMutationScope Scope { get; }
+    public long BaseVersion { get; }
+    public WorkoutValues Workout { get; }
+
+    public static SaveWorkoutMutation Create(MutationMetadata metadata, long baseVersion, WorkoutValues workout)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+        ArgumentNullException.ThrowIfNull(workout);
+        if (workout.WorkoutId == Guid.Empty)
+        {
+            throw new ArgumentException("The workout identifier cannot be empty.", nameof(workout));
+        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
+        return new(metadata, baseVersion, workout);
+    }
+}
+
+public sealed record DeleteWorkoutMutation : ITypedMutation<DeleteWorkoutResult>
+{
+    private DeleteWorkoutMutation(MutationMetadata metadata, Guid workoutId, long baseVersion)
     {
         Metadata = metadata;
         WorkoutId = workoutId;
@@ -155,27 +96,51 @@ public sealed record DiscardWorkoutMutation : ITypedMutation<WorkoutSnapshot>
         Scope = AtomicMutationScope.Create(ResourceVersionExpectation.Create(
             ResourceKey.Create(ResourceKind.Workout, workoutId), baseVersion));
     }
+
     public MutationMetadata Metadata { get; }
     public AtomicMutationScope Scope { get; }
     public Guid WorkoutId { get; }
     public long BaseVersion { get; }
-    public static DiscardWorkoutMutation Create(MutationMetadata metadata, Guid workoutId, long baseVersion)
+
+    public static DeleteWorkoutMutation Create(MutationMetadata metadata, Guid workoutId, long baseVersion)
     {
+        ArgumentNullException.ThrowIfNull(metadata);
         if (workoutId == Guid.Empty)
         {
-            throw new ArgumentException("Workout identifier cannot be empty.", nameof(workoutId));
+            throw new ArgumentException("The workout identifier cannot be empty.", nameof(workoutId));
         }
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(baseVersion);
         return new(metadata, workoutId, baseVersion);
     }
 }
 
+/// <summary>Result of a deletion; the tombstone is captured through the change collector.</summary>
+public sealed record DeleteWorkoutResult(Guid WorkoutId, long Version);
+
+/// <summary>Flat pull snapshot: the workout fields plus server metadata.</summary>
+public sealed record WorkoutSnapshot(
+    Guid WorkoutId,
+    string Title,
+    string? Notes,
+    DateTime StartedAtUtc,
+    DateTime? EndedAtUtc,
+    string PreviousValueSource,
+    Guid? SourcePlanId,
+    Guid? SourceWorkoutId,
+    IReadOnlyList<WorkoutExerciseValues> Exercises,
+    DateTime? DeletedAtUtc,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc,
+    long Version) : IResourceSnapshot
+{
+    public ResourceKey Resource => ResourceKey.Create(ResourceKind.Workout, WorkoutId);
+}
+
 public interface IWorkoutMutationHandler
 {
-    Task<WorkoutSnapshot> StartAsync(StartWorkoutMutation mutation, CancellationToken cancellationToken = default);
-    Task<WorkoutSnapshot> EditAsync(EditWorkoutMutation mutation, CancellationToken cancellationToken = default);
-    Task<CompleteWorkoutResult> CompleteAsync(CompleteWorkoutMutation mutation, CancellationToken cancellationToken = default);
-    Task<WorkoutSnapshot> DiscardAsync(DiscardWorkoutMutation mutation, CancellationToken cancellationToken = default);
+    Task<WorkoutSnapshot> CreateAsync(CreateWorkoutMutation mutation, CancellationToken cancellationToken = default);
+    Task<WorkoutSnapshot> SaveAsync(SaveWorkoutMutation mutation, CancellationToken cancellationToken = default);
+    Task<DeleteWorkoutResult> DeleteAsync(DeleteWorkoutMutation mutation, CancellationToken cancellationToken = default);
 }
 
 public sealed class WorkoutValidationException(IReadOnlyDictionary<string, string> errors)
@@ -185,5 +150,14 @@ public sealed class WorkoutValidationException(IReadOnlyDictionary<string, strin
 }
 
 public sealed class WorkoutConflictException(string message) : Exception(message);
+
+/// <summary>The user already has an active workout; the client must resume or end it first.</summary>
+public sealed class ActiveWorkoutExistsException : Exception
+{
+    public ActiveWorkoutExistsException()
+        : base("An active workout already exists for this user.")
+    {
+    }
+}
 
 public sealed class WorkoutNotFoundException : Exception;

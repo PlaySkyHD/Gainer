@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 import '../../../data/models/api/api_models.dart';
+import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'exercise_progress_section.dart';
 import 'progress_view_model.dart';
@@ -43,166 +44,163 @@ class _ProgressScreenState extends State<ProgressScreen> {
     value: widget.viewModel,
     child: Consumer<ProgressViewModel>(
       builder: (context, model, _) {
+        final colors = GainerDesign.colorsOf(context);
         final data = model.dashboard;
-        return CupertinoPageScaffold(
-          navigationBar: const CupertinoNavigationBar(middle: Text('Heute')),
-          child: SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: ListView(
-                  key: const ValueKey('progress-overview-scroll'),
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  children: [
-                    Text(
-                      'Heute',
-                      style: CupertinoTheme.of(context)
-                          .textTheme
-                          .navLargeTitleTextStyle,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Dein Fortschritt aus deinen Einträgen',
-                      style: TextStyle(
-                        color: GainerTheme.secondaryText(context),
-                      ),
-                    ),
-                    if (model.dashboardIsStale) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'Gespeicherte Fortschrittsdaten · möglicherweise veraltet',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: GainerTheme.secondaryText(context),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    if (model.isLoading && data == null)
-                      const Center(child: CupertinoActivityIndicator()),
-                    if (model.errorMessage case final error?)
-                      _Notice(text: error, action: model.load),
-                    if (data != null) ...[
-                      _weightCard(context, data),
-                      ExerciseProgressSection(viewModel: model),
-                      _trainingCard(data),
-                      _nutritionCard(context, data),
-                      if (data.activeGoal case final goal?)
-                        _Card(
-                          title: 'Aktives Ziel',
-                          subtitle: _goalLabel(goal.kind),
-                          child: Text(
-                            '${goal.startWeightKg.toStringAsFixed(1)} kg  →  ${goal.targetWeightKg.toStringAsFixed(1)} kg',
-                          ),
-                        ),
-                      Text(
-                        'Die Werte beruhen auf deinen gespeicherten Einträgen.',
-                        style: CupertinoTheme.of(context).textTheme.textStyle
-                            .copyWith(
-                              color: GainerTheme.secondaryText(context),
-                            ),
-                      ),
-                      CupertinoButton(
-                        minimumSize: const Size(double.infinity, 48),
-                        onPressed: model.isLoading ? null : model.load,
-                        child: const Text('Aktualisieren'),
-                      ),
-                    ],
-                  ],
+        return KeyedSubtree(
+          key: const ValueKey('progress-overview-scroll'),
+          child: GainerScaffold(
+            title: 'Heute',
+            children: [
+              Text(
+                'Dein Fortschritt aus deinen Einträgen',
+                style: GainerTypography.body.copyWith(
+                  color: colors.secondaryText,
                 ),
               ),
-            ),
+              if (model.dashboardIsStale) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Gespeicherte Fortschrittsdaten · möglicherweise veraltet',
+                  style: GainerTypography.label.copyWith(color: colors.warning),
+                ),
+              ],
+              const SizedBox(height: 20),
+              if (model.isLoading && data == null)
+                const Center(child: CupertinoActivityIndicator()),
+              if (model.errorMessage case final error?)
+                _Notice(text: error, action: model.load),
+              if (data != null) ...[
+                _weightCard(context, data),
+                ExerciseProgressSection(viewModel: model),
+                _trainingCard(context, data),
+                _nutritionCard(context, data),
+                if (data.activeGoal case final goal?)
+                  _Card(
+                    title: 'Aktives Ziel',
+                    subtitle: _goalLabel(goal.kind),
+                    child: Text(
+                      '${goal.startWeightKg.toStringAsFixed(1)} kg  →  ${goal.targetWeightKg.toStringAsFixed(1)} kg',
+                    ),
+                  ),
+                Text(
+                  'Die Werte beruhen auf deinen gespeicherten Einträgen.',
+                  style: GainerTypography.label.copyWith(
+                    color: colors.secondaryText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                GainerPillButton(
+                  label: 'Aktualisieren',
+                  variant: GainerPillVariant.tonal,
+                  expand: true,
+                  onPressed: model.isLoading ? null : model.load,
+                ),
+              ],
+            ],
           ),
         );
       },
     ),
   );
 
-  Widget _weightCard(BuildContext context, ApiDashboardInsights data) => _Card(
-    title: 'Gewicht',
-    subtitle:
-        '${data.weight.observedDays} von ${data.weight.expectedDays} Tagen mit Eintrag',
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (data.latestWeight case final latest?) ...[
+  Widget _weightCard(BuildContext context, ApiDashboardInsights data) {
+    final colors = GainerDesign.colorsOf(context);
+    return _Card(
+      title: 'Gewicht',
+      subtitle:
+          '${data.weight.observedDays} von ${data.weight.expectedDays} Tagen mit Eintrag',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (data.latestWeight case final latest?) ...[
+            Text(
+              'Letzter Eintrag · ${_dateLabel(latest.date)}',
+              style: TextStyle(color: colors.secondaryText),
+            ),
+            Text(
+              '${latest.weightKg.toStringAsFixed(1)} kg',
+              style: GainerTypography.title.copyWith(color: colors.primaryText),
+            ),
+            const SizedBox(height: 8),
+          ],
           Text(
-            'Letzter Eintrag · ${_dateLabel(latest.date)}',
-            style: TextStyle(color: GainerTheme.secondaryText(context)),
+            data.sevenDayWeight.averageKg == null
+                ? 'Noch keine Gewichtsdaten der letzten ${data.sevenDayWeight.expectedDays} Tage'
+                : 'Ø ${data.sevenDayWeight.expectedDays} Tage · ${data.sevenDayWeight.averageKg!.toStringAsFixed(1)} kg',
+            style: TextStyle(color: colors.secondaryText),
           ),
           Text(
-            '${latest.weightKg.toStringAsFixed(1)} kg',
-            style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+            data.weight.averageKg == null
+                ? 'Ø ${data.weight.expectedDays} Tage · Noch keine Gewichtsdaten'
+                : 'Ø ${data.weight.expectedDays} Tage · ${data.weight.averageKg!.toStringAsFixed(1)} kg',
+            style: GainerTypography.title.copyWith(color: colors.primaryText),
           ),
-          const SizedBox(height: 8),
+          if (data.weight.trendKgPerWeek case final trend?)
+            Text(
+              '${trend >= 0 ? '+' : ''}${trend.toStringAsFixed(2)} kg pro Woche',
+              style: TextStyle(color: colors.secondaryText),
+            ),
+          const SizedBox(height: 14),
+          if (data.weightSeries.isNotEmpty)
+            _WeightChart(points: data.weightSeries),
+          if (data.weightSeries.isEmpty)
+            const Text('Nach dem ersten Check-in erscheint hier dein Verlauf.'),
         ],
-        Text(
-          data.sevenDayWeight.averageKg == null
-              ? 'Noch keine Gewichtsdaten der letzten ${data.sevenDayWeight.expectedDays} Tage'
-              : 'Ø ${data.sevenDayWeight.expectedDays} Tage · ${data.sevenDayWeight.averageKg!.toStringAsFixed(1)} kg',
-          style: TextStyle(color: GainerTheme.secondaryText(context)),
-        ),
-        Text(
-          data.weight.averageKg == null
-              ? 'Ø ${data.weight.expectedDays} Tage · Noch keine Gewichtsdaten'
-              : 'Ø ${data.weight.expectedDays} Tage · ${data.weight.averageKg!.toStringAsFixed(1)} kg',
-          style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
-        ),
-        if (data.weight.trendKgPerWeek case final trend?)
-          Text(
-            '${trend >= 0 ? '+' : ''}${trend.toStringAsFixed(2)} kg pro Woche',
-            style: TextStyle(color: GainerTheme.secondaryText(context)),
-          ),
-        const SizedBox(height: 14),
-        if (data.weightSeries.isNotEmpty)
-          _WeightChart(points: data.weightSeries),
-        if (data.weightSeries.isEmpty)
-          const Text('Nach dem ersten Check-in erscheint hier dein Verlauf.'),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 
-  Widget _trainingCard(ApiDashboardInsights data) => _Card(
-    title: 'Training',
-    subtitle: '${data.workoutsLast7Days} Workouts in den letzten 7 Tagen',
-    child: _MetricRow(
-      metrics: [
-        ('Workouts gesamt', '${data.training.workoutCount}'),
-        (
-          'Trainingsvolumen',
-          '${data.training.volumeKgRepetitions.toStringAsFixed(0)} kg × Wdh.',
-        ),
-      ],
-    ),
-  );
-
-  Widget _nutritionCard(
+  Widget _trainingCard(
     BuildContext context,
     ApiDashboardInsights data,
   ) => _Card(
-    title: 'Ernährung',
-    subtitle:
-        'Abdeckung ${((data.nutrition.coverage * 100).clamp(0, 100)).round()}% · ${data.nutrition.mealDiaryDays} Tage im Ernährungstagebuch',
+    title: 'Training',
+    subtitle: '${data.workoutsLast7Days} Workouts in den letzten 7 Tagen',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          data.nutrition.caloriesKcal.value == null
-              ? 'Noch keine Kalorienwerte erfasst.'
-              : '${data.nutrition.caloriesKcal.value!.toStringAsFixed(0)} kcal pro erfasstem Tag',
+        _MetricRow(
+          metrics: [
+            ('Workouts gesamt', '${data.training.workoutCount}'),
+            (
+              'Trainingsvolumen',
+              '${data.training.volumeKgRepetitions.toStringAsFixed(0)} kg × Wdh.',
+            ),
+          ],
         ),
-        const SizedBox(height: 4),
-        Text(
-          data.nutrition.proteinGrams.value == null
-              ? 'Noch keine Proteinwerte erfasst.'
-              : '${data.nutrition.proteinGrams.value!.toStringAsFixed(0)} g Protein pro erfasstem Tag',
-          style: TextStyle(color: GainerTheme.secondaryText(context)),
-        ),
+        if (data.training.bodyweightMissing) ...[
+          const SizedBox(height: 10),
+          const BodyweightMissingHint(),
+        ],
       ],
     ),
   );
+
+  Widget _nutritionCard(BuildContext context, ApiDashboardInsights data) {
+    final colors = GainerDesign.colorsOf(context);
+    return _Card(
+      title: 'Ernährung',
+      subtitle:
+          'Abdeckung ${((data.nutrition.coverage * 100).clamp(0, 100)).round()}% · ${data.nutrition.mealDiaryDays} Tage im Ernährungstagebuch',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            data.nutrition.caloriesKcal.value == null
+                ? 'Noch keine Kalorienwerte erfasst.'
+                : '${data.nutrition.caloriesKcal.value!.toStringAsFixed(0)} kcal pro erfasstem Tag',
+          ),
+          const SizedBox(height: 4),
+          Text(
+            data.nutrition.proteinGrams.value == null
+                ? 'Noch keine Proteinwerte erfasst.'
+                : '${data.nutrition.proteinGrams.value!.toStringAsFixed(0)} g Protein pro erfasstem Tag',
+            style: TextStyle(color: colors.secondaryText),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Card extends StatelessWidget {
@@ -214,37 +212,34 @@ class _Card extends StatelessWidget {
   final String title, subtitle;
   final Widget child;
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 14),
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(
-        color: CupertinoColors.separator
-            .resolveFrom(context)
-            .withValues(alpha: .25),
-      ),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: GainerSpacing.s),
+      child: GainerCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: GainerTypography.cardTitle.copyWith(
+                color: colors.primaryText,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              subtitle,
+              style: GainerTypography.label.copyWith(
+                color: colors.secondaryText,
+              ),
+            ),
+            const SizedBox(height: 12),
+            child,
+          ],
         ),
-        const SizedBox(height: 3),
-        Text(
-          subtitle,
-          style: TextStyle(color: GainerTheme.secondaryText(context)),
-        ),
-        const SizedBox(height: 12),
-        child,
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 class _Notice extends StatelessWidget {
@@ -255,10 +250,11 @@ class _Notice extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     children: [
       Text(text, textAlign: TextAlign.center),
-      CupertinoButton(
-        minimumSize: const Size(double.infinity, 48),
+      GainerPillButton(
+        label: 'Erneut versuchen',
+        variant: GainerPillVariant.tonal,
+        expand: true,
         onPressed: action,
-        child: const Text('Erneut versuchen'),
       ),
     ],
   );
@@ -268,31 +264,38 @@ class _MetricRow extends StatelessWidget {
   const _MetricRow({required this.metrics});
   final List<(String, String)> metrics;
   @override
-  Widget build(BuildContext context) => Wrap(
-    spacing: 18,
-    runSpacing: 14,
-    children: [
-      for (final (label, value) in metrics)
-        ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 115),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: CupertinoTheme.of(context).textTheme.navTitleTextStyle
-                    .copyWith(fontSize: 20),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(color: GainerTheme.secondaryText(context)),
-              ),
-            ],
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return Wrap(
+      spacing: 18,
+      runSpacing: 14,
+      children: [
+        for (final (label, value) in metrics)
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 115),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: GainerTypography.title.copyWith(
+                    fontSize: 20,
+                    color: colors.primaryText,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  style: GainerTypography.label.copyWith(
+                    color: colors.secondaryText,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 class _WeightChart extends StatelessWidget {
@@ -300,6 +303,7 @@ class _WeightChart extends StatelessWidget {
   final List<ApiWeightPoint> points;
   @override
   Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
     final accessible = points
         .map((item) => '${item.date}: ${item.weightKg.toStringAsFixed(1)} kg')
         .join(', ');
@@ -308,10 +312,7 @@ class _WeightChart extends StatelessWidget {
       child: SizedBox(
         height: 130,
         child: CustomPaint(
-          painter: _WeightChartPainter(
-            points,
-            CupertinoTheme.of(context).primaryColor,
-          ),
+          painter: _WeightChartPainter(points, colors.accent),
           child: const SizedBox.expand(),
         ),
       ),

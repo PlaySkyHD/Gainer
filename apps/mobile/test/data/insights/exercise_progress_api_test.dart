@@ -22,23 +22,44 @@ void main() {
             'windowDays': 7,
             'fromUtc': '2026-10-07T00:00:00Z',
             'throughUtc': '2026-10-14T00:00:00Z',
+            'volumeAlgorithmVersion': 'training-volume-v2',
+            'estimatedOneRepMaxAlgorithmVersion': 'e1rm-epley-v2',
             'points': [
               {
                 'workoutId': '00000000-0000-4000-8000-000000000010',
                 'completedAtUtc': '2026-10-12T08:00:00Z',
                 'volumeKgRepetitions': 840,
-                'bestWeightKg': 80,
-                'bestRepetitions': 5,
+                'maxWeightKg': 80,
+                'maxRepetitions': 5,
                 'estimatedOneRepMaxKg': 93.3,
+                'bodyweightMissing': false,
               },
             ],
             'bestSet': {
               'workoutId': '00000000-0000-4000-8000-000000000010',
               'exerciseId': _exerciseId,
               'completedAtUtc': '2026-10-12T08:00:00Z',
-              'weightKg': 80,
+              'effectiveWeightKg': 80,
               'repetitions': 5,
               'estimatedOneRepMaxKg': 93.3,
+            },
+            'records': {
+              'maxWeightKg': {
+                'workoutId': '00000000-0000-4000-8000-000000000010',
+                'value': 80,
+              },
+              'estimatedOneRepMaxKg': {
+                'workoutId': '00000000-0000-4000-8000-000000000010',
+                'value': 93.3,
+              },
+              'volumeKgRepetitions': {
+                'workoutId': '00000000-0000-4000-8000-000000000010',
+                'value': 840,
+              },
+              'maxRepetitions': null,
+              'repetitionRecords': [
+                {'repetitions': 5, 'maxWeightKg': 80},
+              ],
             },
           }),
         );
@@ -71,6 +92,11 @@ void main() {
         });
         expect(result.points.single.estimatedOneRepMaxKg, 93.3);
         expect(result.bestSet?.repetitions, 5);
+        expect(result.bestSet?.effectiveWeightKg, 80);
+        expect(result.points.single.maxWeightKg, 80);
+        expect(result.points.single.maxRepetitions, 5);
+        expect(result.records.maxWeightKg?.value, 80);
+        expect(result.records.maxRepetitions, isNull);
         expect(result.windowDays, 7);
       } finally {
         api.close();

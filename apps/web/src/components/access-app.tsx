@@ -1,11 +1,9 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { ClipboardList, Dumbbell, HeartPulse, Home, LogOut, Monitor, Moon, Sparkles, Sun, Utensils } from "lucide-react";
+import { Dumbbell, HeartPulse, Home, LogOut, Monitor, Moon, Sparkles, Sun, Utensils } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BodyTrackingPanel } from "@/components/body-tracking-panel";
-import { TrainingPlanningPanel } from "@/components/training-planning-panel";
-import { WorkoutPanel } from "@/components/workout-panel";
 import { InsightsDashboard } from "@/components/insights-dashboard";
 import { CoachPanel } from "@/components/coach-panel";
 import { NutritionPanel } from "@/components/nutrition-panel";
@@ -29,6 +27,7 @@ import { BrowserSyncTransport } from "@/lib/api/sync-transport";
 import { resumeAfterAuthentication, SyncHttpError, type SyncRunResult } from "@/lib/offline/sync-engine";
 import { ForegroundSyncScheduler } from "@/lib/offline/sync-scheduler";
 import { acceptConflictServerState, retryConflictOnCurrentServerVersion } from "@/lib/offline/sync-conflicts";
+import { retireLocalTrainingData } from "@/lib/offline/training-retirement";
 
 const inputClass = "h-11 w-full rounded-lg border bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30";
 const message = (error: unknown) => error instanceof Error ? error.message : "Die Anfrage ist fehlgeschlagen.";
@@ -159,9 +158,11 @@ function AuthenticatedArea({ session, onLogout }: { session: AppSession; onLogou
     let closed = false;
     let closeDatabase: (() => void) | undefined;
     void openAccountDatabase(session.userId, session.email)
-      .then((database) => {
+      .then(async (database) => {
         if (closed) database.close();
         else {
+          const discarded = await retireLocalTrainingData(database);
+          if (discarded > 0) setStorageMessage(`${discarded} nicht synchronisierte Trainingsänderung(en) wurden verworfen. Training wird in der iPhone-App geführt.`);
           databaseRef.current = database;
           setDatabase(database);
           void refreshSyncStatus(database);
@@ -273,6 +274,7 @@ function AuthenticatedArea({ session, onLogout }: { session: AppSession; onLogou
           </nav>
           <div className="app-content min-w-0 space-y-6">
             <div className={panelClass("home")}><div className="space-y-6">
+              <p role="note" className="rounded-2xl border bg-card p-4 text-sm text-muted-foreground">Training ist in der iPhone-App verfügbar.</p>
               {database ? <InsightsDashboard database={database} online={online} /> : <section className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">Lokale Daten werden geöffnet …</section>}
               <section aria-label="Synchronisationsstatus" className="grid gap-4 rounded-2xl border bg-card p-5 sm:grid-cols-4">
                 <StatusValue label="Verbindung" value={online ? "Online" : "Offline"} />
@@ -291,13 +293,11 @@ function AuthenticatedArea({ session, onLogout }: { session: AppSession; onLogou
             </div></div>
             <div className={panelClass("tracking")}>{database && <BodyTrackingPanel database={database} onPendingChange={pendingChanged} />}</div>
             <div className={panelClass("nutrition")}>{database && <NutritionPanel database={database} online={online} onPendingChange={pendingChanged} />}</div>
-            <div className={panelClass("workout")}>{database && <WorkoutPanel database={database} onPendingChange={pendingChanged} />}</div>
-            <div className={panelClass("plans")}>{database && <TrainingPlanningPanel database={database} onPendingChange={pendingChanged} />}</div>
             <div className={panelClass("coach")}><CoachPanel online={online} /></div>
           </div>
         </div>
       </div>
-      <nav aria-label="Mobile Hauptnavigation" className="bottom-nav app-glass fixed inset-x-2 bottom-2 z-40 grid grid-cols-6 rounded-[1.6rem] border px-1.5 pt-1.5 md:hidden">
+      <nav aria-label="Mobile Hauptnavigation" className="bottom-nav app-glass fixed inset-x-2 bottom-2 z-40 grid grid-cols-4 rounded-[1.6rem] border px-1.5 pt-1.5 md:hidden">
         {navigationItems.map((item) => <button key={item.id} type="button" aria-current={activeTab === item.id ? "page" : undefined} onClick={() => { setActiveTab(item.id); window.scrollTo({ top: 0, behavior: "smooth" }); }} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[1.15rem] px-1 text-[0.68rem] font-semibold transition-[transform,background-color,color] active:scale-95 ${activeTab === item.id ? "bg-primary/12 text-primary" : "text-muted-foreground"}`}><item.icon className={`size-5 ${activeTab === item.id ? "stroke-[2.6]" : ""}`} aria-hidden="true" /><span className="truncate">{item.label}</span></button>)}
       </nav>
     </main>
@@ -308,8 +308,6 @@ const navigationItems = [
   { id: "home", target: "overview", label: "Heute", icon: Home },
   { id: "tracking", target: "check-in", label: "Check-in", icon: HeartPulse },
   { id: "nutrition", target: "nutrition", label: "Essen", icon: Utensils },
-  { id: "workout", target: "workout", label: "Training", icon: Dumbbell },
-  { id: "plans", target: "training", label: "Pläne", icon: ClipboardList },
   { id: "coach", target: "coach", label: "Coach", icon: Sparkles },
 ] as const;
 
