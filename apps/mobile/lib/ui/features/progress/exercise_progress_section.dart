@@ -466,7 +466,7 @@ class _WindowPicker extends StatelessWidget {
       minimumSize: const Size(48, 48),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       color: isSelected
-          ? GainerTheme.actionColor
+          ? GainerTheme.actionColor(context)
           : CupertinoColors.tertiarySystemFill.resolveFrom(context),
       onPressed: () => onChanged(entry.key),
       child: Text(

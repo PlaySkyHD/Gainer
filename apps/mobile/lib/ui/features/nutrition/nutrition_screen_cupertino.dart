@@ -1861,11 +1861,12 @@ Widget _button(
   bool enabled = true,
 }) => Padding(
   padding: const EdgeInsets.symmetric(vertical: 4),
-  child: CupertinoButton(
+  child: Builder(
+    builder: (context) => CupertinoButton(
     key: key,
     minimumSize: const Size(0, 48),
     onPressed: enabled ? onPressed : null,
-    color: filled ? GainerTheme.actionColor : null,
+    color: filled ? GainerTheme.actionColor(context) : null,
     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -1885,6 +1886,7 @@ Widget _button(
         ),
       ],
     ),
+  ),
   ),
 );
 
