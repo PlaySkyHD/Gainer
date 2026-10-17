@@ -1,0 +1,1878 @@
+{
+  "algorithmVersions": {
+    "volume": "training-volume-v2",
+    "e1rm": "e1rm-epley-v2"
+  },
+  "rules": [
+    "Eingabe: nur beendete (endedAtUtc gesetzt), nicht gelöschte (deletedAtUtc null) Trainings; laufende und gelöschte Trainings erscheinen weder in expected.workouts noch in Rekorden.",
+    "Erfasster Satz (isSetRecorded): strength und assisted brauchen weightKg und repetitions >= 1; bodyweightLoaded und bodyweightOnly brauchen nur repetitions >= 1. Nur erfasste Sätze fließen in alle Kennzahlen ein.",
+    "Satztypen: warmup wird standardmäßig ausgeschlossen (includeWarmups false); normal und dropset werden eingeschlossen. Unbekannte Typen gelten als normal.",
+    "Körpergewicht (bodyweightKg) = Gewicht des Check-ins mit dem größten localDate, das am oder vor dem lokalen Starttag des Trainings liegt. Lokaler Starttag = Datum von startedAtUtc in der Zeitzone timeZone. Ohne solchen Check-in ist bodyweightKg null.",
+    "Effektives Gewicht eines Satzes: strength, bodyweightLoaded, bodyweightOnly = (weightKg oder 0) × weightFactor + bodyweightKg × bodyweightFactor. Fehlende Faktoren: weightFactor 1; bodyweightFactor 0 bei strength, sonst 1. Fehlt bodyweightKg, zählt der Körpergewichtsanteil als 0.",
+    "Effektives Gewicht bei assisted: max(0, bodyweightKg × bodyweightFactor − weightKg) (weightKg ist das Unterstützungsgewicht; fehlt bodyweightKg, ergibt sich 0).",
+    "bodyweightMissing = true, wenn bodyweightKg null ist, der Körpergewichtsfaktor der Übung größer 0 ist und mindestens ein erfasster Satz des Blocks existiert.",
+    "Geschätztes 1RM je Satz (Epley): effektives Gewicht × (1 + repetitions / 30); bei repetitions 1 gilt das effektive Gewicht. 1RM eines Blocks = Maximum seiner erfassten Sätze.",
+    "Volumen = Summe (effektives Gewicht × repetitions) über die erfassten Sätze.",
+    "Durchschnittsgewicht = Volumen / Summe der repetitions; ohne Wiederholungen 0.",
+    "Maximales Gewicht = Maximum des effektiven Gewichts über erfasste Sätze mit repetitions >= 1. Ohne erfasste Sätze: null.",
+    "Ohne erfasste Sätze eines Blocks: setCount 0, totalRepetitions 0, maxRepetitions 0, volumeKg 0; maxWeightKg, averageWeightKg, estimatedOneRepMaxKg null.",
+    "Je Training und Übung: Blöcke (workoutExerciseId) werden einzeln gerechnet. Für Rekordverläufe werden Blöcke desselben Trainings mit gleicher sourceExerciseId zusammengefasst: Volumen summiert, Max-Werte als Maximum.",
+    "Rekordverlauf je Übung: Ereignisse in chronologischer Reihenfolge nach startedAtUtc (bei Gleichstand nach workoutId). Ein Wert ist Rekordereignis nur, wenn er den bisherigen Bestwert strikt übertrifft; der erste Wert zählt.",
+    "Rekordtypen: maxWeight (maximales Gewicht), estimatedOneRepMax (1RM je Training), volume (Volumen je Training), maxRepetitions (maximale Wiederholungen je Satz im Training).",
+    "Wiederholungsrekorde (repRecords): je Übung über alle relevanten Trainings das maximale effektive Gewicht erfasster Sätze mit repetitions >= N, für N in 1, 3, 5, 8, 10, 12; null ohne Satz.",
+    "Trainingszusammenfassung: Dauer = endedAtUtc − startedAtUtc in Sekunden; setCount, totalRepetitions und volumeKg über alle Blöcke; bestSets je Übung = Satz mit höchstem geschätztem 1RM (weightKg = effektives Gewicht); newRecords = Rekordereignisse dieses Trainings gegenüber der Historie.",
+    "Rundung: Die Berechnung erfolgt ungerundet; die Ausgabe wird kaufmännisch (Hälfte aufrunden) auf 2 Nachkommastellen gerundet. Die Fixture enthält bereits gerundete Werte; Tests vergleichen gerundete Ist-Werte."
+  ],
+  "cases": [
+    {
+      "name": "warmups-ausgeschlossen",
+      "description": "Aufwärmsatz wird nicht gezählt, Dropsatz schon.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "warmup",
+                  "weightKg": 20,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "s2",
+                  "setType": "normal",
+                  "weightKg": 50,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "s3",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s4",
+                  "setType": "dropset",
+                  "weightKg": 30,
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-bench",
+                "setCount": 3,
+                "totalRepetitions": 23,
+                "maxRepetitions": 10,
+                "volumeKg": 1040,
+                "maxWeightKg": 60,
+                "averageWeightKg": 45.22,
+                "estimatedOneRepMaxKg": 70,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "warmups-einbezogen",
+      "description": "Mit includeWarmups true zählt der Aufwärmsatz mit.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": true,
+      "exercises": [
+        {
+          "id": "base-bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "warmup",
+                  "weightKg": 20,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "s2",
+                  "setType": "normal",
+                  "weightKg": 50,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "s3",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s4",
+                  "setType": "dropset",
+                  "weightKg": 30,
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-bench",
+                "setCount": 4,
+                "totalRepetitions": 33,
+                "maxRepetitions": 10,
+                "volumeKg": 1240,
+                "maxWeightKg": 60,
+                "averageWeightKg": 37.58,
+                "estimatedOneRepMaxKg": 70,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "geloeschtes-training-ausgeschlossen",
+      "description": "Das gelöschte Training enthält den schwersten Satz und taucht nirgends auf.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w-deleted",
+          "title": "Gelöscht",
+          "startedAtUtc": "2026-10-10T08:00:00Z",
+          "endedAtUtc": "2026-10-10T09:00:00Z",
+          "deletedAtUtc": "2026-10-11T10:00:00Z",
+          "exercises": [
+            {
+              "workoutExerciseId": "w-deleted-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "d1",
+                  "setType": "normal",
+                  "weightKg": 150,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w2",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-12T08:00:00Z",
+          "endedAtUtc": "2026-10-12T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w2-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w2",
+            "exercises": [
+              {
+                "workoutExerciseId": "w2-bench",
+                "setCount": 1,
+                "totalRepetitions": 5,
+                "maxRepetitions": 5,
+                "volumeKg": 500,
+                "maxWeightKg": 100,
+                "averageWeightKg": 100,
+                "estimatedOneRepMaxKg": 116.67,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": [
+          {
+            "exerciseId": "base-bench",
+            "records": {
+              "maxWeight": [
+                {
+                  "workoutId": "w2",
+                  "value": 100
+                }
+              ],
+              "estimatedOneRepMax": [
+                {
+                  "workoutId": "w2",
+                  "value": 116.67
+                }
+              ],
+              "volume": [
+                {
+                  "workoutId": "w2",
+                  "value": 500
+                }
+              ],
+              "maxRepetitions": [
+                {
+                  "workoutId": "w2",
+                  "value": 5
+                }
+              ]
+            },
+            "repRecords": {
+              "1": 100,
+              "3": 100,
+              "5": 100,
+              "8": null,
+              "10": null,
+              "12": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "laufendes-training-ausgeschlossen",
+      "description": "Ein aktives Training (endedAtUtc null) fließt nicht in Kennzahlen und Rekorde ein.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-12T08:00:00Z",
+          "endedAtUtc": "2026-10-12T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w2-active",
+          "title": "Laufend",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": null,
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w2a-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-bench",
+                "setCount": 1,
+                "totalRepetitions": 5,
+                "maxRepetitions": 5,
+                "volumeKg": 500,
+                "maxWeightKg": 100,
+                "averageWeightKg": 100,
+                "estimatedOneRepMaxKg": 116.67,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": [
+          {
+            "exerciseId": "base-bench",
+            "records": {
+              "maxWeight": [
+                {
+                  "workoutId": "w1",
+                  "value": 100
+                }
+              ],
+              "estimatedOneRepMax": [
+                {
+                  "workoutId": "w1",
+                  "value": 116.67
+                }
+              ],
+              "volume": [
+                {
+                  "workoutId": "w1",
+                  "value": 500
+                }
+              ],
+              "maxRepetitions": [
+                {
+                  "workoutId": "w1",
+                  "value": 5
+                }
+              ]
+            },
+            "repRecords": {
+              "1": 100,
+              "3": 100,
+              "5": 100,
+              "8": null,
+              "10": null,
+              "12": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "checkin-auswahl",
+      "description": "Jüngster Check-in am oder vor dem Starttag (14.10. 80 kg, nicht 10.10. 81 kg). Klimmzug 80 kg + 10 kg Zusatz ergibt 90 kg.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-pullup",
+          "exerciseType": "bodyweightLoaded"
+        }
+      ],
+      "checkIns": [
+        {
+          "localDate": "2026-10-10",
+          "weightKg": 81
+        },
+        {
+          "localDate": "2026-10-14",
+          "weightKg": 80
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Rücken",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-pullup",
+              "sourceExerciseId": "base-pullup",
+              "exerciseNameSnapshot": "Klimmzug",
+              "exerciseTypeSnapshot": "bodyweightLoaded",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 10,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-pullup",
+                "setCount": 1,
+                "totalRepetitions": 5,
+                "maxRepetitions": 5,
+                "volumeKg": 450,
+                "maxWeightKg": 90,
+                "averageWeightKg": 90,
+                "estimatedOneRepMaxKg": 105,
+                "bodyweightKg": 80,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "checkin-nach-training-fehlt",
+      "description": "Der einzige Check-in liegt nach dem Training: Körpergewicht fehlt, der Körpergewichtsanteil ist 0.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-pullup",
+          "exerciseType": "bodyweightLoaded"
+        }
+      ],
+      "checkIns": [
+        {
+          "localDate": "2026-10-16",
+          "weightKg": 80
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Rücken",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-pullup",
+              "sourceExerciseId": "base-pullup",
+              "exerciseNameSnapshot": "Klimmzug",
+              "exerciseTypeSnapshot": "bodyweightLoaded",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-pullup",
+                "setCount": 1,
+                "totalRepetitions": 8,
+                "maxRepetitions": 8,
+                "volumeKg": 0,
+                "maxWeightKg": 0,
+                "averageWeightKg": 0,
+                "estimatedOneRepMaxKg": 0,
+                "bodyweightKg": null,
+                "bodyweightMissing": true
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "checkin-korrigiert",
+      "description": "Nach der Korrektur von 80 kg auf 79 kg verwenden Kennzahlen bei der nächsten Berechnung 79 kg.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-pullup",
+          "exerciseType": "bodyweightLoaded"
+        }
+      ],
+      "checkIns": [
+        {
+          "localDate": "2026-10-10",
+          "weightKg": 81
+        },
+        {
+          "localDate": "2026-10-14",
+          "weightKg": 79
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Rücken",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-pullup",
+              "sourceExerciseId": "base-pullup",
+              "exerciseNameSnapshot": "Klimmzug",
+              "exerciseTypeSnapshot": "bodyweightLoaded",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 10,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-pullup",
+                "setCount": 1,
+                "totalRepetitions": 5,
+                "maxRepetitions": 5,
+                "volumeKg": 445,
+                "maxWeightKg": 89,
+                "averageWeightKg": 89,
+                "estimatedOneRepMaxKg": 103.83,
+                "bodyweightKg": 79,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "zeitzone-lokaler-starttag",
+      "description": "Start 14.10. 22:30 UTC ist 15.10. 00:30 in Berlin; maßgeblich ist der Check-in vom 15.10. (85 kg).",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-pullup",
+          "exerciseType": "bodyweightLoaded"
+        }
+      ],
+      "checkIns": [
+        {
+          "localDate": "2026-10-14",
+          "weightKg": 80
+        },
+        {
+          "localDate": "2026-10-15",
+          "weightKg": 85
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Rücken",
+          "startedAtUtc": "2026-10-14T22:30:00Z",
+          "endedAtUtc": "2026-10-14T23:30:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-pullup",
+              "sourceExerciseId": "base-pullup",
+              "exerciseNameSnapshot": "Klimmzug",
+              "exerciseTypeSnapshot": "bodyweightLoaded",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 10,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-pullup",
+                "setCount": 1,
+                "totalRepetitions": 5,
+                "maxRepetitions": 5,
+                "volumeKg": 475,
+                "maxWeightKg": 95,
+                "averageWeightKg": 95,
+                "estimatedOneRepMaxKg": 110.83,
+                "bodyweightKg": 85,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "liegestuetz-ohne-checkin",
+      "description": "Ohne Check-in ist der Körpergewichtsanteil 0 und bodyweightMissing gesetzt.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-pushup",
+          "exerciseType": "bodyweightOnly",
+          "bodyweightFactor": 0.64
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-pushup",
+              "sourceExerciseId": "base-pushup",
+              "exerciseNameSnapshot": "Liegestütz",
+              "exerciseTypeSnapshot": "bodyweightOnly",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-pushup",
+                "setCount": 1,
+                "totalRepetitions": 10,
+                "maxRepetitions": 10,
+                "volumeKg": 0,
+                "maxWeightKg": 0,
+                "averageWeightKg": 0,
+                "estimatedOneRepMaxKg": 0,
+                "bodyweightKg": null,
+                "bodyweightMissing": true
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "liegestuetz-64-prozent",
+      "description": "Körpergewichtsanteil 64 % von 80 kg ergibt 51,2 kg pro Wiederholung.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-pushup",
+          "exerciseType": "bodyweightOnly",
+          "bodyweightFactor": 0.64
+        }
+      ],
+      "checkIns": [
+        {
+          "localDate": "2026-10-10",
+          "weightKg": 80
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-pushup",
+              "sourceExerciseId": "base-pushup",
+              "exerciseNameSnapshot": "Liegestütz",
+              "exerciseTypeSnapshot": "bodyweightOnly",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-pushup",
+                "setCount": 1,
+                "totalRepetitions": 10,
+                "maxRepetitions": 10,
+                "volumeKg": 512,
+                "maxWeightKg": 51.2,
+                "averageWeightKg": 51.2,
+                "estimatedOneRepMaxKg": 68.27,
+                "bodyweightKg": 80,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "assistiert",
+      "description": "80 kg Körpergewicht minus 20 kg Unterstützung ergibt 60 kg.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-assisted-pullup",
+          "exerciseType": "assisted"
+        }
+      ],
+      "checkIns": [
+        {
+          "localDate": "2026-10-14",
+          "weightKg": 80
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Rücken",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-assisted",
+              "sourceExerciseId": "base-assisted-pullup",
+              "exerciseNameSnapshot": "Assistierter Klimmzug",
+              "exerciseTypeSnapshot": "assisted",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 20,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-assisted",
+                "setCount": 1,
+                "totalRepetitions": 5,
+                "maxRepetitions": 5,
+                "volumeKg": 300,
+                "maxWeightKg": 60,
+                "averageWeightKg": 60,
+                "estimatedOneRepMaxKg": 70,
+                "bodyweightKg": 80,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "volumen-und-durchschnitt",
+      "description": "Zwei Sätze 50 kg × 10 und 60 kg × 5: Volumen 800, Durchschnitt 53,33, Maximum 60.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 50,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "s2",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-bench",
+                "setCount": 2,
+                "totalRepetitions": 15,
+                "maxRepetitions": 10,
+                "volumeKg": 800,
+                "maxWeightKg": 60,
+                "averageWeightKg": 53.33,
+                "estimatedOneRepMaxKg": 70,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "einzel-und-1rm",
+      "description": "100 kg × 6 ergibt 1RM 120; 140 kg × 1 ergibt 140 (Einzelwiederholung).",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-bench",
+          "exerciseType": "strength"
+        },
+        {
+          "id": "base-squat",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Ganzkörper",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 6
+                }
+              ]
+            },
+            {
+              "workoutExerciseId": "w1-squat",
+              "sourceExerciseId": "base-squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s2",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-bench",
+                "setCount": 1,
+                "totalRepetitions": 6,
+                "maxRepetitions": 6,
+                "volumeKg": 600,
+                "maxWeightKg": 100,
+                "averageWeightKg": 100,
+                "estimatedOneRepMaxKg": 120,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              },
+              {
+                "workoutExerciseId": "w1-squat",
+                "setCount": 1,
+                "totalRepetitions": 1,
+                "maxRepetitions": 1,
+                "volumeKg": 140,
+                "maxWeightKg": 140,
+                "averageWeightKg": 140,
+                "estimatedOneRepMaxKg": 140,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": []
+      }
+    },
+    {
+      "name": "rekordverlauf",
+      "description": "Volumen 500, 600, 600, 550, 700 (je ein Satz × 1): Rekordereignisse 500, 600, 700; Gleichstand zählt nicht.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-01T08:00:00Z",
+          "endedAtUtc": "2026-10-01T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 500,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w2",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-02T08:00:00Z",
+          "endedAtUtc": "2026-10-02T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w2-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 600,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w3",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-03T08:00:00Z",
+          "endedAtUtc": "2026-10-03T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w3-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 600,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w4",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-04T08:00:00Z",
+          "endedAtUtc": "2026-10-04T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w4-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 550,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w5",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-05T08:00:00Z",
+          "endedAtUtc": "2026-10-05T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w5-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 700,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-bench",
+                "setCount": 1,
+                "totalRepetitions": 1,
+                "maxRepetitions": 1,
+                "volumeKg": 500,
+                "maxWeightKg": 500,
+                "averageWeightKg": 500,
+                "estimatedOneRepMaxKg": 500,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          },
+          {
+            "workoutId": "w2",
+            "exercises": [
+              {
+                "workoutExerciseId": "w2-bench",
+                "setCount": 1,
+                "totalRepetitions": 1,
+                "maxRepetitions": 1,
+                "volumeKg": 600,
+                "maxWeightKg": 600,
+                "averageWeightKg": 600,
+                "estimatedOneRepMaxKg": 600,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          },
+          {
+            "workoutId": "w3",
+            "exercises": [
+              {
+                "workoutExerciseId": "w3-bench",
+                "setCount": 1,
+                "totalRepetitions": 1,
+                "maxRepetitions": 1,
+                "volumeKg": 600,
+                "maxWeightKg": 600,
+                "averageWeightKg": 600,
+                "estimatedOneRepMaxKg": 600,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          },
+          {
+            "workoutId": "w4",
+            "exercises": [
+              {
+                "workoutExerciseId": "w4-bench",
+                "setCount": 1,
+                "totalRepetitions": 1,
+                "maxRepetitions": 1,
+                "volumeKg": 550,
+                "maxWeightKg": 550,
+                "averageWeightKg": 550,
+                "estimatedOneRepMaxKg": 550,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          },
+          {
+            "workoutId": "w5",
+            "exercises": [
+              {
+                "workoutExerciseId": "w5-bench",
+                "setCount": 1,
+                "totalRepetitions": 1,
+                "maxRepetitions": 1,
+                "volumeKg": 700,
+                "maxWeightKg": 700,
+                "averageWeightKg": 700,
+                "estimatedOneRepMaxKg": 700,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": [
+          {
+            "exerciseId": "base-bench",
+            "records": {
+              "maxWeight": [
+                {
+                  "workoutId": "w1",
+                  "value": 500
+                },
+                {
+                  "workoutId": "w2",
+                  "value": 600
+                },
+                {
+                  "workoutId": "w5",
+                  "value": 700
+                }
+              ],
+              "estimatedOneRepMax": [
+                {
+                  "workoutId": "w1",
+                  "value": 500
+                },
+                {
+                  "workoutId": "w2",
+                  "value": 600
+                },
+                {
+                  "workoutId": "w5",
+                  "value": 700
+                }
+              ],
+              "volume": [
+                {
+                  "workoutId": "w1",
+                  "value": 500
+                },
+                {
+                  "workoutId": "w2",
+                  "value": 600
+                },
+                {
+                  "workoutId": "w5",
+                  "value": 700
+                }
+              ],
+              "maxRepetitions": [
+                {
+                  "workoutId": "w1",
+                  "value": 1
+                }
+              ]
+            },
+            "repRecords": {
+              "1": 700,
+              "3": null,
+              "5": null,
+              "8": null,
+              "10": null,
+              "12": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "rekord-nach-bearbeitung",
+      "description": "Der frühere Rekord (120 kg) wurde auf 110 kg korrigiert; 100 kg bleibt darunter. Der verbleibende Bestwert ist der Rekord.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-01T08:00:00Z",
+          "endedAtUtc": "2026-10-01T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 110,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w2",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-05T08:00:00Z",
+          "endedAtUtc": "2026-10-05T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w2-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-bench",
+                "setCount": 1,
+                "totalRepetitions": 1,
+                "maxRepetitions": 1,
+                "volumeKg": 110,
+                "maxWeightKg": 110,
+                "averageWeightKg": 110,
+                "estimatedOneRepMaxKg": 110,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          },
+          {
+            "workoutId": "w2",
+            "exercises": [
+              {
+                "workoutExerciseId": "w2-bench",
+                "setCount": 1,
+                "totalRepetitions": 1,
+                "maxRepetitions": 1,
+                "volumeKg": 100,
+                "maxWeightKg": 100,
+                "averageWeightKg": 100,
+                "estimatedOneRepMaxKg": 100,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": [
+          {
+            "exerciseId": "base-bench",
+            "records": {
+              "maxWeight": [
+                {
+                  "workoutId": "w1",
+                  "value": 110
+                }
+              ],
+              "estimatedOneRepMax": [
+                {
+                  "workoutId": "w1",
+                  "value": 110
+                }
+              ],
+              "volume": [
+                {
+                  "workoutId": "w1",
+                  "value": 110
+                }
+              ],
+              "maxRepetitions": [
+                {
+                  "workoutId": "w1",
+                  "value": 1
+                }
+              ]
+            },
+            "repRecords": {
+              "1": 110,
+              "3": null,
+              "5": null,
+              "8": null,
+              "10": null,
+              "12": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "wiederholungsrekorde",
+      "description": "Der einzige Satz 100 kg × 8 zählt für 1, 3, 5 und 8 Wiederholungen, nicht für 10 und 12.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-bench",
+                "setCount": 1,
+                "totalRepetitions": 8,
+                "maxRepetitions": 8,
+                "volumeKg": 800,
+                "maxWeightKg": 100,
+                "averageWeightKg": 100,
+                "estimatedOneRepMaxKg": 126.67,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": [
+          {
+            "exerciseId": "base-bench",
+            "records": {
+              "maxWeight": [
+                {
+                  "workoutId": "w1",
+                  "value": 100
+                }
+              ],
+              "estimatedOneRepMax": [
+                {
+                  "workoutId": "w1",
+                  "value": 126.67
+                }
+              ],
+              "volume": [
+                {
+                  "workoutId": "w1",
+                  "value": 800
+                }
+              ],
+              "maxRepetitions": [
+                {
+                  "workoutId": "w1",
+                  "value": 8
+                }
+              ]
+            },
+            "repRecords": {
+              "1": 100,
+              "3": 100,
+              "5": 100,
+              "8": 100,
+              "10": null,
+              "12": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "neuer-1rm-rekord-in-zusammenfassung",
+      "description": "Bisheriger 1RM-Rekord Kniebeuge 150 kg; das Training 130 kg × 6 ergibt 156 kg und ist damit neuer 1RM-Rekord (zusätzlich Volumen und Wiederholungen).",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-squat",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w0",
+          "title": "Beine",
+          "startedAtUtc": "2026-10-01T08:00:00Z",
+          "endedAtUtc": "2026-10-01T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w0-squat",
+              "sourceExerciseId": "base-squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 150,
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w1",
+          "title": "Beine",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:05:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-squat",
+              "sourceExerciseId": "base-squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 130,
+                  "repetitions": 6
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "summary": {
+          "workoutId": "w1",
+          "durationSeconds": 3900,
+          "setCount": 1,
+          "totalRepetitions": 6,
+          "volumeKg": 780,
+          "bestSets": [
+            {
+              "exerciseId": "base-squat",
+              "weightKg": 130,
+              "repetitions": 6,
+              "estimatedOneRepMaxKg": 156
+            }
+          ],
+          "newRecords": [
+            {
+              "exerciseId": "base-squat",
+              "kind": "estimatedOneRepMax",
+              "value": 156
+            },
+            {
+              "exerciseId": "base-squat",
+              "kind": "volume",
+              "value": 780
+            },
+            {
+              "exerciseId": "base-squat",
+              "kind": "maxRepetitions",
+              "value": 6
+            }
+          ]
+        },
+        "workouts": [
+          {
+            "workoutId": "w0",
+            "exercises": [
+              {
+                "workoutExerciseId": "w0-squat",
+                "setCount": 1,
+                "totalRepetitions": 1,
+                "maxRepetitions": 1,
+                "volumeKg": 150,
+                "maxWeightKg": 150,
+                "averageWeightKg": 150,
+                "estimatedOneRepMaxKg": 150,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          },
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-squat",
+                "setCount": 1,
+                "totalRepetitions": 6,
+                "maxRepetitions": 6,
+                "volumeKg": 780,
+                "maxWeightKg": 130,
+                "averageWeightKg": 130,
+                "estimatedOneRepMaxKg": 156,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": [
+          {
+            "exerciseId": "base-squat",
+            "records": {
+              "maxWeight": [
+                {
+                  "workoutId": "w0",
+                  "value": 150
+                }
+              ],
+              "estimatedOneRepMax": [
+                {
+                  "workoutId": "w0",
+                  "value": 150
+                },
+                {
+                  "workoutId": "w1",
+                  "value": 156
+                }
+              ],
+              "volume": [
+                {
+                  "workoutId": "w0",
+                  "value": 150
+                },
+                {
+                  "workoutId": "w1",
+                  "value": 780
+                }
+              ],
+              "maxRepetitions": [
+                {
+                  "workoutId": "w0",
+                  "value": 1
+                },
+                {
+                  "workoutId": "w1",
+                  "value": 6
+                }
+              ]
+            },
+            "repRecords": {
+              "1": 150,
+              "3": 130,
+              "5": 130,
+              "8": null,
+              "10": null,
+              "12": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "zusammenfassung-einfach",
+      "description": "Ein erfasster Satz 20 kg × 6: 1 Satz, 6 Wiederholungen, 120 kg Volumen, bester Satz 20 kg × 6; als erstes Training sind alle Werte Rekorde.",
+      "timeZone": "Europe/Berlin",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "base-bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "title": "Brust",
+          "startedAtUtc": "2026-10-15T08:00:00Z",
+          "endedAtUtc": "2026-10-15T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-bench",
+              "sourceExerciseId": "base-bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1",
+                  "setType": "normal",
+                  "weightKg": 20,
+                  "repetitions": 6
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "summary": {
+          "workoutId": "w1",
+          "durationSeconds": 3600,
+          "setCount": 1,
+          "totalRepetitions": 6,
+          "volumeKg": 120,
+          "bestSets": [
+            {
+              "exerciseId": "base-bench",
+              "weightKg": 20,
+              "repetitions": 6,
+              "estimatedOneRepMaxKg": 24
+            }
+          ],
+          "newRecords": [
+            {
+              "exerciseId": "base-bench",
+              "kind": "maxWeight",
+              "value": 20
+            },
+            {
+              "exerciseId": "base-bench",
+              "kind": "estimatedOneRepMax",
+              "value": 24
+            },
+            {
+              "exerciseId": "base-bench",
+              "kind": "volume",
+              "value": 120
+            },
+            {
+              "exerciseId": "base-bench",
+              "kind": "maxRepetitions",
+              "value": 6
+            }
+          ]
+        },
+        "workouts": [
+          {
+            "workoutId": "w1",
+            "exercises": [
+              {
+                "workoutExerciseId": "w1-bench",
+                "setCount": 1,
+                "totalRepetitions": 6,
+                "maxRepetitions": 6,
+                "volumeKg": 120,
+                "maxWeightKg": 20,
+                "averageWeightKg": 20,
+                "estimatedOneRepMaxKg": 24,
+                "bodyweightKg": null,
+                "bodyweightMissing": false
+              }
+            ]
+          }
+        ],
+        "exercises": [
+          {
+            "exerciseId": "base-bench",
+            "records": {
+              "maxWeight": [
+                {
+                  "workoutId": "w1",
+                  "value": 20
+                }
+              ],
+              "estimatedOneRepMax": [
+                {
+                  "workoutId": "w1",
+                  "value": 24
+                }
+              ],
+              "volume": [
+                {
+                  "workoutId": "w1",
+                  "value": 120
+                }
+              ],
+              "maxRepetitions": [
+                {
+                  "workoutId": "w1",
+                  "value": 6
+                }
+              ]
+            },
+            "repRecords": {
+              "1": 20,
+              "3": 20,
+              "5": 20,
+              "8": null,
+              "10": null,
+              "12": null
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
