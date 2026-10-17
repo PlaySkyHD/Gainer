@@ -1,0 +1,23 @@
+{
+  "baseRef": null,
+  "reason": "rebuild-training-logging: Insights v2 und erweiterter Übungskatalog; Mobile-App und Web-Client sind im selben Change angepasst.",
+  "accepted": [
+    "Removed property: BestSetResponse.weightKg",
+    "Added required property: BestSetResponse.effectiveWeightKg",
+    "Added required property: ExerciseCatalogItemResponse.exerciseType",
+    "Added required property: ExerciseCatalogItemResponse.notes",
+    "Added required property: ExerciseCatalogItemResponse.bodyweightFactor",
+    "Added required property: ExerciseCatalogItemResponse.weightFactor",
+    "Added required property: ExerciseCatalogItemResponse.categoryIds",
+    "Added required property: ExerciseCatalogResponse.categories",
+    "Removed property: ExerciseProgressPointResponse.bestWeightKg",
+    "Removed property: ExerciseProgressPointResponse.bestRepetitions",
+    "Added required property: ExerciseProgressPointResponse.maxWeightKg",
+    "Added required property: ExerciseProgressPointResponse.maxRepetitions",
+    "Added required property: ExerciseProgressPointResponse.bodyweightMissing",
+    "Added required property: ExerciseProgressResponse.volumeAlgorithmVersion",
+    "Added required property: ExerciseProgressResponse.estimatedOneRepMaxAlgorithmVersion",
+    "Added required property: ExerciseProgressResponse.records",
+    "Added required property: TrainingInsightsResponse.bodyweightMissing"
+  ]
+}

@@ -77,6 +77,8 @@ ASP.NET OpenAPI ist die einzige HTTP-Vertragsquelle. Ein Backend-Build erzeugt
 `apps/web/src/lib/api/generated.ts`. Beide Dateien werden eingecheckt und CI
 lehnt nicht regenerierte oder gegenüber dem Ziel-Branch inkompatible Änderungen ab.
 
+Bewusst inkompatible Änderungen werden in `contracts/openapi/accepted-breaking-changes.json` eingetragen: Jeder Eintrag in `accepted` muss exakt der Meldung von `scripts/Test-OpenApiCompatibility.ps1` entsprechen, und `reason` begründet die Änderung. Die Liste ist nur für den Change gedacht, der den Vertrag ändert; neue Befunde, die nicht gelistet sind, lassen das Skript weiterhin fehlschlagen. Nach dem Merge ist die Liste zu leeren, sobald das Skript die Einträge nicht mehr meldet (veraltete Einträge erzeugen eine Warnung), damit der Schutz für spätere Änderungen wieder vollständig greift.
+
 ## Open Food Facts lokal
 
 Die externe Lebensmittelsuche ist read-only und benötigt keine API-Zugangsdaten. Open Food Facts verlangt jedoch einen identifizierenden User-Agent; deshalb ist eine erreichbare technische Kontaktadresse erforderlich. Für den Aspire AppHost wird sie lokal als Parameter gespeichert:
