@@ -56,8 +56,8 @@ Jeder Task benötigt grüne betroffene Builds und Tests, bevor sein Haken gesetz
 
 ## 9. Flutter: Tagebuch und aktives Training
 
-- [ ] 9.1 Training-Tab mit Segment „Tagebuch | Pläne | Statistik“ und Tagebuch nach Monaten mit Datums-Badges und Wischen zum Löschen (D10, Spec `training-screens`) umsetzen; Widget-Test für die Monatsgruppierung und Golden-Test beider Modi.
-- [ ] 9.2 Aktives Training als Vollbild-Modal mit Minimieren und kompakter Leiste über der Tableiste in allen Tabs umsetzen; Widget-Tests für Minimieren/Wiederöffnen und Wiederherstellung nach Neustart.
+- [x] 9.1 Training-Tab mit Segment „Tagebuch | Pläne | Statistik“ und Tagebuch nach Monaten mit Datums-Badges und Wischen zum Löschen (D10, Spec `training-screens`) umsetzen; Widget-Test für die Monatsgruppierung und Golden-Test beider Modi.
+- [x] 9.2 Aktives Training als Vollbild-Modal mit Minimieren und kompakter Leiste über der Tableiste in allen Tabs umsetzen; Widget-Tests für Minimieren/Wiederöffnen und Wiederherstellung nach Neustart.
 - [ ] 9.3 Übungskarten mit Fußzeilenaktionen und Satzzeilen nach `training-screens` mit Inline-Eingabe (Komma/Punkt, Ziffernblock mit Zubehörleiste zurück/weiter/fertig, Feldfehler), blassen Platzhaltern, Übernahme per Tipp auf die Satznummer, Satztyp-Menü, Duplizieren/Entfernen/Umordnen sowie optionaler RIR-Spalte umsetzen; Widget-Tests decken die Szenarien aus `set-logging` ab.
 - [ ] 9.4 Übungsauswahl mit Suche, Kategorien, zuletzt verwendet und Mehrfachauswahl als Superset sowie Neuordnen-Sheet mit Ziehgriffen und Übung ersetzen umsetzen; Widget-Tests für Suche „kniebeu“, Superset-Hinzufügen und Reihenfolge.
 - [ ] 9.5 Trainingskopf mit Titel, Notiz und Start/Ende (ohne Körpergewicht) sowie Gewichtseinheit kg/lbs umsetzen; Tests für ungültige Endzeit und lbs-Umrechnung.

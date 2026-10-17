@@ -20,6 +20,7 @@ class MobileTabScaffold extends StatefulWidget {
   final Widget Function(BuildContext context, MobileArea area) tabBuilder;
 
   /// Reservierter Platz direkt über der Tableiste, etwa für die kompakte Trainingsleiste.
+  /// Der Slot liefert seinen Abstand selbst, damit er ohne Inhalt keinen Platz belegt.
   final Widget? compactTrainingBar;
 
   @override
@@ -67,33 +68,46 @@ class _MobileTabScaffoldState extends State<MobileTabScaffold> {
                 ),
               ),
             ),
-            KeyedSubtree(
-              key: _bottomKey,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    GainerSpacing.m,
-                    0,
-                    GainerSpacing.m,
-                    GainerSpacing.xs,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.compactTrainingBar case final bar?) ...[
-                        bar,
-                        const SizedBox(height: GainerSpacing.xs),
-                      ],
-                      GainerFloatingTabBar(
-                        items: [
-                          for (final area in MobileArea.values)
-                            GainerTabItem(label: area.label, icon: area.icon),
-                        ],
-                        currentIndex: widget.model.selectedIndex,
-                        onTap: widget.model.selectTab,
+            // Ändert sich die Höhe des Bereichs (z. B. wenn die Trainingsleiste
+            // erscheint), wird nach dem Frame neu gemessen, damit der Tastatur-
+            // Abstand stimmt.
+            NotificationListener<SizeChangedLayoutNotification>(
+              onNotification: (_) {
+                WidgetsBinding.instance.addPostFrameCallback(
+                  (_) => _measureBottom(),
+                );
+                return true;
+              },
+              child: SizeChangedLayoutNotifier(
+                child: KeyedSubtree(
+                  key: _bottomKey,
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        GainerSpacing.m,
+                        0,
+                        GainerSpacing.m,
+                        GainerSpacing.xs,
                       ),
-                    ],
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ?widget.compactTrainingBar,
+                          GainerFloatingTabBar(
+                            items: [
+                              for (final area in MobileArea.values)
+                                GainerTabItem(
+                                  label: area.label,
+                                  icon: area.icon,
+                                ),
+                            ],
+                            currentIndex: widget.model.selectedIndex,
+                            onTap: widget.model.selectTab,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),

@@ -8,6 +8,7 @@ import '../../../ui/features/body/health/health_review_view_model.dart';
 import '../../../ui/features/coach/coach_view_model.dart';
 import '../../../ui/features/nutrition/nutrition_view_model.dart';
 import '../../../ui/features/progress/progress_view_model.dart';
+import '../../../ui/features/training/active_workout_controller.dart';
 import '../../models/api/api_models.dart';
 import '../../models/local/local_mutation.dart';
 import '../../repositories/body/body_repository.dart';
@@ -340,6 +341,7 @@ class MobileAuthController extends ChangeNotifier
       store: store,
       catalog: ApiExerciseCatalogProvider(api, store: store),
     );
+    final activeWorkout = ActiveWorkoutController(training);
     final nutrition = NutritionRepository(
       store: store,
       online: online ? ApiNutritionOnlineProvider(api) : null,
@@ -392,6 +394,7 @@ class MobileAuthController extends ChangeNotifier
       online: online,
       bodyViewModel: bodyViewModel,
       training: training,
+      activeWorkout: activeWorkout,
       nutritionViewModel: nutritionViewModel,
       healthViewModel: healthViewModel,
       progressViewModel: progressViewModel,
@@ -409,6 +412,7 @@ class MobileAuthController extends ChangeNotifier
     account = nextScope;
     nextScope.nativeLifecycle.activate();
     unawaited(nextScope.syncScheduler.start());
+    unawaited(nextScope.activeWorkout.load());
     state = online
         ? MobileAuthState.signedIn
         : MobileAuthState.offlineKnownUser;
@@ -512,6 +516,7 @@ class AccountScope {
     required this.online,
     required this.bodyViewModel,
     required this.training,
+    required this.activeWorkout,
     required this.nutritionViewModel,
     required this.healthViewModel,
     required this.progressViewModel,
@@ -535,6 +540,7 @@ class AccountScope {
   final bool online;
   final BodyViewModel bodyViewModel;
   final TrainingLogRepository training;
+  final ActiveWorkoutController activeWorkout;
   final NutritionViewModel nutritionViewModel;
   final HealthReviewViewModel healthViewModel;
   final ProgressViewModel progressViewModel;
@@ -584,13 +590,18 @@ class AccountScope {
       SyncRunState.retryPending,
       SyncRunState.inactiveClient,
     }.contains(report.state)) {
-      await Future.wait([bodyViewModel.load(), nutritionViewModel.load()]);
+      await Future.wait([
+        bodyViewModel.load(),
+        nutritionViewModel.load(),
+        activeWorkout.load(),
+      ]);
     }
     return report;
   }
 
   Future<void> dispose({bool closeApi = true}) async {
     await _localCommitSubscription.cancel();
+    activeWorkout.dispose();
     await syncScheduler.dispose();
     final syncRun = _syncInFlight;
     if (syncRun != null) {
