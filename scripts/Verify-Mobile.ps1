@@ -715,8 +715,8 @@ function Invoke-UiCapturePhase {
     $expectedScreenshots = @(
         'tab-heute', 'tab-checkin', 'tab-essen', 'tab-training', 'tab-mehr',
         'tab-dark-heute', 'tab-dark-checkin', 'tab-dark-essen', 'tab-dark-training', 'tab-dark-mehr',
-        'sheet-checkin', 'sheet-goal', 'date-picker', 'editor-training', 'editor-essen',
-        'sheet-dark-checkin', 'editor-dark-essen', 'editor-dark-training',
+        'sheet-checkin', 'sheet-goal', 'date-picker', 'training-workout', 'training-minimized', 'editor-essen',
+        'sheet-dark-checkin', 'editor-dark-essen',
         'exercise-progress', 'exercise-dark-progress'
     )
     $captureRoot = Join-Path $repositoryRoot 'artifacts/mobile/ui-captures'
