@@ -288,6 +288,97 @@ void main() {
     await tester.pumpAndSettle();
     expect(sync.acceptedConflictIds, ['conflict-1']);
   });
+
+  testWidgets('source handover reveals the one-time code only on request', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions()
+      ..pending = PendingHandoverRecord(
+        apiOrigin: 'https://gainer.markfort.xyz',
+        accountId: 'a1234567-1234-4234-8234-123456789abc',
+        requestId: 'd1234567-1234-4234-8234-123456789abc',
+        sourceClientId: 'b1234567-1234-4234-8234-123456789abc',
+        targetClientId: 'target-client',
+        handoverId: 'c1234567-1234-4234-8234-123456789abc',
+        phase: 'sourceBegan',
+        frozenRevision: 41,
+        expiresAtUtc: DateTime.now().toUtc().add(const Duration(hours: 1)),
+        oneTimeCode: 'one_time-code-123',
+      );
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.light,
+        home: SyncScreen(
+          sync: sync,
+          isOnline: true,
+          accountId: 'a1234567-1234-4234-8234-123456789abc',
+          apiOrigin: 'https://gainer.markfort.xyz',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('one_time-code-123'), findsNothing);
+
+    await tester.tap(find.text('Einmalcode'));
+    await tester.pumpAndSettle();
+    expect(find.text('Einmalcode anzeigen'), findsOneWidget);
+    expect(find.textContaining('one_time-code-123'), findsOneWidget);
+  });
+
+  testWidgets('local retry conflict action asks before resubmitting', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions()
+      ..conflicts = [
+        LocalConflictRecord(
+          conflictId: 'conflict-2',
+          aggregateType: 'workout',
+          aggregateId: 'workout-7',
+          createdAtUtc: DateTime.utc(2026, 10, 12),
+          code: 'version_conflict',
+          detail: {'message': 'Neue Serverversion vorhanden.'},
+        ),
+      ];
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.light,
+        home: SyncScreen(
+          sync: sync,
+          isOnline: true,
+          accountId: 'a1234567-1234-4234-8234-123456789abc',
+          apiOrigin: 'https://gainer.markfort.xyz',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Lokale Änderung erneut senden'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.text('Lokale Änderung erneut senden'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Die ausstehende lokale Änderung wird mit einer neuen sicheren Änderungs-ID gegen die aktuelle Serverversion gesendet. Der Vorgang kann erneut abgelehnt werden.',
+      ),
+      findsOneWidget,
+    );
+    expect(sync.retriedConflictIds, isEmpty);
+
+    await tester.tap(find.text('Erneut senden'));
+    await tester.pumpAndSettle();
+    expect(sync.retriedConflictIds, ['conflict-2']);
+  });
 }
 
 class _SyncActions implements MobileSyncActions {
@@ -300,6 +391,7 @@ class _SyncActions implements MobileSyncActions {
   int beginCalls = 0;
   int pendingReads = 0;
   int recoveryCalls = 0;
+  final retriedConflictIds = <String>[];
 
   @override
   Future<PendingHandoverRecord?> readPendingHandover() async {
@@ -382,7 +474,10 @@ class _SyncActions implements MobileSyncActions {
     required String conflictId,
     required String replacementMutationId,
     required DateTime createdAtUtc,
-  }) async => replacementMutationId;
+  }) async {
+    retriedConflictIds.add(conflictId);
+    return replacementMutationId;
+  }
 }
 
 class CompleteHandoverInput {
