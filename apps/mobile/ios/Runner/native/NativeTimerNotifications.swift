@@ -32,11 +32,12 @@ final class NativeTimerNotifications {
   init(
     notificationCenter: LocalNotificationCenter = UNUserNotificationCenter.current(),
     defaults: UserDefaults = .standard,
-    sounds: NativeTimerSounds = NativeTimerSounds()
+    sounds: NativeTimerSounds? = nil
   ) {
     self.notificationCenter = notificationCenter
     self.defaults = defaults
-    self.sounds = sounds
+    // Im Initialisierer erzeugt, weil Standardargumente nicht auf dem Main Actor laufen.
+    self.sounds = sounds ?? NativeTimerSounds()
   }
 
   func requestPermission() async throws -> Bool {
