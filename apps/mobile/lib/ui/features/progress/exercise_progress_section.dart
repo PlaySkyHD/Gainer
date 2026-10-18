@@ -5,9 +5,17 @@ import 'package:flutter/cupertino.dart';
 import '../../../data/models/api/api_models.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import 'progress_group.dart';
 import 'progress_view_model.dart';
 
 const _chooseExerciseLabel = 'Übung auswählen';
+
+const _windowLabels = <String, String>{
+  '7': '7 T.',
+  '30': '30 T.',
+  '90': '90 T.',
+  'all': 'Gesamt',
+};
 
 class ExerciseProgressSection extends StatefulWidget {
   const ExerciseProgressSection({required this.viewModel, super.key});
@@ -49,113 +57,95 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
     );
     final selectedName = selected.isEmpty ? null : selected.first.name;
     final data = model.exerciseProgress;
-    final colors = GainerDesign.colorsOf(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: GainerSpacing.s),
-      child: GainerCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ProgressGroup(
+          header: 'Übungsfortschritt',
+          footer: 'Geschätztes 1RM aus deinen abgeschlossenen Sätzen',
           children: [
-            Text(
-              'Übungsfortschritt',
-              style: GainerTypography.cardTitle.copyWith(
-                color: colors.primaryText,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Geschätztes 1RM aus deinen abgeschlossenen Sätzen',
-              style: GainerTypography.label.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-            const SizedBox(height: 14),
-            _exercisePicker(context, model, selectedName),
+            _exercisePicker(model, selectedName),
             if (model.isExerciseCatalogStale ||
-                model.exerciseOptionsErrorMessage != null) ...[
-              const SizedBox(height: 8),
-              _StatusLine(
-                text:
-                    model.exerciseOptionsErrorMessage ??
-                    'Gespeicherte Übungsliste · möglicherweise veraltet',
-              ),
-              if (model.exerciseOptionsErrorMessage != null)
-                GainerPillButton(
-                  label: 'Übungsliste erneut laden',
-                  variant: GainerPillVariant.tonal,
-                  expand: true,
-                  onPressed: model.isLoadingExerciseOptions
-                      ? null
-                      : () => model.loadExerciseOptions(refresh: true),
+                model.exerciseOptionsErrorMessage != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  GainerSpacing.m,
+                  0,
+                  GainerSpacing.m,
+                  GainerSpacing.m,
                 ),
-            ],
-            const SizedBox(height: 12),
-            _WindowPicker(
-              selected: model.selectedProgressWindow,
-              onChanged: model.selectProgressWindow,
-            ),
-            const SizedBox(height: 14),
-            if (model.isExerciseProgressStale)
-              _StatusLine(
-                text: model.exerciseProgressCachedAtUtc == null
-                    ? 'Gespeicherter Stand · möglicherweise veraltet'
-                    : 'Gespeicherter Stand vom ${_formatDate(model.exerciseProgressCachedAtUtc!)} · möglicherweise veraltet',
-              ),
-            if (model.exerciseProgressErrorMessage case final error?)
-              _StatusLine(text: error),
-            ..._progressBody(context, model, selectedName),
-            if (model.isLoadingExerciseProgress && data != null)
-              const Align(
-                alignment: Alignment.centerRight,
-                child: CupertinoActivityIndicator(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _StatusLine(
+                      text:
+                          model.exerciseOptionsErrorMessage ??
+                          'Gespeicherte Übungsliste · möglicherweise veraltet',
+                    ),
+                    if (model.exerciseOptionsErrorMessage != null)
+                      GainerPillButton(
+                        label: 'Übungsliste erneut laden',
+                        variant: GainerPillVariant.tonal,
+                        expand: true,
+                        onPressed: model.isLoadingExerciseOptions
+                            ? null
+                            : () => model.loadExerciseOptions(refresh: true),
+                      ),
+                  ],
+                ),
               ),
           ],
         ),
-      ),
+        GainerSegmentedControl<String>(
+          value: model.selectedProgressWindow,
+          options: _windowLabels,
+          onChanged: model.selectProgressWindow,
+        ),
+        const SizedBox(height: GainerSpacing.s),
+        GainerCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (model.isExerciseProgressStale)
+                _StatusLine(
+                  text: model.exerciseProgressCachedAtUtc == null
+                      ? 'Gespeicherter Stand · möglicherweise veraltet'
+                      : 'Gespeicherter Stand vom ${_formatDate(model.exerciseProgressCachedAtUtc!)} · möglicherweise veraltet',
+                ),
+              if (model.exerciseProgressErrorMessage case final error?)
+                _StatusLine(text: error),
+              ..._progressBody(context, model, selectedName),
+              if (model.isLoadingExerciseProgress && data != null)
+                const Align(
+                  alignment: Alignment.centerRight,
+                  child: CupertinoActivityIndicator(),
+                ),
+            ],
+          ),
+        ),
+        if (data case final loaded?
+            when _estimatedPoints(loaded).isNotEmpty &&
+                _hasRecords(loaded.records))
+          Padding(
+            padding: const EdgeInsets.only(top: GainerSpacing.l),
+            child: _recordsGroup(loaded),
+          ),
+      ],
     );
   }
 
-  Widget _exercisePicker(
-    BuildContext context,
-    ProgressViewModel model,
-    String? selectedName,
-  ) => Semantics(
-    button: true,
-    label: selectedName == null
-        ? _chooseExerciseLabel
-        : 'Übung: $selectedName. Übung auswählen',
-    child: CupertinoButton(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      minimumSize: const Size(double.infinity, 48),
-      color: GainerDesign.colorsOf(context).elevatedSurface,
-      borderRadius: GainerRadii.pill,
-      onPressed: model.isLoadingExerciseOptions || model.exerciseOptions.isEmpty
-          ? null
-          : _chooseExercise,
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              model.isLoadingExerciseOptions
-                  ? 'Übungen laden …'
-                  : selectedName ?? _chooseExerciseLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GainerTypography.body.copyWith(
-                color: GainerDesign.colorsOf(context).primaryText,
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Icon(
-            CupertinoIcons.chevron_down,
-            size: 14,
-            color: GainerDesign.colorsOf(context).secondaryText,
-          ),
-        ],
-      ),
-    ),
-  );
+  /// Übungsauswahl als Listenzeile mit aktuellem Wert; öffnet die Auswahlseite.
+  Widget _exercisePicker(ProgressViewModel model, String? selectedName) =>
+      GainerListRow(
+        title: 'Übung',
+        value: model.isLoadingExerciseOptions
+            ? 'Übungen laden …'
+            : selectedName ?? _chooseExerciseLabel,
+        showChevron: true,
+        onTap: model.isLoadingExerciseOptions || model.exerciseOptions.isEmpty
+            ? null
+            : _chooseExercise,
+      );
 
   List<Widget> _progressBody(
     BuildContext context,
@@ -298,7 +288,7 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
       Row(
         children: [
           Expanded(
-            child: _Figure(
+            child: ProgressFigure(
               label: 'Max. Gewicht',
               value: maxWeight == null
                   ? '–'
@@ -306,7 +296,7 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
             ),
           ),
           Expanded(
-            child: _Figure(
+            child: ProgressFigure(
               label: 'Max. Wdh.',
               value: '${maxRepetitions ?? '–'}',
             ),
@@ -336,10 +326,6 @@ class _ExerciseProgressSectionState extends State<ExerciseProgressSection> {
       if (data.points.any((item) => item.bodyweightMissing)) ...[
         const SizedBox(height: 10),
         const BodyweightMissingHint(),
-      ],
-      if (_hasRecords(data.records)) ...[
-        const SizedBox(height: 14),
-        _RecordsCard(records: data.records, points: data.points),
       ],
     ];
   }
@@ -462,64 +448,6 @@ class _ExercisePickerPageState extends State<_ExercisePickerPage> {
       ],
     );
   }
-}
-
-class _WindowPicker extends StatelessWidget {
-  const _WindowPicker({required this.selected, required this.onChanged});
-  final String selected;
-  final ValueChanged<String> onChanged;
-  static const _labels = <String, String>{
-    '7': '7 T.',
-    '30': '30 T.',
-    '90': '90 T.',
-    'all': 'Gesamt',
-  };
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final compact =
-          constraints.maxWidth < 360 ||
-          MediaQuery.textScalerOf(context).scale(14) > 19;
-      if (compact) {
-        return _compactPicker(context);
-      }
-      return _segmentedPicker();
-    },
-  );
-
-  Widget _compactPicker(BuildContext context) => Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    children: [
-      for (final entry in _labels.entries) _compactButton(context, entry),
-    ],
-  );
-
-  Widget _compactButton(BuildContext context, MapEntry<String, String> entry) {
-    final isSelected = selected == entry.key;
-    final colors = GainerDesign.colorsOf(context);
-    return CupertinoButton(
-      minimumSize: const Size(48, 48),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      color: isSelected ? colors.accent : colors.elevatedSurface,
-      borderRadius: GainerRadii.pill,
-      onPressed: () => onChanged(entry.key),
-      child: Text(
-        entry.value,
-        style: TextStyle(
-          color: isSelected ? colors.onAccent : colors.primaryText,
-          fontWeight: isSelected ? FontWeight.w600 : null,
-        ),
-      ),
-    );
-  }
-
-  Widget _segmentedPicker() => GainerSegmentedControl<String>(
-    value: selected,
-    options: _labels,
-    onChanged: onChanged,
-  );
 }
 
 class _StatusLine extends StatelessWidget {
@@ -651,123 +579,48 @@ class BodyweightMissingHint extends StatelessWidget {
   }
 }
 
-class _Figure extends StatelessWidget {
-  const _Figure({required this.label, required this.value});
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: GainerTypography.label.copyWith(color: colors.secondaryText),
+/// Rekorde der Übung als Gruppe; die Zeile zeigt das Datum des Rekord-Workouts.
+ProgressGroup _recordsGroup(ApiExerciseProgress data) {
+  final records = data.records;
+  final rows = <(String, String, String)>[
+    if (records.maxWeightKg case final record?)
+      (
+        'Max. Gewicht',
+        '${record.value.toStringAsFixed(1)} kg',
+        record.workoutId,
+      ),
+    if (records.estimatedOneRepMaxKg case final record?)
+      (
+        'Geschätztes 1RM',
+        '${record.value.toStringAsFixed(1)} kg',
+        record.workoutId,
+      ),
+    if (records.volumeKgRepetitions case final record?)
+      (
+        'Volumen',
+        '${record.value.toStringAsFixed(0)} kg × Wdh.',
+        record.workoutId,
+      ),
+    if (records.maxRepetitions case final record?)
+      ('Max. Wdh.', record.value.toStringAsFixed(0), record.workoutId),
+  ];
+  return ProgressGroup(
+    header: 'Rekorde',
+    footer: 'Gesamte Historie bis heute',
+    children: [
+      for (final (label, value, workoutId) in rows)
+        GainerListRow(
+          title: label,
+          subtitle: _recordDate(data.points, workoutId),
+          value: value,
         ),
-        Text(
-          value,
-          style: GainerTypography.value.copyWith(color: colors.primaryText),
-        ),
-      ],
-    );
-  }
+    ],
+  );
 }
 
-class _RecordsCard extends StatelessWidget {
-  const _RecordsCard({required this.records, required this.points});
-  final ApiExerciseRecords records;
-  final List<ApiExerciseProgressPoint> points;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    final rows = <(String, String, String)>[
-      if (records.maxWeightKg case final record?)
-        (
-          'Max. Gewicht',
-          '${record.value.toStringAsFixed(1)} kg',
-          record.workoutId,
-        ),
-      if (records.estimatedOneRepMaxKg case final record?)
-        (
-          'Geschätztes 1RM',
-          '${record.value.toStringAsFixed(1)} kg',
-          record.workoutId,
-        ),
-      if (records.volumeKgRepetitions case final record?)
-        (
-          'Volumen',
-          '${record.value.toStringAsFixed(0)} kg × Wdh.',
-          record.workoutId,
-        ),
-      if (records.maxRepetitions case final record?)
-        ('Max. Wdh.', record.value.toStringAsFixed(0), record.workoutId),
-    ];
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.elevatedSurface,
-        borderRadius: BorderRadius.circular(GainerRadii.card),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(GainerSpacing.m),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Rekorde',
-              style: GainerTypography.body.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colors.primaryText,
-              ),
-            ),
-            Text(
-              'Gesamte Historie bis heute',
-              style: GainerTypography.label.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-            const SizedBox(height: 8),
-            for (final (label, value, workoutId) in rows)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        label,
-                        style: TextStyle(color: colors.secondaryText),
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          value,
-                          style: GainerTypography.body.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: colors.primaryText,
-                          ),
-                        ),
-                        if (_completedAtFor(points, workoutId) case final date?)
-                          Text(
-                            _formatDate(date),
-                            style: GainerTypography.label.copyWith(
-                              color: colors.secondaryText,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
+String? _recordDate(List<ApiExerciseProgressPoint> points, String workoutId) {
+  final date = _completedAtFor(points, workoutId);
+  return date == null ? null : _formatDate(date);
 }
 
 String _formatDate(DateTime date) {

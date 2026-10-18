@@ -8,7 +8,7 @@
 
 ## 2. Heute
 
-- [ ] 2.1 `progress_screen` und `exercise_progress_section` nach D1 umstellen; Fachtests grün, Goldens Hell/Dunkel neu.
+- [x] 2.1 `progress_screen` und `exercise_progress_section` nach D1 umstellen; Fachtests grün, Goldens Hell/Dunkel neu.
 
 ## 3. Check-in und Apple Health
 

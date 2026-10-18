@@ -5,6 +5,7 @@ import '../../../data/models/api/api_models.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'exercise_progress_section.dart';
+import 'progress_group.dart';
 import 'progress_view_model.dart';
 
 class ProgressScreen extends StatefulWidget {
@@ -50,50 +51,47 @@ class _ProgressScreenState extends State<ProgressScreen> {
           key: const ValueKey('progress-overview-scroll'),
           child: GainerScaffold(
             title: 'Heute',
-            children: [
-              Text(
-                'Dein Fortschritt aus deinen Einträgen',
-                style: GainerTypography.body.copyWith(
-                  color: colors.secondaryText,
+            trailing: [
+              if (data != null)
+                GainerPillButton(
+                  label: 'Aktualisieren',
+                  variant: GainerPillVariant.tonal,
+                  onPressed: model.isLoading ? null : model.load,
                 ),
-              ),
+            ],
+            children: [
               if (model.dashboardIsStale) ...[
-                const SizedBox(height: 6),
                 Text(
                   'Gespeicherte Fortschrittsdaten · möglicherweise veraltet',
                   style: GainerTypography.label.copyWith(color: colors.warning),
                 ),
+                const SizedBox(height: GainerSpacing.s),
               ],
-              const SizedBox(height: 20),
               if (model.isLoading && data == null)
                 const Center(child: CupertinoActivityIndicator()),
               if (model.errorMessage case final error?)
                 _Notice(text: error, action: model.load),
               if (data != null) ...[
-                _weightCard(context, data),
+                _weightGroup(context, data),
                 ExerciseProgressSection(viewModel: model),
-                _trainingCard(context, data),
-                _nutritionCard(context, data),
+                _trainingGroup(context, data),
+                _nutritionGroup(context, data),
                 if (data.activeGoal case final goal?)
-                  _Card(
-                    title: 'Aktives Ziel',
-                    subtitle: _goalLabel(goal.kind),
-                    child: Text(
-                      '${goal.startWeightKg.toStringAsFixed(1)} kg  →  ${goal.targetWeightKg.toStringAsFixed(1)} kg',
-                    ),
+                  ProgressGroup(
+                    header: 'Aktives Ziel',
+                    children: [
+                      GainerListRow(
+                        title: _goalLabel(goal.kind),
+                        value:
+                            '${goal.startWeightKg.toStringAsFixed(1)} kg  →  ${goal.targetWeightKg.toStringAsFixed(1)} kg',
+                      ),
+                    ],
                   ),
                 Text(
                   'Die Werte beruhen auf deinen gespeicherten Einträgen.',
                   style: GainerTypography.label.copyWith(
                     color: colors.secondaryText,
                   ),
-                ),
-                const SizedBox(height: 8),
-                GainerPillButton(
-                  label: 'Aktualisieren',
-                  variant: GainerPillVariant.tonal,
-                  expand: true,
-                  onPressed: model.isLoading ? null : model.load,
                 ),
               ],
             ],
@@ -103,143 +101,93 @@ class _ProgressScreenState extends State<ProgressScreen> {
     ),
   );
 
-  Widget _weightCard(BuildContext context, ApiDashboardInsights data) {
-    final colors = GainerDesign.colorsOf(context);
-    return _Card(
-      title: 'Gewicht',
-      subtitle:
+  Widget _weightGroup(BuildContext context, ApiDashboardInsights data) {
+    final latest = data.latestWeight;
+    return ProgressGroup(
+      header: 'Gewicht',
+      footer:
           '${data.weight.observedDays} von ${data.weight.expectedDays} Tagen mit Eintrag',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (data.latestWeight case final latest?) ...[
-            Text(
-              'Letzter Eintrag · ${_dateLabel(latest.date)}',
-              style: TextStyle(color: colors.secondaryText),
-            ),
-            Text(
-              '${latest.weightKg.toStringAsFixed(1)} kg',
-              style: GainerTypography.title.copyWith(color: colors.primaryText),
-            ),
-            const SizedBox(height: 8),
-          ],
-          Text(
-            data.sevenDayWeight.averageKg == null
-                ? 'Noch keine Gewichtsdaten der letzten ${data.sevenDayWeight.expectedDays} Tage'
-                : 'Ø ${data.sevenDayWeight.expectedDays} Tage · ${data.sevenDayWeight.averageKg!.toStringAsFixed(1)} kg',
-            style: TextStyle(color: colors.secondaryText),
+      children: [
+        if (latest case final entry?)
+          ProgressFigure(
+            label: 'Letzter Eintrag · ${_dateLabel(entry.date)}',
+            value: '${entry.weightKg.toStringAsFixed(1)} kg',
+            padding: const EdgeInsets.all(GainerSpacing.m),
           ),
-          Text(
-            data.weight.averageKg == null
-                ? 'Ø ${data.weight.expectedDays} Tage · Noch keine Gewichtsdaten'
-                : 'Ø ${data.weight.expectedDays} Tage · ${data.weight.averageKg!.toStringAsFixed(1)} kg',
-            style: GainerTypography.title.copyWith(color: colors.primaryText),
+        GainerListRow(
+          title: data.sevenDayWeight.averageKg == null
+              ? 'Noch keine Gewichtsdaten der letzten ${data.sevenDayWeight.expectedDays} Tage'
+              : 'Ø ${data.sevenDayWeight.expectedDays} Tage · ${data.sevenDayWeight.averageKg!.toStringAsFixed(1)} kg',
+        ),
+        GainerListRow(
+          title: data.weight.averageKg == null
+              ? 'Ø ${data.weight.expectedDays} Tage · Noch keine Gewichtsdaten'
+              : 'Ø ${data.weight.expectedDays} Tage · ${data.weight.averageKg!.toStringAsFixed(1)} kg',
+        ),
+        if (data.weight.trendKgPerWeek case final trend?)
+          GainerListRow(
+            title:
+                '${trend >= 0 ? '+' : ''}${trend.toStringAsFixed(2)} kg pro Woche',
           ),
-          if (data.weight.trendKgPerWeek case final trend?)
-            Text(
-              '${trend >= 0 ? '+' : ''}${trend.toStringAsFixed(2)} kg pro Woche',
-              style: TextStyle(color: colors.secondaryText),
-            ),
-          const SizedBox(height: 14),
-          if (data.weightSeries.isNotEmpty)
-            _WeightChart(points: data.weightSeries),
-          if (data.weightSeries.isEmpty)
-            const Text('Nach dem ersten Check-in erscheint hier dein Verlauf.'),
-        ],
-      ),
+        Padding(
+          padding: const EdgeInsets.all(GainerSpacing.m),
+          child: data.weightSeries.isEmpty
+              ? Text(
+                  'Nach dem ersten Check-in erscheint hier dein Verlauf.',
+                  style: GainerTypography.body.copyWith(
+                    color: GainerDesign.colorsOf(context).secondaryText,
+                  ),
+                )
+              : _WeightChart(points: data.weightSeries),
+        ),
+      ],
     );
   }
 
-  Widget _trainingCard(
+  Widget _trainingGroup(
     BuildContext context,
     ApiDashboardInsights data,
-  ) => _Card(
-    title: 'Training',
-    subtitle: '${data.workoutsLast7Days} Workouts in den letzten 7 Tagen',
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _MetricRow(
-          metrics: [
-            ('Workouts gesamt', '${data.training.workoutCount}'),
-            (
-              'Trainingsvolumen',
-              '${data.training.volumeKgRepetitions.toStringAsFixed(0)} kg × Wdh.',
-            ),
-          ],
+  ) => ProgressGroup(
+    header: 'Training',
+    footer: '${data.workoutsLast7Days} Workouts in den letzten 7 Tagen',
+    children: [
+      GainerListRow(
+        title: 'Workouts gesamt',
+        value: '${data.training.workoutCount}',
+      ),
+      GainerListRow(
+        title: 'Trainingsvolumen',
+        value:
+            '${data.training.volumeKgRepetitions.toStringAsFixed(0)} kg × Wdh.',
+      ),
+      if (data.training.bodyweightMissing)
+        const Padding(
+          padding: EdgeInsets.all(GainerSpacing.m),
+          child: BodyweightMissingHint(),
         ),
-        if (data.training.bodyweightMissing) ...[
-          const SizedBox(height: 10),
-          const BodyweightMissingHint(),
-        ],
-      ],
-    ),
+    ],
   );
 
-  Widget _nutritionCard(BuildContext context, ApiDashboardInsights data) {
-    final colors = GainerDesign.colorsOf(context);
-    return _Card(
-      title: 'Ernährung',
-      subtitle:
-          'Abdeckung ${((data.nutrition.coverage * 100).clamp(0, 100)).round()}% · ${data.nutrition.mealDiaryDays} Tage im Ernährungstagebuch',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            data.nutrition.caloriesKcal.value == null
-                ? 'Noch keine Kalorienwerte erfasst.'
-                : '${data.nutrition.caloriesKcal.value!.toStringAsFixed(0)} kcal pro erfasstem Tag',
-          ),
-          const SizedBox(height: 4),
-          Text(
-            data.nutrition.proteinGrams.value == null
-                ? 'Noch keine Proteinwerte erfasst.'
-                : '${data.nutrition.proteinGrams.value!.toStringAsFixed(0)} g Protein pro erfasstem Tag',
-            style: TextStyle(color: colors.secondaryText),
-          ),
-        ],
+  Widget _nutritionGroup(
+    BuildContext context,
+    ApiDashboardInsights data,
+  ) => ProgressGroup(
+    header: 'Ernährung',
+    footer:
+        'Abdeckung ${((data.nutrition.coverage * 100).clamp(0, 100)).round()}% · ${data.nutrition.mealDiaryDays} Tage im Ernährungstagebuch',
+    children: [
+      GainerListRow(
+        title: data.nutrition.caloriesKcal.value == null
+            ? 'Noch keine Kalorienwerte erfasst.'
+            : '${data.nutrition.caloriesKcal.value!.toStringAsFixed(0)} kcal pro erfasstem Tag',
       ),
-    );
-  }
-}
-
-class _Card extends StatelessWidget {
-  const _Card({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-  final String title, subtitle;
-  final Widget child;
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: GainerSpacing.s),
-      child: GainerCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: GainerTypography.cardTitle.copyWith(
-                color: colors.primaryText,
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              subtitle,
-              style: GainerTypography.label.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-            const SizedBox(height: 12),
-            child,
-          ],
-        ),
+      GainerListRow(
+        title: data.nutrition.proteinGrams.value == null
+            ? 'Noch keine Proteinwerte erfasst.'
+            : '${data.nutrition.proteinGrams.value!.toStringAsFixed(0)} g Protein pro erfasstem Tag',
       ),
-    );
-  }
+    ],
+  );
 }
 
 class _Notice extends StatelessWidget {
@@ -258,44 +206,6 @@ class _Notice extends StatelessWidget {
       ),
     ],
   );
-}
-
-class _MetricRow extends StatelessWidget {
-  const _MetricRow({required this.metrics});
-  final List<(String, String)> metrics;
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    return Wrap(
-      spacing: 18,
-      runSpacing: 14,
-      children: [
-        for (final (label, value) in metrics)
-          ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 115),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  style: GainerTypography.title.copyWith(
-                    fontSize: 20,
-                    color: colors.primaryText,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  label,
-                  style: GainerTypography.label.copyWith(
-                    color: colors.secondaryText,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
 }
 
 class _WeightChart extends StatelessWidget {
