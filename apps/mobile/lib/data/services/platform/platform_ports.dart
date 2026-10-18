@@ -28,6 +28,7 @@ abstract interface class TimerNotificationPlatform {
     required String workoutId,
     required int generation,
     required DateTime targetAtUtc,
+    required String soundId,
   });
   Future<void> cancel(String workoutId);
 }

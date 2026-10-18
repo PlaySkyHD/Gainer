@@ -381,6 +381,7 @@ class _FixtureNativeFeatures
     required String workoutId,
     required int generation,
     required DateTime targetAtUtc,
+    required String soundId,
   }) async {}
 
   @override

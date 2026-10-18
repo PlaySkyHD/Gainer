@@ -448,6 +448,30 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(request.content.body, "Weiter mit dem nächsten Satz.")
   }
 
+  @MainActor
+  func testTimerNotificationAcceptsSoundIdAndKeepsSystemSoundWithoutBundledFile() async throws {
+    let suiteName = "NativeTimerNotificationsTests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let center = FakeLocalNotificationCenter()
+    let notifications = NativeTimerNotifications(notificationCenter: center, defaults: defaults)
+    let target = Int64(Date().addingTimeInterval(120).timeIntervalSince1970 * 1000)
+
+    try await notifications.schedule(workoutId: "workout-a", generation: 1, targetAtUtcEpochMilliseconds: target, soundId: "gong")
+
+    let request = try XCTUnwrap(center.pending.values.first)
+    XCTAssertNotNil(request.content.sound)
+  }
+
+  func testTimerSoundIdMapsToFileNameAndFallsBackToDefault() {
+    XCTAssertEqual(NativeTimerSounds.fileName(forSoundId: "gong"), "gong.wav")
+    XCTAssertEqual(NativeTimerSounds.fileName(forSoundId: "digital_alarm"), "digital_alarm.wav")
+    XCTAssertNil(NativeTimerSounds.fileName(forSoundId: "system"))
+    XCTAssertEqual(NativeTimerSounds.fileName(forSoundId: "unknown"), "digital_alarm.wav")
+    XCTAssertEqual(NativeTimerSounds.fileName(forSoundId: "../gong"), "digital_alarm.wav")
+    XCTAssertEqual(NativeTimerSounds.resolvedSoundId(""), "digital_alarm")
+  }
+
   private func notificationKey(for value: String) -> String {
     let digest = SHA256.hash(data: Data(value.utf8))
     return digest.map { String(format: "%02x", $0) }.joined()

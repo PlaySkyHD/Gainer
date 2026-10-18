@@ -28,7 +28,6 @@ import '../../services/api/api_session_service.dart';
 import '../../services/local/local_database.dart';
 import '../../services/local/pending_handover_secret_store.dart';
 import '../../services/native/native_feature_lifecycle_coordinator.dart';
-import '../../services/native/rest_timer_alert_port.dart';
 import '../../services/native/training_live_activity_coordinator.dart';
 import '../../services/platform/pigeon_native_features_platform.dart';
 import '../../services/platform/platform_ports.dart';
@@ -361,7 +360,8 @@ class MobileAuthController extends ChangeNotifier
         store: restTimerStore,
         notifications: nativeFeatures,
         haptics: haptics,
-        alerts: const SystemRestTimerAlertPort(),
+        alerts: nativeFeatures,
+        preferences: training.preferences,
       ),
     );
     final nutrition = NutritionRepository(
