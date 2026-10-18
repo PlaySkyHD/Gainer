@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -72,6 +73,12 @@ class TrainingHarness {
     }
     return workout;
   }
+
+  /// Tut so, als hätte der Server alle bisherigen Einträge bestätigt; weitere
+  /// Änderungen werden dann als eigene Einträge eingereiht.
+  Future<void> markOutboxSent() => database
+      .update(database.localOutbox)
+      .write(const LocalOutboxCompanion(status: Value('clean')));
 
   Future<void> dispose() => database.close();
 }

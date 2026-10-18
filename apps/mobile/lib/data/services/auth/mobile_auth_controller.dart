@@ -20,6 +20,7 @@ import '../../repositories/nutrition/api_nutrition_online_provider.dart';
 import '../../repositories/nutrition/nutrition_repository.dart';
 import '../../repositories/sync/local_sync_store.dart';
 import '../../repositories/sync/sync_repository.dart';
+import '../../repositories/sync/sync_status.dart';
 import '../../repositories/timer/rest_timer_store.dart';
 import '../../repositories/training/api_exercise_catalog_provider.dart';
 import '../../repositories/training/training_log_repository.dart';
@@ -563,8 +564,11 @@ class AccountScope {
     required this.nativeLifecycle,
     required this.trainingLiveActivity,
   }) {
+    _syncStatusTracker = SyncStatusTracker(store: store);
+    syncStatusLoaded = _syncStatusTracker.load();
     _localCommitSubscription = store.committedMutations.listen((mutation) {
       if (mutation.accountId == session.userId && isSessionActive()) {
+        _syncStatusTracker.scheduleRefresh();
         unawaited(syncScheduler.onLocalCommit());
       }
     });
@@ -589,6 +593,13 @@ class AccountScope {
   final TrainingLiveActivityCoordinator trainingLiveActivity;
   Future<SyncRunReport>? _syncInFlight;
   late final StreamSubscription<LocalMutation> _localCommitSubscription;
+  late final SyncStatusTracker _syncStatusTracker;
+
+  /// Letzter Sync-Zeitpunkt, wartende Änderungen und Schreibgerät-Status.
+  ValueListenable<SyncStatus> get syncStatus => _syncStatusTracker;
+
+  /// Abgeschlossen, sobald der gespeicherte Stand in [syncStatus] steht.
+  late final Future<void> syncStatusLoaded;
 
   /// Synchronisiert. Mit [takeOverWriting] übernimmt dieses Gerät den
   /// Schreibzugriff, sofern der Server keine Übergabe vom bisherigen Gerät
@@ -632,6 +643,7 @@ class AccountScope {
   }) async {
     final report = await sync.synchronize(takeOverWriting: takeOverWriting);
     if (!isSessionActive()) return report;
+    await _syncStatusTracker.recordRun(report, DateTime.now());
     if ({
       SyncRunState.idle,
       SyncRunState.synced,
@@ -649,6 +661,7 @@ class AccountScope {
 
   Future<void> dispose({bool closeApi = true}) async {
     await _localCommitSubscription.cancel();
+    _syncStatusTracker.dispose();
     await trainingLiveActivity.dispose();
     activeWorkout.dispose();
     await syncScheduler.dispose();

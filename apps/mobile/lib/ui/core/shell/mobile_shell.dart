@@ -17,6 +17,7 @@ import '../theme.dart';
 import '../view_models/mobile_shell_view_model.dart';
 import 'mobile_tab_scaffold.dart';
 import 'sync_now_section.dart';
+import 'sync_status_banner.dart';
 
 class MobileShell extends StatelessWidget {
   const MobileShell({
@@ -41,6 +42,11 @@ class MobileShell extends StatelessWidget {
             compactTrainingBar: CompactTrainingBar(
               activeWorkout: account.activeWorkout,
               repository: account.training,
+            ),
+            contentWrapper: (context, content) => SyncStatusBanner(
+              status: account.syncStatus,
+              synchronize: account.synchronize,
+              child: content,
             ),
             tabBuilder: (context, area) => CupertinoTabView(
               builder: (context) => switch (area) {
@@ -245,6 +251,7 @@ class _MoreScreen extends StatelessWidget {
         SyncNowSection(
           online: account.online,
           synchronize: account.synchronize,
+          status: account.syncStatus,
         ),
         const SizedBox(height: GainerSpacing.l),
         GainerGroupedSection(
