@@ -103,11 +103,10 @@ void main() {
     await settle(tester);
   }
 
-  /// Wählt die Dauer [seconds] und startet den Pausentimer.
+  /// Startet den Pausentimer mit der Dauer [seconds].
   Future<RestTimerController> startTimer(int seconds) async {
     final timer = active.restTimer!;
-    await timer.selectShortcut(seconds);
-    await timer.start();
+    await timer.startShortcut(seconds);
     return timer;
   }
 

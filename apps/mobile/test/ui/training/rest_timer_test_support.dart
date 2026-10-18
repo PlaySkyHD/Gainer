@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/repositories/timer/rest_timer_store.dart';
+import 'package:gainer_mobile/data/repositories/training/training_preferences.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/native/rest_timer_alert_port.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
@@ -46,6 +47,8 @@ class MemoryRestTimerStore extends RestTimerStore {
   final _timers = <String, RestTimerState>{};
   RestTimerShortcuts _shortcuts = RestTimerShortcuts.defaults;
 
+  RestTimerShortcuts get shortcutsForTest => _shortcuts;
+
   RestTimerState? timerFor(String workoutId) => _timers[workoutId];
 
   @override
@@ -77,7 +80,8 @@ class MemoryRestTimerStore extends RestTimerStore {
 class FakeTimerNotifications implements TimerNotificationPlatform {
   bool permission = true;
   int permissionRequests = 0;
-  final scheduled = <({int generation, DateTime targetAtUtc})>[];
+  final scheduled =
+      <({int generation, DateTime targetAtUtc, String soundId})>[];
   int cancelCount = 0;
 
   @override
@@ -91,8 +95,13 @@ class FakeTimerNotifications implements TimerNotificationPlatform {
     required String workoutId,
     required int generation,
     required DateTime targetAtUtc,
+    required String soundId,
   }) async {
-    scheduled.add((generation: generation, targetAtUtc: targetAtUtc));
+    scheduled.add((
+      generation: generation,
+      targetAtUtc: targetAtUtc,
+      soundId: soundId,
+    ));
   }
 
   @override
@@ -112,10 +121,12 @@ class FakeHaptics implements HapticsPlatform {
 
 class FakeRestTimerAlerts implements RestTimerAlertPort {
   int plays = 0;
+  final played = <String>[];
 
   @override
-  Future<void> playExpiry() async {
+  Future<void> playSound(String soundId) async {
     plays++;
+    played.add(soundId);
   }
 }
 
@@ -132,6 +143,9 @@ class RestTimerFixture {
   final haptics = FakeHaptics();
   final alerts = FakeRestTimerAlerts();
 
+  /// Einstellungen im Arbeitsspeicher; der Controller liest Ton und Auto-Start daraus.
+  late final preferences = TrainingPreferences(store: store.store);
+
   final _controllers = <RestTimerController>[];
 
   RestTimerController controllerFor({bool observeLifecycle = false}) {
@@ -141,6 +155,7 @@ class RestTimerFixture {
       notifications: notifications,
       haptics: haptics,
       alerts: alerts,
+      preferences: preferences,
       clock: clock.read,
       observeLifecycle: observeLifecycle,
     );
@@ -198,6 +213,7 @@ ActiveWorkoutController activeWorkoutWithTimers(
     notifications: fixture.notifications,
     haptics: fixture.haptics,
     alerts: fixture.alerts,
+    preferences: harness.repository.preferences,
     clock: fixture.clock.read,
     observeLifecycle: false,
   ),

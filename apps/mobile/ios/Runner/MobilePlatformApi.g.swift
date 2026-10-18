@@ -730,7 +730,10 @@ protocol MobilePlatformApi {
   func chooseImage() async throws -> PlatformCapturedImage?
   func performHaptic(intent: String) async throws
   func requestNotificationPermission() async throws -> Bool
-  func schedulePauseNotification(workoutId: String, generation: Int64, targetAtUtcEpochMilliseconds: Int64) async throws
+  func schedulePauseNotification(workoutId: String, generation: Int64, targetAtUtcEpochMilliseconds: Int64, soundId: String) async throws
+  /// Spielt einen Timerton in der App (Vorschau und Ablauf im Vordergrund).
+  /// Unbekannte IDs fallen auf den Standardton zurück.
+  func playTimerSound(soundId: String) async throws
   func cancelPauseNotifications(workoutId: String) async throws
   func isHealthDataAvailable() async throws -> Bool
   /// Completes when the system authorization sheet has been handled.
@@ -971,9 +974,10 @@ class MobilePlatformApiSetup {
         let workoutIdArg = args[0] as! String
         let generationArg = args[1] as! Int64
         let targetAtUtcEpochMillisecondsArg = args[2] as! Int64
+        let soundIdArg = args[3] as! String
         Task { @MainActor in
           do {
-            try await api.schedulePauseNotification(workoutId: workoutIdArg, generation: generationArg, targetAtUtcEpochMilliseconds: targetAtUtcEpochMillisecondsArg)
+            try await api.schedulePauseNotification(workoutId: workoutIdArg, generation: generationArg, targetAtUtcEpochMilliseconds: targetAtUtcEpochMillisecondsArg, soundId: soundIdArg)
             reply(wrapResult(nil))
           } catch {
             reply(wrapError(error))
@@ -982,6 +986,25 @@ class MobilePlatformApiSetup {
       }
     } else {
       schedulePauseNotificationChannel.setMessageHandler(nil)
+    }
+    /// Spielt einen Timerton in der App (Vorschau und Ablauf im Vordergrund).
+    /// Unbekannte IDs fallen auf den Standardton zurück.
+    let playTimerSoundChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.playTimerSound\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      playTimerSoundChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let soundIdArg = args[0] as! String
+        Task { @MainActor in
+          do {
+            try await api.playTimerSound(soundId: soundIdArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      playTimerSoundChannel.setMessageHandler(nil)
     }
     let cancelPauseNotificationsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.cancelPauseNotifications\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

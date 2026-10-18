@@ -1000,6 +1000,7 @@ class MobilePlatformApi {
     String workoutId,
     int generation,
     int targetAtUtcEpochMilliseconds,
+    String soundId,
   ) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.schedulePauseNotification$pigeonVar_messageChannelSuffix';
@@ -1009,7 +1010,29 @@ class MobilePlatformApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[workoutId, generation, targetAtUtcEpochMilliseconds],
+      <Object?>[workoutId, generation, targetAtUtcEpochMilliseconds, soundId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Spielt einen Timerton in der App (Vorschau und Ablauf im Vordergrund).
+  /// Unbekannte IDs fallen auf den Standardton zurück.
+  Future<void> playTimerSound(String soundId) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.playTimerSound$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[soundId],
     );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 

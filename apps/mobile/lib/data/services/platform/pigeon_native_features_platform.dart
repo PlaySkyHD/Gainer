@@ -1,3 +1,4 @@
+import '../native/rest_timer_alert_port.dart';
 import 'generated/mobile_platform_api.dart';
 import 'platform_ports.dart';
 
@@ -6,6 +7,7 @@ class PigeonNativeFeaturesPlatform
     implements
         CapturePlatform,
         TimerNotificationPlatform,
+        RestTimerAlertPort,
         HapticsPlatform,
         HealthPlatform,
         ExtensionSnapshotPlatform,
@@ -54,13 +56,18 @@ class PigeonNativeFeaturesPlatform
     required String workoutId,
     required int generation,
     required DateTime targetAtUtc,
+    required String soundId,
   }) {
     return _api.schedulePauseNotification(
       workoutId,
       generation,
       targetAtUtc.toUtc().millisecondsSinceEpoch,
+      soundId,
     );
   }
+
+  @override
+  Future<void> playSound(String soundId) => _api.playTimerSound(soundId);
 
   @override
   Future<void> cancel(String workoutId) =>

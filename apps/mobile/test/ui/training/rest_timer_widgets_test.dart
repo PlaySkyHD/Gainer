@@ -89,7 +89,9 @@ void main() {
     });
   });
 
-  testWidgets('große Ansicht: +15s verlängert, Shortcut wählt Dauer', (tester) {
+  testWidgets('große Ansicht: +15s verlängert, Shortcut startet sofort', (
+    tester,
+  ) {
     return runRestTimerTest((fixture) async {
       final controller = fixture.controllerFor();
       await controller.load();
@@ -109,30 +111,7 @@ void main() {
       await tester.tap(find.text('02:00'));
       await tester.pump();
       expect(controller.remainingSeconds, 120);
-      expect(controller.phase, RestTimerPhase.ready);
-    });
-  });
-
-  testWidgets('Shortcut löschen im Bearbeitungsmodus', (tester) {
-    return runRestTimerTest((fixture) async {
-      final controller = fixture.controllerFor();
-      await controller.load();
-      await tester.pumpWidget(
-        trainingTestApp(
-          home: Align(
-            alignment: Alignment.bottomCenter,
-            child: RestTimerSheet(controller: controller),
-          ),
-        ),
-      );
-
-      await tester.tap(find.bySemanticsLabel('Shortcuts bearbeiten'));
-      await tester.pump();
-      await tester.tap(find.text('01:00'));
-      await tester.pump();
-
-      expect(controller.shortcuts.seconds, [120, 180]);
-      expect(find.text('01:00'), findsNothing);
+      expect(controller.phase, RestTimerPhase.running);
     });
   });
 

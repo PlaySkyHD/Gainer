@@ -188,7 +188,13 @@ abstract class MobilePlatformApi {
     String workoutId,
     int generation,
     int targetAtUtcEpochMilliseconds,
+    String soundId,
   );
+
+  /// Spielt einen Timerton in der App (Vorschau und Ablauf im Vordergrund).
+  /// Unbekannte IDs fallen auf den Standardton zurück.
+  @async
+  void playTimerSound(String soundId);
 
   @async
   void cancelPauseNotifications(String workoutId);

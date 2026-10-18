@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../../../data/repositories/timer/rest_timer_store.dart';
+import '../../../data/repositories/training/training_preferences.dart';
 import '../../../data/services/native/rest_timer_alert_port.dart';
 import '../../../data/services/platform/platform_ports.dart';
 import '../../../domain/models/timer/rest_timer_shortcuts.dart';
+import '../../../domain/models/timer/rest_timer_sound.dart';
 import '../../../domain/models/timer/rest_timer_state.dart';
 
 /// Pausentimer eines aktiven Trainings. Der Zustand liegt im Speicher und wird
@@ -21,6 +23,7 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
     required this.notifications,
     required this.haptics,
     required this.alerts,
+    this.preferences,
     DateTime Function()? clock,
     bool observeLifecycle = true,
   }) : _clock = clock ?? DateTime.now {
@@ -34,6 +37,9 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
   final TimerNotificationPlatform notifications;
   final HapticsPlatform haptics;
   final RestTimerAlertPort alerts;
+
+  /// Timerton und automatischer Start. Ohne Einstellungen gelten die Standardwerte.
+  final TrainingPreferences? preferences;
   final DateTime Function() _clock;
 
   late RestTimerState _state;
@@ -50,6 +56,12 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
   RestTimerPhase get phase => _state.phase;
   RestTimerShortcuts get shortcuts => _shortcuts;
   DateTime get now => _clock();
+
+  /// Gewählter Ablaufton für Benachrichtigung und Ersatzton in der App.
+  String get soundId =>
+      RestTimerSound.resolveId(preferences?.timerSoundId.value);
+
+  bool get autoStartEnabled => preferences?.autoStartRestTimer.value ?? false;
 
   /// Verweigerte Benachrichtigungen. Der Timer läuft trotzdem; die Oberfläche
   /// zeigt daraufhin nur einen dezenten Hinweis.
@@ -105,21 +117,35 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
     await _commit(next);
   }
 
-  /// Wählt eine Dauer aus. Nur im Bereit- oder Abgelaufen-Zustand möglich.
-  Future<void> selectShortcut(int seconds) async {
-    if (_ended) return;
-    final phase = _state.phase;
-    if (phase == RestTimerPhase.running || phase == RestTimerPhase.paused) {
-      return;
-    }
-    final next = _state.selectShortcut(seconds, now: _clock());
-    if (identical(next, _state)) return;
-    await _commit(next);
+  /// Startet den Timer sofort mit der Dauer des Shortcuts. Nur im Bereit- oder
+  /// Abgelaufen-Zustand möglich.
+  Future<void> startShortcut(int seconds) async {
+    if (_ended || !_canStartFresh) return;
+    final now = _clock();
+    await _commit(_state.selectShortcut(seconds, now: now).start(now: now));
   }
+
+  /// Startet den Timer mit der zuletzt gewählten Dauer, wenn er bereit oder
+  /// abgelaufen ist. Ein laufender oder pausierter Timer bleibt unverändert.
+  Future<void> autoStart() async {
+    if (_ended || !_canStartFresh) return;
+    await _commit(_state.start(now: _clock()));
+  }
+
+  bool get _canStartFresh =>
+      _state.phase == RestTimerPhase.ready ||
+      _state.phase == RestTimerPhase.expired;
 
   Future<void> addShortcut(int seconds) async {
     if (_ended) return;
     final next = _shortcuts.add(seconds);
+    if (next == _shortcuts) return;
+    await _saveShortcuts(next);
+  }
+
+  Future<void> moveShortcut(int oldIndex, int newIndex) async {
+    if (_ended) return;
+    final next = _shortcuts.move(oldIndex, newIndex);
     if (next == _shortcuts) return;
     await _saveShortcuts(next);
   }
@@ -129,6 +155,35 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
     final next = _shortcuts.remove(seconds);
     if (next == _shortcuts) return;
     await _saveShortcuts(next);
+  }
+
+  /// Wählt den Timerton, spielt ihn zur Probe und merkt ihn sich. Ein laufender
+  /// Timer plant seine Benachrichtigung mit dem neuen Ton neu.
+  Future<void> selectSound(String id) async {
+    if (_ended) return;
+    final resolved = RestTimerSound.resolveId(id);
+    unawaited(alerts.playSound(resolved).catchError((Object _) {}));
+    final preferences = this.preferences;
+    if (preferences == null || resolved == soundId) return;
+    try {
+      await preferences.update((v) => v.copyWith(timerSoundId: resolved));
+    } catch (_) {
+      return;
+    }
+    notifyListeners();
+    if (_state.phase == RestTimerPhase.running) {
+      await _enqueueSchedule(_state);
+    }
+  }
+
+  Future<void> setAutoStart(bool enabled) async {
+    if (_ended || enabled == autoStartEnabled) return;
+    try {
+      await preferences?.update((v) => v.copyWith(autoStartRestTimer: enabled));
+    } catch (_) {
+      return;
+    }
+    notifyListeners();
   }
 
   /// Aufrufen, sobald ein Satz vollständig erfasst ist. Erst dann verlässt ein
@@ -256,7 +311,7 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _alertForeground() async {
     final notified = await _notificationsAllowed();
     if (_ended || !_foreground) return;
-    if (!notified) alerts.playExpiry().catchError((Object _) {});
+    if (!notified) alerts.playSound(soundId).catchError((Object _) {});
     haptics.perform(HapticIntent.timerComplete).catchError((Object _) {});
   }
 
@@ -270,6 +325,7 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
         workoutId: workoutId,
         generation: timer.generation,
         targetAtUtc: timer.targetAtUtc!,
+        soundId: soundId,
       );
     });
   }

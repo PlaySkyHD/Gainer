@@ -9,6 +9,8 @@ import '../../core/components/gainer_toolbar_button.dart';
 import '../../core/theme.dart';
 import 'rest_timer_controller.dart';
 import 'rest_timer_format.dart';
+import 'rest_timer_menu.dart';
+import 'rest_timer_option_sheets.dart';
 import 'rest_timer_toggle_button.dart';
 
 /// Öffnet die große Timeransicht als Sheet. X beendet den Timer und schließt das Sheet;
@@ -39,8 +41,6 @@ class RestTimerSheet extends StatefulWidget {
 }
 
 class _RestTimerSheetState extends State<RestTimerSheet> {
-  var _editingShortcuts = false;
-
   RestTimerController get _controller => widget.controller;
 
   void _closeTimer() {
@@ -48,13 +48,20 @@ class _RestTimerSheetState extends State<RestTimerSheet> {
     Navigator.of(context).pop();
   }
 
-  Future<void> _addShortcut() async {
-    final picked = await showCupertinoModalPopup<Duration>(
-      context: context,
-      builder: (_) => const _DurationPickerSheet(),
+  Future<void> _openMenu(BuildContext buttonContext) async {
+    final choice = await showRestTimerMenu(
+      buttonContext,
+      autoStart: _controller.autoStartEnabled,
     );
-    if (picked == null) return;
-    await _controller.addShortcut(_clampShortcut(picked.inSeconds));
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case RestTimerMenuChoice.sound:
+        await showRestTimerSoundSheet(context, _controller);
+      case RestTimerMenuChoice.edit:
+        await showRestTimerEditSheet(context, _controller);
+      case RestTimerMenuChoice.autoStart:
+        await _controller.setAutoStart(!_controller.autoStartEnabled);
+    }
   }
 
   @override
@@ -66,8 +73,8 @@ class _RestTimerSheetState extends State<RestTimerSheet> {
         final controller = _controller;
         final phase = controller.phase;
         final running = phase == RestTimerPhase.running;
-        final idle = phase == RestTimerPhase.ready;
-        final selected = idle ? controller.state.baseDurationSeconds : null;
+        final showShortcuts =
+            phase == RestTimerPhase.ready || phase == RestTimerPhase.expired;
         return DecoratedBox(
           decoration: BoxDecoration(
             color: colors.background,
@@ -155,33 +162,47 @@ class _RestTimerSheetState extends State<RestTimerSheet> {
                         ),
                       ),
                       const Spacer(),
-                      GainerToolbarButton(
-                        icon: CupertinoIcons.ellipsis,
-                        semanticLabel: 'Shortcuts bearbeiten',
-                        onPressed: () => setState(
-                          () => _editingShortcuts = !_editingShortcuts,
+                      Builder(
+                        builder: (buttonContext) => GainerToolbarButton(
+                          icon: CupertinoIcons.ellipsis,
+                          semanticLabel: 'Timer-Optionen',
+                          onPressed: () => _openMenu(buttonContext),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: GainerSpacing.s),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: GainerSpacing.s,
-                    runSpacing: GainerSpacing.s,
-                    children: [
-                      for (final seconds in controller.shortcuts.seconds)
-                        _ShortcutButton(
-                          seconds: seconds,
-                          selected: seconds == selected,
-                          editing: _editingShortcuts,
-                          onPressed: _editingShortcuts
-                              ? () => controller.removeShortcut(seconds)
-                              : () => controller.selectShortcut(seconds),
+                  if (showShortcuts) ...[
+                    const SizedBox(height: GainerSpacing.s),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: GainerSpacing.s,
+                      runSpacing: GainerSpacing.s,
+                      children: [
+                        _ShortcutChip(
+                          semanticLabel: 'Shortcut hinzufügen',
+                          onPressed: () =>
+                              addRestTimerShortcut(context, controller),
+                          child: Icon(
+                            CupertinoIcons.plus,
+                            size: 18,
+                            color: colors.accent,
+                          ),
                         ),
-                      _AddShortcutButton(onPressed: _addShortcut),
-                    ],
-                  ),
+                        for (final seconds in controller.shortcuts.seconds)
+                          _ShortcutChip(
+                            semanticLabel:
+                                'Timer auf ${formatRestTimerCountdown(seconds)}',
+                            onPressed: () => controller.startShortcut(seconds),
+                            child: Text(
+                              formatRestTimerCountdown(seconds),
+                              style: GainerTypography.timer.copyWith(
+                                color: colors.accent,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -192,10 +213,35 @@ class _RestTimerSheetState extends State<RestTimerSheet> {
   }
 }
 
-int _clampShortcut(int seconds) {
-  if (seconds < restTimerMinSeconds) return restTimerMinSeconds;
-  if (seconds > restTimerMaxSeconds) return restTimerMaxSeconds;
-  return seconds;
+/// Kleine Pille der Shortcut-Zeile.
+class _ShortcutChip extends StatelessWidget {
+  const _ShortcutChip({
+    required this.semanticLabel,
+    required this.onPressed,
+    required this.child,
+  });
+
+  final String semanticLabel;
+  final VoidCallback onPressed;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: CupertinoButton(
+        padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.m),
+        minimumSize: const Size(52, 40),
+        color: colors.elevatedSurface,
+        borderRadius: GainerRadii.pill,
+        onPressed: onPressed,
+        child: child,
+      ),
+    );
+  }
 }
 
 class _RingCountdown extends StatelessWidget {
@@ -284,155 +330,4 @@ class _RingPainter extends CustomPainter {
       progress != oldDelegate.progress ||
       track != oldDelegate.track ||
       color != oldDelegate.color;
-}
-
-class _ShortcutButton extends StatelessWidget {
-  const _ShortcutButton({
-    required this.seconds,
-    required this.selected,
-    required this.editing,
-    required this.onPressed,
-  });
-
-  static const double _diameter = 64;
-
-  final int seconds;
-  final bool selected;
-  final bool editing;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    final label = formatRestTimerCountdown(seconds);
-    return Semantics(
-      button: true,
-      label: editing ? '$label löschen' : 'Timer auf $label',
-      selected: selected,
-      child: SizedBox.square(
-        dimension: _diameter + 6,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned(
-              left: 0,
-              top: 6,
-              child: CupertinoButton(
-                padding: EdgeInsets.zero,
-                minimumSize: const Size.square(_diameter),
-                color: selected ? colors.accent : colors.elevatedSurface,
-                borderRadius: GainerRadii.pill,
-                onPressed: onPressed,
-                child: Text(
-                  label,
-                  style: GainerTypography.timer.copyWith(
-                    color: selected ? colors.onAccent : colors.accent,
-                  ),
-                ),
-              ),
-            ),
-            if (editing)
-              Positioned(
-                right: 0,
-                top: 0,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colors.destructive,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.all(3),
-                    child: Icon(
-                      CupertinoIcons.minus,
-                      size: 12,
-                      color: CupertinoColors.white,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AddShortcutButton extends StatelessWidget {
-  const _AddShortcutButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    return Semantics(
-      button: true,
-      label: 'Shortcut hinzufügen',
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        minimumSize: const Size.square(64),
-        color: colors.elevatedSurface,
-        borderRadius: GainerRadii.pill,
-        onPressed: onPressed,
-        child: Icon(CupertinoIcons.plus, color: colors.accent),
-      ),
-    );
-  }
-}
-
-/// Dauerwähler für neue Shortcuts im Bereich 5 s bis 30 min.
-class _DurationPickerSheet extends StatefulWidget {
-  const _DurationPickerSheet();
-
-  @override
-  State<_DurationPickerSheet> createState() => _DurationPickerSheetState();
-}
-
-class _DurationPickerSheetState extends State<_DurationPickerSheet> {
-  var _value = const Duration(minutes: 3);
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(GainerRadii.card),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 320,
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  CupertinoButton(
-                    child: const Text('Abbrechen'),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  const Spacer(),
-                  CupertinoButton(
-                    child: const Text('Fertig'),
-                    onPressed: () => Navigator.of(context).pop(_value),
-                  ),
-                ],
-              ),
-              Expanded(
-                child: CupertinoTimerPicker(
-                  mode: CupertinoTimerPickerMode.ms,
-                  initialTimerDuration: _value,
-                  minuteInterval: 1,
-                  secondInterval: 5,
-                  onTimerDurationChanged: (value) => _value = value,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
