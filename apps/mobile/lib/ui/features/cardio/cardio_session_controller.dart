@@ -47,6 +47,9 @@ class CardioSessionController extends ChangeNotifier {
 
   /// Live Activity für die Einheit zulassen (Systemschalter prüft Swift).
   final bool liveActivityEnabled;
+
+  /// Öffnet die App-Einstellungen (Bluetooth erlauben); setzt der Aufrufer.
+  Future<void> Function()? openSettings;
   final Duration pollInterval;
   final Duration persistInterval;
 
@@ -375,6 +378,7 @@ class CardioSessionController extends ChangeNotifier {
     if (_active != null) return poll();
     try {
       _status = await platform.readStatus(0);
+      _bluetoothException = null;
     } on BluetoothUnavailableException catch (error) {
       _bluetoothException = error.problem;
     }

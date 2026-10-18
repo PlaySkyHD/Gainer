@@ -171,6 +171,34 @@ void main() {
       },
     );
 
+    test(
+      'Live Activity opens the running cardio session before a workout',
+      () async {
+        final controller = _controller(
+          secure: _MemorySecureSession(),
+          databases: <String, LocalDatabase>{},
+          apiFactory: _FakeApiFactory(),
+        );
+        try {
+          await controller.initialize();
+          await controller.login('a@example.test', 'password');
+          final account = controller.account!;
+          await account.training.startEmpty(title: 'Push');
+          await account.activeWorkout.load();
+          await account.cardioSession.start();
+
+          await controller.onRouteRequested(route());
+
+          expect(controller.shell.selectedArea, MobileArea.training);
+          expect(controller.shell.takeRequestedCardio(), isTrue);
+          expect(controller.shell.takeRequestedWorkout(), isNull);
+        } finally {
+          await controller.logout();
+          controller.dispose();
+        }
+      },
+    );
+
     test('without an active workout only the training tab opens', () async {
       final controller = _controller(
         secure: _MemorySecureSession(),
@@ -301,6 +329,22 @@ class _MemorySecureSession implements SecureSessionPlatform {
 }
 
 class _FakeNativeFeatures extends PigeonNativeFeaturesPlatform {
+  String? _monitoring;
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<HeartRateStatus> readStatus(int afterSequence) async =>
+      HeartRateStatus(monitoringSessionId: _monitoring);
+
+  @override
+  Future<void> startMonitoring(HeartRateMonitoringConfig config) async =>
+      _monitoring = config.sessionId;
+
+  @override
+  Future<void> stopMonitoring(String sessionId) async => _monitoring = null;
+
   @override
   Future<void> publish(NeutralExtensionSnapshot snapshot) async {}
 

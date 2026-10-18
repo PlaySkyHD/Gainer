@@ -20,7 +20,7 @@
 ## 4. Oberfläche
 
 - [x] 4.1 `CardioSessionController` mit Abfrage-Schleife, Verdichtung und Wiederaufnahme (D5); Tests mit Fake-Plattform.
-- [ ] 4.2 Start-Sheet, Live-Ansicht, Detail, Tagebuchzeile und Toolbar-Button (D7); Widget- und Golden-Tests, Textgröße 2.
+- [x] 4.2 Start-Sheet, Live-Ansicht, Detail, Tagebuchzeile und Toolbar-Button (D7); Widget- und Golden-Tests, Textgröße 2.
 
 ## 5. Abschluss
 

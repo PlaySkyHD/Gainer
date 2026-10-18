@@ -324,12 +324,16 @@ class MobileAuthController extends ChangeNotifier
       throw StateError('The account changed before the native route opened.');
     }
     shell.selectTab(index);
-    // Die Live Activity öffnet das aktive Training; sonst bleibt es beim Tab.
+    // Die Live Activity öffnet die laufende Cardio-Einheit, sonst das aktive
+    // Training; ohne beides bleibt es beim Tab.
     final active = routeScope.activeWorkout.active;
     if (request.source == NativeRouteSource.liveActivity &&
-        request.destination == NativeAppRoute.training &&
-        active != null) {
-      shell.requestOpenWorkout(active.workoutId);
+        request.destination == NativeAppRoute.training) {
+      if (routeScope.cardioSession.isRunning) {
+        shell.requestOpenCardio();
+      } else if (active != null) {
+        shell.requestOpenWorkout(active.workoutId);
+      }
     }
   }
 
@@ -374,7 +378,7 @@ class MobileAuthController extends ChangeNotifier
       platform: nativeFeatures,
       notifications: nativeFeatures,
       trainingPreferences: training.preferences,
-    );
+    )..openSettings = nativeFeatures.openSettings;
     final cardioHealth = CardioHealthExporter(
       store: store,
       repository: cardio,
