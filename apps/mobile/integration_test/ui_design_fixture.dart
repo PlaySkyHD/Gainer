@@ -170,6 +170,7 @@ Future<UiDesignFixture> createUiDesignFixture() async {
       isSessionActive: isActive,
     ),
   );
+  await account.syncStatusLoaded;
   final controller = MobileAuthController(
     configuration: MobileAppConfiguration(
       api: Uri.parse('https://api.gainer.example'),
