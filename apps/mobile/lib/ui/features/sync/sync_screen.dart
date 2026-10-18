@@ -133,16 +133,64 @@ class _SyncScreenState extends State<SyncScreen> {
         ),
       ];
     }
+    final enabled = !_model.isBusy && widget.isOnline;
     return [
       GainerGroupedSection(
         header: 'Sync-Konflikte',
+        footer: _model.isSelecting
+            ? '${_model.selectedConflictIds.length} von ${_model.conflicts.length} ausgewählt'
+            : null,
         children: _model.conflicts.isEmpty
             ? const [GainerListRow(title: 'Keine ungelösten Konflikte')]
             : [
-                for (final conflict in _model.conflicts)
-                  ..._conflictRows(conflict),
+                if (_model.isSelecting) ...[
+                  GainerListRow(
+                    key: const ValueKey('sync-select-all'),
+                    title: _model.allSelected
+                        ? 'Auswahl aufheben'
+                        : 'Alle auswählen',
+                    leadingIcon: CupertinoIcons.checkmark_circle,
+                    onTap: _model.toggleSelectAll,
+                  ),
+                  GainerListRow(
+                    key: const ValueKey('sync-select-done'),
+                    title: 'Auswahl beenden',
+                    leadingIcon: CupertinoIcons.xmark_circle,
+                    onTap: _model.stopSelecting,
+                  ),
+                ] else
+                  GainerListRow(
+                    key: const ValueKey('sync-select-start'),
+                    title: 'Auswählen',
+                    leadingIcon: CupertinoIcons.checkmark_circle,
+                    onTap: _model.isBusy ? null : _model.startSelecting,
+                  ),
+                for (final conflict in _model.conflicts) _conflictRow(conflict),
               ],
       ),
+      if (_model.isSelecting && _model.conflicts.isNotEmpty) ...[
+        const SizedBox(height: GainerSpacing.m),
+        GainerPillButton(
+          key: const ValueKey('sync-force-selected'),
+          label: 'Lokalen Stand erzwingen',
+          icon: CupertinoIcons.arrow_up_circle,
+          expand: true,
+          onPressed: enabled && _model.forceableSelection.isNotEmpty
+              ? () => _confirmForce(_model.forceableSelection)
+              : null,
+        ),
+        const SizedBox(height: GainerSpacing.s),
+        GainerPillButton(
+          key: const ValueKey('sync-accept-selected'),
+          label: 'Serverstand übernehmen',
+          icon: CupertinoIcons.cloud_download,
+          variant: GainerPillVariant.tonal,
+          expand: true,
+          onPressed: enabled && _model.acceptableSelection.isNotEmpty
+              ? () => _confirmAccept(_model.acceptableSelection)
+              : null,
+        ),
+      ],
     ];
   }
 
@@ -354,38 +402,99 @@ class _SyncScreenState extends State<SyncScreen> {
     return secret ? '••••••••' : value;
   }
 
-  List<Widget> _conflictRows(LocalConflictRecord conflict) {
-    final detail = conflict.detail;
-    final detailText = detail is Map<String, Object?>
-        ? (detail['message'] ?? detail['reason'] ?? conflict.code).toString()
-        : conflict.code;
+  Widget _conflictRow(LocalConflictRecord conflict) {
+    final info = _model.resourceInfos[conflict.conflictId];
+    final selected = _model.selectedConflictIds.contains(conflict.conflictId);
     final enabled = !_model.isBusy && widget.isOnline;
-    return [
-      GainerListRow(
-        title:
-            '${_aggregateLabel(conflict.aggregateType)} · ${conflict.aggregateId}',
-        subtitle: detailText,
-        leadingIcon: CupertinoIcons.exclamationmark_triangle,
-      ),
-      _Footnote('Gemeldet ${conflict.createdAtUtc.toLocal()}'),
-      GainerListRow(
-        title: 'Serverstand nutzen',
-        leadingIcon: CupertinoIcons.cloud_download,
-        showChevron: true,
-        onTap: enabled
-            ? () => _confirmConflictResolution(conflict, retryLocal: false)
-            : null,
-      ),
-      GainerListRow(
-        title: 'Lokale Änderung erneut senden',
-        leadingIcon: CupertinoIcons.arrow_up_circle,
-        showChevron: true,
-        onTap: enabled
-            ? () => _confirmConflictResolution(conflict, retryLocal: true)
-            : null,
-      ),
-    ];
+    return GainerListRow(
+      key: ValueKey('sync-conflict-${conflict.conflictId}'),
+      title: _conflictTitle(conflict, info?.title),
+      subtitle:
+          '${_conflictReason(conflict)} · ${_formatDate(conflict.createdAtUtc)}',
+      leadingIcon: _model.isSelecting
+          ? (selected
+                ? CupertinoIcons.checkmark_circle_fill
+                : CupertinoIcons.circle)
+          : CupertinoIcons.exclamationmark_triangle,
+      showChevron: !_model.isSelecting,
+      onTap: _model.isSelecting
+          ? () => _model.toggleSelection(conflict.conflictId)
+          : enabled
+          ? () => _showConflictActions(conflict, info?.title)
+          : null,
+    );
   }
+
+  Future<void> _showConflictActions(
+    LocalConflictRecord conflict,
+    String? title,
+  ) async {
+    final id = conflict.conflictId;
+    final canRetry =
+        _model.hasServerState(id) &&
+        !_retryBlockedCodes.contains(conflict.code);
+    final action = await showGainerActionSheet<_ConflictAction>(
+      context: context,
+      title: _conflictTitle(conflict, title),
+      groups: [
+        [
+          if (_model.canForce(id))
+            const GainerSheetAction(
+              label: 'Lokalen Stand erzwingen',
+              icon: CupertinoIcons.arrow_up_circle,
+              value: _ConflictAction.force,
+              hint: 'Ersetzt wartende Änderungen durch den lokalen Stand',
+            ),
+          if (_model.hasServerState(id))
+            const GainerSheetAction(
+              label: 'Serverstand nutzen',
+              icon: CupertinoIcons.cloud_download,
+              value: _ConflictAction.server,
+              destructive: true,
+            ),
+          if (canRetry)
+            const GainerSheetAction(
+              label: 'Lokale Änderung erneut senden',
+              icon: CupertinoIcons.arrow_up_circle,
+              value: _ConflictAction.retry,
+            ),
+        ],
+      ],
+    );
+    if (action == null || !mounted) return;
+    switch (action) {
+      case _ConflictAction.force:
+        await _confirmForce([id]);
+      case _ConflictAction.server:
+        await _confirmAccept([id]);
+      case _ConflictAction.retry:
+        await _confirmRetry(conflict);
+    }
+  }
+
+  String _conflictTitle(LocalConflictRecord conflict, String? title) =>
+      '${_aggregateLabel(conflict.aggregateType)} · ${title ?? _shortId(conflict.aggregateId)}';
+
+  String _shortId(String id) => id.length > 8 ? id.substring(0, 8) : id;
+
+  String _formatDate(DateTime value) {
+    final local = value.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}.${local.month.toString().padLeft(2, '0')}.${local.year}';
+  }
+
+  String _conflictReason(LocalConflictRecord conflict) =>
+      switch (conflict.code) {
+        'active_workout_exists' => 'Ein anderes Training war noch aktiv',
+        'validation_failed' =>
+          conflict.aggregateType == 'workout' ||
+                  conflict.aggregateType == 'training-plan'
+              ? 'Übung oder Plan fehlt auf dem Server'
+              : 'Der Server hat die Daten abgelehnt',
+        'stale_base_version' ||
+        'version_conflict' => 'Auf dem Server gibt es eine neuere Version',
+        'resource_not_found' => 'Auf dem Server nicht gefunden',
+        _ => 'Der Server hat die Änderung abgelehnt',
+      };
 
   Future<void> _confirmAndBegin() async {
     if (!await _confirm(
@@ -508,26 +617,44 @@ class _SyncScreenState extends State<SyncScreen> {
     );
   }
 
-  Future<void> _confirmConflictResolution(
-    LocalConflictRecord conflict, {
-    required bool retryLocal,
-  }) async {
+  Future<void> _confirmForce(List<String> ids) async {
+    final many = ids.length > 1;
     final confirmed = await _confirm(
-      title: retryLocal
-          ? 'Lokale Änderung erneut senden?'
-          : 'Serverstand übernehmen?',
-      message: retryLocal
-          ? 'Die ausstehende lokale Änderung wird mit einer neuen sicheren Änderungs-ID gegen die aktuelle Serverversion gesendet. Der Vorgang kann erneut abgelehnt werden.'
-          : 'Die ausstehende lokale Änderung für diesen Eintrag wird verworfen und durch den letzten Serverstand ersetzt.',
-      confirmLabel: retryLocal ? 'Erneut senden' : 'Serverstand nutzen',
-      destructive: !retryLocal,
+      title: many
+          ? 'Lokalen Stand für ${ids.length} Einträge erzwingen?'
+          : 'Lokalen Stand erzwingen?',
+      message:
+          'Wartende Änderungen ${many ? 'dieser Einträge werden' : 'dieses Eintrags werden'} durch den aktuellen lokalen Stand ersetzt und gesendet. Der Serverstand ${many ? 'dieser Einträge wird' : 'dieses Eintrags wird'} dabei überschrieben. Gelöschte Einträge bleiben gelöscht. Danach startet ein Sync.',
+      confirmLabel: 'Erzwingen',
+      destructive: true,
     );
     if (!confirmed || !mounted) return;
-    if (retryLocal) {
-      await _model.retryLocalVersion(conflict.conflictId);
-    } else {
-      await _model.acceptServerVersion(conflict.conflictId);
-    }
+    await _model.forceLocalStates(ids);
+  }
+
+  Future<void> _confirmAccept(List<String> ids) async {
+    final many = ids.length > 1;
+    final confirmed = await _confirm(
+      title: many
+          ? 'Serverstand für ${ids.length} Einträge übernehmen?'
+          : 'Serverstand übernehmen?',
+      message:
+          'Die ausstehenden lokalen Änderungen ${many ? 'dieser Einträge werden' : 'dieses Eintrags werden'} verworfen und durch den letzten Serverstand ersetzt.',
+      confirmLabel: 'Serverstand nutzen',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    await _model.acceptServerVersions(ids);
+  }
+
+  Future<void> _confirmRetry(LocalConflictRecord conflict) async {
+    final confirmed = await _confirm(
+      title: 'Lokale Änderung erneut senden?',
+      message: 'Die ausstehende lokale Änderung wird mit einer neuen sicheren Änderungs-ID gegen die aktuelle Serverversion gesendet. Der Vorgang kann erneut abgelehnt werden.',
+      confirmLabel: 'Erneut senden',
+    );
+    if (!confirmed || !mounted) return;
+    await _model.retryLocalVersion(conflict.conflictId);
   }
 
   Future<void> _revealCode(String code) => _showNotice(
@@ -597,12 +724,21 @@ class _SyncScreenState extends State<SyncScreen> {
 
   String _aggregateLabel(String type) => switch (type) {
     'workout' => 'Training',
+    'training-plan' => 'Plan',
+    'workout-rotation' => 'Rotation',
+    'custom-exercise' => 'Übung',
+    'exercise-category' => 'Kategorie',
     'daily-check-in' => 'Check-in',
     'nutrition-day' => 'Ernährung',
     'body-goal' => 'Körperziel',
     _ => 'Eintrag',
   };
 }
+
+enum _ConflictAction { force, server, retry }
+
+/// Diese Codes lassen sich durch erneutes Senden derselben Nutzlast nicht beheben.
+const _retryBlockedCodes = {'active_workout_exists', 'validation_failed'};
 
 class _Footnote extends StatelessWidget {
   const _Footnote(this.text, {this.warning = false});
