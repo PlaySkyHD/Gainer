@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 
 import '../../../domain/models/timer/rest_timer_state.dart';
+import '../../core/components/gainer_sheet.dart';
 import '../../core/components/gainer_toolbar_button.dart';
 import '../../core/theme.dart';
 import 'rest_timer_controller.dart';
@@ -24,71 +25,8 @@ Future<void> showRestTimerSheet(
   return showCupertinoModalPopup<void>(
     context: context,
     builder: (_) =>
-        _SwipeToDismiss(child: RestTimerSheet(controller: controller)),
+        GainerSwipeToDismiss(child: RestTimerSheet(controller: controller)),
   );
-}
-
-/// Lässt das Sheet dem Finger nach unten folgen. Weit genug oder schnell
-/// genug gewischt schließt es, sonst federt es zurück.
-class _SwipeToDismiss extends StatefulWidget {
-  const _SwipeToDismiss({required this.child});
-
-  final Widget child;
-
-  @override
-  State<_SwipeToDismiss> createState() => _SwipeToDismissState();
-}
-
-class _SwipeToDismissState extends State<_SwipeToDismiss>
-    with SingleTickerProviderStateMixin {
-  static const _dismissVelocity = 700.0;
-  static const _dismissFraction = 0.25;
-
-  late final AnimationController _settle = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 200),
-  )..addListener(() => setState(() => _offset = _settleFrom * _settle.value));
-
-  double _offset = 0;
-  double _settleFrom = 0;
-  var _dismissed = false;
-
-  void _onUpdate(DragUpdateDetails details) {
-    _settle.stop();
-    setState(() => _offset = math.max(0, _offset + details.delta.dy));
-  }
-
-  void _onEnd(DragEndDetails details) {
-    final height = context.size?.height ?? 1;
-    final velocity = details.primaryVelocity ?? 0;
-    if (!_dismissed &&
-        (velocity > _dismissVelocity || _offset > height * _dismissFraction)) {
-      _dismissed = true;
-      Navigator.of(context).pop();
-      return;
-    }
-    _settleFrom = _offset;
-    _settle.reverse(from: 1);
-  }
-
-  @override
-  void dispose() {
-    _settle.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onVerticalDragUpdate: _onUpdate,
-      onVerticalDragEnd: _onEnd,
-      child: Transform.translate(
-        offset: Offset(0, _offset),
-        child: widget.child,
-      ),
-    );
-  }
 }
 
 class RestTimerSheet extends StatefulWidget {
