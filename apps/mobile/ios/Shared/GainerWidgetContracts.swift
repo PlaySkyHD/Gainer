@@ -109,4 +109,25 @@ struct GainerWorkoutActivityAttributes: ActivityAttributes {
   /// Workout identifier (UUID), one activity per training. It contains no account data.
   let sessionId: String
 }
+
+/// Live Activity einer Cardio-Einheit mit Pulsgurt. Sie enthält nur Puls und Zielbereich,
+/// keine Konto- oder Verlaufsdaten.
+@available(iOS 17.0, *)
+struct GainerCardioActivityAttributes: ActivityAttributes {
+  struct ContentState: Codable, Hashable {
+    /// Letzter Puls; nil, solange noch kein Messwert vorliegt.
+    let bpm: Int?
+    let zoneLowBpm: Int?
+    let zoneHighBpm: Int?
+    /// One of `inZone`, `above`, `below`, `noSignal`, `none`.
+    let zoneState: String
+    let updatedAt: Date
+  }
+
+  /// Cardio-Session (UUID), eine Activity je Einheit.
+  let sessionId: String
+  /// Anzeigename der Sportart, z. B. „Rad-Ergometer“.
+  let title: String
+  let startedAt: Date
+}
 #endif
