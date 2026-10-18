@@ -37,7 +37,9 @@ class _CategoryLibraryScreenState extends State<CategoryLibraryScreen> {
   Future<void> _edit(CatalogCategory? category) async {
     await showCupertinoModalPopup<void>(
       context: context,
-      builder: (_) => _CategorySheet(viewModel: _viewModel, category: category),
+      builder: (_) => GainerKeyboardInset(
+        child: _CategorySheet(viewModel: _viewModel, category: category),
+      ),
     );
   }
 

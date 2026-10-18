@@ -35,31 +35,57 @@ class GainerSheetFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
     final factor = heightFactor;
-    return SafeArea(
-      top: false,
-      child: Container(
-        height: factor == null
-            ? null
-            : MediaQuery.sizeOf(context).height * factor,
-        margin: const EdgeInsets.all(GainerSpacing.xs),
-        decoration: BoxDecoration(
-          color: colors.elevatedSurface,
-          borderRadius: BorderRadius.circular(GainerRadii.card),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(top: GainerSpacing.xs),
-              child: GainerSheetGrabber(),
-            ),
-            if (factor == null)
-              Flexible(child: child)
-            else
-              Expanded(child: child),
-          ],
+    return GainerKeyboardInset(
+      child: SafeArea(
+        top: false,
+        child: Container(
+          height: factor == null ? null : gainerSheetHeight(context, factor),
+          margin: const EdgeInsets.all(GainerSpacing.xs),
+          decoration: BoxDecoration(
+            color: colors.elevatedSurface,
+            borderRadius: BorderRadius.circular(GainerRadii.card),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: GainerSpacing.xs),
+                child: GainerSheetGrabber(),
+              ),
+              if (factor == null)
+                Flexible(child: child)
+              else
+                Expanded(child: child),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// Höhe eines Sheets mit fester Höhe; bei offener Tastatur schrumpft es, damit
+/// es vollständig über der Tastatur bleibt.
+double gainerSheetHeight(BuildContext context, double factor) {
+  final screen = MediaQuery.sizeOf(context).height;
+  final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+  return math.max(240, screen * factor - keyboard);
+}
+
+/// Schiebt ein Sheet über die eingeblendete Tastatur, damit Eingabefelder
+/// sichtbar bleiben.
+class GainerKeyboardInset extends StatelessWidget {
+  const GainerKeyboardInset({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: child,
     );
   }
 }

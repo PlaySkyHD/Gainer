@@ -260,4 +260,53 @@ void main() {
     await tester.pumpAndSettle();
     expect(refreshed, 1);
   }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+  testWidgets('Sheets bleiben mit offener Tastatur sichtbar', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpWidget(
+      componentHarness(
+        child: Builder(
+          builder: (context) => CupertinoButton(
+            onPressed: () => showGainerSheet<void>(
+              context: context,
+              builder: (_) =>
+                  const CupertinoTextField(key: ValueKey('sheet-field')),
+            ),
+            child: const Text('Öffnen'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Öffnen'));
+    await tester.pumpAndSettle();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pumpAndSettle();
+    final field = tester.getRect(find.byKey(const ValueKey('sheet-field')));
+    expect(field.bottom, lessThanOrEqualTo(844 - 336));
+  });
+
+  testWidgets('Feste Sheet-Höhe schrumpft um die Tastatur', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    late double height;
+    await tester.pumpWidget(
+      componentHarness(
+        child: Builder(
+          builder: (context) {
+            height = gainerSheetHeight(context, 0.9);
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    expect(height, closeTo(844 * 0.9 - 300, 0.01));
+  });
 }

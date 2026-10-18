@@ -16,13 +16,15 @@ Future<String?> showWorkoutTextSheet({
 }) {
   return showCupertinoModalPopup<String>(
     context: context,
-    builder: (_) => _WorkoutTextSheet(
-      title: title,
-      initialText: initialText,
-      placeholder: placeholder,
-      multiline: multiline,
-      maxLength: maxLength,
-      validate: validate,
+    builder: (_) => GainerKeyboardInset(
+      child: _WorkoutTextSheet(
+        title: title,
+        initialText: initialText,
+        placeholder: placeholder,
+        multiline: multiline,
+        maxLength: maxLength,
+        validate: validate,
+      ),
     ),
   );
 }
