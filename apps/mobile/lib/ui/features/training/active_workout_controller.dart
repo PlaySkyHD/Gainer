@@ -20,6 +20,13 @@ class ActiveWorkoutController extends ChangeNotifier {
 
   /// Baut den Pausentimer je aktivem Training. Ohne Fabrik gibt es keinen Timer.
   final RestTimerController Function(String workoutId)? restTimerFactory;
+
+  /// `true`, wenn Live Activities in den iOS-Einstellungen aus sind. Der
+  /// Live-Activity-Coordinator hält den Wert aktuell.
+  final ValueNotifier<bool> liveActivitiesOff = ValueNotifier(false);
+
+  /// Öffnet die App-Einstellungen; setzt der Live-Activity-Coordinator.
+  Future<void> Function()? openLiveActivitySettings;
   Workout? _active;
   RestTimerController? _restTimer;
   bool _disposed = false;
@@ -96,6 +103,7 @@ class ActiveWorkoutController extends ChangeNotifier {
     _disposed = true;
     _restTimer?.dispose();
     _restTimer = null;
+    liveActivitiesOff.dispose();
     super.dispose();
   }
 }

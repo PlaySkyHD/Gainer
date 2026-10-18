@@ -473,6 +473,18 @@ class _WorkoutScreenState extends State<WorkoutScreen>
 
   List<Widget> _content(Workout workout) {
     return [
+      if (workout.isActive)
+        ValueListenableBuilder<bool>(
+          valueListenable: widget.activeWorkout.liveActivitiesOff,
+          builder: (context, off, _) => off
+              ? Padding(
+                  padding: const EdgeInsets.only(bottom: GainerSpacing.m),
+                  child: _LiveActivitiesOffHint(
+                    onEnable: widget.activeWorkout.openLiveActivitySettings,
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
       WorkoutMetadataCard(viewModel: _viewModel, workout: workout),
       const SizedBox(height: GainerSpacing.m),
       if (workout.exercises.isEmpty)
@@ -660,6 +672,57 @@ class _NoticeCard extends StatelessWidget {
               variant: GainerPillVariant.tonal,
               expand: true,
               onPressed: retry,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Hinweis, wenn Live Activities in den iOS-Einstellungen aus sind: Timer und
+/// Trainingszeit fehlen dann auf dem Sperrbildschirm und in der Dynamic Island.
+class _LiveActivitiesOffHint extends StatelessWidget {
+  const _LiveActivitiesOffHint({required this.onEnable});
+
+  final Future<void> Function()? onEnable;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final enable = onEnable;
+    return GainerCard(
+      child: Row(
+        children: [
+          Icon(CupertinoIcons.lock_circle, color: colors.warning),
+          const SizedBox(width: GainerSpacing.s),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Live-Aktivitäten sind aus',
+                  style: GainerTypography.body.copyWith(
+                    color: colors.primaryText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'Timer und Trainingszeit fehlen auf dem Sperrbildschirm.',
+                  style: GainerTypography.label.copyWith(
+                    color: colors.secondaryText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (enable != null) ...[
+            const SizedBox(width: GainerSpacing.xs),
+            GainerPillButton(
+              key: const ValueKey('live-activities-enable'),
+              label: 'Einschalten',
+              variant: GainerPillVariant.tonal,
+              onPressed: enable,
             ),
           ],
         ],
