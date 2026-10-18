@@ -228,116 +228,178 @@ extension LocalConflictRecovery on LocalSyncStore {
       if (conflict == null) {
         throw StateError('Conflict is no longer available.');
       }
-      if (!forceableAggregateTypes.contains(conflict.aggregateType)) {
-        throw StateError('This resource type cannot be forced.');
-      }
-      final tombstone =
-          await (database.select(database.localTombstones)..where(
-                (t) =>
-                    t.resourceType.equals(_serverType(conflict.aggregateType)) &
-                    t.resourceId.equals(conflict.aggregateId),
-              ))
-              .getSingleOrNull();
-      if (tombstone != null) {
-        throw StateError(
-          'A server-deleted resource cannot be restored silently.',
-        );
-      }
-      final resource =
-          await (database.select(database.localResources)..where(
-                (t) =>
-                    t.aggregateType.equals(conflict.aggregateType) &
-                    t.aggregateId.equals(conflict.aggregateId),
-              ))
-              .getSingleOrNull();
-      if (resource == null) {
-        throw StateError('Local conflict copy is unavailable.');
-      }
-      final envelope = LocalAggregateEnvelope<Object?>.fromJson(
-        jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
-      );
-      final rows = await _outboxRows(
+      await _requeueLocalState(
         conflict.aggregateType,
         conflict.aggregateId,
+        replacementMutationId,
+        createdAtUtc,
       );
-      final operations = [for (final row in rows) _operationOf(row)];
-      if (operations.any(_spansResources)) {
-        throw StateError('This mutation spans several resources.');
-      }
-      final workingCopy = envelope.workingCopy;
-      final deleted =
-          operations.lastOrNull == LocalMutationOperation.delete.name ||
-          (workingCopy is Map && workingCopy['deletedAtUtc'] != null);
-      final serverVersion = envelope.serverVersion;
+    });
+  }
 
+  /// Wie [forceLocalState], aber ohne Konfliktdatensatz: Selbstheilung nach
+  /// einer Ablehnung, die der Push eindeutig auflösen kann.
+  Future<void> requeueLocalState({
+    required String aggregateType,
+    required String aggregateId,
+    required String replacementMutationId,
+    required DateTime createdAtUtc,
+  }) async {
+    await ensureAccountBound();
+    if (!RegExp(LocalDatabase.accountIdPattern)
+        .hasMatch(replacementMutationId)) {
+      throw ArgumentError.value(replacementMutationId, 'replacementMutationId');
+    }
+    await database.transaction(
+      () => _requeueLocalState(
+        aggregateType,
+        aggregateId,
+        replacementMutationId,
+        createdAtUtc,
+      ),
+    );
+  }
+
+  /// Ressource lokal gelöscht und dem Server unbekannt: Outbox, Ressource und
+  /// Konflikte entfernen, es gibt nichts zu senden.
+  Future<void> discardLocalResource(
+    String aggregateType,
+    String aggregateId,
+  ) async {
+    await ensureAccountBound();
+    await database.transaction(() async {
       await (database.delete(database.localOutbox)..where(
             (t) =>
                 t.accountId.equals(accountId) &
-                t.aggregateType.equals(conflict.aggregateType) &
-                t.aggregateId.equals(conflict.aggregateId),
+                t.aggregateType.equals(aggregateType) &
+                t.aggregateId.equals(aggregateId),
           ))
           .go();
       await (database.delete(database.localConflicts)..where(
             (t) =>
-                t.aggregateType.equals(conflict.aggregateType) &
-                t.aggregateId.equals(conflict.aggregateId),
+                t.aggregateType.equals(aggregateType) &
+                t.aggregateId.equals(aggregateId),
           ))
           .go();
-
-      if (deleted && serverVersion == null) {
-        await (database.delete(database.localResources)..where(
-              (t) =>
-                  t.aggregateType.equals(conflict.aggregateType) &
-                  t.aggregateId.equals(conflict.aggregateId),
-            ))
-            .go();
-        return;
-      }
-
-      final operation = deleted
-          ? LocalMutationOperation.delete
-          : serverVersion == null
-          ? LocalMutationOperation.create
-          : LocalMutationOperation.update;
-      final baseVersion = serverVersion ?? 0;
-      await database
-          .into(database.localOutbox)
-          .insert(
-            LocalOutboxCompanion.insert(
-              mutationId: replacementMutationId,
-              accountId: accountId,
-              aggregateType: conflict.aggregateType,
-              aggregateId: conflict.aggregateId,
-              sequence: rows.isEmpty ? 1 : rows.first.sequence,
-              status: LocalMutationStatus.pending.name,
-              createdAtUtc: rows.isEmpty
-                  ? createdAtUtc.toUtc().toIso8601String()
-                  : rows.first.createdAtUtc,
-              payloadJson: jsonEncode({
-                'operation': operation.name,
-                'baseVersion': baseVersion,
-                'body': workingCopy,
-              }),
-              baseVersion: Value(baseVersion),
-            ),
-          );
-      final pending = LocalAggregateEnvelope(
-        aggregateId: envelope.aggregateId,
-        serverSnapshot: envelope.serverSnapshot,
-        workingCopy: workingCopy,
-        serverVersion: serverVersion,
-        optimisticVersion: envelope.optimisticVersion,
-        syncState: LocalSyncState.pending,
-      );
-      await (database.update(database.localResources)..where(
+      await (database.delete(database.localResources)..where(
             (t) =>
-                t.aggregateType.equals(conflict.aggregateType) &
-                t.aggregateId.equals(conflict.aggregateId),
+                t.aggregateType.equals(aggregateType) &
+                t.aggregateId.equals(aggregateId),
           ))
-          .write(
-            LocalResourcesCompanion(envelopeJson: Value(pending.encode())),
-          );
+          .go();
     });
+  }
+
+  Future<void> _requeueLocalState(
+    String aggregateType,
+    String aggregateId,
+    String replacementMutationId,
+    DateTime createdAtUtc,
+  ) async {
+    if (!forceableAggregateTypes.contains(aggregateType)) {
+      throw StateError('This resource type cannot be forced.');
+    }
+    final tombstone =
+        await (database.select(database.localTombstones)..where(
+              (t) =>
+                  t.resourceType.equals(_serverType(aggregateType)) &
+                  t.resourceId.equals(aggregateId),
+            ))
+            .getSingleOrNull();
+    if (tombstone != null) {
+      throw StateError(
+        'A server-deleted resource cannot be restored silently.',
+      );
+    }
+    final resource =
+        await (database.select(database.localResources)..where(
+              (t) =>
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(aggregateId),
+            ))
+            .getSingleOrNull();
+    if (resource == null) {
+      throw StateError('Local conflict copy is unavailable.');
+    }
+    final envelope = LocalAggregateEnvelope<Object?>.fromJson(
+      jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
+    );
+    final rows = await _outboxRows(aggregateType, aggregateId);
+    final operations = [for (final row in rows) _operationOf(row)];
+    if (operations.any(_spansResources)) {
+      throw StateError('This mutation spans several resources.');
+    }
+    final workingCopy = envelope.workingCopy;
+    final deleted =
+        operations.lastOrNull == LocalMutationOperation.delete.name ||
+        (workingCopy is Map && workingCopy['deletedAtUtc'] != null);
+    final serverVersion = envelope.serverVersion;
+
+    await (database.delete(database.localOutbox)..where(
+          (t) =>
+              t.accountId.equals(accountId) &
+              t.aggregateType.equals(aggregateType) &
+              t.aggregateId.equals(aggregateId),
+        ))
+        .go();
+    await (database.delete(database.localConflicts)..where(
+          (t) =>
+              t.aggregateType.equals(aggregateType) &
+              t.aggregateId.equals(aggregateId),
+        ))
+        .go();
+
+    if (deleted && serverVersion == null) {
+      await (database.delete(database.localResources)..where(
+            (t) =>
+                t.aggregateType.equals(aggregateType) &
+                t.aggregateId.equals(aggregateId),
+          ))
+          .go();
+      return;
+    }
+
+    final operation = deleted
+        ? LocalMutationOperation.delete
+        : serverVersion == null
+        ? LocalMutationOperation.create
+        : LocalMutationOperation.update;
+    final baseVersion = serverVersion ?? 0;
+    await database
+        .into(database.localOutbox)
+        .insert(
+          LocalOutboxCompanion.insert(
+            mutationId: replacementMutationId,
+            accountId: accountId,
+            aggregateType: aggregateType,
+            aggregateId: aggregateId,
+            sequence: rows.isEmpty ? 1 : rows.first.sequence,
+            status: LocalMutationStatus.pending.name,
+            createdAtUtc: rows.isEmpty
+                ? createdAtUtc.toUtc().toIso8601String()
+                : rows.first.createdAtUtc,
+            payloadJson: jsonEncode({
+              'operation': operation.name,
+              'baseVersion': baseVersion,
+              'body': workingCopy,
+            }),
+            baseVersion: Value(baseVersion),
+          ),
+        );
+    final pending = LocalAggregateEnvelope(
+      aggregateId: envelope.aggregateId,
+      serverSnapshot: envelope.serverSnapshot,
+      workingCopy: workingCopy,
+      serverVersion: serverVersion,
+      optimisticVersion: envelope.optimisticVersion,
+      syncState: LocalSyncState.pending,
+    );
+    await (database.update(database.localResources)..where(
+          (t) =>
+              t.aggregateType.equals(aggregateType) &
+              t.aggregateId.equals(aggregateId),
+        ))
+        .write(LocalResourcesCompanion(envelopeJson: Value(pending.encode())));
   }
 
   /// Anzeige- und Aktionsdaten je Konflikt, ohne den Zustand zu verändern.

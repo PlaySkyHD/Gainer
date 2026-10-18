@@ -288,21 +288,27 @@ class SyncRepository implements MobileSyncActions {
     }
 
     var pushed = 0;
-    if (registration.isActiveWriter) {
-      final push = await _pushAsActiveWriter(clientId, timestamp);
-      pushed = push.pushed;
-      if (push.stopState case final stopState?) {
-        return _stopAfterPush(stopState, pushed);
+    var pulled = 0;
+    // Zweiter Durchgang nur, wenn die Selbstheilung nach dem Pull etwas neu
+    // eingereiht hat.
+    for (var round = 0; round < 2; round++) {
+      if (registration.isActiveWriter) {
+        final push = await _pushAsActiveWriter(clientId, timestamp);
+        pushed += push.pushed;
+        if (push.stopState case final stopState?) {
+          return _stopAfterPush(stopState, pushed);
+        }
       }
-    }
-
-    late final int pulled;
-    try {
-      pulled = await _pullAll();
-    } on ApiException catch (error) {
-      final blocked = await _pullFailureReport(error, pushed);
-      if (blocked == null) rethrow;
-      return blocked;
+      try {
+        pulled += await _pullAll();
+      } on ApiException catch (error) {
+        final blocked = await _pullFailureReport(error, pushed);
+        if (blocked == null) rethrow;
+        return blocked;
+      }
+      if (!registration.isActiveWriter || await _healStaleConflicts() == 0) {
+        break;
+      }
     }
     if (!registration.isActiveWriter) {
       return SyncRunReport(
@@ -377,45 +383,72 @@ class SyncRepository implements MobileSyncActions {
   ) async {
     var pushed = 0;
     await _resumeInactiveAndAuthenticated();
-    await _prepareSequences();
-    final candidates = await _oldestReadyPerAggregate(timestamp);
-    for (final record in candidates) {
-      await _refreshSyncLease();
-      // Claim re-reads the entry in a transaction: the body sent is the one
-      // stored now, and no later edit can coalesce into it once it is claimed.
-      final syncing = await store.claimMutationForSending(
-        record.mutationId,
-        now: timestamp,
-      );
-      if (syncing == null) continue;
-      try {
-        final request = _toRequest(syncing, clientId);
-        final response = await api.pushMutation(
-          mutationId: syncing.mutationId,
-          mutation: request,
-          expectedAccountId: store.accountId,
-        );
-        if (response.mutationId != syncing.mutationId) {
-          throw const FormatException(
-            'Sync response mutation id does not match the request.',
-          );
+    // Mehrere Durchgänge: Selbstheilung reiht neue Einträge ein, und
+    // Einträge mit wartender Referenz kommen erst nach deren Bestätigung dran.
+    // Jede Mutation wird je Lauf höchstens einmal versucht.
+    final attempted = <String>{};
+    while (true) {
+      await _prepareSequences();
+      final outbox = await store.readOutbox();
+      final waiting = _unconfirmedCreates(outbox);
+      final candidates = _oldestReadyPerAggregate(
+        outbox,
+        timestamp,
+      ).where((record) => !attempted.contains(record.mutationId)).toList();
+      var progressed = false;
+      for (final record in candidates) {
+        // Wartende Referenz: überspringen, pending lassen, kein Konflikt und
+        // kein Backoff, damit der Rest weiterläuft (D3).
+        if (SyncPayloadCodec.referencedAggregateIds(record)
+            .any(waiting.contains)) {
+          continue;
         }
-        // Keep the same id/payload until pull applies the canonical server
-        // batch. This makes a timeout/retry safe under server idempotency.
-        await store.updateMutation(
-          _copyMutation(
-            syncing,
-            status: LocalMutationStatus.clean,
-            clearError: true,
-          ),
+        attempted.add(record.mutationId);
+        progressed = true;
+        await _refreshSyncLease();
+        // Claim re-reads the entry in a transaction: the body sent is the one
+        // stored now, and no later edit can coalesce into it once it is claimed.
+        final syncing = await store.claimMutationForSending(
+          record.mutationId,
+          now: timestamp,
         );
-        pushed++;
-      } on ApiException catch (error) {
-        final shouldStop = await _handlePushError(syncing, error, timestamp);
-        if (shouldStop != null) {
-          return (pushed: pushed, stopState: shouldStop);
+        if (syncing == null) continue;
+        try {
+          final request = _toRequest(syncing, clientId);
+          final response = await api.pushMutation(
+            mutationId: syncing.mutationId,
+            mutation: request,
+            expectedAccountId: store.accountId,
+          );
+          if (response.mutationId != syncing.mutationId) {
+            throw const FormatException(
+              'Sync response mutation id does not match the request.',
+            );
+          }
+          // Keep the same id/payload until pull applies the canonical server
+          // batch. This makes a timeout/retry safe under server idempotency.
+          await store.updateMutation(
+            _copyMutation(
+              syncing,
+              status: LocalMutationStatus.clean,
+              clearError: true,
+            ),
+          );
+          await store.deleteSyncMetadata(
+            _healGuardKey(syncing.aggregateType, syncing.aggregateId),
+          );
+          if (syncing.operation == LocalMutationOperation.create) {
+            waiting.remove(syncing.aggregateId);
+          }
+          pushed++;
+        } on ApiException catch (error) {
+          final shouldStop = await _handlePushError(syncing, error, timestamp);
+          if (shouldStop != null) {
+            return (pushed: pushed, stopState: shouldStop);
+          }
         }
       }
+      if (!progressed) break;
     }
     return (pushed: pushed, stopState: null);
   }
@@ -560,8 +593,10 @@ class SyncRepository implements MobileSyncActions {
     });
   }
 
-  Future<List<LocalMutation>> _oldestReadyPerAggregate(DateTime now) async {
-    final records = await store.readOutbox();
+  List<LocalMutation> _oldestReadyPerAggregate(
+    List<LocalMutation> records,
+    DateTime now,
+  ) {
     final result = <LocalMutation>[];
     final seen = <String>{};
     for (final record in records) {
@@ -574,6 +609,15 @@ class SyncRepository implements MobileSyncActions {
     }
     return result;
   }
+
+  /// Ressourcen, deren Anlegen der Server noch nicht bestätigt hat: Wer auf sie
+  /// verweist, muss warten.
+  Set<String> _unconfirmedCreates(List<LocalMutation> outbox) => {
+    for (final mutation in outbox)
+      if (mutation.operation == LocalMutationOperation.create &&
+          mutation.status != LocalMutationStatus.clean)
+        mutation.aggregateId,
+  };
 
   Future<int> _pullAll() async {
     var applied = 0;
@@ -781,6 +825,7 @@ class SyncRepository implements MobileSyncActions {
                   t.status.isNotValue(LocalMutationStatus.clean.name),
             ))
             .get();
+    await _flagForeignChange(batch, aggregateType, change.resourceId);
     final snapshot = SyncPayloadCodec.normalizeSnapshot(
       change.resourceType,
       change.snapshot,
@@ -872,6 +917,178 @@ class SyncRepository implements MobileSyncActions {
         );
   }
 
+  /// Ablehnungen, die ein veralteter Zwischenstand verursacht haben kann (D2).
+  static const _healableCodes = {
+    'active_workout_exists',
+    'validation_failed',
+    'stale_base_version',
+    'resource_not_found',
+  };
+
+  static String _healGuardKey(String aggregateType, String aggregateId) =>
+      'auto-heal:$aggregateType:$aggregateId';
+
+  /// Löst eindeutige Ablehnungen ohne Rückfrage. Gibt `true` zurück, wenn der
+  /// Eintrag erledigt oder neu eingereiht ist und kein Konflikt entstehen soll.
+  /// `stale_base_version` entscheidet erst [_healStaleConflicts] nach dem Pull,
+  /// weil erst dann der Serverstand bekannt ist.
+  Future<bool> _tryAutoHeal(LocalMutation mutation, ApiException error) async {
+    final type = mutation.aggregateType;
+    final id = mutation.aggregateId;
+    if (!forceableAggregateTypes.contains(type)) return false;
+    final envelope = await store.readAggregate(type, id);
+    if (envelope == null ||
+        await store.hasTombstone(_resourceTypeForAggregate(type), id)) {
+      return false;
+    }
+    final rows = await _aggregateRows(type, id);
+    if (rows.any(_spansResources)) return false;
+    final working = envelope.workingCopy;
+    final deleted =
+        rows.lastOrNull?.operation == LocalMutationOperation.delete ||
+        (working is Map && working['deletedAtUtc'] != null);
+    if (deleted && envelope.serverVersion == null) {
+      await store.discardLocalResource(type, id);
+      return true;
+    }
+    if (error.code == 'validation_failed') {
+      final outbox = await store.readOutbox();
+      if (SyncPayloadCodec.referencedAggregateIds(mutation)
+          .any(_unconfirmedCreates(outbox).contains)) {
+        await store.updateMutation(
+          _copyMutation(
+            mutation,
+            status: LocalMutationStatus.pending,
+            clearError: true,
+          ),
+        );
+        return true;
+      }
+    }
+    if (error.code == 'stale_base_version') return false;
+    return _requeueIfNewer(mutation, rows, working, error.code);
+  }
+
+  /// Reiht den aktuellen lokalen Stand einmal neu ein, wenn er neuer ist als
+  /// der abgelehnte. Je Ressource und Code nur ein Versuch (Schleifenschutz).
+  Future<bool> _requeueIfNewer(
+    LocalMutation rejected,
+    List<LocalMutation> rows,
+    Object? working,
+    String code,
+  ) async {
+    final newer =
+        rows.any((row) => row.sequence > rejected.sequence) ||
+        !_sameJson(working, rejected.body);
+    if (!newer) return false;
+    final key = _healGuardKey(rejected.aggregateType, rejected.aggregateId);
+    final tried = await store.readSyncMetadata(key);
+    final codes = tried is List ? tried.whereType<String>().toList() : [];
+    if (codes.contains(code)) return false;
+    await store.writeSyncMetadata(key, [...codes, code]);
+    try {
+      await store.requeueLocalState(
+        aggregateType: rejected.aggregateType,
+        aggregateId: rejected.aggregateId,
+        replacementMutationId: newUuidV4(),
+        createdAtUtc: DateTime.now().toUtc(),
+      );
+    } on StateError {
+      return false;
+    }
+    return true;
+  }
+
+  Future<List<LocalMutation>> _aggregateRows(String type, String id) async => [
+    for (final row in await store.readOutbox(aggregateType: type))
+      if (row.aggregateId == id) row,
+  ];
+
+  bool _spansResources(LocalMutation mutation) =>
+      mutation.operation == LocalMutationOperation.merge ||
+      mutation.operation == LocalMutationOperation.reorder;
+
+  /// Nach dem Pull: veraltete Basisversion, die nur der eigene Stand erklärt.
+  /// Der Server hat die Ressource seit dem letzten bekannten Stand nicht durch
+  /// ein anderes Gerät geändert, und lokal liegt ein neuerer Stand vor.
+  Future<int> _healStaleConflicts() async {
+    var healed = 0;
+    for (final conflict in await readConflicts()) {
+      final detail = conflict.detail;
+      if (conflict.code != 'stale_base_version' ||
+          detail is! Map ||
+          detail['foreignChange'] == true ||
+          ((detail['baseVersion'] as int?) ?? 0) !=
+              ((detail['knownServerVersion'] as int?) ?? 0)) {
+        continue;
+      }
+      final type = conflict.aggregateType;
+      if (!forceableAggregateTypes.contains(type)) continue;
+      final envelope = await store.readAggregate(type, conflict.aggregateId);
+      if (envelope == null ||
+          await store.hasTombstone(
+            _resourceTypeForAggregate(type),
+            conflict.aggregateId,
+          )) {
+        continue;
+      }
+      final rows = await _aggregateRows(type, conflict.aggregateId);
+      final rejected = rows
+          .where((row) => row.mutationId == conflict.conflictId)
+          .firstOrNull;
+      if (rejected == null || rows.any(_spansResources)) continue;
+      if (await _requeueIfNewer(
+        rejected,
+        rows,
+        envelope.workingCopy,
+        conflict.code,
+      )) {
+        healed++;
+      }
+    }
+    return healed;
+  }
+
+  /// Hält fest, dass ein anderes Gerät die Ressource geändert hat; die
+  /// Selbstheilung von `stale_base_version` greift dann nicht mehr.
+  Future<void> _flagForeignChange(
+    SyncChangeBatchResponse batch,
+    String aggregateType,
+    String aggregateId,
+  ) async {
+    final database = store.database;
+    final conflicts =
+        await (database.select(database.localConflicts)..where(
+              (t) =>
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(aggregateId) &
+                  t.code.equals('stale_base_version'),
+            ))
+            .get();
+    if (conflicts.isEmpty) return;
+    final origin = batch.originMutationId;
+    final own =
+        origin != null &&
+        await (database.select(database.localOutbox)..where(
+                  (t) =>
+                      t.accountId.equals(store.accountId) &
+                      t.mutationId.equals(origin),
+                ))
+                .getSingleOrNull() !=
+            null;
+    if (own) return;
+    for (final conflict in conflicts) {
+      final detail = jsonDecode(conflict.detailJson);
+      if (detail is! Map<String, dynamic>) continue;
+      detail['foreignChange'] = true;
+      await (database.update(
+        database.localConflicts,
+      )..where((t) => t.conflictId.equals(conflict.conflictId))).write(
+        LocalConflictsCompanion(detailJson: Value(jsonEncode(detail))),
+      );
+    }
+  }
+
   Future<SyncRunState?> _handlePushError(
     LocalMutation mutation,
     ApiException error,
@@ -909,6 +1126,11 @@ class SyncRepository implements MobileSyncActions {
       );
       return SyncRunState.upgradeRequired;
     }
+    if ((error.statusCode == 409 || error.statusCode == 422) &&
+        _healableCodes.contains(error.code) &&
+        await _tryAutoHeal(mutation, error)) {
+      return null;
+    }
     if (error.statusCode == 409) {
       if ({
         'concurrent_mutation',
@@ -918,6 +1140,12 @@ class SyncRepository implements MobileSyncActions {
         await _scheduleRetry(mutation, error, now);
         return null;
       }
+      final known = error.code == 'stale_base_version'
+          ? (await store.readAggregate(
+              mutation.aggregateType,
+              mutation.aggregateId,
+            ))?.serverVersion
+          : null;
       await store.upsertConflict(
         LocalConflictRecord(
           conflictId: mutation.mutationId,
@@ -925,7 +1153,14 @@ class SyncRepository implements MobileSyncActions {
           aggregateId: mutation.aggregateId,
           createdAtUtc: now,
           code: error.code,
-          detail: {'message': error.message, 'mutationId': mutation.mutationId},
+          detail: {
+            'message': error.message,
+            'mutationId': mutation.mutationId,
+            if (error.code == 'stale_base_version') ...{
+              'baseVersion': mutation.baseVersion,
+              'knownServerVersion': known,
+            },
+          },
         ),
       );
       await store.updateMutation(
@@ -1187,4 +1422,22 @@ String _newLeaseOwnerId() {
       .join();
   return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
       '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+}
+
+/// Strukturgleichheit von JSON-Werten, unabhängig von der Schlüsselreihenfolge.
+bool _sameJson(Object? left, Object? right) {
+  if (left is Map && right is Map) {
+    return left.length == right.length &&
+        left.keys.every(
+          (key) => right.containsKey(key) && _sameJson(left[key], right[key]),
+        );
+  }
+  if (left is List && right is List) {
+    if (left.length != right.length) return false;
+    for (var i = 0; i < left.length; i++) {
+      if (!_sameJson(left[i], right[i])) return false;
+    }
+    return true;
+  }
+  return left == right;
 }

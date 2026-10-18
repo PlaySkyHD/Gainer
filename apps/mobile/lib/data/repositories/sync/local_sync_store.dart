@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
 import '../../services/local/local_database.dart';
+import 'local_conflict_recovery.dart' show forceableAggregateTypes;
 
 class LocalResourceExpectation {
   const LocalResourceExpectation({
@@ -200,22 +201,34 @@ class LocalSyncStore {
         );
       }
       final sequence = await _nextOutboxSequence(aggregateType, aggregateId);
-      final tail =
-          aggregateType == 'workout' &&
-              operation == LocalMutationOperation.update
-          ? await _unsentWorkoutUpdateTail(aggregateId)
-          : null;
+      final tail = await _coalescingTail(
+        aggregateType,
+        aggregateId,
+        operation,
+        body,
+      );
 
-      await database
-          .into(database.localResources)
-          .insertOnConflictUpdate(
-            LocalResourcesCompanion.insert(
-              aggregateType: aggregateType,
-              aggregateId: aggregateId,
-              envelopeJson: envelopeJson,
-              updatedAtEpochMs: created.millisecondsSinceEpoch,
-            ),
-          );
+      if (tail?.removesResource ?? false) {
+        // Angelegt und vor dem Senden gelöscht: Der Server erfährt nie von der
+        // Ressource, also bleibt auch lokal nichts zurück.
+        await (database.delete(database.localResources)..where(
+              (t) =>
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(aggregateId),
+            ))
+            .go();
+      } else {
+        await database
+            .into(database.localResources)
+            .insertOnConflictUpdate(
+              LocalResourcesCompanion.insert(
+                aggregateType: aggregateType,
+                aggregateId: aggregateId,
+                envelopeJson: envelopeJson,
+                updatedAtEpochMs: created.millisecondsSinceEpoch,
+              ),
+            );
+      }
       for (final (relatedType, related, relatedEnvelopeJson) in relatedJson) {
         await database
             .into(database.localResources)
@@ -230,23 +243,52 @@ class LocalSyncStore {
       }
       afterEnvelopeWriteForTesting?.call();
       final LocalMutation committedMutation;
-      if (tail != null) {
-        // Coalesced: the pending entry keeps its mutation id, sequence and
-        // base version, and only the body it will send changes.
+      if (tail != null && tail.removesResource) {
+        await (database.delete(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(accountId) &
+                  t.mutationId.equals(tail.row.mutationId),
+            ))
+            .go();
+        await (database.update(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(accountId) &
+                  t.dependsOnMutationId.equals(tail.row.mutationId),
+            ))
+            .write(
+              const LocalOutboxCompanion(
+                dependsOnMutationId: Value<String?>(null),
+              ),
+            );
+        committedMutation = LocalMutation(
+          mutationId: mutationId,
+          accountId: accountId,
+          aggregateType: aggregateType,
+          aggregateId: aggregateId,
+          sequence: tail.row.sequence,
+          status: LocalMutationStatus.pending,
+          createdAtUtc: created,
+          operation: operation,
+          baseVersion: baseVersion,
+          body: jsonDecode(payloadJson)['body'],
+        );
+      } else if (tail != null) {
+        // Zusammengefasst: Der wartende Eintrag behält Mutation-ID, Sequenz und
+        // Basisversion; nur Operation und Body ändern sich.
         final tailBaseVersion =
-            (jsonDecode(tail.payloadJson)
+            (jsonDecode(tail.row.payloadJson)
                     as Map<String, dynamic>)['baseVersion']
                 as int?;
         await (database.update(database.localOutbox)..where(
               (t) =>
                   t.accountId.equals(accountId) &
-                  t.mutationId.equals(tail.mutationId),
+                  t.mutationId.equals(tail.row.mutationId),
             ))
             .write(
               LocalOutboxCompanion(
                 payloadJson: Value(
                   jsonEncode({
-                    'operation': operation.name,
+                    'operation': tail.operation.name,
                     'baseVersion': tailBaseVersion,
                     'body': body,
                   }),
@@ -254,9 +296,9 @@ class LocalSyncStore {
               ),
             );
         committedMutation = _mutationFromRow(
-          await (database.select(
-            database.localOutbox,
-          )..where((t) => t.mutationId.equals(tail.mutationId))).getSingle(),
+          await (database.select(database.localOutbox)
+                ..where((t) => t.mutationId.equals(tail.row.mutationId)))
+              .getSingle(),
         );
       } else {
         await database
@@ -474,15 +516,33 @@ class LocalSyncStore {
         );
   }
 
-  /// The last outbox entry of a workout, if it is an update that has never
-  /// been claimed for sending. Only such an entry may take a new body (D3).
-  Future<LocalOutboxData?> _unsentWorkoutUpdateTail(String aggregateId) async {
+  /// Der letzte Outbox-Eintrag der Ressource, wenn er noch nie geclaimt oder
+  /// gesendet wurde und die neue Änderung hineinpasst (D1). Gesendete Einträge
+  /// behalten ihren Body, damit Wiederholungen idempotent bleiben.
+  ///
+  /// | wartend | neu    | Ergebnis                                  |
+  /// |---------|--------|-------------------------------------------|
+  /// | create  | update | create mit neuem Body                     |
+  /// | create  | delete | beide entfallen, Ressource wird entfernt  |
+  /// | update  | update | update mit neuem Body                     |
+  /// | update  | delete | delete mit Basisversion des Wartenden     |
+  Future<_CoalescingTail?> _coalescingTail(
+    String aggregateType,
+    String aggregateId,
+    LocalMutationOperation operation,
+    Object? body,
+  ) async {
+    if (!forceableAggregateTypes.contains(aggregateType) ||
+        (operation != LocalMutationOperation.update &&
+            operation != LocalMutationOperation.delete)) {
+      return null;
+    }
     final tail =
         await (database.select(database.localOutbox)
               ..where(
                 (t) =>
                     t.accountId.equals(accountId) &
-                    t.aggregateType.equals('workout') &
+                    t.aggregateType.equals(aggregateType) &
                     t.aggregateId.equals(aggregateId),
               )
               ..orderBy([(t) => OrderingTerm.desc(t.sequence)])
@@ -496,10 +556,20 @@ class LocalSyncStore {
         tail.lastErrorCode != null) {
       return null;
     }
-    final payload = jsonDecode(tail.payloadJson) as Map<String, dynamic>;
-    return payload['operation'] == LocalMutationOperation.update.name
-        ? tail
-        : null;
+    final waiting =
+        (jsonDecode(tail.payloadJson) as Map<String, dynamic>)['operation'];
+    if (waiting == LocalMutationOperation.create.name) {
+      if (operation == LocalMutationOperation.delete) {
+        return _CoalescingTail(tail, LocalMutationOperation.create, true);
+      }
+      // Archivieren steckt nicht in der Anlegen-Nutzlast und ginge verloren.
+      if (body is Map && body['isArchived'] == true) return null;
+      return _CoalescingTail(tail, LocalMutationOperation.create, false);
+    }
+    if (waiting == LocalMutationOperation.update.name) {
+      return _CoalescingTail(tail, operation, false);
+    }
+    return null;
   }
 
   /// One-time reset of training data after the training rebuild (D11). Runs
@@ -581,6 +651,14 @@ class LocalSyncStore {
             valueJson: jsonEncode(value),
           ),
         );
+  }
+
+  /// Entfernt einen Metadateneintrag; fehlt er, passiert nichts.
+  Future<void> deleteSyncMetadata(String key) async {
+    _validateWritableMetadataKey(key);
+    await (database.delete(
+      database.localSyncMetadata,
+    )..where((t) => t.key.equals(key))).go();
   }
 
   Future<void> writeSyncMetadataBatch(Map<String, Object?> values) async {
@@ -780,6 +858,16 @@ class LocalSyncStore {
       throw ArgumentError.value(baseVersion, 'baseVersion');
     }
   }
+}
+
+class _CoalescingTail {
+  const _CoalescingTail(this.row, this.operation, this.removesResource);
+
+  final LocalOutboxData row;
+
+  /// Operation des zusammengefassten Eintrags.
+  final LocalMutationOperation operation;
+  final bool removesResource;
 }
 
 class InstallationIdentityStore {

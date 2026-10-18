@@ -173,22 +173,20 @@ void main() {
     );
 
     test(
-      'create keeps its own entry and later edits coalesce into one update',
+      'create and later edits coalesce into one create with the last state',
       () async {
         final workoutId = nextId();
         final created = await _createWorkout(store, workoutId, nextId());
-        final firstUpdate = await _updateWorkout(store, workoutId, nextId(), 2);
+        await _updateWorkout(store, workoutId, nextId(), 2);
         await _updateWorkout(store, workoutId, nextId(), 3);
         await _updateWorkout(store, workoutId, nextId(), 4);
 
         final outbox = await store.readOutbox(aggregateType: 'workout');
-        expect(outbox, hasLength(2));
-        expect(outbox.first.mutationId, created.mutationId);
-        expect(outbox.first.operation, LocalMutationOperation.create);
-        expect(_titleOf(outbox.first.body), 'Neu');
-        expect(outbox.last.mutationId, firstUpdate.mutationId);
-        expect(outbox.last.operation, LocalMutationOperation.update);
-        expect(_titleOf(outbox.last.body), 'Stand 4');
+        expect(outbox, hasLength(1));
+        expect(outbox.single.mutationId, created.mutationId);
+        expect(outbox.single.operation, LocalMutationOperation.create);
+        expect(outbox.single.baseVersion, isNull);
+        expect(_titleOf(outbox.single.body), 'Stand 4');
       },
     );
 
@@ -309,5 +307,302 @@ void main() {
         expect(_titleOf(outbox.single.body), 'Stand 3');
       },
     );
+  });
+
+  group('one waiting state per resource (D1)', () {
+    Future<LocalMutation> commit(
+      String type,
+      String id,
+      LocalMutationOperation operation,
+      String title, {
+      int? baseVersion,
+      int? serverVersion,
+      Map<String, Object?> extra = const {},
+    }) {
+      final value = {'name': title, ...extra};
+      return store.commitMutation(
+        mutationId: nextId(),
+        aggregateType: type,
+        aggregateId: id,
+        operation: operation,
+        baseVersion: baseVersion,
+        body: value,
+        envelope: LocalAggregateEnvelope<Object?>(
+          aggregateId: id,
+          serverSnapshot: null,
+          workingCopy: value,
+          serverVersion: serverVersion,
+          optimisticVersion: 1,
+          syncState: LocalSyncState.pending,
+        ),
+        createdAtUtc: _now,
+      );
+    }
+
+    String nameOf(LocalMutation mutation) =>
+        (mutation.body as Map<String, dynamic>)['name'] as String;
+
+    test('create + update stays a create with the new body', () async {
+      final id = nextId();
+      final first = await commit(
+        'training-plan',
+        id,
+        LocalMutationOperation.create,
+        'A',
+        baseVersion: 0,
+      );
+      await commit('training-plan', id, LocalMutationOperation.update, 'B');
+
+      final outbox = await store.readOutbox();
+      expect(outbox, hasLength(1));
+      expect(outbox.single.mutationId, first.mutationId);
+      expect(outbox.single.operation, LocalMutationOperation.create);
+      expect(outbox.single.baseVersion, 0);
+      expect(nameOf(outbox.single), 'B');
+    });
+
+    test('create + delete removes both entries and the resource', () async {
+      final id = nextId();
+      await commit('training-plan', id, LocalMutationOperation.create, 'A');
+      await commit('training-plan', id, LocalMutationOperation.update, 'B');
+      await commit('training-plan', id, LocalMutationOperation.delete, 'B');
+
+      expect(await store.readOutbox(), isEmpty);
+      expect(await store.readAggregate('training-plan', id), isNull);
+      expect(await store.readAggregates('training-plan'), isEmpty);
+    });
+
+    test('update + update stays one update for every listed type', () async {
+      for (final type in [
+        'training-plan',
+        'workout-rotation',
+        'custom-exercise',
+        'exercise-category',
+        'daily-check-in',
+        'nutrition-day',
+      ]) {
+        final id = nextId();
+        final first = await commit(
+          type,
+          id,
+          LocalMutationOperation.update,
+          'A',
+          baseVersion: 3,
+          serverVersion: 3,
+        );
+        await commit(
+          type,
+          id,
+          LocalMutationOperation.update,
+          'B',
+          baseVersion: 3,
+          serverVersion: 3,
+        );
+        final outbox = (await store.readOutbox(aggregateType: type))
+            .where((m) => m.aggregateId == id)
+            .toList();
+        expect(outbox, hasLength(1), reason: type);
+        expect(outbox.single.mutationId, first.mutationId, reason: type);
+        expect(nameOf(outbox.single), 'B', reason: type);
+      }
+    });
+
+    test('update + delete becomes a delete with the waiting base', () async {
+      final id = nextId();
+      final first = await commit(
+        'training-plan',
+        id,
+        LocalMutationOperation.update,
+        'A',
+        baseVersion: 4,
+        serverVersion: 4,
+      );
+      await commit(
+        'training-plan',
+        id,
+        LocalMutationOperation.delete,
+        'A',
+        baseVersion: 9,
+        serverVersion: 4,
+      );
+
+      final outbox = await store.readOutbox();
+      expect(outbox, hasLength(1));
+      expect(outbox.single.mutationId, first.mutationId);
+      expect(outbox.single.operation, LocalMutationOperation.delete);
+      expect(outbox.single.baseVersion, 4);
+      expect(await store.readAggregate('training-plan', id), isNotNull);
+    });
+
+    test('a waiting delete is left unchanged and the edit appends', () async {
+      final id = nextId();
+      await commit(
+        'training-plan',
+        id,
+        LocalMutationOperation.delete,
+        'A',
+        baseVersion: 2,
+        serverVersion: 2,
+      );
+      await commit(
+        'training-plan',
+        id,
+        LocalMutationOperation.update,
+        'B',
+        baseVersion: 2,
+        serverVersion: 2,
+      );
+
+      final outbox = await store.readOutbox();
+      expect(outbox.map((m) => m.operation), [
+        LocalMutationOperation.delete,
+        LocalMutationOperation.update,
+      ]);
+    });
+
+    test('merge and reorder are never combined', () async {
+      final id = nextId();
+      await commit(
+        'custom-exercise',
+        id,
+        LocalMutationOperation.update,
+        'A',
+        baseVersion: 1,
+        serverVersion: 1,
+      );
+      await commit(
+        'custom-exercise',
+        id,
+        LocalMutationOperation.merge,
+        'A',
+        baseVersion: 1,
+        serverVersion: 1,
+      );
+      await commit(
+        'custom-exercise',
+        id,
+        LocalMutationOperation.update,
+        'B',
+        baseVersion: 1,
+        serverVersion: 1,
+      );
+
+      final outbox = await store.readOutbox();
+      expect(outbox.map((m) => m.operation), [
+        LocalMutationOperation.update,
+        LocalMutationOperation.merge,
+        LocalMutationOperation.update,
+      ]);
+
+      final planId = nextId();
+      await commit(
+        'training-plan',
+        planId,
+        LocalMutationOperation.reorder,
+        'A',
+        baseVersion: 1,
+        serverVersion: 1,
+      );
+      await commit(
+        'training-plan',
+        planId,
+        LocalMutationOperation.update,
+        'B',
+        baseVersion: 1,
+        serverVersion: 1,
+      );
+      expect(
+        (await store.readOutbox(aggregateType: 'training-plan'))
+            .map((m) => m.operation),
+        [LocalMutationOperation.reorder, LocalMutationOperation.update],
+      );
+    });
+
+    test('a claimed create is not changed and later edits append', () async {
+      final id = nextId();
+      final first = await commit(
+        'training-plan',
+        id,
+        LocalMutationOperation.create,
+        'A',
+        baseVersion: 0,
+      );
+      await store.claimMutationForSending(first.mutationId, now: _now);
+      await commit('training-plan', id, LocalMutationOperation.update, 'B');
+      await commit('training-plan', id, LocalMutationOperation.update, 'C');
+
+      final outbox = await store.readOutbox();
+      expect(outbox, hasLength(2));
+      expect(nameOf(outbox.first), 'A');
+      expect(outbox.first.operation, LocalMutationOperation.create);
+      expect(nameOf(outbox.last), 'C');
+      expect(outbox.last.operation, LocalMutationOperation.update);
+    });
+
+    test('a sent create followed by a delete keeps both entries', () async {
+      final id = nextId();
+      final first = await commit(
+        'training-plan',
+        id,
+        LocalMutationOperation.create,
+        'A',
+      );
+      await store.claimMutationForSending(first.mutationId, now: _now);
+      await commit('training-plan', id, LocalMutationOperation.delete, 'A');
+
+      expect(await store.readOutbox(), hasLength(2));
+      expect(await store.readAggregate('training-plan', id), isNotNull);
+    });
+
+    test('archiving after a create is not folded into the create', () async {
+      final id = nextId();
+      await commit('custom-exercise', id, LocalMutationOperation.create, 'A');
+      await commit(
+        'custom-exercise',
+        id,
+        LocalMutationOperation.update,
+        'A',
+        extra: {'isArchived': true},
+      );
+
+      expect((await store.readOutbox()).map((m) => m.operation), [
+        LocalMutationOperation.create,
+        LocalMutationOperation.update,
+      ]);
+    });
+
+    test('types whose body is not the full state are not combined', () async {
+      final id = nextId();
+      await commit(
+        'reusable-meal',
+        id,
+        LocalMutationOperation.update,
+        'A',
+        baseVersion: 1,
+        serverVersion: 1,
+      );
+      await commit(
+        'reusable-meal',
+        id,
+        LocalMutationOperation.update,
+        'B',
+        baseVersion: 1,
+        serverVersion: 1,
+      );
+
+      expect(await store.readOutbox(), hasLength(2));
+    });
+
+    test('create + delete leaves other resources untouched', () async {
+      final keep = nextId();
+      final gone = nextId();
+      await commit('training-plan', keep, LocalMutationOperation.create, 'K');
+      await commit('training-plan', gone, LocalMutationOperation.create, 'G');
+      await commit('training-plan', gone, LocalMutationOperation.delete, 'G');
+
+      final outbox = await store.readOutbox();
+      expect(outbox.single.aggregateId, keep);
+      expect(await store.readAggregate('training-plan', keep), isNotNull);
+    });
   });
 }

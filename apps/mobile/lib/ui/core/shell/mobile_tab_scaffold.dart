@@ -13,6 +13,7 @@ class MobileTabScaffold extends StatefulWidget {
     required this.model,
     required this.tabBuilder,
     this.compactTrainingBar,
+    this.contentWrapper,
     super.key,
   });
 
@@ -22,6 +23,9 @@ class MobileTabScaffold extends StatefulWidget {
   /// Reservierter Platz direkt über der Tableiste, etwa für die kompakte Trainingsleiste.
   /// Der Slot liefert seinen Abstand selbst, damit er ohne Inhalt keinen Platz belegt.
   final Widget? compactTrainingBar;
+
+  /// Umhüllt den Tab-Inhalt, z. B. mit einem Hinweis oberhalb aller Tabs.
+  final Widget Function(BuildContext context, Widget content)? contentWrapper;
 
   @override
   State<MobileTabScaffold> createState() => _MobileTabScaffoldState();
@@ -62,9 +66,15 @@ class _MobileTabScaffoldState extends State<MobileTabScaffold> {
                         bottom: max(0, keyboard - _bottomHeight),
                       ),
                     ),
-                child: _TabBodies(
-                  currentIndex: widget.model.selectedIndex,
-                  tabBuilder: widget.tabBuilder,
+                child: Builder(
+                  builder: (context) {
+                    final bodies = _TabBodies(
+                      currentIndex: widget.model.selectedIndex,
+                      tabBuilder: widget.tabBuilder,
+                    );
+                    return widget.contentWrapper?.call(context, bodies) ??
+                        bodies;
+                  },
                 ),
               ),
             ),
