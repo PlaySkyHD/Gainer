@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../data/models/api/sync_api_models.dart';
 import '../../../data/models/local/local_mutation.dart';
+import '../../../data/repositories/sync/local_conflict_recovery.dart';
 import '../../../data/repositories/sync/sync_repository.dart';
 import '../../../data/services/local/pending_handover_secret_store.dart';
 
@@ -25,6 +26,11 @@ class SyncViewModel extends ChangeNotifier {
 
   PendingHandoverRecord? pendingHandover;
   List<LocalConflictRecord> conflicts = const [];
+
+  /// Titel, Serverstand und Erzwingbarkeit je Konflikt-ID.
+  Map<String, ConflictResourceInfo> resourceInfos = const {};
+  bool isSelecting = false;
+  final Set<String> selectedConflictIds = {};
   bool isLoading = false;
   bool isBusy = false;
   String? statusMessage;
@@ -152,8 +158,12 @@ class SyncViewModel extends ChangeNotifier {
       _requireActiveScope();
       final currentConflicts = await sync.readConflicts();
       _requireActiveScope();
+      final infos = await sync.readConflictResourceInfos();
+      _requireActiveScope();
       pendingHandover = pending;
       conflicts = currentConflicts;
+      resourceInfos = infos;
+      _pruneSelection();
     } catch (_) {
       if (_canUpdate) {
         errorMessage = 'Sync-Status kann gerade nicht geladen werden.';
@@ -263,7 +273,7 @@ class SyncViewModel extends ChangeNotifier {
     () async {
       await sync.acceptConflictServerState(conflictId);
       _requireActiveScope();
-      conflicts = await sync.readConflicts();
+      await _refreshConflicts();
     },
     successMessage: 'Serverstand übernommen; lokale Änderungen für diesen Eintrag entfernt.',
   );
@@ -275,12 +285,168 @@ class SyncViewModel extends ChangeNotifier {
       createdAtUtc: DateTime.now().toUtc(),
     );
     _requireActiveScope();
-    conflicts = await sync.readConflicts();
+    await _refreshConflicts();
   }, successMessage: 'Lokale Änderung mit neuer Idempotenz-ID vorgemerkt.');
+
+  /// Ob der Konflikt den lokalen Stand erzwingen lässt.
+  bool canForce(String conflictId) =>
+      resourceInfos[conflictId]?.canForceLocal ?? false;
+
+  /// Ob für den Konflikt ein Serverstand (Kopie oder Löschmarke) existiert.
+  bool hasServerState(String conflictId) =>
+      resourceInfos[conflictId]?.hasServerState ?? false;
+
+  void startSelecting() {
+    if (!_canUpdate || isBusy || conflicts.isEmpty) return;
+    isSelecting = true;
+    notifyListeners();
+  }
+
+  void stopSelecting() {
+    if (!_canUpdate) return;
+    isSelecting = false;
+    selectedConflictIds.clear();
+    notifyListeners();
+  }
+
+  void toggleSelection(String conflictId) {
+    if (!_canUpdate || !isSelecting) return;
+    if (!selectedConflictIds.remove(conflictId)) {
+      selectedConflictIds.add(conflictId);
+    }
+    notifyListeners();
+  }
+
+  bool get allSelected =>
+      conflicts.isNotEmpty &&
+      conflicts.every((c) => selectedConflictIds.contains(c.conflictId));
+
+  void toggleSelectAll() {
+    if (!_canUpdate || !isSelecting) return;
+    if (allSelected) {
+      selectedConflictIds.clear();
+    } else {
+      selectedConflictIds.addAll(conflicts.map((c) => c.conflictId));
+    }
+    notifyListeners();
+  }
+
+  /// Erzwingbare unter den gewählten Konflikten.
+  List<String> get forceableSelection => [
+    for (final id in selectedConflictIds)
+      if (canForce(id)) id,
+  ];
+
+  /// Gewählte Konflikte, für die ein Serverstand existiert.
+  List<String> get acceptableSelection => [
+    for (final id in selectedConflictIds)
+      if (hasServerState(id)) id,
+  ];
+
+  /// Erzwingt den lokalen Stand der Konflikte in der ursprünglichen Reihenfolge
+  /// ihrer Änderungen (Übungen und Pläne vor Trainings) und startet danach einen
+  /// Sync. Nicht erzwingbare Konflikte werden übersprungen.
+  Future<void> forceLocalStates(Iterable<String> conflictIds) async {
+    final ids = conflictIds.where(canForce).toList()
+      ..sort((a, b) {
+        final left = resourceInfos[a]!;
+        final right = resourceInfos[b]!;
+        final byTime = (left.firstQueuedAtUtc ?? DateTime.utc(0)).compareTo(
+          right.firstQueuedAtUtc ?? DateTime.utc(0),
+        );
+        return byTime != 0
+            ? byTime
+            : left.firstSequence.compareTo(right.firstSequence);
+      });
+    if (ids.isEmpty) return;
+    var failed = 0;
+    var synced = false;
+    await _run(
+      () async {
+        for (final id in ids) {
+          try {
+            await sync.forceLocalState(
+              conflictId: id,
+              replacementMutationId: _newUuidV4(),
+              createdAtUtc: DateTime.now().toUtc(),
+            );
+          } catch (_) {
+            failed++;
+          }
+          _requireActiveScope();
+        }
+        if (failed < ids.length && isOnline) {
+          try {
+            final report = await sync.synchronize();
+            synced = report.state == SyncRunState.synced;
+          } catch (_) {}
+        }
+        _requireActiveScope();
+        await _refreshConflicts();
+        isSelecting = false;
+        selectedConflictIds.clear();
+        if (failed > 0) {
+          throw StateError('$failed von ${ids.length} nicht erzwungen');
+        }
+      },
+      successMessage: 'Lokaler Stand erzwungen.',
+      resultMessage: () => synced
+          ? 'Lokaler Stand erzwungen und synchronisiert.'
+          : 'Lokaler Stand erzwungen. Die Synchronisierung folgt.',
+      failureMessage: () =>
+          '$failed von ${ids.length} Einträgen konnten nicht erzwungen werden.',
+    );
+  }
+
+  /// Übernimmt den Serverstand für alle Konflikte mit Serverstand.
+  Future<void> acceptServerVersions(Iterable<String> conflictIds) async {
+    final ids = conflictIds.where(hasServerState).toList();
+    if (ids.isEmpty) return;
+    var failed = 0;
+    await _run(
+      () async {
+        for (final id in ids) {
+          try {
+            await sync.acceptConflictServerState(id);
+          } catch (_) {
+            failed++;
+          }
+          _requireActiveScope();
+        }
+        await _refreshConflicts();
+        isSelecting = false;
+        selectedConflictIds.clear();
+        if (failed > 0) {
+          throw StateError('$failed von ${ids.length} nicht übernommen');
+        }
+      },
+      successMessage: 'Serverstand übernommen; lokale Änderungen entfernt.',
+      failureMessage: () =>
+          '$failed von ${ids.length} Einträgen konnten nicht übernommen werden.',
+    );
+  }
+
+  Future<void> _refreshConflicts() async {
+    final current = await sync.readConflicts();
+    _requireActiveScope();
+    final infos = await sync.readConflictResourceInfos();
+    _requireActiveScope();
+    conflicts = current;
+    resourceInfos = infos;
+    _pruneSelection();
+  }
+
+  void _pruneSelection() {
+    final ids = conflicts.map((c) => c.conflictId).toSet();
+    selectedConflictIds.removeWhere((id) => !ids.contains(id));
+    if (conflicts.isEmpty) isSelecting = false;
+  }
 
   Future<T?> _run<T>(
     Future<T> Function() action, {
     required String successMessage,
+    String Function()? resultMessage,
+    String Function()? failureMessage,
   }) async {
     if (!_canUpdate || isBusy) return null;
     isBusy = true;
@@ -290,7 +456,7 @@ class SyncViewModel extends ChangeNotifier {
     try {
       final result = await action();
       _requireActiveScope();
-      statusMessage = successMessage;
+      statusMessage = resultMessage?.call() ?? successMessage;
       return result;
     } catch (_) {
       if (!_canUpdate) return null;
@@ -299,11 +465,15 @@ class SyncViewModel extends ChangeNotifier {
         _requireActiveScope();
         final currentConflicts = await sync.readConflicts();
         _requireActiveScope();
+        final infos = await sync.readConflictResourceInfos();
+        _requireActiveScope();
         pendingHandover = pending;
         conflicts = currentConflicts;
+        resourceInfos = infos;
+        _pruneSelection();
       } catch (_) {}
       if (!_canUpdate) return null;
-      errorMessage = 'Aktion fehlgeschlagen. Prüfe Verbindung, Übergabedaten und Sync-Status.';
+      errorMessage = failureMessage?.call() ?? 'Aktion fehlgeschlagen. Prüfe Verbindung, Übergabedaten und Sync-Status.';
       return null;
     } finally {
       if (_canUpdate) {

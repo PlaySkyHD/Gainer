@@ -53,6 +53,8 @@ void main() {
   late bool serverHandoverAlreadyCompleted;
   late List<Map<String, dynamic>> registrationRequests;
   late Set<String> acceptedMutationIds;
+  late bool lenientMutations;
+  late List<Map<String, dynamic>> receivedMutations;
   late Completer<void>? acceptedMutation;
   _MemoryPendingHandoverSecretStore? activeHandoverSecretStore;
   Completer<void>? sessionGate;
@@ -90,6 +92,8 @@ void main() {
     serverHandoverAlreadyCompleted = false;
     registrationRequests = [];
     acceptedMutationIds = <String>{};
+    lenientMutations = false;
+    receivedMutations = [];
     acceptedMutation = null;
     activeHandoverSecretStore = null;
     sessionGate = null;
@@ -166,17 +170,22 @@ void main() {
             }),
           );
         } else {
+          receivedMutations.add(body);
           expect(body['protocolVersion'], 3);
-          expect(body['clientSequence'], 1);
-          expect(body['resources'].single['resourceType'], 'DailyCheckIn');
-          expect(body['operation'], 'createDailyCheckIn');
           expect(body['clientId'], clientId);
+          if (!lenientMutations) {
+            expect(body['clientSequence'], 1);
+            expect(body['resources'].single['resourceType'], 'DailyCheckIn');
+            expect(body['operation'], 'createDailyCheckIn');
+          }
           acceptedMutationIds.add(path.split('/').last);
           acceptedMutation?.complete();
           request.response.headers.contentType = ContentType.json;
           request.response.write(
             jsonEncode({
-              'mutationId': mutationId,
+              'mutationId': lenientMutations
+                  ? path.split('/').last
+                  : mutationId,
               'replayed': false,
               'revision': 1,
               'resources': [],
@@ -974,6 +983,76 @@ void main() {
         createdAtUtc: DateTime.utc(2026, 10, 17),
       ),
       throwsStateError,
+    );
+    api.close();
+    await database.close();
+  });
+
+  test('forcing a rejected workout create sends the ended workout and clears the conflict', () async {
+    mutationFailureCode = 'active_workout_exists';
+    mutationFailureStatus = 409;
+    final (store, database, api, repository) = await fixture();
+    final active = {...workoutWorkingCopy, 'endedAtUtc': null};
+    await store.commitMutation(
+      mutationId: mutationId,
+      aggregateType: 'workout',
+      aggregateId: workoutAggregateId,
+      operation: LocalMutationOperation.create,
+      baseVersion: 0,
+      body: active,
+      envelope: localEnvelope(
+        aggregateId: workoutAggregateId,
+        workingCopy: active,
+      ),
+      createdAtUtc: DateTime.utc(2026, 10, 17, 8),
+    );
+    await repository.synchronize();
+    final conflict =
+        (await database.select(database.localConflicts).get()).single;
+    expect(conflict.code, 'active_workout_exists');
+
+    // Das Training wurde inzwischen beendet; der Nutzer erzwingt den Stand.
+    final ended = {...workoutWorkingCopy, 'endedAtUtc': '2026-10-17T09:00:00Z'};
+    await store.commitMutation(
+      mutationId: 'e1234567-1234-4234-8234-123456789abc',
+      aggregateType: 'workout',
+      aggregateId: workoutAggregateId,
+      operation: LocalMutationOperation.update,
+      baseVersion: null,
+      body: ended,
+      envelope: LocalAggregateEnvelope<Object?>(
+        aggregateId: workoutAggregateId,
+        serverSnapshot: null,
+        workingCopy: ended,
+        serverVersion: null,
+        optimisticVersion: 2,
+        syncState: LocalSyncState.pending,
+      ),
+    );
+    await store.forceLocalState(
+      conflictId: conflict.conflictId,
+      replacementMutationId: 'f1234567-1234-4234-8234-123456789abc',
+      createdAtUtc: DateTime.utc(2026, 10, 18),
+    );
+    mutationFailureCode = null;
+    lenientMutations = true;
+    receivedMutations.clear();
+
+    final report = await repository.synchronize();
+
+    expect(report.state, SyncRunState.synced);
+    expect(receivedMutations, hasLength(1));
+    final sent = receivedMutations.single;
+    expect(sent['operation'], 'createWorkout');
+    expect(sent['resources'].single['resourceType'], 'Workout');
+    expect(sent['resources'].single['baseVersion'], 0);
+    expect(sent['payload']['workout']['endedAtUtc'], '2026-10-17T09:00:00Z');
+    expect(await database.select(database.localConflicts).get(), isEmpty);
+    expect(
+      (await store.readOutbox()).where(
+        (m) => m.status == LocalMutationStatus.conflict,
+      ),
+      isEmpty,
     );
     api.close();
     await database.close();
