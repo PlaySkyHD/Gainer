@@ -112,10 +112,16 @@ void main() {
       expect(find.byKey(const ValueKey('body-save-checkin')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
       await tester.pumpAndSettle();
-      expect(model.errorMessage, isNotNull);
+      // Feldfehler stehen nur an der Zeile, nicht als roher Text auf dem Screen.
+      expect(model.errorMessage, isNull);
+      expect(model.fieldErrors, contains('weightKg'));
       expect(
         find.textContaining('Das Gewicht muss positiv sein'),
-        findsNWidgets(2),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('BodyTrackingValidationException'),
+        findsNothing,
       );
       await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
       await tester.pumpAndSettle();
