@@ -11,6 +11,9 @@ class BodyViewModel extends ChangeNotifier {
   bool isLoading = false;
   bool isSaving = false;
   String? errorMessage;
+
+  /// Feldfehler der letzten Validierung, z. B. `weightKg` → Meldung.
+  Map<String, String> fieldErrors = const {};
   bool _disposed = false;
 
   Future<void> load() => _run(() async {
@@ -73,9 +76,12 @@ class BodyViewModel extends ChangeNotifier {
     isLoading = !saving;
     isSaving = saving;
     errorMessage = null;
+    fieldErrors = const {};
     _notify();
     try {
       await action();
+    } on BodyTrackingValidationException catch (error) {
+      if (!_disposed) fieldErrors = Map.unmodifiable(error.fields);
     } catch (error) {
       if (!_disposed) errorMessage = error.toString();
     } finally {

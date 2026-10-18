@@ -9,6 +9,7 @@ class GainerScaffold extends StatelessWidget {
     required this.children,
     this.leading,
     this.trailing = const [],
+    this.onRefresh,
     super.key,
   });
 
@@ -20,6 +21,9 @@ class GainerScaffold extends StatelessWidget {
 
   /// Rechte Toolbar-Aktionen in Reihenfolge von links nach rechts.
   final List<Widget> trailing;
+
+  /// Aktiviert Ziehen zum Aktualisieren am Listenanfang.
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +60,8 @@ class GainerScaffold extends StatelessWidget {
                       ],
                     ),
             ),
+            if (onRefresh case final refresh?)
+              CupertinoSliverRefreshControl(onRefresh: refresh),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(
                 GainerSpacing.m,

@@ -253,6 +253,22 @@ void main() {
   );
 
   expectGoldenVariants(
+    'gainer_text_field_row',
+    () => GainerGroupedSection(
+      header: 'Gewicht',
+      children: [
+        GainerTextFieldRow(label: 'Startgewicht', unit: 'kg', placeholder: '0'),
+        GainerTextFieldRow(
+          label: 'Zielgewicht',
+          unit: 'kg',
+          placeholder: '0',
+          errorText: 'Bitte eine Zahl eingeben.',
+        ),
+      ],
+    ),
+  );
+
+  expectGoldenVariants(
     'gainer_search_field',
     () => GainerSearchField(placeholder: 'Übung suchen', onChanged: (_) {}),
   );
