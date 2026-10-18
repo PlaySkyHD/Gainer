@@ -1,8 +1,58 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/sync/sync_repository.dart';
+import '../../../data/repositories/sync/sync_status.dart';
 import '../../../data/services/api/api_client.dart';
 import '../components/components.dart';
+
+/// Fragt nach, ob dieses iPhone das Schreiben übernehmen soll. Gemeinsam für
+/// den Abschnitt unter Mehr und das Banner in den Tabs.
+Future<bool> confirmTakeOverWriting(BuildContext context) async {
+  final confirmed = await showGainerStackedDialog<bool>(
+    context: context,
+    title: 'Schreiben übernehmen?',
+    message: 'Dieses iPhone wird dein Schreibgerät und überträgt seine Änderungen. Das bisher eingetragene Gerät kann danach nichts mehr hochladen; dort noch nicht synchronisierte Änderungen gehen verloren.',
+    actions: const [
+      GainerDialogAction(label: 'Übernehmen', value: true),
+      GainerDialogAction(label: 'Abbrechen', value: false),
+    ],
+  );
+  return confirmed == true;
+}
+
+/// Erklärt einen fehlgeschlagenen Sync-Versuch auf Deutsch.
+String syncFailureMessage(Object error) {
+  if (error is ApiException) {
+    return switch (error.code) {
+      'handover_required' => 'Für dieses Konto ist eine Übergabe vom bisherigen Gerät nötig: dort unter Sync & Gerätewechsel „Dieses Gerät ablösen“ wählen.',
+      'handover_in_progress' => 'Gerade läuft eine Geräteübergabe. Schließe sie ab oder brich sie auf dem bisherigen Gerät ab.',
+      _ =>
+        'Synchronisierung nicht möglich. Lokale Änderungen bleiben erhalten.',
+    };
+  }
+  return 'Synchronisierung nicht möglich. Lokale Änderungen bleiben erhalten.';
+}
+
+/// „gerade eben“, „vor 2 Min.“, „vor 3 Std.“, danach das Datum.
+String relativeSyncTime(DateTime lastSyncedAtUtc, DateTime now) {
+  final age = now.toUtc().difference(lastSyncedAtUtc.toUtc());
+  if (age.inMinutes < 1) return 'gerade eben';
+  if (age.inMinutes < 60) return 'vor ${age.inMinutes} Min.';
+  if (age.inHours < 24) return 'vor ${age.inHours} Std.';
+  final local = lastSyncedAtUtc.toLocal();
+  return 'am ${local.day.toString().padLeft(2, '0')}.'
+      '${local.month.toString().padLeft(2, '0')}.${local.year}';
+}
+
+/// Fußnote unter Mehr: „Zuletzt synchronisiert vor 2 Min. · 3 ausstehend“.
+String syncStatusLine(SyncStatus status, DateTime now) {
+  final last = status.lastSyncedAtUtc;
+  final when = last == null
+      ? 'Noch nicht synchronisiert'
+      : 'Zuletzt synchronisiert ${relativeSyncTime(last, now)}';
+  return '$when · ${status.pendingCount} ausstehend';
+}
 
 /// Abschnitt „Synchronisierung“ im Mehr-Menü. Meldet der Server ein anderes
 /// Schreibgerät, kann dieses iPhone nach Bestätigung übernehmen.
@@ -10,11 +60,17 @@ class SyncNowSection extends StatefulWidget {
   const SyncNowSection({
     required this.online,
     required this.synchronize,
+    this.status,
+    this.clock = DateTime.now,
     super.key,
   });
 
   final bool online;
   final Future<SyncRunReport> Function({bool takeOverWriting}) synchronize;
+
+  /// Zustand für die Fußnote; ohne Angabe entfällt sie.
+  final ValueListenable<SyncStatus>? status;
+  final DateTime Function() clock;
 
   @override
   State<SyncNowSection> createState() => _SyncNowSectionState();
@@ -58,46 +114,36 @@ class _SyncNowSectionState extends State<SyncNowSection> {
                 : 'Keine ausstehenden Änderungen.',
         };
       });
-    } on ApiException catch (error) {
-      if (mounted) {
-        setState(
-          () => _status = switch (error.code) {
-            'handover_required' => 'Für dieses Konto ist eine Übergabe vom bisherigen Gerät nötig: dort unter Sync & Gerätewechsel „Dieses Gerät ablösen“ wählen.',
-            'handover_in_progress' => 'Gerade läuft eine Geräteübergabe. Schließe sie ab oder brich sie auf dem bisherigen Gerät ab.',
-            _ => 'Synchronisierung nicht möglich. Lokale Änderungen bleiben erhalten.',
-          },
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _status = 'Synchronisierung nicht möglich. Lokale Änderungen bleiben erhalten.',
-        );
-      }
+    } catch (error) {
+      if (mounted) setState(() => _status = syncFailureMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _confirmTakeOver() async {
-    final confirmed = await showGainerStackedDialog<bool>(
-      context: context,
-      title: 'Schreiben übernehmen?',
-      message: 'Dieses iPhone wird dein Schreibgerät und überträgt seine Änderungen. Das bisher eingetragene Gerät kann danach nichts mehr hochladen; dort noch nicht synchronisierte Änderungen gehen verloren.',
-      actions: const [
-        GainerDialogAction(label: 'Übernehmen', value: true),
-        GainerDialogAction(label: 'Abbrechen', value: false),
-      ],
-    );
-    if (confirmed == true && mounted) await _sync(takeOverWriting: true);
+    if (await confirmTakeOverWriting(context) && mounted) {
+      await _sync(takeOverWriting: true);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final status = widget.status;
+    if (status == null) return _section(null);
+    return ValueListenableBuilder<SyncStatus>(
+      valueListenable: status,
+      builder: (context, value, _) =>
+          _section(syncStatusLine(value, widget.clock())),
+    );
+  }
+
+  Widget _section(String? statusLine) {
     final enabled = widget.online && !_busy;
+    final footer = [?_status, ?statusLine].join('\n');
     return GainerGroupedSection(
       header: 'Synchronisierung',
-      footer: _status,
+      footer: footer.isEmpty ? null : footer,
       children: [
         GainerListRow(
           title: 'Jetzt synchronisieren',
