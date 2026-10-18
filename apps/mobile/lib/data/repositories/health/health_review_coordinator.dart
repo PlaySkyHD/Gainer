@@ -59,12 +59,14 @@ class HealthReviewCoordinator {
     required this.platform,
     required this.accountId,
     required this.currentSessionIdentity,
-  });
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now;
 
   final LocalSyncStore store;
   final BodyRepository bodyRepository;
   final HealthPlatform platform;
   final String accountId;
+  final DateTime Function() _clock;
 
   /// Returns the live account and generation, or null after logout.
   final HealthSessionIdentity? Function() currentSessionIdentity;
@@ -92,7 +94,10 @@ class HealthReviewCoordinator {
     await platform.requestBodyMassReadAuthorization();
     _requireActiveSession(session);
     final from = _localMidnight(fromLocalDate).toUtc();
-    final throughExclusive = _localMidnight(_addDays(toLocalDate, 1)).toUtc();
+    final dayEnd = _localMidnight(_addDays(toLocalDate, 1)).toUtc();
+    final now = _clock().toUtc();
+    // HealthKit lehnt ein Ende in der Zukunft ab; heute endet die Abfrage jetzt.
+    final throughExclusive = dayEnd.isAfter(now) ? now : dayEnd;
     final samples = await platform.readBodyMassSamples(
       fromUtc: from,
       toUtc: throughExclusive,

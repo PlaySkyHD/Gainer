@@ -20,6 +20,7 @@ class _HealthFake implements HealthPlatform {
   bool available = true;
   int requestReads = 0;
   int readQueries = 0;
+  DateTime? lastToUtc;
   int requestWrites = 0;
   int exports = 0;
   void Function()? onReadRequest;
@@ -44,6 +45,7 @@ class _HealthFake implements HealthPlatform {
     required DateTime toUtc,
   }) async {
     readQueries++;
+    lastToUtc = toUtc;
     await readBarrier?.future;
     return samples;
   }
@@ -107,6 +109,35 @@ void main() {
     weightKilograms: 71.25,
     sourceName: 'Apple Watch',
   );
+
+  test(
+    'a range ending today stops the query now instead of at midnight',
+    () async {
+      final now = DateTime(2026, 10, 18, 10, 30);
+      final review =
+          await HealthReviewCoordinator(
+            store: store,
+            bodyRepository: body,
+            platform: health,
+            accountId: accountId,
+            currentSessionIdentity: () => identity,
+            clock: () => now,
+          ).prepareWeightReview(
+            fromLocalDate: '2026-10-12',
+            toLocalDate: '2026-10-18',
+          );
+      expect(review, isNotNull);
+      expect(health.lastToUtc, now.toUtc());
+    },
+  );
+
+  test('a past range still ends at the following local midnight', () async {
+    await coordinator().prepareWeightReview(
+      fromLocalDate: '2026-10-10',
+      toLocalDate: '2026-10-12',
+    );
+    expect(health.lastToUtc, DateTime(2026, 10, 13).toUtc());
+  });
 
   test(
     'empty query results remain an empty review and do not imply denial',
