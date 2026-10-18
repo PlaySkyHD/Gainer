@@ -17,33 +17,14 @@ class ProgressGroup extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: GainerSpacing.l),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          GainerGroupedSection(header: header, children: children),
-          if (footer case final note?)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                GainerSpacing.m,
-                GainerSpacing.xs,
-                GainerSpacing.m,
-                0,
-              ),
-              child: Text(
-                note,
-                style: GainerTypography.label.copyWith(
-                  color: colors.secondaryText,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: GainerSpacing.l),
+    child: GainerGroupedSection(
+      header: header,
+      footer: footer,
+      children: children,
+    ),
+  );
 }
 
 /// Kennzahl mit kleiner Beschriftung darüber und großem Wert.
