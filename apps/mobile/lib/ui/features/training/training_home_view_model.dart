@@ -1,21 +1,34 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../data/repositories/cardio/cardio_repository.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
+import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/training/workout_model.dart';
 import 'active_workout_controller.dart';
+import 'training_format.dart';
 
 /// Tagebuch und Start-/Löschaktionen des Trainings-Tabs.
 class TrainingHomeViewModel extends ChangeNotifier {
   TrainingHomeViewModel({
     required this.repository,
     required this.activeWorkout,
+    this.cardio,
   });
 
   final TrainingLogRepository repository;
   final ActiveWorkoutController activeWorkout;
 
+  /// Cardio-Einheiten; null blendet Cardio im Tagebuch aus.
+  final CardioRepository? cardio;
+
   /// Nicht gelöschte Trainings, neueste zuerst.
   List<Workout> diary = const [];
+
+  /// Nicht gelöschte Cardio-Einheiten, neueste zuerst.
+  List<CardioSession> cardioSessions = const [];
+
+  /// Trainings und Cardio-Einheiten nach Startzeit, neueste zuerst.
+  List<DiaryItem> get items => mergeDiaryItems(diary, cardioSessions);
   bool isLoading = false;
   String? errorMessage;
   bool _disposed = false;
@@ -27,8 +40,10 @@ class TrainingHomeViewModel extends ChangeNotifier {
     _notify();
     try {
       final loaded = await repository.readDiary();
+      final loadedCardio = await cardio?.readSessions() ?? const [];
       if (_disposed) return;
       diary = loaded;
+      cardioSessions = loadedCardio;
     } catch (_) {
       if (!_disposed) {
         errorMessage = 'Das Tagebuch konnte nicht geladen werden.';
@@ -77,6 +92,24 @@ class TrainingHomeViewModel extends ChangeNotifier {
     }
     await activeWorkout.endRestTimer(workoutId);
     await activeWorkout.load();
+  }
+
+  /// Entfernt die Cardio-Einheit sofort aus der Liste und speichert die
+  /// Löschung. Schlägt das Speichern fehl, wird das Tagebuch neu geladen.
+  Future<void> deleteCardio(String sessionId) async {
+    final repository = cardio;
+    if (repository == null) return;
+    cardioSessions = [
+      for (final session in cardioSessions)
+        if (session.sessionId != sessionId) session,
+    ];
+    _notify();
+    try {
+      await repository.deleteSession(sessionId);
+    } catch (_) {
+      errorMessage = 'Die Cardio-Einheit konnte nicht gelöscht werden.';
+      await loadDiary();
+    }
   }
 
   void _notify() {
