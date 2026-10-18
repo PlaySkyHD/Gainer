@@ -117,7 +117,7 @@ void main() {
         find.textContaining('Das Gewicht muss positiv sein'),
         findsNWidgets(2),
       );
-      await tester.tap(find.text('Abbrechen'));
+      await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('body-save-checkin')), findsNothing);
       expect(find.byKey(const ValueKey('body-open-checkin')), findsOneWidget);
@@ -137,7 +137,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(fieldController('body-start-weight').text, '82.0');
       expect(fieldController('body-target-weight').text, '76.0');
-      await tester.tap(find.text('Abbrechen'));
+      await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
       await tester.pumpAndSettle();
     },
   );
@@ -188,16 +188,18 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('body-checkin-date')));
-      await tester.pumpAndSettle();
-      final picker = find.byKey(const ValueKey('body-checkin-date-wheel'));
-      tester.widget<CupertinoDatePicker>(picker).onDateTimeChanged(priorDate);
-      await tester.tap(find.byKey(const ValueKey('body-checkin-date-done')));
-      await tester.pumpAndSettle();
-      expect(
-        find.text('Check-in für ${prettyDate(priorDate)}'),
-        findsOneWidget,
+      final dateRow = find.byKey(const ValueKey('body-checkin-date'));
+      final dateRowValue = find.descendant(
+        of: dateRow,
+        matching: find.text(prettyDate(priorDate)),
       );
+      await tester.tap(dateRow);
+      await tester.pumpAndSettle();
+      final picker = find.byType(CupertinoDatePicker);
+      tester.widget<CupertinoDatePicker>(picker).onDateTimeChanged(priorDate);
+      await tester.tap(find.text('Fertig'));
+      await tester.pumpAndSettle();
+      expect(dateRowValue, findsOneWidget);
       expect(
         tester
             .widget<CupertinoTextField>(find.byType(CupertinoTextField).at(1))
@@ -215,14 +217,17 @@ void main() {
         '77.2',
       );
 
-      await tester.tap(find.byKey(const ValueKey('body-checkin-date')));
+      await tester.tap(dateRow);
       await tester.pumpAndSettle();
       final emptyDate = priorDate.subtract(const Duration(days: 1));
       tester.widget<CupertinoDatePicker>(picker).onDateTimeChanged(emptyDate);
-      await tester.tap(find.byKey(const ValueKey('body-checkin-date-done')));
+      await tester.tap(find.text('Fertig'));
       await tester.pumpAndSettle();
       expect(
-        find.text('Check-in für ${prettyDate(emptyDate)}'),
+        find.descendant(
+          of: dateRow,
+          matching: find.text(prettyDate(emptyDate)),
+        ),
         findsOneWidget,
       );
       expect(
@@ -235,12 +240,15 @@ void main() {
         isEmpty,
       );
 
-      await tester.tap(find.byKey(const ValueKey('body-checkin-date')));
+      await tester.tap(dateRow);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Abbrechen').last);
+      await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
       await tester.pumpAndSettle();
       expect(
-        find.text('Check-in für ${prettyDate(emptyDate)}'),
+        find.descendant(
+          of: dateRow,
+          matching: find.text(prettyDate(emptyDate)),
+        ),
         findsOneWidget,
       );
     },
@@ -349,7 +357,7 @@ void main() {
       await tester.pumpWidget(CupertinoApp(home: BodyScreen(viewModel: model)));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('body-open-checkin')),
+        find.text('Verlauf'),
         180,
         scrollable: find.byType(Scrollable).first,
       );
@@ -368,6 +376,79 @@ void main() {
       expect(layoutError, isNull, reason: layoutError?.toStringDeep());
     },
   );
+
+  testWidgets('today summary and history list the saved check-in', (
+    tester,
+  ) async {
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final repository = BodyRepository(
+      store: LocalSyncStore(database: database, accountId: accountId),
+    );
+    final today = DateTime.now();
+    await repository.saveCheckIn(
+      localDate: _localDate(today),
+      weightKg: 77.2,
+      caloriesKcal: 1980,
+      proteinGrams: null,
+      carbohydrateGrams: null,
+      fatGrams: null,
+      steps: 8000,
+      sleepMinutes: null,
+    );
+    final model = BodyViewModel(repository);
+    await tester.pumpWidget(CupertinoApp(home: BodyScreen(viewModel: model)));
+    await tester.pumpAndSettle();
+
+    // Heute-Zeile und Verlaufszeile zeigen dasselbe Gewicht.
+    expect(find.text('77.2 kg'), findsNWidgets(2));
+    expect(find.text('1980 kcal'), findsOneWidget);
+    expect(find.text('8000'), findsOneWidget);
+    expect(find.text(_prettyDay(today)), findsOneWidget);
+    expect(find.text('Verlauf'), findsOneWidget);
+  });
+
+  testWidgets('goal sheet saves a target date picked in the date row', (
+    tester,
+  ) async {
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final repository = BodyRepository(
+      store: LocalSyncStore(database: database, accountId: accountId),
+    );
+    final model = BodyViewModel(repository);
+    await tester.pumpWidget(CupertinoApp(home: BodyScreen(viewModel: model)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('body-open-goal')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('body-start-weight')),
+      '82',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('body-target-weight')),
+      '76',
+    );
+    expect(find.text('Kein Datum'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('body-target-date')));
+    await tester.pumpAndSettle();
+    final target = DateTime.now().add(const Duration(days: 60));
+    tester
+        .widget<CupertinoDatePicker>(find.byType(CupertinoDatePicker))
+        .onDateTimeChanged(target);
+    await tester.tap(find.text('Fertig'));
+    await tester.pumpAndSettle();
+    expect(find.text(_prettyDay(target)), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('body-save-goal')));
+    await tester.pumpAndSettle();
+
+    final goal = (await repository.read()).activeGoal!.value;
+    expect(goal.startWeightKg, closeTo(82, 0.001));
+    expect(goal.targetWeightKg, closeTo(76, 0.001));
+    expect(goal.targetDate, _localDate(target));
+  });
 
   testWidgets(
     'dismissing while a check-in save is pending cannot pop the tab',
@@ -405,6 +486,27 @@ void main() {
       model.dispose();
     },
   );
+}
+
+String _localDate(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+String _prettyDay(DateTime date) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mär',
+    'Apr',
+    'Mai',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Okt',
+    'Nov',
+    'Dez',
+  ];
+  return '${date.day}. ${months[date.month - 1]} ${date.year}';
 }
 
 class _PendingBodyRepository extends BodyRepository {

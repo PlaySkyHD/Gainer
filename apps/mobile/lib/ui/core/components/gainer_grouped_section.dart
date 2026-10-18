@@ -5,9 +5,17 @@ import 'gainer_card.dart';
 
 /// Zeilen in einer gemeinsamen Karte, getrennt durch feine Trenner.
 class GainerGroupedSection extends StatelessWidget {
-  const GainerGroupedSection({required this.children, this.header, super.key});
+  const GainerGroupedSection({
+    required this.children,
+    this.header,
+    this.footer,
+    super.key,
+  });
 
   final String? header;
+
+  /// Erklärtext unter der Gruppe in Sekundärtext.
+  final String? footer;
   final List<Widget> children;
 
   @override
@@ -51,6 +59,21 @@ class GainerGroupedSection extends StatelessWidget {
             children: rows,
           ),
         ),
+        if (footer case final text?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              GainerSpacing.m,
+              GainerSpacing.xs,
+              GainerSpacing.m,
+              0,
+            ),
+            child: Text(
+              text,
+              style: GainerTypography.label.copyWith(
+                color: colors.secondaryText,
+              ),
+            ),
+          ),
       ],
     );
   }

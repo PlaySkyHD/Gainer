@@ -15,26 +15,20 @@ class HealthReviewScreen extends StatefulWidget {
 }
 
 class _HealthReviewScreenState extends State<HealthReviewScreen> {
-  late final TextEditingController _from;
-  late final TextEditingController _to;
+  late DateTime _from;
+  late DateTime _to;
 
   @override
   void initState() {
     super.initState();
     final today = DateTime.now();
-    _from = TextEditingController(
-      text: _date(today.subtract(const Duration(days: 6))),
-    );
-    _to = TextEditingController(text: _date(today));
+    _from = today.subtract(const Duration(days: 6));
+    _to = today;
     widget.viewModel.load();
   }
 
-  @override
-  void dispose() {
-    _from.dispose();
-    _to.dispose();
-    super.dispose();
-  }
+  void _prepare(HealthReviewViewModel vm) =>
+      vm.prepareReview(fromLocalDate: _date(_from), toLocalDate: _date(_to));
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -44,29 +38,56 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
       final review = vm.review;
       return GainerScaffold(
         title: 'Apple Health',
+        trailing: [
+          if (review != null) ...[
+            GainerToolbarButton(
+              icon: CupertinoIcons.arrow_clockwise,
+              semanticLabel: 'Health-Proben neu laden',
+              onPressed: vm.isLoading ? null : () => _prepare(vm),
+            ),
+            GainerToolbarButton(
+              icon: CupertinoIcons.xmark,
+              semanticLabel: 'Prüfung abbrechen',
+              onPressed: vm.cancelReview,
+            ),
+          ],
+        ],
         children: [
-          _notice(
-            context,
-            'Health-Daten werden nur nach deiner Aktion geprüft. Leere Ergebnisse sagen nicht aus, ob der Zugriff verweigert wurde.',
-          ),
           GainerGroupedSection(
             header: 'Gewicht übernehmen',
+            footer: 'Health-Daten werden nur nach deiner Aktion geprüft. Leere Ergebnisse sagen nicht aus, ob der Zugriff verweigert wurde.',
             children: [
-              _field(context, _from, 'Von (JJJJ-MM-TT)'),
-              _field(context, _to, 'Bis (JJJJ-MM-TT)'),
+              GainerDateRow(
+                key: const ValueKey('health-from'),
+                title: 'Von',
+                value: _from,
+                format: _date,
+                maximum: _to,
+                onChanged: vm.isLoading
+                    ? null
+                    : (picked) => setState(() => _from = picked),
+              ),
+              GainerDateRow(
+                key: const ValueKey('health-to'),
+                title: 'Bis',
+                value: _to,
+                format: _date,
+                minimum: _from,
+                maximum: DateTime.now(),
+                onChanged: vm.isLoading
+                    ? null
+                    : (picked) => setState(() => _to = picked),
+              ),
             ],
           ),
-          const SizedBox(height: GainerSpacing.s),
-          GainerPillButton(
-            label: 'Health-Proben laden',
-            expand: true,
-            onPressed: vm.isLoading
-                ? null
-                : () => vm.prepareReview(
-                    fromLocalDate: _from.text,
-                    toLocalDate: _to.text,
-                  ),
-          ),
+          if (review == null) ...[
+            const SizedBox(height: GainerSpacing.m),
+            GainerPillButton(
+              label: 'Health-Proben laden',
+              expand: true,
+              onPressed: vm.isLoading ? null : () => _prepare(vm),
+            ),
+          ],
           if (review != null) ..._reviewChildren(context, vm, review),
           if (vm.lastResults.isNotEmpty) ..._importStatusChildren(context, vm),
           if (vm.errorMessage != null)
@@ -87,63 +108,48 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
     HealthReviewViewModel vm,
     HealthWeightReview review,
   ) => [
-    _notice(
-      context,
-      'Prüfe Gewicht, Messzeit und Quelle. Erst bestätigte Einträge werden an den Gainer-Sync vorgemerkt.',
-    ),
-    if (review.samples.isEmpty)
-      GainerGroupedSection(
-        children: [
-          _dataCard(
+    const SizedBox(height: GainerSpacing.m),
+    GainerGroupedSection(
+      header: 'Gefundene Werte',
+      footer: 'Prüfe Gewicht, Messzeit und Quelle. Erst bestätigte Einträge werden an den Gainer-Sync vorgemerkt.',
+      children: [
+        if (review.samples.isEmpty)
+          _dataRow(
             context,
             'Keine Werte im Zeitraum gefunden.',
             'Das bedeutet nicht automatisch, dass der Zugriff verweigert wurde.',
           ),
-        ],
-      ),
-    GainerGroupedSection(
-      children: [
         for (final sample in review.samples)
-          _switchRow(
-            context,
+          GainerListRow(
             title: '${sample.weightKilograms.toStringAsFixed(2)} kg',
-            detail:
+            subtitle:
                 '${_localTime(sample.measuredAtUtc)} · ${sample.sourceName}',
-            value: vm.selectedProbeIds.contains(sample.uuid),
-            onChanged: (value) => vm.selectSample(sample.uuid, value),
+            trailing: CupertinoSwitch(
+              value: vm.selectedProbeIds.contains(sample.uuid),
+              onChanged: (value) => vm.selectSample(sample.uuid, value),
+            ),
           ),
-        _switchRow(
-          context,
+        GainerListRow(
           title: 'Ich bestätige, dass ausgewählte Check-ins zu meinem Gainer-Konto synchronisiert werden können.',
-          value: vm.serverSyncNoticeAccepted,
-          enabled: vm.selectedProbeIds.isNotEmpty,
-          onChanged: vm.acceptServerSyncNotice,
+          trailing: CupertinoSwitch(
+            value: vm.serverSyncNoticeAccepted,
+            onChanged: vm.selectedProbeIds.isEmpty
+                ? null
+                : vm.acceptServerSyncNotice,
+          ),
         ),
       ],
     ),
-    const SizedBox(height: GainerSpacing.s),
-    Row(
-      children: [
-        Expanded(
-          child: GainerPillButton(
-            label: 'Prüfung abbrechen',
-            variant: GainerPillVariant.tonal,
-            onPressed: vm.cancelReview,
-          ),
-        ),
-        const SizedBox(width: GainerSpacing.xs),
-        Expanded(
-          child: GainerPillButton(
-            label: 'Auswahl übernehmen',
-            onPressed:
-                vm.isLoading ||
-                    !vm.serverSyncNoticeAccepted ||
-                    vm.selectedProbeIds.isEmpty
-                ? null
-                : _confirmImport,
-          ),
-        ),
-      ],
+    const SizedBox(height: GainerSpacing.m),
+    GainerPillButton(
+      label: 'Auswahl übernehmen',
+      expand: true,
+      onPressed:
+          vm.isLoading ||
+              !vm.serverSyncNoticeAccepted ||
+              vm.selectedProbeIds.isEmpty
+          ? null
+          : _confirmImport,
     ),
   ];
 
@@ -151,11 +157,12 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
     BuildContext context,
     HealthReviewViewModel vm,
   ) => [
+    const SizedBox(height: GainerSpacing.m),
     GainerGroupedSection(
       header: 'Importstatus',
       children: [
         for (final result in vm.lastResults)
-          _dataCard(
+          _dataRow(
             context,
             _status(result.status),
             '${result.sample.weightKilograms.toStringAsFixed(2)} kg · ${_localTime(result.sample.measuredAtUtc)}',
@@ -168,38 +175,28 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
     BuildContext context,
     HealthReviewViewModel vm,
   ) => [
+    const SizedBox(height: GainerSpacing.m),
     GainerGroupedSection(
       header: 'Abgeschlossene Workouts exportieren',
+      footer: 'Nur serverbestätigte eigene Workouts werden angeboten. Es werden keine geschätzten Kalorien oder Pulswerte ergänzt.',
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            GainerSpacing.m,
-            GainerSpacing.xs,
-            GainerSpacing.m,
-            GainerSpacing.xs,
-          ),
-          child: Text(
-            'Nur serverbestätigte eigene Workouts werden angeboten. Es werden keine geschätzten Kalorien oder Pulswerte ergänzt.',
-            style: GainerTypography.label.copyWith(
-              color: GainerDesign.colorsOf(context).secondaryText,
-            ),
-          ),
-        ),
         if (vm.completedWorkouts.isEmpty)
-          _dataCard(
+          _dataRow(
             context,
             'Keine serverbestätigten abgeschlossenen Workouts verfügbar.',
             '',
           ),
         for (final workout in vm.completedWorkouts)
-          _actionCard(
-            context,
-            title: workout.value.title,
-            detail:
-                '${_localTime(workout.value.startedAtUtc)} · ${_localTime(workout.value.endedAtUtc!)}',
-            actionLabel: 'Workout nach Apple Health exportieren',
-            icon: CupertinoIcons.arrow_up_doc,
-            onPressed: vm.isLoading ? null : () => _export(workout),
+          Semantics(
+            hint: 'Workout nach Apple Health exportieren',
+            child: GainerListRow(
+              title: workout.value.title,
+              subtitle:
+                  '${_localTime(workout.value.startedAtUtc)} · ${_localTime(workout.value.endedAtUtc!)}',
+              leadingIcon: CupertinoIcons.arrow_up_doc,
+              showChevron: true,
+              onTap: vm.isLoading ? null : () => _export(workout),
+            ),
           ),
       ],
     ),
@@ -264,41 +261,6 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
   }
 }
 
-Widget _field(
-  BuildContext context,
-  TextEditingController controller,
-  String label,
-) {
-  final colors = GainerDesign.colorsOf(context);
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(
-      GainerSpacing.m,
-      GainerSpacing.xs,
-      GainerSpacing.m,
-      GainerSpacing.xs,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: GainerTypography.label.copyWith(color: colors.secondaryText),
-        ),
-        const SizedBox(height: 5),
-        CupertinoTextField(
-          controller: controller,
-          style: GainerTypography.body.copyWith(color: colors.primaryText),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-          decoration: BoxDecoration(
-            color: colors.elevatedSurface,
-            borderRadius: BorderRadius.circular(GainerRadii.field),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
 Widget _notice(BuildContext context, String text, {bool isError = false}) {
   final colors = GainerDesign.colorsOf(context);
   final tint = isError ? colors.destructive : colors.accent;
@@ -318,14 +280,13 @@ Widget _notice(BuildContext context, String text, {bool isError = false}) {
   );
 }
 
-Widget _dataCard(BuildContext context, String title, String detail) {
+/// Textzeile in einer Gruppe: Titel, optional Detail in Sekundärtext.
+Widget _dataRow(BuildContext context, String title, String detail) {
   final colors = GainerDesign.colorsOf(context);
   return Padding(
-    padding: const EdgeInsets.fromLTRB(
-      GainerSpacing.m,
-      10,
-      GainerSpacing.m,
-      10,
+    padding: const EdgeInsets.symmetric(
+      horizontal: GainerSpacing.m,
+      vertical: 11,
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -344,105 +305,6 @@ Widget _dataCard(BuildContext context, String title, String detail) {
               ),
             ),
           ),
-      ],
-    ),
-  );
-}
-
-Widget _switchRow(
-  BuildContext context, {
-  required String title,
-  String? detail,
-  required bool value,
-  bool enabled = true,
-  required ValueChanged<bool> onChanged,
-}) {
-  final colors = GainerDesign.colorsOf(context);
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(
-      GainerSpacing.m,
-      10,
-      GainerSpacing.xs,
-      10,
-    ),
-    child: Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: GainerTypography.body.copyWith(
-                  color: colors.primaryText,
-                ),
-              ),
-              if (detail != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    detail,
-                    style: GainerTypography.label.copyWith(
-                      color: colors.secondaryText,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        CupertinoSwitch(value: value, onChanged: enabled ? onChanged : null),
-      ],
-    ),
-  );
-}
-
-Widget _actionCard(
-  BuildContext context, {
-  required String title,
-  required String detail,
-  required String actionLabel,
-  required IconData icon,
-  required VoidCallback? onPressed,
-}) {
-  final colors = GainerDesign.colorsOf(context);
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(
-      GainerSpacing.m,
-      10,
-      GainerSpacing.xs,
-      10,
-    ),
-    child: Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: GainerTypography.body.copyWith(
-                  color: colors.primaryText,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                detail,
-                style: GainerTypography.label.copyWith(
-                  color: colors.secondaryText,
-                ),
-              ),
-            ],
-          ),
-        ),
-        CupertinoButton(
-          padding: const EdgeInsets.all(8),
-          onPressed: onPressed,
-          child: Semantics(
-            label: actionLabel,
-            button: true,
-            child: Icon(icon, color: colors.accent),
-          ),
-        ),
       ],
     ),
   );
