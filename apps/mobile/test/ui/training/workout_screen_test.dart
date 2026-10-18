@@ -86,6 +86,30 @@ void main() {
     expect(find.byIcon(CupertinoIcons.ellipsis), findsOneWidget);
   });
 
+  testWidgets(
+    'Hinweis bei ausgeschalteten Live-Aktivitäten öffnet die Einstellungen',
+    (tester) async {
+      var opened = 0;
+      activeWorkout.liveActivitiesOff.value = true;
+      activeWorkout.openLiveActivitySettings = () async => opened++;
+      await tester.runAsync(() => startActiveWorkout('Push'));
+      await tester.runAsync(activeWorkout.load);
+      await pumpShell(tester);
+
+      await tester.tap(_diaryRow('Push'));
+      await settle(tester);
+
+      expect(find.text('Live-Aktivitäten sind aus'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('live-activities-enable')));
+      await settle(tester);
+      expect(opened, 1);
+
+      activeWorkout.liveActivitiesOff.value = false;
+      await settle(tester);
+      expect(find.text('Live-Aktivitäten sind aus'), findsNothing);
+    },
+  );
+
   testWidgets('minimiert bleibt aktiv, Leiste erscheint in anderem Tab', (
     tester,
   ) async {

@@ -1,5 +1,6 @@
 import Flutter
 import Foundation
+import UIKit
 
 @MainActor
 final class GainerMobilePlatform: MobilePlatformApi {
@@ -266,6 +267,16 @@ final class GainerMobilePlatform: MobilePlatformApi {
   func endAllLiveActivities() async throws {
     guard #available(iOS 17.0, *) else { return }
     await liveActivities.endAll()
+  }
+
+  func areLiveActivitiesEnabled() async throws -> Bool {
+    guard #available(iOS 17.0, *) else { return false }
+    return liveActivities.isEnabled
+  }
+
+  func openAppSettings() async throws {
+    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+    _ = await UIApplication.shared.open(url)
   }
 
   func readPendingRoute() async throws -> PlatformRoute? {

@@ -11,6 +11,11 @@ final class NativeLiveActivities {
 
   private let now: () -> Date
 
+  /// Ob der Nutzer Live Activities für Gainer in den Einstellungen erlaubt.
+  var isEnabled: Bool {
+    ActivityAuthorizationInfo().areActivitiesEnabled
+  }
+
   init(now: @escaping () -> Date = Date.init) {
     self.now = now
   }

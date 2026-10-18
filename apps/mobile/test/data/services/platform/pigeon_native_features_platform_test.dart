@@ -177,6 +177,15 @@ class _FakeMobilePlatformApi extends MobilePlatformApi {
 
   @override
   Future<void> endAllLiveActivities() async => endedActivities.add('*');
+
+  bool liveActivitiesEnabled = true;
+  int settingsOpened = 0;
+
+  @override
+  Future<bool> areLiveActivitiesEnabled() async => liveActivitiesEnabled;
+
+  @override
+  Future<void> openAppSettings() async => settingsOpened++;
 }
 
 void main() {
@@ -451,4 +460,16 @@ void main() {
       throwsArgumentError,
     );
   });
+
+  test(
+    'live activity permission check and settings link pass through',
+    () async {
+      final api = _FakeMobilePlatformApi()..liveActivitiesEnabled = false;
+      final platform = PigeonNativeFeaturesPlatform(api: api);
+
+      expect(await platform.isEnabled(), isFalse);
+      await platform.openSettings();
+      expect(api.settingsOpened, 1);
+    },
+  );
 }
