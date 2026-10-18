@@ -197,4 +197,22 @@ void main() {
     expect(find.text('Mahlzeiten'), findsOneWidget);
     expect(find.text('3'), findsOneWidget);
   });
+
+  testWidgets('GainerGroupedSection zeigt die Fußnote unter der Karte', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      componentHarness(
+        child: const GainerGroupedSection(
+          header: 'Verbindung',
+          footer: 'Änderungen werden mit deinem Konto abgeglichen.',
+          children: [Text('Online')],
+        ),
+      ),
+    );
+    expect(
+      find.text('Änderungen werden mit deinem Konto abgeglichen.'),
+      findsOneWidget,
+    );
+  });
 }
