@@ -16,6 +16,9 @@ class PlatformHealthCheck {
 /// Reports that an authorization request finished, not that access was granted.
 enum PlatformAuthorizationRequestResult { requestCompleted }
 
+/// Ergebnis eines Schreibversuchs nach Apple Health.
+enum PlatformHealthWriteStatus { saved, alreadyPresent, notAuthorized }
+
 class PlatformCapturedImage {
   const PlatformCapturedImage({required this.bytes, required this.mimeType});
 
@@ -29,12 +32,35 @@ class PlatformBodyMassSample {
     required this.measuredAtUtcEpochMilliseconds,
     required this.weightKilograms,
     required this.sourceName,
+    this.syncIdentifier,
   });
 
   final String uuid;
   final int measuredAtUtcEpochMilliseconds;
   final double weightKilograms;
   final String sourceName;
+
+  /// `HKMetadataKeySyncIdentifier` der Probe; null bei fremden Quellen.
+  final String? syncIdentifier;
+}
+
+/// Schlafanalyse einer Nacht: früheste Einschlafzeit bis späteste Aufwachzeit.
+class PlatformSleepWindow {
+  const PlatformSleepWindow({
+    required this.bedtimeUtcEpochMilliseconds,
+    required this.wakeUtcEpochMilliseconds,
+    required this.asleepMinutes,
+    required this.sourceName,
+    required this.fromGainer,
+  });
+
+  final int bedtimeUtcEpochMilliseconds;
+  final int wakeUtcEpochMilliseconds;
+  final int asleepMinutes;
+  final String sourceName;
+
+  /// Wahr, wenn nur Gainer-eigene Proben vorliegen.
+  final bool fromGainer;
 }
 
 class PlatformWorkoutExportResult {
@@ -180,6 +206,35 @@ abstract class MobilePlatformApi {
   List<PlatformBodyMassSample> readBodyMassSamples(
     int fromUtcEpochMilliseconds,
     int toUtcEpochMilliseconds,
+  );
+
+  /// Fragt Lesen (Gewicht, Schritte, Schlaf) und Schreiben (Gewicht, Schlaf)
+  /// für den Check-in in einem Systemdialog an.
+  @async
+  PlatformAuthorizationRequestResult requestCheckInAuthorization();
+
+  /// Tagessumme der Schritte; null ohne Daten.
+  @async
+  int? readStepCount(int fromUtcEpochMilliseconds, int toUtcEpochMilliseconds);
+
+  @async
+  PlatformSleepWindow? readSleep(
+    int fromUtcEpochMilliseconds,
+    int toUtcEpochMilliseconds,
+  );
+
+  @async
+  PlatformHealthWriteStatus writeBodyMass(
+    double kilograms,
+    int measuredAtUtcEpochMilliseconds,
+    String syncIdentifier,
+  );
+
+  @async
+  PlatformHealthWriteStatus writeSleep(
+    int bedtimeUtcEpochMilliseconds,
+    int wakeUtcEpochMilliseconds,
+    String syncIdentifier,
   );
 
   @async
