@@ -111,9 +111,7 @@ Future<UiDesignFixture> createUiDesignFixture() async {
     repository: nutritionRepository,
     localDate: today,
   );
-  final progress = ProgressViewModel(
-    InsightsRepository(api, store: store),
-  );
+  final progress = ProgressViewModel(InsightsRepository(api, store: store));
   final sync = SyncRepository(
     store: store,
     api: api,
@@ -401,6 +399,37 @@ class _FixtureNativeFeatures
     required DateTime fromUtc,
     required DateTime toUtc,
   }) async => const [];
+
+  @override
+  Future<PlatformAuthorizationRequestResult>
+  requestCheckInAuthorization() async =>
+      PlatformAuthorizationRequestResult.requestCompleted;
+
+  @override
+  Future<int?> readStepCount({
+    required DateTime fromUtc,
+    required DateTime toUtc,
+  }) async => null;
+
+  @override
+  Future<HealthSleepWindow?> readSleep({
+    required DateTime fromUtc,
+    required DateTime toUtc,
+  }) async => null;
+
+  @override
+  Future<HealthWriteStatus> writeBodyMass({
+    required double kilograms,
+    required DateTime measuredAtUtc,
+    required String syncIdentifier,
+  }) async => HealthWriteStatus.notAuthorized;
+
+  @override
+  Future<HealthWriteStatus> writeSleep({
+    required DateTime bedtimeUtc,
+    required DateTime wakeUtc,
+    required String syncIdentifier,
+  }) async => HealthWriteStatus.notAuthorized;
 
   @override
   Future<PlatformAuthorizationRequestResult>

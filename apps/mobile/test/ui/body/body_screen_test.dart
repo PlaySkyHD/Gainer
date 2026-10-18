@@ -211,13 +211,7 @@ void main() {
       await tester.tap(find.text('Fertig'));
       await tester.pumpAndSettle();
       expect(dateRowValue, findsOneWidget);
-      expect(
-        tester
-            .widget<CupertinoTextField>(find.byType(CupertinoTextField).at(1))
-            .controller
-            ?.text,
-        '1980',
-      );
+      expect(find.byType(CupertinoTextField), findsOneWidget);
       expect(
         tester
             .widget<CupertinoTextField>(
@@ -300,21 +294,20 @@ void main() {
           ?.text,
       '77.25',
     );
-    expect(
-      tester
-          .widget<CupertinoTextField>(find.byType(CupertinoTextField).at(2))
-          .controller
-          ?.text,
-      '148.5',
+    await tester.enterText(
+      find.byKey(const ValueKey('body-checkin-weight')),
+      '77,5',
     );
-    await tester.enterText(find.byType(CupertinoTextField).at(1), '1990');
     await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
     await tester.pumpAndSettle();
 
     final saved = (await repository.read()).checkIns
         .singleWhere((entry) => entry.value.localDate == localDate)
         .value;
-    expect(saved.weightKg, 77.25);
+    expect(saved.weightKg, 77.5);
+    expect(saved.caloriesKcal, 1980.5);
+    expect(saved.steps, 9000);
+    expect(saved.sleepMinutes, 450);
     expect(saved.proteinGrams, 148.5);
     expect(saved.carbohydrateGrams, 211.25);
     expect(saved.fatGrams, 62.75);
@@ -337,13 +330,12 @@ void main() {
       find.byKey(const ValueKey('body-checkin-weight')),
       '82,4',
     );
-    await tester.enterText(find.byType(CupertinoTextField).at(2), '148,5');
     await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
     await tester.pumpAndSettle();
 
     final saved = (await repository.read()).checkIns.single.value;
     expect(saved.weightKg, 82.4);
-    expect(saved.proteinGrams, 148.5);
+    expect(saved.caloriesKcal, isNull);
   });
 
   testWidgets(
@@ -414,7 +406,7 @@ void main() {
     // Heute-Zeile und Verlaufszeile zeigen dasselbe Gewicht.
     expect(find.text('77.2 kg'), findsNWidgets(2));
     expect(find.text('1980 kcal'), findsOneWidget);
-    expect(find.text('8000'), findsOneWidget);
+    expect(find.text('8.000'), findsOneWidget);
     expect(find.text(_prettyDay(today)), findsOneWidget);
     expect(find.text('Verlauf'), findsOneWidget);
   });

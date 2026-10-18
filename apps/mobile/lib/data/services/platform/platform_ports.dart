@@ -45,6 +45,25 @@ abstract interface class HealthPlatform {
     required DateTime fromUtc,
     required DateTime toUtc,
   });
+  Future<PlatformAuthorizationRequestResult> requestCheckInAuthorization();
+  Future<int?> readStepCount({
+    required DateTime fromUtc,
+    required DateTime toUtc,
+  });
+  Future<HealthSleepWindow?> readSleep({
+    required DateTime fromUtc,
+    required DateTime toUtc,
+  });
+  Future<HealthWriteStatus> writeBodyMass({
+    required double kilograms,
+    required DateTime measuredAtUtc,
+    required String syncIdentifier,
+  });
+  Future<HealthWriteStatus> writeSleep({
+    required DateTime bedtimeUtc,
+    required DateTime wakeUtc,
+    required String syncIdentifier,
+  });
   Future<PlatformAuthorizationRequestResult> requestWorkoutWriteAuthorization();
   Future<WorkoutExportReceipt> exportCompletedWorkout(
     CompletedWorkoutHealthExport workout,
@@ -65,19 +84,51 @@ abstract interface class LiveActivityPlatform {
 
 enum HealthExportStatus { saved, alreadyPresent }
 
+enum HealthWriteStatus { saved, alreadyPresent, notAuthorized }
+
+/// Schlafanalyse einer Nacht aus Apple Health.
+class HealthSleepWindow {
+  const HealthSleepWindow({
+    required this.bedtimeUtc,
+    required this.wakeUtc,
+    required this.asleepMinutes,
+    required this.sourceName,
+    this.fromGainer = false,
+  });
+
+  final DateTime bedtimeUtc;
+  final DateTime wakeUtc;
+  final int asleepMinutes;
+  final String sourceName;
+
+  /// Wahr, wenn nur Gainer-eigene Proben vorliegen.
+  final bool fromGainer;
+}
+
 class BodyMassSample {
   const BodyMassSample({
     required this.uuid,
     required this.measuredAtUtc,
     required this.weightKilograms,
     required this.sourceName,
+    this.syncIdentifier,
   });
 
   final String uuid;
   final DateTime measuredAtUtc;
   final double weightKilograms;
   final String sourceName;
+
+  /// `HKMetadataKeySyncIdentifier`; Gainer-Proben beginnen mit `gainer-checkin-`.
+  final String? syncIdentifier;
+
+  /// Gainer hat die Probe selbst geschrieben.
+  bool get isFromGainer =>
+      (syncIdentifier?.startsWith(checkInSyncPrefix) ?? false) ||
+      sourceName == 'Gainer';
 }
+
+const checkInSyncPrefix = 'gainer-checkin-';
 
 class CompletedWorkoutHealthExport {
   factory CompletedWorkoutHealthExport({

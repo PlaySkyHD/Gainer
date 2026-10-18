@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
@@ -6,19 +8,16 @@ import '../../../domain/models/body/body_tracking.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'body_view_model.dart';
+import 'check_in_format.dart';
 
 const _checkInTitle = 'Check-in';
 
 const _goalFieldKeys = {'startWeightKg', 'targetWeightKg'};
-const _checkInFieldKeys = {
-  'weightKg',
-  'caloriesKcal',
-  'proteinGrams',
-  'carbohydrateGrams',
-  'fatGrams',
-  'steps',
-  'sleepMinutes',
-};
+const _checkInFieldKeys = {'weightKg', 'steps', 'sleepMinutes'};
+
+/// Vorschlag für den Zeit-Picker, solange nichts gesetzt ist.
+const _defaultBedMinutes = 23 * 60;
+const _defaultWakeMinutes = 7 * 60;
 
 class BodyScreen extends StatefulWidget {
   const BodyScreen({required this.viewModel, super.key});
@@ -33,17 +32,20 @@ class _BodyScreenState extends State<BodyScreen> {
   late final TextEditingController _startWeight = TextEditingController();
   late final TextEditingController _targetWeight = TextEditingController();
   late final TextEditingController _checkInWeight = TextEditingController();
-  late final TextEditingController _calories = TextEditingController();
-  late final TextEditingController _protein = TextEditingController();
-  late final TextEditingController _carbs = TextEditingController();
-  late final TextEditingController _fat = TextEditingController();
-  late final TextEditingController _steps = TextEditingController();
-  late final TextEditingController _sleep = TextEditingController();
   BodyGoalKind _kind = BodyGoalKind.maintain;
   BodyWeightUnit _unit = BodyWeightUnit.kilograms;
   DateTime _startDate = DateTime.now();
   DateTime? _targetDate;
   DateTime _checkInDate = DateTime.now();
+
+  // Schlaf als Minuten seit Mitternacht; null = nicht gesetzt.
+  int? _bedMinutes;
+  int? _wakeMinutes;
+  int? _existingSleepMinutes;
+  bool _sleepFromHealth = false;
+  String? _healthWeightText;
+  int _healthToken = 0;
+  StateSetter? _sheetSetState;
 
   @override
   void initState() {
@@ -55,17 +57,7 @@ class _BodyScreenState extends State<BodyScreen> {
 
   @override
   void dispose() {
-    for (final controller in [
-      _startWeight,
-      _targetWeight,
-      _checkInWeight,
-      _calories,
-      _protein,
-      _carbs,
-      _fat,
-      _steps,
-      _sleep,
-    ]) {
+    for (final controller in [_startWeight, _targetWeight, _checkInWeight]) {
       controller.dispose();
     }
     super.dispose();
@@ -173,7 +165,7 @@ class _BodyScreenState extends State<BodyScreen> {
           value: '${calories.toStringAsFixed(0)} kcal',
         ),
       if (entry.steps case final steps?)
-        GainerListRow(title: 'Schritte', value: steps.toString()),
+        GainerListRow(title: 'Schritte', value: formatStepCount(steps)),
     ];
   }
 
@@ -248,29 +240,61 @@ class _BodyScreenState extends State<BodyScreen> {
     final now = DateTime.now();
     _checkInDate = DateTime(now.year, now.month, now.day);
     _prefillCheckIn(model, _checkInDate);
+    unawaited(_loadHealth(model, _checkInDate));
     await _showEditor(model, goal: false);
   }
 
+  DailyCheckIn? _checkInFor(BodyViewModel model, String localDate) => model
+      .snapshot
+      ?.checkIns
+      .where((item) => item.value.localDate == localDate)
+      .firstOrNull
+      ?.value;
+
+  /// Füllt Gewicht und Schlaf aus Apple Health vor, ohne Eingaben zu überschreiben.
+  Future<void> _loadHealth(BodyViewModel model, DateTime date) async {
+    final token = ++_healthToken;
+    final loaded = await model.loadCheckInHealth(_dateOnly(date));
+    if (loaded == null || !mounted || token != _healthToken) return;
+    if (_checkInWeight.text.trim().isEmpty && loaded.weightKg != null) {
+      final text = _editableWeight(weightForDisplay(loaded.weightKg!, _unit));
+      _checkInWeight.text = text;
+      _healthWeightText = text;
+    }
+    if (_bedMinutes == null && _wakeMinutes == null && loaded.sleep != null) {
+      final bed = loaded.sleep!.bedtimeUtc.toLocal();
+      final wake = loaded.sleep!.wakeUtc.toLocal();
+      _bedMinutes = bed.hour * 60 + bed.minute;
+      _wakeMinutes = wake.hour * 60 + wake.minute;
+      _sleepFromHealth = true;
+    }
+    _sheetSetState?.call(() {});
+  }
+
   void _prefillCheckIn(BodyViewModel model, DateTime date) {
-    final localDate = _dateOnly(date);
-    final existing = model.snapshot?.checkIns
-        .where((item) => item.value.localDate == localDate)
-        .firstOrNull
-        ?.value;
+    final existing = _checkInFor(model, _dateOnly(date));
     _checkInWeight.text = existing == null
         ? ''
         : _editableWeight(weightForDisplay(existing.weightKg, _unit));
-    _calories.text = _editableNumber(existing?.caloriesKcal);
-    _protein.text = _editableNumber(existing?.proteinGrams);
-    _carbs.text = _editableNumber(existing?.carbohydrateGrams);
-    _fat.text = _editableNumber(existing?.fatGrams);
-    _steps.text = existing?.steps?.toString() ?? '';
-    _sleep.text = existing?.sleepMinutes?.toString() ?? '';
+    _healthWeightText = null;
+    _bedMinutes = null;
+    _wakeMinutes = null;
+    _existingSleepMinutes = existing?.sleepMinutes;
+    _sleepFromHealth = false;
   }
 
   /// Formular-Sheet für Ziel oder Check-in; „Sichern“ ist die Abschlussaktion.
   /// Ohne feste Höhe: das Sheet passt sich dem Inhalt an und scrollt bei Bedarf.
-  Future<void> _showEditor(
+  Future<void> _showEditor(BodyViewModel model, {required bool goal}) async {
+    try {
+      await _presentEditor(model, goal: goal);
+    } finally {
+      _sheetSetState = null;
+      _healthToken++;
+    }
+  }
+
+  Future<void> _presentEditor(
     BodyViewModel model, {
     required bool goal,
   }) => showGainerSheet<void>(
@@ -280,6 +304,7 @@ class _BodyScreenState extends State<BodyScreen> {
       child: Consumer<BodyViewModel>(
         builder: (sheetContext, liveModel, _) => StatefulBuilder(
           builder: (sheetContext, setSheetState) {
+            if (!goal) _sheetSetState = setSheetState;
             final errors = liveModel.fieldErrors;
             final rowKeys = goal ? _goalFieldKeys : _checkInFieldKeys;
             // Feldfehler stehen direkt an der Zeile, alles andere als Hinweis.
@@ -472,58 +497,128 @@ class _BodyScreenState extends State<BodyScreen> {
                         picked.day,
                       );
                       _prefillCheckIn(model, _checkInDate);
+                      unawaited(_loadHealth(model, _checkInDate));
                     }),
             ),
           ],
         ),
         const SizedBox(height: GainerSpacing.m),
-        GainerGroupedSection(
-          header: 'Messwerte',
-          footer: 'Gewicht ist erforderlich. Weitere Angaben sind optional.',
-          children: [
-            _numberRow(
-              'Gewicht',
-              _checkInWeight,
-              unit: unitLabel,
-              errorText: errors['weightKg'],
-              fieldKey: const ValueKey('body-checkin-weight'),
-            ),
-            _numberRow(
-              'Kalorien',
-              _calories,
-              unit: 'kcal',
-              errorText: errors['caloriesKcal'],
-            ),
-            _numberRow(
-              'Protein',
-              _protein,
-              unit: 'g',
-              errorText: errors['proteinGrams'],
-            ),
-            _numberRow(
-              'Kohlenhydrate',
-              _carbs,
-              unit: 'g',
-              errorText: errors['carbohydrateGrams'],
-            ),
-            _numberRow('Fett', _fat, unit: 'g', errorText: errors['fatGrams']),
-            _numberRow(
-              'Schritte',
-              _steps,
-              decimal: false,
-              errorText: errors['steps'],
-            ),
-            _numberRow(
-              'Schlaf',
-              _sleep,
-              unit: 'min',
-              decimal: false,
-              errorText: errors['sleepMinutes'],
-            ),
-          ],
+        ListenableBuilder(
+          listenable: _checkInWeight,
+          builder: (context, _) => GainerGroupedSection(
+            header: 'Gewicht',
+            footer:
+                _healthWeightText != null &&
+                    _checkInWeight.text == _healthWeightText
+                ? 'Gewicht aus Apple Health'
+                : 'Gewicht ist erforderlich.',
+            children: [
+              _numberRow(
+                'Gewicht',
+                _checkInWeight,
+                unit: unitLabel,
+                errorText: errors['weightKg'],
+                fieldKey: const ValueKey('body-checkin-weight'),
+              ),
+            ],
+          ),
         ),
+        const SizedBox(height: GainerSpacing.m),
+        ..._sleepSection(rebuild, errors['sleepMinutes']),
+        const SizedBox(height: GainerSpacing.m),
+        ..._stepsSection(model, errors['steps']),
       ],
     );
+  }
+
+  List<Widget> _sleepSection(StateSetter rebuild, String? errorText) {
+    final bed = _bedMinutes;
+    final wake = _wakeMinutes;
+    final duration = bed != null && wake != null
+        ? sleepMinutesBetween(bed, wake)
+        : (bed == null && wake == null ? _existingSleepMinutes : null);
+    return [
+      GainerGroupedSection(
+        header: 'Schlaf',
+        footer:
+            errorText ?? (_sleepFromHealth ? 'Schlaf aus Apple Health' : null),
+        children: [
+          _timeRow(
+            'Zu Bett',
+            const ValueKey('body-checkin-bedtime'),
+            bed,
+            _defaultBedMinutes,
+            (minutes) => rebuild(() {
+              _bedMinutes = minutes;
+              _sleepFromHealth = false;
+            }),
+          ),
+          _timeRow(
+            'Aufgestanden',
+            const ValueKey('body-checkin-wake'),
+            wake,
+            _defaultWakeMinutes,
+            (minutes) => rebuild(() {
+              _wakeMinutes = minutes;
+              _sleepFromHealth = false;
+            }),
+          ),
+          GainerListRow(
+            key: const ValueKey('body-checkin-sleep-duration'),
+            title: 'Dauer',
+            value: duration == null ? '–' : formatSleepDuration(duration),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  Widget _timeRow(
+    String title,
+    Key key,
+    int? minutes,
+    int fallback,
+    ValueChanged<int> onChanged,
+  ) => GainerDateRow(
+    key: key,
+    title: title,
+    mode: CupertinoDatePickerMode.time,
+    value: _timeOfDay(minutes ?? fallback),
+    format: (_) =>
+        minutes == null ? 'Nicht gesetzt' : formatMinuteOfDay(minutes),
+    onChanged: (picked) => onChanged(picked.hour * 60 + picked.minute),
+  );
+
+  DateTime _timeOfDay(int minutes) =>
+      DateTime(2000, 1, 1, minutes ~/ 60, minutes % 60);
+
+  List<Widget> _stepsSection(BodyViewModel model, String? errorText) {
+    final steps =
+        model.checkInHealth?.steps ??
+        _checkInFor(model, _dateOnly(_checkInDate))?.steps;
+    return [
+      GainerGroupedSection(
+        header: 'Schritte',
+        footer:
+            errorText ??
+            (steps == null
+                ? 'Erlaube Gainer in Apple Health den Zugriff auf Schritte, dann erscheinen sie hier.'
+                : null),
+        children: [
+          steps == null
+              ? const GainerListRow(
+                  key: ValueKey('body-checkin-steps'),
+                  title: 'Schritte',
+                  subtitle: 'Keine Daten aus Apple Health',
+                )
+              : GainerListRow(
+                  key: const ValueKey('body-checkin-steps'),
+                  title: 'Schritte',
+                  value: formatStepCount(steps),
+                ),
+        ],
+      ),
+    ];
   }
 
   Future<void> _targetDateActions(StateSetter rebuild) async {
@@ -574,33 +669,36 @@ class _BodyScreenState extends State<BodyScreen> {
   }
 
   Future<void> _saveCheckIn(BodyViewModel model) async {
+    final bed = _bedMinutes;
+    final wake = _wakeMinutes;
+    final hasSleepTimes = bed != null && wake != null;
+    final sleepMinutes = hasSleepTimes
+        ? sleepMinutesBetween(bed, wake)
+        : _existingSleepMinutes;
+    // Aufgestanden liegt am Check-in-Tag, Zu Bett davor (ggf. vor Mitternacht).
+    final wakeAt = hasSleepTimes
+        ? DateTime(
+            _checkInDate.year,
+            _checkInDate.month,
+            _checkInDate.day,
+            wake ~/ 60,
+            wake % 60,
+          )
+        : null;
     await model.saveCheckIn(
       localDate: _dateOnly(_checkInDate),
       weightKg: weightToKilograms(
         _parseEditableDouble(_checkInWeight) ?? double.nan,
         _unit,
       ),
-      caloriesKcal: _optionalDouble(_calories),
-      proteinGrams: _optionalDouble(_protein),
-      carbohydrateGrams: _optionalDouble(_carbs),
-      fatGrams: _optionalDouble(_fat),
-      steps: _optionalInt(_steps),
-      sleepMinutes: _optionalInt(_sleep),
+      sleepMinutes: sleepMinutes,
+      bedtime: wakeAt?.subtract(Duration(minutes: sleepMinutes!)),
+      wake: wakeAt,
     );
   }
 
-  double? _optionalDouble(TextEditingController controller) =>
-      controller.text.trim().isEmpty
-      ? null
-      : _parseEditableDouble(controller) ?? double.nan;
-
   double? _parseEditableDouble(TextEditingController controller) =>
       double.tryParse(controller.text.trim().replaceAll(',', '.'));
-
-  int? _optionalInt(TextEditingController controller) =>
-      controller.text.trim().isEmpty
-      ? null
-      : int.tryParse(controller.text) ?? -1;
 
   String _formatWeight(double kilograms) =>
       '${weightForDisplay(kilograms, _unit).toStringAsFixed(1)} ${_unit == BodyWeightUnit.kilograms ? 'kg' : 'lb'}';
@@ -638,14 +736,6 @@ class _BodyScreenState extends State<BodyScreen> {
     BodyGoalKind.maintain => 'Gewicht halten',
     BodyGoalKind.cut => 'Gewicht reduzieren',
   };
-
-  String _editableNumber(num? value) {
-    if (value == null) {
-      return '';
-    }
-    final text = value.toString();
-    return text.endsWith('.0') ? text.substring(0, text.length - 2) : text;
-  }
 
   String _editableWeight(double value) {
     final text = value.toStringAsFixed(6);

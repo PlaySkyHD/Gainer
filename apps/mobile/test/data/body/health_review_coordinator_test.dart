@@ -10,14 +10,14 @@ import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/ui/features/body/health/health_review_view_model.dart';
+import '../../support/fake_health_platform.dart';
 
 const accountId = '00000000-0000-4000-8000-000000000001';
 String testId(int value) =>
     '00000000-0000-4000-8000-${value.toString().padLeft(12, '0')}';
 
-class _HealthFake implements HealthPlatform {
+class _HealthFake extends FakeHealthPlatform {
   List<BodyMassSample> samples = const [];
-  bool available = true;
   int requestReads = 0;
   int readQueries = 0;
   DateTime? lastToUtc;
