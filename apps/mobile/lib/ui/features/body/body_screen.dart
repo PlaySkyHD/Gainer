@@ -701,7 +701,7 @@ class _BodyScreenState extends State<BodyScreen> {
       double.tryParse(controller.text.trim().replaceAll(',', '.'));
 
   String _formatWeight(double kilograms) =>
-      '${weightForDisplay(kilograms, _unit).toStringAsFixed(1)} ${_unit == BodyWeightUnit.kilograms ? 'kg' : 'lb'}';
+      '${weightForDisplay(kilograms, _unit).toStringAsFixed(1).replaceAll('.', ',')} ${_unit == BodyWeightUnit.kilograms ? 'kg' : 'lb'}';
 
   String _dateOnly(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
@@ -740,7 +740,8 @@ class _BodyScreenState extends State<BodyScreen> {
   String _editableWeight(double value) {
     final text = value.toStringAsFixed(6);
     final trimmed = text.replaceFirst(RegExp(r'\.?0+$'), '');
-    return trimmed.contains('.') ? trimmed : '$trimmed.0';
+    final withDecimal = trimmed.contains('.') ? trimmed : '$trimmed.0';
+    return withDecimal.replaceAll('.', ',');
   }
 }
 

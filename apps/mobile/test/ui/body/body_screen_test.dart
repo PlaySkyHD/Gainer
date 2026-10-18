@@ -105,7 +105,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Gewicht reduzieren'), findsOneWidget);
-      expect(find.text('82.0 kg  →  76.0 kg'), findsOneWidget);
+      expect(find.text('82,0 kg  →  76,0 kg'), findsOneWidget);
       expect(find.byKey(const ValueKey('body-save-goal')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
       await tester.pumpAndSettle();
@@ -133,21 +133,21 @@ void main() {
       TextEditingController fieldController(String key) => tester
           .widget<CupertinoTextField>(find.byKey(ValueKey(key)))
           .controller!;
-      expect(fieldController('body-start-weight').text, '82.0');
-      expect(fieldController('body-target-weight').text, '76.0');
+      expect(fieldController('body-start-weight').text, '82,0');
+      expect(fieldController('body-target-weight').text, '76,0');
       final unitSegment = find.byKey(const ValueKey('body-goal-weight-unit'));
       await tester.tap(
         find.descendant(of: unitSegment, matching: find.text('lb')),
       );
       await tester.pumpAndSettle();
-      expect(fieldController('body-start-weight').text, '180.779055');
-      expect(fieldController('body-target-weight').text, '167.551319');
+      expect(fieldController('body-start-weight').text, '180,779055');
+      expect(fieldController('body-target-weight').text, '167,551319');
       await tester.tap(
         find.descendant(of: unitSegment, matching: find.text('kg')),
       );
       await tester.pumpAndSettle();
-      expect(fieldController('body-start-weight').text, '82.0');
-      expect(fieldController('body-target-weight').text, '76.0');
+      expect(fieldController('body-start-weight').text, '82,0');
+      expect(fieldController('body-target-weight').text, '76,0');
       await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
       await tester.pumpAndSettle();
     },
@@ -219,7 +219,7 @@ void main() {
             )
             .controller
             ?.text,
-        '77.2',
+        '77,2',
       );
 
       await tester.tap(dateRow);
@@ -292,7 +292,7 @@ void main() {
           )
           .controller
           ?.text,
-      '77.25',
+      '77,25',
     );
     await tester.enterText(
       find.byKey(const ValueKey('body-checkin-weight')),
@@ -404,7 +404,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Heute-Zeile und Verlaufszeile zeigen dasselbe Gewicht.
-    expect(find.text('77.2 kg'), findsNWidgets(2));
+    expect(find.text('77,2 kg'), findsNWidgets(2));
     expect(find.text('1980 kcal'), findsOneWidget);
     expect(find.text('8.000'), findsOneWidget);
     expect(find.text(_prettyDay(today)), findsOneWidget);
@@ -557,7 +557,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('body-checkin-weight')),
-        '82.4',
+        '82,4',
       );
       await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
       await tester.pump();
