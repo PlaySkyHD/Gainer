@@ -215,4 +215,49 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('GainerTextFieldRow zeigt Beschriftung, Einheit und Fehler', (
+    tester,
+  ) async {
+    final values = <String>[];
+    await tester.pumpWidget(
+      componentHarness(
+        child: GainerTextFieldRow(
+          label: 'Zielgewicht',
+          unit: 'kg',
+          placeholder: '0',
+          errorText: 'Bitte eine Zahl eingeben.',
+          fieldKey: const ValueKey('target'),
+          onChanged: values.add,
+        ),
+      ),
+    );
+    expect(find.text('Zielgewicht'), findsOneWidget);
+    expect(find.text('kg'), findsOneWidget);
+    expect(find.text('Bitte eine Zahl eingeben.'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('target')), '76');
+    expect(values, ['76']);
+  });
+
+  testWidgets('GainerScaffold aktualisiert beim Herunterziehen', (
+    tester,
+  ) async {
+    var refreshed = 0;
+    await tester.pumpWidget(
+      componentHarness(
+        child: GainerScaffold(
+          title: 'Heute',
+          onRefresh: () async => refreshed++,
+          children: const [SizedBox(height: 2000, child: Text('Inhalt'))],
+        ),
+      ),
+    );
+    await tester.timedDrag(
+      find.byType(CustomScrollView),
+      const Offset(0, 300),
+      const Duration(milliseconds: 500),
+    );
+    await tester.pumpAndSettle();
+    expect(refreshed, 1);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 }

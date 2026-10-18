@@ -9,6 +9,17 @@ import 'body_view_model.dart';
 
 const _checkInTitle = 'Check-in';
 
+const _goalFieldKeys = {'startWeightKg', 'targetWeightKg'};
+const _checkInFieldKeys = {
+  'weightKg',
+  'caloriesKcal',
+  'proteinGrams',
+  'carbohydrateGrams',
+  'fatGrams',
+  'steps',
+  'sleepMinutes',
+};
+
 class BodyScreen extends StatefulWidget {
   const BodyScreen({required this.viewModel, super.key});
 
@@ -257,67 +268,82 @@ class _BodyScreenState extends State<BodyScreen> {
     _sleep.text = existing?.sleepMinutes?.toString() ?? '';
   }
 
-  /// Formular-Sheet für Ziel oder Check-in; „Speichern“ ist die Abschlussaktion.
-  Future<void> _showEditor(BodyViewModel model, {required bool goal}) =>
-      showGainerSheet<void>(
-        context: context,
-        heightFactor: .94,
-        builder: (sheetContext) => ChangeNotifierProvider.value(
-          value: model,
-          child: Consumer<BodyViewModel>(
-            builder: (sheetContext, liveModel, _) => StatefulBuilder(
-              builder: (sheetContext, setSheetState) => Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
-                ),
-                child: Column(
-                  children: [
-                    GainerSheetHeader(
-                      title: goal ? 'Körperziel' : _checkInTitle,
-                      trailing: GainerPillButton(
-                        key: ValueKey(
-                          goal ? 'body-save-goal' : 'body-save-checkin',
-                        ),
-                        label: 'Speichern',
-                        isLoading: liveModel.isSaving,
-                        onPressed: liveModel.isSaving
-                            ? null
-                            : () => _saveFromSheet(
-                                sheetContext,
-                                liveModel,
-                                goal: goal,
-                              ),
-                      ),
+  /// Formular-Sheet für Ziel oder Check-in; „Sichern“ ist die Abschlussaktion.
+  /// Ohne feste Höhe: das Sheet passt sich dem Inhalt an und scrollt bei Bedarf.
+  Future<void> _showEditor(
+    BodyViewModel model, {
+    required bool goal,
+  }) => showGainerSheet<void>(
+    context: context,
+    builder: (sheetContext) => ChangeNotifierProvider.value(
+      value: model,
+      child: Consumer<BodyViewModel>(
+        builder: (sheetContext, liveModel, _) => StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final errors = liveModel.fieldErrors;
+            final rowKeys = goal ? _goalFieldKeys : _checkInFieldKeys;
+            // Feldfehler stehen direkt an der Zeile, alles andere als Hinweis.
+            final unmatched = [
+              for (final entry in errors.entries)
+                if (!rowKeys.contains(entry.key)) entry.value,
+            ];
+            final notice =
+                liveModel.errorMessage ??
+                (unmatched.isEmpty ? null : unmatched.join('\n'));
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GainerSheetHeader(
+                  title: goal ? 'Körperziel' : _checkInTitle,
+                  trailing: GainerPillButton(
+                    key: ValueKey(
+                      goal ? 'body-save-goal' : 'body-save-checkin',
                     ),
-                    Expanded(
-                      child: ListView(
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.fromLTRB(
-                          GainerSpacing.m,
-                          GainerSpacing.s,
-                          GainerSpacing.m,
-                          GainerSpacing.l,
-                        ),
-                        children: [
-                          if (liveModel.errorMessage case final error?)
-                            _NoticeCard(message: error),
-                          _editorFields(
+                    label: 'Sichern',
+                    isLoading: liveModel.isSaving,
+                    onPressed: liveModel.isSaving
+                        ? null
+                        : () => _saveFromSheet(
                             sheetContext,
                             liveModel,
                             goal: goal,
-                            rebuild: setSheetState,
                           ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.fromLTRB(
+                      GainerSpacing.m,
+                      GainerSpacing.s,
+                      GainerSpacing.m,
+                      GainerSpacing.l +
+                          MediaQuery.viewInsetsOf(sheetContext).bottom,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (notice case final message?)
+                          _NoticeCard(message: message),
+                        _editorFields(
+                          sheetContext,
+                          liveModel,
+                          goal: goal,
+                          rebuild: setSheetState,
+                          errors: errors,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
-      );
+      ),
+    ),
+  );
 
   Future<void> _saveFromSheet(
     BuildContext sheetContext,
@@ -331,6 +357,7 @@ class _BodyScreenState extends State<BodyScreen> {
     }
     if (mounted &&
         liveModel.errorMessage == null &&
+        liveModel.fieldErrors.isEmpty &&
         sheetContext.mounted &&
         ModalRoute.of(sheetContext)?.isCurrent == true) {
       Navigator.of(sheetContext).pop();
@@ -342,6 +369,7 @@ class _BodyScreenState extends State<BodyScreen> {
     BodyViewModel model, {
     required bool goal,
     required StateSetter rebuild,
+    required Map<String, String> errors,
   }) {
     final unitLabel = _unit == BodyWeightUnit.kilograms ? 'kg' : 'lb';
     if (goal) {
@@ -357,33 +385,38 @@ class _BodyScreenState extends State<BodyScreen> {
             },
             onChanged: (value) => rebuild(() => _kind = value),
           ),
-          const SizedBox(height: GainerSpacing.s),
-          GainerSegmentedControl<BodyWeightUnit>(
-            key: const ValueKey('body-goal-weight-unit'),
-            value: _unit,
-            options: const {
-              BodyWeightUnit.kilograms: 'kg',
-              BodyWeightUnit.pounds: 'lb',
-            },
-            onChanged: (value) => rebuild(() => _changeUnit(value)),
-          ),
           const SizedBox(height: GainerSpacing.m),
           GainerGroupedSection(
             header: 'Gewicht',
             children: [
-              _field(
-                context,
-                'Startgewicht ($unitLabel)',
-                _startWeight,
-                decimal: true,
-                key: const ValueKey('body-start-weight'),
+              GainerListRow(
+                title: 'Einheit',
+                trailing: SizedBox(
+                  width: 120,
+                  child: GainerSegmentedControl<BodyWeightUnit>(
+                    key: const ValueKey('body-goal-weight-unit'),
+                    value: _unit,
+                    options: const {
+                      BodyWeightUnit.kilograms: 'kg',
+                      BodyWeightUnit.pounds: 'lb',
+                    },
+                    onChanged: (value) => rebuild(() => _changeUnit(value)),
+                  ),
+                ),
               ),
-              _field(
-                context,
-                'Zielgewicht ($unitLabel)',
+              _numberRow(
+                'Startgewicht',
+                _startWeight,
+                unit: unitLabel,
+                errorText: errors['startWeightKg'],
+                fieldKey: const ValueKey('body-start-weight'),
+              ),
+              _numberRow(
+                'Zielgewicht',
                 _targetWeight,
-                decimal: true,
-                key: const ValueKey('body-target-weight'),
+                unit: unitLabel,
+                errorText: errors['targetWeightKg'],
+                fieldKey: const ValueKey('body-target-weight'),
               ),
             ],
           ),
@@ -399,14 +432,20 @@ class _BodyScreenState extends State<BodyScreen> {
                 format: _prettyDateTime,
                 onChanged: (picked) => rebuild(() => _startDate = picked),
               ),
-              GainerListRow(
-                key: const ValueKey('body-target-date'),
-                title: 'Zieldatum',
-                value: _targetDate == null
-                    ? 'Kein Datum'
-                    : _prettyDateTime(_targetDate!),
-                showChevron: true,
-                onTap: () => _pickTargetDate(rebuild),
+              // Langes Drücken entfernt das Zieldatum über ein Kontext-Sheet.
+              GestureDetector(
+                onLongPress: _targetDate == null
+                    ? null
+                    : () => _targetDateActions(rebuild),
+                child: GainerListRow(
+                  key: const ValueKey('body-target-date'),
+                  title: 'Zieldatum',
+                  value: _targetDate == null
+                      ? 'Kein Datum'
+                      : _prettyDateTime(_targetDate!),
+                  showChevron: true,
+                  onTap: () => _pickTargetDate(rebuild),
+                ),
               ),
             ],
           ),
@@ -417,7 +456,6 @@ class _BodyScreenState extends State<BodyScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         GainerGroupedSection(
-          header: 'Datum',
           children: [
             GainerDateRow(
               key: const ValueKey('body-checkin-date'),
@@ -443,23 +481,69 @@ class _BodyScreenState extends State<BodyScreen> {
           header: 'Messwerte',
           footer: 'Gewicht ist erforderlich. Weitere Angaben sind optional.',
           children: [
-            _field(
-              context,
-              'Gewicht ($unitLabel)',
+            _numberRow(
+              'Gewicht',
               _checkInWeight,
-              decimal: true,
-              key: const ValueKey('body-checkin-weight'),
+              unit: unitLabel,
+              errorText: errors['weightKg'],
+              fieldKey: const ValueKey('body-checkin-weight'),
             ),
-            _field(context, 'Kalorien (kcal)', _calories, decimal: true),
-            _field(context, 'Protein (g)', _protein, decimal: true),
-            _field(context, 'Kohlenhydrate (g)', _carbs, decimal: true),
-            _field(context, 'Fett (g)', _fat, decimal: true),
-            _field(context, 'Schritte', _steps),
-            _field(context, 'Schlaf (Minuten)', _sleep),
+            _numberRow(
+              'Kalorien',
+              _calories,
+              unit: 'kcal',
+              errorText: errors['caloriesKcal'],
+            ),
+            _numberRow(
+              'Protein',
+              _protein,
+              unit: 'g',
+              errorText: errors['proteinGrams'],
+            ),
+            _numberRow(
+              'Kohlenhydrate',
+              _carbs,
+              unit: 'g',
+              errorText: errors['carbohydrateGrams'],
+            ),
+            _numberRow('Fett', _fat, unit: 'g', errorText: errors['fatGrams']),
+            _numberRow(
+              'Schritte',
+              _steps,
+              decimal: false,
+              errorText: errors['steps'],
+            ),
+            _numberRow(
+              'Schlaf',
+              _sleep,
+              unit: 'min',
+              decimal: false,
+              errorText: errors['sleepMinutes'],
+            ),
           ],
         ),
       ],
     );
+  }
+
+  Future<void> _targetDateActions(StateSetter rebuild) async {
+    final action = await showGainerActionSheet<bool>(
+      context: context,
+      title: 'Zieldatum',
+      groups: const [
+        [
+          GainerSheetAction(
+            label: 'Datum entfernen',
+            icon: CupertinoIcons.trash,
+            value: true,
+            destructive: true,
+          ),
+        ],
+      ],
+    );
+    if (action == true && mounted) {
+      rebuild(() => _targetDate = null);
+    }
   }
 
   Future<void> _pickTargetDate(StateSetter rebuild) async {
@@ -570,49 +654,22 @@ class _BodyScreenState extends State<BodyScreen> {
   }
 }
 
-Widget _field(
-  BuildContext context,
+Widget _numberRow(
   String label,
   TextEditingController controller, {
-  bool decimal = false,
-  Key? key,
-}) {
-  final colors = GainerDesign.colorsOf(context);
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(
-      GainerSpacing.m,
-      GainerSpacing.xs,
-      GainerSpacing.m,
-      GainerSpacing.xs,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: GainerTypography.label.copyWith(color: colors.secondaryText),
-        ),
-        const SizedBox(height: 5),
-        CupertinoTextField(
-          key: key,
-          controller: controller,
-          placeholder: 'Eintragen',
-          placeholderStyle: GainerTypography.body.copyWith(
-            color: colors.placeholderText,
-          ),
-          style: GainerTypography.body.copyWith(color: colors.primaryText),
-          minLines: 1,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-          decoration: BoxDecoration(
-            color: colors.elevatedSurface,
-            borderRadius: BorderRadius.circular(GainerRadii.field),
-          ),
-          keyboardType: TextInputType.numberWithOptions(decimal: decimal),
-        ),
-      ],
-    ),
-  );
-}
+  String? unit,
+  String? errorText,
+  bool decimal = true,
+  Key? fieldKey,
+}) => GainerTextFieldRow(
+  label: label,
+  controller: controller,
+  placeholder: 'Eintragen',
+  unit: unit,
+  keyboardType: TextInputType.numberWithOptions(decimal: decimal),
+  errorText: errorText,
+  fieldKey: fieldKey,
+);
 
 class _NoticeCard extends StatelessWidget {
   const _NoticeCard({required this.message, super.key});

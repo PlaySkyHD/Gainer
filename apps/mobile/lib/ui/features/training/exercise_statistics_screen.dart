@@ -5,7 +5,7 @@ import '../../../domain/models/training/training_statistics.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
-import '../progress/exercise_progress_section.dart' show BodyweightMissingHint;
+import '../progress/bodyweight_missing_hint.dart';
 import 'exercise_statistics_view_model.dart';
 import 'warmup_sets_row.dart';
 

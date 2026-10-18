@@ -12,7 +12,6 @@ import '../../../integration_test/ui_design_flow.dart';
 
 const _previewNames = [
   'tab-heute',
-  'exercise-progress',
   'tab-checkin',
   'sheet-checkin',
   'sheet-goal',
@@ -30,7 +29,6 @@ const _previewNames = [
   'tab-dark-mehr',
   'sheet-dark-checkin',
   'editor-dark-essen',
-  'exercise-dark-progress',
 ];
 
 void main() {

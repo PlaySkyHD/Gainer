@@ -399,7 +399,6 @@ class MobileAuthController extends ChangeNotifier
     );
     final progressViewModel = ProgressViewModel(
       InsightsRepository(api, store: store),
-      training: training,
     );
     final coachViewModel = CoachViewModel(CoachRepository(api));
     nextScope = AccountScope(
