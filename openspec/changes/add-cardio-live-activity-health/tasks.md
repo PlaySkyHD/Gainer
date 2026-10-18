@@ -7,9 +7,9 @@
 
 ## 2. Flutter
 
-- [ ] 2.1 `CardioZones` und `CardioPreferences` (D3); Unit-Tests mit den Beispielen der Spec.
+- [x] 2.1 `CardioZones` und `CardioPreferences` (D3); Unit-Tests mit den Beispielen der Spec.
 - [ ] 2.2 Zonen-Chips im Start-Sheet und beim Ändern, Einstellungsseite „Cardio“; Widget-Tests.
-- [ ] 2.3 Export-Aktion mit Ledger in der Detailansicht; Tests mit Fake-Plattform.
+- [x] 2.3 Export-Aktion mit Ledger in der Detailansicht; Tests mit Fake-Plattform.
 
 ## 3. Abschluss
 
