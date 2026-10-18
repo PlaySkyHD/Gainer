@@ -108,32 +108,40 @@ class _NutritionScreenState extends State<NutritionScreen> {
       final snapshot = vm.snapshot;
       final dayView = GainerScaffold(
         title: 'Ernährung',
-        children: [
-          _heading(context, _friendlyDate(vm.localDate)),
-          Row(
-            children: [
-              const Expanded(child: Text('Ernährungstagebuch')),
-              GainerToolbarGroup(
-                actions: [
-                  GainerToolbarAction(
-                    icon: CupertinoIcons.chevron_left,
-                    semanticLabel: 'Vorheriger Tag',
-                    onPressed: () => _shiftDay(-1),
-                  ),
-                  GainerToolbarAction(
-                    icon: CupertinoIcons.chevron_right,
-                    semanticLabel: 'Nächster Tag',
-                    onPressed: () => _shiftDay(1),
-                  ),
-                  GainerToolbarAction(
-                    icon: CupertinoIcons.calendar,
-                    semanticLabel: 'Tag auswählen',
-                    onPressed: () => _pickDay(context),
-                  ),
-                ],
-              ),
-            ],
+        leading: GainerToolbarGroup(
+          actions: [
+            GainerToolbarAction(
+              icon: CupertinoIcons.chevron_left,
+              semanticLabel: 'Vorheriger Tag',
+              onPressed: () => _shiftDay(-1),
+            ),
+            GainerToolbarAction(
+              icon: CupertinoIcons.calendar,
+              semanticLabel: 'Tag auswählen',
+              onPressed: () => _pickDay(context),
+            ),
+            GainerToolbarAction(
+              icon: CupertinoIcons.chevron_right,
+              semanticLabel: 'Nächster Tag',
+              onPressed: () => _shiftDay(1),
+            ),
+          ],
+        ),
+        trailing: [
+          GainerToolbarButton(
+            key: const ValueKey('nutrition-add-food'),
+            icon: CupertinoIcons.add,
+            semanticLabel: 'Lebensmittel hinzufügen',
+            onPressed: _openEntry,
           ),
+          GainerToolbarButton(
+            key: const ValueKey('nutrition-more-menu'),
+            icon: CupertinoIcons.ellipsis,
+            semanticLabel: 'Weitere Aktionen',
+            onPressed: _showMenu,
+          ),
+        ],
+        children: [
           if (vm.errorMessage != null &&
               vm.errorOperation == NutritionErrorOperation.day) ...[
             _notice(context, vm.errorMessage!, isError: true),
@@ -188,52 +196,88 @@ class _NutritionScreenState extends State<NutritionScreen> {
     NutritionViewModel vm,
     NutritionSnapshot snapshot,
   ) => [
-    _TotalsCard(totals: snapshot.day.totals),
-    const SizedBox(height: 10),
-    _MacroSummary(totals: snapshot.day.totals),
-    const SizedBox(height: 10),
-    _TargetProgress(
-      date: vm.localDate,
-      totals: snapshot.day.totals,
-      schedule: snapshot.targetSchedule,
-      onManage: _openPlanning,
-    ),
-    const SizedBox(height: 10),
-    _button(
-      'Gerichte und Ziele verwalten',
-      _openPlanning,
-      key: const ValueKey('nutrition-open-planning'),
-      icon: CupertinoIcons.slider_horizontal_3,
-    ),
-    const SizedBox(height: 10),
-    _button(
-      'Lebensmittel hinzufügen',
-      _openEntry,
-      key: const ValueKey('nutrition-add-food'),
-      filled: true,
-      icon: CupertinoIcons.add,
+    GainerSectionHeader(title: _friendlyDate(vm.localDate)),
+    const SizedBox(height: GainerSpacing.xs),
+    GainerGroupedSection(
+      header: 'Tagesübersicht',
+      children: [
+        _TotalsCard(totals: snapshot.day.totals),
+        _MacroSummary(totals: snapshot.day.totals),
+        _TargetProgress(
+          date: vm.localDate,
+          totals: snapshot.day.totals,
+          schedule: snapshot.targetSchedule,
+          onManage: _openPlanning,
+        ),
+      ],
     ),
     if (vm.statusMessage != null)
       Semantics(liveRegion: true, child: _notice(context, vm.statusMessage!)),
-    const SizedBox(height: 8),
-    _heading(context, 'Mahlzeiten'),
     for (final meal in NutritionMeal.values)
-      _MealSection(
-        key: ValueKey('meal-${meal.name}'),
-        meal: meal,
-        entries: snapshot.day.entries
-            .where((entry) => entry.meal == meal)
-            .toList(),
-        onAdd: () {
-          vm.selectMeal(meal);
-          _openEntry();
-        },
-        onEdit: _editEntry,
-        onRemove: (entry) => vm.removeEntry(entry.entryId),
-        onMove: (entry, targetPosition) =>
-            vm.moveEntry(entry.entryId, entry.meal, targetPosition),
+      Padding(
+        padding: const EdgeInsets.only(top: GainerSpacing.l),
+        child: _MealSection(
+          key: ValueKey('meal-${meal.name}'),
+          meal: meal,
+          entries: snapshot.day.entries
+              .where((entry) => entry.meal == meal)
+              .toList(),
+          onAdd: () {
+            vm.selectMeal(meal);
+            _openEntry();
+          },
+          onEdit: _editEntry,
+          onRemove: (entry) => vm.removeEntry(entry.entryId),
+          onConfirmRemove: (entry) => confirmGainerDelete(
+            context,
+            title: 'Eintrag löschen?',
+            message: '„${entry.productName}“ wird aus dem Tagebuch entfernt.',
+          ),
+          onMoveTo: (entries, orderedIds) =>
+              _applyEntryOrder(meal, entries, orderedIds),
+        ),
       ),
   ];
+
+  /// Ordnet die Einträge einer Mahlzeit per Einzelschritten in [targetIds]
+  /// um. Jeder Schritt ist ein `moveEntry` wie bisher beim Nach-oben-Schieben.
+  Future<void> _applyEntryOrder(
+    NutritionMeal meal,
+    List<NutritionEntry> entries,
+    List<String> targetIds,
+  ) async {
+    final current = [for (final entry in entries) entry.entryId];
+    for (var target = 0; target < targetIds.length; target++) {
+      final id = targetIds[target];
+      final from = current.indexOf(id);
+      if (from == target) continue;
+      current
+        ..removeAt(from)
+        ..insert(target, id);
+      await widget.viewModel.moveEntry(id, meal, target);
+      if (!mounted) return;
+    }
+  }
+
+  /// Menü der Seitenaktionen (…): Gerichte und Ziele.
+  Future<void> _showMenu() async {
+    final choice = await showGainerActionSheet<_NutritionMenuAction>(
+      context: context,
+      title: 'Ernährung',
+      groups: const [
+        [
+          GainerSheetAction(
+            label: 'Gerichte und Ziele verwalten',
+            icon: CupertinoIcons.slider_horizontal_3,
+            value: _NutritionMenuAction.planning,
+          ),
+        ],
+      ],
+    );
+    if (choice == _NutritionMenuAction.planning && mounted) {
+      await _openPlanning();
+    }
+  }
 
   Future<void> _openEntry() {
     final vm = widget.viewModel;
@@ -586,21 +630,33 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       if (vm.errorMessage != null &&
                           vm.errorOperation == NutritionErrorOperation.planning)
                         _notice(context, vm.errorMessage!, isError: true),
-                      _heading(context, 'Gespeicherte Gerichte'),
-                      _button(
-                        'Neues Gericht anlegen',
-                        () => _editReusableMeal(),
-                        icon: CupertinoIcons.add,
+                      GainerSectionHeader(title: 'Gespeicherte Gerichte'),
+                      const SizedBox(height: GainerSpacing.xs),
+                      GainerGroupedSection(
+                        children: [
+                          GainerListRow(
+                            title: 'Neues Gericht anlegen',
+                            leadingIcon: CupertinoIcons.add,
+                            showChevron: true,
+                            onTap: () => _editReusableMeal(),
+                          ),
+                          ..._mealRows(vm),
+                        ],
                       ),
-                      ..._mealRows(vm),
-                      const SizedBox(height: 16),
-                      _heading(context, 'Zielphasen'),
-                      _button(
-                        'Zielphase hinzufügen',
-                        () => _editTargetPhase(),
-                        icon: CupertinoIcons.add,
+                      const SizedBox(height: GainerSpacing.l),
+                      GainerSectionHeader(title: 'Zielphasen'),
+                      const SizedBox(height: GainerSpacing.xs),
+                      GainerGroupedSection(
+                        children: [
+                          GainerListRow(
+                            title: 'Zielphase hinzufügen',
+                            leadingIcon: CupertinoIcons.add,
+                            showChevron: true,
+                            onTap: () => _editTargetPhase(),
+                          ),
+                          ..._targetPhaseRows(vm),
+                        ],
                       ),
-                      ..._targetPhaseRows(vm),
                     ],
                   ),
                 ),
@@ -635,7 +691,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
             ? () => _editTargetPhase(existing: phase)
             : null,
         onDelete: _isUpcomingPhase(vm, phase)
-            ? () => _removeTargetPhase(phase)
+            ? () => vm.removeTargetPhase(phase.targetVersionId)
+            : null,
+        onConfirmDelete: _isUpcomingPhase(vm, phase)
+            ? () => _confirmRemoveTargetPhase(phase)
             : null,
       ),
   ];
@@ -651,43 +710,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   Future<void> _pickDay(BuildContext context) async {
     final initial = DateTime.parse(widget.viewModel.localDate);
-    var selected = initial;
-    final date = await showCupertinoModalPopup<DateTime>(
+    final date = await showGainerDatePicker(
       context: context,
-      builder: (context) => Container(
-        height: 330,
-        decoration: BoxDecoration(
-          color: GainerDesign.colorsOf(context).elevatedSurface,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(GainerRadii.card),
-          ),
-        ),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                CupertinoButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Abbrechen'),
-                ),
-                CupertinoButton(
-                  onPressed: () => Navigator.pop(context, selected),
-                  child: const Text('Fertig'),
-                ),
-              ],
-            ),
-            Expanded(
-              child: CupertinoDatePicker(
-                mode: CupertinoDatePickerMode.date,
-                initialDateTime: initial,
-                maximumDate: DateTime.now().add(const Duration(days: 3650)),
-                onDateTimeChanged: (value) => selected = value,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: 'Tag auswählen',
+      initial: initial,
+      maximum: DateTime.now().add(const Duration(days: 3650)),
     );
     if (date != null && mounted) {
       await widget.viewModel.selectDate(_dateString(date));
@@ -1128,29 +1155,36 @@ class _NutritionScreenState extends State<NutritionScreen> {
   Future<void> _addReusableMeal(String id, ReusableMeal meal) async {
     final scale = TextEditingController(text: _grams(meal.standardPortion));
     try {
-      final accepted = await showCupertinoDialog<bool>(
+      final accepted = await showGainerSheet<bool>(
         context: context,
-        builder: (context) => CupertinoAlertDialog(
-          title: Text('${meal.name} übernehmen'),
-          content: Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: _field(context, scale, 'Portionen (×)', numeric: true),
-          ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Abbrechen'),
-            ),
-            CupertinoDialogAction(
-              isDefaultAction: true,
-              onPressed:
-                  (_parse(scale.text) ?? 0) >= .01 &&
-                      (_parse(scale.text) ?? 101) <= 100
-                  ? () => Navigator.pop(context, true)
-                  : null,
-              child: const Text('Übernehmen'),
-            ),
-          ],
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            final portion = _parse(scale.text);
+            final valid = (portion ?? 0) >= .01 && (portion ?? 101) <= 100;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GainerSheetHeader(title: '${meal.name} übernehmen'),
+                _field(
+                  context,
+                  scale,
+                  'Portionen (×)',
+                  numeric: true,
+                  onChanged: (_) => setSheetState(() {}),
+                ),
+                const SizedBox(height: GainerSpacing.s),
+                GainerPillButton(
+                  label: 'Übernehmen',
+                  expand: true,
+                  onPressed: valid
+                      ? () => Navigator.of(sheetContext).pop(true)
+                      : null,
+                ),
+                const SizedBox(height: GainerSpacing.m),
+              ],
+            );
+          },
         ),
       );
       if (accepted == true && mounted) {
@@ -1477,18 +1511,15 @@ class _NutritionScreenState extends State<NutritionScreen> {
         ],
       );
 
-  Future<void> _removeTargetPhase(NutritionTargetVersion phase) async {
-    final accepted = await _confirm(
-      title: 'Zielphase entfernen?',
-      message:
-          'Die Phase „${phase.name}“ wird aus dem lokalen Plan entfernt. Bereits abgeschlossene Tage bleiben unverändert.',
-      accept: 'Entfernen',
-      destructive: true,
-    );
-    if (accepted == true && mounted) {
-      await widget.viewModel.removeTargetPhase(phase.targetVersionId);
-    }
-  }
+  Future<bool> _confirmRemoveTargetPhase(
+    NutritionTargetVersion phase,
+  ) => confirmGainerDelete(
+    context,
+    title: 'Zielphase entfernen?',
+    message:
+        'Die Phase „${phase.name}“ wird aus dem lokalen Plan entfernt. Bereits abgeschlossene Tage bleiben unverändert.',
+    deleteLabel: 'Entfernen',
+  );
 
   Future<void> _chooseMeal() async {
     final meal = await _chooseMealValue();
@@ -2062,10 +2093,13 @@ class _TotalsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    return GainerCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Semantics(
-        label: 'Tageskalorien ${_grams(totals.kilocalories)} Kilokalorien',
+    return Semantics(
+      label: 'Tageskalorien ${_grams(totals.kilocalories)} Kilokalorien',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: GainerSpacing.m,
+          vertical: GainerSpacing.s,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -2130,8 +2164,11 @@ class _MacroSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    return GainerCard(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: GainerSpacing.xs,
+        horizontal: GainerSpacing.s,
+      ),
       child: Row(
         children: [
           _macro(colors, 'Protein', totals.proteinGrams),
@@ -2184,60 +2221,85 @@ class _TargetProgress extends StatelessWidget {
                   phase.effectiveUntil!.compareTo(date) >= 0),
         )
         .lastOrNull;
-    return GainerCard(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Semantics(
+      button: true,
+      label: target == null ? 'Ziele einrichten' : 'Ziele verwalten',
+      child: GestureDetector(
+        key: const ValueKey('nutrition-target-card'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onManage,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            GainerSpacing.m,
+            GainerSpacing.s,
+            GainerSpacing.s,
+            GainerSpacing.s,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  target == null ? 'Tagesziele' : 'Tagesziele · ${target.name}',
-                  style: GainerTypography.cardTitle.copyWith(
-                    color: colors.primaryText,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      target == null
+                          ? 'Tagesziele'
+                          : 'Tagesziele · ${target.name}',
+                      style: GainerTypography.cardTitle.copyWith(
+                        color: colors.primaryText,
+                      ),
+                    ),
                   ),
+                  Icon(
+                    CupertinoIcons.chevron_right,
+                    size: 16,
+                    color: colors.secondaryText,
+                  ),
+                ],
+              ),
+              if (target == null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Noch keine Ziele für diesen Tag. Deine Aufnahme wird trotzdem angezeigt.',
+                    style: GainerTypography.body.copyWith(
+                      color: colors.secondaryText,
+                    ),
+                  ),
+                )
+              else ...[
+                _targetLine(
+                  context,
+                  'Kalorien',
+                  totals.kilocalories,
+                  target.kilocalories,
+                  'kcal',
                 ),
-              ),
-              GainerPillButton(
-                label: target == null ? 'Einrichten' : 'Verwalten',
-                onPressed: onManage,
-                variant: GainerPillVariant.tonal,
-              ),
+                _targetLine(
+                  context,
+                  'Protein',
+                  totals.proteinGrams,
+                  target.proteinGrams,
+                  'g',
+                ),
+                _targetLine(
+                  context,
+                  'Kohlenhydrate',
+                  totals.carbohydrateGrams,
+                  target.carbohydrateGrams,
+                  'g',
+                ),
+                _targetLine(
+                  context,
+                  'Fett',
+                  totals.fatGrams,
+                  target.fatGrams,
+                  'g',
+                ),
+              ],
             ],
           ),
-          if (target == null)
-            Text(
-              'Noch keine Ziele für diesen Tag. Deine Aufnahme wird trotzdem angezeigt.',
-              style: GainerTypography.body.copyWith(
-                color: colors.secondaryText,
-              ),
-            )
-          else ...[
-            _targetLine(
-              context,
-              'Kalorien',
-              totals.kilocalories,
-              target.kilocalories,
-              'kcal',
-            ),
-            _targetLine(
-              context,
-              'Protein',
-              totals.proteinGrams,
-              target.proteinGrams,
-              'g',
-            ),
-            _targetLine(
-              context,
-              'Kohlenhydrate',
-              totals.carbohydrateGrams,
-              target.carbohydrateGrams,
-              'g',
-            ),
-            _targetLine(context, 'Fett', totals.fatGrams, target.fatGrams, 'g'),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -2313,6 +2375,13 @@ class _TargetProgress extends StatelessWidget {
   }
 }
 
+enum _EntryAction { move, remove }
+
+enum _NutritionMenuAction { planning }
+
+/// Mahlzeit: Abschnittsüberschrift mit kcal rechts, darunter eine gruppierte
+/// Karte mit einer Zeile je Eintrag. Wischen nach links löscht nach
+/// Bestätigung, langes Drücken öffnet das Kontext-Sheet.
 class _MealSection extends StatelessWidget {
   const _MealSection({
     super.key,
@@ -2321,199 +2390,244 @@ class _MealSection extends StatelessWidget {
     required this.onAdd,
     required this.onEdit,
     required this.onRemove,
-    required this.onMove,
+    required this.onConfirmRemove,
+    required this.onMoveTo,
   });
   final NutritionMeal meal;
   final List<NutritionEntry> entries;
   final VoidCallback onAdd;
   final ValueChanged<NutritionEntry> onEdit;
   final ValueChanged<NutritionEntry> onRemove;
-  final void Function(NutritionEntry entry, int targetPosition) onMove;
-
-  Widget _entryTile(
-    BuildContext context,
-    List<NutritionEntry> orderedEntries,
-    int index,
-  ) {
-    final colors = GainerDesign.colorsOf(context);
-    final entry = orderedEntries[index];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Semantics(
-          label:
-              '${entry.productName}, ${_grams(entry.amountGrams)} Gramm, ${_grams(entry.totals.kilocalories)} Kilokalorien',
-          button: true,
-          child: CupertinoButton(
-            key: ValueKey('nutrition-entry-${entry.entryId}'),
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            minimumSize: const Size(0, 48),
-            onPressed: () => onEdit(entry),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    entry.productName,
-                    textAlign: TextAlign.left,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GainerTypography.body.copyWith(
-                      color: colors.primaryText,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${_grams(entry.amountGrams)} g · ${_grams(entry.totals.kilocalories)} kcal',
-                  style: GainerTypography.value.copyWith(
-                    color: colors.secondaryText,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (orderedEntries.length > 1)
-          Wrap(
-            spacing: 4,
-            children: [
-              CupertinoButton(
-                key: ValueKey('nutrition-move-up-${entry.entryId}'),
-                minimumSize: const Size(48, 48),
-                onPressed: index == 0 ? null : () => onMove(entry, index - 1),
-                child: Semantics(
-                  label: '${entry.productName} nach oben',
-                  button: true,
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(CupertinoIcons.chevron_up),
-                      Text('Nach oben'),
-                    ],
-                  ),
-                ),
-              ),
-              CupertinoButton(
-                key: ValueKey('nutrition-move-down-${entry.entryId}'),
-                minimumSize: const Size(48, 48),
-                onPressed: index == orderedEntries.length - 1
-                    ? null
-                    : () => onMove(entry, index + 1),
-                child: Semantics(
-                  label: '${entry.productName} nach unten',
-                  button: true,
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(CupertinoIcons.chevron_down),
-                      Text('Nach unten'),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-      ],
-    );
-  }
+  final Future<bool> Function(NutritionEntry entry) onConfirmRemove;
+  final Future<void> Function(
+    List<NutritionEntry> ordered,
+    List<String> orderedIds,
+  )
+  onMoveTo;
 
   @override
   Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    final orderedEntries = [...entries]
+    final ordered = [...entries]
       ..sort((a, b) => a.position.compareTo(b.position));
     final calories = entries.fold<double>(
       0,
       (sum, entry) => sum + entry.totals.kilocalories,
     );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: GainerCard(
-        padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GainerSectionHeader(
+          title: _mealName(meal),
+          trailing: '${_grams(calories)} kcal',
+        ),
+        const SizedBox(height: GainerSpacing.xs),
+        GainerGroupedSection(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _mealName(meal),
-                    style: GainerTypography.cardTitle.copyWith(
-                      color: colors.primaryText,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${_grams(calories)} kcal',
-                  style: GainerTypography.body.copyWith(
-                    color: colors.secondaryText,
-                  ),
-                ),
-              ],
-            ),
-            if (entries.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  'Noch nichts eingetragen',
-                  style: GainerTypography.body.copyWith(
-                    color: colors.secondaryText,
-                  ),
-                ),
-              )
+            if (ordered.isEmpty)
+              _emptyRow(context)
             else
-              for (var index = 0; index < orderedEntries.length; index++) ...[
-                if (index > 0) Container(height: 0.5, color: colors.separator),
-                Builder(
-                  builder: (context) =>
-                      _entryTile(context, orderedEntries, index),
-                ),
-              ],
-            Align(
-              alignment: Alignment.centerLeft,
-              child: CupertinoButton(
-                key: ValueKey('meal-add-${meal.name}'),
-                minimumSize: const Size(48, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                onPressed: onAdd,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(CupertinoIcons.add_circled, size: 18),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Hinzufügen',
-                      style: GainerTypography.body.copyWith(
-                        color: colors.accent,
-                      ),
-                    ),
-                  ],
+              for (final entry in ordered) _entryRow(context, ordered, entry),
+            _addRow(context),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyRow(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(
+      horizontal: GainerSpacing.m,
+      vertical: GainerSpacing.s,
+    ),
+    child: Text(
+      'Noch nichts eingetragen',
+      style: GainerTypography.body.copyWith(
+        color: GainerDesign.colorsOf(context).secondaryText,
+      ),
+    ),
+  );
+
+  Widget _entryRow(
+    BuildContext context,
+    List<NutritionEntry> ordered,
+    NutritionEntry entry,
+  ) => GainerSwipeToDelete(
+    dismissKey: ValueKey('nutrition-swipe-${entry.entryId}'),
+    confirm: () => onConfirmRemove(entry),
+    onDeleted: () => onRemove(entry),
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () => _showEntryActions(context, ordered, entry),
+      child: GainerListRow(
+        key: ValueKey('nutrition-entry-${entry.entryId}'),
+        title: entry.productName,
+        value:
+            '${_grams(entry.amountGrams)} g · ${_grams(entry.totals.kilocalories)} kcal',
+        onTap: () => onEdit(entry),
+      ),
+    ),
+  );
+
+  /// Kontext-Sheet eines Eintrags: Verschieben (ab zwei Einträgen) und Entfernen.
+  Future<void> _showEntryActions(
+    BuildContext context,
+    List<NutritionEntry> ordered,
+    NutritionEntry entry,
+  ) async {
+    final action = await showGainerActionSheet<_EntryAction>(
+      context: context,
+      title: entry.productName,
+      groups: [
+        if (ordered.length > 1)
+          const [
+            GainerSheetAction(
+              label: 'Verschieben',
+              icon: CupertinoIcons.arrow_up_arrow_down,
+              value: _EntryAction.move,
+            ),
+          ],
+        const [
+          GainerSheetAction(
+            label: 'Entfernen',
+            icon: CupertinoIcons.trash,
+            value: _EntryAction.remove,
+            destructive: true,
+          ),
+        ],
+      ],
+    );
+    if (!context.mounted) return;
+    switch (action) {
+      case _EntryAction.move:
+        final ids = await showGainerSheet<List<String>>(
+          context: context,
+          builder: (_) => _ReorderEntriesSheet(entries: ordered),
+        );
+        if (ids != null) await onMoveTo(ordered, ids);
+      case _EntryAction.remove:
+        if (await onConfirmRemove(entry)) onRemove(entry);
+      case null:
+    }
+  }
+
+  Widget _addRow(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: CupertinoButton(
+      key: ValueKey('meal-add-${meal.name}'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: GainerSpacing.m,
+        vertical: GainerSpacing.xs,
+      ),
+      minimumSize: const Size(0, 44),
+      onPressed: onAdd,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            CupertinoIcons.add,
+            size: 18,
+            color: GainerDesign.colorsOf(context).accent,
+          ),
+          const SizedBox(width: GainerSpacing.xxs),
+          Text(
+            'Hinzufügen',
+            style: GainerTypography.label.copyWith(
+              color: GainerDesign.colorsOf(context).accent,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Sheet zum Umordnen der Einträge einer Mahlzeit mit Ziehgriffen. Liefert die
+/// Eintrags-IDs in neuer Reihenfolge, bei Schließen `null`.
+class _ReorderEntriesSheet extends StatefulWidget {
+  const _ReorderEntriesSheet({required this.entries});
+
+  final List<NutritionEntry> entries;
+
+  @override
+  State<_ReorderEntriesSheet> createState() => _ReorderEntriesSheetState();
+}
+
+class _ReorderEntriesSheetState extends State<_ReorderEntriesSheet> {
+  late final List<NutritionEntry> _entries = [...widget.entries];
+
+  void _move(int oldIndex, int newIndex) {
+    setState(() => _entries.insert(newIndex, _entries.removeAt(oldIndex)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxListHeight = MediaQuery.sizeOf(context).height * 0.6;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GainerSheetHeader(
+          title: 'Einträge anordnen',
+          trailing: GainerPillButton(
+            label: 'Fertig',
+            onPressed: () =>
+                Navigator.of(context)
+                    .pop([for (final entry in _entries) entry.entryId]),
+          ),
+        ),
+        const SizedBox(height: GainerSpacing.s),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxListHeight),
+          child: CustomScrollView(
+            shrinkWrap: true,
+            slivers: [
+              SliverReorderableList(
+                itemCount: _entries.length,
+                onReorderItem: _move,
+                itemBuilder: (context, index) =>
+                    _row(context, _entries[index], index),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: GainerSpacing.m),
+      ],
+    );
+  }
+
+  Widget _row(BuildContext context, NutritionEntry entry, int index) {
+    final colors = GainerDesign.colorsOf(context);
+    return Padding(
+      key: ValueKey(entry.entryId),
+      padding: const EdgeInsets.only(bottom: GainerSpacing.xs),
+      child: GainerCard(
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                entry.productName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GainerTypography.cardTitle.copyWith(
+                  color: colors.primaryText,
                 ),
               ),
             ),
-            if (entries.isNotEmpty)
-              Wrap(
-                spacing: 4,
-                children: [
-                  for (final entry in entries)
-                    CupertinoButton(
-                      key: ValueKey('nutrition-remove-${entry.entryId}'),
-                      minimumSize: const Size(48, 48),
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      onPressed: () => onRemove(entry),
-                      child: Semantics(
-                        label: '${entry.productName} entfernen',
-                        button: true,
-                        child: Text(
-                          'Entfernen',
-                          style: GainerTypography.body.copyWith(
-                            color: colors.destructive,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+            ReorderableDragStartListener(
+              index: index,
+              child: Semantics(
+                label: 'Ziehen zum Umordnen',
+                child: Padding(
+                  padding: const EdgeInsets.all(GainerSpacing.xxs),
+                  child: Icon(
+                    CupertinoIcons.line_horizontal_3,
+                    size: 22,
+                    color: colors.secondaryText,
+                  ),
+                ),
               ),
+            ),
           ],
         ),
       ),
@@ -2521,6 +2635,11 @@ class _MealSection extends StatelessWidget {
   }
 }
 
+enum _ReusableMealAction { add, edit, archive }
+
+/// Gespeichertes Gericht als Listenzeile. Antippen öffnet die Bearbeitung
+/// (oder übernimmt das Gericht, wenn nur [onAdd] gesetzt ist). Langes Drücken
+/// öffnet das Kontext-Sheet mit Übernehmen, Bearbeiten und Archivieren.
 class _ReusableMealRow extends StatelessWidget {
   const _ReusableMealRow({
     required this.meal,
@@ -2534,119 +2653,102 @@ class _ReusableMealRow extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onArchive;
 
+  bool get _active => meal.status == 'Active';
+
   @override
   Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: GainerCard(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              meal.name,
-              style: GainerTypography.body.copyWith(color: colors.primaryText),
-            ),
-            Text(
-              '${meal.components.length} Bestandteile · Portion ${_grams(meal.standardPortion)}× · ${meal.status == 'Active' ? 'Aktiv' : 'Archiviert'}',
-              style: GainerTypography.body.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-            Wrap(
-              spacing: 4,
-              children: [
-                CupertinoButton(
-                  minimumSize: const Size(48, 48),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  onPressed: meal.status == 'Active' ? onAdd : null,
-                  child: const Text('Übernehmen'),
-                ),
-                if (onEdit != null)
-                  CupertinoButton(
-                    minimumSize: const Size(48, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    onPressed: onEdit,
-                    child: const Text('Bearbeiten'),
-                  ),
-                if (onArchive != null)
-                  CupertinoButton(
-                    minimumSize: const Size(48, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    onPressed: onArchive,
-                    child: Text(
-                      'Archivieren',
-                      style: TextStyle(color: colors.destructive),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
+    final tap = onEdit ?? (_active ? onAdd : null);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () => _showActions(context),
+      child: GainerListRow(
+        key: ValueKey('reusable-meal-${meal.name}'),
+        title: meal.name,
+        subtitle:
+            '${meal.components.length} Bestandteile · Portion ${_grams(meal.standardPortion)}× · ${_active ? 'Aktiv' : 'Archiviert'}',
+        showChevron: onEdit != null,
+        onTap: tap,
       ),
     );
   }
+
+  Future<void> _showActions(BuildContext context) async {
+    final action = await showGainerActionSheet<_ReusableMealAction>(
+      context: context,
+      title: meal.name,
+      groups: [
+        [
+          if (_active)
+            const GainerSheetAction(
+              label: 'Übernehmen',
+              icon: CupertinoIcons.plus_square,
+              value: _ReusableMealAction.add,
+            ),
+          if (onEdit != null)
+            const GainerSheetAction(
+              label: 'Bearbeiten',
+              icon: CupertinoIcons.pencil,
+              value: _ReusableMealAction.edit,
+            ),
+        ],
+        [
+          if (onArchive != null)
+            const GainerSheetAction(
+              label: 'Archivieren',
+              icon: CupertinoIcons.archivebox,
+              value: _ReusableMealAction.archive,
+              destructive: true,
+            ),
+        ],
+      ].where((group) => group.isNotEmpty).toList(),
+    );
+    if (!context.mounted) return;
+    switch (action) {
+      case _ReusableMealAction.add:
+        onAdd();
+      case _ReusableMealAction.edit:
+        onEdit?.call();
+      case _ReusableMealAction.archive:
+        onArchive?.call();
+      case null:
+    }
+  }
 }
 
+/// Zielphase als Listenzeile. Bearbeiten per Antippen, künftige Phasen lassen
+/// sich nach links wischen und nach Bestätigung entfernen.
 class _TargetPhaseRow extends StatelessWidget {
   const _TargetPhaseRow({
     super.key,
     required this.phase,
     required this.onEdit,
     required this.onDelete,
+    required this.onConfirmDelete,
   });
 
   final NutritionTargetVersion phase;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final Future<bool> Function()? onConfirmDelete;
 
   @override
   Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: GainerCard(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              phase.name,
-              style: GainerTypography.body.copyWith(color: colors.primaryText),
-            ),
-            Text(
-              '${phase.effectiveFrom} – ${phase.effectiveUntil ?? 'offen'} · ${_grams(phase.kilocalories)} kcal · P ${_grams(phase.proteinGrams)} g · KH ${_grams(phase.carbohydrateGrams)} g · F ${_grams(phase.fatGrams)} g',
-              style: GainerTypography.body.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-            if (onEdit != null || onDelete != null)
-              Wrap(
-                spacing: 4,
-                children: [
-                  if (onEdit != null)
-                    CupertinoButton(
-                      minimumSize: const Size(48, 48),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      onPressed: onEdit,
-                      child: const Text('Bearbeiten'),
-                    ),
-                  if (onDelete != null)
-                    CupertinoButton(
-                      minimumSize: const Size(48, 48),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      onPressed: onDelete,
-                      child: Text(
-                        'Entfernen',
-                        style: TextStyle(color: colors.destructive),
-                      ),
-                    ),
-                ],
-              ),
-          ],
-        ),
-      ),
+    final row = GainerListRow(
+      title: phase.name,
+      subtitle:
+          '${phase.effectiveFrom} – ${phase.effectiveUntil ?? 'offen'} · ${_grams(phase.kilocalories)} kcal · P ${_grams(phase.proteinGrams)} g · KH ${_grams(phase.carbohydrateGrams)} g · F ${_grams(phase.fatGrams)} g',
+      showChevron: onEdit != null,
+      onTap: onEdit,
+    );
+    final delete = onDelete;
+    final confirm = onConfirmDelete;
+    if (delete == null || confirm == null) return row;
+    return GainerSwipeToDelete(
+      dismissKey: ValueKey('target-phase-swipe-${phase.targetVersionId}'),
+      label: 'Entfernen',
+      confirm: confirm,
+      onDeleted: delete,
+      child: row,
     );
   }
 }

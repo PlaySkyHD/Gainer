@@ -113,7 +113,7 @@ Future<void> runUiDesignCaptureFlow(
   await tester.pumpAndSettle();
   _resetActiveTabScroll(tester);
   await tester.pumpAndSettle();
-  expect(find.text('Ernährungstagebuch'), findsOneWidget);
+  expect(find.byKey(const ValueKey('nutrition-add-food')), findsOneWidget);
 
   // Tagebuch ist leer; „Training starten“ öffnet den Trainingsscreen, der
   // sich danach minimieren lässt und als kompakte Leiste über der Tableiste
