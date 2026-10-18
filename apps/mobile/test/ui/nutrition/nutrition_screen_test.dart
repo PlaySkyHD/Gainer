@@ -8,6 +8,7 @@ import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.d
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
+import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/nutrition/nutrition_screen.dart';
 import 'package:gainer_mobile/ui/features/nutrition/nutrition_view_model.dart';
 
@@ -212,9 +213,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Mahlzeit'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Mittagessen').last);
+    await tester.tap(find.text('Mittag'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Manuell erfassen'));
     await tester.pumpAndSettle();
@@ -232,7 +231,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('Manuell speichern'),
       240,
-      scrollable: _verticalScrollable(),
+      scrollable: _sheetScrollable(),
     );
     await tester.ensureVisible(find.text('Manuell speichern'));
     await tester.tap(find.text('Manuell speichern'));
@@ -267,10 +266,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Montag, 12. Oktober'), findsOneWidget);
+    expect(find.text('Heute'), findsOneWidget);
+    expect(find.text('Montag, 12. Oktober'), findsNothing);
     expect(find.byKey(const ValueKey('nutrition-add-food')), findsOneWidget);
     expect(find.text('Gerichte und Ziele verwalten'), findsNothing);
-    expect(find.text('Noch nichts eingetragen'), findsAtLeastNWidgets(1));
+    expect(find.text('Noch nichts eingetragen'), findsNothing);
+    expect(find.text('Hinzufügen'), findsNWidgets(4));
     expect(find.byType(CupertinoTextField), findsNothing);
     expect(find.byKey(const ValueKey('meal-add-breakfast')), findsOneWidget);
 
@@ -325,7 +326,7 @@ void main() {
     await tester.scrollUntilVisible(
       search,
       220,
-      scrollable: _verticalScrollable(),
+      scrollable: _sheetScrollable(),
     );
     await tester.enterText(search, 'Haferdrink');
     await tester.testTextInput.receiveAction(TextInputAction.search);
@@ -337,7 +338,7 @@ void main() {
     );
     expect(viewModel.errorOperation, NutritionErrorOperation.search);
 
-    await tester.tap(find.text('Optionen'));
+    await tester.tap(find.byKey(const ValueKey('nutrition-entry-options')));
     await tester.pumpAndSettle();
     expect(find.textContaining('nutrition_import_not_supported'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('nutrition-entry-close')));
@@ -471,47 +472,21 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(CupertinoAlertDialog), findsNothing);
       await tester.enterText(find.byType(CupertinoTextField).at(0), 'Porridge');
-      await tester.enterText(
-        find.byKey(const ValueKey('nutrition-recipe-component-0-name')),
-        'Hafer',
+      await _addManualComponent(
+        tester,
+        name: 'Hafer',
+        brand: 'Bio',
+        amount: '50',
+        kcal: '380',
       );
-      await tester.enterText(
-        find.byKey(const ValueKey('nutrition-recipe-component-0-brand')),
-        'Bio',
+      await _addManualComponent(
+        tester,
+        name: 'Milch',
+        amount: '25',
+        kcal: '60',
       );
-      await tester.enterText(
-        find.byKey(const ValueKey('nutrition-recipe-component-0-amount')),
-        '50',
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey('nutrition-recipe-component-0-kcal')),
-        '380',
-      );
-      await tester.scrollUntilVisible(
-        find.text('Bestandteil hinzufügen'),
-        220,
-        scrollable: _verticalScrollable(),
-      );
-      await tester.tap(find.text('Bestandteil hinzufügen'));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('nutrition-recipe-component-1-name')),
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey('nutrition-recipe-component-1-name')),
-        'Milch',
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey('nutrition-recipe-component-1-amount')),
-        '25',
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey('nutrition-recipe-component-1-kcal')),
-        '60',
-      );
-      tester.testTextInput.hide();
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Sichern'));
+      expect(find.text('Hafer'), findsOneWidget);
+      expect(find.text('Milch'), findsOneWidget);
       await tester.tap(find.text('Sichern'));
       await tester.pumpAndSettle();
       expect(viewModel.snapshot!.meals.single.value.components, hasLength(2));
@@ -580,7 +555,7 @@ void main() {
     await tester.ensureVisible(find.text('Zielphase hinzufügen'));
     await tester.tap(find.text('Zielphase hinzufügen'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Abbrechen').last);
+    await tester.tap(find.byKey(const ValueKey('nutrition-target-close')));
     await tester.pumpAndSettle();
     expect(
       await store.readOutbox(aggregateType: 'nutrition-target-schedule'),
@@ -638,7 +613,7 @@ void main() {
         CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Tagesziele · Aktuelles Ziel'), findsOneWidget);
+      expect(find.text('0 von 2.000 kcal'), findsOneWidget);
       await _openPlanning(tester);
       await tester.scrollUntilVisible(
         find.text('Aktuelles Ziel'),
@@ -695,7 +670,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(harness.viewModel.snapshot!.day.entries, isEmpty);
     expect(find.byKey(key), findsNothing);
-    expect(find.text('Noch nichts eingetragen'), findsAtLeastNWidgets(1));
+    expect(find.text('Noch nichts eingetragen'), findsNothing);
   });
 
   testWidgets('long press opens the entry sheet with a destructive remove', (
@@ -815,27 +790,294 @@ void main() {
     );
     viewModel.dispose();
   });
+  testWidgets('date pill shows relative labels and opens the date picker', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(tester, []);
+
+    expect(find.text('Heute'), findsOneWidget);
+    expect(find.text('Tagesübersicht'), findsNothing);
+    await tester.tap(find.byIcon(CupertinoIcons.chevron_left).first);
+    await tester.pumpAndSettle();
+    expect(find.text('Gestern'), findsOneWidget);
+    await tester.tap(find.byIcon(CupertinoIcons.chevron_left).first);
+    await tester.pumpAndSettle();
+    expect(find.text('Sa. 10. Okt.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-date-pill')));
+    await tester.pumpAndSettle();
+    expect(find.text('Tag auswählen'), findsOneWidget);
+    await tester.tap(find.text('Fertig'));
+    await tester.pumpAndSettle();
+    expect(harness.viewModel.localDate, '2026-10-10');
+  });
+
+  testWidgets('day card without targets shows actuals and a targets action', (
+    tester,
+  ) async {
+    await _pumpDiary(tester, ['Joghurt']);
+
+    expect(find.text('Tagesziele festlegen'), findsOneWidget);
+    expect(find.textContaining('trotzdem angezeigt'), findsNothing);
+    expect(find.text('Protein'), findsOneWidget);
+    expect(find.text('– g'), findsNWidgets(3));
+  });
+
+  testWidgets('day card with targets shows progress and remaining kcal', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(
+      tester,
+      ['Joghurt'],
+      schedule: NutritionTargetSchedule(
+        versions: [
+          _targetPhase(
+            id: '00000000-0000-4000-8000-000000000046',
+            name: 'Aktuelles Ziel',
+            from: '2026-10-01',
+          ),
+        ],
+      ),
+    );
+
+    expect(find.text('60 von 2.000 kcal'), findsOneWidget);
+    expect(find.text('1.940 übrig'), findsOneWidget);
+    expect(find.text('Tagesziele festlegen'), findsNothing);
+    expect(harness.viewModel.snapshot!.targetSchedule, isNotNull);
+  });
+
+  testWidgets('add sheet offers the meal segment and capture paths', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(tester, []);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    final segment = find.byType(GainerSegmentedControl<NutritionMeal>);
+    for (final label in ['Frühstück', 'Mittag', 'Abend', 'Snacks']) {
+      expect(
+        find.descendant(of: segment, matching: find.text(label)),
+        findsOneWidget,
+      );
+    }
+    expect(find.text('Abbrechen'), findsNothing);
+    expect(find.text('Zuletzt verwendet'), findsOneWidget);
+    expect(find.text('Gespeicherte Gerichte'), findsOneWidget);
+    expect(find.text('Manuell erfassen'), findsOneWidget);
+
+    await tester.tap(find.text('Abend'));
+    await tester.pumpAndSettle();
+    expect(harness.viewModel.selectedMeal, NutritionMeal.dinner);
+    await tester.tap(find.byKey(const ValueKey('nutrition-entry-close')));
+    await tester.pumpAndSettle();
+    expect(find.text('Zuletzt verwendet'), findsNothing);
+  });
+
+  testWidgets(
+    'meal component is added through the shared dialog without touching a day',
+    (tester) async {
+      final harness = await _pumpDiary(tester, []);
+
+      await _openPlanning(tester);
+      await tester.tap(find.text('Neues Gericht anlegen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Neues Gericht'), findsOneWidget);
+      expect(find.text('Abbrechen'), findsNothing);
+      await tester.enterText(find.byType(CupertinoTextField).at(0), 'Bowl');
+      expect(
+        tester
+            .widget<GainerPillButton>(find.byType(GainerPillButton))
+            .onPressed,
+        isNull,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('meal-component-add')));
+      await tester.pumpAndSettle();
+      expect(find.text('Bestandteil hinzufügen'), findsWidgets);
+      expect(find.text('Mittag'), findsNothing);
+      expect(find.text('Gespeicherte Gerichte'), findsNothing);
+      expect(find.text('Mahlzeit schätzen'), findsNothing);
+      await tester.tap(find.text('Manuell erfassen'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-entry-name')),
+        'Reis',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-entry-amount')),
+        '200',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-entry-kcal')),
+        '130',
+      );
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Übernehmen'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Reis'), findsOneWidget);
+      expect(find.text('200 g · 260 kcal'), findsOneWidget);
+      expect(harness.viewModel.snapshot!.day.entries, isEmpty);
+      expect(
+        await harness.store.readOutbox(aggregateType: 'nutrition-day'),
+        isEmpty,
+      );
+
+      await tester.tap(find.text('Sichern'));
+      await tester.pumpAndSettle();
+      final meal = harness.viewModel.snapshot!.meals.single.value;
+      expect(meal.name, 'Bowl');
+      expect(meal.components.single.name, 'Reis');
+      expect(harness.viewModel.snapshot!.day.entries, isEmpty);
+      expect(
+        await harness.store.readOutbox(aggregateType: 'nutrition-day'),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets('cancelling or failing the component dialog keeps the draft', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(tester, []);
+
+    await _openPlanning(tester);
+    await tester.tap(find.text('Neues Gericht anlegen'));
+    await tester.pumpAndSettle();
+    await _addManualComponent(tester, name: 'Hafer', amount: '50', kcal: '380');
+
+    // Abbrechen über das X lässt die Liste unverändert.
+    await tester.tap(find.byKey(const ValueKey('meal-component-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-entry-close')));
+    await tester.pumpAndSettle();
+    expect(find.text('Hafer'), findsOneWidget);
+
+    // Ungültige Werte lassen den Dialog offen und den Entwurf unverändert.
+    await tester.tap(find.byKey(const ValueKey('meal-component-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manuell erfassen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-entry-name')),
+      'Fehler',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-entry-kcal')),
+      '0',
+    );
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Übernehmen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Die Kalorien müssen größer als 0 sein.'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('nutrition-entry-options')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-entry-close')));
+    await tester.pumpAndSettle();
+    expect(find.text('Fehler'), findsNothing);
+    expect(find.text('Hafer'), findsOneWidget);
+    expect(harness.viewModel.snapshot!.day.entries, isEmpty);
+  });
+
+  testWidgets('meal components can be edited, moved and removed by swipe', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(tester, []);
+
+    await _openPlanning(tester);
+    await tester.tap(find.text('Neues Gericht anlegen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField).at(0), 'Bowl');
+    await _addManualComponent(tester, name: 'Reis', amount: '200', kcal: '130');
+    await _addManualComponent(tester, name: 'Huhn', amount: '150', kcal: '165');
+
+    // Antippen bearbeitet die Menge.
+    await tester.tap(find.text('Reis'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bestandteil bearbeiten'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('meal-component-amount')),
+      '100',
+    );
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sichern').last);
+    await tester.pumpAndSettle();
+    expect(find.text('100 g · 130 kcal'), findsOneWidget);
+
+    // Langes Drücken: Verschieben.
+    await tester.longPress(find.text('Reis'));
+    await tester.pumpAndSettle();
+    expect(find.text('Verschieben'), findsOneWidget);
+    await tester.tap(find.text('Verschieben'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bestandteile anordnen'), findsOneWidget);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(ReorderableDragStartListener).first),
+    );
+    await tester.pump();
+    for (var step = 0; step < 6; step++) {
+      await gesture.moveBy(const Offset(0, 30));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fertig'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('Huhn')).dy,
+      lessThan(tester.getTopLeft(find.text('Reis')).dy),
+    );
+
+    // Wischen entfernt nach Bestätigung.
+    final row = find.byWidgetPredicate(
+      (widget) =>
+          widget is Dismissible &&
+          widget.key.toString().contains('meal-component-swipe'),
+    );
+    await tester.drag(row.first, const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Bestandteil entfernen?'), findsOneWidget);
+    await tester.tap(find.text('Entfernen').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Huhn'), findsNothing);
+    expect(find.text('Reis'), findsOneWidget);
+    expect(harness.viewModel.snapshot!.day.entries, isEmpty);
+  });
 }
 
 class _DiaryHarness {
-  const _DiaryHarness({required this.viewModel, required this.entryIds});
+  const _DiaryHarness({
+    required this.viewModel,
+    required this.entryIds,
+    required this.store,
+  });
 
   final NutritionViewModel viewModel;
   final List<String> entryIds;
+  final LocalSyncStore store;
 }
 
 /// Zeigt das Tagebuch des 12. Oktober mit einem Breakfast-Eintrag je Name.
 Future<_DiaryHarness> _pumpDiary(
   WidgetTester tester,
-  List<String> names,
-) async {
+  List<String> names, {
+  NutritionTargetSchedule? schedule,
+}) async {
   _usePhoneViewport(tester);
   final database = LocalDatabase(NativeDatabase.memory());
   addTearDown(database.close);
+  final store = LocalSyncStore(database: database, accountId: accountId);
+  var nextId = 300;
   final repository = NutritionRepository(
-    store: LocalSyncStore(database: database, accountId: accountId),
+    store: store,
+    ids: () =>
+        '00000000-0000-4000-8000-${(nextId++).toString().padLeft(12, '0')}',
     clock: () => DateTime.utc(2026, 10, 12, 10),
   );
+  if (schedule != null) await repository.saveTargetSchedule(schedule);
   final entryIds = <String>[];
   for (var index = 0; index < names.length; index++) {
     final entryId =
@@ -863,7 +1105,7 @@ Future<_DiaryHarness> _pumpDiary(
     CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
   );
   await tester.pumpAndSettle();
-  return _DiaryHarness(viewModel: viewModel, entryIds: entryIds);
+  return _DiaryHarness(viewModel: viewModel, entryIds: entryIds, store: store);
 }
 
 NutritionTargetVersion _targetPhase({
@@ -953,7 +1195,53 @@ Future<void> _openPlanning(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Scrollbare Liste im obersten Sheet.
+Finder _sheetScrollable() => find.descendant(
+  of: find.byType(GainerSheetFrame),
+  matching: find.byWidgetPredicate(
+    (widget) =>
+        widget is Scrollable && widget.axisDirection == AxisDirection.down,
+  ),
+);
+
 Finder _verticalScrollable() => find.byWidgetPredicate(
   (widget) =>
       widget is Scrollable && widget.axisDirection == AxisDirection.down,
 );
+
+/// Fügt im Gerichtseditor über den gemeinsamen Dialog („Manuell erfassen“)
+/// einen Bestandteil hinzu.
+Future<void> _addManualComponent(
+  WidgetTester tester, {
+  required String name,
+  String? brand,
+  required String amount,
+  required String kcal,
+}) async {
+  await tester.tap(find.byKey(const ValueKey('meal-component-add')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Manuell erfassen'));
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byKey(const ValueKey('nutrition-entry-name')),
+    name,
+  );
+  if (brand != null) {
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-entry-brand')),
+      brand,
+    );
+  }
+  await tester.enterText(
+    find.byKey(const ValueKey('nutrition-entry-amount')),
+    amount,
+  );
+  await tester.enterText(
+    find.byKey(const ValueKey('nutrition-entry-kcal')),
+    kcal,
+  );
+  tester.testTextInput.hide();
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Übernehmen'));
+  await tester.pumpAndSettle();
+}
