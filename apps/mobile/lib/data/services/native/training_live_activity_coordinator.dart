@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/widgets.dart';
+
 import '../../../data/repositories/training/training_preferences.dart';
 import '../../../domain/models/timer/rest_timer_state.dart';
 import '../../../domain/models/training/previous_values.dart';
@@ -32,6 +34,7 @@ class TrainingLiveActivityCoordinator {
 
   /// Gültigkeit ohne Pause: iOS markiert die Activity danach als veraltet.
   static const _trainingValidity = Duration(hours: 8);
+  static const _retryDelay = Duration(seconds: 30);
 
   final ActiveWorkoutController activeWorkout;
   final LiveActivityPlatform platform;
@@ -56,7 +59,11 @@ class TrainingLiveActivityCoordinator {
   RestTimerController? _timer;
   bool _activated = false;
   bool _disposed = false;
-  bool _unavailable = false;
+
+  /// Nach einem fehlgeschlagenen Start wird erst ab diesem Zeitpunkt erneut
+  /// versucht, damit Timer-Ticks die Plattform nicht dauernd anfragen.
+  DateTime? _retryNotBefore;
+  AppLifecycleListener? _lifecycle;
   bool _cleanupPending = false;
   int _requestSeq = 0;
   Future<void> _queue = Future<void>.value();
@@ -80,6 +87,17 @@ class TrainingLiveActivityCoordinator {
     preferences.liveActivityDetails.addListener(_onChanged);
     preferences.weightUnit.addListener(_onChanged);
     _attachTimer();
+    _lifecycle = AppLifecycleListener(onResume: resync);
+    _request();
+  }
+
+  /// Gleicht die Activity erneut ab, etwa wenn die App wieder in den
+  /// Vordergrund kommt: iOS kann sie inzwischen beendet haben, z. B. nach einem
+  /// App-Update, und ein früherer Startfehler soll nicht dauerhaft gelten.
+  void resync() {
+    if (_disposed || !_activated) return;
+    _retryNotBefore = null;
+    _sent = null;
     _request();
   }
 
@@ -106,7 +124,9 @@ class TrainingLiveActivityCoordinator {
   }
 
   Future<void> _apply(int request) async {
-    if (_disposed || _unavailable || request != _requestSeq) return;
+    if (_disposed || request != _requestSeq) return;
+    final retryAt = _retryNotBefore;
+    if (retryAt != null && _clock().isBefore(retryAt)) return;
     if (!isSessionActive()) return;
 
     final workout = activeWorkout.active;
@@ -251,9 +271,11 @@ class TrainingLiveActivityCoordinator {
         ok = await platform.start(state: state);
       }
       if (!ok) {
-        _unavailable = true;
+        _sent = null;
+        _retryNotBefore = _clock().add(_retryDelay);
         return;
       }
+      _retryNotBefore = null;
       _sessionId = state.sessionId;
       _sent = state;
     });
@@ -284,8 +306,10 @@ class TrainingLiveActivityCoordinator {
     preferences.weightUnit.removeListener(_onChanged);
     _timer?.removeListener(_onChanged);
     _timer = null;
+    _lifecycle?.dispose();
+    _lifecycle = null;
     await _queue;
-    if (!_activated || _unavailable) return;
+    if (!_activated) return;
     _sessionId = null;
     _sent = null;
     await _call(platform.endAll);
