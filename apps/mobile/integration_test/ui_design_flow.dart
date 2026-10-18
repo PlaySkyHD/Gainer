@@ -54,7 +54,8 @@ Future<void> runUiDesignCaptureFlow(
   await tester.pumpAndSettle();
   await _waitForExerciseProgress(tester, fixture);
   await capture('tab-heute');
-  expect(find.text('Dein Fortschritt aus deinen Einträgen'), findsOneWidget);
+  // Kein Untertitel unter dem großen Titel (design.md D1.1).
+  expect(find.text('Dein Fortschritt aus deinen Einträgen'), findsNothing);
   expect(find.text('Letzter Eintrag · 14.10.2026'), findsOneWidget);
   expect(find.text('Ø 7 Tage · 82.7 kg'), findsOneWidget);
   await _scrollActiveTabUntilVisible(
@@ -161,7 +162,7 @@ Future<void> runUiDesignCaptureFlow(
     await tester.pumpAndSettle();
     if (tab.$1 == 'Heute') {
       expect(
-        find.text('Dein Fortschritt aus deinen Einträgen'),
+        find.byKey(const ValueKey('progress-overview-scroll')),
         findsOneWidget,
       );
     }
