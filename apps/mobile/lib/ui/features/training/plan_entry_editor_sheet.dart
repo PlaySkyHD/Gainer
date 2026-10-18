@@ -28,8 +28,9 @@ Future<PlanEntryEdit?> showPlanEntryEditor(
 }) {
   return showCupertinoModalPopup<PlanEntryEdit>(
     context: context,
-    builder: (_) =>
-        _PlanEntryEditorSheet(entry: entry, exerciseName: exerciseName),
+    builder: (_) => GainerKeyboardInset(
+      child: _PlanEntryEditorSheet(entry: entry, exerciseName: exerciseName),
+    ),
   );
 }
 

@@ -287,49 +287,44 @@ class _NutritionScreenState extends State<NutritionScreen> {
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => AnimatedBuilder(
           animation: vm,
-          builder: (context, _) => Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.viewInsetsOf(context).bottom,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _entryHeader(
-                  sheetContext,
-                  target,
-                  mode,
-                  onBack: () => setSheetState(() {
-                    vm.dismissActionError();
-                    mode = _NutritionEntryMode.choices;
-                  }),
-                ),
-                if (target is DayMealTarget) _mealSegment(vm),
-                Expanded(
-                  child: ListView(
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.fromLTRB(
-                      GainerSpacing.m,
-                      GainerSpacing.m,
-                      GainerSpacing.m,
-                      GainerSpacing.l,
-                    ),
-                    children: mode == _NutritionEntryMode.choices
-                        ? _choiceChildren(
-                            target,
-                            (option) => setSheetState(() => mode = option),
-                          )
-                        : _entryChildren(
-                            context,
-                            vm,
-                            mode,
-                            target,
-                            (draft) => Navigator.of(sheetContext).pop(draft),
-                          ),
+          builder: (context, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _entryHeader(
+                sheetContext,
+                target,
+                mode,
+                onBack: () => setSheetState(() {
+                  vm.dismissActionError();
+                  mode = _NutritionEntryMode.choices;
+                }),
+              ),
+              if (target is DayMealTarget) _mealSegment(vm),
+              Expanded(
+                child: ListView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(
+                    GainerSpacing.m,
+                    GainerSpacing.m,
+                    GainerSpacing.m,
+                    GainerSpacing.l,
                   ),
+                  children: mode == _NutritionEntryMode.choices
+                      ? _choiceChildren(
+                          target,
+                          (option) => setSheetState(() => mode = option),
+                        )
+                      : _entryChildren(
+                          context,
+                          vm,
+                          mode,
+                          target,
+                          (draft) => Navigator.of(sheetContext).pop(draft),
+                        ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1169,49 +1164,44 @@ class _NutritionScreenState extends State<NutritionScreen> {
         builder: (sheetContext) => StatefulBuilder(
           builder: (sheetContext, setSheetState) {
             final draft = _draftFrom(c, source: component.source);
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  GainerSheetHeader(
-                    title: 'Bestandteil bearbeiten',
-                    trailing: GainerPillButton(
-                      label: 'Sichern',
-                      onPressed: draft.validate() == null
-                          ? () => Navigator.of(sheetContext).pop(draft)
-                          : null,
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GainerSheetHeader(
+                  title: 'Bestandteil bearbeiten',
+                  trailing: GainerPillButton(
+                    label: 'Sichern',
+                    onPressed: draft.validate() == null
+                        ? () => Navigator.of(sheetContext).pop(draft)
+                        : null,
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(
+                      GainerSpacing.m,
+                      GainerSpacing.m,
+                      GainerSpacing.m,
+                      GainerSpacing.l,
+                    ),
+                    children: _foodFormGroups(
+                      name: c.name,
+                      brand: c.brand,
+                      amount: c.amount,
+                      kcal: c.kcal,
+                      protein: c.protein,
+                      carbs: c.carbs,
+                      fat: c.fat,
+                      nameKey: const ValueKey('meal-component-name'),
+                      amountKey: const ValueKey('meal-component-amount'),
+                      kcalKey: const ValueKey('meal-component-kcal'),
+                      onChanged: (_) => setSheetState(() {}),
                     ),
                   ),
-                  Expanded(
-                    child: ListView(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: const EdgeInsets.fromLTRB(
-                        GainerSpacing.m,
-                        GainerSpacing.m,
-                        GainerSpacing.m,
-                        GainerSpacing.l,
-                      ),
-                      children: _foodFormGroups(
-                        name: c.name,
-                        brand: c.brand,
-                        amount: c.amount,
-                        kcal: c.kcal,
-                        protein: c.protein,
-                        carbs: c.carbs,
-                        fat: c.fat,
-                        nameKey: const ValueKey('meal-component-name'),
-                        amountKey: const ValueKey('meal-component-amount'),
-                        kcalKey: const ValueKey('meal-component-kcal'),
-                        onChanged: (_) => setSheetState(() {}),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             );
           },
         ),
@@ -1280,50 +1270,45 @@ class _NutritionScreenState extends State<NutritionScreen> {
           builder: (context, setSheetState) {
             final portion = _parse(scale.text);
             final valid = (portion ?? 0) >= .01 && (portion ?? 101) <= 100;
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.viewInsetsOf(context).bottom,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  GainerSheetHeader(title: '${meal.name} übernehmen'),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      GainerSpacing.m,
-                      GainerSpacing.m,
-                      GainerSpacing.m,
-                      0,
-                    ),
-                    child: GainerGroupedSection(
-                      children: [
-                        GainerTextFieldRow(
-                          label: 'Portionen',
-                          unit: '×',
-                          controller: scale,
-                          keyboardType: _decimalKeyboard,
-                          onChanged: (_) => setSheetState(() {}),
-                        ),
-                      ],
-                    ),
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GainerSheetHeader(title: '${meal.name} übernehmen'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    GainerSpacing.m,
+                    GainerSpacing.m,
+                    GainerSpacing.m,
+                    0,
                   ),
-                  const SizedBox(height: GainerSpacing.m),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: GainerSpacing.m,
-                    ),
-                    child: GainerPillButton(
-                      label: 'Übernehmen',
-                      expand: true,
-                      onPressed: valid
-                          ? () => Navigator.of(sheetContext).pop(true)
-                          : null,
-                    ),
+                  child: GainerGroupedSection(
+                    children: [
+                      GainerTextFieldRow(
+                        label: 'Portionen',
+                        unit: '×',
+                        controller: scale,
+                        keyboardType: _decimalKeyboard,
+                        onChanged: (_) => setSheetState(() {}),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: GainerSpacing.m),
-                ],
-              ),
+                ),
+                const SizedBox(height: GainerSpacing.m),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: GainerSpacing.m,
+                  ),
+                  child: GainerPillButton(
+                    label: 'Übernehmen',
+                    expand: true,
+                    onPressed: valid
+                        ? () => Navigator.of(sheetContext).pop(true)
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: GainerSpacing.m),
+              ],
             );
           },
         ),
