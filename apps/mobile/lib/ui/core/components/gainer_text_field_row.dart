@@ -37,6 +37,37 @@ class GainerTextFieldRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
     final error = errorText;
+    // Bei sehr großer Schrift steht die Beschriftung über der Eingabe.
+    final stacked = MediaQuery.textScalerOf(context).scale(1) > 1.5;
+    final labelText = Text(
+      label,
+      style: GainerTypography.body.copyWith(color: colors.primaryText),
+    );
+    final field = CupertinoTextField.borderless(
+      key: fieldKey,
+      controller: controller,
+      placeholder: placeholder,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      onChanged: onChanged,
+      textAlign: stacked ? TextAlign.start : textAlign,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      style: GainerTypography.body.copyWith(color: colors.primaryText),
+      placeholderStyle: GainerTypography.body.copyWith(
+        color: colors.placeholderText,
+      ),
+      // Die Einheit gehört zum Feld und steht immer am rechten Rand.
+      suffix: switch (unit) {
+        final suffix? => Padding(
+          padding: const EdgeInsets.only(left: GainerSpacing.xxs),
+          child: Text(
+            suffix,
+            style: GainerTypography.body.copyWith(color: colors.secondaryText),
+          ),
+        ),
+        null => null,
+      },
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: GainerSpacing.m,
@@ -46,49 +77,29 @@ class GainerTextFieldRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 36),
-            child: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    label,
-                    style: GainerTypography.body.copyWith(
-                      color: colors.primaryText,
+          if (stacked) ...[
+            labelText,
+            field,
+          ] else
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 36),
+              // Die Beschriftung nimmt höchstens die halbe Breite, die Eingabe
+              // füllt den Rest bis zum rechten Rand.
+              child: LayoutBuilder(
+                builder: (context, constraints) => Row(
+                  children: [
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: constraints.maxWidth / 2,
+                      ),
+                      child: labelText,
                     ),
-                  ),
+                    const SizedBox(width: GainerSpacing.s),
+                    Expanded(child: field),
+                  ],
                 ),
-                const SizedBox(width: GainerSpacing.s),
-                Expanded(
-                  child: CupertinoTextField.borderless(
-                    key: fieldKey,
-                    controller: controller,
-                    placeholder: placeholder,
-                    keyboardType: keyboardType,
-                    inputFormatters: inputFormatters,
-                    onChanged: onChanged,
-                    textAlign: textAlign,
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    style: GainerTypography.body.copyWith(
-                      color: colors.primaryText,
-                    ),
-                    placeholderStyle: GainerTypography.body.copyWith(
-                      color: colors.placeholderText,
-                    ),
-                  ),
-                ),
-                if (unit case final suffix?) ...[
-                  const SizedBox(width: GainerSpacing.xxs),
-                  Text(
-                    suffix,
-                    style: GainerTypography.body.copyWith(
-                      color: colors.secondaryText,
-                    ),
-                  ),
-                ],
-              ],
+              ),
             ),
-          ),
           if (error != null)
             Padding(
               padding: const EdgeInsets.only(bottom: GainerSpacing.xxs),
