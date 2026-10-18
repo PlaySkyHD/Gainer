@@ -140,7 +140,7 @@ void main() {
     final h = _harness(tester, _healthWithData(_midnight()));
     await _open(tester, h);
 
-    expect(_weightText(tester), '81.4');
+    expect(_weightText(tester), '81,4');
     expect(find.text('Gewicht aus Apple Health'), findsOneWidget);
     expect(find.text('23:10'), findsOneWidget);
     expect(find.text('06:45'), findsOneWidget);
