@@ -29,10 +29,7 @@ Future<void> runProgrammaticTabChecks(
 
   fixture.controller.shell.selectTab(MobileArea.body.index);
   await tester.pumpAndSettle();
-  expect(
-    find.text('Dein aktueller Stand und tägliche Check-ins'),
-    findsOneWidget,
-  );
+  expect(find.text('Verlauf'), findsOneWidget);
   fixture.controller.shell.selectTab(MobileArea.nutrition.index);
   await tester.pumpAndSettle();
   expect(find.byKey(const ValueKey('nutrition-entry-name')), findsOneWidget);
@@ -54,7 +51,8 @@ Future<void> runUiDesignCaptureFlow(
   await tester.pumpAndSettle();
   await _waitForExerciseProgress(tester, fixture);
   await capture('tab-heute');
-  expect(find.text('Dein Fortschritt aus deinen Einträgen'), findsOneWidget);
+  // Kein Untertitel unter dem großen Titel (design.md D1.1).
+  expect(find.text('Dein Fortschritt aus deinen Einträgen'), findsNothing);
   expect(find.text('Letzter Eintrag · 14.10.2026'), findsOneWidget);
   expect(find.text('Ø 7 Tage · 82.7 kg'), findsOneWidget);
   await _scrollActiveTabUntilVisible(
@@ -72,20 +70,13 @@ Future<void> runUiDesignCaptureFlow(
   );
 
   await _tapTab(tester, 'Check-in');
-  expect(
-    find.text('Dein aktueller Stand und tägliche Check-ins'),
-    findsOneWidget,
-  );
+  expect(find.text('Verlauf'), findsOneWidget);
   await capture('tab-checkin');
-  await _scrollActiveTabUntilVisible(
-    tester,
-    find.byKey(const ValueKey('body-open-checkin')),
-  );
   await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
   await tester.pumpAndSettle();
   expect(find.byKey(const ValueKey('body-save-checkin')), findsOneWidget);
   await capture('sheet-checkin');
-  await tester.tap(find.text('Abbrechen'));
+  await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
   await tester.pumpAndSettle();
   await _scrollActiveTabUntilVisible(
     tester,
@@ -97,11 +88,11 @@ Future<void> runUiDesignCaptureFlow(
   await capture('sheet-goal');
   await tester.tap(find.byKey(const ValueKey('body-start-date')));
   await tester.pumpAndSettle();
-  expect(find.byKey(const ValueKey('body-date-done')), findsOneWidget);
+  expect(find.text('Fertig'), findsOneWidget);
   await capture('date-picker');
-  await tester.tap(find.byKey(const ValueKey('body-date-cancel')));
+  await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
   await tester.pumpAndSettle();
-  await tester.tap(find.text('Abbrechen'));
+  await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
   await tester.pumpAndSettle();
 
   await _tapTab(tester, 'Essen');
@@ -123,7 +114,7 @@ Future<void> runUiDesignCaptureFlow(
   await tester.pumpAndSettle();
   _resetActiveTabScroll(tester);
   await tester.pumpAndSettle();
-  expect(find.text('Ernährungstagebuch'), findsOneWidget);
+  expect(find.byKey(const ValueKey('nutrition-add-food')), findsOneWidget);
 
   // Tagebuch ist leer; „Training starten“ öffnet den Trainingsscreen, der
   // sich danach minimieren lässt und als kompakte Leiste über der Tableiste
@@ -161,7 +152,7 @@ Future<void> runUiDesignCaptureFlow(
     await tester.pumpAndSettle();
     if (tab.$1 == 'Heute') {
       expect(
-        find.text('Dein Fortschritt aus deinen Einträgen'),
+        find.byKey(const ValueKey('progress-overview-scroll')),
         findsOneWidget,
       );
     }
@@ -175,14 +166,10 @@ Future<void> runUiDesignCaptureFlow(
     isNotEmpty,
   );
   await _tapTab(tester, 'Check-in');
-  await _scrollActiveTabUntilVisible(
-    tester,
-    find.byKey(const ValueKey('body-open-checkin')),
-  );
   await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
   await tester.pumpAndSettle();
   await capture('sheet-dark-checkin');
-  await tester.tap(find.text('Abbrechen'));
+  await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
   await tester.pumpAndSettle();
 
   await _tapTab(tester, 'Essen');

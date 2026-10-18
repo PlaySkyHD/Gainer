@@ -70,14 +70,6 @@ class _AuthScreenState extends State<AuthScreen> {
                     color: colors.primaryText,
                   ),
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  'Melde dich mit deinem bestehenden Konto an.',
-                  textAlign: TextAlign.center,
-                  style: GainerTypography.body.copyWith(
-                    color: colors.secondaryText,
-                  ),
-                ),
                 const SizedBox(height: 28),
                 GainerSegmentedControl<bool>(
                   options: const {
@@ -91,34 +83,38 @@ class _AuthScreenState extends State<AuthScreen> {
                   },
                 ),
                 const SizedBox(height: 18),
-                if (_acceptingInvitation)
-                  _AuthField(
-                    controller: _invitation,
-                    keyboardType: TextInputType.url,
-                    placeholder: 'Einladungscode oder Einladungslink',
-                    textInputAction: TextInputAction.next,
-                  )
-                else
-                  _AuthField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.username],
-                    placeholder: 'E-Mail-Adresse',
-                    textInputAction: TextInputAction.next,
-                  ),
-                const SizedBox(height: 12),
-                _AuthField(
-                  controller: _password,
-                  obscureText: true,
-                  autofillHints: [
-                    _acceptingInvitation
-                        ? AutofillHints.newPassword
-                        : AutofillHints.password,
+                GainerGroupedSection(
+                  footer: 'Melde dich mit deinem bestehenden Konto an.',
+                  children: [
+                    if (_acceptingInvitation)
+                      _AuthField(
+                        controller: _invitation,
+                        keyboardType: TextInputType.url,
+                        placeholder: 'Einladungscode oder Einladungslink',
+                        textInputAction: TextInputAction.next,
+                      )
+                    else
+                      _AuthField(
+                        controller: _email,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.username],
+                        placeholder: 'E-Mail-Adresse',
+                        textInputAction: TextInputAction.next,
+                      ),
+                    _AuthField(
+                      controller: _password,
+                      obscureText: true,
+                      autofillHints: [
+                        _acceptingInvitation
+                            ? AutofillHints.newPassword
+                            : AutofillHints.password,
+                      ],
+                      placeholder: _acceptingInvitation
+                          ? 'Neues Passwort'
+                          : 'Passwort',
+                      onSubmitted: (_) => _login(),
+                    ),
                   ],
-                  placeholder: _acceptingInvitation
-                      ? 'Neues Passwort'
-                      : 'Passwort',
-                  onSubmitted: (_) => _login(),
                 ),
                 if ((widget.controller.errorMessage ?? _localError)
                     case final message?)
@@ -218,10 +214,7 @@ class _AuthField extends StatelessWidget {
         horizontal: GainerSpacing.m,
         vertical: GainerSpacing.s,
       ),
-      decoration: BoxDecoration(
-        color: colors.elevatedSurface,
-        borderRadius: BorderRadius.circular(GainerRadii.field),
-      ),
+      decoration: const BoxDecoration(),
     );
   }
 }

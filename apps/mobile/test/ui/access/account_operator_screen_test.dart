@@ -38,7 +38,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Kontoverwaltung'), findsOneWidget);
+    expect(find.text('Kontoverwaltung'), findsWidgets);
     expect(
       find.text(
         'Konten konnten nicht geladen werden. Prüfe deine Verbindung und Rolle.',
