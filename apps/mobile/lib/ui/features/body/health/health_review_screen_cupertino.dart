@@ -61,7 +61,7 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
                 key: const ValueKey('health-from'),
                 title: 'Von',
                 value: _from,
-                format: _date,
+                format: _displayDate,
                 maximum: _to,
                 onChanged: vm.isLoading
                     ? null
@@ -71,7 +71,7 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
                 key: const ValueKey('health-to'),
                 title: 'Bis',
                 value: _to,
-                format: _date,
+                format: _displayDate,
                 minimum: _from,
                 maximum: DateTime.now(),
                 onChanged: vm.isLoading
@@ -312,6 +312,11 @@ Widget _dataRow(BuildContext context, String title, String detail) {
 
 String _date(DateTime value) =>
     '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+String _displayDate(DateTime value) {
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '${two(value.day)}.${two(value.month)}.${value.year}';
+}
+
 String _localTime(DateTime value) {
   final local = value.toLocal();
   String two(int value) => value.toString().padLeft(2, '0');

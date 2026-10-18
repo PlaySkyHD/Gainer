@@ -248,7 +248,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('health-from')),
-          matching: find.text(_formatDate(threeDaysAgo)),
+          matching: find.text(_displayDate(threeDaysAgo)),
         ),
         findsOneWidget,
       );
@@ -262,5 +262,8 @@ void main() {
 
 String _formatDate(DateTime value) =>
     '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+String _displayDate(DateTime value) =>
+    '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')}.${value.year}';
 
 String _today() => _formatDate(DateTime.now());
