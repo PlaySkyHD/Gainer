@@ -106,7 +106,8 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
                       subtitle:
                           'Max. ${_formatKg(exercise.maxWeightKg)} · '
                           'zuletzt ${formatShortDate(exercise.lastTrainedAtUtc.toLocal())}',
-                      value: _formatKg(exercise.estimatedOneRepMaxKg),
+                      // Geschätztes One-Rep-Max aus dem besten Satz.
+                      value: '1RM ${_formatKg(exercise.estimatedOneRepMaxKg)}',
                       showChevron: true,
                       onTap: () => _open(exercise.exerciseId),
                     ),
@@ -150,4 +151,4 @@ class _EmptyStatistics extends StatelessWidget {
 }
 
 String _formatKg(double? value) =>
-    value == null ? '–' : '${value.toStringAsFixed(1)} kg';
+    value == null ? '–' : '${value.toStringAsFixed(1).replaceAll('.', ',')} kg';
