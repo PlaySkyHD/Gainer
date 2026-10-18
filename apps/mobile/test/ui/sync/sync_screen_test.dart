@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/sync_api_models.dart';
 import 'package:gainer_mobile/data/models/local/local_mutation.dart';
+import 'package:gainer_mobile/data/repositories/sync/local_conflict_recovery.dart';
 import 'package:gainer_mobile/data/repositories/sync/sync_repository.dart';
 import 'package:gainer_mobile/data/services/local/pending_handover_secret_store.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
@@ -255,31 +256,25 @@ void main() {
           code: 'version_conflict',
           detail: {'message': 'Neue Serverversion vorhanden.'},
         ),
-      ];
-    await tester.pumpWidget(
-      CupertinoApp(
-        theme: GainerTheme.light,
-        home: SyncScreen(
-          sync: sync,
-          isOnline: true,
-          accountId: 'a1234567-1234-4234-8234-123456789abc',
-          apiOrigin: 'https://gainer.markfort.xyz',
-        ),
-      ),
-    );
+      ]
+      ..infos = {
+        'conflict-1': _info(title: '2026-10-12', hasServerState: true),
+      };
+    await tester.pumpWidget(_app(sync));
     await tester.pumpAndSettle();
-    expect(find.text('Neue Serverversion vorhanden.'), findsOneWidget);
-
-    await tester.scrollUntilVisible(
-      find.text('Serverstand nutzen').first,
-      300,
-      scrollable: find.byType(Scrollable).last,
+    expect(find.text('Check-in · 2026-10-12'), findsOneWidget);
+    expect(
+      find.textContaining('Auf dem Server gibt es eine neuere Version'),
+      findsOneWidget,
     );
+
+    await tester.tap(find.text('Check-in · 2026-10-12'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Serverstand nutzen'));
     await tester.pumpAndSettle();
     expect(
       find.text(
-        'Die ausstehende lokale Änderung für diesen Eintrag wird verworfen und durch den letzten Serverstand ersetzt.',
+        'Die ausstehenden lokalen Änderungen dieses Eintrags werden verworfen und durch den letzten Serverstand ersetzt.',
       ),
       findsOneWidget,
     );
@@ -346,25 +341,13 @@ void main() {
           code: 'version_conflict',
           detail: {'message': 'Neue Serverversion vorhanden.'},
         ),
-      ];
-    await tester.pumpWidget(
-      CupertinoApp(
-        theme: GainerTheme.light,
-        home: SyncScreen(
-          sync: sync,
-          isOnline: true,
-          accountId: 'a1234567-1234-4234-8234-123456789abc',
-          apiOrigin: 'https://gainer.markfort.xyz',
-        ),
-      ),
-    );
+      ]
+      ..infos = {'conflict-2': _info(title: 'Push', hasServerState: true)};
+    await tester.pumpWidget(_app(sync));
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.text('Lokale Änderung erneut senden'),
-      300,
-      scrollable: find.byType(Scrollable).last,
-    );
+    await tester.tap(find.text('Training · Push'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Lokale Änderung erneut senden'));
     await tester.pumpAndSettle();
     expect(
@@ -379,10 +362,235 @@ void main() {
     await tester.pumpAndSettle();
     expect(sync.retriedConflictIds, ['conflict-2']);
   });
+
+  testWidgets(
+    'conflict row names the resource and the reason; no server copy',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final sync = _SyncActions()
+        ..conflicts = [
+          _conflict('c-1', 'workout', 'active_workout_exists'),
+          _conflict('c-2', 'workout', 'validation_failed'),
+          _conflict('c-3', 'custom-exercise', 'validation_failed'),
+          _conflict('c-4', 'training-plan', 'resource_not_found'),
+          _conflict('c-5', 'unknown-type', 'something_else'),
+        ]
+        ..infos = {
+          'c-1': _info(title: 'Push · 17.10.2026'),
+          'c-2': _info(title: 'Pull · 16.10.2026'),
+          'c-3': _info(title: 'Rudern'),
+          'c-4': _info(title: 'Plan A'),
+        };
+      await tester.pumpWidget(_app(sync));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Training · Push · 17.10.2026'), findsOneWidget);
+      expect(
+        find.textContaining('Ein anderes Training war noch aktiv'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Übung oder Plan fehlt auf dem Server'),
+        findsOneWidget,
+      );
+      expect(find.text('Übung · Rudern'), findsOneWidget);
+      expect(
+        find.textContaining('Der Server hat die Daten abgelehnt'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Auf dem Server nicht gefunden'),
+        findsOneWidget,
+      );
+      expect(find.text('Eintrag · aaaaaaaa'), findsOneWidget);
+      expect(
+        find.textContaining('Der Server hat die Änderung abgelehnt'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Training · Push · 17.10.2026'));
+      await tester.pumpAndSettle();
+      expect(find.text('Lokalen Stand erzwingen'), findsOneWidget);
+      expect(find.text('Serverstand nutzen'), findsNothing);
+      expect(find.text('Lokale Änderung erneut senden'), findsNothing);
+    },
+  );
+
+  testWidgets('forcing one conflict asks first, then forces and syncs', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions()
+      ..conflicts = [_conflict('c-1', 'workout', 'active_workout_exists')]
+      ..infos = {'c-1': _info(title: 'Push')};
+    await tester.pumpWidget(_app(sync));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Training · Push'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lokalen Stand erzwingen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Lokalen Stand erzwingen?'), findsOneWidget);
+    expect(find.textContaining('überschrieben'), findsOneWidget);
+    expect(sync.forcedConflictIds, isEmpty);
+
+    await tester.tap(find.text('Erzwingen'));
+    await tester.pumpAndSettle();
+    expect(sync.forcedConflictIds, ['c-1']);
+    expect(sync.synchronizeCalls, 1);
+    expect(
+      find.text('Lokaler Stand erzwungen und synchronisiert.'),
+      findsOneWidget,
+    );
+    expect(find.text('Keine ungelösten Konflikte'), findsOneWidget);
+  });
+
+  testWidgets('selection mode forces all selected conflicts in send order', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions()
+      ..conflicts = [
+        _conflict('c-workout', 'workout', 'validation_failed'),
+        _conflict('c-exercise', 'custom-exercise', 'validation_failed'),
+        _conflict('c-server', 'training-plan', 'stale_base_version'),
+      ]
+      ..infos = {
+        'c-workout': _info(
+          title: 'Push',
+          queuedAt: DateTime.utc(2026, 10, 17, 9),
+        ),
+        'c-exercise': _info(
+          title: 'Rudern',
+          queuedAt: DateTime.utc(2026, 10, 17, 8),
+        ),
+        'c-server': _info(
+          title: 'Plan A',
+          hasServerState: true,
+          canForce: false,
+        ),
+      };
+    await tester.pumpWidget(_app(sync));
+    await tester.pumpAndSettle();
+    expect(find.text('Alle auswählen'), findsNothing);
+
+    await tester.tap(find.text('Auswählen'));
+    await tester.pumpAndSettle();
+    expect(find.text('0 von 3 ausgewählt'), findsOneWidget);
+    await tester.tap(find.text('Alle auswählen'));
+    await tester.pumpAndSettle();
+    expect(find.text('3 von 3 ausgewählt'), findsOneWidget);
+    expect(find.text('Auswahl aufheben'), findsOneWidget);
+    await tester.tap(find.text('Auswahl aufheben'));
+    await tester.pumpAndSettle();
+    expect(find.text('0 von 3 ausgewählt'), findsOneWidget);
+
+    // Ohne Auswahl sind beide Sammelaktionen gesperrt.
+    await tester.tap(find.byKey(const ValueKey('sync-force-selected')));
+    await tester.pumpAndSettle();
+    expect(find.text('Erzwingen'), findsNothing);
+
+    await tester.tap(find.text('Training · Push'));
+    await tester.tap(find.text('Übung · Rudern'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 von 3 ausgewählt'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('sync-force-selected')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Lokalen Stand für 2 Einträge erzwingen?'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Erzwingen'));
+    await tester.pumpAndSettle();
+
+    expect(sync.forcedConflictIds, ['c-exercise', 'c-workout']);
+    expect(sync.synchronizeCalls, 1);
+    expect(find.text('Auswählen'), findsOneWidget);
+  });
+
+  testWidgets('selection accepts the server state only where a copy exists', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions()
+      ..conflicts = [
+        _conflict('c-a', 'workout', 'stale_base_version'),
+        _conflict('c-b', 'workout', 'active_workout_exists'),
+      ]
+      ..infos = {
+        'c-a': _info(title: 'A', hasServerState: true),
+        'c-b': _info(title: 'B'),
+      };
+    await tester.pumpWidget(_app(sync));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Auswählen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Alle auswählen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sync-accept-selected')));
+    await tester.pumpAndSettle();
+    expect(find.text('Serverstand übernehmen?'), findsOneWidget);
+    await tester.tap(find.text('Serverstand nutzen'));
+    await tester.pumpAndSettle();
+
+    expect(sync.acceptedConflictIds, ['c-a']);
+    expect(find.text('Auswählen'), findsOneWidget);
+    expect(find.text('Training · B'), findsOneWidget);
+    expect(find.text('Training · A'), findsNothing);
+  });
 }
+
+ConflictResourceInfo _info({
+  String? title,
+  bool hasServerState = false,
+  bool canForce = true,
+  DateTime? queuedAt,
+}) => ConflictResourceInfo(
+  title: title,
+  hasServerState: hasServerState,
+  canForceLocal: canForce,
+  firstQueuedAtUtc: queuedAt ?? DateTime.utc(2026, 10, 17, 8),
+  firstSequence: 1,
+);
+
+LocalConflictRecord _conflict(String id, String type, String code) =>
+    LocalConflictRecord(
+      conflictId: id,
+      aggregateType: type,
+      aggregateId: 'aaaaaaaa-1234-4234-8234-123456789abc',
+      createdAtUtc: DateTime.utc(2026, 10, 12),
+      code: code,
+      detail: {'message': 'abgelehnt'},
+    );
+
+Widget _app(MobileSyncActions sync) => CupertinoApp(
+  theme: GainerTheme.light,
+  home: SyncScreen(
+    sync: sync,
+    isOnline: true,
+    accountId: 'a1234567-1234-4234-8234-123456789abc',
+    apiOrigin: 'https://gainer.markfort.xyz',
+  ),
+);
 
 class _SyncActions implements MobileSyncActions {
   List<LocalConflictRecord> conflicts = [];
+  Map<String, ConflictResourceInfo> infos = {};
+  final forcedConflictIds = <String>[];
+  int synchronizeCalls = 0;
   List<String> acceptedConflictIds = [];
   CompleteHandoverInput? completed;
   PendingHandoverRecord? pending;
@@ -466,7 +674,34 @@ class _SyncActions implements MobileSyncActions {
   @override
   Future<void> acceptConflictServerState(String conflictId) async {
     acceptedConflictIds.add(conflictId);
-    conflicts = [];
+    conflicts = conflicts.where((c) => c.conflictId != conflictId).toList();
+  }
+
+  @override
+  Future<Map<String, ConflictResourceInfo>> readConflictResourceInfos() async =>
+      infos;
+
+  @override
+  Future<void> forceLocalState({
+    required String conflictId,
+    required String replacementMutationId,
+    required DateTime createdAtUtc,
+  }) async {
+    forcedConflictIds.add(conflictId);
+    conflicts = conflicts.where((c) => c.conflictId != conflictId).toList();
+  }
+
+  @override
+  Future<SyncRunReport> synchronize({
+    bool takeOverWriting = false,
+    DateTime? now,
+  }) async {
+    synchronizeCalls++;
+    return const SyncRunReport(
+      state: SyncRunState.synced,
+      pushed: 1,
+      pulledBatches: 0,
+    );
   }
 
   @override
