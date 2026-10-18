@@ -11,6 +11,7 @@ import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_rules.dart';
 import '../../../domain/models/training/workout_validation.dart';
 import 'active_workout_controller.dart';
+import 'rest_timer_controller.dart';
 
 enum WorkoutFinishOutcome { finished, failed }
 
@@ -141,20 +142,25 @@ class WorkoutViewModel extends ChangeNotifier {
   }
 
   Future<void> setWeightUnit(WeightUnit unit) =>
-      _updateSettings(_settings.copyWith(weightUnit: unit));
+      _updateSettings((v) => v.copyWith(weightUnit: unit));
 
   Future<void> setShowRir(bool showRir) =>
-      _updateSettings(_settings.copyWith(showRir: showRir));
+      _updateSettings((v) => v.copyWith(showRir: showRir));
 
   Future<void> setLiveActivityDetails(bool enabled) =>
-      _updateSettings(_settings.copyWith(liveActivityDetails: enabled));
+      _updateSettings((v) => v.copyWith(liveActivityDetails: enabled));
 
-  Future<void> _updateSettings(TrainingPreferenceValues values) async {
+  /// Wendet [change] an und speichert es auf dem zuletzt gespeicherten Stand,
+  /// damit Werte, die der Pausentimer geändert hat, erhalten bleiben.
+  Future<void> _updateSettings(
+    TrainingPreferenceValues Function(TrainingPreferenceValues current) change,
+  ) async {
+    final values = change(_settings);
     if (values == _settings) return;
     _settings = values;
     _notify();
     try {
-      await _preferences.write(values);
+      await _preferences.update(change);
     } catch (_) {
       if (!_disposed) {
         errorMessage = 'Die Einstellung konnte nicht gespeichert werden.';
@@ -484,10 +490,20 @@ class WorkoutViewModel extends ChangeNotifier {
       // ein Satz vollständig ist; Teileingaben tun das nicht.
       final timer = activeWorkout.restTimer;
       if (timer != null && timer.workoutId == workoutId) {
-        unawaited(timer.onSetRecorded());
+        unawaited(_onSetRecorded(timer));
       }
     }
     return edited;
+  }
+
+  /// Ein abgelaufener Timer kehrt zurück in „bereit“; mit automatischem Start
+  /// beginnt danach sofort die nächste Pause. Läuft oder pausiert der Timer,
+  /// bleibt er unverändert. Historische Trainings starten nie einen Timer.
+  Future<void> _onSetRecorded(RestTimerController timer) async {
+    await timer.onSetRecorded();
+    if (isActive && _preferences.autoStartRestTimer.value) {
+      await timer.autoStart();
+    }
   }
 
   WorkoutBlock? _blockById(String blockId) {
