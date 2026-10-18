@@ -217,6 +217,42 @@ void main() {
   );
 
   expectGoldenVariants(
+    'gainer_sheet',
+    () => GainerSheetFrame(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GainerSheetHeader(
+            title: 'Mahlzeit bearbeiten',
+            trailing: GainerPillButton(label: 'Speichern', onPressed: () {}),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: GainerGroupedSection(
+              children: [
+                GainerDateRow(
+                  title: 'Datum',
+                  value: DateTime(2026, 10, 12),
+                  format: (_) => 'Mo. 12. Okt.',
+                  onChanged: (_) {},
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  expectGoldenVariants(
+    'gainer_section_header',
+    () => const GainerSectionHeader(
+      title: 'Oktober 2026',
+      trailing: '2 Trainings',
+    ),
+  );
+
+  expectGoldenVariants(
     'gainer_search_field',
     () => GainerSearchField(placeholder: 'Übung suchen', onChanged: (_) {}),
   );
