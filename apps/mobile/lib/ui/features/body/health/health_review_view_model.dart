@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../data/repositories/health/health_review_coordinator.dart';
 import '../../../../data/services/platform/platform_ports.dart';
@@ -108,7 +109,7 @@ class HealthReviewViewModel extends ChangeNotifier {
     try {
       await action();
     } catch (error) {
-      if (!_disposed) errorMessage = error.toString();
+      if (!_disposed) errorMessage = healthErrorMessage(error);
     } finally {
       isLoading = false;
       _notify();
@@ -125,3 +126,15 @@ class HealthReviewViewModel extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// Verständliche Meldung statt technischer Fehlertexte der Plattform.
+String healthErrorMessage(Object error) => switch (error) {
+  PlatformException(code: 'health_invalid_range') => 'Dieser Zeitraum kann nicht abgefragt werden. Wähle höchstens fünf Jahre bis heute.',
+  PlatformException(code: 'health_unavailable') =>
+    'Apple Health ist auf diesem Gerät nicht verfügbar.',
+  PlatformException(code: 'health_write_permission_not_granted') => 'Gainer darf keine Trainings in Apple Health speichern. Erlaube es in den Health-Einstellungen.',
+  PlatformException() =>
+    'Apple Health hat die Anfrage nicht beantwortet. Versuche es erneut.',
+  StateError(:final message) => message,
+  _ => error.toString(),
+};
