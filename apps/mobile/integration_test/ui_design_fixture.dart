@@ -3,6 +3,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/repositories/body/body_repository.dart';
+import 'package:gainer_mobile/data/repositories/cardio/cardio_repository.dart';
+import 'package:gainer_mobile/data/repositories/health/cardio_health_exporter.dart';
 import 'package:gainer_mobile/data/repositories/health/health_review_coordinator.dart';
 import 'package:gainer_mobile/data/repositories/insights/insights_repository.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
@@ -17,6 +19,7 @@ import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/native/native_feature_lifecycle_coordinator.dart';
 import 'package:gainer_mobile/data/services/native/training_live_activity_coordinator.dart';
 import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
+import 'package:gainer_mobile/data/services/platform/pigeon_native_features_platform.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
@@ -26,6 +29,7 @@ import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/core/shell/mobile_shell.dart';
 import 'package:gainer_mobile/ui/features/body/body_view_model.dart';
 import 'package:gainer_mobile/ui/features/body/health/health_review_view_model.dart';
+import 'package:gainer_mobile/ui/features/cardio/cardio_session_controller.dart';
 import 'package:gainer_mobile/ui/features/coach/coach_view_model.dart';
 import 'package:gainer_mobile/ui/features/nutrition/nutrition_view_model.dart';
 import 'package:gainer_mobile/ui/features/progress/progress_view_model.dart';
@@ -138,6 +142,8 @@ Future<UiDesignFixture> createUiDesignFixture() async {
     ),
   );
   final activeWorkout = ActiveWorkoutController(trainingLog);
+  final cardioRepository = CardioRepository(store: store);
+  final cardioNative = PigeonNativeFeaturesPlatform();
   final account = AccountScope(
     session: session,
     generation: 1,
@@ -151,6 +157,19 @@ Future<UiDesignFixture> createUiDesignFixture() async {
     bodyViewModel: body,
     training: trainingLog,
     activeWorkout: activeWorkout,
+    cardio: cardioRepository,
+    cardioSession: CardioSessionController(
+      repository: cardioRepository,
+      platform: cardioNative,
+      notifications: native,
+      trainingPreferences: trainingLog.preferences,
+      autoPoll: false,
+    ),
+    cardioHealth: CardioHealthExporter(
+      store: store,
+      repository: cardioRepository,
+      platform: cardioNative,
+    ),
     nutritionViewModel: nutrition,
     healthViewModel: health,
     progressViewModel: progress,

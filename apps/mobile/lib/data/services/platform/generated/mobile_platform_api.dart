@@ -657,6 +657,467 @@ class PlatformRoute {
   }
 }
 
+/// Gefundener Pulsgurt mit Heart Rate Service (0x180D).
+class PlatformHeartRateSensor {
+  PlatformHeartRateSensor({
+    required this.id,
+    required this.name,
+    required this.isConnected,
+    this.signalStrength,
+  });
+
+  /// `CBPeripheral.identifier` als UUID-String.
+  String id;
+
+  String name;
+
+  bool isConnected;
+
+  /// RSSI in dBm; fehlt bei schon verbundenen Gurten.
+  int? signalStrength;
+
+  List<Object?> _toList() {
+    return <Object?>[id, name, isConnected, signalStrength];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformHeartRateSensor decode(Object result) {
+    result as List<Object?>;
+    return PlatformHeartRateSensor(
+      id: result[0]! as String,
+      name: result[1]! as String,
+      isConnected: result[2]! as bool,
+      signalStrength: result[3] as int?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformHeartRateSensor || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(id, other.id) &&
+        _deepEquals(name, other.name) &&
+        _deepEquals(isConnected, other.isConnected) &&
+        _deepEquals(signalStrength, other.signalStrength);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformHeartRateSensor(id: $id, name: $name, isConnected: $isConnected, signalStrength: $signalStrength)';
+  }
+}
+
+/// Ein Messwert des Gurts mit fortlaufender Sequenz je Überwachung.
+class PlatformHeartRateSample {
+  PlatformHeartRateSample({
+    required this.sequence,
+    required this.atUtcEpochMilliseconds,
+    required this.bpm,
+    required this.rrIntervalsMs,
+  });
+
+  int sequence;
+
+  int atUtcEpochMilliseconds;
+
+  int bpm;
+
+  /// RR-Intervalle dieses Messwerts in ms, umgerechnet aus 1/1024 s.
+  List<int> rrIntervalsMs;
+
+  List<Object?> _toList() {
+    return <Object?>[sequence, atUtcEpochMilliseconds, bpm, rrIntervalsMs];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformHeartRateSample decode(Object result) {
+    result as List<Object?>;
+    return PlatformHeartRateSample(
+      sequence: result[0]! as int,
+      atUtcEpochMilliseconds: result[1]! as int,
+      bpm: result[2]! as int,
+      rrIntervalsMs: (result[3]! as List<Object?>).cast<int>(),
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformHeartRateSample || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(sequence, other.sequence) &&
+        _deepEquals(atUtcEpochMilliseconds, other.atUtcEpochMilliseconds) &&
+        _deepEquals(bpm, other.bpm) &&
+        _deepEquals(rrIntervalsMs, other.rrIntervalsMs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformHeartRateSample(sequence: $sequence, atUtcEpochMilliseconds: $atUtcEpochMilliseconds, bpm: $bpm, rrIntervalsMs: $rrIntervalsMs)';
+  }
+}
+
+/// Konfiguration der nativen Cardio-Überwachung (Puffer, Zonenalarm, Live Activity).
+class PlatformCardioMonitoringConfig {
+  PlatformCardioMonitoringConfig({
+    required this.sessionId,
+    required this.title,
+    required this.startedAtUtcEpochMilliseconds,
+    required this.graceSeconds,
+    required this.repeatSeconds,
+    required this.warmupSeconds,
+    required this.soundId,
+    required this.alertsEnabled,
+    required this.liveActivityEnabled,
+    this.zoneLowBpm,
+    this.zoneHighBpm,
+  });
+
+  String sessionId;
+
+  /// Anzeigename der Sportart, z. B. „Rad-Ergometer“.
+  String title;
+
+  int startedAtUtcEpochMilliseconds;
+
+  int graceSeconds;
+
+  int repeatSeconds;
+
+  int warmupSeconds;
+
+  /// Timerton für Alarme, siehe `playTimerSound`.
+  String soundId;
+
+  bool alertsEnabled;
+
+  bool liveActivityEnabled;
+
+  int? zoneLowBpm;
+
+  int? zoneHighBpm;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      sessionId,
+      title,
+      startedAtUtcEpochMilliseconds,
+      graceSeconds,
+      repeatSeconds,
+      warmupSeconds,
+      soundId,
+      alertsEnabled,
+      liveActivityEnabled,
+      zoneLowBpm,
+      zoneHighBpm,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformCardioMonitoringConfig decode(Object result) {
+    result as List<Object?>;
+    return PlatformCardioMonitoringConfig(
+      sessionId: result[0]! as String,
+      title: result[1]! as String,
+      startedAtUtcEpochMilliseconds: result[2]! as int,
+      graceSeconds: result[3]! as int,
+      repeatSeconds: result[4]! as int,
+      warmupSeconds: result[5]! as int,
+      soundId: result[6]! as String,
+      alertsEnabled: result[7]! as bool,
+      liveActivityEnabled: result[8]! as bool,
+      zoneLowBpm: result[9] as int?,
+      zoneHighBpm: result[10] as int?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformCardioMonitoringConfig ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(title, other.title) &&
+        _deepEquals(
+          startedAtUtcEpochMilliseconds,
+          other.startedAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(graceSeconds, other.graceSeconds) &&
+        _deepEquals(repeatSeconds, other.repeatSeconds) &&
+        _deepEquals(warmupSeconds, other.warmupSeconds) &&
+        _deepEquals(soundId, other.soundId) &&
+        _deepEquals(alertsEnabled, other.alertsEnabled) &&
+        _deepEquals(liveActivityEnabled, other.liveActivityEnabled) &&
+        _deepEquals(zoneLowBpm, other.zoneLowBpm) &&
+        _deepEquals(zoneHighBpm, other.zoneHighBpm);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformCardioMonitoringConfig(sessionId: $sessionId, title: $title, startedAtUtcEpochMilliseconds: $startedAtUtcEpochMilliseconds, graceSeconds: $graceSeconds, repeatSeconds: $repeatSeconds, warmupSeconds: $warmupSeconds, soundId: $soundId, alertsEnabled: $alertsEnabled, liveActivityEnabled: $liveActivityEnabled, zoneLowBpm: $zoneLowBpm, zoneHighBpm: $zoneHighBpm)';
+  }
+}
+
+/// Zustand von Bluetooth, Gurt und Überwachung samt neuen Messwerten.
+class PlatformHeartRateStatus {
+  PlatformHeartRateStatus({
+    required this.bluetoothState,
+    required this.connectionState,
+    required this.lastSequence,
+    required this.samples,
+    this.sensorId,
+    this.sensorName,
+    this.batteryPercent,
+    this.latestBpm,
+    this.latestAtUtcEpochMilliseconds,
+    this.monitoringSessionId,
+    this.zoneState,
+  });
+
+  /// One of `unknown`, `poweredOn`, `poweredOff`, `unauthorized`, `unsupported`, `resetting`.
+  String bluetoothState;
+
+  /// One of `idle`, `connecting`, `connected`, `reconnecting`.
+  String connectionState;
+
+  /// Höchste vergebene Sequenz der laufenden Überwachung, 0 ohne Werte.
+  int lastSequence;
+
+  /// Messwerte mit Sequenz größer als die angefragte, aufsteigend.
+  List<PlatformHeartRateSample> samples;
+
+  String? sensorId;
+
+  String? sensorName;
+
+  int? batteryPercent;
+
+  int? latestBpm;
+
+  int? latestAtUtcEpochMilliseconds;
+
+  /// Session der laufenden Überwachung; null, wenn keine läuft.
+  String? monitoringSessionId;
+
+  /// One of `none`, `inZone`, `above`, `below`, `noSignal`; null ohne Überwachung.
+  String? zoneState;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      bluetoothState,
+      connectionState,
+      lastSequence,
+      samples,
+      sensorId,
+      sensorName,
+      batteryPercent,
+      latestBpm,
+      latestAtUtcEpochMilliseconds,
+      monitoringSessionId,
+      zoneState,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformHeartRateStatus decode(Object result) {
+    result as List<Object?>;
+    return PlatformHeartRateStatus(
+      bluetoothState: result[0]! as String,
+      connectionState: result[1]! as String,
+      lastSequence: result[2]! as int,
+      samples: (result[3]! as List<Object?>).cast<PlatformHeartRateSample>(),
+      sensorId: result[4] as String?,
+      sensorName: result[5] as String?,
+      batteryPercent: result[6] as int?,
+      latestBpm: result[7] as int?,
+      latestAtUtcEpochMilliseconds: result[8] as int?,
+      monitoringSessionId: result[9] as String?,
+      zoneState: result[10] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformHeartRateStatus || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(bluetoothState, other.bluetoothState) &&
+        _deepEquals(connectionState, other.connectionState) &&
+        _deepEquals(lastSequence, other.lastSequence) &&
+        _deepEquals(samples, other.samples) &&
+        _deepEquals(sensorId, other.sensorId) &&
+        _deepEquals(sensorName, other.sensorName) &&
+        _deepEquals(batteryPercent, other.batteryPercent) &&
+        _deepEquals(latestBpm, other.latestBpm) &&
+        _deepEquals(
+          latestAtUtcEpochMilliseconds,
+          other.latestAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(monitoringSessionId, other.monitoringSessionId) &&
+        _deepEquals(zoneState, other.zoneState);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformHeartRateStatus(bluetoothState: $bluetoothState, connectionState: $connectionState, lastSequence: $lastSequence, samples: $samples, sensorId: $sensorId, sensorName: $sensorName, batteryPercent: $batteryPercent, latestBpm: $latestBpm, latestAtUtcEpochMilliseconds: $latestAtUtcEpochMilliseconds, monitoringSessionId: $monitoringSessionId, zoneState: $zoneState)';
+  }
+}
+
+/// Beendete Cardio-Einheit für den Export nach Apple Health.
+class PlatformCardioExport {
+  PlatformCardioExport({
+    required this.accountId,
+    required this.sessionId,
+    required this.syncVersion,
+    required this.activityType,
+    required this.startedAtUtcEpochMilliseconds,
+    required this.endedAtUtcEpochMilliseconds,
+    required this.sampleIntervalSeconds,
+    required this.heartRateBpm,
+    this.distanceKm,
+    this.energyKcal,
+  });
+
+  String accountId;
+
+  String sessionId;
+
+  int syncVersion;
+
+  /// `IndoorCycling`.
+  String activityType;
+
+  int startedAtUtcEpochMilliseconds;
+
+  int endedAtUtcEpochMilliseconds;
+
+  int sampleIntervalSeconds;
+
+  /// Ein Wert je Intervall ab Start, 0 = kein Signal.
+  List<int> heartRateBpm;
+
+  double? distanceKm;
+
+  double? energyKcal;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      accountId,
+      sessionId,
+      syncVersion,
+      activityType,
+      startedAtUtcEpochMilliseconds,
+      endedAtUtcEpochMilliseconds,
+      sampleIntervalSeconds,
+      heartRateBpm,
+      distanceKm,
+      energyKcal,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformCardioExport decode(Object result) {
+    result as List<Object?>;
+    return PlatformCardioExport(
+      accountId: result[0]! as String,
+      sessionId: result[1]! as String,
+      syncVersion: result[2]! as int,
+      activityType: result[3]! as String,
+      startedAtUtcEpochMilliseconds: result[4]! as int,
+      endedAtUtcEpochMilliseconds: result[5]! as int,
+      sampleIntervalSeconds: result[6]! as int,
+      heartRateBpm: (result[7]! as List<Object?>).cast<int>(),
+      distanceKm: result[8] as double?,
+      energyKcal: result[9] as double?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformCardioExport || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(accountId, other.accountId) &&
+        _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(syncVersion, other.syncVersion) &&
+        _deepEquals(activityType, other.activityType) &&
+        _deepEquals(
+          startedAtUtcEpochMilliseconds,
+          other.startedAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(
+          endedAtUtcEpochMilliseconds,
+          other.endedAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(sampleIntervalSeconds, other.sampleIntervalSeconds) &&
+        _deepEquals(heartRateBpm, other.heartRateBpm) &&
+        _deepEquals(distanceKm, other.distanceKm) &&
+        _deepEquals(energyKcal, other.energyKcal);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformCardioExport(accountId: $accountId, sessionId: $sessionId, syncVersion: $syncVersion, activityType: $activityType, startedAtUtcEpochMilliseconds: $startedAtUtcEpochMilliseconds, endedAtUtcEpochMilliseconds: $endedAtUtcEpochMilliseconds, sampleIntervalSeconds: $sampleIntervalSeconds, heartRateBpm: $heartRateBpm, distanceKm: $distanceKm, energyKcal: $energyKcal)';
+  }
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -694,6 +1155,21 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is PlatformRoute) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
+    } else if (value is PlatformHeartRateSensor) {
+      buffer.putUint8(139);
+      writeValue(buffer, value.encode());
+    } else if (value is PlatformHeartRateSample) {
+      buffer.putUint8(140);
+      writeValue(buffer, value.encode());
+    } else if (value is PlatformCardioMonitoringConfig) {
+      buffer.putUint8(141);
+      writeValue(buffer, value.encode());
+    } else if (value is PlatformHeartRateStatus) {
+      buffer.putUint8(142);
+      writeValue(buffer, value.encode());
+    } else if (value is PlatformCardioExport) {
+      buffer.putUint8(143);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -726,6 +1202,16 @@ class _PigeonCodec extends StandardMessageCodec {
         return PlatformLiveActivityState.decode(readValue(buffer)!);
       case 138:
         return PlatformRoute.decode(readValue(buffer)!);
+      case 139:
+        return PlatformHeartRateSensor.decode(readValue(buffer)!);
+      case 140:
+        return PlatformHeartRateSample.decode(readValue(buffer)!);
+      case 141:
+        return PlatformCardioMonitoringConfig.decode(readValue(buffer)!);
+      case 142:
+        return PlatformHeartRateStatus.decode(readValue(buffer)!);
+      case 143:
+        return PlatformCardioExport.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -1530,6 +2016,205 @@ class MobilePlatformApi {
       pigeonVar_channelName,
       isNullValid: true,
     );
+  }
+
+  /// Zustand von Bluetooth und Gurt sowie Messwerte nach [afterSequence].
+  Future<PlatformHeartRateStatus> readHeartRateStatus(int afterSequence) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readHeartRateStatus$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[afterSequence],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as PlatformHeartRateStatus;
+  }
+
+  /// Sucht [durationMilliseconds] lang nach Pulsgurten; enthält schon verbundene.
+  Future<List<PlatformHeartRateSensor>> scanHeartRateSensors(
+    int durationMilliseconds,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.scanHeartRateSensors$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[durationMilliseconds],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as List<Object?>)
+        .cast<PlatformHeartRateSensor>();
+  }
+
+  /// Verbindet und merkt den Gurt; verbindet nach Abbrüchen selbst neu.
+  /// False, wenn der Gurt unbekannt ist.
+  Future<bool> connectHeartRateSensor(String sensorId) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.connectHeartRateSensor$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[sensorId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as bool;
+  }
+
+  /// Trennt und vergisst den gemerkten Gurt.
+  Future<void> disconnectHeartRateSensor() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.disconnectHeartRateSensor$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Startet Puffer, Zonenalarm und ggf. Live Activity; ersetzt eine laufende Überwachung.
+  Future<void> startCardioMonitoring(
+    PlatformCardioMonitoringConfig config,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.startCardioMonitoring$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[config],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Ändert Zielbereich und Optionen, ohne Puffer und Sequenzen zurückzusetzen.
+  Future<void> updateCardioMonitoring(
+    PlatformCardioMonitoringConfig config,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.updateCardioMonitoring$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[config],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Beendet Puffer, Alarm und Live Activity der Session.
+  Future<void> stopCardioMonitoring(String sessionId) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.stopCardioMonitoring$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[sessionId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  Future<PlatformAuthorizationRequestResult>
+  requestCardioWriteAuthorization() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestCardioWriteAuthorization$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as PlatformAuthorizationRequestResult;
+  }
+
+  Future<PlatformWorkoutExportResult> exportCardioSession(
+    PlatformCardioExport export,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.exportCardioSession$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[export],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as PlatformWorkoutExportResult;
   }
 }
 

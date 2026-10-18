@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../../domain/models/cardio/cardio_draft.dart';
 import '../../../domain/models/timer/rest_timer_state.dart';
 import 'generated/mobile_platform_api.dart';
 
@@ -334,4 +335,185 @@ class NeutralExtensionSnapshot {
   final int generation;
   final DateTime updatedAtUtc;
   final Set<String> availableRoutes;
+}
+
+enum HeartRateBluetoothState {
+  unknown,
+  poweredOn,
+  poweredOff,
+  unauthorized,
+  unsupported,
+  resetting,
+}
+
+enum HeartRateConnectionState { idle, connecting, connected, reconnecting }
+
+/// Zonenstatus der nativen Überwachung.
+enum HeartRateZoneState { none, inZone, above, below, noSignal }
+
+/// Grund, warum Bluetooth nicht nutzbar ist.
+enum BluetoothProblem { poweredOff, unauthorized, unsupported }
+
+/// Bluetooth ist aus, nicht erlaubt oder fehlt; die Oberfläche erklärt den
+/// Grund und verweist in die Einstellungen.
+class BluetoothUnavailableException implements Exception {
+  const BluetoothUnavailableException(this.problem);
+
+  final BluetoothProblem problem;
+
+  @override
+  String toString() => 'BluetoothUnavailableException($problem)';
+}
+
+class HeartRateSensor {
+  const HeartRateSensor({
+    required this.id,
+    required this.name,
+    required this.isConnected,
+    this.signalStrength,
+  });
+
+  final String id;
+  final String name;
+  final bool isConnected;
+  final int? signalStrength;
+}
+
+/// Konfiguration der nativen Überwachung (Puffer, Zonenalarm, Live Activity).
+class HeartRateMonitoringConfig {
+  const HeartRateMonitoringConfig({
+    required this.sessionId,
+    required this.title,
+    required this.startedAtUtc,
+    required this.soundId,
+    this.zoneLowBpm,
+    this.zoneHighBpm,
+    this.graceSeconds = 15,
+    this.repeatSeconds = 60,
+    this.warmupSeconds = 180,
+    this.alertsEnabled = true,
+    this.liveActivityEnabled = true,
+  });
+
+  final String sessionId;
+  final String title;
+  final DateTime startedAtUtc;
+  final String soundId;
+  final int? zoneLowBpm;
+  final int? zoneHighBpm;
+  final int graceSeconds;
+  final int repeatSeconds;
+  final int warmupSeconds;
+  final bool alertsEnabled;
+  final bool liveActivityEnabled;
+
+  @override
+  bool operator ==(Object other) =>
+      other is HeartRateMonitoringConfig &&
+      other.sessionId == sessionId &&
+      other.title == title &&
+      other.startedAtUtc == startedAtUtc &&
+      other.soundId == soundId &&
+      other.zoneLowBpm == zoneLowBpm &&
+      other.zoneHighBpm == zoneHighBpm &&
+      other.graceSeconds == graceSeconds &&
+      other.repeatSeconds == repeatSeconds &&
+      other.warmupSeconds == warmupSeconds &&
+      other.alertsEnabled == alertsEnabled &&
+      other.liveActivityEnabled == liveActivityEnabled;
+
+  @override
+  int get hashCode => Object.hash(
+    sessionId,
+    title,
+    startedAtUtc,
+    soundId,
+    zoneLowBpm,
+    zoneHighBpm,
+    graceSeconds,
+    repeatSeconds,
+    warmupSeconds,
+    alertsEnabled,
+    liveActivityEnabled,
+  );
+}
+
+class HeartRateStatus {
+  const HeartRateStatus({
+    this.bluetoothState = HeartRateBluetoothState.unknown,
+    this.connectionState = HeartRateConnectionState.idle,
+    this.lastSequence = 0,
+    this.samples = const [],
+    this.sensorId,
+    this.sensorName,
+    this.batteryPercent,
+    this.latestBpm,
+    this.latestAtUtc,
+    this.monitoringSessionId,
+    this.zoneState,
+  });
+
+  final HeartRateBluetoothState bluetoothState;
+  final HeartRateConnectionState connectionState;
+  final int lastSequence;
+
+  /// Messwerte nach der angefragten Sequenz, aufsteigend.
+  final List<CardioSample> samples;
+  final String? sensorId;
+  final String? sensorName;
+  final int? batteryPercent;
+  final int? latestBpm;
+  final DateTime? latestAtUtc;
+
+  /// Session der laufenden nativen Überwachung; null, wenn keine läuft.
+  final String? monitoringSessionId;
+  final HeartRateZoneState? zoneState;
+}
+
+/// Pulsgurt und native Cardio-Überwachung. Bluetooth-Probleme melden sich als
+/// [BluetoothUnavailableException].
+abstract interface class HeartRatePlatform {
+  Future<HeartRateStatus> readStatus(int afterSequence);
+  Future<List<HeartRateSensor>> scan(Duration duration);
+
+  /// False, wenn der Gurt unbekannt ist.
+  Future<bool> connect(String sensorId);
+
+  /// Trennt und vergisst den gemerkten Gurt.
+  Future<void> disconnect();
+  Future<void> startMonitoring(HeartRateMonitoringConfig config);
+  Future<void> updateMonitoring(HeartRateMonitoringConfig config);
+  Future<void> stopMonitoring(String sessionId);
+}
+
+/// Beendete Cardio-Einheit für den Export nach Apple Health.
+class CardioHealthExport {
+  const CardioHealthExport({
+    required this.accountId,
+    required this.sessionId,
+    required this.syncVersion,
+    required this.activityType,
+    required this.startedAtUtc,
+    required this.endedAtUtc,
+    required this.sampleIntervalSeconds,
+    required this.heartRateBpm,
+    this.distanceKm,
+    this.energyKcal,
+  });
+
+  final String accountId;
+  final String sessionId;
+  final int syncVersion;
+  final String activityType;
+  final DateTime startedAtUtc;
+  final DateTime endedAtUtc;
+  final int sampleIntervalSeconds;
+  final List<int> heartRateBpm;
+  final double? distanceKm;
+  final double? energyKcal;
+}
+
+abstract interface class CardioHealthPlatform {
+  Future<void> requestWriteAuthorization();
+  Future<WorkoutExportReceipt> exportCardioSession(CardioHealthExport export);
 }

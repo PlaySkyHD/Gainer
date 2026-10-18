@@ -626,6 +626,379 @@ struct PlatformRoute: Hashable, CustomStringConvertible {
   }
 }
 
+/// Gefundener Pulsgurt mit Heart Rate Service (0x180D).
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformHeartRateSensor: Hashable, CustomStringConvertible {
+  /// `CBPeripheral.identifier` als UUID-String.
+  var id: String
+  var name: String
+  var isConnected: Bool
+  /// RSSI in dBm; fehlt bei schon verbundenen Gurten.
+  var signalStrength: Int64? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformHeartRateSensor? {
+    let id = pigeonVar_list[0] as! String
+    let name = pigeonVar_list[1] as! String
+    let isConnected = pigeonVar_list[2] as! Bool
+    let signalStrength: Int64? = nilOrValue(pigeonVar_list[3])
+
+    return PlatformHeartRateSensor(
+      id: id,
+      name: name,
+      isConnected: isConnected,
+      signalStrength: signalStrength
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      id,
+      name,
+      isConnected,
+      signalStrength,
+    ]
+  }
+  static func == (lhs: PlatformHeartRateSensor, rhs: PlatformHeartRateSensor) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.id, rhs.id) && MobilePlatformApiPigeonInternal.deepEquals(lhs.name, rhs.name) && MobilePlatformApiPigeonInternal.deepEquals(lhs.isConnected, rhs.isConnected) && MobilePlatformApiPigeonInternal.deepEquals(lhs.signalStrength, rhs.signalStrength)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformHeartRateSensor")
+    MobilePlatformApiPigeonInternal.deepHash(value: id, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: name, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: isConnected, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: signalStrength, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformHeartRateSensor(id: \(String(describing: id)), name: \(String(describing: name)), isConnected: \(String(describing: isConnected)), signalStrength: \(String(describing: signalStrength)))"
+  }
+}
+
+/// Ein Messwert des Gurts mit fortlaufender Sequenz je Überwachung.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformHeartRateSample: Hashable, CustomStringConvertible {
+  var sequence: Int64
+  var atUtcEpochMilliseconds: Int64
+  var bpm: Int64
+  /// RR-Intervalle dieses Messwerts in ms, umgerechnet aus 1/1024 s.
+  var rrIntervalsMs: [Int64]
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformHeartRateSample? {
+    let sequence = pigeonVar_list[0] as! Int64
+    let atUtcEpochMilliseconds = pigeonVar_list[1] as! Int64
+    let bpm = pigeonVar_list[2] as! Int64
+    let rrIntervalsMs = pigeonVar_list[3] as! [Int64]
+
+    return PlatformHeartRateSample(
+      sequence: sequence,
+      atUtcEpochMilliseconds: atUtcEpochMilliseconds,
+      bpm: bpm,
+      rrIntervalsMs: rrIntervalsMs
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      sequence,
+      atUtcEpochMilliseconds,
+      bpm,
+      rrIntervalsMs,
+    ]
+  }
+  static func == (lhs: PlatformHeartRateSample, rhs: PlatformHeartRateSample) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.sequence, rhs.sequence) && MobilePlatformApiPigeonInternal.deepEquals(lhs.atUtcEpochMilliseconds, rhs.atUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.bpm, rhs.bpm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.rrIntervalsMs, rhs.rrIntervalsMs)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformHeartRateSample")
+    MobilePlatformApiPigeonInternal.deepHash(value: sequence, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: atUtcEpochMilliseconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: bpm, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: rrIntervalsMs, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformHeartRateSample(sequence: \(String(describing: sequence)), atUtcEpochMilliseconds: \(String(describing: atUtcEpochMilliseconds)), bpm: \(String(describing: bpm)), rrIntervalsMs: \(String(describing: rrIntervalsMs)))"
+  }
+}
+
+/// Konfiguration der nativen Cardio-Überwachung (Puffer, Zonenalarm, Live Activity).
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformCardioMonitoringConfig: Hashable, CustomStringConvertible {
+  var sessionId: String
+  /// Anzeigename der Sportart, z. B. „Rad-Ergometer“.
+  var title: String
+  var startedAtUtcEpochMilliseconds: Int64
+  var graceSeconds: Int64
+  var repeatSeconds: Int64
+  var warmupSeconds: Int64
+  /// Timerton für Alarme, siehe `playTimerSound`.
+  var soundId: String
+  var alertsEnabled: Bool
+  var liveActivityEnabled: Bool
+  var zoneLowBpm: Int64? = nil
+  var zoneHighBpm: Int64? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformCardioMonitoringConfig? {
+    let sessionId = pigeonVar_list[0] as! String
+    let title = pigeonVar_list[1] as! String
+    let startedAtUtcEpochMilliseconds = pigeonVar_list[2] as! Int64
+    let graceSeconds = pigeonVar_list[3] as! Int64
+    let repeatSeconds = pigeonVar_list[4] as! Int64
+    let warmupSeconds = pigeonVar_list[5] as! Int64
+    let soundId = pigeonVar_list[6] as! String
+    let alertsEnabled = pigeonVar_list[7] as! Bool
+    let liveActivityEnabled = pigeonVar_list[8] as! Bool
+    let zoneLowBpm: Int64? = nilOrValue(pigeonVar_list[9])
+    let zoneHighBpm: Int64? = nilOrValue(pigeonVar_list[10])
+
+    return PlatformCardioMonitoringConfig(
+      sessionId: sessionId,
+      title: title,
+      startedAtUtcEpochMilliseconds: startedAtUtcEpochMilliseconds,
+      graceSeconds: graceSeconds,
+      repeatSeconds: repeatSeconds,
+      warmupSeconds: warmupSeconds,
+      soundId: soundId,
+      alertsEnabled: alertsEnabled,
+      liveActivityEnabled: liveActivityEnabled,
+      zoneLowBpm: zoneLowBpm,
+      zoneHighBpm: zoneHighBpm
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      sessionId,
+      title,
+      startedAtUtcEpochMilliseconds,
+      graceSeconds,
+      repeatSeconds,
+      warmupSeconds,
+      soundId,
+      alertsEnabled,
+      liveActivityEnabled,
+      zoneLowBpm,
+      zoneHighBpm,
+    ]
+  }
+  static func == (lhs: PlatformCardioMonitoringConfig, rhs: PlatformCardioMonitoringConfig) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.sessionId, rhs.sessionId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.title, rhs.title) && MobilePlatformApiPigeonInternal.deepEquals(lhs.startedAtUtcEpochMilliseconds, rhs.startedAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.graceSeconds, rhs.graceSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.repeatSeconds, rhs.repeatSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.warmupSeconds, rhs.warmupSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.soundId, rhs.soundId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.alertsEnabled, rhs.alertsEnabled) && MobilePlatformApiPigeonInternal.deepEquals(lhs.liveActivityEnabled, rhs.liveActivityEnabled) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneLowBpm, rhs.zoneLowBpm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneHighBpm, rhs.zoneHighBpm)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformCardioMonitoringConfig")
+    MobilePlatformApiPigeonInternal.deepHash(value: sessionId, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: title, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: startedAtUtcEpochMilliseconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: graceSeconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: repeatSeconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: warmupSeconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: soundId, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: alertsEnabled, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: liveActivityEnabled, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: zoneLowBpm, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: zoneHighBpm, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformCardioMonitoringConfig(sessionId: \(String(describing: sessionId)), title: \(String(describing: title)), startedAtUtcEpochMilliseconds: \(String(describing: startedAtUtcEpochMilliseconds)), graceSeconds: \(String(describing: graceSeconds)), repeatSeconds: \(String(describing: repeatSeconds)), warmupSeconds: \(String(describing: warmupSeconds)), soundId: \(String(describing: soundId)), alertsEnabled: \(String(describing: alertsEnabled)), liveActivityEnabled: \(String(describing: liveActivityEnabled)), zoneLowBpm: \(String(describing: zoneLowBpm)), zoneHighBpm: \(String(describing: zoneHighBpm)))"
+  }
+}
+
+/// Zustand von Bluetooth, Gurt und Überwachung samt neuen Messwerten.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformHeartRateStatus: Hashable, CustomStringConvertible {
+  /// One of `unknown`, `poweredOn`, `poweredOff`, `unauthorized`, `unsupported`, `resetting`.
+  var bluetoothState: String
+  /// One of `idle`, `connecting`, `connected`, `reconnecting`.
+  var connectionState: String
+  /// Höchste vergebene Sequenz der laufenden Überwachung, 0 ohne Werte.
+  var lastSequence: Int64
+  /// Messwerte mit Sequenz größer als die angefragte, aufsteigend.
+  var samples: [PlatformHeartRateSample]
+  var sensorId: String? = nil
+  var sensorName: String? = nil
+  var batteryPercent: Int64? = nil
+  var latestBpm: Int64? = nil
+  var latestAtUtcEpochMilliseconds: Int64? = nil
+  /// Session der laufenden Überwachung; null, wenn keine läuft.
+  var monitoringSessionId: String? = nil
+  /// One of `none`, `inZone`, `above`, `below`, `noSignal`; null ohne Überwachung.
+  var zoneState: String? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformHeartRateStatus? {
+    let bluetoothState = pigeonVar_list[0] as! String
+    let connectionState = pigeonVar_list[1] as! String
+    let lastSequence = pigeonVar_list[2] as! Int64
+    let samples = pigeonVar_list[3] as! [PlatformHeartRateSample]
+    let sensorId: String? = nilOrValue(pigeonVar_list[4])
+    let sensorName: String? = nilOrValue(pigeonVar_list[5])
+    let batteryPercent: Int64? = nilOrValue(pigeonVar_list[6])
+    let latestBpm: Int64? = nilOrValue(pigeonVar_list[7])
+    let latestAtUtcEpochMilliseconds: Int64? = nilOrValue(pigeonVar_list[8])
+    let monitoringSessionId: String? = nilOrValue(pigeonVar_list[9])
+    let zoneState: String? = nilOrValue(pigeonVar_list[10])
+
+    return PlatformHeartRateStatus(
+      bluetoothState: bluetoothState,
+      connectionState: connectionState,
+      lastSequence: lastSequence,
+      samples: samples,
+      sensorId: sensorId,
+      sensorName: sensorName,
+      batteryPercent: batteryPercent,
+      latestBpm: latestBpm,
+      latestAtUtcEpochMilliseconds: latestAtUtcEpochMilliseconds,
+      monitoringSessionId: monitoringSessionId,
+      zoneState: zoneState
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      bluetoothState,
+      connectionState,
+      lastSequence,
+      samples,
+      sensorId,
+      sensorName,
+      batteryPercent,
+      latestBpm,
+      latestAtUtcEpochMilliseconds,
+      monitoringSessionId,
+      zoneState,
+    ]
+  }
+  static func == (lhs: PlatformHeartRateStatus, rhs: PlatformHeartRateStatus) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.bluetoothState, rhs.bluetoothState) && MobilePlatformApiPigeonInternal.deepEquals(lhs.connectionState, rhs.connectionState) && MobilePlatformApiPigeonInternal.deepEquals(lhs.lastSequence, rhs.lastSequence) && MobilePlatformApiPigeonInternal.deepEquals(lhs.samples, rhs.samples) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sensorId, rhs.sensorId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sensorName, rhs.sensorName) && MobilePlatformApiPigeonInternal.deepEquals(lhs.batteryPercent, rhs.batteryPercent) && MobilePlatformApiPigeonInternal.deepEquals(lhs.latestBpm, rhs.latestBpm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.latestAtUtcEpochMilliseconds, rhs.latestAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.monitoringSessionId, rhs.monitoringSessionId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneState, rhs.zoneState)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformHeartRateStatus")
+    MobilePlatformApiPigeonInternal.deepHash(value: bluetoothState, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: connectionState, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: lastSequence, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: samples, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: sensorId, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: sensorName, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: batteryPercent, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: latestBpm, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: latestAtUtcEpochMilliseconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: monitoringSessionId, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: zoneState, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformHeartRateStatus(bluetoothState: \(String(describing: bluetoothState)), connectionState: \(String(describing: connectionState)), lastSequence: \(String(describing: lastSequence)), samples: \(String(describing: samples)), sensorId: \(String(describing: sensorId)), sensorName: \(String(describing: sensorName)), batteryPercent: \(String(describing: batteryPercent)), latestBpm: \(String(describing: latestBpm)), latestAtUtcEpochMilliseconds: \(String(describing: latestAtUtcEpochMilliseconds)), monitoringSessionId: \(String(describing: monitoringSessionId)), zoneState: \(String(describing: zoneState)))"
+  }
+}
+
+/// Beendete Cardio-Einheit für den Export nach Apple Health.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformCardioExport: Hashable, CustomStringConvertible {
+  var accountId: String
+  var sessionId: String
+  var syncVersion: Int64
+  /// `IndoorCycling`.
+  var activityType: String
+  var startedAtUtcEpochMilliseconds: Int64
+  var endedAtUtcEpochMilliseconds: Int64
+  var sampleIntervalSeconds: Int64
+  /// Ein Wert je Intervall ab Start, 0 = kein Signal.
+  var heartRateBpm: [Int64]
+  var distanceKm: Double? = nil
+  var energyKcal: Double? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformCardioExport? {
+    let accountId = pigeonVar_list[0] as! String
+    let sessionId = pigeonVar_list[1] as! String
+    let syncVersion = pigeonVar_list[2] as! Int64
+    let activityType = pigeonVar_list[3] as! String
+    let startedAtUtcEpochMilliseconds = pigeonVar_list[4] as! Int64
+    let endedAtUtcEpochMilliseconds = pigeonVar_list[5] as! Int64
+    let sampleIntervalSeconds = pigeonVar_list[6] as! Int64
+    let heartRateBpm = pigeonVar_list[7] as! [Int64]
+    let distanceKm: Double? = nilOrValue(pigeonVar_list[8])
+    let energyKcal: Double? = nilOrValue(pigeonVar_list[9])
+
+    return PlatformCardioExport(
+      accountId: accountId,
+      sessionId: sessionId,
+      syncVersion: syncVersion,
+      activityType: activityType,
+      startedAtUtcEpochMilliseconds: startedAtUtcEpochMilliseconds,
+      endedAtUtcEpochMilliseconds: endedAtUtcEpochMilliseconds,
+      sampleIntervalSeconds: sampleIntervalSeconds,
+      heartRateBpm: heartRateBpm,
+      distanceKm: distanceKm,
+      energyKcal: energyKcal
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      accountId,
+      sessionId,
+      syncVersion,
+      activityType,
+      startedAtUtcEpochMilliseconds,
+      endedAtUtcEpochMilliseconds,
+      sampleIntervalSeconds,
+      heartRateBpm,
+      distanceKm,
+      energyKcal,
+    ]
+  }
+  static func == (lhs: PlatformCardioExport, rhs: PlatformCardioExport) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.accountId, rhs.accountId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sessionId, rhs.sessionId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.syncVersion, rhs.syncVersion) && MobilePlatformApiPigeonInternal.deepEquals(lhs.activityType, rhs.activityType) && MobilePlatformApiPigeonInternal.deepEquals(lhs.startedAtUtcEpochMilliseconds, rhs.startedAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.endedAtUtcEpochMilliseconds, rhs.endedAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sampleIntervalSeconds, rhs.sampleIntervalSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.heartRateBpm, rhs.heartRateBpm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.distanceKm, rhs.distanceKm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.energyKcal, rhs.energyKcal)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformCardioExport")
+    MobilePlatformApiPigeonInternal.deepHash(value: accountId, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: sessionId, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: syncVersion, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: activityType, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: startedAtUtcEpochMilliseconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: endedAtUtcEpochMilliseconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: sampleIntervalSeconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: heartRateBpm, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: distanceKm, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: energyKcal, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformCardioExport(accountId: \(String(describing: accountId)), sessionId: \(String(describing: sessionId)), syncVersion: \(String(describing: syncVersion)), activityType: \(String(describing: activityType)), startedAtUtcEpochMilliseconds: \(String(describing: startedAtUtcEpochMilliseconds)), endedAtUtcEpochMilliseconds: \(String(describing: endedAtUtcEpochMilliseconds)), sampleIntervalSeconds: \(String(describing: sampleIntervalSeconds)), heartRateBpm: \(String(describing: heartRateBpm)), distanceKm: \(String(describing: distanceKm)), energyKcal: \(String(describing: energyKcal)))"
+  }
+}
+
 private class MobilePlatformApiPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -657,6 +1030,16 @@ private class MobilePlatformApiPigeonCodecReader: FlutterStandardReader {
       return PlatformLiveActivityState.fromList(self.readValue() as! [Any?])
     case 138:
       return PlatformRoute.fromList(self.readValue() as! [Any?])
+    case 139:
+      return PlatformHeartRateSensor.fromList(self.readValue() as! [Any?])
+    case 140:
+      return PlatformHeartRateSample.fromList(self.readValue() as! [Any?])
+    case 141:
+      return PlatformCardioMonitoringConfig.fromList(self.readValue() as! [Any?])
+    case 142:
+      return PlatformHeartRateStatus.fromList(self.readValue() as! [Any?])
+    case 143:
+      return PlatformCardioExport.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -694,6 +1077,21 @@ private class MobilePlatformApiPigeonCodecWriter: FlutterStandardWriter {
       super.writeValue(value.toList())
     } else if let value = value as? PlatformRoute {
       super.writeByte(138)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformHeartRateSensor {
+      super.writeByte(139)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformHeartRateSample {
+      super.writeByte(140)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformCardioMonitoringConfig {
+      super.writeByte(141)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformHeartRateStatus {
+      super.writeByte(142)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformCardioExport {
+      super.writeByte(143)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -764,6 +1162,23 @@ protocol MobilePlatformApi {
   func readPendingRoute() async throws -> PlatformRoute?
   func clearPendingRoute() async throws
   func retryPendingRoute() async throws
+  /// Zustand von Bluetooth und Gurt sowie Messwerte nach [afterSequence].
+  func readHeartRateStatus(afterSequence: Int64) async throws -> PlatformHeartRateStatus
+  /// Sucht [durationMilliseconds] lang nach Pulsgurten; enthält schon verbundene.
+  func scanHeartRateSensors(durationMilliseconds: Int64) async throws -> [PlatformHeartRateSensor]
+  /// Verbindet und merkt den Gurt; verbindet nach Abbrüchen selbst neu.
+  /// False, wenn der Gurt unbekannt ist.
+  func connectHeartRateSensor(sensorId: String) async throws -> Bool
+  /// Trennt und vergisst den gemerkten Gurt.
+  func disconnectHeartRateSensor() async throws
+  /// Startet Puffer, Zonenalarm und ggf. Live Activity; ersetzt eine laufende Überwachung.
+  func startCardioMonitoring(config: PlatformCardioMonitoringConfig) async throws
+  /// Ändert Zielbereich und Optionen, ohne Puffer und Sequenzen zurückzusetzen.
+  func updateCardioMonitoring(config: PlatformCardioMonitoringConfig) async throws
+  /// Beendet Puffer, Alarm und Live Activity der Session.
+  func stopCardioMonitoring(sessionId: String) async throws
+  func requestCardioWriteAuthorization() async throws -> PlatformAuthorizationRequestResult
+  func exportCardioSession(export: PlatformCardioExport) async throws -> PlatformWorkoutExportResult
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -1385,6 +1800,163 @@ class MobilePlatformApiSetup {
       }
     } else {
       retryPendingRouteChannel.setMessageHandler(nil)
+    }
+    /// Zustand von Bluetooth und Gurt sowie Messwerte nach [afterSequence].
+    let readHeartRateStatusChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readHeartRateStatus\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      readHeartRateStatusChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let afterSequenceArg = args[0] as! Int64
+        Task { @MainActor in
+          do {
+            let result = try await api.readHeartRateStatus(afterSequence: afterSequenceArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      readHeartRateStatusChannel.setMessageHandler(nil)
+    }
+    /// Sucht [durationMilliseconds] lang nach Pulsgurten; enthält schon verbundene.
+    let scanHeartRateSensorsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.scanHeartRateSensors\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      scanHeartRateSensorsChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let durationMillisecondsArg = args[0] as! Int64
+        Task { @MainActor in
+          do {
+            let result = try await api.scanHeartRateSensors(durationMilliseconds: durationMillisecondsArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      scanHeartRateSensorsChannel.setMessageHandler(nil)
+    }
+    /// Verbindet und merkt den Gurt; verbindet nach Abbrüchen selbst neu.
+    /// False, wenn der Gurt unbekannt ist.
+    let connectHeartRateSensorChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.connectHeartRateSensor\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      connectHeartRateSensorChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let sensorIdArg = args[0] as! String
+        Task { @MainActor in
+          do {
+            let result = try await api.connectHeartRateSensor(sensorId: sensorIdArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      connectHeartRateSensorChannel.setMessageHandler(nil)
+    }
+    /// Trennt und vergisst den gemerkten Gurt.
+    let disconnectHeartRateSensorChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.disconnectHeartRateSensor\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      disconnectHeartRateSensorChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            try await api.disconnectHeartRateSensor()
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      disconnectHeartRateSensorChannel.setMessageHandler(nil)
+    }
+    /// Startet Puffer, Zonenalarm und ggf. Live Activity; ersetzt eine laufende Überwachung.
+    let startCardioMonitoringChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.startCardioMonitoring\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startCardioMonitoringChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let configArg = args[0] as! PlatformCardioMonitoringConfig
+        Task { @MainActor in
+          do {
+            try await api.startCardioMonitoring(config: configArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      startCardioMonitoringChannel.setMessageHandler(nil)
+    }
+    /// Ändert Zielbereich und Optionen, ohne Puffer und Sequenzen zurückzusetzen.
+    let updateCardioMonitoringChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.updateCardioMonitoring\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      updateCardioMonitoringChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let configArg = args[0] as! PlatformCardioMonitoringConfig
+        Task { @MainActor in
+          do {
+            try await api.updateCardioMonitoring(config: configArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      updateCardioMonitoringChannel.setMessageHandler(nil)
+    }
+    /// Beendet Puffer, Alarm und Live Activity der Session.
+    let stopCardioMonitoringChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.stopCardioMonitoring\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      stopCardioMonitoringChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let sessionIdArg = args[0] as! String
+        Task { @MainActor in
+          do {
+            try await api.stopCardioMonitoring(sessionId: sessionIdArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      stopCardioMonitoringChannel.setMessageHandler(nil)
+    }
+    let requestCardioWriteAuthorizationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestCardioWriteAuthorization\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      requestCardioWriteAuthorizationChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            let result = try await api.requestCardioWriteAuthorization()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      requestCardioWriteAuthorizationChannel.setMessageHandler(nil)
+    }
+    let exportCardioSessionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.exportCardioSession\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      exportCardioSessionChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let exportArg = args[0] as! PlatformCardioExport
+        Task { @MainActor in
+          do {
+            let result = try await api.exportCardioSession(export: exportArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      exportCardioSessionChannel.setMessageHandler(nil)
     }
   }
 }

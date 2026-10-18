@@ -831,6 +831,92 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Gainer.Core.Training.CardioSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActivityType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<decimal?>("AveragePowerWatts")
+                        .HasPrecision(7, 2)
+                        .HasColumnType("numeric(7,2)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("DistanceKm")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("numeric(8,3)");
+
+                    b.Property<DateTime>("EndedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("EnergyKcal")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("numeric(8,2)");
+
+                    b.PrimitiveCollection<int[]>("HeartRateBpm")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.PrimitiveCollection<int[]>("RrIntervalsMs")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<int>("SampleIntervalSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SensorName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("TargetZoneHighBpm")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TargetZoneLowBpm")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("UserId", "Id");
+
+                    b.HasIndex("UserId", "StartedAtUtc")
+                        .IsDescending(false, true);
+
+                    b.ToTable("cardio_sessions", "training", t =>
+                        {
+                            t.HasCheckConstraint("CK_cardio_sessions_activity_type", "\"ActivityType\" IN ('IndoorCycling')");
+
+                            t.HasCheckConstraint("CK_cardio_sessions_end_after_start", "\"EndedAtUtc\" > \"StartedAtUtc\"");
+
+                            t.HasCheckConstraint("CK_cardio_sessions_sample_interval", "\"SampleIntervalSeconds\" BETWEEN 1 AND 60");
+
+                            t.HasCheckConstraint("CK_cardio_sessions_target_zone", "(\"TargetZoneLowBpm\" IS NULL AND \"TargetZoneHighBpm\" IS NULL) OR (\"TargetZoneLowBpm\" >= 40 AND \"TargetZoneHighBpm\" <= 230 AND \"TargetZoneLowBpm\" < \"TargetZoneHighBpm\")");
+                        });
+                });
+
             modelBuilder.Entity("Gainer.Core.Training.Exercise", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2164,6 +2250,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UserId", "ActiveClientId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Gainer.Core.Training.CardioSession", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Gainer.Core.Training.Exercise", b =>

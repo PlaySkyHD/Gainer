@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../../ui/core/view_models/mobile_shell_view_model.dart';
 import '../../../ui/features/body/body_view_model.dart';
 import '../../../ui/features/body/health/health_review_view_model.dart';
+import '../../../ui/features/cardio/cardio_session_controller.dart';
 import '../../../ui/features/coach/coach_view_model.dart';
 import '../../../ui/features/nutrition/nutrition_view_model.dart';
 import '../../../ui/features/progress/progress_view_model.dart';
@@ -13,6 +14,8 @@ import '../../../ui/features/training/rest_timer_controller.dart';
 import '../../models/api/api_models.dart';
 import '../../models/local/local_mutation.dart';
 import '../../repositories/body/body_repository.dart';
+import '../../repositories/cardio/cardio_repository.dart';
+import '../../repositories/health/cardio_health_exporter.dart';
 import '../../repositories/health/check_in_health_coordinator.dart';
 import '../../repositories/health/health_review_coordinator.dart';
 import '../../repositories/insights/insights_repository.dart';
@@ -321,12 +324,16 @@ class MobileAuthController extends ChangeNotifier
       throw StateError('The account changed before the native route opened.');
     }
     shell.selectTab(index);
-    // Die Live Activity öffnet das aktive Training; sonst bleibt es beim Tab.
+    // Die Live Activity öffnet die laufende Cardio-Einheit, sonst das aktive
+    // Training; ohne beides bleibt es beim Tab.
     final active = routeScope.activeWorkout.active;
     if (request.source == NativeRouteSource.liveActivity &&
-        request.destination == NativeAppRoute.training &&
-        active != null) {
-      shell.requestOpenWorkout(active.workoutId);
+        request.destination == NativeAppRoute.training) {
+      if (routeScope.cardioSession.isRunning) {
+        shell.requestOpenCardio();
+      } else if (active != null) {
+        shell.requestOpenWorkout(active.workoutId);
+      }
     }
   }
 
@@ -364,6 +371,18 @@ class MobileAuthController extends ChangeNotifier
         alerts: nativeFeatures,
         preferences: training.preferences,
       ),
+    );
+    final cardio = CardioRepository(store: store);
+    final cardioSession = CardioSessionController(
+      repository: cardio,
+      platform: nativeFeatures,
+      notifications: nativeFeatures,
+      trainingPreferences: training.preferences,
+    )..openSettings = nativeFeatures.openSettings;
+    final cardioHealth = CardioHealthExporter(
+      store: store,
+      repository: cardio,
+      platform: nativeFeatures,
     );
     final nutrition = NutritionRepository(
       store: store,
@@ -423,6 +442,9 @@ class MobileAuthController extends ChangeNotifier
       bodyViewModel: bodyViewModel,
       training: training,
       activeWorkout: activeWorkout,
+      cardio: cardio,
+      cardioSession: cardioSession,
+      cardioHealth: cardioHealth,
       nutritionViewModel: nutritionViewModel,
       healthViewModel: healthViewModel,
       progressViewModel: progressViewModel,
@@ -448,6 +470,7 @@ class MobileAuthController extends ChangeNotifier
     account = nextScope;
     nextScope.nativeLifecycle.activate();
     unawaited(nextScope.syncScheduler.start());
+    unawaited(nextScope.cardioSession.load());
     unawaited(
       nextScope.activeWorkout.load().whenComplete(
         nextScope.trainingLiveActivity.activate,
@@ -557,6 +580,9 @@ class AccountScope {
     required this.bodyViewModel,
     required this.training,
     required this.activeWorkout,
+    required this.cardio,
+    required this.cardioSession,
+    required this.cardioHealth,
     required this.nutritionViewModel,
     required this.healthViewModel,
     required this.progressViewModel,
@@ -585,6 +611,15 @@ class AccountScope {
   final BodyViewModel bodyViewModel;
   final TrainingLogRepository training;
   final ActiveWorkoutController activeWorkout;
+
+  /// Cardio-Einheiten, Entwurf und Einstellungen (`cardio.preferences`).
+  final CardioRepository cardio;
+
+  /// Laufende Cardio-Einheit mit Pulsgurt.
+  final CardioSessionController cardioSession;
+
+  /// Export von Cardio-Einheiten nach Apple Health.
+  final CardioHealthExporter cardioHealth;
   final NutritionViewModel nutritionViewModel;
   final HealthReviewViewModel healthViewModel;
   final ProgressViewModel progressViewModel;
@@ -663,6 +698,8 @@ class AccountScope {
     await _localCommitSubscription.cancel();
     _syncStatusTracker.dispose();
     await trainingLiveActivity.dispose();
+    await cardioSession.close();
+    cardioSession.dispose();
     activeWorkout.dispose();
     await syncScheduler.dispose();
     final syncRun = _syncInFlight;

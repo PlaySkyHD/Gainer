@@ -13,6 +13,7 @@ const _workoutRotationType = 'workout-rotation';
 const _nutritionDayType = 'nutrition-day';
 const _reusableMealType = 'reusable-meal';
 const _nutritionTargetScheduleType = 'nutrition-target-schedule';
+const _cardioSessionType = 'cardio-session';
 
 /// Pure translation between PWA-shaped local aggregates and the Sync v2
 /// backend DTOs. Keep transport orchestration out of this codec.
@@ -29,6 +30,7 @@ class SyncPayloadCodec {
         'NutritionDay' => _nutritionDayType,
         'ReusableMeal' => _reusableMealType,
         'NutritionTargetSchedule' => _nutritionTargetScheduleType,
+        'CardioSession' => _cardioSessionType,
         _ => null,
       };
 
@@ -57,6 +59,8 @@ class SyncPayloadCodec {
         return _reusableMealOperation(body);
       case _nutritionTargetScheduleType:
         return 'saveNutritionTargetSchedule';
+      case _cardioSessionType:
+        return _cardioSessionOperation(mutation);
       default:
         throw ArgumentError.value(mutation.aggregateType, 'aggregateType');
     }
@@ -107,6 +111,11 @@ class SyncPayloadCodec {
       ? 'deleteNutritionDay'
       : 'saveNutritionDay';
 
+  static String _cardioSessionOperation(LocalMutation mutation) =>
+      mutation.operation == LocalMutationOperation.delete
+      ? 'deleteCardioSession'
+      : 'saveCardioSession';
+
   static String _reusableMealOperation(Map<String, dynamic> body) =>
       body['status'] == 'Archived' ? 'archiveReusableMeal' : 'saveReusableMeal';
 
@@ -150,6 +159,8 @@ class SyncPayloadCodec {
         return _reusableMealPayload(mutation, body, baseVersion);
       case _nutritionTargetScheduleType:
         return _nutritionTargetSchedulePayload(mutation, body, baseVersion);
+      case _cardioSessionType:
+        return _cardioSessionPayload(mutation, body, baseVersion);
       default:
         throw ArgumentError.value(mutation.aggregateType, 'aggregateType');
     }
@@ -398,6 +409,34 @@ class SyncPayloadCodec {
     for (final entry in source.entries)
       if (entry.value != null) entry.key: entry.value,
   };
+
+  static Object? _cardioSessionPayload(
+    LocalMutation mutation,
+    Map<String, dynamic> body,
+    int baseVersion,
+  ) {
+    if (mutation.operation == LocalMutationOperation.delete) {
+      return {'sessionId': mutation.aggregateId, 'baseVersion': baseVersion};
+    }
+    return {
+      'baseVersion': baseVersion,
+      'session': _compact({
+        'sessionId': body['sessionId'],
+        'activityType': body['activityType'],
+        'startedAtUtc': body['startedAtUtc'],
+        'endedAtUtc': body['endedAtUtc'],
+        'targetZone': body['targetZone'],
+        'sampleIntervalSeconds': body['sampleIntervalSeconds'],
+        'heartRateBpm': body['heartRateBpm'],
+        'rrIntervalsMs': body['rrIntervalsMs'],
+        'sensorName': body['sensorName'],
+        'distanceKm': body['distanceKm'],
+        'averagePowerWatts': body['averagePowerWatts'],
+        'energyKcal': body['energyKcal'],
+        'notes': body['notes'],
+      }),
+    };
+  }
 
   static Object? _nutritionDayPayload(
     LocalMutation mutation,

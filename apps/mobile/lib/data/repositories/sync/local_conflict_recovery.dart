@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../../../domain/models/cardio/cardio_session.dart';
 import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
 import '../../services/local/local_database.dart';
@@ -479,6 +480,7 @@ const forceableAggregateTypes = {
   'exercise-category',
   'daily-check-in',
   'nutrition-day',
+  'cardio-session',
 };
 
 class ConflictResourceInfo {
@@ -522,7 +524,8 @@ bool _hasServerType(String aggregateType) => switch (aggregateType) {
   'workout' ||
   'nutrition-day' ||
   'reusable-meal' ||
-  'nutrition-target-schedule' => true,
+  'nutrition-target-schedule' ||
+  'cardio-session' => true,
   _ => false,
 };
 
@@ -545,6 +548,18 @@ String? _resourceTitle(String aggregateType, Object? workingCopy) {
       return parts.isEmpty ? null : parts.join(' · ');
     case 'daily-check-in' || 'nutrition-day':
       return text('localDate');
+    case 'cardio-session':
+      final started = DateTime.tryParse(text('startedAtUtc') ?? '')?.toLocal();
+      final label = CardioActivityType.values
+          .where((type) => type.wireName == text('activityType'))
+          .firstOrNull
+          ?.label;
+      final date = started == null
+          ? null
+          : '${started.day.toString().padLeft(2, '0')}.'
+                '${started.month.toString().padLeft(2, '0')}.${started.year}';
+      final parts = [?label, ?date];
+      return parts.isEmpty ? null : parts.join(' · ');
     case 'workout-rotation':
       return 'Rotation';
     default:
@@ -563,5 +578,6 @@ String _serverType(String aggregateType) => switch (aggregateType) {
   'nutrition-day' => 'NutritionDay',
   'reusable-meal' => 'ReusableMeal',
   'nutrition-target-schedule' => 'NutritionTargetSchedule',
+  'cardio-session' => 'CardioSession',
   _ => throw ArgumentError.value(aggregateType, 'aggregateType'),
 };
