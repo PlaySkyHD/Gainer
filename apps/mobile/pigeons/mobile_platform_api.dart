@@ -278,6 +278,14 @@ abstract class MobilePlatformApi {
   @async
   void endAllLiveActivities();
 
+  /// Ob Live Activities für die App in den iOS-Einstellungen erlaubt sind.
+  @async
+  bool areLiveActivitiesEnabled();
+
+  /// Öffnet die Einstellungen der App, z. B. um Live Activities einzuschalten.
+  @async
+  void openAppSettings();
+
   @async
   PlatformRoute? readPendingRoute();
 

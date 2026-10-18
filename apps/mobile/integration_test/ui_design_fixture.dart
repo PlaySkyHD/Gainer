@@ -463,4 +463,10 @@ class _FixtureNativeFeatures
 
   @override
   Future<void> endAll() async {}
+
+  @override
+  Future<bool> isEnabled() async => true;
+
+  @override
+  Future<void> openSettings() async {}
 }

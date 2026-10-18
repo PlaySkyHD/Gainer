@@ -233,6 +233,12 @@ class PigeonNativeFeaturesPlatform
   @override
   Future<void> endAll() => _api.endAllLiveActivities();
 
+  @override
+  Future<bool> isEnabled() => _api.areLiveActivitiesEnabled();
+
+  @override
+  Future<void> openSettings() => _api.openAppSettings();
+
   PlatformLiveActivityState _liveActivityPlatformState(
     LiveActivityState state,
   ) {

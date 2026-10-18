@@ -757,6 +757,10 @@ protocol MobilePlatformApi {
   func updateLiveActivity(state: PlatformLiveActivityState) async throws -> Bool
   func endLiveActivity(sessionId: String) async throws
   func endAllLiveActivities() async throws
+  /// Ob Live Activities für die App in den iOS-Einstellungen erlaubt sind.
+  func areLiveActivitiesEnabled() async throws -> Bool
+  /// Öffnet die Einstellungen der App, z. B. um Live Activities einzuschalten.
+  func openAppSettings() async throws
   func readPendingRoute() async throws -> PlatformRoute?
   func clearPendingRoute() async throws
   func retryPendingRoute() async throws
@@ -1304,6 +1308,38 @@ class MobilePlatformApiSetup {
       }
     } else {
       endAllLiveActivitiesChannel.setMessageHandler(nil)
+    }
+    /// Ob Live Activities für die App in den iOS-Einstellungen erlaubt sind.
+    let areLiveActivitiesEnabledChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.areLiveActivitiesEnabled\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      areLiveActivitiesEnabledChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            let result = try await api.areLiveActivitiesEnabled()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      areLiveActivitiesEnabledChannel.setMessageHandler(nil)
+    }
+    /// Öffnet die Einstellungen der App, z. B. um Live Activities einzuschalten.
+    let openAppSettingsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.openAppSettings\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      openAppSettingsChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            try await api.openAppSettings()
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      openAppSettingsChannel.setMessageHandler(nil)
     }
     let readPendingRouteChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readPendingRoute\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
