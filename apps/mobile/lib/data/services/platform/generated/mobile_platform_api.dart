@@ -10,9 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:meta/meta.dart' show immutable, protected, visibleForTesting;
 
 Object? _extractReplyValueOrThrow(
-    List<Object?>? replyList,
-    String channelName, {
-    required bool isNullValid,
+  List<Object?>? replyList,
+  String channelName, {
+  required bool isNullValid,
 }) {
   if (replyList == null) {
     throw PlatformException(
@@ -34,8 +34,11 @@ Object? _extractReplyValueOrThrow(
   return replyList.firstOrNull;
 }
 
-
-List<Object?> wrapResponse({Object? result, PlatformException? error, bool empty = false}) {
+List<Object?> wrapResponse({
+  Object? result,
+  PlatformException? error,
+  bool empty = false,
+}) {
   if (empty) {
     return <Object?>[];
   }
@@ -44,6 +47,7 @@ List<Object?> wrapResponse({Object? result, PlatformException? error, bool empty
   }
   return <Object?>[error.code, error.message, error.details];
 }
+
 bool _deepEquals(Object? a, Object? b) {
   if (identical(a, b)) {
     return true;
@@ -56,8 +60,9 @@ bool _deepEquals(Object? a, Object? b) {
   }
   if (a is List && b is List) {
     return a.length == b.length &&
-        a.indexed
-            .every(((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]));
+        a.indexed.every(
+          ((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]),
+        );
   }
   if (a is Map && b is Map) {
     if (a.length != b.length) {
@@ -106,40 +111,28 @@ int _deepHash(Object? value) {
   return value.hashCode;
 }
 
-
 /// Reports that an authorization request finished, not that access was granted.
-enum PlatformAuthorizationRequestResult {
-  requestCompleted;
-}
+enum PlatformAuthorizationRequestResult { requestCompleted }
 
 /// Ergebnis eines Schreibversuchs nach Apple Health.
-enum PlatformHealthWriteStatus {
-  saved,
-  alreadyPresent,
-  notAuthorized;
-}
+enum PlatformHealthWriteStatus { saved, alreadyPresent, notAuthorized }
 
 class PlatformHealthCheck {
-  PlatformHealthCheck({
-    required this.available,
-  });
+  PlatformHealthCheck({required this.available});
 
   bool available;
 
   List<Object?> _toList() {
-    return <Object?>[
-      available,
-    ];
+    return <Object?>[available];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static PlatformHealthCheck decode(Object result) {
     result as List<Object?>;
-    return PlatformHealthCheck(
-      available: result[0]! as bool,
-    );
+    return PlatformHealthCheck(available: result[0]! as bool);
   }
 
   @override
@@ -165,24 +158,19 @@ class PlatformHealthCheck {
 }
 
 class PlatformCapturedImage {
-  PlatformCapturedImage({
-    required this.bytes,
-    required this.mimeType,
-  });
+  PlatformCapturedImage({required this.bytes, required this.mimeType});
 
   Uint8List bytes;
 
   String mimeType;
 
   List<Object?> _toList() {
-    return <Object?>[
-      bytes,
-      mimeType,
-    ];
+    return <Object?>[bytes, mimeType];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static PlatformCapturedImage decode(Object result) {
     result as List<Object?>;
@@ -201,7 +189,8 @@ class PlatformCapturedImage {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(bytes, other.bytes) && _deepEquals(mimeType, other.mimeType);
+    return _deepEquals(bytes, other.bytes) &&
+        _deepEquals(mimeType, other.mimeType);
   }
 
   @override
@@ -245,7 +234,8 @@ class PlatformBodyMassSample {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static PlatformBodyMassSample decode(Object result) {
     result as List<Object?>;
@@ -267,7 +257,14 @@ class PlatformBodyMassSample {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(uuid, other.uuid) && _deepEquals(measuredAtUtcEpochMilliseconds, other.measuredAtUtcEpochMilliseconds) && _deepEquals(weightKilograms, other.weightKilograms) && _deepEquals(sourceName, other.sourceName) && _deepEquals(syncIdentifier, other.syncIdentifier);
+    return _deepEquals(uuid, other.uuid) &&
+        _deepEquals(
+          measuredAtUtcEpochMilliseconds,
+          other.measuredAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(weightKilograms, other.weightKilograms) &&
+        _deepEquals(sourceName, other.sourceName) &&
+        _deepEquals(syncIdentifier, other.syncIdentifier);
   }
 
   @override
@@ -312,7 +309,8 @@ class PlatformSleepWindow {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static PlatformSleepWindow decode(Object result) {
     result as List<Object?>;
@@ -334,7 +332,14 @@ class PlatformSleepWindow {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(bedtimeUtcEpochMilliseconds, other.bedtimeUtcEpochMilliseconds) && _deepEquals(wakeUtcEpochMilliseconds, other.wakeUtcEpochMilliseconds) && _deepEquals(asleepMinutes, other.asleepMinutes) && _deepEquals(sourceName, other.sourceName) && _deepEquals(fromGainer, other.fromGainer);
+    return _deepEquals(
+          bedtimeUtcEpochMilliseconds,
+          other.bedtimeUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(wakeUtcEpochMilliseconds, other.wakeUtcEpochMilliseconds) &&
+        _deepEquals(asleepMinutes, other.asleepMinutes) &&
+        _deepEquals(sourceName, other.sourceName) &&
+        _deepEquals(fromGainer, other.fromGainer);
   }
 
   @override
@@ -361,15 +366,12 @@ class PlatformWorkoutExportResult {
   int syncVersion;
 
   List<Object?> _toList() {
-    return <Object?>[
-      status,
-      syncIdentifier,
-      syncVersion,
-    ];
+    return <Object?>[status, syncIdentifier, syncVersion];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static PlatformWorkoutExportResult decode(Object result) {
     result as List<Object?>;
@@ -383,13 +385,16 @@ class PlatformWorkoutExportResult {
   @override
   // ignore: avoid_equals_and_hash_code_on_mutable_classes
   bool operator ==(Object other) {
-    if (other is! PlatformWorkoutExportResult || other.runtimeType != runtimeType) {
+    if (other is! PlatformWorkoutExportResult ||
+        other.runtimeType != runtimeType) {
       return false;
     }
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(status, other.status) && _deepEquals(syncIdentifier, other.syncIdentifier) && _deepEquals(syncVersion, other.syncVersion);
+    return _deepEquals(status, other.status) &&
+        _deepEquals(syncIdentifier, other.syncIdentifier) &&
+        _deepEquals(syncVersion, other.syncVersion);
   }
 
   @override
@@ -442,7 +447,8 @@ class PlatformLiveActivityDetail {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static PlatformLiveActivityDetail decode(Object result) {
     result as List<Object?>;
@@ -460,13 +466,20 @@ class PlatformLiveActivityDetail {
   @override
   // ignore: avoid_equals_and_hash_code_on_mutable_classes
   bool operator ==(Object other) {
-    if (other is! PlatformLiveActivityDetail || other.runtimeType != runtimeType) {
+    if (other is! PlatformLiveActivityDetail ||
+        other.runtimeType != runtimeType) {
       return false;
     }
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(title, other.title) && _deepEquals(exerciseName, other.exerciseName) && _deepEquals(setIndex, other.setIndex) && _deepEquals(setCount, other.setCount) && _deepEquals(exerciseIndex, other.exerciseIndex) && _deepEquals(exerciseCount, other.exerciseCount) && _deepEquals(targetText, other.targetText);
+    return _deepEquals(title, other.title) &&
+        _deepEquals(exerciseName, other.exerciseName) &&
+        _deepEquals(setIndex, other.setIndex) &&
+        _deepEquals(setCount, other.setCount) &&
+        _deepEquals(exerciseIndex, other.exerciseIndex) &&
+        _deepEquals(exerciseCount, other.exerciseCount) &&
+        _deepEquals(targetText, other.targetText);
   }
 
   @override
@@ -529,7 +542,8 @@ class PlatformLiveActivityState {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static PlatformLiveActivityState decode(Object result) {
     result as List<Object?>;
@@ -549,13 +563,31 @@ class PlatformLiveActivityState {
   @override
   // ignore: avoid_equals_and_hash_code_on_mutable_classes
   bool operator ==(Object other) {
-    if (other is! PlatformLiveActivityState || other.runtimeType != runtimeType) {
+    if (other is! PlatformLiveActivityState ||
+        other.runtimeType != runtimeType) {
       return false;
     }
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(sessionId, other.sessionId) && _deepEquals(timerPhase, other.timerPhase) && _deepEquals(startedAtUtcEpochMilliseconds, other.startedAtUtcEpochMilliseconds) && _deepEquals(expired, other.expired) && _deepEquals(staleAtUtcEpochMilliseconds, other.staleAtUtcEpochMilliseconds) && _deepEquals(timerTargetAtUtcEpochMilliseconds, other.timerTargetAtUtcEpochMilliseconds) && _deepEquals(pausedRemainingSeconds, other.pausedRemainingSeconds) && _deepEquals(restDurationSeconds, other.restDurationSeconds) && _deepEquals(detail, other.detail);
+    return _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(timerPhase, other.timerPhase) &&
+        _deepEquals(
+          startedAtUtcEpochMilliseconds,
+          other.startedAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(expired, other.expired) &&
+        _deepEquals(
+          staleAtUtcEpochMilliseconds,
+          other.staleAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(
+          timerTargetAtUtcEpochMilliseconds,
+          other.timerTargetAtUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(pausedRemainingSeconds, other.pausedRemainingSeconds) &&
+        _deepEquals(restDurationSeconds, other.restDurationSeconds) &&
+        _deepEquals(detail, other.detail);
   }
 
   @override
@@ -582,15 +614,12 @@ class PlatformRoute {
   int createdAtUtcEpochMilliseconds;
 
   List<Object?> _toList() {
-    return <Object?>[
-      destination,
-      source,
-      createdAtUtcEpochMilliseconds,
-    ];
+    return <Object?>[destination, source, createdAtUtcEpochMilliseconds];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static PlatformRoute decode(Object result) {
     result as List<Object?>;
@@ -610,7 +639,12 @@ class PlatformRoute {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(destination, other.destination) && _deepEquals(source, other.source) && _deepEquals(createdAtUtcEpochMilliseconds, other.createdAtUtcEpochMilliseconds);
+    return _deepEquals(destination, other.destination) &&
+        _deepEquals(source, other.source) &&
+        _deepEquals(
+          createdAtUtcEpochMilliseconds,
+          other.createdAtUtcEpochMilliseconds,
+        );
   }
 
   @override
@@ -623,7 +657,6 @@ class PlatformRoute {
   }
 }
 
-
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -631,34 +664,34 @@ class _PigeonCodec extends StandardMessageCodec {
     if (value is int) {
       buffer.putUint8(4);
       buffer.putInt64(value);
-    }    else if (value is PlatformAuthorizationRequestResult) {
+    } else if (value is PlatformAuthorizationRequestResult) {
       buffer.putUint8(129);
       writeValue(buffer, value.index);
-    }    else if (value is PlatformHealthWriteStatus) {
+    } else if (value is PlatformHealthWriteStatus) {
       buffer.putUint8(130);
       writeValue(buffer, value.index);
-    }    else if (value is PlatformHealthCheck) {
+    } else if (value is PlatformHealthCheck) {
       buffer.putUint8(131);
       writeValue(buffer, value.encode());
-    }    else if (value is PlatformCapturedImage) {
+    } else if (value is PlatformCapturedImage) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
-    }    else if (value is PlatformBodyMassSample) {
+    } else if (value is PlatformBodyMassSample) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    }    else if (value is PlatformSleepWindow) {
+    } else if (value is PlatformSleepWindow) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    }    else if (value is PlatformWorkoutExportResult) {
+    } else if (value is PlatformWorkoutExportResult) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    }    else if (value is PlatformLiveActivityDetail) {
+    } else if (value is PlatformLiveActivityDetail) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    }    else if (value is PlatformLiveActivityState) {
+    } else if (value is PlatformLiveActivityState) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    }    else if (value is PlatformRoute) {
+    } else if (value is PlatformRoute) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
     } else {
@@ -671,7 +704,9 @@ class _PigeonCodec extends StandardMessageCodec {
     switch (type) {
       case 129:
         final value = readValue(buffer) as int?;
-        return value == null ? null : PlatformAuthorizationRequestResult.values[value];
+        return value == null
+            ? null
+            : PlatformAuthorizationRequestResult.values[value];
       case 130:
         final value = readValue(buffer) as int?;
         return value == null ? null : PlatformHealthWriteStatus.values[value];
@@ -702,20 +737,21 @@ class MobilePlatformApi {
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
   MobilePlatformApi({
-      BinaryMessenger? binaryMessenger, 
-      String messageChannelSuffix = '', 
-      })
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
 
   final BinaryMessenger? pigeonVar_binaryMessenger;
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
 
   final String pigeonVar_messageChannelSuffix;
 
-
   Future<PlatformHealthCheck> getPlatformHealth() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.getPlatformHealth$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.getPlatformHealth$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -725,126 +761,148 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as PlatformHealthCheck;
   }
 
   Future<Uint8List?> readSessionCheckpoint(String apiOrigin) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readSessionCheckpoint$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readSessionCheckpoint$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[apiOrigin]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[apiOrigin],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as Uint8List?;
   }
 
-  Future<void> writeSessionCheckpoint(String apiOrigin, Uint8List checkpoint) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writeSessionCheckpoint$pigeonVar_messageChannelSuffix';
+  Future<void> writeSessionCheckpoint(
+    String apiOrigin,
+    Uint8List checkpoint,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writeSessionCheckpoint$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[apiOrigin, checkpoint]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[apiOrigin, checkpoint],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> clearSessionCheckpoint(String apiOrigin) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.clearSessionCheckpoint$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.clearSessionCheckpoint$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[apiOrigin]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[apiOrigin],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
-  Future<Uint8List?> readPendingHandover(String apiOrigin, String accountId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readPendingHandover$pigeonVar_messageChannelSuffix';
+  Future<Uint8List?> readPendingHandover(
+    String apiOrigin,
+    String accountId,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readPendingHandover$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[apiOrigin, accountId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[apiOrigin, accountId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as Uint8List?;
   }
 
-  Future<void> writePendingHandover(String apiOrigin, String accountId, Uint8List record) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writePendingHandover$pigeonVar_messageChannelSuffix';
+  Future<void> writePendingHandover(
+    String apiOrigin,
+    String accountId,
+    Uint8List record,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writePendingHandover$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[apiOrigin, accountId, record]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[apiOrigin, accountId, record],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> clearPendingHandover(String apiOrigin, String accountId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.clearPendingHandover$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.clearPendingHandover$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[apiOrigin, accountId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[apiOrigin, accountId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<String?> scanBarcode() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.scanBarcode$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.scanBarcode$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -854,16 +912,16 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as String?;
   }
 
   Future<PlatformCapturedImage?> capturePhoto() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.capturePhoto$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.capturePhoto$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -873,16 +931,16 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as PlatformCapturedImage?;
   }
 
   Future<PlatformCapturedImage?> chooseImage() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.chooseImage$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.chooseImage$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -892,34 +950,36 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as PlatformCapturedImage?;
   }
 
   Future<void> performHaptic(String intent) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.performHaptic$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.performHaptic$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[intent]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[intent],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<bool> requestNotificationPermission() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestNotificationPermission$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestNotificationPermission$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -929,52 +989,60 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
-  Future<void> schedulePauseNotification(String workoutId, int generation, int targetAtUtcEpochMilliseconds) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.schedulePauseNotification$pigeonVar_messageChannelSuffix';
+  Future<void> schedulePauseNotification(
+    String workoutId,
+    int generation,
+    int targetAtUtcEpochMilliseconds,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.schedulePauseNotification$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[workoutId, generation, targetAtUtcEpochMilliseconds]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[workoutId, generation, targetAtUtcEpochMilliseconds],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> cancelPauseNotifications(String workoutId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.cancelPauseNotifications$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.cancelPauseNotifications$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[workoutId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[workoutId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<bool> isHealthDataAvailable() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.isHealthDataAvailable$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.isHealthDataAvailable$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -984,19 +1052,20 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   /// Completes when the system authorization sheet has been handled.
   /// The result does not indicate read permission; HealthKit intentionally
   /// hides read authorization, so an empty query remains an empty result.
-  Future<PlatformAuthorizationRequestResult> requestBodyMassReadAuthorization() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestBodyMassReadAuthorization$pigeonVar_messageChannelSuffix';
+  Future<PlatformAuthorizationRequestResult>
+  requestBodyMassReadAuthorization() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestBodyMassReadAuthorization$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1006,37 +1075,44 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as PlatformAuthorizationRequestResult;
   }
 
-  Future<List<PlatformBodyMassSample>> readBodyMassSamples(int fromUtcEpochMilliseconds, int toUtcEpochMilliseconds) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readBodyMassSamples$pigeonVar_messageChannelSuffix';
+  Future<List<PlatformBodyMassSample>> readBodyMassSamples(
+    int fromUtcEpochMilliseconds,
+    int toUtcEpochMilliseconds,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readBodyMassSamples$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[fromUtcEpochMilliseconds, toUtcEpochMilliseconds]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[fromUtcEpochMilliseconds, toUtcEpochMilliseconds],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
-    return (pigeonVar_replyValue! as List<Object?>).cast<PlatformBodyMassSample>();
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as List<Object?>)
+        .cast<PlatformBodyMassSample>();
   }
 
   /// Fragt Lesen (Gewicht, Schritte, Schlaf) und Schreiben (Gewicht, Schlaf)
   /// für den Check-in in einem Systemdialog an.
-  Future<PlatformAuthorizationRequestResult> requestCheckInAuthorization() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestCheckInAuthorization$pigeonVar_messageChannelSuffix';
+  Future<PlatformAuthorizationRequestResult>
+  requestCheckInAuthorization() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestCheckInAuthorization$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1046,93 +1122,120 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as PlatformAuthorizationRequestResult;
   }
 
   /// Tagessumme der Schritte; null ohne Daten.
-  Future<int?> readStepCount(int fromUtcEpochMilliseconds, int toUtcEpochMilliseconds) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readStepCount$pigeonVar_messageChannelSuffix';
+  Future<int?> readStepCount(
+    int fromUtcEpochMilliseconds,
+    int toUtcEpochMilliseconds,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readStepCount$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[fromUtcEpochMilliseconds, toUtcEpochMilliseconds]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[fromUtcEpochMilliseconds, toUtcEpochMilliseconds],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as int?;
   }
 
-  Future<PlatformSleepWindow?> readSleep(int fromUtcEpochMilliseconds, int toUtcEpochMilliseconds) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readSleep$pigeonVar_messageChannelSuffix';
+  Future<PlatformSleepWindow?> readSleep(
+    int fromUtcEpochMilliseconds,
+    int toUtcEpochMilliseconds,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readSleep$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[fromUtcEpochMilliseconds, toUtcEpochMilliseconds]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[fromUtcEpochMilliseconds, toUtcEpochMilliseconds],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as PlatformSleepWindow?;
   }
 
-  Future<PlatformHealthWriteStatus> writeBodyMass(double kilograms, int measuredAtUtcEpochMilliseconds, String syncIdentifier) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writeBodyMass$pigeonVar_messageChannelSuffix';
+  Future<PlatformHealthWriteStatus> writeBodyMass(
+    double kilograms,
+    int measuredAtUtcEpochMilliseconds,
+    String syncIdentifier,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writeBodyMass$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[kilograms, measuredAtUtcEpochMilliseconds, syncIdentifier]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[kilograms, measuredAtUtcEpochMilliseconds, syncIdentifier],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as PlatformHealthWriteStatus;
   }
 
-  Future<PlatformHealthWriteStatus> writeSleep(int bedtimeUtcEpochMilliseconds, int wakeUtcEpochMilliseconds, String syncIdentifier) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writeSleep$pigeonVar_messageChannelSuffix';
+  Future<PlatformHealthWriteStatus> writeSleep(
+    int bedtimeUtcEpochMilliseconds,
+    int wakeUtcEpochMilliseconds,
+    String syncIdentifier,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writeSleep$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[bedtimeUtcEpochMilliseconds, wakeUtcEpochMilliseconds, syncIdentifier]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[
+        bedtimeUtcEpochMilliseconds,
+        wakeUtcEpochMilliseconds,
+        syncIdentifier,
+      ],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as PlatformHealthWriteStatus;
   }
 
-  Future<PlatformAuthorizationRequestResult> requestWorkoutWriteAuthorization() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestWorkoutWriteAuthorization$pigeonVar_messageChannelSuffix';
+  Future<PlatformAuthorizationRequestResult>
+  requestWorkoutWriteAuthorization() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestWorkoutWriteAuthorization$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1142,127 +1245,161 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as PlatformAuthorizationRequestResult;
   }
 
-  Future<PlatformWorkoutExportResult> exportCompletedWorkout(String accountId, String workoutId, int syncVersion, int startedAtUtcEpochMilliseconds, int completedAtUtcEpochMilliseconds) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.exportCompletedWorkout$pigeonVar_messageChannelSuffix';
+  Future<PlatformWorkoutExportResult> exportCompletedWorkout(
+    String accountId,
+    String workoutId,
+    int syncVersion,
+    int startedAtUtcEpochMilliseconds,
+    int completedAtUtcEpochMilliseconds,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.exportCompletedWorkout$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[accountId, workoutId, syncVersion, startedAtUtcEpochMilliseconds, completedAtUtcEpochMilliseconds]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[
+        accountId,
+        workoutId,
+        syncVersion,
+        startedAtUtcEpochMilliseconds,
+        completedAtUtcEpochMilliseconds,
+      ],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as PlatformWorkoutExportResult;
   }
 
-  Future<void> publishNeutralExtensionSnapshot(int schemaVersion, int generation, int updatedAtUtcEpochMilliseconds, List<String> availableRoutes) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.publishNeutralExtensionSnapshot$pigeonVar_messageChannelSuffix';
+  Future<void> publishNeutralExtensionSnapshot(
+    int schemaVersion,
+    int generation,
+    int updatedAtUtcEpochMilliseconds,
+    List<String> availableRoutes,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.publishNeutralExtensionSnapshot$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[schemaVersion, generation, updatedAtUtcEpochMilliseconds, availableRoutes]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[
+        schemaVersion,
+        generation,
+        updatedAtUtcEpochMilliseconds,
+        availableRoutes,
+      ],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> clearExtensionSnapshot(int minimumGeneration) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.clearExtensionSnapshot$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.clearExtensionSnapshot$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[minimumGeneration]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[minimumGeneration],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<bool> startLiveActivity(PlatformLiveActivityState state) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.startLiveActivity$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.startLiveActivity$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[state]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[state],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<bool> updateLiveActivity(PlatformLiveActivityState state) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.updateLiveActivity$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.updateLiveActivity$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[state]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[state],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<void> endLiveActivity(String sessionId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.endLiveActivity$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.endLiveActivity$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[sessionId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[sessionId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> endAllLiveActivities() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.endAllLiveActivities$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.endAllLiveActivities$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1272,15 +1409,15 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<PlatformRoute?> readPendingRoute() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readPendingRoute$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readPendingRoute$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1290,16 +1427,16 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as PlatformRoute?;
   }
 
   Future<void> clearPendingRoute() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.clearPendingRoute$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.clearPendingRoute$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1309,15 +1446,15 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> retryPendingRoute() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.retryPendingRoute$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.retryPendingRoute$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1327,11 +1464,10 @@ class MobilePlatformApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 }
 
@@ -1340,16 +1476,20 @@ abstract class MobileRouteFlutterApi {
 
   Future<void> dispatchRoute(PlatformRoute route);
 
-  static void setUp(MobileRouteFlutterApi? api, {
-    BinaryMessenger? binaryMessenger, 
+  static void setUp(
+    MobileRouteFlutterApi? api, {
+    BinaryMessenger? binaryMessenger,
     String messageChannelSuffix = '',
-  }) 
-{
-    messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  }) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty
+        ? '.$messageChannelSuffix'
+        : '';
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.gainer_mobile.MobileRouteFlutterApi.dispatchRoute$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.gainer_mobile.MobileRouteFlutterApi.dispatchRoute$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
@@ -1361,8 +1501,10 @@ abstract class MobileRouteFlutterApi {
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
