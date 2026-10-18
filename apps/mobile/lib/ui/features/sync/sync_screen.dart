@@ -730,6 +730,7 @@ class _SyncScreenState extends State<SyncScreen> {
     'exercise-category' => 'Kategorie',
     'daily-check-in' => 'Check-in',
     'nutrition-day' => 'Ernährung',
+    'cardio-session' => 'Cardio',
     'body-goal' => 'Körperziel',
     _ => 'Eintrag',
   };

@@ -1,3 +1,6 @@
+import 'package:flutter/services.dart';
+
+import '../../../domain/models/cardio/cardio_draft.dart';
 import '../native/rest_timer_alert_port.dart';
 import 'generated/mobile_platform_api.dart';
 import 'platform_ports.dart';
@@ -11,7 +14,9 @@ class PigeonNativeFeaturesPlatform
         HapticsPlatform,
         HealthPlatform,
         ExtensionSnapshotPlatform,
-        LiveActivityPlatform {
+        LiveActivityPlatform,
+        HeartRatePlatform,
+        CardioHealthPlatform {
   PigeonNativeFeaturesPlatform({MobilePlatformApi? api})
     : _api = api ?? MobilePlatformApi();
 
@@ -269,6 +274,154 @@ class PigeonNativeFeaturesPlatform
               exerciseCount: detail.exerciseCount,
               targetText: detail.targetText,
             ),
+    );
+  }
+
+  @override
+  Future<HeartRateStatus> readStatus(int afterSequence) => _ble(() async {
+    final status = await _api.readHeartRateStatus(afterSequence);
+    return HeartRateStatus(
+      bluetoothState:
+          HeartRateBluetoothState.values
+              .where((v) => v.name == status.bluetoothState)
+              .firstOrNull ??
+          HeartRateBluetoothState.unknown,
+      connectionState:
+          HeartRateConnectionState.values
+              .where((v) => v.name == status.connectionState)
+              .firstOrNull ??
+          HeartRateConnectionState.idle,
+      lastSequence: status.lastSequence,
+      samples: [
+        for (final sample in status.samples)
+          CardioSample(
+            sequence: sample.sequence,
+            atUtc: DateTime.fromMillisecondsSinceEpoch(
+              sample.atUtcEpochMilliseconds,
+              isUtc: true,
+            ),
+            bpm: sample.bpm,
+            rrIntervalsMs: sample.rrIntervalsMs,
+          ),
+      ],
+      sensorId: status.sensorId,
+      sensorName: status.sensorName,
+      batteryPercent: status.batteryPercent,
+      latestBpm: status.latestBpm,
+      latestAtUtc: status.latestAtUtcEpochMilliseconds == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(
+              status.latestAtUtcEpochMilliseconds!,
+              isUtc: true,
+            ),
+      monitoringSessionId: status.monitoringSessionId,
+      zoneState: HeartRateZoneState.values
+          .where((v) => v.name == status.zoneState)
+          .firstOrNull,
+    );
+  });
+
+  @override
+  Future<List<HeartRateSensor>> scan(Duration duration) => _ble(() async {
+    final sensors = await _api.scanHeartRateSensors(duration.inMilliseconds);
+    return [
+      for (final sensor in sensors)
+        HeartRateSensor(
+          id: sensor.id,
+          name: sensor.name,
+          isConnected: sensor.isConnected,
+          signalStrength: sensor.signalStrength,
+        ),
+    ];
+  });
+
+  @override
+  Future<bool> connect(String sensorId) =>
+      _ble(() => _api.connectHeartRateSensor(sensorId));
+
+  @override
+  Future<void> disconnect() => _ble(_api.disconnectHeartRateSensor);
+
+  @override
+  Future<void> startMonitoring(HeartRateMonitoringConfig config) =>
+      _ble(() => _api.startCardioMonitoring(_monitoringConfig(config)));
+
+  @override
+  Future<void> updateMonitoring(HeartRateMonitoringConfig config) =>
+      _ble(() => _api.updateCardioMonitoring(_monitoringConfig(config)));
+
+  @override
+  Future<void> stopMonitoring(String sessionId) =>
+      _ble(() => _api.stopCardioMonitoring(sessionId));
+
+  PlatformCardioMonitoringConfig _monitoringConfig(
+    HeartRateMonitoringConfig config,
+  ) => PlatformCardioMonitoringConfig(
+    sessionId: config.sessionId,
+    title: config.title,
+    startedAtUtcEpochMilliseconds: config.startedAtUtc
+        .toUtc()
+        .millisecondsSinceEpoch,
+    graceSeconds: config.graceSeconds,
+    repeatSeconds: config.repeatSeconds,
+    warmupSeconds: config.warmupSeconds,
+    soundId: config.soundId,
+    alertsEnabled: config.alertsEnabled,
+    liveActivityEnabled: config.liveActivityEnabled,
+    zoneLowBpm: config.zoneLowBpm,
+    zoneHighBpm: config.zoneHighBpm,
+  );
+
+  /// Übersetzt die Bluetooth-Fehlercodes der Plattform.
+  Future<T> _ble<T>(Future<T> Function() call) async {
+    try {
+      return await call();
+    } on PlatformException catch (error) {
+      final problem = switch (error.code) {
+        'bluetooth_powered_off' => BluetoothProblem.poweredOff,
+        'bluetooth_unauthorized' => BluetoothProblem.unauthorized,
+        'bluetooth_unsupported' => BluetoothProblem.unsupported,
+        _ => null,
+      };
+      if (problem == null) rethrow;
+      throw BluetoothUnavailableException(problem);
+    }
+  }
+
+  @override
+  Future<void> requestWriteAuthorization() =>
+      _api.requestCardioWriteAuthorization();
+
+  @override
+  Future<WorkoutExportReceipt> exportCardioSession(
+    CardioHealthExport export,
+  ) async {
+    final receipt = await _api.exportCardioSession(
+      PlatformCardioExport(
+        accountId: export.accountId,
+        sessionId: export.sessionId,
+        syncVersion: export.syncVersion,
+        activityType: export.activityType,
+        startedAtUtcEpochMilliseconds: export.startedAtUtc
+            .toUtc()
+            .millisecondsSinceEpoch,
+        endedAtUtcEpochMilliseconds: export.endedAtUtc
+            .toUtc()
+            .millisecondsSinceEpoch,
+        sampleIntervalSeconds: export.sampleIntervalSeconds,
+        heartRateBpm: export.heartRateBpm,
+        distanceKm: export.distanceKm,
+        energyKcal: export.energyKcal,
+      ),
+    );
+    return WorkoutExportReceipt(
+      status: switch (receipt.status) {
+        'saved' => HealthExportStatus.saved,
+        'alreadyPresent' => HealthExportStatus.alreadyPresent,
+        _ => throw StateError('Unknown HealthKit export result.'),
+      },
+      syncIdentifier: receipt.syncIdentifier,
+      syncVersion: receipt.syncVersion,
     );
   }
 }

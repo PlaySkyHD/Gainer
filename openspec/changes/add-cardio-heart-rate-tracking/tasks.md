@@ -9,8 +9,8 @@
 
 ## 2. Flutter-Daten
 
-- [ ] 2.1 Domänenmodell `CardioSession`, Entwurf und `CardioAnalysis` (D2); Unit-Tests inkl. RMSSD-Artefakte.
-- [ ] 2.2 `CardioRepository` (Entwurf, Beenden, Ändern, Löschen, Liste) und Sync-Codec/Typlisten (D5, D6); Tests.
+- [x] 2.1 Domänenmodell `CardioSession`, Entwurf und `CardioAnalysis` (D2); Unit-Tests inkl. RMSSD-Artefakte.
+- [x] 2.2 `CardioRepository` (Entwurf, Beenden, Ändern, Löschen, Liste) und Sync-Codec/Typlisten (D5, D6); Tests.
 
 ## 3. iOS
 
@@ -19,7 +19,7 @@
 
 ## 4. Oberfläche
 
-- [ ] 4.1 `CardioSessionController` mit Abfrage-Schleife, Verdichtung und Wiederaufnahme (D5); Tests mit Fake-Plattform.
+- [x] 4.1 `CardioSessionController` mit Abfrage-Schleife, Verdichtung und Wiederaufnahme (D5); Tests mit Fake-Plattform.
 - [ ] 4.2 Start-Sheet, Live-Ansicht, Detail, Tagebuchzeile und Toolbar-Button (D7); Widget- und Golden-Tests, Textgröße 2.
 
 ## 5. Abschluss
