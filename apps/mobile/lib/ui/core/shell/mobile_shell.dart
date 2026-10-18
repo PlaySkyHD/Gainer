@@ -54,6 +54,7 @@ class MobileShell extends StatelessWidget {
                 MobileArea.body => BodyScreen(viewModel: account.bodyViewModel),
                 MobileArea.progress => ProgressScreen(
                   viewModel: account.progressViewModel,
+                  onOpenArea: (area) => model.selectTab(area.index),
                 ),
                 MobileArea.more => _MoreScreen(
                   controller: controller,
