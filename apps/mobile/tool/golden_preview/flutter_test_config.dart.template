@@ -1,0 +1,34 @@
+// Vorlage für lesbare Golden-Vorschauen. Golden-Tests rendern Text mit der
+// Blockschrift „Ahem“; diese Konfiguration lädt stattdessen eine echte Schrift
+// und die Cupertino-Icons. Wird von tool/preview_goldens.sh nach
+// test/zz_preview/flutter_test_config.dart kopiert und nie committet.
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+Future<void> _load(String family, String path) async {
+  final loader = FontLoader(family)
+    ..addFont(Future.value(ByteData.sublistView(File(path).readAsBytesSync())));
+  await loader.load();
+}
+
+Future<void> testExecutable(FutureOr<void> Function() testMain) async {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  final sans = Platform.environment['GAINER_PREVIEW_FONT']!;
+  final icons = Platform.environment['GAINER_PREVIEW_ICONS']!;
+  for (final family in [
+    'CupertinoSystemText',
+    'CupertinoSystemDisplay',
+    '.SF Pro Text',
+    '.SF Pro Display',
+    '.SF UI Text',
+    'Roboto',
+  ]) {
+    await _load(family, sans);
+  }
+  await _load('packages/cupertino_icons/CupertinoIcons', icons);
+  await _load('CupertinoIcons', icons);
+  await testMain();
+}
