@@ -16,4 +16,5 @@ export 'gainer_segmented_control.dart';
 export 'gainer_sheet.dart';
 export 'gainer_stacked_dialog.dart';
 export 'gainer_swipe_to_delete.dart';
+export 'gainer_text_field_row.dart';
 export 'gainer_toolbar_button.dart';
