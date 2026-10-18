@@ -258,6 +258,39 @@ void main() {
     expect(reps(previous['cur-bench']!), [8, 7, null]);
   });
 
+  test('sets map by position within the same set type', () {
+    final history = [
+      workout(
+        id: 'source',
+        startedAt: DateTime.utc(2026, 10, 16, 18),
+        exercises: [
+          block('a', benchPress, [
+            loggedSet('a1', kg: 100, reps: 8),
+            loggedSet('a2', kg: 95, reps: 7),
+          ]),
+        ],
+      ),
+    ];
+    final training = workout(
+      id: 'now',
+      startedAt: DateTime.utc(2026, 10, 17, 18),
+      exercises: [
+        block('n', benchPress, [
+          loggedSet('w1', type: SetType.warmup, kg: 50, reps: 8),
+          loggedSet('w2', type: SetType.warmup, kg: 80, reps: 3),
+          loggedSet('n1'),
+          loggedSet('n2'),
+        ]),
+      ],
+    );
+
+    final previous = previousValuesFor(training, history);
+
+    // Aufwärmsätze ohne Vorgänger verschieben die Arbeitssätze nicht.
+    expect(weights(previous['n']!), [null, null, 100, 95]);
+    expect(reps(previous['n']!), [null, null, 8, 7]);
+  });
+
   test(
     'applying previous values fills only empty fields and never inserts zero',
     () {

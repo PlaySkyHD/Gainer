@@ -138,7 +138,7 @@ Der Nutzer SHALL kg oder lbs als Anzeigeeinheit wählen. Gewichte MUST kanonisch
 
 ### Requirement: Vorwerte als Platzhalter
 
-Leere Satzfelder SHALL den positionsgleichen Satz der Vorwertquelle als blassen Platzhalter zeigen, visuell klar von eingetragenen Werten unterschieden. Platzhalter MUST NOT gespeichert werden, solange der Nutzer sie nicht einträgt oder beim Beenden übernimmt.
+Leere Satzfelder SHALL den positionsgleichen Satz desselben Satztyps der Vorwertquelle als blassen Platzhalter zeigen, visuell klar von eingetragenen Werten unterschieden. Platzhalter MUST NOT gespeichert werden, solange der Nutzer sie nicht einträgt oder beim Beenden übernimmt.
 
 #### Scenario: Platzhalter anzeigen
 - **GIVEN** das letzte Training mit Bankdrücken enthielt 100 kg × 8 und 100 kg × 7
