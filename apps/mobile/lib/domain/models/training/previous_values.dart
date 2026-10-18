@@ -6,8 +6,10 @@ import 'workout_rules.dart';
 /// [history] muss ausschließlich die Trainings des angemeldeten Kontos enthalten;
 /// diese Funktion kennt keine Nutzer und prüft keine Eigentümerschaft.
 ///
-/// Ergebnis: je Block-`workoutExerciseId` ein Eintrag je aktuellem Satz
-/// (Position i ↔ Quellsatz i), `null` wo kein Vorwert existiert.
+/// Ergebnis: je Block-`workoutExerciseId` ein Eintrag je aktuellem Satz,
+/// `null` wo kein Vorwert existiert. Zugeordnet wird die Position innerhalb
+/// desselben Satztyps: der zweite Arbeitssatz erhält den zweiten Arbeitssatz der
+/// Quelle, auch wenn davor unterschiedlich viele Aufwärmsätze stehen.
 Map<String, List<LoggedSet?>> previousValuesFor(
   Workout current,
   List<Workout> history,
@@ -36,12 +38,32 @@ Map<String, List<LoggedSet?>> previousValuesFor(
       block.sourceExerciseId,
       occurrence,
     );
-    result[block.workoutExerciseId] = [
-      for (var i = 0; i < block.sets.length; i++)
-        source != null && i < source.sets.length ? source.sets[i] : null,
-    ];
+    result[block.workoutExerciseId] = _matchBySetType(block.sets, source);
   }
   return result;
+}
+
+List<LoggedSet?> _matchBySetType(List<LoggedSet> sets, WorkoutBlock? source) {
+  if (source == null) return List<LoggedSet?>.filled(sets.length, null);
+  final sourceByType = <SetType, List<LoggedSet>>{};
+  for (final set in source.sets) {
+    sourceByType.putIfAbsent(set.setType, () => []).add(set);
+  }
+  final seen = <SetType, int>{};
+  return [
+    for (final set in sets)
+      () {
+        final index = seen.update(
+          set.setType,
+          (count) => count + 1,
+          ifAbsent: () => 0,
+        );
+        final candidates = sourceByType[set.setType];
+        return candidates != null && index < candidates.length
+            ? candidates[index]
+            : null;
+      }(),
+  ];
 }
 
 /// Füllt nur leere Gewichts- und Wiederholungsfelder aus dem Vorwert derselben
