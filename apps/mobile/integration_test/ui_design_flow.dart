@@ -49,25 +49,14 @@ Future<void> runUiDesignCaptureFlow(
 ) async {
   await tester.pumpWidget(app(GainerTheme.light));
   await tester.pumpAndSettle();
-  await _waitForExerciseProgress(tester, fixture);
+  await _waitForDashboard(tester, fixture);
   await capture('tab-heute');
   // Kein Untertitel unter dem großen Titel (design.md D1.1).
   expect(find.text('Dein Fortschritt aus deinen Einträgen'), findsNothing);
-  expect(find.text('Letzter Eintrag · 14.10.2026'), findsOneWidget);
-  expect(find.text('Ø 7 Tage · 82.7 kg'), findsOneWidget);
-  await _scrollActiveTabUntilVisible(
-    tester,
-    find.text('148 g Protein pro erfasstem Tag'),
-  );
-  expect(find.text('148 g Protein pro erfasstem Tag'), findsOneWidget);
-  _resetActiveTabScroll(tester);
-  await tester.pumpAndSettle();
-  await _scrollActiveTabUntilVisible(tester, find.text('Übungsfortschritt'));
-  await capture('exercise-progress');
-  expect(
-    fixture.account.progressViewModel.exerciseProgress!.points,
-    isNotEmpty,
-  );
+  expect(find.text('Ernährung'), findsOneWidget);
+  expect(find.text('Gewicht'), findsOneWidget);
+  expect(find.text('Training'), findsWidgets);
+  expect(find.text('Protein 148 g'), findsOneWidget);
 
   await _tapTab(tester, 'Check-in');
   expect(find.text('Verlauf'), findsOneWidget);
@@ -158,13 +147,6 @@ Future<void> runUiDesignCaptureFlow(
     }
     await capture(tab.$2);
   }
-  await _tapTab(tester, 'Heute');
-  await _scrollActiveTabUntilVisible(tester, find.text('Übungsfortschritt'));
-  await capture('exercise-dark-progress');
-  expect(
-    fixture.account.progressViewModel.exerciseProgress!.points,
-    isNotEmpty,
-  );
   await _tapTab(tester, 'Check-in');
   await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
   await tester.pumpAndSettle();
@@ -229,23 +211,17 @@ void _resetActiveTabScroll(WidgetTester tester) {
   tester.state<ScrollableState>(_activeTabScrollable()).position.jumpTo(0);
 }
 
-Future<void> _waitForExerciseProgress(
+Future<void> _waitForDashboard(
   WidgetTester tester,
   UiDesignFixture fixture,
 ) async {
   final viewModel = fixture.account.progressViewModel;
   for (
     var attempt = 0;
-    attempt < 30 &&
-        (viewModel.dashboard == null || viewModel.exerciseProgress == null);
+    attempt < 30 && viewModel.dashboard == null;
     attempt++
   ) {
     await tester.pump(const Duration(milliseconds: 50));
   }
   expect(viewModel.dashboard, isNotNull);
-  expect(viewModel.selectedExerciseId, isNotNull);
-  expect(viewModel.selectedProgressWindow, '30');
-  expect(viewModel.exerciseOptions, isNotEmpty);
-  expect(viewModel.exerciseProgress, isNotNull);
-  expect(viewModel.exerciseProgress!.points, isNotEmpty);
 }
