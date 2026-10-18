@@ -129,11 +129,16 @@ void main() {
           .controller!;
       expect(fieldController('body-start-weight').text, '82.0');
       expect(fieldController('body-target-weight').text, '76.0');
-      await tester.tap(find.text('lb'));
+      final unitSegment = find.byKey(const ValueKey('body-goal-weight-unit'));
+      await tester.tap(
+        find.descendant(of: unitSegment, matching: find.text('lb')),
+      );
       await tester.pumpAndSettle();
       expect(fieldController('body-start-weight').text, '180.779055');
       expect(fieldController('body-target-weight').text, '167.551319');
-      await tester.tap(find.text('kg'));
+      await tester.tap(
+        find.descendant(of: unitSegment, matching: find.text('kg')),
+      );
       await tester.pumpAndSettle();
       expect(fieldController('body-start-weight').text, '82.0');
       expect(fieldController('body-target-weight').text, '76.0');
@@ -448,6 +453,92 @@ void main() {
     expect(goal.startWeightKg, closeTo(82, 0.001));
     expect(goal.targetWeightKg, closeTo(76, 0.001));
     expect(goal.targetDate, _localDate(target));
+  });
+
+  testWidgets('body sheets size to their content, not the full screen', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final model = BodyViewModel(
+      BodyRepository(
+        store: LocalSyncStore(database: database, accountId: accountId),
+      ),
+    );
+    await tester.pumpWidget(CupertinoApp(home: BodyScreen(viewModel: model)));
+    await tester.pumpAndSettle();
+    final screenHeight = tester.view.physicalSize.height;
+    double sheetHeight() => tester
+        .getSize(
+          find
+              .descendant(
+                of: find.byType(GainerSheetFrame),
+                matching: find.byType(Container),
+              )
+              .first,
+        )
+        .height;
+
+    await tester.tap(find.byKey(const ValueKey('body-open-goal')));
+    await tester.pumpAndSettle();
+    expect(sheetHeight(), lessThan(screenHeight * .8));
+    expect(find.text('Sichern'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('body-save-goal'))).height,
+      lessThan(60),
+    );
+    await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
+    await tester.pumpAndSettle();
+    expect(sheetHeight(), lessThan(screenHeight * .8));
+  });
+
+  testWidgets('long pressing the target date removes it', (tester) async {
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final repository = BodyRepository(
+      store: LocalSyncStore(database: database, accountId: accountId),
+    );
+    final model = BodyViewModel(repository);
+    await tester.pumpWidget(CupertinoApp(home: BodyScreen(viewModel: model)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('body-open-goal')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('body-start-weight')),
+      '82',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('body-target-weight')),
+      '76',
+    );
+    final target = DateTime.now().add(const Duration(days: 60));
+    await tester.tap(find.byKey(const ValueKey('body-target-date')));
+    await tester.pumpAndSettle();
+    tester
+        .widget<CupertinoDatePicker>(find.byType(CupertinoDatePicker))
+        .onDateTimeChanged(target);
+    await tester.tap(find.text('Fertig'));
+    await tester.pumpAndSettle();
+    expect(find.text(_prettyDay(target)), findsOneWidget);
+
+    await tester.longPress(find.byKey(const ValueKey('body-target-date')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Datum entfernen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kein Datum'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('body-save-goal')));
+    await tester.pumpAndSettle();
+    final goal = (await repository.read()).activeGoal!.value;
+    expect(goal.targetDate, isNull);
   });
 
   testWidgets(

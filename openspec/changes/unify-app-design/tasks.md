@@ -37,4 +37,4 @@
 - [ ] 7.2 Heute als aufgeräumte Tagesübersicht: Ernährung, Gewicht und Training als je eine antippbare Karte mit Sprung in den Tab; Übungsfortschritt entfällt (steht in Training → Statistik); Aktualisieren per Herunterziehen.
 - [ ] 7.3 Essen: Datum in der Toolbar statt doppelter Überschriften, Tageskarte mit Kalorien und Makros als Fortschritt, leere Mahlzeiten nur mit „Hinzufügen“; Lebensmittel-Hinzufügen als Sheet mit Mahlzeit-Segment.
 - [ ] 7.4 Gerichtseditor nutzt für Bestandteile denselben Hinzufügen-Dialog wie Mahlzeiten (Spec `reusable-meals`, „Gerichtskomponenten über den vollständigen Lebensmitteldialog hinzufügen“); Formularfelder als `GainerTextFieldRow`.
-- [ ] 7.5 Körperziel- und Check-in-Sheets passen sich dem Inhalt an, Felder als `GainerTextFieldRow`, Zieltyp als Segment im Inhalt.
+- [x] 7.5 Körperziel- und Check-in-Sheets passen sich dem Inhalt an, Felder als `GainerTextFieldRow`, Zieltyp als Segment im Inhalt.
