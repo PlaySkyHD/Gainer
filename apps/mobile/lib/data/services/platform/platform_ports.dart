@@ -80,6 +80,12 @@ abstract interface class LiveActivityPlatform {
   Future<bool> update({required LiveActivityState state});
   Future<void> end(String sessionId);
   Future<void> endAll();
+
+  /// Ob Live Activities in den iOS-Einstellungen für die App erlaubt sind.
+  Future<bool> isEnabled();
+
+  /// Öffnet die Einstellungen der App.
+  Future<void> openSettings();
 }
 
 enum HealthExportStatus { saved, alreadyPresent }
