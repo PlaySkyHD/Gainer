@@ -1,8 +1,11 @@
 import 'package:flutter/cupertino.dart';
 
+import '../../../domain/models/cardio/cardio_analysis.dart';
+import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import '../cardio/cardio_format.dart';
 import 'repeat_workout_sheet.dart';
 import 'save_workout_as_plan.dart';
 import 'training_format.dart';
@@ -19,6 +22,7 @@ class TrainingDiarySection extends StatelessWidget {
     required this.editing,
     required this.onOpen,
     required this.onStart,
+    this.onOpenCardio,
     super.key,
   });
 
@@ -29,13 +33,16 @@ class TrainingDiarySection extends StatelessWidget {
   final ValueChanged<Workout> onOpen;
   final VoidCallback onStart;
 
+  /// Öffnet die Detailansicht einer Cardio-Einheit.
+  final ValueChanged<CardioSession>? onOpenCardio;
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: viewModel,
       builder: (context, _) {
         final colors = GainerDesign.colorsOf(context);
-        final diary = viewModel.diary;
+        final items = viewModel.items;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -50,22 +57,23 @@ class TrainingDiarySection extends StatelessWidget {
               ),
               const SizedBox(height: GainerSpacing.s),
             ],
-            if (diary.isEmpty && viewModel.isLoading)
+            if (items.isEmpty && viewModel.isLoading)
               const Center(child: CupertinoActivityIndicator())
-            else if (diary.isEmpty)
+            else if (items.isEmpty)
               _EmptyDiary(onStart: onStart)
             else
-              for (final month in groupDiaryByMonth(diary)) ...[
+              for (final month in groupDiaryByMonth(items)) ...[
                 GainerSectionHeader(
                   title: formatMonthTitle(DateTime(month.year, month.month)),
-                  trailing: formatTrainingCount(month.workouts.length),
+                  trailing: formatTrainingCount(month.items.length),
                 ),
                 const SizedBox(height: GainerSpacing.xs),
                 _MonthCard(
                   viewModel: viewModel,
-                  workouts: month.workouts,
+                  items: month.items,
                   editing: editing,
                   onOpen: onOpen,
+                  onOpenCardio: onOpenCardio,
                 ),
                 const SizedBox(height: GainerSpacing.l),
               ],
@@ -117,15 +125,17 @@ class _EmptyDiary extends StatelessWidget {
 class _MonthCard extends StatelessWidget {
   const _MonthCard({
     required this.viewModel,
-    required this.workouts,
+    required this.items,
     required this.editing,
     required this.onOpen,
+    required this.onOpenCardio,
   });
 
   final TrainingHomeViewModel viewModel;
-  final List<Workout> workouts;
+  final List<DiaryItem> items;
   final bool editing;
   final ValueChanged<Workout> onOpen;
+  final ValueChanged<CardioSession>? onOpenCardio;
 
   @override
   Widget build(BuildContext context) {
@@ -136,19 +146,27 @@ class _MonthCard extends StatelessWidget {
         decoration: BoxDecoration(color: colors.surface),
         child: Column(
           children: [
-            for (var i = 0; i < workouts.length; i++) ...[
+            for (var i = 0; i < items.length; i++) ...[
               if (i > 0)
                 Container(
                   height: 0.5,
                   margin: const EdgeInsets.only(left: GainerSpacing.m),
                   color: colors.separator,
                 ),
-              _DiaryRow(
-                viewModel: viewModel,
-                workout: workouts[i],
-                editing: editing,
-                onOpen: onOpen,
-              ),
+              switch (items[i]) {
+                WorkoutDiaryItem(:final workout) => _DiaryRow(
+                  viewModel: viewModel,
+                  workout: workout,
+                  editing: editing,
+                  onOpen: onOpen,
+                ),
+                CardioDiaryItem(:final session) => _CardioRow(
+                  viewModel: viewModel,
+                  session: session,
+                  editing: editing,
+                  onOpen: onOpenCardio,
+                ),
+              },
             ],
           ],
         ),
@@ -307,6 +325,151 @@ class _DiaryRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CardioRow extends StatelessWidget {
+  const _CardioRow({
+    required this.viewModel,
+    required this.session,
+    required this.editing,
+    required this.onOpen,
+  });
+
+  final TrainingHomeViewModel viewModel;
+  final CardioSession session;
+  final bool editing;
+  final ValueChanged<CardioSession>? onOpen;
+
+  String get _title => session.activityType.label;
+
+  /// „Ø 132 bpm · 78 % in Zone“; fehlende Teile entfallen.
+  String? get _summary {
+    final analysis = CardioAnalysis.of(session);
+    final average = analysis.averageBpm;
+    final share = analysis.zoneShare;
+    final parts = [
+      if (average != null) 'Ø ${formatBpm(average.round())}',
+      if (share != null) '${formatPercent(share)} in Zone',
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  Future<bool> _confirm(BuildContext context) => confirmGainerDelete(
+    context,
+    title: 'Einheit löschen?',
+    message:
+        '„$_title“ verschwindet sofort aus dem Tagebuch und wird beim nächsten Sync entfernt.',
+    deleteLabel: _deleteLabel,
+  );
+
+  Future<void> _deleteAfterConfirmation(BuildContext context) async {
+    if (await _confirm(context)) {
+      await viewModel.deleteCardio(session.sessionId);
+    }
+  }
+
+  Future<void> _showActions(BuildContext context) async {
+    final action = await showGainerActionSheet<_DiaryAction>(
+      context: context,
+      title: _title,
+      groups: [
+        [
+          const GainerSheetAction(
+            label: _deleteLabel,
+            icon: CupertinoIcons.trash,
+            value: _DiaryAction.delete,
+            destructive: true,
+          ),
+        ],
+      ],
+    );
+    if (action == _DiaryAction.delete && context.mounted) {
+      await _deleteAfterConfirmation(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final local = session.startedAtUtc.toLocal();
+    final summary = _summary;
+    final row = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: editing ? null : () => onOpen?.call(session),
+      onLongPress: editing ? null : () => _showActions(context),
+      child: Padding(
+        padding: const EdgeInsets.all(GainerSpacing.m),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DateBadge(local: local),
+            const SizedBox(width: GainerSpacing.s),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.heart_fill,
+                        size: 16,
+                        color: colors.destructive,
+                      ),
+                      const SizedBox(width: GainerSpacing.xxs),
+                      Expanded(
+                        child: Text(
+                          _title,
+                          style: GainerTypography.cardTitle.copyWith(
+                            color: colors.primaryText,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        formatDurationMinutes(session.duration),
+                        style: GainerTypography.label.copyWith(
+                          color: colors.secondaryText,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (summary != null) ...[
+                    const SizedBox(height: GainerSpacing.xxs),
+                    Text(
+                      summary,
+                      style: GainerTypography.label.copyWith(
+                        color: colors.secondaryText,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (editing) {
+      return Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: GainerSpacing.s),
+            child: GainerDeleteMinusButton(
+              semanticLabel: '$_title löschen',
+              onPressed: () => _deleteAfterConfirmation(context),
+            ),
+          ),
+          Expanded(child: row),
+        ],
+      );
+    }
+    return GainerSwipeToDelete(
+      dismissKey: ValueKey('diary-cardio-${session.sessionId}'),
+      label: _deleteLabel,
+      confirm: () => _confirm(context),
+      onDeleted: () => viewModel.deleteCardio(session.sessionId),
+      child: row,
     );
   }
 }

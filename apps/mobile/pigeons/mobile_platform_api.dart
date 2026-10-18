@@ -141,6 +141,145 @@ class PlatformRoute {
   final int createdAtUtcEpochMilliseconds;
 }
 
+/// Gefundener Pulsgurt mit Heart Rate Service (0x180D).
+class PlatformHeartRateSensor {
+  const PlatformHeartRateSensor({
+    required this.id,
+    required this.name,
+    required this.isConnected,
+    this.signalStrength,
+  });
+
+  /// `CBPeripheral.identifier` als UUID-String.
+  final String id;
+  final String name;
+  final bool isConnected;
+
+  /// RSSI in dBm; fehlt bei schon verbundenen Gurten.
+  final int? signalStrength;
+}
+
+/// Ein Messwert des Gurts mit fortlaufender Sequenz je Überwachung.
+class PlatformHeartRateSample {
+  const PlatformHeartRateSample({
+    required this.sequence,
+    required this.atUtcEpochMilliseconds,
+    required this.bpm,
+    required this.rrIntervalsMs,
+  });
+
+  final int sequence;
+  final int atUtcEpochMilliseconds;
+  final int bpm;
+
+  /// RR-Intervalle dieses Messwerts in ms, umgerechnet aus 1/1024 s.
+  final List<int> rrIntervalsMs;
+}
+
+/// Konfiguration der nativen Cardio-Überwachung (Puffer, Zonenalarm, Live Activity).
+class PlatformCardioMonitoringConfig {
+  const PlatformCardioMonitoringConfig({
+    required this.sessionId,
+    required this.title,
+    required this.startedAtUtcEpochMilliseconds,
+    required this.graceSeconds,
+    required this.repeatSeconds,
+    required this.warmupSeconds,
+    required this.soundId,
+    required this.alertsEnabled,
+    required this.liveActivityEnabled,
+    this.zoneLowBpm,
+    this.zoneHighBpm,
+  });
+
+  final String sessionId;
+
+  /// Anzeigename der Sportart, z. B. „Rad-Ergometer“.
+  final String title;
+  final int startedAtUtcEpochMilliseconds;
+  final int graceSeconds;
+  final int repeatSeconds;
+  final int warmupSeconds;
+
+  /// Timerton für Alarme, siehe `playTimerSound`.
+  final String soundId;
+  final bool alertsEnabled;
+  final bool liveActivityEnabled;
+  final int? zoneLowBpm;
+  final int? zoneHighBpm;
+}
+
+/// Zustand von Bluetooth, Gurt und Überwachung samt neuen Messwerten.
+class PlatformHeartRateStatus {
+  const PlatformHeartRateStatus({
+    required this.bluetoothState,
+    required this.connectionState,
+    required this.lastSequence,
+    required this.samples,
+    this.sensorId,
+    this.sensorName,
+    this.batteryPercent,
+    this.latestBpm,
+    this.latestAtUtcEpochMilliseconds,
+    this.monitoringSessionId,
+    this.zoneState,
+  });
+
+  /// One of `unknown`, `poweredOn`, `poweredOff`, `unauthorized`, `unsupported`, `resetting`.
+  final String bluetoothState;
+
+  /// One of `idle`, `connecting`, `connected`, `reconnecting`.
+  final String connectionState;
+
+  /// Höchste vergebene Sequenz der laufenden Überwachung, 0 ohne Werte.
+  final int lastSequence;
+
+  /// Messwerte mit Sequenz größer als die angefragte, aufsteigend.
+  final List<PlatformHeartRateSample> samples;
+  final String? sensorId;
+  final String? sensorName;
+  final int? batteryPercent;
+  final int? latestBpm;
+  final int? latestAtUtcEpochMilliseconds;
+
+  /// Session der laufenden Überwachung; null, wenn keine läuft.
+  final String? monitoringSessionId;
+
+  /// One of `none`, `inZone`, `above`, `below`, `noSignal`; null ohne Überwachung.
+  final String? zoneState;
+}
+
+/// Beendete Cardio-Einheit für den Export nach Apple Health.
+class PlatformCardioExport {
+  const PlatformCardioExport({
+    required this.accountId,
+    required this.sessionId,
+    required this.syncVersion,
+    required this.activityType,
+    required this.startedAtUtcEpochMilliseconds,
+    required this.endedAtUtcEpochMilliseconds,
+    required this.sampleIntervalSeconds,
+    required this.heartRateBpm,
+    this.distanceKm,
+    this.energyKcal,
+  });
+
+  final String accountId;
+  final String sessionId;
+  final int syncVersion;
+
+  /// `IndoorCycling`.
+  final String activityType;
+  final int startedAtUtcEpochMilliseconds;
+  final int endedAtUtcEpochMilliseconds;
+  final int sampleIntervalSeconds;
+
+  /// Ein Wert je Intervall ab Start, 0 = kein Signal.
+  final List<int> heartRateBpm;
+  final double? distanceKm;
+  final double? energyKcal;
+}
+
 @HostApi()
 abstract class MobilePlatformApi {
   @async
@@ -294,6 +433,41 @@ abstract class MobilePlatformApi {
 
   @async
   void retryPendingRoute();
+
+  /// Zustand von Bluetooth und Gurt sowie Messwerte nach [afterSequence].
+  @async
+  PlatformHeartRateStatus readHeartRateStatus(int afterSequence);
+
+  /// Sucht [durationMilliseconds] lang nach Pulsgurten; enthält schon verbundene.
+  @async
+  List<PlatformHeartRateSensor> scanHeartRateSensors(int durationMilliseconds);
+
+  /// Verbindet und merkt den Gurt; verbindet nach Abbrüchen selbst neu.
+  /// False, wenn der Gurt unbekannt ist.
+  @async
+  bool connectHeartRateSensor(String sensorId);
+
+  /// Trennt und vergisst den gemerkten Gurt.
+  @async
+  void disconnectHeartRateSensor();
+
+  /// Startet Puffer, Zonenalarm und ggf. Live Activity; ersetzt eine laufende Überwachung.
+  @async
+  void startCardioMonitoring(PlatformCardioMonitoringConfig config);
+
+  /// Ändert Zielbereich und Optionen, ohne Puffer und Sequenzen zurückzusetzen.
+  @async
+  void updateCardioMonitoring(PlatformCardioMonitoringConfig config);
+
+  /// Beendet Puffer, Alarm und Live Activity der Session.
+  @async
+  void stopCardioMonitoring(String sessionId);
+
+  @async
+  PlatformAuthorizationRequestResult requestCardioWriteAuthorization();
+
+  @async
+  PlatformWorkoutExportResult exportCardioSession(PlatformCardioExport export);
 }
 
 @FlutterApi()

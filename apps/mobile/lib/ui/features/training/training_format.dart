@@ -1,3 +1,4 @@
+import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/training/workout_model.dart';
 
 const _shortMonths = [
@@ -60,32 +61,67 @@ String formatElapsed(Duration elapsed) {
 String formatTrainingCount(int count) =>
     count == 1 ? '1 Training' : '$count Trainings';
 
-/// Ein Monat im Tagebuch mit seinen Trainings, neueste zuerst.
+/// Eintrag im Tagebuch: Krafttraining oder Cardio-Einheit.
+sealed class DiaryItem {
+  const DiaryItem();
+
+  DateTime get startedAtUtc;
+}
+
+final class WorkoutDiaryItem extends DiaryItem {
+  const WorkoutDiaryItem(this.workout);
+
+  final Workout workout;
+
+  @override
+  DateTime get startedAtUtc => workout.startedAtUtc;
+}
+
+final class CardioDiaryItem extends DiaryItem {
+  const CardioDiaryItem(this.session);
+
+  final CardioSession session;
+
+  @override
+  DateTime get startedAtUtc => session.startedAtUtc;
+}
+
+/// Ein Monat im Tagebuch mit seinen Einträgen, neueste zuerst.
 final class DiaryMonth {
   const DiaryMonth({
     required this.year,
     required this.month,
-    required this.workouts,
+    required this.items,
   });
 
   final int year;
   final int month;
-  final List<Workout> workouts;
+  final List<DiaryItem> items;
+}
+
+/// Führt Trainings und Cardio-Einheiten nach Startzeit zusammen, neueste zuerst.
+List<DiaryItem> mergeDiaryItems(
+  List<Workout> workouts,
+  List<CardioSession> cardio,
+) {
+  final items = <DiaryItem>[
+    for (final workout in workouts) WorkoutDiaryItem(workout),
+    for (final session in cardio) CardioDiaryItem(session),
+  ]..sort((a, b) => b.startedAtUtc.compareTo(a.startedAtUtc));
+  return items;
 }
 
 /// Gruppiert nach lokalem Monat. Die Reihenfolge der Eingabe bleibt erhalten.
-List<DiaryMonth> groupDiaryByMonth(List<Workout> workouts) {
+List<DiaryMonth> groupDiaryByMonth(List<DiaryItem> items) {
   final groups = <DiaryMonth>[];
-  for (final workout in workouts) {
-    final local = workout.startedAtUtc.toLocal();
+  for (final item in items) {
+    final local = item.startedAtUtc.toLocal();
     final last = groups.isEmpty ? null : groups.last;
     if (last != null && last.year == local.year && last.month == local.month) {
-      last.workouts.add(workout);
+      last.items.add(item);
       continue;
     }
-    groups.add(
-      DiaryMonth(year: local.year, month: local.month, workouts: [workout]),
-    );
+    groups.add(DiaryMonth(year: local.year, month: local.month, items: [item]));
   }
   return groups;
 }

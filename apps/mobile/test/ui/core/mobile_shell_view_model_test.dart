@@ -31,4 +31,17 @@ void main() {
     expect(model.takeRequestedWorkout(), isNull);
     model.dispose();
   });
+
+  test('an open cardio request is delivered exactly once', () {
+    final model = MobileShellViewModel();
+    var notifications = 0;
+    model.addListener(() => notifications++);
+
+    expect(model.takeRequestedCardio(), isFalse);
+    model.requestOpenCardio();
+    expect(notifications, 1);
+    expect(model.takeRequestedCardio(), isTrue);
+    expect(model.takeRequestedCardio(), isFalse);
+    model.dispose();
+  });
 }

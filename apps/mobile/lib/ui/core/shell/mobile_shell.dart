@@ -5,6 +5,9 @@ import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../features/access/account_operator_screen.dart';
 import '../../features/body/body_screen.dart';
 import '../../features/body/health/health_review_screen.dart';
+import '../../features/cardio/cardio_feature.dart';
+import '../../features/cardio/cardio_live_screen.dart';
+import '../../features/cardio/cardio_settings_screen.dart';
 import '../../features/coach/coach_screen.dart';
 import '../../features/nutrition/nutrition_screen.dart';
 import '../../features/progress/progress_screen.dart';
@@ -53,6 +56,7 @@ class MobileShell extends StatelessWidget {
                 MobileArea.training => TrainingHomeScreen(
                   repository: account.training,
                   activeWorkout: account.activeWorkout,
+                  cardio: _cardioOf(account),
                 ),
                 MobileArea.nutrition => NutritionScreen(
                   viewModel: account.nutritionViewModel,
@@ -74,6 +78,12 @@ class MobileShell extends StatelessWidget {
     );
   }
 }
+
+CardioFeature _cardioOf(AccountScope account) => CardioFeature(
+  repository: account.cardio,
+  session: account.cardioSession,
+  health: account.cardioHealth,
+);
 
 /// Öffnet das aktive Training, wenn der Controller es nach einem Tab-Wechsel
 /// angefordert hat. Nur ein Training des aktuellen, noch aktiven Kontos.
@@ -115,6 +125,17 @@ class _ActiveWorkoutOpenerState extends State<_ActiveWorkoutOpener> {
   }
 
   void _handleRequest() {
+    if (widget.model.takeRequestedCardio()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final account = widget.account;
+        if (!account.isSessionActive() || !account.cardioSession.isRunning) {
+          return;
+        }
+        openCardioLive(context, _cardioOf(account));
+      });
+      return;
+    }
     final workoutId = widget.model.takeRequestedWorkout();
     if (workoutId == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -231,6 +252,15 @@ class _MoreScreen extends StatelessWidget {
                   builder: (_) =>
                       CoachScreen(viewModel: account.coachViewModel),
                 ),
+              ),
+            ),
+            GainerListRow(
+              title: 'Cardio',
+              leadingIcon: CupertinoIcons.heart_circle,
+              showChevron: true,
+              onTap: () => openCardioSettings(
+                context,
+                preferences: account.cardio.preferences,
               ),
             ),
             if (account.session.isAccountOperator)

@@ -23,6 +23,7 @@ class MobileShellViewModel extends ChangeNotifier {
   late final CupertinoTabController _tabController;
   int _selectedIndex = MobileArea.progress.index;
   String? _requestedWorkoutId;
+  bool _requestedCardio = false;
 
   int get selectedIndex => _selectedIndex;
   MobileArea get selectedArea => MobileArea.values[_selectedIndex];
@@ -54,6 +55,20 @@ class MobileShellViewModel extends ChangeNotifier {
     final workoutId = _requestedWorkoutId;
     _requestedWorkoutId = null;
     return workoutId;
+  }
+
+  /// Bittet darum, nach dem Tab-Wechsel die Live-Ansicht der Cardio-Einheit
+  /// zu öffnen.
+  void requestOpenCardio() {
+    _requestedCardio = true;
+    notifyListeners();
+  }
+
+  /// Liefert die offene Cardio-Anfrage einmal und löscht sie danach.
+  bool takeRequestedCardio() {
+    final requested = _requestedCardio;
+    _requestedCardio = false;
+    return requested;
   }
 
   @override

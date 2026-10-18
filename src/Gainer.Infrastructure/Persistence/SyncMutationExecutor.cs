@@ -240,6 +240,26 @@ public sealed class SyncMutationExecutor(
                             Metadata(mutationId, content), payload.NutritionDayId, payload.BaseVersion), cancellationToken);
                     return Result(collector);
                 }
+            case "saveCardioSession":
+                {
+                    SaveCardioSessionPayload payload = Deserialize<SaveCardioSessionPayload>(content.Payload);
+                    CardioSessionValues session = payload.Session
+                        ?? throw new SyncMutationValidationException(InvalidPayloadCode, "The cardio session is missing.");
+                    ValidateExpectation(content, ResourceKind.CardioSession, session.SessionId, payload.BaseVersion);
+                    CardioSessionSnapshot snapshot = await new CardioSessionMutationHandler(context, userContext, timeProvider, collector)
+                        .SaveAsync(SaveCardioSessionMutation.Create(
+                            Metadata(mutationId, content), payload.BaseVersion, session), cancellationToken);
+                    return Result(collector, snapshot);
+                }
+            case "deleteCardioSession":
+                {
+                    DeleteCardioSessionPayload payload = Deserialize<DeleteCardioSessionPayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.CardioSession, payload.SessionId, payload.BaseVersion);
+                    _ = await new CardioSessionMutationHandler(context, userContext, timeProvider, collector)
+                        .DeleteAsync(DeleteCardioSessionMutation.Create(
+                            Metadata(mutationId, content), payload.SessionId, payload.BaseVersion), cancellationToken);
+                    return Result(collector);
+                }
             case "saveReusableMeal":
                 {
                     SaveReusableMealPayload payload = Deserialize<SaveReusableMealPayload>(content.Payload);
@@ -474,6 +494,8 @@ public sealed class SyncMutationExecutor(
     private sealed record CreateWorkoutPayload(WorkoutValues? Workout);
     private sealed record SaveWorkoutPayload(long BaseVersion, WorkoutValues? Workout);
     private sealed record DeleteWorkoutPayload(Guid WorkoutId, long BaseVersion);
+    private sealed record SaveCardioSessionPayload(long BaseVersion, CardioSessionValues? Session);
+    private sealed record DeleteCardioSessionPayload(Guid SessionId, long BaseVersion);
     private sealed record CreateTrainingPlanPayload(TrainingPlanValues? Plan);
     private sealed record UpdateTrainingPlanPayload(long BaseVersion, TrainingPlanValues? Plan);
     private sealed record ArchiveTrainingPlanPayload(Guid PlanId, long BaseVersion);
