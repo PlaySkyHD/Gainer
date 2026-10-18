@@ -66,192 +66,199 @@ class _SyncScreenState extends State<SyncScreen> {
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _model,
-    builder: (context, _) {
-      final colors = GainerDesign.colorsOf(context);
-      return GainerScaffold(
-        title: 'Sync & Gerät',
-        children: [
-          Text(
-            widget.isOnline
-                ? 'Änderungen werden sicher mit deinem Konto abgeglichen.'
-                : 'Offline: lokale Änderungen bleiben auf diesem Gerät gespeichert.',
-            style: GainerTypography.body.copyWith(
-              color: widget.isOnline ? colors.secondaryText : colors.warning,
+    builder: (context, _) => GainerScaffold(
+      title: 'Sync & Gerät',
+      children: [
+        if (_model.errorMessage case final message?)
+          _Message(message: message, isError: true),
+        if (_model.statusMessage case final message?)
+          _Message(message: message, isError: false),
+        GainerGroupedSection(
+          header: 'Verbindung',
+          footer: widget.isOnline
+              ? 'Änderungen werden sicher mit deinem Konto abgeglichen.'
+              : 'Offline: lokale Änderungen bleiben auf diesem Gerät gespeichert.',
+          children: [
+            GainerListRow(
+              title: 'Status aktualisieren',
+              leadingIcon: CupertinoIcons.arrow_clockwise,
+              onTap: _model.isBusy || _model.isLoading ? null : _model.load,
             ),
-          ),
-          if (_model.errorMessage case final message?)
-            _Message(message: message, isError: true),
-          if (_model.statusMessage case final message?)
-            _Message(message: message, isError: false),
-          const SizedBox(height: GainerSpacing.l),
-          _sectionTitle(context, 'Gerätewechsel'),
-          const SizedBox(height: GainerSpacing.xs),
-          _handoverPanel(context),
-          const SizedBox(height: GainerSpacing.l),
-          _sectionTitle(context, 'Sync-Konflikte'),
-          const SizedBox(height: GainerSpacing.xs),
-          ..._conflictChildren(context),
-          const SizedBox(height: GainerSpacing.l),
-          GainerPillButton(
-            label: 'Status aktualisieren',
-            variant: GainerPillVariant.tonal,
-            expand: true,
-            onPressed: _model.isBusy || _model.isLoading ? null : _model.load,
-          ),
-        ],
-      );
-    },
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.l),
+        ..._handoverSections(context),
+        const SizedBox(height: GainerSpacing.l),
+        ..._conflictSection(context),
+      ],
+    ),
   );
 
-  Widget _handoverPanel(BuildContext context) {
+  List<Widget> _handoverSections(BuildContext context) {
     final pending = _model.pendingHandover;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (pending == null) ...[
-          const _CardText(
-            'Starte die Übergabe auf dem bisherigen Gerät. Danach gibst du die angezeigten Übergabedaten auf dem neuen Gerät ein.',
-          ),
-          const SizedBox(height: GainerSpacing.xs),
-          GainerPillButton(
-            label: 'Dieses Gerät ablösen',
-            expand: true,
-            onPressed: !_model.isOnline || _model.isBusy || _model.isLoading
-                ? null
-                : _confirmAndBegin,
-          ),
-        ] else
-          ..._pendingHandoverChildren(context, pending),
-        if (pending == null) ..._receiveHandoverChildren(context),
-      ],
-    );
+    if (pending == null) {
+      return [
+        GainerGroupedSection(
+          header: 'Gerätewechsel',
+          footer: 'Starte die Übergabe auf dem bisherigen Gerät. Danach gibst du die angezeigten Übergabedaten auf dem neuen Gerät ein.',
+          children: [
+            GainerListRow(
+              title: 'Dieses Gerät ablösen',
+              leadingIcon: CupertinoIcons.arrow_2_squarepath,
+              showChevron: true,
+              onTap: !_model.isOnline || _model.isBusy || _model.isLoading
+                  ? null
+                  : _confirmAndBegin,
+            ),
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.l),
+        ..._receiveHandoverSections(context),
+      ];
+    }
+    return _pendingHandoverSections(context, pending);
   }
 
-  List<Widget> _conflictChildren(BuildContext context) {
+  List<Widget> _conflictSection(BuildContext context) {
     if (_model.isLoading) {
-      return const [Center(child: CupertinoActivityIndicator())];
-    }
-    if (_model.conflicts.isEmpty) {
-      return const [_CardText('Keine ungelösten Konflikte.')];
+      return [
+        GainerGroupedSection(
+          header: 'Sync-Konflikte',
+          children: const [
+            Padding(
+              padding: EdgeInsets.all(GainerSpacing.m),
+              child: Center(child: CupertinoActivityIndicator()),
+            ),
+          ],
+        ),
+      ];
     }
     return [
-      for (final conflict in _model.conflicts) _conflictCard(context, conflict),
+      GainerGroupedSection(
+        header: 'Sync-Konflikte',
+        children: _model.conflicts.isEmpty
+            ? const [GainerListRow(title: 'Keine ungelösten Konflikte')]
+            : [
+                for (final conflict in _model.conflicts)
+                  ..._conflictRows(conflict),
+              ],
+      ),
     ];
   }
 
-  List<Widget> _pendingHandoverChildren(
+  List<Widget> _pendingHandoverSections(
     BuildContext context,
     PendingHandoverRecord pending,
   ) => switch (pending.phase) {
     'sourceBeginPending' => [
-      const _CardText(
-        'Die Anfrage wird sicher fortgesetzt. Schreibzugriffe bleiben bis zum Abschluss angehalten.',
-      ),
-      const SizedBox(height: GainerSpacing.xs),
-      GainerPillButton(
-        label: 'Übergabe fortsetzen',
-        expand: true,
-        onPressed: !_model.isOnline || _model.isBusy ? null : _begin,
+      GainerGroupedSection(
+        header: 'Gerätewechsel',
+        footer: 'Die Anfrage wird sicher fortgesetzt. Schreibzugriffe bleiben bis zum Abschluss angehalten.',
+        children: [
+          GainerListRow(
+            title: 'Übergabe fortsetzen',
+            leadingIcon: CupertinoIcons.arrow_right_circle,
+            showChevron: true,
+            onTap: !_model.isOnline || _model.isBusy ? null : _begin,
+          ),
+        ],
       ),
     ],
     'sourceBegan' => [
-      _handoverCodeCard(context, pending),
-      const SizedBox(height: GainerSpacing.xs),
-      GainerPillButton(
-        label: 'Übergabe abbrechen',
-        variant: GainerPillVariant.tonal,
-        expand: true,
-        onPressed: !_model.isOnline || _model.isBusy ? null : _confirmAndCancel,
+      ..._handoverCodeSections(context, pending),
+      const SizedBox(height: GainerSpacing.l),
+      GainerGroupedSection(
+        children: [
+          GainerListRow(
+            title: 'Übergabe abbrechen',
+            leadingIcon: CupertinoIcons.xmark_circle,
+            showChevron: true,
+            onTap: !_model.isOnline || _model.isBusy ? null : _confirmAndCancel,
+          ),
+        ],
       ),
     ],
-    'targetCompletePending' => _targetCompletePendingChildren(pending),
+    'targetCompletePending' => _targetCompletePendingSections(pending),
     _ => [
-      const _CardText(
+      _Footnote(
         'Für dieses Gerät liegt ein Übergabeschritt vor, den die App nicht sicher zuordnen kann. Es wurden keine Schreibrechte geändert.',
         warning: true,
       ),
     ],
   };
 
-  List<Widget> _targetCompletePendingChildren(PendingHandoverRecord pending) {
+  List<Widget> _targetCompletePendingSections(PendingHandoverRecord pending) {
     final expired =
         pending.expiresAtUtc?.isBefore(DateTime.now().toUtc()) ?? false;
     return [
-      _CardText(
-        expired
+      GainerGroupedSection(
+        header: 'Übernahme',
+        footer: expired
             ? 'Die gespeicherte Übernahme ist abgelaufen. Du kannst sie erneut mit denselben Daten abgleichen oder dieses Gerät nach einer Serverprüfung lokal freigeben.'
             : 'Die Übernahme ist gespeichert und kann nach einem Abbruch oder Neustart wiederholt werden.',
-        warning: expired,
+        children: [
+          GainerListRow(
+            title: 'Übernahme fortsetzen',
+            leadingIcon: CupertinoIcons.arrow_right_circle,
+            showChevron: true,
+            onTap: !_model.isOnline || _model.isBusy
+                ? null
+                : _model.resumeTargetHandover,
+          ),
+          if (expired)
+            GainerListRow(
+              title: 'Nach Serverprüfung lokal freigeben',
+              leadingIcon: CupertinoIcons.checkmark_seal,
+              showChevron: true,
+              onTap: !_model.isOnline || _model.isBusy
+                  ? null
+                  : _model.recoverExpiredTargetHandover,
+            ),
+        ],
       ),
-      const SizedBox(height: GainerSpacing.xs),
-      GainerPillButton(
-        label: 'Übernahme fortsetzen',
-        expand: true,
-        onPressed: !_model.isOnline || _model.isBusy
-            ? null
-            : _model.resumeTargetHandover,
-      ),
-      if (expired) ...[
-        const SizedBox(height: GainerSpacing.xs),
-        GainerPillButton(
-          label: 'Nach Serverprüfung lokal freigeben',
-          variant: GainerPillVariant.tonal,
-          expand: true,
-          onPressed: !_model.isOnline || _model.isBusy
-              ? null
-              : _model.recoverExpiredTargetHandover,
-        ),
-      ],
     ];
   }
 
-  List<Widget> _receiveHandoverChildren(BuildContext context) => [
-    const SizedBox(height: GainerSpacing.l),
-    _sectionTitle(context, 'Übergabe auf diesem Gerät annehmen'),
-    const SizedBox(height: GainerSpacing.xs),
-    const _CardText(
-      'Füge das Übergabepaket vom bisherigen Gerät ein. Es wird gegen dein angemeldetes Konto und diese API geprüft, bevor Schreibrechte wechseln.',
-    ),
-    const SizedBox(height: GainerSpacing.xs),
-    _bundlePasteField(context),
-    const SizedBox(height: GainerSpacing.xs),
-    GainerPillButton(
-      label: 'Übergabedaten einfügen',
-      variant: GainerPillVariant.tonal,
-      expand: true,
-      onPressed: _model.isBusy ? null : _pasteAndParseTransferBundle,
-    ),
-    if (_parsedTransferBundle case final bundle?)
-      Padding(
-        padding: const EdgeInsets.only(top: GainerSpacing.xs),
-        child: _CardText(
-          'Quellgerät ${bundle.sourceClientId} · Revision ${bundle.frozenRevision} · Ablauf ${bundle.expiresAtUtc.toLocal()} · Einmalcode erkannt',
+  List<Widget> _receiveHandoverSections(BuildContext context) => [
+    GainerGroupedSection(
+      header: 'Übergabe annehmen',
+      footer: 'Füge das Übergabepaket vom bisherigen Gerät ein. Es wird gegen dein angemeldetes Konto und diese API geprüft, bevor Schreibrechte wechseln.',
+      children: [
+        _bundlePasteField(context),
+        if (_parsedTransferBundle case final bundle?)
+          _Footnote(
+            'Quellgerät ${bundle.sourceClientId} · Revision ${bundle.frozenRevision} · Ablauf ${bundle.expiresAtUtc.toLocal()} · Einmalcode erkannt',
+          ),
+        GainerListRow(
+          title: 'Übergabedaten einfügen',
+          leadingIcon: CupertinoIcons.doc_on_clipboard,
+          showChevron: true,
+          onTap: _model.isBusy ? null : _pasteAndParseTransferBundle,
         ),
-      ),
-    const SizedBox(height: GainerSpacing.xs),
-    GainerPillButton(
-      label: _showAdvancedHandoverFields
-          ? 'Manuelle Eingabe ausblenden'
-          : 'Manuell eingeben (erweitert)',
-      variant: GainerPillVariant.tonal,
-      expand: true,
-      onPressed: () => setState(
-        () => _showAdvancedHandoverFields = !_showAdvancedHandoverFields,
-      ),
+        GainerListRow(
+          title: _showAdvancedHandoverFields
+              ? 'Manuelle Eingabe ausblenden'
+              : 'Manuell eingeben (erweitert)',
+          leadingIcon: CupertinoIcons.pencil,
+          onTap: () => setState(
+            () => _showAdvancedHandoverFields = !_showAdvancedHandoverFields,
+          ),
+        ),
+        if (_showAdvancedHandoverFields) ...[
+          _field(context, _handoverId, 'Übergabe-ID'),
+          _field(context, _oneTimeCode, 'Einmalcode', obscure: true),
+          _field(context, _sourceClientId, 'Quellgerät-ID'),
+          _field(
+            context,
+            _revision,
+            'Eingefrorene Revision',
+            keyboard: TextInputType.number,
+          ),
+          _field(context, _expiresAtUtc, 'Ablaufzeit (UTC, ISO 8601)'),
+        ],
+      ],
     ),
-    if (_showAdvancedHandoverFields) ...[
-      _field(context, _handoverId, 'Übergabe-ID'),
-      _field(context, _oneTimeCode, 'Einmalcode', obscure: true),
-      _field(context, _sourceClientId, 'Quellgerät-ID'),
-      _field(
-        context,
-        _revision,
-        'Eingefrorene Revision',
-        keyboard: TextInputType.number,
-      ),
-      _field(context, _expiresAtUtc, 'Ablaufzeit (UTC, ISO 8601)'),
-    ],
-    const SizedBox(height: GainerSpacing.xs),
+    const SizedBox(height: GainerSpacing.l),
     GainerPillButton(
       label: 'Gerätewechsel bestätigen',
       expand: true,
@@ -259,108 +266,64 @@ class _SyncScreenState extends State<SyncScreen> {
     ),
   ];
 
-  Widget _handoverCodeCard(
+  List<Widget> _handoverCodeSections(
     BuildContext context,
     PendingHandoverRecord pending,
   ) {
-    final colors = GainerDesign.colorsOf(context);
     final expired =
         pending.expiresAtUtc?.isBefore(DateTime.now().toUtc()) ?? true;
-    return GainerCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return [
+      GainerGroupedSection(
+        header: expired ? 'Übergabe abgelaufen' : 'Übergabe bereit',
+        footer: 'Teile diese Daten nur direkt mit deinem neuen Gerät. Der Einmalcode ist ein Geheimnis und wird nach kurzer Zeit ungültig.',
         children: [
-          Text(
-            expired ? 'Übergabe abgelaufen' : 'Übergabe bereit',
-            style: GainerTypography.cardTitle.copyWith(
-              color: expired ? colors.warning : colors.primaryText,
-            ),
-          ),
-          const SizedBox(height: GainerSpacing.xs),
-          Text(
-            'Teile diese Daten nur direkt mit deinem neuen Gerät. Der Einmalcode ist ein Geheimnis und wird nach kurzer Zeit ungültig.',
-            style: GainerTypography.body.copyWith(color: colors.secondaryText),
-          ),
-          const SizedBox(height: GainerSpacing.s),
-          _copyValue(context, 'Übergabe-ID', pending.handoverId),
-          _copyValue(context, 'Einmalcode', pending.oneTimeCode, secret: true),
-          _copyValue(context, 'Quellgerät-ID', pending.sourceClientId),
-          _copyValue(
-            context,
-            'Eingefrorene Revision',
-            pending.frozenRevision?.toString(),
-          ),
-          _copyValue(
-            context,
+          _copyRow('Übergabe-ID', pending.handoverId),
+          _copyRow('Einmalcode', pending.oneTimeCode, secret: true),
+          _copyRow('Quellgerät-ID', pending.sourceClientId),
+          _copyRow('Eingefrorene Revision', pending.frozenRevision?.toString()),
+          _copyRow(
             'Ablaufzeit UTC',
             pending.expiresAtUtc?.toUtc().toIso8601String(),
           ),
-          const SizedBox(height: GainerSpacing.s),
-          GainerPillButton(
-            label: 'Übergabedaten kopieren',
-            expand: true,
-            onPressed: _model.isBusy ? null : _confirmAndCopyBundle,
+          GainerListRow(
+            title: 'Übergabedaten kopieren',
+            leadingIcon: CupertinoIcons.doc_on_doc,
+            showChevron: true,
+            onTap: _model.isBusy ? null : _confirmAndCopyBundle,
           ),
         ],
       ),
-    );
+    ];
   }
 
   Widget _bundlePasteField(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: GainerSpacing.xs),
-      child: CupertinoTextField(
-        controller: _transferBundle,
-        placeholder: 'Übergabepaket einfügen',
-        maxLines: 5,
-        minLines: 3,
-        autocorrect: false,
-        enableSuggestions: false,
-        keyboardType: TextInputType.multiline,
-        textInputAction: TextInputAction.newline,
-        style: GainerTypography.body.copyWith(color: colors.primaryText),
-        placeholderStyle: GainerTypography.body.copyWith(
-          color: colors.placeholderText,
-        ),
-        padding: const EdgeInsets.all(GainerSpacing.s),
-        decoration: BoxDecoration(
-          color: colors.elevatedSurface,
-          borderRadius: BorderRadius.circular(GainerRadii.field),
-        ),
+    return CupertinoTextField(
+      controller: _transferBundle,
+      placeholder: 'Übergabepaket einfügen',
+      maxLines: 5,
+      minLines: 3,
+      autocorrect: false,
+      enableSuggestions: false,
+      keyboardType: TextInputType.multiline,
+      textInputAction: TextInputAction.newline,
+      style: GainerTypography.body.copyWith(color: colors.primaryText),
+      placeholderStyle: GainerTypography.body.copyWith(
+        color: colors.placeholderText,
       ),
+      padding: const EdgeInsets.all(GainerSpacing.m),
+      decoration: const BoxDecoration(),
     );
   }
 
-  Widget _copyValue(
-    BuildContext context,
-    String label,
-    String? value, {
-    bool secret = false,
-  }) {
-    final colors = GainerDesign.colorsOf(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: GainerSpacing.xs),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: GainerTypography.label.copyWith(color: colors.secondaryText),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            _copyValueText(value, secret: secret),
-            style: GainerTypography.body.copyWith(color: colors.primaryText),
-          ),
-          if (secret && value != null)
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: _model.isBusy ? null : () => _revealCode(value),
-              child: const Text('Einmalcode anzeigen'),
-            ),
-        ],
-      ),
+  GainerListRow _copyRow(String label, String? value, {bool secret = false}) {
+    return GainerListRow(
+      title: label,
+      value: _copyValueText(value, secret: secret),
+      showChevron: secret && value != null,
+      onTap: secret && value != null && !_model.isBusy
+          ? () => _revealCode(value)
+          : null,
     );
   }
 
@@ -369,71 +332,37 @@ class _SyncScreenState extends State<SyncScreen> {
     return secret ? '••••••••' : value;
   }
 
-  Widget _conflictCard(BuildContext context, LocalConflictRecord conflict) {
-    final colors = GainerDesign.colorsOf(context);
+  List<Widget> _conflictRows(LocalConflictRecord conflict) {
     final detail = conflict.detail;
     final detailText = detail is Map<String, Object?>
         ? (detail['message'] ?? detail['reason'] ?? conflict.code).toString()
         : conflict.code;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: GainerCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${_aggregateLabel(conflict.aggregateType)} · ${conflict.aggregateId}',
-              style: GainerTypography.cardTitle.copyWith(
-                color: colors.primaryText,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              detailText,
-              style: GainerTypography.body.copyWith(color: colors.warning),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Gemeldet ${conflict.createdAtUtc.toLocal()}',
-              style: GainerTypography.label.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-            const SizedBox(height: GainerSpacing.s),
-            Row(
-              children: [
-                Expanded(
-                  child: GainerPillButton(
-                    label: 'Serverstand nutzen',
-                    variant: GainerPillVariant.tonal,
-                    expand: true,
-                    onPressed: _model.isBusy || !widget.isOnline
-                        ? null
-                        : () => _confirmConflictResolution(
-                            conflict,
-                            retryLocal: false,
-                          ),
-                  ),
-                ),
-                const SizedBox(width: GainerSpacing.xs),
-                Expanded(
-                  child: GainerPillButton(
-                    label: 'Lokale Änderung erneut senden',
-                    expand: true,
-                    onPressed: _model.isBusy || !widget.isOnline
-                        ? null
-                        : () => _confirmConflictResolution(
-                            conflict,
-                            retryLocal: true,
-                          ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+    final enabled = !_model.isBusy && widget.isOnline;
+    return [
+      GainerListRow(
+        title:
+            '${_aggregateLabel(conflict.aggregateType)} · ${conflict.aggregateId}',
+        subtitle: detailText,
+        leadingIcon: CupertinoIcons.exclamationmark_triangle,
       ),
-    );
+      _Footnote('Gemeldet ${conflict.createdAtUtc.toLocal()}'),
+      GainerListRow(
+        title: 'Serverstand nutzen',
+        leadingIcon: CupertinoIcons.cloud_download,
+        showChevron: true,
+        onTap: enabled
+            ? () => _confirmConflictResolution(conflict, retryLocal: false)
+            : null,
+      ),
+      GainerListRow(
+        title: 'Lokale Änderung erneut senden',
+        leadingIcon: CupertinoIcons.arrow_up_circle,
+        showChevron: true,
+        onTap: enabled
+            ? () => _confirmConflictResolution(conflict, retryLocal: true)
+            : null,
+      ),
+    ];
   }
 
   Future<void> _confirmAndBegin() async {
@@ -624,38 +553,25 @@ class _SyncScreenState extends State<SyncScreen> {
     TextInputType keyboard = TextInputType.text,
   }) {
     final colors = GainerDesign.colorsOf(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: GainerSpacing.xs),
-      child: CupertinoTextField(
-        controller: controller,
-        placeholder: label,
-        obscureText: obscure,
-        keyboardType: keyboard,
-        autocorrect: false,
-        autofillHints: const [],
-        textInputAction: TextInputAction.next,
-        style: GainerTypography.body.copyWith(color: colors.primaryText),
-        placeholderStyle: GainerTypography.body.copyWith(
-          color: colors.placeholderText,
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: GainerSpacing.s,
-          vertical: 14,
-        ),
-        decoration: BoxDecoration(
-          color: colors.elevatedSurface,
-          borderRadius: BorderRadius.circular(GainerRadii.field),
-        ),
+    return CupertinoTextField(
+      controller: controller,
+      placeholder: label,
+      obscureText: obscure,
+      keyboardType: keyboard,
+      autocorrect: false,
+      autofillHints: const [],
+      textInputAction: TextInputAction.next,
+      style: GainerTypography.body.copyWith(color: colors.primaryText),
+      placeholderStyle: GainerTypography.body.copyWith(
+        color: colors.placeholderText,
       ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: GainerSpacing.m,
+        vertical: GainerSpacing.s,
+      ),
+      decoration: const BoxDecoration(),
     );
   }
-
-  Widget _sectionTitle(BuildContext context, String text) => Text(
-    text,
-    style: GainerTypography.cardTitle.copyWith(
-      color: GainerDesign.colorsOf(context).primaryText,
-    ),
-  );
 
   String _aggregateLabel(String type) => switch (type) {
     'workout' => 'Training',
@@ -666,19 +582,25 @@ class _SyncScreenState extends State<SyncScreen> {
   };
 }
 
-class _CardText extends StatelessWidget {
-  const _CardText(this.text, {this.warning = false});
+class _Footnote extends StatelessWidget {
+  const _Footnote(this.text, {this.warning = false});
   final String text;
   final bool warning;
 
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    return GainerCard(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        GainerSpacing.m,
+        GainerSpacing.xs,
+        GainerSpacing.m,
+        GainerSpacing.xs,
+      ),
       child: Text(
         text,
-        style: GainerTypography.body.copyWith(
-          color: warning ? colors.warning : colors.primaryText,
+        style: GainerTypography.label.copyWith(
+          color: warning ? colors.warning : colors.secondaryText,
         ),
       ),
     );
