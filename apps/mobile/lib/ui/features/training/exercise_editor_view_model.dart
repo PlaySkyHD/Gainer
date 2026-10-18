@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
+import '../../../data/repositories/training/training_preferences.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/warmup.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_validation.dart';
 import 'exercise_catalog_format.dart';
@@ -44,6 +46,9 @@ class ExerciseEditorViewModel extends ChangeNotifier {
   /// True, wenn Trainings oder Pläne auf die Übung verweisen.
   bool isUsed = false;
 
+  /// Trainingseinstellungen des Kontos; hier nur für den Abschnitt „Aufwärmen“.
+  TrainingPreferenceValues settings = const TrainingPreferenceValues();
+
   bool isLoading = false;
   bool isSaving = false;
   String? errorMessage;
@@ -65,14 +70,54 @@ class ExerciseEditorViewModel extends ChangeNotifier {
     try {
       final loadedCategories = await repository.readCategories();
       final used = await _isUsed();
+      final loadedSettings = await repository.preferences.read().catchError(
+        (_) => const TrainingPreferenceValues(),
+      );
       if (_disposed) return;
       categories = loadedCategories;
       isUsed = used;
+      settings = loadedSettings;
     } catch (_) {
       if (!_disposed) errorMessage = 'Die Übung konnte nicht geladen werden.';
     } finally {
       if (!_disposed) {
         isLoading = false;
+        _notify();
+      }
+    }
+  }
+
+  /// Aufwärm-Abweichungen dieser Übung; `null` erbt alles.
+  ExerciseWarmupOverride? get warmupOverride =>
+      exercise == null ? null : settings.warmupOverrides[exercise!.id];
+
+  /// Ändert die Aufwärm-Abweichungen der Übung und speichert sie lokal. Ein
+  /// leeres Ergebnis entfernt den Eintrag.
+  Future<void> updateWarmupOverride(
+    ExerciseWarmupOverride Function(ExerciseWarmupOverride current) change,
+  ) async {
+    final id = exercise?.id;
+    if (id == null) return;
+    TrainingPreferenceValues apply(TrainingPreferenceValues values) {
+      final next = change(
+        values.warmupOverrides[id] ?? ExerciseWarmupOverride(exerciseId: id),
+      );
+      final overrides = {...values.warmupOverrides};
+      if (next.isEmpty) {
+        overrides.remove(id);
+      } else {
+        overrides[id] = next;
+      }
+      return values.copyWith(warmupOverrides: overrides);
+    }
+
+    settings = apply(settings);
+    _notify();
+    try {
+      await repository.preferences.update(apply);
+    } catch (_) {
+      if (!_disposed) {
+        errorMessage = 'Die Einstellung konnte nicht gespeichert werden.';
         _notify();
       }
     }
