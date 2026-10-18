@@ -26,12 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Gainer verbindet sich mit deinem Pulsgurt, um während des Cardio-Trainings deinen Puls anzuzeigen und dich zu warnen, wenn du deinen Zielbereich verlässt.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Gainer nutzt die Kamera, wenn du einen Barcode scannen oder ein Lebensmittelfoto aufnehmen möchtest.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Gainer liest Körpergewicht, Schritte und Schlaf, um deinen Check-in vorauszufüllen und Körpergewichtsproben auf deine Anfrage zu prüfen.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Gainer schreibt dein Gewicht und deinen Schlaf aus dem Check-in sowie abgeschlossene Workouts nach deiner Bestätigung in Apple Health.</string>
+	<string>Gainer schreibt dein Gewicht und deinen Schlaf aus dem Check-in sowie abgeschlossene Workouts sowie Cardio-Einheiten mit Puls nach deiner Bestätigung in Apple Health.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>GainerAppGroupIdentifier</key>
@@ -49,6 +51,10 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
