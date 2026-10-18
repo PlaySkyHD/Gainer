@@ -17,9 +17,9 @@
 
 ## 4. Essen
 
-- [ ] 4.1 Toolbar mit Datum, Kalender und „+“; Tagesübersicht und Ziele als gruppierte Karten.
-- [ ] 4.2 Mahlzeit-Einträge mit Antippen, Wischen-zum-Löschen, Kontext-Sheet und Neuordnen-Sheet statt Inline-Buttons; Fachtests auf Gesten umgestellt, Goldens neu.
-- [ ] 4.3 Sheets und Dialoge des Ernährungsbereichs auf `showGainerSheet` und `showGainerStackedDialog`.
+- [x] 4.1 Toolbar mit Datum, Kalender und „+“; Tagesübersicht und Ziele als gruppierte Karten.
+- [x] 4.2 Mahlzeit-Einträge mit Antippen, Wischen-zum-Löschen, Kontext-Sheet und Neuordnen-Sheet statt Inline-Buttons; Fachtests auf Gesten umgestellt, Goldens neu.
+- [x] 4.3 Sheets und Dialoge des Ernährungsbereichs auf `showGainerSheet` und `showGainerStackedDialog`.
 
 ## 5. Mehr, Sync, Coach, Zugang
 
