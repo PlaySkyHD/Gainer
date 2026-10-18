@@ -127,7 +127,72 @@ final class GainerMobilePlatform: MobilePlatformApi {
         uuid: $0.uuid,
         measuredAtUtcEpochMilliseconds: $0.measuredAtUtcEpochMilliseconds,
         weightKilograms: $0.weightKilograms,
-        sourceName: $0.sourceName
+        sourceName: $0.sourceName,
+        syncIdentifier: $0.syncIdentifier
+      )
+    }
+  }
+
+  func requestCheckInAuthorization() async throws -> PlatformAuthorizationRequestResult {
+    try await handleHealthKitErrors { try await health.requestCheckInAuthorization() }
+  }
+
+  func readStepCount(
+    fromUtcEpochMilliseconds: Int64,
+    toUtcEpochMilliseconds: Int64
+  ) async throws -> Int64? {
+    try await handleHealthKitErrors {
+      try await health.readStepCount(
+        from: Date(timeIntervalSince1970: Double(fromUtcEpochMilliseconds) / 1000),
+        to: Date(timeIntervalSince1970: Double(toUtcEpochMilliseconds) / 1000)
+      )
+    }
+  }
+
+  func readSleep(
+    fromUtcEpochMilliseconds: Int64,
+    toUtcEpochMilliseconds: Int64
+  ) async throws -> PlatformSleepWindow? {
+    let window = try await handleHealthKitErrors {
+      try await health.readSleep(
+        from: Date(timeIntervalSince1970: Double(fromUtcEpochMilliseconds) / 1000),
+        to: Date(timeIntervalSince1970: Double(toUtcEpochMilliseconds) / 1000)
+      )
+    }
+    guard let window else { return nil }
+    return PlatformSleepWindow(
+      bedtimeUtcEpochMilliseconds: window.bedtimeUtcEpochMilliseconds,
+      wakeUtcEpochMilliseconds: window.wakeUtcEpochMilliseconds,
+      asleepMinutes: window.asleepMinutes,
+      sourceName: window.sourceName,
+      fromGainer: window.fromGainer
+    )
+  }
+
+  func writeBodyMass(
+    kilograms: Double,
+    measuredAtUtcEpochMilliseconds: Int64,
+    syncIdentifier: String
+  ) async throws -> PlatformHealthWriteStatus {
+    try await handleHealthKitErrors {
+      try await health.writeBodyMass(
+        kilograms: kilograms,
+        measuredAt: Date(timeIntervalSince1970: Double(measuredAtUtcEpochMilliseconds) / 1000),
+        syncIdentifier: syncIdentifier
+      )
+    }
+  }
+
+  func writeSleep(
+    bedtimeUtcEpochMilliseconds: Int64,
+    wakeUtcEpochMilliseconds: Int64,
+    syncIdentifier: String
+  ) async throws -> PlatformHealthWriteStatus {
+    try await handleHealthKitErrors {
+      try await health.writeSleep(
+        bedtime: Date(timeIntervalSince1970: Double(bedtimeUtcEpochMilliseconds) / 1000),
+        wake: Date(timeIntervalSince1970: Double(wakeUtcEpochMilliseconds) / 1000),
+        syncIdentifier: syncIdentifier
       )
     }
   }

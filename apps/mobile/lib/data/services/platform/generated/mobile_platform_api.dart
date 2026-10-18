@@ -114,6 +114,9 @@ int _deepHash(Object? value) {
 /// Reports that an authorization request finished, not that access was granted.
 enum PlatformAuthorizationRequestResult { requestCompleted }
 
+/// Ergebnis eines Schreibversuchs nach Apple Health.
+enum PlatformHealthWriteStatus { saved, alreadyPresent, notAuthorized }
+
 class PlatformHealthCheck {
   PlatformHealthCheck({required this.available});
 
@@ -206,6 +209,7 @@ class PlatformBodyMassSample {
     required this.measuredAtUtcEpochMilliseconds,
     required this.weightKilograms,
     required this.sourceName,
+    this.syncIdentifier,
   });
 
   String uuid;
@@ -216,12 +220,16 @@ class PlatformBodyMassSample {
 
   String sourceName;
 
+  /// `HKMetadataKeySyncIdentifier` der Probe; null bei fremden Quellen.
+  String? syncIdentifier;
+
   List<Object?> _toList() {
     return <Object?>[
       uuid,
       measuredAtUtcEpochMilliseconds,
       weightKilograms,
       sourceName,
+      syncIdentifier,
     ];
   }
 
@@ -236,6 +244,7 @@ class PlatformBodyMassSample {
       measuredAtUtcEpochMilliseconds: result[1]! as int,
       weightKilograms: result[2]! as double,
       sourceName: result[3]! as String,
+      syncIdentifier: result[4] as String?,
     );
   }
 
@@ -254,7 +263,8 @@ class PlatformBodyMassSample {
           other.measuredAtUtcEpochMilliseconds,
         ) &&
         _deepEquals(weightKilograms, other.weightKilograms) &&
-        _deepEquals(sourceName, other.sourceName);
+        _deepEquals(sourceName, other.sourceName) &&
+        _deepEquals(syncIdentifier, other.syncIdentifier);
   }
 
   @override
@@ -263,7 +273,82 @@ class PlatformBodyMassSample {
 
   @override
   String toString() {
-    return 'PlatformBodyMassSample(uuid: $uuid, measuredAtUtcEpochMilliseconds: $measuredAtUtcEpochMilliseconds, weightKilograms: $weightKilograms, sourceName: $sourceName)';
+    return 'PlatformBodyMassSample(uuid: $uuid, measuredAtUtcEpochMilliseconds: $measuredAtUtcEpochMilliseconds, weightKilograms: $weightKilograms, sourceName: $sourceName, syncIdentifier: $syncIdentifier)';
+  }
+}
+
+/// Schlafanalyse einer Nacht: früheste Einschlafzeit bis späteste Aufwachzeit.
+class PlatformSleepWindow {
+  PlatformSleepWindow({
+    required this.bedtimeUtcEpochMilliseconds,
+    required this.wakeUtcEpochMilliseconds,
+    required this.asleepMinutes,
+    required this.sourceName,
+    required this.fromGainer,
+  });
+
+  int bedtimeUtcEpochMilliseconds;
+
+  int wakeUtcEpochMilliseconds;
+
+  int asleepMinutes;
+
+  String sourceName;
+
+  /// Wahr, wenn nur Gainer-eigene Proben vorliegen.
+  bool fromGainer;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      bedtimeUtcEpochMilliseconds,
+      wakeUtcEpochMilliseconds,
+      asleepMinutes,
+      sourceName,
+      fromGainer,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformSleepWindow decode(Object result) {
+    result as List<Object?>;
+    return PlatformSleepWindow(
+      bedtimeUtcEpochMilliseconds: result[0]! as int,
+      wakeUtcEpochMilliseconds: result[1]! as int,
+      asleepMinutes: result[2]! as int,
+      sourceName: result[3]! as String,
+      fromGainer: result[4]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformSleepWindow || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(
+          bedtimeUtcEpochMilliseconds,
+          other.bedtimeUtcEpochMilliseconds,
+        ) &&
+        _deepEquals(wakeUtcEpochMilliseconds, other.wakeUtcEpochMilliseconds) &&
+        _deepEquals(asleepMinutes, other.asleepMinutes) &&
+        _deepEquals(sourceName, other.sourceName) &&
+        _deepEquals(fromGainer, other.fromGainer);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformSleepWindow(bedtimeUtcEpochMilliseconds: $bedtimeUtcEpochMilliseconds, wakeUtcEpochMilliseconds: $wakeUtcEpochMilliseconds, asleepMinutes: $asleepMinutes, sourceName: $sourceName, fromGainer: $fromGainer)';
   }
 }
 
@@ -582,26 +667,32 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is PlatformAuthorizationRequestResult) {
       buffer.putUint8(129);
       writeValue(buffer, value.index);
-    } else if (value is PlatformHealthCheck) {
+    } else if (value is PlatformHealthWriteStatus) {
       buffer.putUint8(130);
-      writeValue(buffer, value.encode());
-    } else if (value is PlatformCapturedImage) {
+      writeValue(buffer, value.index);
+    } else if (value is PlatformHealthCheck) {
       buffer.putUint8(131);
       writeValue(buffer, value.encode());
-    } else if (value is PlatformBodyMassSample) {
+    } else if (value is PlatformCapturedImage) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
-    } else if (value is PlatformWorkoutExportResult) {
+    } else if (value is PlatformBodyMassSample) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    } else if (value is PlatformLiveActivityDetail) {
+    } else if (value is PlatformSleepWindow) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    } else if (value is PlatformLiveActivityState) {
+    } else if (value is PlatformWorkoutExportResult) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    } else if (value is PlatformRoute) {
+    } else if (value is PlatformLiveActivityDetail) {
       buffer.putUint8(136);
+      writeValue(buffer, value.encode());
+    } else if (value is PlatformLiveActivityState) {
+      buffer.putUint8(137);
+      writeValue(buffer, value.encode());
+    } else if (value is PlatformRoute) {
+      buffer.putUint8(138);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -617,18 +708,23 @@ class _PigeonCodec extends StandardMessageCodec {
             ? null
             : PlatformAuthorizationRequestResult.values[value];
       case 130:
-        return PlatformHealthCheck.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : PlatformHealthWriteStatus.values[value];
       case 131:
-        return PlatformCapturedImage.decode(readValue(buffer)!);
+        return PlatformHealthCheck.decode(readValue(buffer)!);
       case 132:
-        return PlatformBodyMassSample.decode(readValue(buffer)!);
+        return PlatformCapturedImage.decode(readValue(buffer)!);
       case 133:
-        return PlatformWorkoutExportResult.decode(readValue(buffer)!);
+        return PlatformBodyMassSample.decode(readValue(buffer)!);
       case 134:
-        return PlatformLiveActivityDetail.decode(readValue(buffer)!);
+        return PlatformSleepWindow.decode(readValue(buffer)!);
       case 135:
-        return PlatformLiveActivityState.decode(readValue(buffer)!);
+        return PlatformWorkoutExportResult.decode(readValue(buffer)!);
       case 136:
+        return PlatformLiveActivityDetail.decode(readValue(buffer)!);
+      case 137:
+        return PlatformLiveActivityState.decode(readValue(buffer)!);
+      case 138:
         return PlatformRoute.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -1009,6 +1105,131 @@ class MobilePlatformApi {
     );
     return (pigeonVar_replyValue! as List<Object?>)
         .cast<PlatformBodyMassSample>();
+  }
+
+  /// Fragt Lesen (Gewicht, Schritte, Schlaf) und Schreiben (Gewicht, Schlaf)
+  /// für den Check-in in einem Systemdialog an.
+  Future<PlatformAuthorizationRequestResult>
+  requestCheckInAuthorization() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestCheckInAuthorization$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as PlatformAuthorizationRequestResult;
+  }
+
+  /// Tagessumme der Schritte; null ohne Daten.
+  Future<int?> readStepCount(
+    int fromUtcEpochMilliseconds,
+    int toUtcEpochMilliseconds,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readStepCount$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[fromUtcEpochMilliseconds, toUtcEpochMilliseconds],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return pigeonVar_replyValue as int?;
+  }
+
+  Future<PlatformSleepWindow?> readSleep(
+    int fromUtcEpochMilliseconds,
+    int toUtcEpochMilliseconds,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readSleep$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[fromUtcEpochMilliseconds, toUtcEpochMilliseconds],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return pigeonVar_replyValue as PlatformSleepWindow?;
+  }
+
+  Future<PlatformHealthWriteStatus> writeBodyMass(
+    double kilograms,
+    int measuredAtUtcEpochMilliseconds,
+    String syncIdentifier,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writeBodyMass$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[kilograms, measuredAtUtcEpochMilliseconds, syncIdentifier],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as PlatformHealthWriteStatus;
+  }
+
+  Future<PlatformHealthWriteStatus> writeSleep(
+    int bedtimeUtcEpochMilliseconds,
+    int wakeUtcEpochMilliseconds,
+    String syncIdentifier,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writeSleep$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[
+        bedtimeUtcEpochMilliseconds,
+        wakeUtcEpochMilliseconds,
+        syncIdentifier,
+      ],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as PlatformHealthWriteStatus;
   }
 
   Future<PlatformAuthorizationRequestResult>
