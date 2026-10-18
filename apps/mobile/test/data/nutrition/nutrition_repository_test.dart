@@ -68,7 +68,7 @@ void main() {
     expect(outbox.single.body, containsPair('entries', isA<List<dynamic>>()));
   });
 
-  test('move/delete maintain stable day identity and one aggregate mutation stream', () async {
+  test('move/delete maintain stable day identity and one waiting aggregate mutation', () async {
     final one = NutritionEntry(
       entryId: testId(50),
       meal: NutritionMeal.breakfast,
@@ -114,7 +114,8 @@ void main() {
     expect(
       (await repository.store.readOutbox(aggregateType: 'nutrition-day'))
           .map((m) => m.sequence),
-      [1, 2, 3],
+      // Drei lokale Änderungen vor dem Senden bleiben ein wartender Eintrag.
+      [1],
     );
   });
 

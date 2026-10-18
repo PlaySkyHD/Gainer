@@ -212,6 +212,12 @@ void main() {
         baseVersion: 0,
         body: workout(),
       );
+      // Das Anlegen ging bereits an den Server; sonst fiele es mit dem Löschen
+      // schon beim Speichern weg.
+      await store.claimMutationForSending(
+        (await store.readOutbox()).single.mutationId,
+        now: DateTime.utc(2026, 10, 17, 9),
+      );
       await commit(
         type: 'workout',
         id: _workoutId,
