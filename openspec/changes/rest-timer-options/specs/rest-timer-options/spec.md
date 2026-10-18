@@ -4,17 +4,17 @@
 
 ### Requirement: Shortcuts starten den Timer
 
-Ein Tipp auf einen Dauer-Shortcut SHALL den Timer sofort mit dieser Dauer starten. Solange ein Timer läuft oder pausiert ist, MUST die Shortcut-Zeile ausgeblendet sein.
+Ein Tipp auf einen Dauer-Shortcut SHALL den Timer sofort mit dieser Dauer starten; eine pausierte Pause wird dabei ersetzt. Nur solange ein Timer läuft, MUST die Shortcut-Zeile ausgeblendet sein.
 
 #### Scenario: Shortcut tippen
 - **GIVEN** die Timeransicht im Zustand bereit
 - **WHEN** der Nutzer auf „2:00“ tippt
 - **THEN** läuft der Timer mit 2:00 und die Shortcut-Zeile ist ausgeblendet
 
-#### Scenario: Shortcuts nach dem Schließen
+#### Scenario: Shortcuts beim Pausieren
 - **GIVEN** ein laufender Timer
-- **WHEN** der Nutzer den Timer schließt
-- **THEN** ist die Shortcut-Zeile wieder sichtbar
+- **WHEN** der Nutzer ihn pausiert
+- **THEN** ist die Shortcut-Zeile wieder sichtbar und ein Tipp auf „1:00“ startet eine neue Pause mit 1:00
 
 ### Requirement: Timermenü
 
