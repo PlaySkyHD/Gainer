@@ -114,17 +114,10 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
     Padding(
       padding: const EdgeInsets.fromLTRB(
         GainerSpacing.m,
-        GainerSpacing.xs,
+        GainerSpacing.s,
         GainerSpacing.m,
         0,
       ),
-      child: Text(
-        'Diesen Link einmalig sicher an die Person weitergeben.',
-        style: GainerTypography.body.copyWith(color: colors.secondaryText),
-      ),
-    ),
-    Padding(
-      padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.m),
       child: Text(
         link.toString(),
         style: GainerTypography.body.copyWith(color: colors.primaryText),
@@ -132,7 +125,12 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
     ),
     if (_invitationExpiresAt case final expires?)
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.m),
+        padding: const EdgeInsets.fromLTRB(
+          GainerSpacing.m,
+          GainerSpacing.xs,
+          GainerSpacing.m,
+          GainerSpacing.s,
+        ),
         child: Text(
           'Gültig bis ${expires.toLocal()}',
           style: GainerTypography.label.copyWith(color: colors.secondaryText),
@@ -140,6 +138,8 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
       ),
     GainerListRow(
       title: 'Einladungslink kopieren',
+      leadingIcon: CupertinoIcons.doc_on_doc,
+      showChevron: true,
       onTap: () => Clipboard.setData(ClipboardData(text: link.toString())),
     ),
   ];
@@ -175,85 +175,63 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    return CupertinoPageScaffold(
-      backgroundColor: colors.background,
-      navigationBar: CupertinoNavigationBar(
-        middle: const Text('Kontoverwaltung'),
-        backgroundColor: colors.background,
-      ),
-      child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(GainerSpacing.m),
+    return GainerScaffold(
+      title: 'Kontoverwaltung',
+      children: [
+        GainerGroupedSection(
+          header: 'Einladung ausstellen',
           children: [
-            GainerGroupedSection(
-              header: 'Einladung ausstellen',
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(GainerSpacing.m),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      CupertinoTextField(
-                        controller: _email,
-                        keyboardType: TextInputType.emailAddress,
-                        placeholder: 'E-Mail-Adresse',
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _createInvitation(),
-                        style: GainerTypography.body.copyWith(
-                          color: colors.primaryText,
-                        ),
-                        placeholderStyle: GainerTypography.body.copyWith(
-                          color: colors.placeholderText,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: GainerSpacing.m,
-                          vertical: GainerSpacing.s,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colors.elevatedSurface,
-                          borderRadius: BorderRadius.circular(
-                            GainerRadii.field,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: GainerSpacing.s),
-                      GainerPillButton(
-                        label: 'Einladung erstellen',
-                        expand: true,
-                        onPressed: _busy ? null : _createInvitation,
-                      ),
-                    ],
-                  ),
-                ),
-                if (_issuedInvitation case final link?)
-                  ..._invitationChildren(link, colors),
-                if (_error case final message?)
-                  Padding(
-                    padding: const EdgeInsets.all(GainerSpacing.m),
-                    child: Text(
-                      message,
-                      style: GainerTypography.body.copyWith(
-                        color: colors.destructive,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: GainerSpacing.l),
-            GainerGroupedSection(
-              header: 'Konten',
-              children: _accountChildren(colors),
-            ),
-            const SizedBox(height: GainerSpacing.m),
-            GainerPillButton(
-              label: 'Liste aktualisieren',
-              variant: GainerPillVariant.tonal,
-              expand: true,
-              onPressed: _loading || _busy ? null : _load,
+            CupertinoTextField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              placeholder: 'E-Mail-Adresse',
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _createInvitation(),
+              style: GainerTypography.body.copyWith(color: colors.primaryText),
+              placeholderStyle: GainerTypography.body.copyWith(
+                color: colors.placeholderText,
+              ),
+              padding: const EdgeInsets.all(GainerSpacing.m),
+              decoration: const BoxDecoration(),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: GainerSpacing.s),
+        GainerPillButton(
+          label: 'Einladung erstellen',
+          expand: true,
+          onPressed: _busy ? null : _createInvitation,
+        ),
+        if (_error case final message?)
+          Padding(
+            padding: const EdgeInsets.only(top: GainerSpacing.s),
+            child: Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GainerTypography.body.copyWith(color: colors.destructive),
+            ),
+          ),
+        if (_issuedInvitation case final link?) ...[
+          const SizedBox(height: GainerSpacing.l),
+          GainerGroupedSection(
+            header: 'Einladungslink',
+            footer: 'Diesen Link einmalig sicher an die Person weitergeben.',
+            children: _invitationChildren(link, colors),
+          ),
+        ],
+        const SizedBox(height: GainerSpacing.l),
+        GainerGroupedSection(
+          header: 'Konten',
+          children: [
+            ..._accountChildren(colors),
+            GainerListRow(
+              title: 'Liste aktualisieren',
+              leadingIcon: CupertinoIcons.arrow_clockwise,
+              onTap: _loading || _busy ? null : _load,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

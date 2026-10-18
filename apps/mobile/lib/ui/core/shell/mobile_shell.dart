@@ -180,7 +180,7 @@ class _MoreScreen extends StatelessWidget {
         ),
         const SizedBox(height: GainerSpacing.l),
         GainerGroupedSection(
-          header: 'KONTO & GERÄTE',
+          header: 'Konto & Geräte',
           children: [
             GainerListRow(
               title: 'Sync & Gerätewechsel',
@@ -213,7 +213,7 @@ class _MoreScreen extends StatelessWidget {
         ),
         const SizedBox(height: GainerSpacing.l),
         GainerGroupedSection(
-          header: 'WEITERE BEREICHE',
+          header: 'Weitere Bereiche',
           children: [
             GainerListRow(
               title: 'Coach',
@@ -242,12 +242,15 @@ class _MoreScreen extends StatelessWidget {
         ),
         const SizedBox(height: GainerSpacing.l),
         _SyncButton(account: account),
-        const SizedBox(height: GainerSpacing.s),
-        GainerPillButton(
-          label: 'Abmelden',
-          variant: GainerPillVariant.tonal,
-          expand: true,
-          onPressed: controller.logout,
+        const SizedBox(height: GainerSpacing.l),
+        GainerGroupedSection(
+          children: [
+            GainerListRow(
+              title: 'Abmelden',
+              leadingIcon: CupertinoIcons.square_arrow_right,
+              onTap: controller.logout,
+            ),
+          ],
         ),
       ],
     );
@@ -301,28 +304,17 @@ class _SyncButtonState extends State<_SyncButton> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
     final enabled = widget.account.online && !_busy;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return GainerGroupedSection(
+      header: 'Synchronisierung',
+      footer: _status,
       children: [
-        GainerPillButton(
-          label: 'Jetzt synchronisieren',
-          expand: true,
-          isLoading: _busy,
-          onPressed: enabled ? _sync : null,
+        GainerListRow(
+          title: 'Jetzt synchronisieren',
+          leadingIcon: CupertinoIcons.arrow_clockwise,
+          trailing: _busy ? const CupertinoActivityIndicator() : null,
+          onTap: enabled ? _sync : null,
         ),
-        if (_status case final value?)
-          Padding(
-            padding: const EdgeInsets.only(top: GainerSpacing.s),
-            child: Text(
-              value,
-              textAlign: TextAlign.center,
-              style: GainerTypography.body.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-          ),
       ],
     );
   }

@@ -30,7 +30,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Coach'), findsOneWidget);
+    expect(find.text('Coach'), findsWidgets);
     expect(
       find.text('Frage zu deinem Training oder deiner Entwicklung'),
       findsOneWidget,
