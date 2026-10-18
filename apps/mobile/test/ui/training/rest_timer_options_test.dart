@@ -63,10 +63,10 @@ void main() {
 
         await controller.stop();
         await controller.startShortcut(120);
-        expect(controller.phase, RestTimerPhase.paused);
+        expect(controller.phase, RestTimerPhase.running);
+        expect(controller.remainingSeconds, 120);
 
-        await controller.start();
-        await advanceRestTimer(tester, fixture.clock, 60);
+        await advanceRestTimer(tester, fixture.clock, 120);
         expect(controller.phase, RestTimerPhase.expired);
         await controller.startShortcut(90);
         expect(controller.phase, RestTimerPhase.running);
@@ -225,13 +225,20 @@ void main() {
           expect(find.bySemanticsLabel('Shortcut hinzufügen'), findsNothing);
           expect(find.text('01:00'), findsNothing);
 
+          // Pausiert erscheinen die Shortcuts wieder; ein Tipp startet neu.
           await controller.stop();
           await tester.pump();
-          expect(find.text('01:00'), findsNothing);
+          expect(find.bySemanticsLabel('Shortcut hinzufügen'), findsOneWidget);
+
+          await tester.tap(find.text('01:00'));
+          await tester.pump();
+          expect(controller.phase, RestTimerPhase.running);
+          expect(controller.remainingSeconds, 60);
+          expect(find.bySemanticsLabel('Shortcut hinzufügen'), findsNothing);
 
           await controller.close();
           await tester.pump();
-          expect(find.text('01:00'), findsOneWidget);
+          expect(find.bySemanticsLabel('Shortcut hinzufügen'), findsOneWidget);
         });
       },
     );

@@ -73,8 +73,8 @@ class _RestTimerSheetState extends State<RestTimerSheet> {
         final controller = _controller;
         final phase = controller.phase;
         final running = phase == RestTimerPhase.running;
-        final showShortcuts =
-            phase == RestTimerPhase.ready || phase == RestTimerPhase.expired;
+        // Nur während die Pause läuft, sind die Shortcuts ausgeblendet.
+        final showShortcuts = !running;
         return DecoratedBox(
           decoration: BoxDecoration(
             color: colors.background,
