@@ -113,7 +113,6 @@ Future<UiDesignFixture> createUiDesignFixture() async {
   );
   final progress = ProgressViewModel(
     InsightsRepository(api, store: store),
-    training: trainingLog,
   );
   final sync = SyncRepository(
     store: store,
