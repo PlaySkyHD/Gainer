@@ -482,7 +482,8 @@ class CardioSessionController extends ChangeNotifier {
       graceSeconds: graceSeconds,
       repeatSeconds: repeatSeconds,
       warmupSeconds: draft.warmupSeconds,
-      alertsEnabled: prefs.alertsEnabled,
+      // Ohne Gurt gibt es keinen Puls und damit auch keinen Signalverlust-Alarm.
+      alertsEnabled: prefs.alertsEnabled && draft.sensorId != null,
       liveActivityEnabled: liveActivityEnabled,
     );
   }

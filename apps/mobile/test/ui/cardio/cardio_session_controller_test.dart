@@ -177,7 +177,8 @@ void main() {
     expect(config.repeatSeconds, 60);
     expect(config.warmupSeconds, 60);
     expect(config.zoneLowBpm, 120);
-    expect(config.alertsEnabled, isTrue);
+    // Ohne Gurt keine Alarme, sonst käme nach 30 s „Kein Pulssignal“.
+    expect(config.alertsEnabled, isFalse);
     expect(config.soundId, trainingPreferences.timerSoundId.value);
     expect(await repository.readDraft(), isNotNull);
     // Nur eine laufende Einheit.
