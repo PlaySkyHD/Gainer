@@ -202,6 +202,292 @@ extension LocalConflictRecovery on LocalSyncStore {
       return replacementMutationId;
     });
   }
+
+  /// Ersetzt alle wartenden Änderungen der Ressource durch genau eine, die den
+  /// aktuellen lokalen Stand überträgt (anlegen, speichern oder löschen). Ist
+  /// die Ressource lokal gelöscht und dem Server unbekannt, wird nichts
+  /// gesendet. Server-Löschmarken werden nie wiederbelebt.
+  ///
+  /// Die Ersatzzeile behält Zeitstempel und Sequenz der ältesten ersetzten
+  /// Zeile, damit die Sendereihenfolge zwischen Ressourcen erhalten bleibt;
+  /// [createdAtUtc] gilt nur, wenn keine Zeile mehr vorhanden ist.
+  Future<void> forceLocalState({
+    required String conflictId,
+    required String replacementMutationId,
+    required DateTime createdAtUtc,
+  }) async {
+    await ensureAccountBound();
+    if (!RegExp(LocalDatabase.accountIdPattern)
+        .hasMatch(replacementMutationId)) {
+      throw ArgumentError.value(replacementMutationId, 'replacementMutationId');
+    }
+    await database.transaction(() async {
+      final conflict = await (database.select(
+        database.localConflicts,
+      )..where((t) => t.conflictId.equals(conflictId))).getSingleOrNull();
+      if (conflict == null) {
+        throw StateError('Conflict is no longer available.');
+      }
+      if (!forceableAggregateTypes.contains(conflict.aggregateType)) {
+        throw StateError('This resource type cannot be forced.');
+      }
+      final tombstone =
+          await (database.select(database.localTombstones)..where(
+                (t) =>
+                    t.resourceType.equals(_serverType(conflict.aggregateType)) &
+                    t.resourceId.equals(conflict.aggregateId),
+              ))
+              .getSingleOrNull();
+      if (tombstone != null) {
+        throw StateError(
+          'A server-deleted resource cannot be restored silently.',
+        );
+      }
+      final resource =
+          await (database.select(database.localResources)..where(
+                (t) =>
+                    t.aggregateType.equals(conflict.aggregateType) &
+                    t.aggregateId.equals(conflict.aggregateId),
+              ))
+              .getSingleOrNull();
+      if (resource == null) {
+        throw StateError('Local conflict copy is unavailable.');
+      }
+      final envelope = LocalAggregateEnvelope<Object?>.fromJson(
+        jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
+      );
+      final rows = await _outboxRows(
+        conflict.aggregateType,
+        conflict.aggregateId,
+      );
+      final operations = [for (final row in rows) _operationOf(row)];
+      if (operations.any(_spansResources)) {
+        throw StateError('This mutation spans several resources.');
+      }
+      final workingCopy = envelope.workingCopy;
+      final deleted =
+          operations.lastOrNull == LocalMutationOperation.delete.name ||
+          (workingCopy is Map && workingCopy['deletedAtUtc'] != null);
+      final serverVersion = envelope.serverVersion;
+
+      await (database.delete(database.localOutbox)..where(
+            (t) =>
+                t.accountId.equals(accountId) &
+                t.aggregateType.equals(conflict.aggregateType) &
+                t.aggregateId.equals(conflict.aggregateId),
+          ))
+          .go();
+      await (database.delete(database.localConflicts)..where(
+            (t) =>
+                t.aggregateType.equals(conflict.aggregateType) &
+                t.aggregateId.equals(conflict.aggregateId),
+          ))
+          .go();
+
+      if (deleted && serverVersion == null) {
+        await (database.delete(database.localResources)..where(
+              (t) =>
+                  t.aggregateType.equals(conflict.aggregateType) &
+                  t.aggregateId.equals(conflict.aggregateId),
+            ))
+            .go();
+        return;
+      }
+
+      final operation = deleted
+          ? LocalMutationOperation.delete
+          : serverVersion == null
+          ? LocalMutationOperation.create
+          : LocalMutationOperation.update;
+      final baseVersion = serverVersion ?? 0;
+      await database
+          .into(database.localOutbox)
+          .insert(
+            LocalOutboxCompanion.insert(
+              mutationId: replacementMutationId,
+              accountId: accountId,
+              aggregateType: conflict.aggregateType,
+              aggregateId: conflict.aggregateId,
+              sequence: rows.isEmpty ? 1 : rows.first.sequence,
+              status: LocalMutationStatus.pending.name,
+              createdAtUtc: rows.isEmpty
+                  ? createdAtUtc.toUtc().toIso8601String()
+                  : rows.first.createdAtUtc,
+              payloadJson: jsonEncode({
+                'operation': operation.name,
+                'baseVersion': baseVersion,
+                'body': workingCopy,
+              }),
+              baseVersion: Value(baseVersion),
+            ),
+          );
+      final pending = LocalAggregateEnvelope(
+        aggregateId: envelope.aggregateId,
+        serverSnapshot: envelope.serverSnapshot,
+        workingCopy: workingCopy,
+        serverVersion: serverVersion,
+        optimisticVersion: envelope.optimisticVersion,
+        syncState: LocalSyncState.pending,
+      );
+      await (database.update(database.localResources)..where(
+            (t) =>
+                t.aggregateType.equals(conflict.aggregateType) &
+                t.aggregateId.equals(conflict.aggregateId),
+          ))
+          .write(
+            LocalResourcesCompanion(envelopeJson: Value(pending.encode())),
+          );
+    });
+  }
+
+  /// Anzeige- und Aktionsdaten je Konflikt, ohne den Zustand zu verändern.
+  Future<Map<String, ConflictResourceInfo>> readConflictResourceInfos() async {
+    await ensureAccountBound();
+    final conflicts = await database.select(database.localConflicts).get();
+    final result = <String, ConflictResourceInfo>{};
+    for (final conflict in conflicts) {
+      final type = conflict.aggregateType;
+      final resource =
+          await (database.select(database.localResources)..where(
+                (t) =>
+                    t.aggregateType.equals(type) &
+                    t.aggregateId.equals(conflict.aggregateId),
+              ))
+              .getSingleOrNull();
+      final envelope = resource == null
+          ? null
+          : LocalAggregateEnvelope<Object?>.fromJson(
+              jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
+            );
+      final hasTombstone = _hasServerType(type)
+          ? await (database.select(database.localTombstones)..where(
+                      (t) =>
+                          t.resourceType.equals(_serverType(type)) &
+                          t.resourceId.equals(conflict.aggregateId),
+                    ))
+                    .getSingleOrNull() !=
+                null
+          : false;
+      final rows = await _outboxRows(type, conflict.aggregateId);
+      result[conflict.conflictId] = ConflictResourceInfo(
+        title: envelope == null
+            ? null
+            : _resourceTitle(type, envelope.workingCopy),
+        hasServerState:
+            hasTombstone ||
+            (envelope?.serverSnapshot != null &&
+                envelope?.serverVersion != null),
+        canForceLocal:
+            envelope != null &&
+            !hasTombstone &&
+            forceableAggregateTypes.contains(type) &&
+            !rows.map(_operationOf).any(_spansResources),
+        firstQueuedAtUtc: rows.isEmpty
+            ? null
+            : DateTime.parse(rows.first.createdAtUtc).toUtc(),
+        firstSequence: rows.isEmpty ? 0 : rows.first.sequence,
+      );
+    }
+    return result;
+  }
+
+  Future<List<LocalOutboxData>> _outboxRows(
+    String aggregateType,
+    String aggregateId,
+  ) =>
+      (database.select(database.localOutbox)
+            ..where(
+              (t) =>
+                  t.accountId.equals(accountId) &
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(aggregateId),
+            )
+            ..orderBy([(t) => OrderingTerm.asc(t.sequence)]))
+          .get();
+}
+
+/// Aggregattypen, deren Mutationsnutzlast der Arbeitskopie entspricht. Bei
+/// Körperzielen (erwartetes aktives Ziel), wiederverwendbaren Mahlzeiten
+/// (Archivstatus im Body) und Zielplänen fehlt diese Gleichheit.
+const forceableAggregateTypes = {
+  'workout',
+  'training-plan',
+  'workout-rotation',
+  'custom-exercise',
+  'exercise-category',
+  'daily-check-in',
+  'nutrition-day',
+};
+
+class ConflictResourceInfo {
+  const ConflictResourceInfo({
+    required this.title,
+    required this.hasServerState,
+    required this.canForceLocal,
+    required this.firstQueuedAtUtc,
+    required this.firstSequence,
+  });
+
+  /// Anzeigename aus der Arbeitskopie, `null` ohne lokale Kopie.
+  final String? title;
+
+  /// Serverkopie oder Löschmarke vorhanden; nur dann ist „Serverstand nutzen“
+  /// möglich.
+  final bool hasServerState;
+  final bool canForceLocal;
+
+  /// Alter und Sequenz der ersten wartenden Änderung (Sendereihenfolge).
+  final DateTime? firstQueuedAtUtc;
+  final int firstSequence;
+}
+
+Object? _operationOf(LocalOutboxData row) =>
+    (jsonDecode(row.payloadJson) as Map<String, dynamic>)['operation'];
+
+/// Zusammenführen und Umsortieren betreffen mehrere Ressourcen und lassen sich
+/// nicht aus der Arbeitskopie einer einzelnen Ressource ableiten.
+bool _spansResources(Object? operation) =>
+    operation == LocalMutationOperation.merge.name ||
+    operation == LocalMutationOperation.reorder.name;
+
+bool _hasServerType(String aggregateType) => switch (aggregateType) {
+  'body-goal' ||
+  'daily-check-in' ||
+  'custom-exercise' ||
+  'exercise-category' ||
+  'training-plan' ||
+  'workout-rotation' ||
+  'workout' ||
+  'nutrition-day' ||
+  'reusable-meal' ||
+  'nutrition-target-schedule' => true,
+  _ => false,
+};
+
+String? _resourceTitle(String aggregateType, Object? workingCopy) {
+  if (workingCopy is! Map) return null;
+  String? text(String key) {
+    final value = workingCopy[key];
+    return value is String && value.trim().isNotEmpty ? value.trim() : null;
+  }
+
+  switch (aggregateType) {
+    case 'workout':
+      final title = text('title');
+      final started = DateTime.tryParse(text('startedAtUtc') ?? '')?.toLocal();
+      final date = started == null
+          ? null
+          : '${started.day.toString().padLeft(2, '0')}.'
+                '${started.month.toString().padLeft(2, '0')}.${started.year}';
+      final parts = [?title, ?date];
+      return parts.isEmpty ? null : parts.join(' · ');
+    case 'daily-check-in' || 'nutrition-day':
+      return text('localDate');
+    case 'workout-rotation':
+      return 'Rotation';
+    default:
+      return text('name') ?? text('title');
+  }
 }
 
 String _serverType(String aggregateType) => switch (aggregateType) {
