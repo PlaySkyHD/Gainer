@@ -120,9 +120,13 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
   /// Startet den Timer sofort mit der Dauer des Shortcuts. Nur im Bereit- oder
   /// Abgelaufen-Zustand möglich.
   Future<void> startShortcut(int seconds) async {
-    if (_ended || !_canStartFresh) return;
+    if (_ended || _state.phase == RestTimerPhase.running) return;
     final now = _clock();
-    await _commit(_state.selectShortcut(seconds, now: now).start(now: now));
+    // Pausiert ersetzt der Shortcut die angehaltene Pause durch eine neue.
+    final base = _state.phase == RestTimerPhase.paused
+        ? _state.close()
+        : _state;
+    await _commit(base.selectShortcut(seconds, now: now).start(now: now));
   }
 
   /// Startet den Timer mit der zuletzt gewählten Dauer, wenn er bereit oder
