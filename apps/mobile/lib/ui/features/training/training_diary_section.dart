@@ -56,9 +56,9 @@ class TrainingDiarySection extends StatelessWidget {
               _EmptyDiary(onStart: onStart)
             else
               for (final month in groupDiaryByMonth(diary)) ...[
-                _MonthHeader(
+                GainerSectionHeader(
                   title: formatMonthTitle(DateTime(month.year, month.month)),
-                  count: month.workouts.length,
+                  trailing: formatTrainingCount(month.workouts.length),
                 ),
                 const SizedBox(height: GainerSpacing.xs),
                 _MonthCard(
@@ -107,37 +107,6 @@ class _EmptyDiary extends StatelessWidget {
             key: const ValueKey('training-start-empty'),
             label: 'Training starten',
             onPressed: onStart,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MonthHeader extends StatelessWidget {
-  const _MonthHeader({required this.title, required this.count});
-
-  final String title;
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.xxs),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: GainerTypography.cardTitle.copyWith(
-                color: colors.primaryText,
-              ),
-            ),
-          ),
-          Text(
-            formatTrainingCount(count),
-            style: GainerTypography.label.copyWith(color: colors.secondaryText),
           ),
         ],
       ),
@@ -210,32 +179,20 @@ class _DiaryRow extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(left: GainerSpacing.s),
-            child: _DeleteMinus(
-              workout: workout,
-              onDelete: () => _deleteAfterConfirmation(context),
+            child: GainerDeleteMinusButton(
+              semanticLabel: '${workout.title} löschen',
+              onPressed: () => _deleteAfterConfirmation(context),
             ),
           ),
           Expanded(child: row),
         ],
       );
     }
-    return Dismissible(
-      key: ValueKey('diary-${workout.workoutId}'),
-      direction: DismissDirection.endToStart,
-      confirmDismiss: (_) => _confirmDelete(context, workout),
-      onDismissed: (_) => viewModel.deleteWorkout(workout.workoutId),
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: GainerSpacing.m),
-        color: colors.destructive,
-        child: Text(
-          _deleteLabel,
-          style: GainerTypography.body.copyWith(
-            color: CupertinoColors.white,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
+    return GainerSwipeToDelete(
+      dismissKey: ValueKey('diary-${workout.workoutId}'),
+      label: _deleteLabel,
+      confirm: () => _confirmDelete(context, workout),
+      onDeleted: () => viewModel.deleteWorkout(workout.workoutId),
       child: row,
     );
   }
@@ -391,42 +348,13 @@ class _DateBadge extends StatelessWidget {
   }
 }
 
-class _DeleteMinus extends StatelessWidget {
-  const _DeleteMinus({required this.workout, required this.onDelete});
-
-  final Workout workout;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    return Semantics(
-      button: true,
-      label: '${workout.title} löschen',
-      excludeSemantics: true,
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        minimumSize: const Size.square(GainerRadii.iconButtonDiameter),
-        onPressed: onDelete,
-        child: Icon(
-          CupertinoIcons.minus_circle_fill,
-          color: colors.destructive,
-        ),
-      ),
-    );
-  }
-}
-
-Future<bool> _confirmDelete(BuildContext context, Workout workout) async {
-  final confirmed = await showGainerStackedDialog<bool>(
-    context: context,
-    title: 'Training löschen?',
-    message:
-        '„${workout.title}“ verschwindet sofort aus dem Tagebuch und wird beim nächsten Sync entfernt.',
-    actions: const [
-      GainerDialogAction(label: _deleteLabel, value: true, destructive: true),
-      GainerDialogAction(label: 'Abbrechen', value: false),
-    ],
-  );
-  return confirmed ?? false;
-}
+Future<bool> _confirmDelete(
+  BuildContext context,
+  Workout workout,
+) => confirmGainerDelete(
+  context,
+  title: 'Training löschen?',
+  message:
+      '„${workout.title}“ verschwindet sofort aus dem Tagebuch und wird beim nächsten Sync entfernt.',
+  deleteLabel: _deleteLabel,
+);
