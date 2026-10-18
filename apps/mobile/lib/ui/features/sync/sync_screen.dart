@@ -259,12 +259,34 @@ class _SyncScreenState extends State<SyncScreen> {
       ],
     ),
     const SizedBox(height: GainerSpacing.l),
-    GainerPillButton(
-      label: 'Gerätewechsel bestätigen',
-      expand: true,
-      onPressed: !_model.isOnline || _model.isBusy ? null : _confirmAndComplete,
+    // Erst mit vollständigen Übergabedaten bestätigbar, sonst gäbe es nur
+    // einen Formatfehler ohne Hinweis, was fehlt.
+    ListenableBuilder(
+      listenable: Listenable.merge([
+        _handoverId,
+        _oneTimeCode,
+        _sourceClientId,
+        _revision,
+        _expiresAtUtc,
+      ]),
+      builder: (context, _) => GainerPillButton(
+        key: const ValueKey('sync-confirm-handover'),
+        label: 'Gerätewechsel bestätigen',
+        expand: true,
+        onPressed: !_model.isOnline || _model.isBusy || !_hasHandoverData
+            ? null
+            : _confirmAndComplete,
+      ),
     ),
   ];
+
+  bool get _hasHandoverData => [
+    _handoverId,
+    _oneTimeCode,
+    _sourceClientId,
+    _revision,
+    _expiresAtUtc,
+  ].every((field) => field.text.trim().isNotEmpty);
 
   List<Widget> _handoverCodeSections(
     BuildContext context,
