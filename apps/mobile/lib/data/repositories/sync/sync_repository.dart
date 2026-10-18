@@ -67,6 +67,16 @@ abstract interface class MobileSyncActions {
     required String replacementMutationId,
     required DateTime createdAtUtc,
   });
+  Future<Map<String, ConflictResourceInfo>> readConflictResourceInfos();
+  Future<void> forceLocalState({
+    required String conflictId,
+    required String replacementMutationId,
+    required DateTime createdAtUtc,
+  });
+  Future<SyncRunReport> synchronize({
+    bool takeOverWriting = false,
+    DateTime? now,
+  });
 }
 
 class SyncRepository implements MobileSyncActions {
@@ -148,6 +158,22 @@ class SyncRepository implements MobileSyncActions {
     createdAtUtc: createdAtUtc,
   );
 
+  @override
+  Future<Map<String, ConflictResourceInfo>> readConflictResourceInfos() =>
+      store.readConflictResourceInfos();
+
+  @override
+  Future<void> forceLocalState({
+    required String conflictId,
+    required String replacementMutationId,
+    required DateTime createdAtUtc,
+  }) => store.forceLocalState(
+    conflictId: conflictId,
+    replacementMutationId: replacementMutationId,
+    createdAtUtc: createdAtUtc,
+  );
+
+  @override
   Future<SyncRunReport> synchronize({
     bool takeOverWriting = false,
     DateTime? now,
