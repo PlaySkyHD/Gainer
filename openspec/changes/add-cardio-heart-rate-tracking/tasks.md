@@ -14,8 +14,8 @@
 
 ## 3. iOS
 
-- [ ] 3.1 Pigeon-Erweiterung, `NativeHeartRateMonitor`, Parser und Zonenalarm in Swift (D3, D4); XCTests für Parser und Alarm.
-- [ ] 3.2 Info.plist (`bluetooth-central`, Bluetooth-Beschreibung), Eintrag in `project.pbxproj`, Benachrichtigungs-Delegate.
+- [x] 3.1 Pigeon-Erweiterung, `NativeHeartRateMonitor`, Parser und Zonenalarm in Swift (D3, D4); XCTests für Parser und Alarm.
+- [x] 3.2 Info.plist (`bluetooth-central`, Bluetooth-Beschreibung), Eintrag in `project.pbxproj`, Benachrichtigungs-Delegate.
 
 ## 4. Oberfläche
 
@@ -24,5 +24,5 @@
 
 ## 5. Abschluss
 
-- [ ] 5.1 `flutter analyze`, `flutter test`, Format, `dotnet build/test`, `openspec validate --strict`.
+- [x] 5.1 `flutter analyze`, `flutter test`, Format, `dotnet build/test`, `openspec validate --strict`.
 - [ ] 5.2 TestFlight und Abnahme auf dem iPhone mit Polar H10 (Alarm bei gesperrtem Display, Neuverbinden, Sync).
