@@ -28,10 +28,12 @@ Future<ExercisePickerResult?> showExercisePicker(
 }) {
   return showCupertinoModalPopup<ExercisePickerResult>(
     context: context,
-    builder: (_) => _ExercisePickerSheet(
-      repository: repository,
-      allowSuperset: allowSuperset,
-      title: title,
+    builder: (_) => GainerKeyboardInset(
+      child: _ExercisePickerSheet(
+        repository: repository,
+        allowSuperset: allowSuperset,
+        title: title,
+      ),
     ),
   );
 }
@@ -170,7 +172,9 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
   Future<void> _createExercise() async {
     final created = await showCupertinoModalPopup<CatalogExercise>(
       context: context,
-      builder: (_) => _QuickCreateSheet(repository: widget.repository),
+      builder: (_) => GainerKeyboardInset(
+        child: _QuickCreateSheet(repository: widget.repository),
+      ),
     );
     final data = _data;
     if (created == null || data == null || !mounted) return;
@@ -197,7 +201,7 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
     return SafeArea(
       top: false,
       child: Container(
-        height: MediaQuery.sizeOf(context).height * 0.9,
+        height: gainerSheetHeight(context, 0.9),
         margin: const EdgeInsets.all(GainerSpacing.xs),
         decoration: BoxDecoration(
           color: colors.elevatedSurface,

@@ -318,8 +318,7 @@ class _BodyScreenState extends State<BodyScreen> {
                       GainerSpacing.m,
                       GainerSpacing.s,
                       GainerSpacing.m,
-                      GainerSpacing.l +
-                          MediaQuery.viewInsetsOf(sheetContext).bottom,
+                      GainerSpacing.l,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
