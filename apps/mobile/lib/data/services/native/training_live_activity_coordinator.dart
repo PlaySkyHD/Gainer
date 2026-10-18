@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
@@ -88,7 +89,20 @@ class TrainingLiveActivityCoordinator {
     preferences.weightUnit.addListener(_onChanged);
     _attachTimer();
     _lifecycle = AppLifecycleListener(onResume: resync);
+    activeWorkout.openLiveActivitySettings = () => _call(platform.openSettings);
     _request();
+    unawaited(_refreshEnabled());
+  }
+
+  /// Liest, ob Live Activities erlaubt sind, und meldet es dem Training. Ein
+  /// Lesefehler gilt als erlaubt, damit kein falscher Hinweis erscheint.
+  Future<void> _refreshEnabled() async {
+    var enabled = true;
+    try {
+      enabled = await platform.isEnabled();
+    } catch (_) {}
+    if (_disposed) return;
+    activeWorkout.liveActivitiesOff.value = !enabled;
   }
 
   /// Gleicht die Activity erneut ab, etwa wenn die App wieder in den
@@ -99,6 +113,7 @@ class TrainingLiveActivityCoordinator {
     _retryNotBefore = null;
     _sent = null;
     _request();
+    unawaited(_refreshEnabled());
   }
 
   void _onChanged() {

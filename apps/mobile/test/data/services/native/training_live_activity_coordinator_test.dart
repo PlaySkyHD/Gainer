@@ -50,6 +50,15 @@ class _FakeLiveActivityPlatform implements LiveActivityPlatform {
   @override
   Future<void> endAll() async => calls.add('endAll');
 
+  /// `false` simuliert ausgeschaltete Live Activities in den Einstellungen.
+  bool enabled = true;
+
+  @override
+  Future<bool> isEnabled() async => enabled;
+
+  @override
+  Future<void> openSettings() async => calls.add('openSettings');
+
   void _maybeThrow() {
     final failure = error;
     if (failure != null) throw failure;
@@ -415,6 +424,23 @@ void main() {
     // Nach dem Fehlschlag gilt keine Wartezeit, der Abgleich sendet sofort.
     expect(platform.calls, ['start', 'update', 'start', 'update']);
   });
+
+  test(
+    'meldet ausgeschaltete Live Activities und öffnet die Einstellungen',
+    () async {
+      platform.enabled = false;
+      await startTraining();
+      expect(active.liveActivitiesOff.value, isTrue);
+
+      await active.openLiveActivitySettings!();
+      expect(platform.calls, contains('openSettings'));
+
+      platform.enabled = true;
+      coordinator.resync();
+      await _flush();
+      expect(active.liveActivitiesOff.value, isFalse);
+    },
+  );
 
   test(
     'Plattformfehler werden geschluckt und die Pause läuft weiter',
