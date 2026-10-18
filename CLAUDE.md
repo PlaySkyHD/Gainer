@@ -1,3 +1,7 @@
+## Lessons learned
+
+Before working in this repo or briefing subagents, read `docs/agent-lessons-learned.md` (worktrees start on main, Swift only builds in CI, Pigeon/format, golden previews via `apps/mobile/tool/preview_goldens.sh`, deploy steps, design and sync rules). Include a pointer to it in every subagent prompt.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

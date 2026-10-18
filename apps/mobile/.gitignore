@@ -27,3 +27,7 @@ ios/.symlinks/
 ios/DerivedData/
 ios/**/xcuserdata/
 ios/**/*.xcuserstate
+
+# Golden-Fehlerbilder und lesbare Vorschauen (tool/preview_goldens.sh) nie committen.
+test/**/failures/
+test/zz_preview/
