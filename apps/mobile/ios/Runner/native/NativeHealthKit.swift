@@ -555,7 +555,19 @@ final class NativeHealthKit {
       do {
         try await store.save(workout)
         workoutSaved = true
-        if !samples.isEmpty { try await store.add(samples, to: workout) }
+        if !samples.isEmpty {
+          // `add(_:to:)` hat keine async-Variante.
+          let store = store
+          try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            store.add(samples, to: workout) { _, error in
+              if let error {
+                continuation.resume(throwing: error)
+              } else {
+                continuation.resume()
+              }
+            }
+          }
+        }
       } catch {
         // Nichts Halbes zurücklassen: ein Workout ohne Pulskurve würde später als vorhanden gelten.
         var leftovers: [HKObject] = samples
