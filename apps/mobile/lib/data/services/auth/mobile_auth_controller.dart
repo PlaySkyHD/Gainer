@@ -590,14 +590,19 @@ class AccountScope {
   Future<SyncRunReport>? _syncInFlight;
   late final StreamSubscription<LocalMutation> _localCommitSubscription;
 
-  Future<SyncRunReport> synchronize() {
+  /// Synchronisiert. Mit [takeOverWriting] übernimmt dieses Gerät den
+  /// Schreibzugriff, sofern der Server keine Übergabe vom bisherigen Gerät
+  /// verlangt.
+  Future<SyncRunReport> synchronize({bool takeOverWriting = false}) {
     if (!isSessionActive()) {
       throw StateError('This account scope is no longer active.');
     }
-    return _synchronizeIfWritable();
+    return _synchronizeIfWritable(takeOverWriting: takeOverWriting);
   }
 
-  Future<SyncRunReport> _synchronizeIfWritable() async {
+  Future<SyncRunReport> _synchronizeIfWritable({
+    bool takeOverWriting = false,
+  }) async {
     final frozen = await store.readSyncMetadata('local-writes-frozen');
     if (!isSessionActive()) {
       throw StateError('This account scope is no longer active.');
@@ -613,7 +618,7 @@ class AccountScope {
     syncScheduler.allow();
     final active = _syncInFlight;
     if (active != null) return active;
-    final run = _synchronizeAndRefresh();
+    final run = _synchronizeAndRefresh(takeOverWriting: takeOverWriting);
     _syncInFlight = run;
     return run.whenComplete(() {
       if (identical(_syncInFlight, run)) _syncInFlight = null;
@@ -622,8 +627,10 @@ class AccountScope {
 
   Future<void> onForeground() => syncScheduler.onForeground();
 
-  Future<SyncRunReport> _synchronizeAndRefresh() async {
-    final report = await sync.synchronize();
+  Future<SyncRunReport> _synchronizeAndRefresh({
+    bool takeOverWriting = false,
+  }) async {
+    final report = await sync.synchronize(takeOverWriting: takeOverWriting);
     if (!isSessionActive()) return report;
     if ({
       SyncRunState.idle,
