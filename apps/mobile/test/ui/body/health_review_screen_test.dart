@@ -16,6 +16,7 @@ const accountId = '00000000-0000-4000-8000-000000000006';
 
 class _HealthFake implements HealthPlatform {
   int authorizationRequests = 0;
+  DateTime? lastFromUtc;
   List<BodyMassSample> samples = const [];
 
   @override
@@ -32,7 +33,10 @@ class _HealthFake implements HealthPlatform {
   Future<List<BodyMassSample>> readBodyMassSamples({
     required DateTime fromUtc,
     required DateTime toUtc,
-  }) async => samples;
+  }) async {
+    lastFromUtc = fromUtc;
+    return samples;
+  }
 
   @override
   Future<PlatformAuthorizationRequestResult>
@@ -210,9 +214,53 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'picking the Von date row sends that local day as the review start',
+    (tester) async {
+      final database = LocalDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final store = LocalSyncStore(database: database, accountId: accountId);
+      final health = _HealthFake();
+      final coordinator = HealthReviewCoordinator(
+        store: store,
+        bodyRepository: BodyRepository(store: store),
+        platform: health,
+        accountId: accountId,
+        currentSessionIdentity: () =>
+            const HealthSessionIdentity(accountId: accountId, generation: 1),
+      );
+      final viewModel = HealthReviewViewModel(coordinator);
+      await tester.pumpWidget(
+        CupertinoApp(home: HealthReviewScreen(viewModel: viewModel)),
+      );
+      await tester.pumpAndSettle();
+
+      final today = DateTime.now();
+      final threeDaysAgo = DateTime(today.year, today.month, today.day - 3);
+      await tester.tap(find.byKey(const ValueKey('health-from')));
+      await tester.pumpAndSettle();
+      tester
+          .widget<CupertinoDatePicker>(find.byType(CupertinoDatePicker))
+          .onDateTimeChanged(threeDaysAgo);
+      await tester.tap(find.text('Fertig'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('health-from')),
+          matching: find.text(_formatDate(threeDaysAgo)),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Health-Proben laden'));
+      await tester.pumpAndSettle();
+      expect(health.lastFromUtc, threeDaysAgo.toUtc());
+    },
+  );
 }
 
-String _today() {
-  final now = DateTime.now();
-  return '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-}
+String _formatDate(DateTime value) =>
+    '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+String _today() => _formatDate(DateTime.now());

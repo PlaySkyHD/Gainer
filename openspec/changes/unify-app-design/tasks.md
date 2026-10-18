@@ -12,8 +12,8 @@
 
 ## 3. Check-in und Apple Health
 
-- [ ] 3.1 `body_screen` nach D1/D2 umstellen (Toolbar „+“, Zielkarte antippbar, Verlauf als Gruppe); Fachtests grün, Goldens neu.
-- [ ] 3.2 `health_review_screen_cupertino` mit `GainerDateRow`, gruppierten Abschnitten und Fußnoten; Fachtests grün, Goldens neu.
+- [x] 3.1 `body_screen` nach D1/D2 umstellen (Toolbar „+“, Zielkarte antippbar, Verlauf als Gruppe); Fachtests grün, Goldens neu.
+- [x] 3.2 `health_review_screen_cupertino` mit `GainerDateRow`, gruppierten Abschnitten und Fußnoten; Fachtests grün, Goldens neu.
 
 ## 4. Essen
 
