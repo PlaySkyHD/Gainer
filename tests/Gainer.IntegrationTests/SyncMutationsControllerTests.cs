@@ -44,6 +44,20 @@ public sealed class SyncMutationsControllerTests
     }
 
     [TestMethod]
+    public async Task CardioSessionValidationMapsTo422ValidationFailedWithErrors()
+    {
+        var errors = new Dictionary<string, string> { ["HeartRateBpm"] = "bad" };
+        SyncMutationsController controller = Controller(new StubProcessor(new Gainer.Core.Training.CardioSessionValidationException(errors)));
+        ActionResult<PushMutationResponse> action = await controller.Push(
+            Guid.NewGuid(), Request(Guid.NewGuid()), CancellationToken.None);
+        ObjectResult result = (ObjectResult)action.Result!;
+        ProblemDetails problem = (ProblemDetails)result.Value!;
+        Assert.AreEqual(422, result.StatusCode);
+        Assert.AreEqual("validation_failed", problem.Extensions["code"]);
+        Assert.AreSame(errors, problem.Extensions["errors"]);
+    }
+
+    [TestMethod]
     public void EndpointRequiresAuthorizationAndUnsafeRequestsRemainUnderGlobalCsrfFilter()
     {
         Assert.IsNotNull(typeof(SyncMutationsController).GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true).SingleOrDefault());
