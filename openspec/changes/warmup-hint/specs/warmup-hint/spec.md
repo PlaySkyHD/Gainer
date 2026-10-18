@@ -9,7 +9,7 @@ Im aktiven Training SHALL jede Übung mit einem Vorwert-Gewicht für den ersten 
 #### Scenario: Standardstufen
 - **GIVEN** Standardstufen 50 % und 80 %, Rundung 2,5 kg und ein Vorwert von 80 kg im ersten Arbeitssatz
 - **WHEN** die Übung im aktiven Training erscheint
-- **THEN** zeigt sie „Aufwärmen 40 kg · 62,5 kg“
+- **THEN** zeigt sie „Aufwärmen 40 kg · 65 kg“
 
 #### Scenario: Kein Vorwert
 - **GIVEN** eine Übung ohne bisheriges Gewicht
@@ -35,6 +35,6 @@ Der Nutzer SHALL den Hinweis global ein- und ausschalten, Standardstufen mit opt
 Ein Tipp auf den Hinweis SHALL anbieten, die Stufen als erfasste Aufwärmsätze vor dem ersten Arbeitssatz anzulegen.
 
 #### Scenario: Eintragen
-- **GIVEN** der Hinweis „40 kg · 62,5 kg“
+- **GIVEN** der Hinweis „40 kg · 65 kg“
 - **WHEN** der Nutzer ihn antippt und „Als Aufwärmsätze eintragen“ wählt
-- **THEN** stehen zwei Aufwärmsätze mit 40 kg und 62,5 kg vor dem ersten Arbeitssatz und der Hinweis verschwindet
+- **THEN** stehen zwei Aufwärmsätze mit 40 kg und 65 kg vor dem ersten Arbeitssatz und der Hinweis verschwindet

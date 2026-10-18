@@ -6,6 +6,7 @@ import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../data/repositories/training/training_preferences.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
 import '../../../domain/models/training/previous_values.dart';
+import '../../../domain/models/training/warmup.dart';
 import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_rules.dart';
@@ -70,6 +71,57 @@ class WorkoutViewModel extends ChangeNotifier {
     final current = _workout;
     if (current == null) return const {};
     return previousValuesFor(current, _diary);
+  }
+
+  WarmupSettings get warmupSettings => _settings.warmup;
+
+  /// Aufwärmhinweis der Übung oder `null`, wenn keiner erscheinen soll: nur im
+  /// aktiven Training, nicht bei abgeschaltetem Hinweis, bereits vorhandenen
+  /// Aufwärmsätzen oder fehlendem Vorwert-Gewicht. Er wird nie gespeichert.
+  /// [previous] sind die Vorwerte des Blocks (siehe [previousValues]).
+  List<WarmupTarget>? warmupHintFor(
+    WorkoutBlock block,
+    List<LoggedSet?> previous,
+  ) {
+    if (!isActive || block.sets.any((s) => s.setType == SetType.warmup)) {
+      return null;
+    }
+    final resolved = resolveWarmup(
+      _settings.warmup,
+      _settings.warmupOverrides[block.sourceExerciseId],
+      weightUnit,
+    );
+    final base = warmupBaseKg(previous);
+    if (!resolved.enabled || base == null) return null;
+    final targets = warmupTargets(
+      baseKg: base,
+      steps: resolved.steps,
+      rounding: resolved.rounding,
+      unit: weightUnit,
+    );
+    return targets.isEmpty ? null : targets;
+  }
+
+  /// Legt die Stufen des Hinweises als erfasste Aufwärmsätze vor dem ersten
+  /// Arbeitssatz an. Danach entfällt der Hinweis.
+  Future<void> enterWarmupSets(String blockId) {
+    final block = _blockById(blockId);
+    if (block == null) return Future.value();
+    final targets = warmupHintFor(block, previousValues[blockId] ?? const []);
+    if (targets == null) return Future.value();
+    final sets = [
+      for (final target in targets)
+        LoggedSet(
+          setId: newId(),
+          setType: SetType.warmup,
+          weightKg: target.weightKg,
+          repetitions: target.repetitions,
+        ),
+    ];
+    return _editBlock(
+      blockId,
+      (block) => block.copyWith(sets: [...sets, ...block.sets]),
+    );
   }
 
   /// Übungsstammnotiz aus dem Katalog; nur lesend.
@@ -149,6 +201,9 @@ class WorkoutViewModel extends ChangeNotifier {
 
   Future<void> setLiveActivityDetails(bool enabled) =>
       _updateSettings((v) => v.copyWith(liveActivityDetails: enabled));
+
+  Future<void> setWarmupSettings(WarmupSettings warmup) =>
+      _updateSettings((v) => v.copyWith(warmup: warmup));
 
   /// Wendet [change] an und speichert es auf dem zuletzt gespeicherten Stand,
   /// damit Werte, die der Pausentimer geändert hat, erhalten bleiben.

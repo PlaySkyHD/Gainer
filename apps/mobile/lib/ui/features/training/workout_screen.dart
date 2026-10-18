@@ -16,6 +16,7 @@ import 'rest_timer_sheet.dart';
 import 'save_workout_as_plan.dart';
 import 'set_row.dart';
 import 'training_format.dart';
+import 'warmup_settings_sheet.dart';
 import 'workout_block_card.dart';
 import 'workout_metadata_card.dart';
 import 'workout_summary_screen.dart';
@@ -65,6 +66,7 @@ enum _WorkoutMenuAction {
   toggleWeightUnit,
   toggleRir,
   toggleLiveActivityDetails,
+  warmupHint,
   delete,
 }
 
@@ -277,6 +279,11 @@ class _WorkoutScreenState extends State<WorkoutScreen>
             icon: CupertinoIcons.gauge,
             value: _WorkoutMenuAction.toggleRir,
           ),
+          const GainerSheetAction(
+            label: 'Aufwärmhinweis',
+            icon: CupertinoIcons.flame,
+            value: _WorkoutMenuAction.warmupHint,
+          ),
           GainerSheetAction(
             label: _viewModel.liveActivityDetails
                 ? 'Details auf Sperrbildschirm aus'
@@ -317,6 +324,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         await _viewModel.setLiveActivityDetails(
           !_viewModel.liveActivityDetails,
         );
+      case _WorkoutMenuAction.warmupHint:
+        await showWarmupSettingsSheet(context, _viewModel);
       case _WorkoutMenuAction.delete:
         await _confirmDelete();
       case null:

@@ -2,12 +2,15 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/warmup.dart';
+import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'exercise_catalog_format.dart';
 import 'exercise_editor_view_model.dart';
 import 'exercise_merge_sheet.dart';
+import 'warmup_steps_editor.dart';
 
 /// Editor für eigene Übungen. Basis- und archivierte Übungen werden nur gelesen.
 /// Liefert true, wenn etwas gespeichert, archiviert oder zusammengeführt wurde.
@@ -130,6 +133,120 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     if (merged && mounted) Navigator.of(context).pop(true);
   }
 
+  /// Abschnitt „Aufwärmen“: Standard, eigene Stufen oder aus, dazu die Rundung.
+  /// Wirkt lokal und sofort; nur für bestehende Übungen.
+  List<Widget> _warmupSection(BuildContext context) {
+    if (_viewModel.isNew) return const [];
+    final colors = GainerDesign.colorsOf(context);
+    final override = _viewModel.warmupOverride;
+    final unit = _viewModel.settings.weightUnit;
+    final global = _viewModel.settings.warmup;
+    final mode = override?.enabled == false
+        ? _WarmupMode.off
+        : override?.steps != null
+        ? _WarmupMode.custom
+        : _WarmupMode.standard;
+    final rounding = resolveWarmup(global, override, unit).rounding;
+    return [
+      _Section(
+        header: 'Aufwärmen',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GainerSegmentedControl<_WarmupMode>(
+              options: const {
+                _WarmupMode.standard: 'Standard',
+                _WarmupMode.custom: 'Eigene Stufen',
+                _WarmupMode.off: 'Aus',
+              },
+              value: mode,
+              onChanged: _setWarmupMode,
+            ),
+            if (mode == _WarmupMode.custom) ...[
+              const SizedBox(height: GainerSpacing.s),
+              WarmupStepsEditor(
+                initialSteps: override?.steps ?? global.steps,
+                onChanged: (steps) => _viewModel.updateWarmupOverride(
+                  (current) => current.copyWith(steps: () => steps),
+                ),
+              ),
+            ],
+            if (mode != _WarmupMode.off) ...[
+              const SizedBox(height: GainerSpacing.xs),
+              GainerGroupedSection(
+                children: [
+                  GainerListRow(
+                    key: const ValueKey('warmup-rounding'),
+                    title: 'Rundung',
+                    value:
+                        '${formatWeight(unit.toKg(rounding), unit)} ${unit.label}',
+                    showChevron: true,
+                    onTap: () => _pickRounding(unit),
+                  ),
+                ],
+              ),
+            ],
+            Padding(
+              padding: const EdgeInsets.only(
+                top: GainerSpacing.xs,
+                left: GainerSpacing.m,
+              ),
+              child: Text(
+                'Standard nutzt die Einstellung „Aufwärmhinweis“ im Trainingsmenü.',
+                style: GainerTypography.caption.copyWith(
+                  color: colors.secondaryText,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Future<void> _setWarmupMode(_WarmupMode mode) {
+    final global = _viewModel.settings.warmup;
+    return _viewModel.updateWarmupOverride(
+      (current) => switch (mode) {
+        _WarmupMode.standard => current.copyWith(
+          enabled: () => null,
+          steps: () => null,
+        ),
+        _WarmupMode.custom => current.copyWith(
+          enabled: () => null,
+          steps: () => current.steps ?? global.steps,
+        ),
+        _WarmupMode.off => current.copyWith(enabled: () => false),
+      },
+    );
+  }
+
+  Future<void> _pickRounding(WeightUnit unit) async {
+    final options = warmupRoundingOptions(unit);
+    final picked = await showGainerActionSheet<double>(
+      context: context,
+      title: 'Rundung',
+      groups: [
+        [
+          for (final option in options)
+            GainerSheetAction(
+              label:
+                  '${formatWeight(unit.toKg(option), unit)} ${unit.label}'
+                  '${option == defaultWarmupRounding(unit) ? ' (Standard)' : ''}',
+              icon: CupertinoIcons.arrow_up_arrow_down,
+              value: option,
+            ),
+        ],
+      ],
+    );
+    if (picked == null) return;
+    await _viewModel.updateWarmupOverride(
+      (current) => current.copyWith(
+        rounding: () => picked == defaultWarmupRounding(unit) ? null : picked,
+      ),
+    );
+  }
+
   void _toggleCategory(String id) {
     setState(() {
       if (!_categoryIds.remove(id)) _categoryIds.add(id);
@@ -245,6 +362,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
           error: errors['notes'],
         ),
       ),
+      ..._warmupSection(context),
       if (!_viewModel.isNew) ...[
         const SizedBox(height: GainerSpacing.m),
         GainerPillButton(
@@ -344,6 +462,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
             GainerListRow(title: 'Notiz', value: notes),
         ],
       ),
+      const SizedBox(height: GainerSpacing.m),
+      ..._warmupSection(context),
     ];
   }
 
@@ -383,6 +503,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
   Widget _checkmark(GainerColors colors) =>
       Icon(CupertinoIcons.checkmark, color: colors.accent, size: 20);
 }
+
+enum _WarmupMode { standard, custom, off }
 
 class _Section extends StatelessWidget {
   const _Section({required this.header, required this.child});
