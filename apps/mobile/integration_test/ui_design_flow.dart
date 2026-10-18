@@ -29,10 +29,7 @@ Future<void> runProgrammaticTabChecks(
 
   fixture.controller.shell.selectTab(MobileArea.body.index);
   await tester.pumpAndSettle();
-  expect(
-    find.text('Dein aktueller Stand und tägliche Check-ins'),
-    findsOneWidget,
-  );
+  expect(find.text('Verlauf'), findsOneWidget);
   fixture.controller.shell.selectTab(MobileArea.nutrition.index);
   await tester.pumpAndSettle();
   expect(find.byKey(const ValueKey('nutrition-entry-name')), findsOneWidget);
@@ -72,20 +69,13 @@ Future<void> runUiDesignCaptureFlow(
   );
 
   await _tapTab(tester, 'Check-in');
-  expect(
-    find.text('Dein aktueller Stand und tägliche Check-ins'),
-    findsOneWidget,
-  );
+  expect(find.text('Verlauf'), findsOneWidget);
   await capture('tab-checkin');
-  await _scrollActiveTabUntilVisible(
-    tester,
-    find.byKey(const ValueKey('body-open-checkin')),
-  );
   await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
   await tester.pumpAndSettle();
   expect(find.byKey(const ValueKey('body-save-checkin')), findsOneWidget);
   await capture('sheet-checkin');
-  await tester.tap(find.text('Abbrechen'));
+  await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
   await tester.pumpAndSettle();
   await _scrollActiveTabUntilVisible(
     tester,
@@ -97,11 +87,11 @@ Future<void> runUiDesignCaptureFlow(
   await capture('sheet-goal');
   await tester.tap(find.byKey(const ValueKey('body-start-date')));
   await tester.pumpAndSettle();
-  expect(find.byKey(const ValueKey('body-date-done')), findsOneWidget);
+  expect(find.text('Fertig'), findsOneWidget);
   await capture('date-picker');
-  await tester.tap(find.byKey(const ValueKey('body-date-cancel')));
+  await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
   await tester.pumpAndSettle();
-  await tester.tap(find.text('Abbrechen'));
+  await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
   await tester.pumpAndSettle();
 
   await _tapTab(tester, 'Essen');
@@ -175,14 +165,10 @@ Future<void> runUiDesignCaptureFlow(
     isNotEmpty,
   );
   await _tapTab(tester, 'Check-in');
-  await _scrollActiveTabUntilVisible(
-    tester,
-    find.byKey(const ValueKey('body-open-checkin')),
-  );
   await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
   await tester.pumpAndSettle();
   await capture('sheet-dark-checkin');
-  await tester.tap(find.text('Abbrechen'));
+  await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
   await tester.pumpAndSettle();
 
   await _tapTab(tester, 'Essen');
