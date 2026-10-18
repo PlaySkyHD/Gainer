@@ -12,9 +12,11 @@ import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/body/health/health_review_screen.dart';
 import 'package:gainer_mobile/ui/features/body/health/health_review_view_model.dart';
 
+import '../../support/fake_health_platform.dart';
+
 const accountId = '00000000-0000-4000-8000-000000000006';
 
-class _HealthFake implements HealthPlatform {
+class _HealthFake extends FakeHealthPlatform {
   int authorizationRequests = 0;
   DateTime? lastFromUtc;
   List<BodyMassSample> samples = const [];

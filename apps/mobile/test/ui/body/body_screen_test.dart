@@ -105,7 +105,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Gewicht reduzieren'), findsOneWidget);
-      expect(find.text('82.0 kg  →  76.0 kg'), findsOneWidget);
+      expect(find.text('82,0 kg  →  76,0 kg'), findsOneWidget);
       expect(find.byKey(const ValueKey('body-save-goal')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
       await tester.pumpAndSettle();
@@ -133,21 +133,21 @@ void main() {
       TextEditingController fieldController(String key) => tester
           .widget<CupertinoTextField>(find.byKey(ValueKey(key)))
           .controller!;
-      expect(fieldController('body-start-weight').text, '82.0');
-      expect(fieldController('body-target-weight').text, '76.0');
+      expect(fieldController('body-start-weight').text, '82,0');
+      expect(fieldController('body-target-weight').text, '76,0');
       final unitSegment = find.byKey(const ValueKey('body-goal-weight-unit'));
       await tester.tap(
         find.descendant(of: unitSegment, matching: find.text('lb')),
       );
       await tester.pumpAndSettle();
-      expect(fieldController('body-start-weight').text, '180.779055');
-      expect(fieldController('body-target-weight').text, '167.551319');
+      expect(fieldController('body-start-weight').text, '180,779055');
+      expect(fieldController('body-target-weight').text, '167,551319');
       await tester.tap(
         find.descendant(of: unitSegment, matching: find.text('kg')),
       );
       await tester.pumpAndSettle();
-      expect(fieldController('body-start-weight').text, '82.0');
-      expect(fieldController('body-target-weight').text, '76.0');
+      expect(fieldController('body-start-weight').text, '82,0');
+      expect(fieldController('body-target-weight').text, '76,0');
       await tester.tap(find.byIcon(CupertinoIcons.xmark).last);
       await tester.pumpAndSettle();
     },
@@ -211,13 +211,7 @@ void main() {
       await tester.tap(find.text('Fertig'));
       await tester.pumpAndSettle();
       expect(dateRowValue, findsOneWidget);
-      expect(
-        tester
-            .widget<CupertinoTextField>(find.byType(CupertinoTextField).at(1))
-            .controller
-            ?.text,
-        '1980',
-      );
+      expect(find.byType(CupertinoTextField), findsOneWidget);
       expect(
         tester
             .widget<CupertinoTextField>(
@@ -225,7 +219,7 @@ void main() {
             )
             .controller
             ?.text,
-        '77.2',
+        '77,2',
       );
 
       await tester.tap(dateRow);
@@ -298,23 +292,22 @@ void main() {
           )
           .controller
           ?.text,
-      '77.25',
+      '77,25',
     );
-    expect(
-      tester
-          .widget<CupertinoTextField>(find.byType(CupertinoTextField).at(2))
-          .controller
-          ?.text,
-      '148.5',
+    await tester.enterText(
+      find.byKey(const ValueKey('body-checkin-weight')),
+      '77,5',
     );
-    await tester.enterText(find.byType(CupertinoTextField).at(1), '1990');
     await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
     await tester.pumpAndSettle();
 
     final saved = (await repository.read()).checkIns
         .singleWhere((entry) => entry.value.localDate == localDate)
         .value;
-    expect(saved.weightKg, 77.25);
+    expect(saved.weightKg, 77.5);
+    expect(saved.caloriesKcal, 1980.5);
+    expect(saved.steps, 9000);
+    expect(saved.sleepMinutes, 450);
     expect(saved.proteinGrams, 148.5);
     expect(saved.carbohydrateGrams, 211.25);
     expect(saved.fatGrams, 62.75);
@@ -337,13 +330,12 @@ void main() {
       find.byKey(const ValueKey('body-checkin-weight')),
       '82,4',
     );
-    await tester.enterText(find.byType(CupertinoTextField).at(2), '148,5');
     await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
     await tester.pumpAndSettle();
 
     final saved = (await repository.read()).checkIns.single.value;
     expect(saved.weightKg, 82.4);
-    expect(saved.proteinGrams, 148.5);
+    expect(saved.caloriesKcal, isNull);
   });
 
   testWidgets(
@@ -412,9 +404,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // Heute-Zeile und Verlaufszeile zeigen dasselbe Gewicht.
-    expect(find.text('77.2 kg'), findsNWidgets(2));
+    expect(find.text('77,2 kg'), findsNWidgets(2));
     expect(find.text('1980 kcal'), findsOneWidget);
-    expect(find.text('8000'), findsOneWidget);
+    expect(find.text('8.000'), findsOneWidget);
     expect(find.text(_prettyDay(today)), findsOneWidget);
     expect(find.text('Verlauf'), findsOneWidget);
   });
@@ -565,7 +557,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('body-checkin-weight')),
-        '82.4',
+        '82,4',
       );
       await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
       await tester.pump();
