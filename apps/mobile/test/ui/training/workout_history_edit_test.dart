@@ -52,6 +52,8 @@ void main() {
         ],
       ),
     );
+    // Die Trainings gelten als gesendet; die Änderung wird ein eigenes Update.
+    await tester.runAsync(harness.markOutboxSent);
 
     await tester.pumpWidget(
       trainingTestApp(

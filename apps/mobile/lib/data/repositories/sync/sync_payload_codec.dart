@@ -353,6 +353,45 @@ class SyncPayloadCodec {
         ),
       });
 
+  /// IDs lokaler Ressourcen, auf die der Body einer Mutation verweist: Übungen
+  /// in Trainings und Plänen, Kategorien in Übungen, Quellplan und
+  /// Quelltraining, Pläne in Rotation und Umsortierung, Ziel einer
+  /// Zusammenführung. Die Ressource selbst zählt nicht.
+  static Set<String> referencedAggregateIds(LocalMutation mutation) {
+    final body = mutation.body;
+    if (body is! Map) return const {};
+    final ids = <String>{};
+    void add(Object? value) {
+      if (value is String && value.isNotEmpty) ids.add(value);
+    }
+
+    void addAll(Object? list, Object? Function(Map<dynamic, dynamic>) pick) {
+      if (list is! List) return;
+      for (final entry in list) {
+        if (entry is Map) add(pick(entry));
+      }
+    }
+
+    switch (mutation.aggregateType) {
+      case _workoutType:
+        add(body['sourcePlanId']);
+        add(body['sourceWorkoutId']);
+        addAll(body['exercises'], (e) => e['sourceExerciseId']);
+      case _trainingPlanType:
+        addAll(body['entries'], (e) => e['exerciseId']);
+        addAll(body['plans'], (e) => e['planId']);
+      case _customExerciseType:
+        final categories = body['categoryIds'];
+        if (categories is List) categories.forEach(add);
+        add(body['targetExerciseId']);
+      case _workoutRotationType:
+        final plans = body['planIds'];
+        if (plans is List) plans.forEach(add);
+    }
+    ids.remove(mutation.aggregateId);
+    return ids;
+  }
+
   /// Optionale Felder ohne Wert fehlen in der Payload, wie der Vertrag sie
   /// vorsieht; ein Update ersetzt die Werte vollständig.
   static Map<String, Object?> _compact(Map<String, Object?> source) => {

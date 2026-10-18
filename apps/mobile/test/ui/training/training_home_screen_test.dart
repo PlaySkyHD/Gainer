@@ -242,6 +242,8 @@ void main() {
           end: DateTime(2026, 10, 15, 19).toUtc(),
         ),
       );
+      // Der Server kennt das Training bereits.
+      await tester.runAsync(harness.markOutboxSent);
       await pumpHome(tester);
       final before = (await tester.runAsync(harness.store.readOutbox))!;
 
@@ -257,6 +259,31 @@ void main() {
       final after = (await tester.runAsync(harness.store.readOutbox))!;
       expect(after, hasLength(before.length + 1));
       expect(after.last.operation, LocalMutationOperation.delete);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Löschen eines noch nicht gesendeten Trainings lässt keinen Eintrag zurück',
+    (tester) async {
+      await tester.runAsync(
+        () => harness.seedWorkout(
+          title: 'Legs 2',
+          start: DateTime(2026, 10, 15, 18).toUtc(),
+          end: DateTime(2026, 10, 15, 19).toUtc(),
+        ),
+      );
+      await pumpHome(tester);
+
+      await tester.longPress(find.text('Legs 2'));
+      await settle(tester);
+      await tester.tap(find.text('Löschen'));
+      await settle(tester);
+      await tester.tap(_inDialog('Löschen'));
+      await settle(tester);
+
+      expect(find.text('Legs 2'), findsNothing);
+      expect(await tester.runAsync(harness.store.readOutbox), isEmpty);
       expect(tester.takeException(), isNull);
     },
   );
