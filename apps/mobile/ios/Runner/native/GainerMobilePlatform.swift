@@ -10,6 +10,7 @@ final class GainerMobilePlatform: MobilePlatformApi {
   private let timerSounds: NativeTimerSounds
   private let timerNotifications: NativeTimerNotifications
   private let health = NativeHealthKit()
+  private let heartRateMonitor: NativeHeartRateMonitor
   private let extensionSnapshots = NativeExtensionSnapshotStore()
   private let routeStore = NativeExtensionSnapshotStore()
   @available(iOS 17.0, *)
@@ -20,6 +21,9 @@ final class GainerMobilePlatform: MobilePlatformApi {
     let sounds = NativeTimerSounds()
     self.timerSounds = sounds
     self.timerNotifications = NativeTimerNotifications(sounds: sounds)
+    self.heartRateMonitor = NativeHeartRateMonitor(alerts: NativeCardioAlerts(sounds: sounds))
+    // Nach einem Prozessende ist die Überwachung weg; eine alte Cardio-Activity soll nicht stehen bleiben.
+    Task { [heartRateMonitor] in await heartRateMonitor.endOrphanedLiveActivities() }
   }
 
   func getPlatformHealth() async throws -> PlatformHealthCheck {
@@ -282,6 +286,90 @@ final class GainerMobilePlatform: MobilePlatformApi {
   func areLiveActivitiesEnabled() async throws -> Bool {
     guard #available(iOS 17.0, *) else { return false }
     return liveActivities.isEnabled
+  }
+
+  func readHeartRateStatus(afterSequence: Int64) async throws -> PlatformHeartRateStatus {
+    heartRateMonitor.status(afterSequence: afterSequence)
+  }
+
+  func scanHeartRateSensors(durationMilliseconds: Int64) async throws -> [PlatformHeartRateSensor] {
+    try await heartRateMonitor.scan(durationMilliseconds: durationMilliseconds)
+  }
+
+  func connectHeartRateSensor(sensorId: String) async throws -> Bool {
+    try await heartRateMonitor.connect(sensorId: sensorId)
+  }
+
+  func disconnectHeartRateSensor() async throws {
+    heartRateMonitor.disconnect()
+  }
+
+  func startCardioMonitoring(config: PlatformCardioMonitoringConfig) async throws {
+    try Self.validate(cardioConfig: config)
+    await heartRateMonitor.startMonitoring(config)
+  }
+
+  func updateCardioMonitoring(config: PlatformCardioMonitoringConfig) async throws {
+    try Self.validate(cardioConfig: config)
+    await heartRateMonitor.updateMonitoring(config)
+  }
+
+  func stopCardioMonitoring(sessionId: String) async throws {
+    await heartRateMonitor.stopMonitoring(sessionId: sessionId)
+  }
+
+  func requestCardioWriteAuthorization() async throws -> PlatformAuthorizationRequestResult {
+    try await handleHealthKitErrors { try await health.requestCardioWriteAuthorization() }
+  }
+
+  func exportCardioSession(export: PlatformCardioExport) async throws -> PlatformWorkoutExportResult {
+    let result = try await handleHealthKitErrors {
+      try await health.exportCardioSession(
+        NativeCardioExport(
+          accountId: export.accountId,
+          sessionId: export.sessionId,
+          syncVersion: export.syncVersion,
+          activityType: export.activityType,
+          startedAt: Date(timeIntervalSince1970: Double(export.startedAtUtcEpochMilliseconds) / 1000),
+          completedAt: Date(timeIntervalSince1970: Double(export.endedAtUtcEpochMilliseconds) / 1000),
+          sampleIntervalSeconds: Int(clamping: export.sampleIntervalSeconds),
+          heartRateBpm: export.heartRateBpm.map { Int(clamping: $0) },
+          distanceKm: export.distanceKm,
+          energyKcal: export.energyKcal
+        ))
+    }
+    return PlatformWorkoutExportResult(
+      status: result.status,
+      syncIdentifier: result.syncIdentifier,
+      syncVersion: result.syncVersion
+    )
+  }
+
+  /// Prüft die Eingaben aus Dart: Zone 40–230 mit von < bis (beide Grenzen oder keine),
+  /// Karenz 0–300 s, Wiederholung 10–3600 s, Aufwärmen 0–600 s.
+  nonisolated static func validate(cardioConfig config: PlatformCardioMonitoringConfig) throws {
+    let zoneIsValid: Bool
+    switch (config.zoneLowBpm, config.zoneHighBpm) {
+    case (nil, nil):
+      zoneIsValid = true
+    case (let low?, let high?):
+      zoneIsValid = (40...230).contains(low) && (40...230).contains(high) && low < high
+    default:
+      zoneIsValid = false
+    }
+    guard zoneIsValid,
+      !config.sessionId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      config.startedAtUtcEpochMilliseconds > 0,
+      (0...300).contains(config.graceSeconds),
+      (10...3600).contains(config.repeatSeconds),
+      (0...600).contains(config.warmupSeconds)
+    else {
+      throw PigeonError(
+        code: "invalid_cardio_config",
+        message: "The cardio monitoring configuration is invalid.",
+        details: nil
+      )
+    }
   }
 
   func openAppSettings() async throws {

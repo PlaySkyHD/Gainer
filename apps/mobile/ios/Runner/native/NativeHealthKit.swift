@@ -83,6 +83,27 @@ struct NativeWorkoutExportResult {
   let syncVersion: Int64
 }
 
+/// Beendete Cardio-Einheit, wie sie nach Apple Health geschrieben wird.
+struct NativeCardioExport: Equatable {
+  let accountId: String
+  let sessionId: String
+  let syncVersion: Int64
+  let activityType: String
+  let startedAt: Date
+  let completedAt: Date
+  let sampleIntervalSeconds: Int
+  let heartRateBpm: [Int]
+  let distanceKm: Double?
+  let energyKcal: Double?
+}
+
+/// Ein Pulswert mit Zeitfenster für Apple Health.
+struct NativeHeartRateWindow: Equatable {
+  let start: Date
+  let end: Date
+  let bpm: Int
+}
+
 enum NativeHealthKitError: Error, Equatable {
   case unavailable
   case invalidDateRange
@@ -133,6 +154,36 @@ final class NativeHealthKit {
     let input = Data("gainer.health.workout.v1|\(account.uuidString.lowercased())|\(workout.uuidString.lowercased())".utf8)
     let digest = SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined()
     return "gainer.health.workout.v1.\(digest)"
+  }
+
+  /// Stabile Kennung einer Cardio-Einheit in Apple Health. Wie beim Workout geht keine
+  /// Konto-ID im Klartext in fremde Apps; Konto und Einheit müssen UUIDs sein.
+  static func stableCardioSyncIdentifier(accountId: String, sessionId: String) -> String? {
+    guard let account = UUID(uuidString: accountId), let session = UUID(uuidString: sessionId) else {
+      return nil
+    }
+    let input = Data("gainer.cardio.v1|\(account.uuidString.lowercased())|\(session.uuidString.lowercased())".utf8)
+    let digest = SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined()
+    return "gainer.cardio.v1.\(digest)"
+  }
+
+  /// Ein Zeitfenster je Pulswert größer 0: Beginn Start + Index × Intervall, Ende Beginn +
+  /// Intervall, höchstens das Ende der Einheit. Fenster ohne Länge entfallen.
+  static func heartRateWindows(
+    startedAt: Date,
+    completedAt: Date,
+    intervalSeconds: Int,
+    heartRateBpm: [Int]
+  ) -> [NativeHeartRateWindow] {
+    guard intervalSeconds > 0 else { return [] }
+    var windows: [NativeHeartRateWindow] = []
+    for (index, bpm) in heartRateBpm.enumerated() where bpm > 0 && bpm <= 300 {
+      let start = startedAt.addingTimeInterval(TimeInterval(index * intervalSeconds))
+      guard start < completedAt else { break }
+      let end = min(start.addingTimeInterval(TimeInterval(intervalSeconds)), completedAt)
+      windows.append(NativeHeartRateWindow(start: start, end: end, bpm: bpm))
+    }
+    return windows
   }
 
   static func validWorkoutInterval(startedAt: Date, completedAt: Date, now: Date) -> Bool {
@@ -393,6 +444,132 @@ final class NativeHealthKit {
     } catch {
       // Avoid logging HealthKit payloads or identifiers. A retry uses the same
       // identifier/version and checks the store before attempting another save.
+      throw NativeHealthKitError.saveFailed
+    }
+  }
+
+  /// Eigener Dialog für Cardio: Workout, Puls, Distanz (Rad) und aktive Energie schreiben.
+  func requestCardioWriteAuthorization() async throws -> PlatformAuthorizationRequestResult {
+    guard isAvailable(),
+      let heartRate = HKObjectType.quantityType(forIdentifier: .heartRate),
+      let distance = HKObjectType.quantityType(forIdentifier: .distanceCycling),
+      let energy = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)
+    else { throw NativeHealthKitError.unavailable }
+    let share: Set<HKSampleType> = [HKObjectType.workoutType(), heartRate, distance, energy]
+    try await store.requestAuthorization(toShare: share, read: [])
+    return .requestCompleted
+  }
+
+  /// Schreibt eine Rad-Ergometer-Einheit als Indoor-Radtraining mit Pulsproben. Distanz und
+  /// Energie fließen nur ein, wenn sie eingetragen sind. Fehlt die Erlaubnis für einen
+  /// einzelnen Probentyp, entfallen nur dessen Proben; ohne Workout-Erlaubnis gibt es einen Fehler.
+  func exportCardioSession(_ export: NativeCardioExport) async throws -> NativeWorkoutExportResult {
+    guard isAvailable(), export.syncVersion > 0, export.activityType == "IndoorCycling",
+      (1...60).contains(export.sampleIntervalSeconds),
+      export.heartRateBpm.count <= 24 * 60 * 60 / export.sampleIntervalSeconds + 1,
+      Self.validWorkoutInterval(startedAt: export.startedAt, completedAt: export.completedAt, now: now()),
+      export.distanceKm.map({ $0.isFinite && $0 >= 0 && $0 <= 5_000 }) ?? true,
+      export.energyKcal.map({ $0.isFinite && $0 >= 0 && $0 <= 50_000 }) ?? true,
+      let syncIdentifier = Self.stableCardioSyncIdentifier(
+        accountId: export.accountId, sessionId: export.sessionId)
+    else { throw NativeHealthKitError.invalidWorkout }
+
+    let workoutType = HKObjectType.workoutType()
+    guard store.authorizationStatus(for: workoutType) == .sharingAuthorized else {
+      throw NativeHealthKitError.writePermissionNotGranted
+    }
+
+    let existing = try await queryWorkouts(syncIdentifier: syncIdentifier)
+    let highestVersion = existing.compactMap { sample -> Int64? in
+      (sample.metadata?[HKMetadataKeySyncVersion] as? NSNumber)?.int64Value
+    }.max()
+    if let highestVersion, highestVersion >= export.syncVersion {
+      return NativeWorkoutExportResult(
+        status: "alreadyPresent",
+        syncIdentifier: syncIdentifier,
+        syncVersion: highestVersion
+      )
+    }
+
+    var samples: [HKSample] = []
+    func canShare(_ type: HKQuantityType) -> Bool {
+      store.authorizationStatus(for: type) == .sharingAuthorized
+    }
+    if let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate), canShare(heartRateType) {
+      let unit = HKUnit.count().unitDivided(by: .minute())
+      for window in Self.heartRateWindows(
+        startedAt: export.startedAt,
+        completedAt: export.completedAt,
+        intervalSeconds: export.sampleIntervalSeconds,
+        heartRateBpm: export.heartRateBpm
+      ) {
+        samples.append(
+          HKQuantitySample(
+            type: heartRateType,
+            quantity: HKQuantity(unit: unit, doubleValue: Double(window.bpm)),
+            start: window.start,
+            end: window.end
+          ))
+      }
+    }
+    if let distanceKm = export.distanceKm, distanceKm > 0,
+      let distanceType = HKObjectType.quantityType(forIdentifier: .distanceCycling), canShare(distanceType)
+    {
+      samples.append(
+        HKQuantitySample(
+          type: distanceType,
+          quantity: HKQuantity(unit: .meterUnit(with: .kilo), doubleValue: distanceKm),
+          start: export.startedAt,
+          end: export.completedAt
+        ))
+    }
+    if let energyKcal = export.energyKcal, energyKcal > 0,
+      let energyType = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned), canShare(energyType)
+    {
+      samples.append(
+        HKQuantitySample(
+          type: energyType,
+          quantity: HKQuantity(unit: .kilocalorie(), doubleValue: energyKcal),
+          start: export.startedAt,
+          end: export.completedAt
+        ))
+    }
+
+    var metadata = Self.syncMetadata(identifier: syncIdentifier, version: export.syncVersion)
+    metadata[HKMetadataKeyIndoorWorkout] = NSNumber(value: true)
+    let distance = export.distanceKm.flatMap { $0 > 0 ? HKQuantity(unit: .meterUnit(with: .kilo), doubleValue: $0) : nil }
+    let energy = export.energyKcal.flatMap { $0 > 0 ? HKQuantity(unit: .kilocalorie(), doubleValue: $0) : nil }
+    let workout = HKWorkout(
+      activityType: .cycling,
+      start: export.startedAt,
+      end: export.completedAt,
+      duration: export.completedAt.timeIntervalSince(export.startedAt),
+      totalEnergyBurned: energy,
+      totalDistance: distance,
+      metadata: metadata
+    )
+    do {
+      // Proben zuerst, damit das Workout nie ohne seine Pulskurve „fertig“ ist.
+      if !samples.isEmpty { try await store.save(samples) }
+      var workoutSaved = false
+      do {
+        try await store.save(workout)
+        workoutSaved = true
+        if !samples.isEmpty { try await store.add(samples, to: workout) }
+      } catch {
+        // Nichts Halbes zurücklassen: ein Workout ohne Pulskurve würde später als vorhanden gelten.
+        var leftovers: [HKObject] = samples
+        if workoutSaved { leftovers.append(workout) }
+        if !leftovers.isEmpty { try? await store.delete(leftovers) }
+        throw error
+      }
+      return NativeWorkoutExportResult(
+        status: "saved",
+        syncIdentifier: syncIdentifier,
+        syncVersion: export.syncVersion
+      )
+    } catch {
+      // Keine Nutzdaten loggen. Ein neuer Versuch prüft zuerst den Bestand per Kennung und Version.
       throw NativeHealthKitError.saveFailed
     }
   }

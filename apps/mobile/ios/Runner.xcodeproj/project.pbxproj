@@ -35,6 +35,12 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		F10000000000000000000080 /* HeartRateMeasurementParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000070 /* HeartRateMeasurementParser.swift */; };
+		F10000000000000000000081 /* CardioZoneAlarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000071 /* CardioZoneAlarm.swift */; };
+		F10000000000000000000082 /* NativeHeartRateMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000072 /* NativeHeartRateMonitor.swift */; };
+		F10000000000000000000083 /* NativeCardioAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000073 /* NativeCardioAlerts.swift */; };
+		F10000000000000000000084 /* NativeCardioLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000074 /* NativeCardioLiveActivity.swift */; };
+		F10000000000000000000085 /* CardioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000075 /* CardioTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -117,6 +123,12 @@
 		F10000000000000000000045 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F30000000000000000000011 /* Runner PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F30000000000000000000012 /* WidgetExtension PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F10000000000000000000070 /* HeartRateMeasurementParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartRateMeasurementParser.swift; sourceTree = "<group>"; };
+		F10000000000000000000071 /* CardioZoneAlarm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardioZoneAlarm.swift; sourceTree = "<group>"; };
+		F10000000000000000000072 /* NativeHeartRateMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHeartRateMonitor.swift; sourceTree = "<group>"; };
+		F10000000000000000000073 /* NativeCardioAlerts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCardioAlerts.swift; sourceTree = "<group>"; };
+		F10000000000000000000074 /* NativeCardioLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCardioLiveActivity.swift; sourceTree = "<group>"; };
+		F10000000000000000000075 /* CardioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardioTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +147,7 @@
 			isa = PBXGroup;
 			children = (
 				331C807B294A618700263BE5 /* RunnerTests.swift */,
+				F10000000000000000000075 /* CardioTests.swift */,
 			);
 			path = RunnerTests;
 			sourceTree = "<group>";
@@ -207,6 +220,11 @@
 				F10000000000000000000021 /* NativeExtensionSnapshotStore.swift */,
 				F10000000000000000000022 /* NativeLiveActivities.swift */,
 				F10000000000000000000023 /* NativeRouteDispatcher.swift */,
+				F10000000000000000000070 /* HeartRateMeasurementParser.swift */,
+				F10000000000000000000071 /* CardioZoneAlarm.swift */,
+				F10000000000000000000072 /* NativeHeartRateMonitor.swift */,
+				F10000000000000000000073 /* NativeCardioAlerts.swift */,
+				F10000000000000000000074 /* NativeCardioLiveActivity.swift */,
 			);
 			path = native;
 			sourceTree = "<group>";
@@ -397,6 +415,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */,
+				F10000000000000000000085 /* CardioTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -416,6 +435,11 @@
 				F10000000000000000000011 /* NativeExtensionSnapshotStore.swift in Sources */,
 				F10000000000000000000012 /* NativeLiveActivities.swift in Sources */,
 				F10000000000000000000013 /* NativeRouteDispatcher.swift in Sources */,
+				F10000000000000000000080 /* HeartRateMeasurementParser.swift in Sources */,
+				F10000000000000000000081 /* CardioZoneAlarm.swift in Sources */,
+				F10000000000000000000082 /* NativeHeartRateMonitor.swift in Sources */,
+				F10000000000000000000083 /* NativeCardioAlerts.swift in Sources */,
+				F10000000000000000000084 /* NativeCardioLiveActivity.swift in Sources */,
 				F10000000000000000000014 /* GainerAppShortcuts.swift in Sources */,
 				F10000000000000000000015 /* GainerWidgetContracts.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,

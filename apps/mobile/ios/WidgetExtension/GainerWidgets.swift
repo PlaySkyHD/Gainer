@@ -162,6 +162,176 @@ private struct GainerWorkoutLiveActivity: Widget {
   }
 }
 
+private struct GainerCardioLiveActivity: Widget {
+  let kind = "GainerCardioLiveActivity"
+
+  var body: some WidgetConfiguration {
+    ActivityConfiguration(for: GainerCardioActivityAttributes.self) { context in
+      GainerCardioActivityView(attributes: context.attributes, state: context.state)
+        .widgetURL(GainerExtensionURL.route(.training, source: "liveActivity"))
+    } dynamicIsland: { context in
+      DynamicIsland {
+        DynamicIslandExpandedRegion(.leading) {
+          HStack(spacing: 6) {
+            Image(systemName: "heart.fill")
+              .foregroundStyle(GainerCardioStyle.color(for: context.state.zoneState))
+              .accessibilityHidden(true)
+            Text(GainerCardioStyle.bpmText(context.state))
+              .font(.title2.weight(.bold))
+              .monospacedDigit()
+              .lineLimit(1)
+            Text("bpm")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
+        DynamicIslandExpandedRegion(.trailing) {
+          GainerCardioElapsed(startedAt: context.attributes.startedAt)
+            .font(.subheadline)
+            .frame(width: 64, alignment: .trailing)
+        }
+        DynamicIslandExpandedRegion(.bottom) {
+          HStack(spacing: 8) {
+            if let label = GainerCardioStyle.label(for: context.state.zoneState) {
+              Text(label)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(GainerCardioStyle.color(for: context.state.zoneState))
+            }
+            Spacer(minLength: 0)
+            if let target = GainerCardioStyle.targetText(context.state) {
+              Text(target)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
+        }
+      } compactLeading: {
+        Image(systemName: "heart.fill")
+          .foregroundStyle(GainerCardioStyle.color(for: context.state.zoneState))
+          .accessibilityHidden(true)
+      } compactTrailing: {
+        Text(GainerCardioStyle.bpmText(context.state))
+          .monospacedDigit()
+          .frame(minWidth: 28, alignment: .trailing)
+          .accessibilityLabel("Puls \(GainerCardioStyle.bpmText(context.state))")
+      } minimal: {
+        Image(systemName: "heart.fill")
+          .foregroundStyle(GainerCardioStyle.color(for: context.state.zoneState))
+          .accessibilityLabel("Puls")
+      }
+      .widgetURL(GainerExtensionURL.route(.training, source: "liveActivity"))
+    }
+  }
+}
+
+/// Sperrbildschirm der Cardio-Einheit: Herz und großer Puls, Status in Zonenfarbe,
+/// Zielbereich und die vergangene Zeit.
+private struct GainerCardioActivityView: View {
+  let attributes: GainerCardioActivityAttributes
+  let state: GainerCardioActivityAttributes.ContentState
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .center, spacing: 8) {
+        GainerAppIconImage(size: 20)
+        Text(attributes.title)
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(Color("GainerPrimaryText"))
+          .lineLimit(1)
+        Spacer(minLength: 8)
+        GainerCardioElapsed(startedAt: attributes.startedAt)
+          .font(.subheadline)
+          .foregroundStyle(Color("GainerSecondaryText"))
+          .frame(width: 72, alignment: .trailing)
+      }
+      HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+          Image(systemName: "heart.fill")
+            .font(.title2)
+            .foregroundStyle(GainerCardioStyle.color(for: state.zoneState))
+            .accessibilityHidden(true)
+          Text(GainerCardioStyle.bpmText(state))
+            .font(.system(size: 44, weight: .bold))
+            .monospacedDigit()
+            .foregroundStyle(Color("GainerPrimaryText"))
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+          Text("bpm")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Color("GainerSecondaryText"))
+        }
+        Spacer(minLength: 0)
+        VStack(alignment: .trailing, spacing: 2) {
+          if let label = GainerCardioStyle.label(for: state.zoneState) {
+            Text(label)
+              .font(.headline)
+              .foregroundStyle(GainerCardioStyle.color(for: state.zoneState))
+              .lineLimit(1)
+          }
+          if let target = GainerCardioStyle.targetText(state) {
+            Text(target)
+              .font(.caption)
+              .foregroundStyle(Color("GainerSecondaryText"))
+              .lineLimit(1)
+          }
+        }
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color("GainerSurface"))
+    .activityBackgroundTint(Color("GainerSurface"))
+    .activitySystemActionForegroundColor(.white)
+    // Die Karte bleibt dunkel, unabhängig vom Systemmodus.
+    .environment(\.colorScheme, .dark)
+    .accessibilityElement(children: .combine)
+  }
+}
+
+/// Vergangene Zeit; das System zählt selbst, die App läuft dafür nicht.
+private struct GainerCardioElapsed: View {
+  let startedAt: Date
+
+  var body: some View {
+    Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
+      .monospacedDigit()
+      .multilineTextAlignment(.trailing)
+      .accessibilityLabel("Vergangene Cardio-Zeit")
+  }
+}
+
+/// Texte und Farben je Zonenstatus (`inZone`, `above`, `below`, `noSignal`, `none`).
+private enum GainerCardioStyle {
+  static func label(for zoneState: String) -> String? {
+    switch zoneState {
+    case "inZone": "Im Zielbereich"
+    case "above": "Zu hoch"
+    case "below": "Zu niedrig"
+    case "noSignal": "Kein Signal"
+    default: nil
+    }
+  }
+
+  static func color(for zoneState: String) -> Color {
+    switch zoneState {
+    case "inZone": .green
+    case "above": .red
+    case "below": .blue
+    case "noSignal": .gray
+    default: Color("GainerAccent")
+    }
+  }
+
+  static func bpmText(_ state: GainerCardioActivityAttributes.ContentState) -> String {
+    state.bpm.map { String($0) } ?? "–"
+  }
+
+  static func targetText(_ state: GainerCardioActivityAttributes.ContentState) -> String? {
+    guard let low = state.zoneLowBpm, let high = state.zoneHighBpm else { return nil }
+    return "Ziel \(low)–\(high)"
+  }
+}
+
 /// Sperrbildschirm: oben Icon, Titel und Trainingszeit; darunter links die Zeit
 /// (Pause oder Training), rechts die Übung mit Satz und Ziel; unten Fortschritt.
 private struct GainerActivityView: View {
@@ -522,5 +692,6 @@ struct GainerWidgetBundle: WidgetBundle {
     GainerTrainingWidget()
     GainerCheckInWidget()
     GainerWorkoutLiveActivity()
+    GainerCardioLiveActivity()
   }
 }

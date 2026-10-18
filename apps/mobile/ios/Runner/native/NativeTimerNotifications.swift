@@ -146,7 +146,9 @@ final class TimerNotificationDelegate: NSObject, UNUserNotificationCenterDelegat
   }
 
   static func presentationOptions(forIdentifier identifier: String) -> UNNotificationPresentationOptions? {
-    identifier.hasPrefix(NativeTimerNotifications.timerIdentifierPrefix) ? [.banner, .sound, .list] : nil
+    identifier.hasPrefix(NativeTimerNotifications.timerIdentifierPrefix)
+      || identifier.hasPrefix(NativeCardioAlerts.identifierPrefix)
+      ? [.banner, .sound, .list] : nil
   }
 
   func userNotificationCenter(
