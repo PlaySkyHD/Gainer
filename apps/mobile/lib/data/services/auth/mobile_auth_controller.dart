@@ -13,6 +13,7 @@ import '../../../ui/features/training/rest_timer_controller.dart';
 import '../../models/api/api_models.dart';
 import '../../models/local/local_mutation.dart';
 import '../../repositories/body/body_repository.dart';
+import '../../repositories/health/check_in_health_coordinator.dart';
 import '../../repositories/health/health_review_coordinator.dart';
 import '../../repositories/insights/insights_repository.dart';
 import '../../repositories/nutrition/api_nutrition_online_provider.dart';
@@ -368,7 +369,13 @@ class MobileAuthController extends ChangeNotifier
       online: online ? ApiNutritionOnlineProvider(api) : null,
       capture: capture,
     );
-    final bodyViewModel = BodyViewModel(body);
+    final bodyViewModel = BodyViewModel(
+      body,
+      health: CheckInHealthCoordinator(
+        platform: health,
+        accountId: session.userId,
+      ),
+    );
     final nutritionViewModel = NutritionViewModel(
       repository: nutrition,
       localDate: DateTime.now().toIso8601String().substring(0, 10),

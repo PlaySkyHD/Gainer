@@ -1,5 +1,6 @@
 import CryptoKit
 import Flutter
+import HealthKit
 import UIKit
 import XCTest
 import UserNotifications
@@ -204,6 +205,71 @@ class RunnerTests: XCTestCase {
         now: now
       )
     )
+  }
+
+  func testSleepAnalysisCountsOnlyAsleepPhasesAndUsesEarliestStartAndLatestEnd() throws {
+    let night = Date(timeIntervalSince1970: 1_800_000_000)
+    func segment(_ value: HKCategoryValueSleepAnalysis, _ from: TimeInterval, _ to: TimeInterval)
+      -> NativeSleepSegment
+    {
+      NativeSleepSegment(
+        start: night.addingTimeInterval(from * 60),
+        end: night.addingTimeInterval(to * 60),
+        rawValue: value.rawValue,
+        sourceName: "Watch",
+        fromGainer: false
+      )
+    }
+    let window = try XCTUnwrap(
+      NativeSleepAnalysis.summarize([
+        segment(.inBed, -30, 480),
+        segment(.asleepCore, 0, 120),
+        segment(.asleepDeep, 120, 180),
+        segment(.awake, 180, 195),
+        segment(.asleepREM, 195, 255),
+        segment(.asleepUnspecified, 255, 300),
+      ])
+    )
+    XCTAssertEqual(window.bedtimeUtcEpochMilliseconds, Int64(night.timeIntervalSince1970 * 1000))
+    XCTAssertEqual(
+      window.wakeUtcEpochMilliseconds,
+      Int64(night.addingTimeInterval(300 * 60).timeIntervalSince1970 * 1000)
+    )
+    XCTAssertEqual(window.asleepMinutes, 285)
+    XCTAssertFalse(window.fromGainer)
+    XCTAssertNil(NativeSleepAnalysis.summarize([segment(.inBed, 0, 480), segment(.awake, 0, 30)]))
+  }
+
+  func testSleepAnalysisCountsOverlappingSourcesOnceAndPrefersForeignSamples() throws {
+    let night = Date(timeIntervalSince1970: 1_800_000_000)
+    func segment(_ from: TimeInterval, _ to: TimeInterval, gainer: Bool) -> NativeSleepSegment {
+      NativeSleepSegment(
+        start: night.addingTimeInterval(from * 60),
+        end: night.addingTimeInterval(to * 60),
+        rawValue: HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
+        sourceName: gainer ? "Gainer" : "iPhone",
+        fromGainer: gainer
+      )
+    }
+    let mixed = try XCTUnwrap(
+      NativeSleepAnalysis.summarize([
+        segment(0, 120, gainer: false),
+        segment(60, 180, gainer: false),
+        segment(-60, 600, gainer: true),
+      ])
+    )
+    XCTAssertEqual(mixed.asleepMinutes, 180)
+    XCTAssertEqual(mixed.sourceName, "iPhone")
+    XCTAssertFalse(mixed.fromGainer)
+
+    let own = try XCTUnwrap(NativeSleepAnalysis.summarize([segment(0, 450, gainer: true)]))
+    XCTAssertEqual(own.asleepMinutes, 450)
+    XCTAssertTrue(own.fromGainer)
+  }
+
+  func testCheckInSyncIdentifierMustBeGainerScoped() {
+    XCTAssertTrue(NativeHealthKit.validCheckInSyncIdentifier("gainer-checkin-a1-2026-10-18-weight"))
+    XCTAssertFalse(NativeHealthKit.validCheckInSyncIdentifier("other-2026-10-18"))
   }
 
   func testFreshInstallClearsCheckpointsRetainedByTheKeychain() throws {

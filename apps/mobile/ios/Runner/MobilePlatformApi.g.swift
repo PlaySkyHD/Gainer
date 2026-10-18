@@ -193,6 +193,13 @@ enum PlatformAuthorizationRequestResult: Int, CaseIterable {
   case requestCompleted = 0
 }
 
+/// Ergebnis eines Schreibversuchs nach Apple Health.
+enum PlatformHealthWriteStatus: Int, CaseIterable {
+  case saved = 0
+  case alreadyPresent = 1
+  case notAuthorized = 2
+}
+
 /// Generated class from Pigeon that represents data sent in messages.
 struct PlatformHealthCheck: Hashable, CustomStringConvertible {
   var available: Bool
@@ -274,6 +281,8 @@ struct PlatformBodyMassSample: Hashable, CustomStringConvertible {
   var measuredAtUtcEpochMilliseconds: Int64
   var weightKilograms: Double
   var sourceName: String
+  /// `HKMetadataKeySyncIdentifier` der Probe; null bei fremden Quellen.
+  var syncIdentifier: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -282,12 +291,14 @@ struct PlatformBodyMassSample: Hashable, CustomStringConvertible {
     let measuredAtUtcEpochMilliseconds = pigeonVar_list[1] as! Int64
     let weightKilograms = pigeonVar_list[2] as! Double
     let sourceName = pigeonVar_list[3] as! String
+    let syncIdentifier: String? = nilOrValue(pigeonVar_list[4])
 
     return PlatformBodyMassSample(
       uuid: uuid,
       measuredAtUtcEpochMilliseconds: measuredAtUtcEpochMilliseconds,
       weightKilograms: weightKilograms,
-      sourceName: sourceName
+      sourceName: sourceName,
+      syncIdentifier: syncIdentifier
     )
   }
   func toList() -> [Any?] {
@@ -296,13 +307,14 @@ struct PlatformBodyMassSample: Hashable, CustomStringConvertible {
       measuredAtUtcEpochMilliseconds,
       weightKilograms,
       sourceName,
+      syncIdentifier,
     ]
   }
   static func == (lhs: PlatformBodyMassSample, rhs: PlatformBodyMassSample) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return MobilePlatformApiPigeonInternal.deepEquals(lhs.uuid, rhs.uuid) && MobilePlatformApiPigeonInternal.deepEquals(lhs.measuredAtUtcEpochMilliseconds, rhs.measuredAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.weightKilograms, rhs.weightKilograms) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sourceName, rhs.sourceName)
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.uuid, rhs.uuid) && MobilePlatformApiPigeonInternal.deepEquals(lhs.measuredAtUtcEpochMilliseconds, rhs.measuredAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.weightKilograms, rhs.weightKilograms) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sourceName, rhs.sourceName) && MobilePlatformApiPigeonInternal.deepEquals(lhs.syncIdentifier, rhs.syncIdentifier)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -311,10 +323,69 @@ struct PlatformBodyMassSample: Hashable, CustomStringConvertible {
     MobilePlatformApiPigeonInternal.deepHash(value: measuredAtUtcEpochMilliseconds, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: weightKilograms, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: sourceName, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: syncIdentifier, hasher: &hasher)
   }
 
   public var description: String {
-    return "PlatformBodyMassSample(uuid: \(String(describing: uuid)), measuredAtUtcEpochMilliseconds: \(String(describing: measuredAtUtcEpochMilliseconds)), weightKilograms: \(String(describing: weightKilograms)), sourceName: \(String(describing: sourceName)))"
+    return "PlatformBodyMassSample(uuid: \(String(describing: uuid)), measuredAtUtcEpochMilliseconds: \(String(describing: measuredAtUtcEpochMilliseconds)), weightKilograms: \(String(describing: weightKilograms)), sourceName: \(String(describing: sourceName)), syncIdentifier: \(String(describing: syncIdentifier)))"
+  }
+}
+
+/// Schlafanalyse einer Nacht: früheste Einschlafzeit bis späteste Aufwachzeit.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformSleepWindow: Hashable, CustomStringConvertible {
+  var bedtimeUtcEpochMilliseconds: Int64
+  var wakeUtcEpochMilliseconds: Int64
+  var asleepMinutes: Int64
+  var sourceName: String
+  /// Wahr, wenn nur Gainer-eigene Proben vorliegen.
+  var fromGainer: Bool
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformSleepWindow? {
+    let bedtimeUtcEpochMilliseconds = pigeonVar_list[0] as! Int64
+    let wakeUtcEpochMilliseconds = pigeonVar_list[1] as! Int64
+    let asleepMinutes = pigeonVar_list[2] as! Int64
+    let sourceName = pigeonVar_list[3] as! String
+    let fromGainer = pigeonVar_list[4] as! Bool
+
+    return PlatformSleepWindow(
+      bedtimeUtcEpochMilliseconds: bedtimeUtcEpochMilliseconds,
+      wakeUtcEpochMilliseconds: wakeUtcEpochMilliseconds,
+      asleepMinutes: asleepMinutes,
+      sourceName: sourceName,
+      fromGainer: fromGainer
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      bedtimeUtcEpochMilliseconds,
+      wakeUtcEpochMilliseconds,
+      asleepMinutes,
+      sourceName,
+      fromGainer,
+    ]
+  }
+  static func == (lhs: PlatformSleepWindow, rhs: PlatformSleepWindow) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.bedtimeUtcEpochMilliseconds, rhs.bedtimeUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.wakeUtcEpochMilliseconds, rhs.wakeUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.asleepMinutes, rhs.asleepMinutes) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sourceName, rhs.sourceName) && MobilePlatformApiPigeonInternal.deepEquals(lhs.fromGainer, rhs.fromGainer)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformSleepWindow")
+    MobilePlatformApiPigeonInternal.deepHash(value: bedtimeUtcEpochMilliseconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: wakeUtcEpochMilliseconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: asleepMinutes, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: sourceName, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: fromGainer, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformSleepWindow(bedtimeUtcEpochMilliseconds: \(String(describing: bedtimeUtcEpochMilliseconds)), wakeUtcEpochMilliseconds: \(String(describing: wakeUtcEpochMilliseconds)), asleepMinutes: \(String(describing: asleepMinutes)), sourceName: \(String(describing: sourceName)), fromGainer: \(String(describing: fromGainer)))"
   }
 }
 
@@ -565,18 +636,26 @@ private class MobilePlatformApiPigeonCodecReader: FlutterStandardReader {
       }
       return nil
     case 130:
-      return PlatformHealthCheck.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return PlatformHealthWriteStatus(rawValue: enumResultAsInt)
+      }
+      return nil
     case 131:
-      return PlatformCapturedImage.fromList(self.readValue() as! [Any?])
+      return PlatformHealthCheck.fromList(self.readValue() as! [Any?])
     case 132:
-      return PlatformBodyMassSample.fromList(self.readValue() as! [Any?])
+      return PlatformCapturedImage.fromList(self.readValue() as! [Any?])
     case 133:
-      return PlatformWorkoutExportResult.fromList(self.readValue() as! [Any?])
+      return PlatformBodyMassSample.fromList(self.readValue() as! [Any?])
     case 134:
-      return PlatformLiveActivityDetail.fromList(self.readValue() as! [Any?])
+      return PlatformSleepWindow.fromList(self.readValue() as! [Any?])
     case 135:
-      return PlatformLiveActivityState.fromList(self.readValue() as! [Any?])
+      return PlatformWorkoutExportResult.fromList(self.readValue() as! [Any?])
     case 136:
+      return PlatformLiveActivityDetail.fromList(self.readValue() as! [Any?])
+    case 137:
+      return PlatformLiveActivityState.fromList(self.readValue() as! [Any?])
+    case 138:
       return PlatformRoute.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -589,26 +668,32 @@ private class MobilePlatformApiPigeonCodecWriter: FlutterStandardWriter {
     if let value = value as? PlatformAuthorizationRequestResult {
       super.writeByte(129)
       super.writeValue(value.rawValue)
-    } else if let value = value as? PlatformHealthCheck {
+    } else if let value = value as? PlatformHealthWriteStatus {
       super.writeByte(130)
-      super.writeValue(value.toList())
-    } else if let value = value as? PlatformCapturedImage {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? PlatformHealthCheck {
       super.writeByte(131)
       super.writeValue(value.toList())
-    } else if let value = value as? PlatformBodyMassSample {
+    } else if let value = value as? PlatformCapturedImage {
       super.writeByte(132)
       super.writeValue(value.toList())
-    } else if let value = value as? PlatformWorkoutExportResult {
+    } else if let value = value as? PlatformBodyMassSample {
       super.writeByte(133)
       super.writeValue(value.toList())
-    } else if let value = value as? PlatformLiveActivityDetail {
+    } else if let value = value as? PlatformSleepWindow {
       super.writeByte(134)
       super.writeValue(value.toList())
-    } else if let value = value as? PlatformLiveActivityState {
+    } else if let value = value as? PlatformWorkoutExportResult {
       super.writeByte(135)
       super.writeValue(value.toList())
-    } else if let value = value as? PlatformRoute {
+    } else if let value = value as? PlatformLiveActivityDetail {
       super.writeByte(136)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformLiveActivityState {
+      super.writeByte(137)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformRoute {
+      super.writeByte(138)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -653,6 +738,14 @@ protocol MobilePlatformApi {
   /// hides read authorization, so an empty query remains an empty result.
   func requestBodyMassReadAuthorization() async throws -> PlatformAuthorizationRequestResult
   func readBodyMassSamples(fromUtcEpochMilliseconds: Int64, toUtcEpochMilliseconds: Int64) async throws -> [PlatformBodyMassSample]
+  /// Fragt Lesen (Gewicht, Schritte, Schlaf) und Schreiben (Gewicht, Schlaf)
+  /// für den Check-in in einem Systemdialog an.
+  func requestCheckInAuthorization() async throws -> PlatformAuthorizationRequestResult
+  /// Tagessumme der Schritte; null ohne Daten.
+  func readStepCount(fromUtcEpochMilliseconds: Int64, toUtcEpochMilliseconds: Int64) async throws -> Int64?
+  func readSleep(fromUtcEpochMilliseconds: Int64, toUtcEpochMilliseconds: Int64) async throws -> PlatformSleepWindow?
+  func writeBodyMass(kilograms: Double, measuredAtUtcEpochMilliseconds: Int64, syncIdentifier: String) async throws -> PlatformHealthWriteStatus
+  func writeSleep(bedtimeUtcEpochMilliseconds: Int64, wakeUtcEpochMilliseconds: Int64, syncIdentifier: String) async throws -> PlatformHealthWriteStatus
   func requestWorkoutWriteAuthorization() async throws -> PlatformAuthorizationRequestResult
   func exportCompletedWorkout(accountId: String, workoutId: String, syncVersion: Int64, startedAtUtcEpochMilliseconds: Int64, completedAtUtcEpochMilliseconds: Int64) async throws -> PlatformWorkoutExportResult
   func publishNeutralExtensionSnapshot(schemaVersion: Int64, generation: Int64, updatedAtUtcEpochMilliseconds: Int64, availableRoutes: [String]) async throws
@@ -957,6 +1050,98 @@ class MobilePlatformApiSetup {
       }
     } else {
       readBodyMassSamplesChannel.setMessageHandler(nil)
+    }
+    /// Fragt Lesen (Gewicht, Schritte, Schlaf) und Schreiben (Gewicht, Schlaf)
+    /// für den Check-in in einem Systemdialog an.
+    let requestCheckInAuthorizationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestCheckInAuthorization\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      requestCheckInAuthorizationChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            let result = try await api.requestCheckInAuthorization()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      requestCheckInAuthorizationChannel.setMessageHandler(nil)
+    }
+    /// Tagessumme der Schritte; null ohne Daten.
+    let readStepCountChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readStepCount\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      readStepCountChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let fromUtcEpochMillisecondsArg = args[0] as! Int64
+        let toUtcEpochMillisecondsArg = args[1] as! Int64
+        Task { @MainActor in
+          do {
+            let result = try await api.readStepCount(fromUtcEpochMilliseconds: fromUtcEpochMillisecondsArg, toUtcEpochMilliseconds: toUtcEpochMillisecondsArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      readStepCountChannel.setMessageHandler(nil)
+    }
+    let readSleepChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readSleep\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      readSleepChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let fromUtcEpochMillisecondsArg = args[0] as! Int64
+        let toUtcEpochMillisecondsArg = args[1] as! Int64
+        Task { @MainActor in
+          do {
+            let result = try await api.readSleep(fromUtcEpochMilliseconds: fromUtcEpochMillisecondsArg, toUtcEpochMilliseconds: toUtcEpochMillisecondsArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      readSleepChannel.setMessageHandler(nil)
+    }
+    let writeBodyMassChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writeBodyMass\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      writeBodyMassChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let kilogramsArg = args[0] as! Double
+        let measuredAtUtcEpochMillisecondsArg = args[1] as! Int64
+        let syncIdentifierArg = args[2] as! String
+        Task { @MainActor in
+          do {
+            let result = try await api.writeBodyMass(kilograms: kilogramsArg, measuredAtUtcEpochMilliseconds: measuredAtUtcEpochMillisecondsArg, syncIdentifier: syncIdentifierArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      writeBodyMassChannel.setMessageHandler(nil)
+    }
+    let writeSleepChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.writeSleep\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      writeSleepChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let bedtimeUtcEpochMillisecondsArg = args[0] as! Int64
+        let wakeUtcEpochMillisecondsArg = args[1] as! Int64
+        let syncIdentifierArg = args[2] as! String
+        Task { @MainActor in
+          do {
+            let result = try await api.writeSleep(bedtimeUtcEpochMilliseconds: bedtimeUtcEpochMillisecondsArg, wakeUtcEpochMilliseconds: wakeUtcEpochMillisecondsArg, syncIdentifier: syncIdentifierArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      writeSleepChannel.setMessageHandler(nil)
     }
     let requestWorkoutWriteAuthorizationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.requestWorkoutWriteAuthorization\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
