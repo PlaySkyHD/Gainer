@@ -78,6 +78,7 @@ WorkoutBlock _block(String name, {int sets = 3, int recorded = 0}) =>
     );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late TrainingHarness harness;
   late RestTimerFixture fixture;
   late ActiveWorkoutController active;
@@ -374,6 +375,45 @@ void main() {
 
     expect(platform.calls, ['start']);
     expect(active.restTimer!.phase, RestTimerPhase.paused);
+  });
+
+  test(
+    'nach einem Startfehler wird nach kurzer Wartezeit erneut gestartet',
+    () async {
+      platform.available = false;
+      await startTraining();
+      expect(platform.calls, ['start']);
+
+      platform.available = true;
+      await active.restTimer!.start();
+      await _flush();
+      expect(platform.calls, [
+        'start',
+      ], reason: 'innerhalb der Wartezeit kein neuer Versuch');
+
+      fixture.clock.now = fixture.clock.now.add(const Duration(seconds: 31));
+      await active.restTimer!.stop();
+      await _flush();
+      expect(platform.calls, ['start', 'start']);
+      expect(platform.states.last.timerPhase, RestTimerPhase.paused);
+    },
+  );
+
+  test('Rückkehr in die App startet eine beendete Activity neu', () async {
+    await startTraining();
+    expect(platform.calls, ['start']);
+
+    // iOS hat die Activity beendet, z. B. durch ein App-Update.
+    platform.available = false;
+    coordinator.resync();
+    await _flush();
+    expect(platform.calls, ['start', 'update', 'start']);
+
+    platform.available = true;
+    coordinator.resync();
+    await _flush();
+    // Nach dem Fehlschlag gilt keine Wartezeit, der Abgleich sendet sofort.
+    expect(platform.calls, ['start', 'update', 'start', 'update']);
   });
 
   test(
