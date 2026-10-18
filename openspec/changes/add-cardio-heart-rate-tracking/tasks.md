@@ -2,10 +2,10 @@
 
 ## 1. Backend
 
-- [ ] 1.1 `ResourceKind.CardioSession`, Entität, Mutationen, Validierung (D1); Unit-Tests für die Validierung.
-- [ ] 1.2 EF-Mapping mit `integer[]`-Spalten und Migration `AddCardioSessions`.
-- [ ] 1.3 `CardioSessionMutationHandler` (Anlegen, Ändern, Löschen), Sync-Executor, Fehlerzuordnung in Processor und Controller (D6).
-- [ ] 1.4 Integrationstests: Anlegen/Ändern/Löschen, Replay, veraltete Version, Validierung, Isolation mit zwei Nutzern.
+- [x] 1.1 `ResourceKind.CardioSession`, Entität, Mutationen, Validierung (D1); Unit-Tests für die Validierung.
+- [x] 1.2 EF-Mapping mit `integer[]`-Spalten und Migration `AddCardioSessions`.
+- [x] 1.3 `CardioSessionMutationHandler` (Anlegen, Ändern, Löschen), Sync-Executor, Fehlerzuordnung in Processor und Controller (D6).
+- [x] 1.4 Integrationstests: Anlegen/Ändern/Löschen, Replay, veraltete Version, Validierung, Isolation mit zwei Nutzern.
 
 ## 2. Flutter-Daten
 

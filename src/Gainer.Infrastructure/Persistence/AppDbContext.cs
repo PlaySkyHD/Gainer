@@ -55,6 +55,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 
     public DbSet<Workout> Workouts => Set<Workout>();
 
+    public DbSet<CardioSession> CardioSessions => Set<CardioSession>();
+
     public DbSet<WorkoutExercise> WorkoutExercises => Set<WorkoutExercise>();
 
     public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
@@ -466,6 +468,39 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 .HasForeignKey(item => new { item.UserId, item.SourceWorkoutId })
                 .HasPrincipalKey(item => new { item.UserId, item.Id })
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CardioSession>(session =>
+        {
+            session.ToTable("cardio_sessions", DatabaseSchemas.Training, table =>
+            {
+                table.HasCheckConstraint("CK_cardio_sessions_end_after_start", "\"EndedAtUtc\" > \"StartedAtUtc\"");
+                table.HasCheckConstraint("CK_cardio_sessions_activity_type", "\"ActivityType\" IN ('IndoorCycling')");
+                table.HasCheckConstraint(
+                    "CK_cardio_sessions_target_zone",
+                    "(\"TargetZoneLowBpm\" IS NULL AND \"TargetZoneHighBpm\" IS NULL) OR (\"TargetZoneLowBpm\" >= 40 AND \"TargetZoneHighBpm\" <= 230 AND \"TargetZoneLowBpm\" < \"TargetZoneHighBpm\")");
+                table.HasCheckConstraint(
+                    "CK_cardio_sessions_sample_interval",
+                    "\"SampleIntervalSeconds\" BETWEEN 1 AND 60");
+            });
+            session.HasKey(item => item.Id);
+            session.HasAlternateKey(item => new { item.UserId, item.Id });
+            session.Property(item => item.UserId).ValueGeneratedNever();
+            session.Property(item => item.ActivityType).HasMaxLength(32).IsRequired();
+            session.Property(item => item.HeartRateBpm).HasColumnType("integer[]").IsRequired();
+            session.Property(item => item.RrIntervalsMs).HasColumnType("integer[]").IsRequired();
+            session.Property(item => item.SensorName).HasMaxLength(100);
+            session.Property(item => item.DistanceKm).HasPrecision(8, 3);
+            session.Property(item => item.AveragePowerWatts).HasPrecision(7, 2);
+            session.Property(item => item.EnergyKcal).HasPrecision(8, 2);
+            session.Property(item => item.Notes).HasMaxLength(2_000);
+            session.Property(item => item.Version).IsConcurrencyToken();
+            session.HasIndex(item => new { item.UserId, item.StartedAtUtc })
+                .IsDescending(false, true);
+            session.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<WorkoutExercise>(exercise =>
