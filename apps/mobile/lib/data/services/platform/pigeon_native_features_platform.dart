@@ -92,10 +92,84 @@ class PigeonNativeFeaturesPlatform
             ),
             weightKilograms: sample.weightKilograms,
             sourceName: sample.sourceName,
+            syncIdentifier: sample.syncIdentifier,
           ),
         )
         .toList(growable: false);
   }
+
+  @override
+  Future<PlatformAuthorizationRequestResult> requestCheckInAuthorization() =>
+      _api.requestCheckInAuthorization();
+
+  @override
+  Future<int?> readStepCount({
+    required DateTime fromUtc,
+    required DateTime toUtc,
+  }) => _api.readStepCount(
+    fromUtc.toUtc().millisecondsSinceEpoch,
+    toUtc.toUtc().millisecondsSinceEpoch,
+  );
+
+  @override
+  Future<HealthSleepWindow?> readSleep({
+    required DateTime fromUtc,
+    required DateTime toUtc,
+  }) async {
+    final window = await _api.readSleep(
+      fromUtc.toUtc().millisecondsSinceEpoch,
+      toUtc.toUtc().millisecondsSinceEpoch,
+    );
+    if (window == null) return null;
+    return HealthSleepWindow(
+      bedtimeUtc: DateTime.fromMillisecondsSinceEpoch(
+        window.bedtimeUtcEpochMilliseconds,
+        isUtc: true,
+      ),
+      wakeUtc: DateTime.fromMillisecondsSinceEpoch(
+        window.wakeUtcEpochMilliseconds,
+        isUtc: true,
+      ),
+      asleepMinutes: window.asleepMinutes,
+      sourceName: window.sourceName,
+      fromGainer: window.fromGainer,
+    );
+  }
+
+  @override
+  Future<HealthWriteStatus> writeBodyMass({
+    required double kilograms,
+    required DateTime measuredAtUtc,
+    required String syncIdentifier,
+  }) async => _writeStatus(
+    await _api.writeBodyMass(
+      kilograms,
+      measuredAtUtc.toUtc().millisecondsSinceEpoch,
+      syncIdentifier,
+    ),
+  );
+
+  @override
+  Future<HealthWriteStatus> writeSleep({
+    required DateTime bedtimeUtc,
+    required DateTime wakeUtc,
+    required String syncIdentifier,
+  }) async => _writeStatus(
+    await _api.writeSleep(
+      bedtimeUtc.toUtc().millisecondsSinceEpoch,
+      wakeUtc.toUtc().millisecondsSinceEpoch,
+      syncIdentifier,
+    ),
+  );
+
+  HealthWriteStatus _writeStatus(PlatformHealthWriteStatus status) =>
+      switch (status) {
+        PlatformHealthWriteStatus.saved => HealthWriteStatus.saved,
+        PlatformHealthWriteStatus.alreadyPresent =>
+          HealthWriteStatus.alreadyPresent,
+        PlatformHealthWriteStatus.notAuthorized =>
+          HealthWriteStatus.notAuthorized,
+      };
 
   @override
   Future<PlatformAuthorizationRequestResult>
