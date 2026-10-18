@@ -43,7 +43,8 @@ void main() {
 
     expect(api.calls, 1);
     expect(find.text('Heute'), findsNWidgets(2));
-    expect(find.text('Dein Fortschritt aus deinen Einträgen'), findsOneWidget);
+    // Kein Untertitel unter dem großen Titel (design.md D1.1).
+    expect(find.text('Dein Fortschritt aus deinen Einträgen'), findsNothing);
     expect(
       find.text('Die Werte beruhen auf deinen gespeicherten Einträgen.'),
       findsOneWidget,
