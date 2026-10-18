@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../domain/models/timer/rest_timer_sound.dart';
+import '../../../domain/models/training/warmup.dart';
 import '../../../domain/models/training/workout_input.dart';
 import '../sync/local_sync_store.dart';
 
@@ -15,6 +16,8 @@ final class TrainingPreferenceValues {
     this.liveActivityDetails = true,
     this.timerSoundId = RestTimerSound.defaultId,
     this.autoStartRestTimer = false,
+    this.warmup = const WarmupSettings(),
+    this.warmupOverrides = const {},
   });
 
   final bool showRir;
@@ -30,18 +33,28 @@ final class TrainingPreferenceValues {
   /// Startet den Pausentimer, sobald ein Satz erfasst ist.
   final bool autoStartRestTimer;
 
+  /// Globale Aufwärmhinweis-Einstellungen.
+  final WarmupSettings warmup;
+
+  /// Abweichungen je Übungs-ID; Übungen ohne Eintrag erben [warmup].
+  final Map<String, ExerciseWarmupOverride> warmupOverrides;
+
   TrainingPreferenceValues copyWith({
     bool? showRir,
     WeightUnit? weightUnit,
     bool? liveActivityDetails,
     String? timerSoundId,
     bool? autoStartRestTimer,
+    WarmupSettings? warmup,
+    Map<String, ExerciseWarmupOverride>? warmupOverrides,
   }) => TrainingPreferenceValues(
     showRir: showRir ?? this.showRir,
     weightUnit: weightUnit ?? this.weightUnit,
     liveActivityDetails: liveActivityDetails ?? this.liveActivityDetails,
     timerSoundId: timerSoundId ?? this.timerSoundId,
     autoStartRestTimer: autoStartRestTimer ?? this.autoStartRestTimer,
+    warmup: warmup ?? this.warmup,
+    warmupOverrides: warmupOverrides ?? this.warmupOverrides,
   );
 
   Map<String, Object?> toJson() => {
@@ -50,6 +63,11 @@ final class TrainingPreferenceValues {
     'liveActivityDetails': liveActivityDetails,
     'timerSoundId': timerSoundId,
     'autoStartRestTimer': autoStartRestTimer,
+    'warmup': warmup.toJson(),
+    'warmupOverrides': {
+      for (final entry in warmupOverrides.entries)
+        entry.key: entry.value.toJson(),
+    },
   };
 
   @override
@@ -59,7 +77,9 @@ final class TrainingPreferenceValues {
       other.weightUnit == weightUnit &&
       other.liveActivityDetails == liveActivityDetails &&
       other.timerSoundId == timerSoundId &&
-      other.autoStartRestTimer == autoStartRestTimer;
+      other.autoStartRestTimer == autoStartRestTimer &&
+      other.warmup == warmup &&
+      mapEquals(other.warmupOverrides, warmupOverrides);
 
   @override
   int get hashCode => Object.hash(
@@ -68,6 +88,10 @@ final class TrainingPreferenceValues {
     liveActivityDetails,
     timerSoundId,
     autoStartRestTimer,
+    warmup,
+    Object.hashAllUnordered(
+      warmupOverrides.entries.map((e) => Object.hash(e.key, e.value)),
+    ),
   );
 }
 
@@ -143,6 +167,20 @@ class TrainingPreferences {
           : true,
       timerSoundId: RestTimerSound.resolveId(raw['timerSoundId']),
       autoStartRestTimer: raw['autoStartRestTimer'] == true,
+      warmup: WarmupSettings.fromJson(raw['warmup']),
+      warmupOverrides: _decodeOverrides(raw['warmupOverrides']),
     );
+  }
+
+  static Map<String, ExerciseWarmupOverride> _decodeOverrides(Object? raw) {
+    if (raw is! Map) return const {};
+    return {
+      for (final entry in raw.entries)
+        if (entry.key is String)
+          entry.key as String: ?ExerciseWarmupOverride.tryFromJson(
+            entry.key as String,
+            entry.value,
+          ),
+    };
   }
 }

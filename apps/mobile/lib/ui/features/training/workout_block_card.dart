@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 
+import '../../../domain/models/training/warmup.dart';
 import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_rules.dart';
@@ -24,6 +25,8 @@ enum _BlockAction {
   records,
   toggleWeightUnit,
 }
+
+enum _WarmupAction { enter }
 
 enum _SetAction { duplicate, moveUp, moveDown, remove }
 
@@ -58,6 +61,7 @@ class WorkoutBlockCard extends StatelessWidget {
     final stammnotiz = viewModel.exerciseNoteFor(block);
     final notes = block.notes;
     final complete = isBlockComplete(block);
+    final warmupHint = viewModel.warmupHintFor(block, previous);
     return GainerCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -148,6 +152,15 @@ class WorkoutBlockCard extends StatelessWidget {
                   color: colors.secondaryText,
                 ),
               ),
+            ),
+          if (warmupHint != null)
+            _WarmupHintRow(
+              text: formatWarmupHint(
+                warmupHint,
+                viewModel.weightUnit,
+                showRepetitions: viewModel.warmupSettings.showRepetitions,
+              ),
+              onTap: () => _showWarmupMenu(context),
             ),
           for (var index = 0; index < block.sets.length; index++)
             Padding(
@@ -257,6 +270,25 @@ class WorkoutBlockCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _showWarmupMenu(BuildContext context) async {
+    final action = await showGainerActionSheet<_WarmupAction>(
+      context: context,
+      title: 'Aufwärmen',
+      groups: const [
+        [
+          GainerSheetAction(
+            label: 'Als Aufwärmsätze eintragen',
+            icon: CupertinoIcons.flame,
+            value: _WarmupAction.enter,
+          ),
+        ],
+      ],
+    );
+    if (action == _WarmupAction.enter) {
+      await viewModel.enterWarmupSets(block.workoutExerciseId);
+    }
   }
 
   void _openStatistics(BuildContext context, ExerciseStatisticsTab tab) {
@@ -507,6 +539,46 @@ IconData _setTypeIcon(SetType type) => switch (type) {
   SetType.warmup => CupertinoIcons.flame,
   SetType.dropset => CupertinoIcons.arrow_down_circle,
 };
+
+/// Dezenter Aufwärmhinweis über den Satzzeilen; ein Tipp bietet das Eintragen an.
+class _WarmupHintRow extends StatelessWidget {
+  const _WarmupHintRow({required this.text, required this.onTap});
+
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return Semantics(
+      button: true,
+      label: 'Aufwärmhinweis',
+      value: text,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: GainerSpacing.s),
+          child: Row(
+            children: [
+              Icon(CupertinoIcons.flame, size: 14, color: colors.secondaryText),
+              const SizedBox(width: GainerSpacing.xxs),
+              Expanded(
+                child: Text(
+                  text,
+                  style: GainerTypography.caption.copyWith(
+                    color: colors.secondaryText,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _FooterIconButton extends StatelessWidget {
   const _FooterIconButton({
