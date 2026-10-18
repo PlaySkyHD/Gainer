@@ -1405,6 +1405,7 @@ String _resourceTypeForAggregate(String aggregateType) =>
       'nutrition-day' => 'NutritionDay',
       'reusable-meal' => 'ReusableMeal',
       'nutrition-target-schedule' => 'NutritionTargetSchedule',
+      'cardio-session' => 'CardioSession',
       _ => throw ArgumentError.value(
         aggregateType,
         'aggregateType',
