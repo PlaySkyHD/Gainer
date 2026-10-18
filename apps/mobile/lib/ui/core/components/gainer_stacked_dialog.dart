@@ -71,7 +71,7 @@ class GainerStackedDialog<T> extends StatelessWidget {
           GainerSpacing.m,
         ),
         decoration: BoxDecoration(
-          color: colors.elevatedSurface,
+          color: colors.surface,
           borderRadius: BorderRadius.circular(GainerRadii.card),
         ),
         child: Column(
@@ -93,8 +93,9 @@ class GainerStackedDialog<T> extends StatelessWidget {
                 color: colors.secondaryText,
               ),
             ),
-            const SizedBox(height: GainerSpacing.m),
-            for (final action in actions) ...[
+            const SizedBox(height: GainerSpacing.l),
+            for (final (index, action) in actions.indexed) ...[
+              if (index > 0) const SizedBox(height: GainerSpacing.xs),
               GainerPillButton(
                 label: action.label,
                 expand: true,
@@ -103,7 +104,6 @@ class GainerStackedDialog<T> extends StatelessWidget {
                     : GainerPillVariant.tonal,
                 onPressed: () => Navigator.of(context).pop<T>(action.value),
               ),
-              const SizedBox(height: GainerSpacing.xs),
             ],
           ],
         ),

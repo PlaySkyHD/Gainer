@@ -196,33 +196,42 @@ class WorkoutBlockCard extends StatelessWidget {
                 onEditingChanged: onEditingChanged,
               ),
             ),
+          const SizedBox(height: GainerSpacing.xs),
           Row(
             children: [
-              Flexible(
-                child: CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size.square(36),
-                  onPressed: () => viewModel.addSet(block.workoutExerciseId),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(CupertinoIcons.add, size: 18, color: colors.accent),
-                      const SizedBox(width: GainerSpacing.xxs),
-                      Flexible(
-                        child: Text(
-                          'Satz hinzufügen',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GainerTypography.label.copyWith(
-                            color: colors.accent,
-                            fontWeight: FontWeight.w600,
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size.square(36),
+                    onPressed: () => viewModel.addSet(block.workoutExerciseId),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          CupertinoIcons.add,
+                          size: 18,
+                          color: colors.accent,
+                        ),
+                        const SizedBox(width: GainerSpacing.xxs),
+                        Flexible(
+                          child: Text(
+                            'Satz hinzufügen',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GainerTypography.label.copyWith(
+                              color: colors.accent,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
+              const SizedBox(width: GainerSpacing.s),
               _FooterIconButton(
                 icon: CupertinoIcons.clock,
                 semanticLabel: 'Verlauf',
