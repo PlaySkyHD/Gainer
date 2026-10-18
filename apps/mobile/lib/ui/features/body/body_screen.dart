@@ -280,13 +280,16 @@ class _BodyScreenState extends State<BodyScreen> {
       child: Consumer<BodyViewModel>(
         builder: (sheetContext, liveModel, _) => StatefulBuilder(
           builder: (sheetContext, setSheetState) {
-            final error = liveModel.errorMessage;
-            final errors = _fieldErrors(error);
+            final errors = liveModel.fieldErrors;
             final rowKeys = goal ? _goalFieldKeys : _checkInFieldKeys;
             // Feldfehler stehen direkt an der Zeile, alles andere als Hinweis.
-            final notice = errors.isNotEmpty && rowKeys.containsAll(errors.keys)
-                ? null
-                : error;
+            final unmatched = [
+              for (final entry in errors.entries)
+                if (!rowKeys.contains(entry.key)) entry.value,
+            ];
+            final notice =
+                liveModel.errorMessage ??
+                (unmatched.isEmpty ? null : unmatched.join('\n'));
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -354,6 +357,7 @@ class _BodyScreenState extends State<BodyScreen> {
     }
     if (mounted &&
         liveModel.errorMessage == null &&
+        liveModel.fieldErrors.isEmpty &&
         sheetContext.mounted &&
         ModalRoute.of(sheetContext)?.isCurrent == true) {
       Navigator.of(sheetContext).pop();
@@ -666,19 +670,6 @@ Widget _numberRow(
   errorText: errorText,
   fieldKey: fieldKey,
 );
-
-/// Feldfehler aus der Validierung des ViewModels, z. B. `weightKg: Das Gewicht
-/// muss positiv sein.`. Andere Fehler liefern keine Felder.
-Map<String, String> _fieldErrors(String? message) {
-  if (message == null ||
-      !message.startsWith('BodyTrackingValidationException(')) {
-    return const {};
-  }
-  return {
-    for (final match in RegExp(r'(\w+): ([^,}]+)').allMatches(message))
-      match.group(1)!: match.group(2)!.trim(),
-  };
-}
 
 class _NoticeCard extends StatelessWidget {
   const _NoticeCard({required this.message, super.key});
