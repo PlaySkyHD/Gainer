@@ -1,0 +1,69 @@
+import 'package:flutter/cupertino.dart';
+
+import '../../core/components/components.dart';
+import '../../core/theme.dart';
+
+/// Gruppe im Tab Heute: kleine Überschrift, Zeilen in einer Karte und optionale Fußnote, wie im Training.
+class ProgressGroup extends StatelessWidget {
+  const ProgressGroup({
+    required this.header,
+    required this.children,
+    this.footer,
+    super.key,
+  });
+
+  final String header;
+  final String? footer;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: GainerSpacing.l),
+    child: GainerGroupedSection(
+      header: header,
+      footer: footer,
+      children: children,
+    ),
+  );
+}
+
+/// Kennzahl mit kleiner Beschriftung darüber und großem Wert.
+class ProgressFigure extends StatelessWidget {
+  const ProgressFigure({
+    required this.label,
+    required this.value,
+    this.padding = EdgeInsets.zero,
+    super.key,
+  });
+
+  final String label;
+  final String value;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return Padding(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: GainerTypography.label.copyWith(color: colors.secondaryText),
+          ),
+          const SizedBox(height: GainerSpacing.xxs),
+          Text(
+            value,
+            style: GainerTypography.title.copyWith(
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              color: colors.primaryText,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
