@@ -138,11 +138,14 @@ void main() {
 
     test('hinzufügen, löschen und Speicherung über Neustart', () async {
       final store = storeFor(accountId);
-      final shortcuts = (await store.loadShortcuts()).add(150).remove(60);
+      final shortcuts = (await store.loadShortcuts())
+          .add(150)
+          .remove(60)
+          .move(2, 0);
       await store.saveShortcuts(shortcuts);
 
       final restarted = await storeFor(accountId).loadShortcuts();
-      expect(restarted.seconds, [120, 150, 180]);
+      expect(restarted.seconds, [150, 120, 180]);
     });
 
     test(

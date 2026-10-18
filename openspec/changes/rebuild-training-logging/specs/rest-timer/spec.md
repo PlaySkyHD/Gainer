@@ -8,10 +8,10 @@ Diese Capability definiert den manuell gesteuerten Pausentimer eines aktiven Tra
 
 ### Requirement: Pausentimer nur manuell starten
 
-Ein Pausentimer MUST ausschließlich durch eine bewusste Nutzeraktion starten. Das Erfassen eines Satzes, das Öffnen der Timeransicht oder das Ablaufen eines vorherigen Timers DÜRFEN keinen Timer starten.
+Ein Pausentimer MUST ausschließlich durch eine bewusste Nutzeraktion starten. Das Erfassen eines Satzes, das Öffnen der Timeransicht oder das Ablaufen eines vorherigen Timers DÜRFEN keinen Timer starten, es sei denn, der Nutzer hat „Timer automatisch starten“ eingeschaltet (Change `rest-timer-options`).
 
 #### Scenario: Satz erfasst ohne Timeraktion
-- **GIVEN** ein aktives Training ohne laufenden Timer
+- **GIVEN** ein aktives Training ohne laufenden Timer und „Timer automatisch starten“ ist aus
 - **WHEN** der Nutzer einen Satz vollständig einträgt
 - **THEN** startet kein Pausentimer
 

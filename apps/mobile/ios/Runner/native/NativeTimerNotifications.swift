@@ -26,14 +26,18 @@ final class NativeTimerNotifications {
 
   private let notificationCenter: LocalNotificationCenter
   private let defaults: UserDefaults
+  private let sounds: NativeTimerSounds
   private let identifierPrefix = NativeTimerNotifications.timerIdentifierPrefix
 
   init(
     notificationCenter: LocalNotificationCenter = UNUserNotificationCenter.current(),
-    defaults: UserDefaults = .standard
+    defaults: UserDefaults = .standard,
+    sounds: NativeTimerSounds? = nil
   ) {
     self.notificationCenter = notificationCenter
     self.defaults = defaults
+    // Im Initialisierer erzeugt, weil Standardargumente nicht auf dem Main Actor laufen.
+    self.sounds = sounds ?? NativeTimerSounds()
   }
 
   func requestPermission() async throws -> Bool {
@@ -50,7 +54,12 @@ final class NativeTimerNotifications {
     }
   }
 
-  func schedule(workoutId: String, generation: Int64, targetAtUtcEpochMilliseconds: Int64) async throws {
+  func schedule(
+    workoutId: String,
+    generation: Int64,
+    targetAtUtcEpochMilliseconds: Int64,
+    soundId: String = NativeTimerSounds.defaultSoundId
+  ) async throws {
     guard !workoutId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, generation >= 0 else {
       throw PigeonError(code: "invalid_timer_notification", message: "The pause timer notification has invalid identity or generation.", details: nil)
     }
@@ -78,7 +87,7 @@ final class NativeTimerNotifications {
     let content = UNMutableNotificationContent()
     content.title = "Pause vorbei"
     content.body = "Weiter mit dem nächsten Satz."
-    content.sound = .default
+    content.sound = sounds.notificationSound(forSoundId: soundId)
     let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
     try await notificationCenter.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
     let latestGeneration = defaults.object(forKey: generationKey) as? Int64 ?? generation

@@ -11,7 +11,8 @@ class _FakeMobilePlatformApi extends MobilePlatformApi {
   PlatformCapturedImage? pickerImage;
   PlatformCapturedImage? cameraImage;
   final List<String> haptics = [];
-  final List<(String, int, int)> scheduled = [];
+  final List<(String, int, int, String)> scheduled = [];
+  final List<String> sounds = [];
   final List<String> cancelled = [];
   bool permissionGranted = false;
   bool healthAvailable = true;
@@ -57,9 +58,18 @@ class _FakeMobilePlatformApi extends MobilePlatformApi {
     String workoutId,
     int generation,
     int targetAtUtcEpochMilliseconds,
+    String soundId,
   ) async {
-    scheduled.add((workoutId, generation, targetAtUtcEpochMilliseconds));
+    scheduled.add((
+      workoutId,
+      generation,
+      targetAtUtcEpochMilliseconds,
+      soundId,
+    ));
   }
+
+  @override
+  Future<void> playTimerSound(String soundId) async => sounds.add(soundId);
 
   @override
   Future<void> cancelPauseNotifications(String workoutId) async =>
@@ -217,15 +227,18 @@ void main() {
       workoutId: 'workout-opaque-id',
       generation: 7,
       targetAtUtc: target,
+      soundId: 'gong',
     );
+    await platform.playSound('chime');
     await platform.cancel('workout-opaque-id');
     await platform.perform(HapticIntent.commit);
     await platform.perform(HapticIntent.timerComplete);
     await platform.perform(HapticIntent.success);
 
     expect(api.scheduled, [
-      ('workout-opaque-id', 7, target.millisecondsSinceEpoch),
+      ('workout-opaque-id', 7, target.millisecondsSinceEpoch, 'gong'),
     ]);
+    expect(api.sounds, ['chime']);
     expect(api.cancelled, ['workout-opaque-id']);
     expect(api.haptics, ['commit', 'timerComplete', 'success']);
   });

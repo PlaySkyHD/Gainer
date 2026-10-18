@@ -40,9 +40,7 @@ void main() {
         final controller = fixture.controllerFor();
         await controller.load();
         await controller.addShortcut(150);
-        await controller.selectShortcut(150);
-
-        await controller.start();
+        await controller.startShortcut(150);
 
         expect(controller.phase, RestTimerPhase.running);
         expect(controller.remainingSeconds, 150);
@@ -84,13 +82,15 @@ void main() {
         await controller.load();
 
         await controller.addShortcut(150);
-        expect(controller.shortcuts.seconds, [60, 120, 150, 180]);
+        expect(controller.shortcuts.seconds, [60, 120, 180, 150]);
         await controller.removeShortcut(60);
-        expect(controller.shortcuts.seconds, [120, 150, 180]);
+        expect(controller.shortcuts.seconds, [120, 180, 150]);
+        await controller.moveShortcut(2, 0);
+        expect(controller.shortcuts.seconds, [150, 120, 180]);
 
         final reloaded = fixture.controllerFor();
         await reloaded.load();
-        expect(reloaded.shortcuts.seconds, [120, 150, 180]);
+        expect(reloaded.shortcuts.seconds, [150, 120, 180]);
       });
     });
 
@@ -100,7 +100,7 @@ void main() {
         await controller.load();
         await controller.start();
 
-        await controller.selectShortcut(60);
+        await controller.startShortcut(60);
 
         expect(controller.phase, RestTimerPhase.running);
         expect(controller.remainingSeconds, 180);
@@ -115,8 +115,7 @@ void main() {
       return runRestTimerTest((fixture) async {
         final controller = fixture.controllerFor();
         await controller.load();
-        await controller.selectShortcut(70);
-        await controller.start();
+        await controller.startShortcut(70);
         expect(controller.remainingSeconds, 70);
 
         final cancelsBeforeStop = fixture.notifications.cancelCount;
@@ -196,8 +195,7 @@ void main() {
         return runRestTimerTest((fixture) async {
           final controller = fixture.controllerFor();
           await controller.load();
-          await controller.selectShortcut(60);
-          await controller.start();
+          await controller.startShortcut(60);
 
           controller.didChangeAppLifecycleState(AppLifecycleState.paused);
           controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
@@ -218,8 +216,7 @@ void main() {
           fixture.notifications.permission = false;
           final controller = fixture.controllerFor();
           await controller.load();
-          await controller.selectShortcut(60);
-          await controller.start();
+          await controller.startShortcut(60);
 
           await advanceRestTimer(tester, fixture.clock, 60);
           expect(controller.phase, RestTimerPhase.expired);
@@ -237,8 +234,7 @@ void main() {
       return runRestTimerTest((fixture) async {
         final controller = fixture.controllerFor();
         await controller.load();
-        await controller.selectShortcut(60);
-        await controller.start();
+        await controller.startShortcut(60);
         final cancelsBefore = fixture.notifications.cancelCount;
 
         await advanceRestTimer(tester, fixture.clock, 60);
@@ -269,8 +265,7 @@ void main() {
         return runRestTimerTest((fixture) async {
           final controller = fixture.controllerFor();
           await controller.load();
-          await controller.selectShortcut(60);
-          await controller.start();
+          await controller.startShortcut(60);
           await advanceRestTimer(tester, fixture.clock, 60);
           expect(controller.phase, RestTimerPhase.expired);
 
@@ -311,8 +306,7 @@ void main() {
         return runRestTimerTest((fixture) async {
           final controller = fixture.controllerFor();
           await controller.load();
-          await controller.selectShortcut(60);
-          await controller.start();
+          await controller.startShortcut(60);
 
           expect(fixture.notifications.scheduled, hasLength(1));
 

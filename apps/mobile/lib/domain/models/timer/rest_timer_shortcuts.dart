@@ -2,12 +2,13 @@ import 'rest_timer_state.dart';
 
 const defaultRestTimerShortcuts = [60, 120, 180];
 
-/// Immutable, sorted set of duration shortcuts without duplicates.
+/// Immutable, ordered list of duration shortcuts without duplicates. The order
+/// is the one chosen by the user; new entries are appended.
 class RestTimerShortcuts {
   RestTimerShortcuts._(this.seconds);
 
   factory RestTimerShortcuts.fromSeconds(Iterable<int> seconds) {
-    final values = seconds.toSet().toList()..sort();
+    final values = seconds.toSet().toList();
     for (final value in values) {
       _requireShortcut(value);
     }
@@ -24,6 +25,17 @@ class RestTimerShortcuts {
     _requireShortcut(value);
     if (seconds.contains(value)) return this;
     return RestTimerShortcuts.fromSeconds([...seconds, value]);
+  }
+
+  /// Moves the entry at [oldIndex] to [newIndex], counted in the list without
+  /// the moved entry (like `List.insert` after `removeAt`).
+  RestTimerShortcuts move(int oldIndex, int newIndex) {
+    RangeError.checkValidIndex(oldIndex, seconds);
+    final values = [...seconds];
+    final moved = values.removeAt(oldIndex);
+    RangeError.checkValueInInterval(newIndex, 0, values.length, 'newIndex');
+    values.insert(newIndex, moved);
+    return RestTimerShortcuts.fromSeconds(values);
   }
 
   RestTimerShortcuts remove(int value) {

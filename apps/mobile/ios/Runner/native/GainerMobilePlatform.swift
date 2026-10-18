@@ -7,7 +7,8 @@ final class GainerMobilePlatform: MobilePlatformApi {
   private let sessionKeychain: SecureSessionKeychain
   private let capture = NativeCapture()
   private let haptics = NativeHaptics()
-  private let timerNotifications = NativeTimerNotifications()
+  private let timerSounds: NativeTimerSounds
+  private let timerNotifications: NativeTimerNotifications
   private let health = NativeHealthKit()
   private let extensionSnapshots = NativeExtensionSnapshotStore()
   private let routeStore = NativeExtensionSnapshotStore()
@@ -16,6 +17,9 @@ final class GainerMobilePlatform: MobilePlatformApi {
 
   init(sessionKeychain: SecureSessionKeychain = SecureSessionKeychain()) {
     self.sessionKeychain = sessionKeychain
+    let sounds = NativeTimerSounds()
+    self.timerSounds = sounds
+    self.timerNotifications = NativeTimerNotifications(sounds: sounds)
   }
 
   func getPlatformHealth() async throws -> PlatformHealthCheck {
@@ -92,13 +96,19 @@ final class GainerMobilePlatform: MobilePlatformApi {
   func schedulePauseNotification(
     workoutId: String,
     generation: Int64,
-    targetAtUtcEpochMilliseconds: Int64
+    targetAtUtcEpochMilliseconds: Int64,
+    soundId: String
   ) async throws {
     try await timerNotifications.schedule(
       workoutId: workoutId,
       generation: generation,
-      targetAtUtcEpochMilliseconds: targetAtUtcEpochMilliseconds
+      targetAtUtcEpochMilliseconds: targetAtUtcEpochMilliseconds,
+      soundId: soundId
     )
+  }
+
+  func playTimerSound(soundId: String) async throws {
+    try timerSounds.play(soundId: soundId)
   }
 
   func cancelPauseNotifications(workoutId: String) async throws {

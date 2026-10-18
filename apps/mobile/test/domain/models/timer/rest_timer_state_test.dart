@@ -241,9 +241,22 @@ void main() {
       expect(RestTimerShortcuts.defaults.seconds, [60, 120, 180]);
     });
 
-    test('hinzufügen sortiert, ohne Duplikate', () {
+    test('hinzufügen hängt an, ohne Duplikate', () {
       final shortcuts = RestTimerShortcuts.defaults.add(150).add(150).add(60);
-      expect(shortcuts.seconds, [60, 120, 150, 180]);
+      expect(shortcuts.seconds, [60, 120, 180, 150]);
+    });
+
+    test('verschieben ändert die Reihenfolge', () {
+      final defaults = RestTimerShortcuts.defaults;
+      expect(defaults.move(2, 0).seconds, [180, 60, 120]);
+      expect(defaults.move(0, 2).seconds, [120, 180, 60]);
+      expect(defaults.move(1, 1), defaults);
+      expect(() => defaults.move(3, 0), throwsRangeError);
+      expect(() => defaults.move(0, 3), throwsRangeError);
+    });
+
+    test('Reihenfolge der Eingabe bleibt erhalten', () {
+      expect(RestTimerShortcuts.fromSeconds([180, 60, 180]).seconds, [180, 60]);
     });
 
     test('löschen entfernt den Wert', () {

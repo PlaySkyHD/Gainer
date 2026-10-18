@@ -29,7 +29,7 @@ void main() {
       );
       await active.load();
       final timer = active.restTimer!;
-      await timer.selectShortcut(180);
+      await timer.startShortcut(180);
       await timer.start();
       await advanceRestTimer(tester, fixture.clock, 30);
 
@@ -67,7 +67,7 @@ void main() {
       await harness.seedWorkout(title: 'Push', start: _goldenBarStart);
       await active.load();
       final timer = active.restTimer!;
-      await timer.selectShortcut(180);
+      await timer.startShortcut(180);
       await timer.start();
       await advanceRestTimer(tester, fixture.clock, 30);
       final model = MobileShellViewModel();
