@@ -1,7 +1,7 @@
 # Tasks
 
 ## 1. Backend
-- [ ] 1.1 `RecoveryStartBpm`/`RecoveryEndBpm` an `CardioSession`, `RestingHeartRateBpm`/`RestingHrvMs` an `DailyCheckIn`; Migration, Validierung, Unit- und Integrationstests.
+- [x] 1.1 `RecoveryStartBpm`/`RecoveryEndBpm` an `CardioSession`, `RestingHeartRateBpm`/`RestingHrvMs` an `DailyCheckIn`; Migration, Validierung, Unit- und Integrationstests.
 
 ## 2. Flutter
 - [ ] 2.1 `CardioProgress` (Wochen, EF, Vergleich gleicher Leistung, Erholung); Unit-Tests mit den Spec-Beispielen.
