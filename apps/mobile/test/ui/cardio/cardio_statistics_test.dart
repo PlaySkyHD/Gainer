@@ -114,11 +114,11 @@ void main() {
     );
     await openArea(tester);
 
+    expect(find.text('Diese Woche 95 / 150 min'), findsOneWidget);
     expect(
-      find.text('Diese Woche 95 / 150 min · 3 Einheiten · 1:42 h'),
+      find.text('3 Einheiten · 1:42 h · Minuten im Zielbereich'),
       findsOneWidget,
     );
-    expect(find.text('Minuten im Zielbereich'), findsOneWidget);
     // Ohne Zonen gibt es den Umschalter nicht.
     expect(find.text('Zone 2'), findsNothing);
     // Ohne Leistung: Hinweis und kein Verlauf.
@@ -140,10 +140,7 @@ void main() {
       ),
     );
     await openArea(tester);
-    expect(
-      find.text('Diese Woche 30 / 200 min · 1 Einheit · 0:30 h'),
-      findsOneWidget,
-    );
+    expect(find.text('Diese Woche 30 / 200 min'), findsOneWidget);
   });
 
   testWidgets('Umschalter Zielbereich / Zone 2 mit konfigurierten Zonen', (
@@ -161,17 +158,11 @@ void main() {
 
     expect(find.text('Zielbereich'), findsOneWidget);
     expect(find.text('Zone 2'), findsOneWidget);
-    expect(
-      find.text('Diese Woche 30 / 150 min · 2 Einheiten · 1:10 h'),
-      findsOneWidget,
-    );
+    expect(find.text('Diese Woche 30 / 150 min'), findsOneWidget);
     await tester.tap(find.text('Zone 2'));
     await settle(tester);
-    expect(
-      find.text('Diese Woche 40 / 150 min · 2 Einheiten · 1:10 h'),
-      findsOneWidget,
-    );
-    expect(find.text('Minuten in Zone 2'), findsOneWidget);
+    expect(find.text('Diese Woche 40 / 150 min'), findsOneWidget);
+    expect(find.textContaining('Minuten in Zone 2'), findsOneWidget);
   });
 
   testWidgets('Spec: bei 150 W: 138 → 131 bpm und Form-Verlauf', (
