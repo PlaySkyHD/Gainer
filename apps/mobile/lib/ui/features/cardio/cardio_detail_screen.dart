@@ -354,6 +354,11 @@ class _CardioDetailScreenState extends State<CardioDetailScreen> {
                       '(${formatPercent(share)})',
           ),
         if (hrv != null) GainerListRow(title: 'HRV (RMSSD)', value: '$hrv ms'),
+        if (session.recoveryDropBpm case final drop?)
+          GainerListRow(
+            title: 'Erholung',
+            value: '${formatBpmChange(drop)} in 1 min',
+          ),
       ],
     );
   }

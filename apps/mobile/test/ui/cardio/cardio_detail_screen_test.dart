@@ -56,13 +56,13 @@ void main() {
     expect(find.text('Rad-Ergometer'), findsWidgets);
     expect(find.text('So, 18. Okt. · 10:15 Uhr'), findsOneWidget);
     expect(find.text('Dauer'), findsOneWidget);
-    expect(find.text('00:20 min'), findsOneWidget);
+    expect(find.text('0:20 min'), findsOneWidget);
     expect(find.text('Ø-Puls'), findsOneWidget);
     expect(find.text('128,5 bpm'), findsOneWidget);
     expect(find.text('Max-Puls'), findsOneWidget);
     expect(find.text('141 bpm'), findsOneWidget);
     expect(find.text('Im Zielbereich'), findsOneWidget);
-    expect(find.text('00:10 min (50 %)'), findsOneWidget);
+    expect(find.text('0:10 min (50 %)'), findsOneWidget);
     expect(find.text('Zielbereich 120–140 bpm'), findsOneWidget);
     // Keine RR-Werte, also keine HRV und keine Fußnote.
     expect(find.text('HRV (RMSSD)'), findsNothing);

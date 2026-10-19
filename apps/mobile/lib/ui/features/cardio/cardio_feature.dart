@@ -1,3 +1,4 @@
+import '../../../data/repositories/body/body_repository.dart';
 import '../../../data/repositories/cardio/cardio_repository.dart';
 import '../../../data/repositories/health/cardio_health_exporter.dart';
 import 'cardio_session_controller.dart';
@@ -8,9 +9,13 @@ class CardioFeature {
     required this.repository,
     required this.session,
     required this.health,
+    this.body,
   });
 
   final CardioRepository repository;
   final CardioSessionController session;
   final CardioHealthExporter health;
+
+  /// Check-in des Kontos für die HRV-Messung; ohne Wert entfällt sie.
+  final BodyRepository? body;
 }
