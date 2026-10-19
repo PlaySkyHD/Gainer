@@ -9,6 +9,36 @@ import '../../../domain/models/cardio/cardio_analysis.dart';
 import '../../../domain/models/cardio/cardio_draft.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 
+/// Erholungsphase nach dem Beenden: 60 s weiter messen, um den Pulsabfall zu
+/// bestimmen. Die Einheit ist dann schon gespeichert.
+class CardioRecovery {
+  CardioRecovery({
+    required this.sessionId,
+    required this.endedAtUtc,
+    required this.startBpm,
+    required this.config,
+  });
+
+  /// Dauer der angezeigten Erholung.
+  static const duration = Duration(seconds: 60);
+
+  /// Fenster für den Endwert: 55 bis 65 s nach dem Beenden.
+  static const windowStart = Duration(seconds: 55);
+  static const windowEnd = Duration(seconds: 65);
+
+  /// Fenster für den Startwert: die letzten 10 s vor dem Beenden.
+  static const startWindow = Duration(seconds: 10);
+
+  final String sessionId;
+  final DateTime endedAtUtc;
+
+  /// Mittel der Rohwerte der letzten 10 s vor dem Beenden.
+  final int startBpm;
+  final HeartRateMonitoringConfig config;
+  int lastSequence = 0;
+  final List<CardioSample> samples = [];
+}
+
 /// Besitzt die laufende Cardio-Einheit eines Kontos: Entwurf, Abfrage der
 /// nativen Überwachung, Verdichtung zu 5-s-Werten und Abschluss.
 ///
@@ -72,6 +102,10 @@ class CardioSessionController extends ChangeNotifier {
   bool _dirty = false;
 
   CardioDraft? _active;
+  CardioRecovery? _recovery;
+
+  /// Rohwerte der letzten Minute, für den Startwert der Erholung.
+  final List<CardioSample> _recent = [];
   HeartRateStatus _status = const HeartRateStatus();
   CardioAnalysis? _analysis;
   List<HeartRateSensor> _sensors = const [];
@@ -81,6 +115,23 @@ class CardioSessionController extends ChangeNotifier {
   /// Laufende Einheit oder null.
   CardioDraft? get active => _active;
   bool get isRunning => _active != null;
+
+  /// Erholungsphase nach dem Beenden oder null.
+  CardioRecovery? get recovery => _recovery;
+  bool get isRecovering => _recovery != null;
+
+  /// Verbleibende Zeit der Erholung (60 s abwärts, nie negativ).
+  Duration get recoveryRemaining {
+    final recovery = _recovery;
+    if (recovery == null) return Duration.zero;
+    final left =
+        CardioRecovery.duration - _clock().difference(recovery.endedAtUtc);
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  /// Belegt der Controller den Gurt (Einheit oder Erholung)? Dann kann keine
+  /// andere Messung (HRV) laufen.
+  bool get isBusy => isRunning || isRecovering;
 
   /// Aktueller Puls; null ohne Gurt, ohne Messwert oder nach
   /// [signalTimeout] ohne neuen Messwert.
@@ -176,6 +227,7 @@ class CardioSessionController extends ChangeNotifier {
   }) async {
     final running = _active;
     if (running != null) return running;
+    if (_recovery != null) await skipRecovery();
     if (zone != null && !zone.isValid) {
       throw ArgumentError.value(zone, 'zone', 'Ungültiger Zielbereich.');
     }
@@ -274,16 +326,134 @@ class CardioSessionController extends ChangeNotifier {
     try {
       final stored = await repository.saveFinished(saved);
       await repository.clearDraft();
-      await _stopNative(current.sessionId);
+      final startBpm = _recoveryStartBpm(stored.endedAtUtc);
+      final recovery = startBpm == null
+          ? null
+          : CardioRecovery(
+              sessionId: current.sessionId,
+              endedAtUtc: stored.endedAtUtc,
+              startBpm: startBpm,
+              config: HeartRateMonitoringConfig(
+                sessionId: current.sessionId,
+                title: current.activityType.label,
+                startedAtUtc: current.startedAtUtc,
+                soundId: trainingPreferences.timerSoundId.value,
+                // Erholung: kein Alarm, keine Zone, keine Live Activity.
+                alertsEnabled: false,
+                liveActivityEnabled: false,
+              ),
+            );
       _active = null;
       _analysis = null;
       _dirty = false;
+      if (recovery != null && await _beginRecovery(recovery)) {
+        notifyListeners();
+        return stored;
+      }
+      await _stopNative(current.sessionId);
       notifyListeners();
       return stored;
     } on Object {
       _syncTimer();
       rethrow;
     }
+  }
+
+  /// Mittel der Rohwerte der letzten 10 s vor [endedAtUtc]; null ohne Werte.
+  int? _recoveryStartBpm(DateTime endedAtUtc) => _meanBpm(
+    _recent,
+    from: endedAtUtc.subtract(CardioRecovery.startWindow),
+    to: endedAtUtc.add(const Duration(seconds: 1)),
+  );
+
+  Future<bool> _beginRecovery(CardioRecovery recovery) async {
+    try {
+      await platform.updateMonitoring(recovery.config);
+    } on Object {
+      return false;
+    }
+    recovery.lastSequence = _status.lastSequence;
+    _recovery = recovery;
+    _syncTimer();
+    return true;
+  }
+
+  /// Bricht die Erholung ab; die Einheit bleibt ohne Erholungswerte.
+  Future<void> skipRecovery() async {
+    final recovery = _recovery;
+    if (recovery == null) return;
+    _recovery = null;
+    _recent.clear();
+    _syncTimer();
+    notifyListeners();
+    await _stopNative(recovery.sessionId);
+  }
+
+  Future<void> _pollRecovery() async {
+    final recovery = _recovery;
+    if (recovery == null || _polling) return;
+    _polling = true;
+    try {
+      final status = await platform.readStatus(recovery.lastSequence);
+      if (_disposed || !identical(_recovery, recovery)) return;
+      _status = status;
+      _bluetoothException = null;
+      if (status.monitoringSessionId != recovery.sessionId) {
+        // Native Überwachung weg (App beendet): Erholung ohne Werte beenden.
+        await _finishRecovery(recovery, save: false);
+        return;
+      }
+      for (final sample in status.samples) {
+        if (sample.sequence > recovery.lastSequence) {
+          recovery.lastSequence = sample.sequence;
+          recovery.samples.add(sample);
+        }
+      }
+      final elapsed = _clock().difference(recovery.endedAtUtc);
+      if (elapsed >= CardioRecovery.windowEnd) {
+        await _finishRecovery(recovery, save: true);
+        return;
+      }
+      if (!_disposed) notifyListeners();
+    } on BluetoothUnavailableException catch (error) {
+      _bluetoothException = error.problem;
+      if (!_disposed) notifyListeners();
+    } finally {
+      _polling = false;
+    }
+  }
+
+  /// Schließt die Erholung ab. Der Endwert ist der Mittelwert der Rohwerte
+  /// 55–65 s nach dem Beenden; ohne Werte in diesem Fenster bleibt die Einheit
+  /// ohne Erholung.
+  Future<void> _finishRecovery(
+    CardioRecovery recovery, {
+    required bool save,
+  }) async {
+    _recovery = null;
+    _recent.clear();
+    _syncTimer();
+    final endBpm = save
+        ? _meanBpm(
+            recovery.samples,
+            from: recovery.endedAtUtc.add(CardioRecovery.windowStart),
+            to: recovery.endedAtUtc.add(CardioRecovery.windowEnd),
+            inclusiveEnd: true,
+          )
+        : null;
+    if (endBpm != null) {
+      try {
+        await repository.saveRecovery(
+          recovery.sessionId,
+          startBpm: recovery.startBpm,
+          endBpm: endBpm,
+        );
+      } on Object {
+        // Die Einheit ist gespeichert; ohne Erholungswerte.
+      }
+    }
+    await _stopNative(recovery.sessionId);
+    if (!_disposed) notifyListeners();
   }
 
   /// Verwirft die laufende Einheit ohne zu speichern.
@@ -391,7 +561,7 @@ class CardioSessionController extends ChangeNotifier {
   /// beim Zurückkehren in die App sofort aktualisieren wollen.
   Future<void> poll() async {
     final draft = _active;
-    if (draft == null) return;
+    if (draft == null) return _pollRecovery();
     if (_polling) return;
     _polling = true;
     try {
@@ -405,6 +575,7 @@ class CardioSessionController extends ChangeNotifier {
       }
       _status = status;
       _bluetoothException = null;
+      _remember(status.samples);
       if (status.monitoringSessionId != current.sessionId) {
         // Native Überwachung weg (App beendet): mit dem Entwurf neu starten.
         // Sequenzen beginnen dort wieder bei 1.
@@ -443,6 +614,17 @@ class CardioSessionController extends ChangeNotifier {
     } finally {
       _polling = false;
     }
+  }
+
+  /// Merkt Rohwerte der letzten Minute (aufsteigend nach Zeit).
+  void _remember(List<CardioSample> samples) {
+    for (final sample in samples) {
+      if (_recent.isEmpty || sample.atUtc.isAfter(_recent.last.atUtc)) {
+        _recent.add(sample);
+      }
+    }
+    final cutoff = _clock().subtract(const Duration(minutes: 1));
+    _recent.removeWhere((sample) => sample.atUtc.isBefore(cutoff));
   }
 
   void _afterUpdate() {
@@ -541,14 +723,17 @@ class CardioSessionController extends ChangeNotifier {
 
   void _syncTimer() {
     final needed =
-        autoPoll && _foreground && !_disposed && (isRunning || _previewing);
+        autoPoll &&
+        _foreground &&
+        !_disposed &&
+        (isRunning || isRecovering || _previewing);
     if (!needed) {
       _timer?.cancel();
       _timer = null;
       return;
     }
     _timer ??= Timer.periodic(pollInterval, (_) {
-      if (isRunning) {
+      if (isRunning || isRecovering) {
         unawaited(poll());
       } else if (_previewing) {
         unawaited(refreshStatus());
@@ -566,6 +751,11 @@ class CardioSessionController extends ChangeNotifier {
       await _persist(force: true);
       await _stopNative(draft.sessionId);
     }
+    final recovery = _recovery;
+    if (recovery != null) {
+      _recovery = null;
+      await _stopNative(recovery.sessionId);
+    }
   }
 
   @override
@@ -578,6 +768,27 @@ class CardioSessionController extends ChangeNotifier {
     _lifecycle = null;
     super.dispose();
   }
+}
+
+/// Mittel der gültigen Werte (25–250 bpm) im Zeitfenster; null ohne Werte.
+int? _meanBpm(
+  List<CardioSample> samples, {
+  required DateTime from,
+  required DateTime to,
+  bool inclusiveEnd = false,
+}) {
+  var sum = 0;
+  var count = 0;
+  for (final sample in samples) {
+    final before = sample.atUtc.isBefore(from);
+    final after = inclusiveEnd
+        ? sample.atUtc.isAfter(to)
+        : !sample.atUtc.isBefore(to);
+    if (before || after || sample.bpm < 25 || sample.bpm > 250) continue;
+    sum += sample.bpm;
+    count++;
+  }
+  return count == 0 ? null : (sum / count).round();
 }
 
 DateTime _roundToSecond(DateTime value) {

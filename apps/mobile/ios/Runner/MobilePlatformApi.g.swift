@@ -733,6 +733,64 @@ struct PlatformHeartRateSample: Hashable, CustomStringConvertible {
   }
 }
 
+/// Phase einer Intervall-Vorlage mit eigenem Zielbereich.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformCardioPhase: Hashable, CustomStringConvertible {
+  /// Sekunden ab Start der Einheit.
+  var startOffsetSeconds: Int64
+  var durationSeconds: Int64
+  var name: String
+  var zoneLowBpm: Int64? = nil
+  var zoneHighBpm: Int64? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformCardioPhase? {
+    let startOffsetSeconds = pigeonVar_list[0] as! Int64
+    let durationSeconds = pigeonVar_list[1] as! Int64
+    let name = pigeonVar_list[2] as! String
+    let zoneLowBpm: Int64? = nilOrValue(pigeonVar_list[3])
+    let zoneHighBpm: Int64? = nilOrValue(pigeonVar_list[4])
+
+    return PlatformCardioPhase(
+      startOffsetSeconds: startOffsetSeconds,
+      durationSeconds: durationSeconds,
+      name: name,
+      zoneLowBpm: zoneLowBpm,
+      zoneHighBpm: zoneHighBpm
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      startOffsetSeconds,
+      durationSeconds,
+      name,
+      zoneLowBpm,
+      zoneHighBpm,
+    ]
+  }
+  static func == (lhs: PlatformCardioPhase, rhs: PlatformCardioPhase) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.startOffsetSeconds, rhs.startOffsetSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.durationSeconds, rhs.durationSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.name, rhs.name) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneLowBpm, rhs.zoneLowBpm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneHighBpm, rhs.zoneHighBpm)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformCardioPhase")
+    MobilePlatformApiPigeonInternal.deepHash(value: startOffsetSeconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: durationSeconds, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: name, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: zoneLowBpm, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: zoneHighBpm, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformCardioPhase(startOffsetSeconds: \(String(describing: startOffsetSeconds)), durationSeconds: \(String(describing: durationSeconds)), name: \(String(describing: name)), zoneLowBpm: \(String(describing: zoneLowBpm)), zoneHighBpm: \(String(describing: zoneHighBpm)))"
+  }
+}
+
 /// Konfiguration der nativen Cardio-Überwachung (Puffer, Zonenalarm, Live Activity).
 ///
 /// Generated class from Pigeon that represents data sent in messages.
@@ -748,8 +806,16 @@ struct PlatformCardioMonitoringConfig: Hashable, CustomStringConvertible {
   var soundId: String
   var alertsEnabled: Bool
   var liveActivityEnabled: Bool
+  /// Zielbereich ohne Phasen bzw. nach der letzten Phase.
   var zoneLowBpm: Int64? = nil
   var zoneHighBpm: Int64? = nil
+  /// Phasen einer Vorlage, aufsteigend und ohne Überlappung; null oder leer
+  /// heißt freie Einheit mit [zoneLowBpm]/[zoneHighBpm].
+  var phases: [PlatformCardioPhase]? = nil
+  /// Sprachansagen für Alarme und Phasenwechsel; null = aus.
+  var voiceEnabled: Bool? = nil
+  /// Regelmäßige Ansage von Dauer und Puls in Minuten; null oder 0 = aus.
+  var voiceIntervalMinutes: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -765,6 +831,9 @@ struct PlatformCardioMonitoringConfig: Hashable, CustomStringConvertible {
     let liveActivityEnabled = pigeonVar_list[8] as! Bool
     let zoneLowBpm: Int64? = nilOrValue(pigeonVar_list[9])
     let zoneHighBpm: Int64? = nilOrValue(pigeonVar_list[10])
+    let phases: [PlatformCardioPhase]? = nilOrValue(pigeonVar_list[11])
+    let voiceEnabled: Bool? = nilOrValue(pigeonVar_list[12])
+    let voiceIntervalMinutes: Int64? = nilOrValue(pigeonVar_list[13])
 
     return PlatformCardioMonitoringConfig(
       sessionId: sessionId,
@@ -777,7 +846,10 @@ struct PlatformCardioMonitoringConfig: Hashable, CustomStringConvertible {
       alertsEnabled: alertsEnabled,
       liveActivityEnabled: liveActivityEnabled,
       zoneLowBpm: zoneLowBpm,
-      zoneHighBpm: zoneHighBpm
+      zoneHighBpm: zoneHighBpm,
+      phases: phases,
+      voiceEnabled: voiceEnabled,
+      voiceIntervalMinutes: voiceIntervalMinutes
     )
   }
   func toList() -> [Any?] {
@@ -793,13 +865,16 @@ struct PlatformCardioMonitoringConfig: Hashable, CustomStringConvertible {
       liveActivityEnabled,
       zoneLowBpm,
       zoneHighBpm,
+      phases,
+      voiceEnabled,
+      voiceIntervalMinutes,
     ]
   }
   static func == (lhs: PlatformCardioMonitoringConfig, rhs: PlatformCardioMonitoringConfig) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return MobilePlatformApiPigeonInternal.deepEquals(lhs.sessionId, rhs.sessionId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.title, rhs.title) && MobilePlatformApiPigeonInternal.deepEquals(lhs.startedAtUtcEpochMilliseconds, rhs.startedAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.graceSeconds, rhs.graceSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.repeatSeconds, rhs.repeatSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.warmupSeconds, rhs.warmupSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.soundId, rhs.soundId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.alertsEnabled, rhs.alertsEnabled) && MobilePlatformApiPigeonInternal.deepEquals(lhs.liveActivityEnabled, rhs.liveActivityEnabled) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneLowBpm, rhs.zoneLowBpm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneHighBpm, rhs.zoneHighBpm)
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.sessionId, rhs.sessionId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.title, rhs.title) && MobilePlatformApiPigeonInternal.deepEquals(lhs.startedAtUtcEpochMilliseconds, rhs.startedAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.graceSeconds, rhs.graceSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.repeatSeconds, rhs.repeatSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.warmupSeconds, rhs.warmupSeconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.soundId, rhs.soundId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.alertsEnabled, rhs.alertsEnabled) && MobilePlatformApiPigeonInternal.deepEquals(lhs.liveActivityEnabled, rhs.liveActivityEnabled) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneLowBpm, rhs.zoneLowBpm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneHighBpm, rhs.zoneHighBpm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.phases, rhs.phases) && MobilePlatformApiPigeonInternal.deepEquals(lhs.voiceEnabled, rhs.voiceEnabled) && MobilePlatformApiPigeonInternal.deepEquals(lhs.voiceIntervalMinutes, rhs.voiceIntervalMinutes)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -815,10 +890,13 @@ struct PlatformCardioMonitoringConfig: Hashable, CustomStringConvertible {
     MobilePlatformApiPigeonInternal.deepHash(value: liveActivityEnabled, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: zoneLowBpm, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: zoneHighBpm, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: phases, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: voiceEnabled, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: voiceIntervalMinutes, hasher: &hasher)
   }
 
   public var description: String {
-    return "PlatformCardioMonitoringConfig(sessionId: \(String(describing: sessionId)), title: \(String(describing: title)), startedAtUtcEpochMilliseconds: \(String(describing: startedAtUtcEpochMilliseconds)), graceSeconds: \(String(describing: graceSeconds)), repeatSeconds: \(String(describing: repeatSeconds)), warmupSeconds: \(String(describing: warmupSeconds)), soundId: \(String(describing: soundId)), alertsEnabled: \(String(describing: alertsEnabled)), liveActivityEnabled: \(String(describing: liveActivityEnabled)), zoneLowBpm: \(String(describing: zoneLowBpm)), zoneHighBpm: \(String(describing: zoneHighBpm)))"
+    return "PlatformCardioMonitoringConfig(sessionId: \(String(describing: sessionId)), title: \(String(describing: title)), startedAtUtcEpochMilliseconds: \(String(describing: startedAtUtcEpochMilliseconds)), graceSeconds: \(String(describing: graceSeconds)), repeatSeconds: \(String(describing: repeatSeconds)), warmupSeconds: \(String(describing: warmupSeconds)), soundId: \(String(describing: soundId)), alertsEnabled: \(String(describing: alertsEnabled)), liveActivityEnabled: \(String(describing: liveActivityEnabled)), zoneLowBpm: \(String(describing: zoneLowBpm)), zoneHighBpm: \(String(describing: zoneHighBpm)), phases: \(String(describing: phases)), voiceEnabled: \(String(describing: voiceEnabled)), voiceIntervalMinutes: \(String(describing: voiceIntervalMinutes)))"
   }
 }
 
@@ -1035,10 +1113,12 @@ private class MobilePlatformApiPigeonCodecReader: FlutterStandardReader {
     case 140:
       return PlatformHeartRateSample.fromList(self.readValue() as! [Any?])
     case 141:
-      return PlatformCardioMonitoringConfig.fromList(self.readValue() as! [Any?])
+      return PlatformCardioPhase.fromList(self.readValue() as! [Any?])
     case 142:
-      return PlatformHeartRateStatus.fromList(self.readValue() as! [Any?])
+      return PlatformCardioMonitoringConfig.fromList(self.readValue() as! [Any?])
     case 143:
+      return PlatformHeartRateStatus.fromList(self.readValue() as! [Any?])
+    case 144:
       return PlatformCardioExport.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1084,14 +1164,17 @@ private class MobilePlatformApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? PlatformHeartRateSample {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? PlatformCardioMonitoringConfig {
+    } else if let value = value as? PlatformCardioPhase {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? PlatformHeartRateStatus {
+    } else if let value = value as? PlatformCardioMonitoringConfig {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? PlatformCardioExport {
+    } else if let value = value as? PlatformHeartRateStatus {
       super.writeByte(143)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformCardioExport {
+      super.writeByte(144)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)

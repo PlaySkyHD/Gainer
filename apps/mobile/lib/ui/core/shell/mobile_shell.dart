@@ -61,7 +61,10 @@ class MobileShell extends StatelessWidget {
                 MobileArea.nutrition => NutritionScreen(
                   viewModel: account.nutritionViewModel,
                 ),
-                MobileArea.body => BodyScreen(viewModel: account.bodyViewModel),
+                MobileArea.body => BodyScreen(
+                  viewModel: account.bodyViewModel,
+                  cardio: _cardioOf(account),
+                ),
                 MobileArea.progress => ProgressScreen(
                   viewModel: account.progressViewModel,
                   onOpenArea: (area) => model.selectTab(area.index),
@@ -83,6 +86,7 @@ CardioFeature _cardioOf(AccountScope account) => CardioFeature(
   repository: account.cardio,
   session: account.cardioSession,
   health: account.cardioHealth,
+  body: account.bodyViewModel.repository,
 );
 
 /// Öffnet das aktive Training, wenn der Controller es nach einem Tab-Wechsel
@@ -261,6 +265,7 @@ class _MoreScreen extends StatelessWidget {
               onTap: () => openCardioSettings(
                 context,
                 preferences: account.cardio.preferences,
+                feature: _cardioOf(account),
               ),
             ),
             if (account.session.isAccountOperator)

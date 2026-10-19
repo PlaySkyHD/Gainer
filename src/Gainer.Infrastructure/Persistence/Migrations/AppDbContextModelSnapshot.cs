@@ -109,6 +109,12 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasPrecision(7, 2)
                         .HasColumnType("numeric(7,2)");
 
+                    b.Property<int?>("RestingHeartRateBpm")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("RestingHrvMs")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("SleepMinutes")
                         .HasColumnType("integer");
 
@@ -143,6 +149,10 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_daily_check_ins_fat", "\"FatGrams\" IS NULL OR \"FatGrams\" >= 0");
 
                             t.HasCheckConstraint("CK_daily_check_ins_protein", "\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0");
+
+                            t.HasCheckConstraint("CK_daily_check_ins_resting_hr", "\"RestingHeartRateBpm\" IS NULL OR (\"RestingHeartRateBpm\" >= 25 AND \"RestingHeartRateBpm\" <= 150)");
+
+                            t.HasCheckConstraint("CK_daily_check_ins_resting_hrv", "\"RestingHrvMs\" IS NULL OR (\"RestingHrvMs\" >= 1 AND \"RestingHrvMs\" <= 300)");
 
                             t.HasCheckConstraint("CK_daily_check_ins_sleep", "\"SleepMinutes\" IS NULL OR (\"SleepMinutes\" >= 0 AND \"SleepMinutes\" <= 1440)");
 
@@ -868,6 +878,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<string>("Phases")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int?>("RecoveryEndBpm")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("RecoveryStartBpm")
+                        .HasColumnType("integer");
+
                     b.PrimitiveCollection<int[]>("RrIntervalsMs")
                         .IsRequired()
                         .HasColumnType("integer[]");
@@ -887,6 +906,10 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
                     b.Property<int?>("TargetZoneLowBpm")
                         .HasColumnType("integer");
+
+                    b.Property<string>("TemplateName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -910,6 +933,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_cardio_sessions_activity_type", "\"ActivityType\" IN ('IndoorCycling')");
 
                             t.HasCheckConstraint("CK_cardio_sessions_end_after_start", "\"EndedAtUtc\" > \"StartedAtUtc\"");
+
+                            t.HasCheckConstraint("CK_cardio_sessions_recovery", "(\"RecoveryStartBpm\" IS NULL AND \"RecoveryEndBpm\" IS NULL) OR (\"RecoveryStartBpm\" BETWEEN 25 AND 250 AND \"RecoveryEndBpm\" BETWEEN 25 AND 250)");
 
                             t.HasCheckConstraint("CK_cardio_sessions_sample_interval", "\"SampleIntervalSeconds\" BETWEEN 1 AND 60");
 

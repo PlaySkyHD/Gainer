@@ -70,7 +70,9 @@ internal static class BodyTrackingSnapshots
             checkIn.CarbohydrateGrams,
             checkIn.FatGrams,
             checkIn.Steps,
-            checkIn.SleepMinutes),
+            checkIn.SleepMinutes,
+            checkIn.RestingHeartRateBpm,
+            checkIn.RestingHrvMs),
         checkIn.CreatedAtUtc,
         checkIn.UpdatedAtUtc,
         checkIn.Version);

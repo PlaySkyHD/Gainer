@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_session.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_format.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_heart_rate_chart.dart';
+import 'package:gainer_mobile/ui/features/training/training_format.dart';
 
 void main() {
   test('Zahlen deutsch formatieren', () {
@@ -20,8 +21,20 @@ void main() {
     );
     expect(
       formatCardioDuration(const Duration(hours: 1, minutes: 5)),
-      '1:05:00 h',
+      '1:05 h',
     );
+    expect(formatCardioDuration(const Duration(seconds: 80)), '1:20 min');
+    expect(formatCardioDuration(const Duration(seconds: 5)), '0:05 min');
+    expect(
+      formatCardioDuration(const Duration(hours: 1, minutes: 2, seconds: 40)),
+      '1:02 h',
+    );
+  });
+
+  test('Tagebuchdauer rundet auf die nächste Minute', () {
+    expect(formatDurationMinutes(const Duration(seconds: 80)), '1 min');
+    expect(formatDurationMinutes(const Duration(seconds: 100)), '2 min');
+    expect(formatDurationMinutes(const Duration(seconds: 29)), '0 min');
   });
 
   test('Diagrammbereich enthält Zielbereich und rundet auf 10 bpm', () {
