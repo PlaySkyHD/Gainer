@@ -176,6 +176,24 @@ class PlatformHeartRateSample {
   final List<int> rrIntervalsMs;
 }
 
+/// Phase einer Intervall-Vorlage mit eigenem Zielbereich.
+class PlatformCardioPhase {
+  const PlatformCardioPhase({
+    required this.startOffsetSeconds,
+    required this.durationSeconds,
+    required this.name,
+    this.zoneLowBpm,
+    this.zoneHighBpm,
+  });
+
+  /// Sekunden ab Start der Einheit.
+  final int startOffsetSeconds;
+  final int durationSeconds;
+  final String name;
+  final int? zoneLowBpm;
+  final int? zoneHighBpm;
+}
+
 /// Konfiguration der nativen Cardio-Überwachung (Puffer, Zonenalarm, Live Activity).
 class PlatformCardioMonitoringConfig {
   const PlatformCardioMonitoringConfig({
@@ -190,6 +208,9 @@ class PlatformCardioMonitoringConfig {
     required this.liveActivityEnabled,
     this.zoneLowBpm,
     this.zoneHighBpm,
+    this.phases,
+    this.voiceEnabled,
+    this.voiceIntervalMinutes,
   });
 
   final String sessionId;
@@ -205,8 +226,20 @@ class PlatformCardioMonitoringConfig {
   final String soundId;
   final bool alertsEnabled;
   final bool liveActivityEnabled;
+
+  /// Zielbereich ohne Phasen bzw. nach der letzten Phase.
   final int? zoneLowBpm;
   final int? zoneHighBpm;
+
+  /// Phasen einer Vorlage, aufsteigend und ohne Überlappung; null oder leer
+  /// heißt freie Einheit mit [zoneLowBpm]/[zoneHighBpm].
+  final List<PlatformCardioPhase>? phases;
+
+  /// Sprachansagen für Alarme und Phasenwechsel; null = aus.
+  final bool? voiceEnabled;
+
+  /// Regelmäßige Ansage von Dauer und Puls in Minuten; null oder 0 = aus.
+  final int? voiceIntervalMinutes;
 }
 
 /// Zustand von Bluetooth, Gurt und Überwachung samt neuen Messwerten.

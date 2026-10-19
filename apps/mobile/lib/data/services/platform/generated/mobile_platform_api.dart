@@ -780,6 +780,78 @@ class PlatformHeartRateSample {
   }
 }
 
+/// Phase einer Intervall-Vorlage mit eigenem Zielbereich.
+class PlatformCardioPhase {
+  PlatformCardioPhase({
+    required this.startOffsetSeconds,
+    required this.durationSeconds,
+    required this.name,
+    this.zoneLowBpm,
+    this.zoneHighBpm,
+  });
+
+  /// Sekunden ab Start der Einheit.
+  int startOffsetSeconds;
+
+  int durationSeconds;
+
+  String name;
+
+  int? zoneLowBpm;
+
+  int? zoneHighBpm;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      startOffsetSeconds,
+      durationSeconds,
+      name,
+      zoneLowBpm,
+      zoneHighBpm,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformCardioPhase decode(Object result) {
+    result as List<Object?>;
+    return PlatformCardioPhase(
+      startOffsetSeconds: result[0]! as int,
+      durationSeconds: result[1]! as int,
+      name: result[2]! as String,
+      zoneLowBpm: result[3] as int?,
+      zoneHighBpm: result[4] as int?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformCardioPhase || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(startOffsetSeconds, other.startOffsetSeconds) &&
+        _deepEquals(durationSeconds, other.durationSeconds) &&
+        _deepEquals(name, other.name) &&
+        _deepEquals(zoneLowBpm, other.zoneLowBpm) &&
+        _deepEquals(zoneHighBpm, other.zoneHighBpm);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformCardioPhase(startOffsetSeconds: $startOffsetSeconds, durationSeconds: $durationSeconds, name: $name, zoneLowBpm: $zoneLowBpm, zoneHighBpm: $zoneHighBpm)';
+  }
+}
+
 /// Konfiguration der nativen Cardio-Überwachung (Puffer, Zonenalarm, Live Activity).
 class PlatformCardioMonitoringConfig {
   PlatformCardioMonitoringConfig({
@@ -794,6 +866,9 @@ class PlatformCardioMonitoringConfig {
     required this.liveActivityEnabled,
     this.zoneLowBpm,
     this.zoneHighBpm,
+    this.phases,
+    this.voiceEnabled,
+    this.voiceIntervalMinutes,
   });
 
   String sessionId;
@@ -816,9 +891,20 @@ class PlatformCardioMonitoringConfig {
 
   bool liveActivityEnabled;
 
+  /// Zielbereich ohne Phasen bzw. nach der letzten Phase.
   int? zoneLowBpm;
 
   int? zoneHighBpm;
+
+  /// Phasen einer Vorlage, aufsteigend und ohne Überlappung; null oder leer
+  /// heißt freie Einheit mit [zoneLowBpm]/[zoneHighBpm].
+  List<PlatformCardioPhase>? phases;
+
+  /// Sprachansagen für Alarme und Phasenwechsel; null = aus.
+  bool? voiceEnabled;
+
+  /// Regelmäßige Ansage von Dauer und Puls in Minuten; null oder 0 = aus.
+  int? voiceIntervalMinutes;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -833,6 +919,9 @@ class PlatformCardioMonitoringConfig {
       liveActivityEnabled,
       zoneLowBpm,
       zoneHighBpm,
+      phases,
+      voiceEnabled,
+      voiceIntervalMinutes,
     ];
   }
 
@@ -854,6 +943,9 @@ class PlatformCardioMonitoringConfig {
       liveActivityEnabled: result[8]! as bool,
       zoneLowBpm: result[9] as int?,
       zoneHighBpm: result[10] as int?,
+      phases: (result[11] as List<Object?>?)?.cast<PlatformCardioPhase>(),
+      voiceEnabled: result[12] as bool?,
+      voiceIntervalMinutes: result[13] as int?,
     );
   }
 
@@ -880,7 +972,10 @@ class PlatformCardioMonitoringConfig {
         _deepEquals(alertsEnabled, other.alertsEnabled) &&
         _deepEquals(liveActivityEnabled, other.liveActivityEnabled) &&
         _deepEquals(zoneLowBpm, other.zoneLowBpm) &&
-        _deepEquals(zoneHighBpm, other.zoneHighBpm);
+        _deepEquals(zoneHighBpm, other.zoneHighBpm) &&
+        _deepEquals(phases, other.phases) &&
+        _deepEquals(voiceEnabled, other.voiceEnabled) &&
+        _deepEquals(voiceIntervalMinutes, other.voiceIntervalMinutes);
   }
 
   @override
@@ -889,7 +984,7 @@ class PlatformCardioMonitoringConfig {
 
   @override
   String toString() {
-    return 'PlatformCardioMonitoringConfig(sessionId: $sessionId, title: $title, startedAtUtcEpochMilliseconds: $startedAtUtcEpochMilliseconds, graceSeconds: $graceSeconds, repeatSeconds: $repeatSeconds, warmupSeconds: $warmupSeconds, soundId: $soundId, alertsEnabled: $alertsEnabled, liveActivityEnabled: $liveActivityEnabled, zoneLowBpm: $zoneLowBpm, zoneHighBpm: $zoneHighBpm)';
+    return 'PlatformCardioMonitoringConfig(sessionId: $sessionId, title: $title, startedAtUtcEpochMilliseconds: $startedAtUtcEpochMilliseconds, graceSeconds: $graceSeconds, repeatSeconds: $repeatSeconds, warmupSeconds: $warmupSeconds, soundId: $soundId, alertsEnabled: $alertsEnabled, liveActivityEnabled: $liveActivityEnabled, zoneLowBpm: $zoneLowBpm, zoneHighBpm: $zoneHighBpm, phases: $phases, voiceEnabled: $voiceEnabled, voiceIntervalMinutes: $voiceIntervalMinutes)';
   }
 }
 
@@ -1161,14 +1256,17 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is PlatformHeartRateSample) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    } else if (value is PlatformCardioMonitoringConfig) {
+    } else if (value is PlatformCardioPhase) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    } else if (value is PlatformHeartRateStatus) {
+    } else if (value is PlatformCardioMonitoringConfig) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    } else if (value is PlatformCardioExport) {
+    } else if (value is PlatformHeartRateStatus) {
       buffer.putUint8(143);
+      writeValue(buffer, value.encode());
+    } else if (value is PlatformCardioExport) {
+      buffer.putUint8(144);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1207,10 +1305,12 @@ class _PigeonCodec extends StandardMessageCodec {
       case 140:
         return PlatformHeartRateSample.decode(readValue(buffer)!);
       case 141:
-        return PlatformCardioMonitoringConfig.decode(readValue(buffer)!);
+        return PlatformCardioPhase.decode(readValue(buffer)!);
       case 142:
-        return PlatformHeartRateStatus.decode(readValue(buffer)!);
+        return PlatformCardioMonitoringConfig.decode(readValue(buffer)!);
       case 143:
+        return PlatformHeartRateStatus.decode(readValue(buffer)!);
+      case 144:
         return PlatformCardioExport.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
