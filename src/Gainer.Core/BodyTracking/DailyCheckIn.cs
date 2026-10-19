@@ -23,6 +23,10 @@ public sealed class DailyCheckIn : UserOwnedEntity
 
     public int? SleepMinutes { get; set; }
 
+    public int? RestingHeartRateBpm { get; set; }
+
+    public int? RestingHrvMs { get; set; }
+
     public DateTime CreatedAtUtc { get; init; }
 
     public DateTime UpdatedAtUtc { get; set; }

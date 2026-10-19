@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using System.Text.Json;
 using Gainer.Core.Security;
 using Gainer.Core.BodyTracking;
 using Gainer.Core.Nutrition;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Gainer.Infrastructure.Persistence;
@@ -19,6 +21,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 {
     private const string PositionNonNegativeCheck = "\"Position\" >= 0";
     private const string NameNotBlankCheck = "length(trim(\"Name\")) > 0";
+    private static readonly JsonSerializerOptions PhaseJsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>Hash-only metadata for pending account invitations.</summary>
     public DbSet<AccountInvitation> AccountInvitations => Set<AccountInvitation>();
@@ -482,6 +485,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint(
                     "CK_cardio_sessions_sample_interval",
                     "\"SampleIntervalSeconds\" BETWEEN 1 AND 60");
+                table.HasCheckConstraint(
+                    "CK_cardio_sessions_recovery",
+                    "(\"RecoveryStartBpm\" IS NULL AND \"RecoveryEndBpm\" IS NULL) OR (\"RecoveryStartBpm\" BETWEEN 25 AND 250 AND \"RecoveryEndBpm\" BETWEEN 25 AND 250)");
             });
             session.HasKey(item => item.Id);
             session.HasAlternateKey(item => new { item.UserId, item.Id });
@@ -494,6 +500,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             session.Property(item => item.AveragePowerWatts).HasPrecision(7, 2);
             session.Property(item => item.EnergyKcal).HasPrecision(8, 2);
             session.Property(item => item.Notes).HasMaxLength(2_000);
+            session.Property(item => item.TemplateName).HasMaxLength(100);
+            session.Property(item => item.Phases)
+                .HasColumnType("jsonb")
+                .HasConversion(
+                    phases => phases == null ? null : JsonSerializer.Serialize(phases, PhaseJsonOptions),
+                    json => json == null ? null : (IReadOnlyList<CardioPhaseValues>?)JsonSerializer.Deserialize<CardioPhaseValues[]>(json, PhaseJsonOptions),
+                    new ValueComparer<IReadOnlyList<CardioPhaseValues>?>(
+                        (left, right) => left == null ? right == null : right != null && left.SequenceEqual(right),
+                        phases => phases == null ? 0 : phases.Aggregate(0, (hash, phase) => HashCode.Combine(hash, phase)),
+                        phases => phases == null ? null : phases.ToArray()));
             session.Property(item => item.Version).IsConcurrencyToken();
             session.HasIndex(item => new { item.UserId, item.StartedAtUtc })
                 .IsDescending(false, true);
@@ -624,6 +640,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_daily_check_ins_carbohydrate", "\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0");
                 table.HasCheckConstraint("CK_daily_check_ins_fat", "\"FatGrams\" IS NULL OR \"FatGrams\" >= 0");
                 table.HasCheckConstraint("CK_daily_check_ins_steps", "\"Steps\" IS NULL OR \"Steps\" >= 0");
+                table.HasCheckConstraint("CK_daily_check_ins_resting_hr", "\"RestingHeartRateBpm\" IS NULL OR (\"RestingHeartRateBpm\" >= 25 AND \"RestingHeartRateBpm\" <= 150)");
+                table.HasCheckConstraint("CK_daily_check_ins_resting_hrv", "\"RestingHrvMs\" IS NULL OR (\"RestingHrvMs\" >= 1 AND \"RestingHrvMs\" <= 300)");
                 table.HasCheckConstraint("CK_daily_check_ins_sleep", "\"SleepMinutes\" IS NULL OR (\"SleepMinutes\" >= 0 AND \"SleepMinutes\" <= 1440)");
             });
             checkIn.HasKey(item => item.Id);

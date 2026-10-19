@@ -4,6 +4,14 @@ namespace Gainer.Core.Training;
 
 public sealed record CardioTargetZone(int LowBpm, int HighBpm);
 
+/// <summary>One planned phase of a guided session, positioned by its offset from the session start.</summary>
+public sealed record CardioPhaseValues(
+    int StartOffsetSeconds,
+    int DurationSeconds,
+    string Name,
+    int? LowBpm,
+    int? HighBpm);
+
 /// <summary>Complete editable state of a cardio session; the client builds it and the server validates it.</summary>
 public sealed record CardioSessionValues(
     Guid SessionId,
@@ -18,7 +26,11 @@ public sealed record CardioSessionValues(
     decimal? DistanceKm,
     decimal? AveragePowerWatts,
     decimal? EnergyKcal,
-    string? Notes);
+    string? Notes,
+    int? RecoveryStartBpm = null,
+    int? RecoveryEndBpm = null,
+    string? TemplateName = null,
+    IReadOnlyList<CardioPhaseValues>? Phases = null);
 
 public sealed record SaveCardioSessionMutation : ITypedMutation<CardioSessionSnapshot>
 {
@@ -96,7 +108,11 @@ public sealed record CardioSessionSnapshot(
     string? Notes,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    long Version) : IResourceSnapshot
+    long Version,
+    int? RecoveryStartBpm = null,
+    int? RecoveryEndBpm = null,
+    string? TemplateName = null,
+    IReadOnlyList<CardioPhaseValues>? Phases = null) : IResourceSnapshot
 {
     public ResourceKey Resource => ResourceKey.Create(ResourceKind.CardioSession, SessionId);
 }
