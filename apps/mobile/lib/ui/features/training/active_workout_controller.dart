@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/workout_model.dart';
+import '../cardio/cardio_feature.dart';
 import 'rest_timer_controller.dart';
 
 /// Hält das laufende Training des Kontos für Tagebuch, Trainingsleiste und
@@ -24,6 +25,10 @@ class ActiveWorkoutController extends ChangeNotifier {
   /// `true`, wenn Live Activities in den iOS-Einstellungen aus sind. Der
   /// Live-Activity-Coordinator hält den Wert aktuell.
   final ValueNotifier<bool> liveActivitiesOff = ValueNotifier(false);
+
+  /// Cardio des Kontos; setzt die Shell. Mit Wert bietet die Zusammenfassung
+  /// eines beendeten Trainings „Cardio anhängen“ an.
+  CardioFeature? cardio;
 
   /// Öffnet die App-Einstellungen; setzt der Live-Activity-Coordinator.
   Future<void> Function()? openLiveActivitySettings;

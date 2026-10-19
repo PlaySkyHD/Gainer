@@ -7,6 +7,8 @@ import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import '../cardio/cardio_feature.dart';
+import '../cardio/cardio_offer_card.dart';
 import 'training_format.dart';
 
 /// Ergebnis der Zusammenfassung: „Fertig“ schließt das Training, „Training
@@ -18,12 +20,16 @@ Future<WorkoutSummaryResult?> openWorkoutSummary(
   BuildContext context, {
   required TrainingLogRepository repository,
   required String workoutId,
+  CardioFeature? cardio,
 }) {
   return Navigator.of(context).push<WorkoutSummaryResult>(
     CupertinoPageRoute<WorkoutSummaryResult>(
       fullscreenDialog: true,
-      builder: (_) =>
-          WorkoutSummaryScreen(repository: repository, workoutId: workoutId),
+      builder: (_) => WorkoutSummaryScreen(
+        repository: repository,
+        workoutId: workoutId,
+        cardio: cardio,
+      ),
     ),
   );
 }
@@ -32,11 +38,16 @@ class WorkoutSummaryScreen extends StatefulWidget {
   const WorkoutSummaryScreen({
     required this.repository,
     required this.workoutId,
+    this.cardio,
     super.key,
   });
 
   final TrainingLogRepository repository;
   final String workoutId;
+
+  /// Mit Cardio erscheint die Karte „Cardio anhängen“. Die Zusammenfassung
+  /// öffnet nur nach dem Beenden eines aktiven Trainings, nie für historische.
+  final CardioFeature? cardio;
 
   @override
   State<WorkoutSummaryScreen> createState() => _WorkoutSummaryScreenState();
@@ -258,6 +269,7 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
             ],
           ),
         ),
+        if (widget.cardio case final cardio?) CardioOfferCard(feature: cardio),
         if (summary.bestSets.isNotEmpty) ...[
           const SizedBox(height: GainerSpacing.m),
           GainerCard(

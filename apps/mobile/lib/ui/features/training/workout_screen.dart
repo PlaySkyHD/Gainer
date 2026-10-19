@@ -153,6 +153,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       context,
       repository: widget.repository,
       workoutId: widget.workoutId,
+      cardio: widget.activeWorkout.cardio,
     );
     if (!mounted) return;
     if (result == WorkoutSummaryResult.resumed) {

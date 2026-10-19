@@ -370,6 +370,20 @@ class PigeonNativeFeaturesPlatform
     liveActivityEnabled: config.liveActivityEnabled,
     zoneLowBpm: config.zoneLowBpm,
     zoneHighBpm: config.zoneHighBpm,
+    phases: config.phases.isEmpty
+        ? null
+        : [
+            for (final phase in config.phases)
+              PlatformCardioPhase(
+                startOffsetSeconds: phase.startOffsetSeconds,
+                durationSeconds: phase.durationSeconds,
+                name: phase.name,
+                zoneLowBpm: phase.lowBpm,
+                zoneHighBpm: phase.highBpm,
+              ),
+          ],
+    voiceEnabled: config.voiceEnabled,
+    voiceIntervalMinutes: config.voiceIntervalMinutes,
   );
 
   /// Übersetzt die Bluetooth-Fehlercodes der Plattform.

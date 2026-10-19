@@ -1,3 +1,5 @@
+import 'cardio_template.dart';
+
 /// Sportart einer Cardio-Einheit. [wireName] ist der Wert im Sync-Vertrag.
 enum CardioActivityType {
   indoorCycling('IndoorCycling', 'Rad-Ergometer');
@@ -69,11 +71,14 @@ class CardioSession {
     this.notes,
     this.recoveryStartBpm,
     this.recoveryEndBpm,
+    this.templateName,
+    List<CardioPhase> phases = const [],
     required this.createdAtUtc,
     required this.updatedAtUtc,
     this.deletedAtUtc,
   }) : heartRateBpm = List.unmodifiable(heartRateBpm),
-       rrIntervalsMs = List.unmodifiable(rrIntervalsMs);
+       rrIntervalsMs = List.unmodifiable(rrIntervalsMs),
+       phases = List.unmodifiable(phases);
 
   static const defaultSampleIntervalSeconds = 5;
 
@@ -100,6 +105,11 @@ class CardioSession {
     notes: json['notes'] as String?,
     recoveryStartBpm: (json['recoveryStartBpm'] as num?)?.toInt(),
     recoveryEndBpm: (json['recoveryEndBpm'] as num?)?.toInt(),
+    templateName: json['templateName'] as String?,
+    phases: [
+      for (final phase in (json['phases'] as List?) ?? const [])
+        CardioPhase.fromJson(phase as Map<String, dynamic>),
+    ],
     createdAtUtc: DateTime.parse(json['createdAtUtc'] as String).toUtc(),
     updatedAtUtc: DateTime.parse(json['updatedAtUtc'] as String).toUtc(),
     deletedAtUtc: json['deletedAtUtc'] == null
@@ -126,6 +136,11 @@ class CardioSession {
   /// Puls beim Beenden und 60 s später (Erholung); beide oder keiner.
   final int? recoveryStartBpm;
   final int? recoveryEndBpm;
+
+  /// Name der genutzten Vorlage und deren aufgelöste Phasen; leer bei freier
+  /// Einheit.
+  final String? templateName;
+  final List<CardioPhase> phases;
   final DateTime createdAtUtc;
   final DateTime updatedAtUtc;
 
@@ -154,6 +169,8 @@ class CardioSession {
     String? Function()? notes,
     int? Function()? recoveryStartBpm,
     int? Function()? recoveryEndBpm,
+    String? Function()? templateName,
+    List<CardioPhase>? phases,
     DateTime? updatedAtUtc,
     DateTime? Function()? deletedAtUtc,
   }) => CardioSession(
@@ -178,6 +195,8 @@ class CardioSession {
     recoveryEndBpm: recoveryEndBpm == null
         ? this.recoveryEndBpm
         : recoveryEndBpm(),
+    templateName: templateName == null ? this.templateName : templateName(),
+    phases: phases ?? this.phases,
     createdAtUtc: createdAtUtc,
     updatedAtUtc: updatedAtUtc ?? this.updatedAtUtc,
     deletedAtUtc: deletedAtUtc == null ? this.deletedAtUtc : deletedAtUtc(),
@@ -200,6 +219,8 @@ class CardioSession {
     'notes': ?notes,
     'recoveryStartBpm': ?recoveryStartBpm,
     'recoveryEndBpm': ?recoveryEndBpm,
+    'templateName': ?templateName,
+    if (phases.isNotEmpty) 'phases': [for (final p in phases) p.toJson()],
     'createdAtUtc': createdAtUtc.toUtc().toIso8601String(),
     'updatedAtUtc': updatedAtUtc.toUtc().toIso8601String(),
     if (deletedAtUtc != null)

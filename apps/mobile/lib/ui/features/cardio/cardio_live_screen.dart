@@ -262,7 +262,7 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
   List<Widget> _content(BuildContext context) {
     final session = widget.feature.session;
     final colors = GainerDesign.colorsOf(context);
-    final zone = session.active?.targetZone;
+    final zone = session.currentZone;
     final analysis = session.currentAnalysis;
     final average = analysis?.averageBpm;
     final max = analysis?.maxBpm;
@@ -273,15 +273,23 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
         state: session.zoneState,
         hasSensor: session.sensorId != null,
       ),
+      if (session.hasTemplate) ...[
+        const SizedBox(height: GainerSpacing.m),
+        _PhaseCard(session: session),
+      ],
       const SizedBox(height: GainerSpacing.l),
       GainerGroupedSection(
+        // Bei einer Vorlage bestimmen die Phasen das Ziel.
+        footer: session.hasTemplate
+            ? 'Die Phasen der Vorlage bestimmen das Ziel.'
+            : null,
         children: [
           GainerListRow(
             key: const ValueKey('cardio-live-zone'),
             title: 'Ziel',
             value: zone == null ? 'Kein Zielbereich' : '$zone bpm',
-            showChevron: true,
-            onTap: _editZone,
+            showChevron: !session.hasTemplate,
+            onTap: session.hasTemplate ? null : _editZone,
           ),
           GainerListRow(
             title: 'Dauer',
@@ -350,6 +358,128 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
 }
 
 enum _FinishAction { save, discard, cancel }
+
+/// Phase einer laufenden Vorlage: Nummer und Name, Restzeit, Ziel und die
+/// nächste Phase. Nach der letzten Phase der Hinweis, dass die Einheit ohne
+/// Ziel weiterläuft.
+class _PhaseCard extends StatelessWidget {
+  const _PhaseCard({required this.session});
+
+  final CardioSessionController session;
+
+  /// Titel und Restzeit nebeneinander; bei großer Schrift untereinander, damit
+  /// der Titel nicht Zeichen für Zeichen umbricht.
+  Widget _titleAndCountdown(
+    BuildContext context,
+    GainerColors colors,
+    String title,
+    Duration remaining,
+  ) {
+    final titleText = Text(
+      title,
+      key: const ValueKey('cardio-phase-title'),
+      style: GainerTypography.cardTitle.copyWith(color: colors.primaryText),
+    );
+    final countdown = Text(
+      formatCountdown(remaining),
+      key: const ValueKey('cardio-phase-countdown'),
+      style: GainerTypography.timer.copyWith(
+        fontSize: 36,
+        fontWeight: FontWeight.w700,
+        color: colors.primaryText,
+      ),
+    );
+    if (MediaQuery.textScalerOf(context).scale(1) > 1.5) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [titleText, countdown],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(child: titleText),
+        const SizedBox(width: GainerSpacing.s),
+        countdown,
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final phase = session.currentPhase;
+    final next = session.nextPhase;
+    final remaining = session.phaseRemaining;
+    final index = session.phaseIndex;
+    final template = session.active?.templateName;
+    if (phase == null || index == null || remaining == null) {
+      return GainerCard(
+        key: const ValueKey('cardio-phase-card'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Vorlage beendet',
+              key: const ValueKey('cardio-phase-finished'),
+              style: GainerTypography.cardTitle.copyWith(
+                color: colors.primaryText,
+              ),
+            ),
+            const SizedBox(height: GainerSpacing.xxs),
+            Text(
+              'Vorlage beendet – du kannst beenden oder weiterfahren.',
+              style: GainerTypography.label.copyWith(
+                color: colors.secondaryText,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final title = 'Phase ${index + 1}/${session.phaseCount} · ${phase.name}';
+    return GainerCard(
+      key: const ValueKey('cardio-phase-card'),
+      child: Semantics(
+        label:
+            '$title, noch ${remaining.inSeconds} Sekunden, '
+            'Ziel ${formatPhaseZone(phase)}',
+        excludeSemantics: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (template != null)
+              Text(
+                template,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GainerTypography.caption.copyWith(
+                  color: colors.secondaryText,
+                ),
+              ),
+            _titleAndCountdown(context, colors, title, remaining),
+            const SizedBox(height: GainerSpacing.xxs),
+            Text(
+              'Ziel ${formatPhaseZone(phase)}',
+              key: const ValueKey('cardio-phase-target'),
+              style: GainerTypography.label.copyWith(color: colors.accent),
+            ),
+            if (next != null) ...[
+              const SizedBox(height: GainerSpacing.xxs),
+              Text(
+                'Nächste: ${next.name} '
+                '${formatPhaseDuration(next.durationSeconds)}',
+                key: const ValueKey('cardio-phase-next'),
+                style: GainerTypography.label.copyWith(
+                  color: colors.secondaryText,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _Hero extends StatelessWidget {
   const _Hero({

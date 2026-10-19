@@ -7,6 +7,7 @@ import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'cardio_feature.dart';
 import 'cardio_hrv_measurement_screen.dart';
+import 'cardio_template_screens.dart';
 import 'cardio_warmup_picker.dart';
 
 Future<void> openCardioSettings(
@@ -202,6 +203,35 @@ class _CardioSettingsScreenState extends State<CardioSettingsScreen> {
         ],
         const SizedBox(height: GainerSpacing.l),
         GainerGroupedSection(
+          header: 'Einheit',
+          footer:
+              'Vorlagen teilen eine Einheit in Phasen mit wechselndem Ziel, '
+              'z. B. 4×4. Nach dem Krafttraining bietet die Zusammenfassung '
+              'an, direkt Cardio zu starten.',
+          children: [
+            GainerListRow(
+              key: const ValueKey('cardio-settings-templates'),
+              title: 'Vorlagen',
+              value: '${values.allTemplates.length}',
+              leadingIcon: CupertinoIcons.list_bullet,
+              showChevron: true,
+              onTap: () =>
+                  openCardioTemplates(context, preferences: _preferences),
+            ),
+            GainerListRow(
+              title: 'Cardio nach Krafttraining anbieten',
+              trailing: CupertinoSwitch(
+                key: const ValueKey('cardio-settings-offer'),
+                value: values.offerAfterStrength,
+                onChanged: (value) => _preferences.update(
+                  (current) => current.copyWith(offerAfterStrength: value),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.l),
+        GainerGroupedSection(
           header: 'Wochenziel',
           footer:
               'Minuten pro Woche im Zielbereich (30 bis 600). Die Statistik '
@@ -267,6 +297,58 @@ class _CardioSettingsScreenState extends State<CardioSettingsScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.l),
+        GainerGroupedSection(
+          header: 'Sprache',
+          footer: values.voiceEnabled
+              ? 'Gainer sagt Alarme und Phasenwechsel an. Musik wird dabei '
+                    'leiser. Die Ansage erscheint zusätzlich zur '
+                    'Benachrichtigung, die dann ohne Ton bleibt.'
+              : 'Mit Sprachansagen hörst du Alarme und Phasenwechsel über '
+                    'Kopfhörer, auch bei gesperrtem Display. Dann lässt sich '
+                    'auch eine regelmäßige Ansage von Puls und Dauer wählen.',
+          children: [
+            GainerListRow(
+              title: 'Sprachansagen',
+              trailing: CupertinoSwitch(
+                key: const ValueKey('cardio-settings-voice'),
+                value: values.voiceEnabled,
+                onChanged: (value) => _preferences.update(
+                  (current) => current.copyWith(voiceEnabled: value),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(GainerSpacing.m),
+              child: Opacity(
+                opacity: values.voiceEnabled ? 1 : 0.4,
+                child: IgnorePointer(
+                  key: const ValueKey('cardio-settings-voice-interval'),
+                  ignoring: !values.voiceEnabled,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const _Caption('Regelmäßige Ansage in Minuten'),
+                      const SizedBox(height: GainerSpacing.xs),
+                      GainerSegmentedControl<int>(
+                        options: {
+                          for (final minutes
+                              in CardioPreferenceValues.voiceIntervalOptions)
+                            minutes: minutes == 0 ? 'Aus' : '$minutes',
+                        },
+                        value: values.voiceIntervalMinutes,
+                        onChanged: (minutes) => _preferences.update(
+                          (current) =>
+                              current.copyWith(voiceIntervalMinutes: minutes),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],

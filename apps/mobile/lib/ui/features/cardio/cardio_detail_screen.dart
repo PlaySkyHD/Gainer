@@ -227,6 +227,7 @@ class _CardioDetailScreenState extends State<CardioDetailScreen> {
     final analysis = _analysis!;
     final local = session.startedAtUtc.toLocal();
     final zone = session.targetZone;
+    final hasTemplate = session.phases.isNotEmpty;
     final hasSignal = session.heartRateBpm.any((bpm) => bpm > 0);
     return [
       if (_error case final error?) ...[
@@ -244,7 +245,8 @@ class _CardioDetailScreenState extends State<CardioDetailScreen> {
           children: [
             Text(
               '${formatWeekdayShort(local)}, ${formatShortDate(local)} · '
-              '${formatClockTime(local)} Uhr',
+              '${formatClockTime(local)} Uhr'
+              '${session.templateName == null ? '' : ' · ${session.templateName}'}',
               style: GainerTypography.label.copyWith(
                 color: colors.secondaryText,
               ),
@@ -255,6 +257,7 @@ class _CardioDetailScreenState extends State<CardioDetailScreen> {
                 heartRateBpm: session.heartRateBpm,
                 sampleIntervalSeconds: session.sampleIntervalSeconds,
                 zone: zone,
+                phases: session.phases,
               )
             else
               Padding(
@@ -267,7 +270,7 @@ class _CardioDetailScreenState extends State<CardioDetailScreen> {
                   ),
                 ),
               ),
-            if (zone != null && hasSignal) ...[
+            if (zone != null && !hasTemplate && hasSignal) ...[
               const SizedBox(height: GainerSpacing.xs),
               Text(
                 'Zielbereich $zone bpm',
@@ -279,6 +282,21 @@ class _CardioDetailScreenState extends State<CardioDetailScreen> {
       ),
       const SizedBox(height: GainerSpacing.l),
       _metrics(session, analysis),
+      if (hasTemplate) ...[
+        const SizedBox(height: GainerSpacing.l),
+        GainerGroupedSection(
+          key: const ValueKey('cardio-detail-phases'),
+          header: 'Phasen',
+          children: [
+            for (final phase in session.phases)
+              GainerListRow(
+                title: phase.name,
+                subtitle: formatPhaseZone(phase),
+                value: formatPhaseDuration(phase.durationSeconds),
+              ),
+          ],
+        ),
+      ],
       const SizedBox(height: GainerSpacing.l),
       GainerGroupedSection(
         header: 'Ergometer',
@@ -345,7 +363,8 @@ class _CardioDetailScreenState extends State<CardioDetailScreen> {
           title: 'Max-Puls',
           value: max == null ? '–' : formatBpm(max),
         ),
-        if (session.targetZone != null)
+        if (session.targetZone != null ||
+            session.phases.any((phase) => phase.zone != null))
           GainerListRow(
             title: 'Im Zielbereich',
             value: share == null
