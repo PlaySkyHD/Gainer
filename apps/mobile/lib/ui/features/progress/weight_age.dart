@@ -28,11 +28,11 @@ class WeightAge {
 
   final int days;
 
-  WeightAgeSeverity get severity => days <= 1
-      ? WeightAgeSeverity.fresh
-      : days < 7
-      ? WeightAgeSeverity.aging
-      : WeightAgeSeverity.stale;
+  WeightAgeSeverity get severity {
+    if (days <= 1) return WeightAgeSeverity.fresh;
+    if (days < 7) return WeightAgeSeverity.aging;
+    return WeightAgeSeverity.stale;
+  }
 
   String get label => switch (days) {
     0 => 'Heute',
