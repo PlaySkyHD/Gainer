@@ -323,6 +323,12 @@ class MobileAuthController extends ChangeNotifier
         generation != _sessionGeneration) {
       throw StateError('The account changed before the native route opened.');
     }
+    // Widget und Kurzbefehl zeigen den Tab selbst; ein offenes Vollbild
+    // darüber würde ihn verdecken. Die Live Activity holt dagegen das
+    // laufende Training bzw. die Cardio-Einheit nach vorn.
+    if (request.source != NativeRouteSource.liveActivity) {
+      shell.requestCloseOverlays();
+    }
     shell.selectTab(index);
     // Die Live Activity öffnet die laufende Cardio-Einheit, sonst das aktive
     // Training; ohne beides bleibt es beim Tab.

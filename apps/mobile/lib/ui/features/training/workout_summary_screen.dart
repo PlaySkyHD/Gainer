@@ -6,6 +6,7 @@ import '../../../domain/models/training/training_statistics.dart';
 import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
+import '../../core/navigation/single_instance_route.dart';
 import '../../core/theme.dart';
 import '../cardio/cardio_feature.dart';
 import '../cardio/cardio_offer_card.dart';
@@ -22,14 +23,14 @@ Future<WorkoutSummaryResult?> openWorkoutSummary(
   required String workoutId,
   CardioFeature? cardio,
 }) {
-  return Navigator.of(context).push<WorkoutSummaryResult>(
-    CupertinoPageRoute<WorkoutSummaryResult>(
-      fullscreenDialog: true,
-      builder: (_) => WorkoutSummaryScreen(
-        repository: repository,
-        workoutId: workoutId,
-        cardio: cardio,
-      ),
+  return pushSingleInstance<WorkoutSummaryResult>(
+    context,
+    key: 'workout-summary:$workoutId',
+    rootNavigator: false,
+    builder: (_) => WorkoutSummaryScreen(
+      repository: repository,
+      workoutId: workoutId,
+      cardio: cardio,
     ),
   );
 }
