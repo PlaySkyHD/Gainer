@@ -130,6 +130,18 @@ void main() {
     expect(prefs.warmupSeconds, 60);
   });
 
+  test('two starts at the same time share one session', () async {
+    final controller = newController();
+    const zone = CardioTargetZone(lowBpm: 120, highBpm: 140);
+    final drafts = await Future.wait([
+      controller.start(zone: zone),
+      controller.start(zone: zone),
+    ]);
+
+    expect(drafts.first.sessionId, drafts.last.sessionId);
+    expect(platform.started, hasLength(1));
+  });
+
   test('signal timeout hides live bpm', () async {
     final controller = newController();
     await controller.start();

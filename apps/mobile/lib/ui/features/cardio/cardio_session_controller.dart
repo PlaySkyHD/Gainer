@@ -282,9 +282,27 @@ class CardioSessionController extends ChangeNotifier {
     CardioTargetZone? zone,
     int warmupSeconds = 180,
     HeartRateSensor? sensor,
-  }) async {
+  }) {
     final running = _active;
-    if (running != null) return running;
+    if (running != null) return Future.value(running);
+    // Ein zweiter Start, solange der erste noch speichert (Doppeltipp),
+    // bekommt dieselbe Einheit statt einen zweiten Entwurf.
+    return _starting ??= _startNow(
+      template: template,
+      zone: zone,
+      warmupSeconds: warmupSeconds,
+      sensor: sensor,
+    ).whenComplete(() => _starting = null);
+  }
+
+  Future<CardioDraft>? _starting;
+
+  Future<CardioDraft> _startNow({
+    CardioTemplate? template,
+    CardioTargetZone? zone,
+    required int warmupSeconds,
+    HeartRateSensor? sensor,
+  }) async {
     if (zone != null && !zone.isValid) {
       throw ArgumentError.value(zone, 'zone', 'Ungültiger Zielbereich.');
     }

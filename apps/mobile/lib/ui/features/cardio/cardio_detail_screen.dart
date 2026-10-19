@@ -5,6 +5,7 @@ import '../../../data/repositories/health/cardio_health_exporter.dart';
 import '../../../domain/models/cardio/cardio_analysis.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../core/components/components.dart';
+import '../../core/navigation/single_instance_route.dart';
 import '../../core/theme.dart';
 import '../training/training_format.dart';
 import '../training/workout_text_sheet.dart';
@@ -19,11 +20,11 @@ Future<bool?> openCardioDetail(
   CardioFeature feature,
   String sessionId,
 ) {
-  return Navigator.of(context, rootNavigator: true).push<bool>(
-    CupertinoPageRoute<bool>(
-      builder: (_) =>
-          CardioDetailScreen(feature: feature, sessionId: sessionId),
-    ),
+  return pushSingleInstance<bool>(
+    context,
+    key: 'cardio-detail:$sessionId',
+    fullscreenDialog: false,
+    builder: (_) => CardioDetailScreen(feature: feature, sessionId: sessionId),
   );
 }
 

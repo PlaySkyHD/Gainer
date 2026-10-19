@@ -164,6 +164,8 @@ void main() {
 
           expect(controller.shell.selectedArea, MobileArea.training);
           expect(controller.shell.takeRequestedWorkout(), workout.workoutId);
+          // Das offene Training bleibt; es wird nur nach vorn geholt.
+          expect(controller.shell.takeRequestedCloseOverlays(), isFalse);
         } finally {
           await controller.logout();
           controller.dispose();
@@ -238,6 +240,8 @@ void main() {
 
         expect(controller.shell.selectedArea, MobileArea.training);
         expect(controller.shell.takeRequestedWorkout(), isNull);
+        // Offene Vollbilder schließen, sonst bliebe der Tab verdeckt.
+        expect(controller.shell.takeRequestedCloseOverlays(), isTrue);
       } finally {
         await controller.logout();
         controller.dispose();

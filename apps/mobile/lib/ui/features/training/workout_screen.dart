@@ -117,6 +117,20 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   /// Fragt bei fehlenden Pflichtwerten nach, beendet dann und zeigt die
   /// Zusammenfassung. „Training fortsetzen“ öffnet das Training wieder.
   Future<void> _finish() async {
+    // Ein zweiter Tipp während Rückfrage, Speichern oder Zusammenfassung
+    // würde das Training doppelt beenden.
+    if (_finishing) return;
+    _finishing = true;
+    try {
+      await _finishOnce();
+    } finally {
+      _finishing = false;
+    }
+  }
+
+  bool _finishing = false;
+
+  Future<void> _finishOnce() async {
     var applyPreviousValues = false;
     final missing = _viewModel.missingValueCount;
     if (missing > 0) {

@@ -204,6 +204,21 @@ void main() {
     },
   );
 
+  test('two starts at the same time create only one active workout', () async {
+    // Doppeltipp auf „Starten“: beide Aufrufe laufen gleichzeitig los.
+    final results = await Future.wait([
+      repository.startEmpty().then<Object>((w) => w, onError: (Object e) => e),
+      repository.startEmpty().then<Object>((w) => w, onError: (Object e) => e),
+    ]);
+
+    expect(results.whereType<Workout>(), hasLength(1));
+    expect(results.whereType<ActiveWorkoutExistsException>(), hasLength(1));
+    expect(
+      (await repository.readDiary()).where((w) => w.isActive),
+      hasLength(1),
+    );
+  });
+
   test('a second active workout is rejected with its own error', () async {
     final first = await repository.startEmpty();
 
