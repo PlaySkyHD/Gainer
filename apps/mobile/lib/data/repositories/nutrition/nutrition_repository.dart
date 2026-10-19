@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import '../../../domain/models/nutrition/nutrition.dart';
+import '../../../domain/models/nutrition/nutrition_averages.dart';
 import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
 import '../../services/platform/platform_ports.dart';
@@ -209,6 +210,28 @@ class NutritionRepository {
       meals: List.unmodifiable(meals),
       targetSchedule: schedule,
       recentFoods: await recentFoods(),
+    );
+  }
+
+  /// Durchschnitte der letzten 7 und 30 Tage aus den lokalen Tagen (offline).
+  Future<NutritionAveragesOverview> readAverages(String today) async {
+    if (!isValidLocalDate(today)) {
+      throw const NutritionValidationException({
+        'localDate': 'Ungültiger Kalendertag.',
+      });
+    }
+    final from = shiftLocalDate(today, -30);
+    final rows = await store.readAggregates(_nutritionDayType);
+    final days = <NutritionDay>[
+      for (final row in rows)
+        if (_map(row.workingCopy)['localDate'] case final String date
+            when date.compareTo(from) >= 0 && date.compareTo(today) <= 0)
+          NutritionDay.fromJson(_map(row.workingCopy)),
+    ];
+    return NutritionAveragesOverview(
+      days: days,
+      schedule: await _readTargetSchedule(),
+      today: today,
     );
   }
 
