@@ -230,7 +230,7 @@ void main() {
   }
 
   testWidgets('Cardio-Einstellungen light', (tester) async {
-    phoneSize(tester, height: 1100);
+    phoneSize(tester, height: 1700);
     final harness = await tester.runAsync(CardioHarness.create);
     addTearDown(() => tester.runAsync(harness!.dispose));
     await tester.runAsync(

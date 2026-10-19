@@ -101,7 +101,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('cardio-settings-alerts')));
     await settle(tester);
-    await tester.tap(find.text('5'));
+    // Die Aufwärmzeit steht vor der Sprach-Auswahl (die ebenfalls „5“ hat).
+    await tester.tap(find.text('5').first);
     await settle(tester);
 
     final values = await stored(tester);

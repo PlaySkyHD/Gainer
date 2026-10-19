@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/services/platform/platform_ports.dart';
+import '../../../domain/models/cardio/cardio_template.dart';
+import '../../../domain/models/cardio/cardio_zones.dart';
 import '../../core/theme.dart';
 
 /// Zahl mit deutschem Komma und Tausenderpunkt, ohne überflüssige Nachkommastellen.
@@ -106,4 +108,54 @@ String cardioSensorStatus(
   return batteryPercent == null
       ? connection
       : '$connection · Akku $batteryPercent\u00A0%';
+}
+
+/// Dauer einer Phase als „10:00“ bzw. „1:05:00“ ab einer Stunde.
+String formatPhaseDuration(int seconds) {
+  final total = Duration(seconds: seconds < 0 ? 0 : seconds);
+  final secs = (total.inSeconds % 60).toString().padLeft(2, '0');
+  if (total.inHours > 0) {
+    final minutes = (total.inMinutes % 60).toString().padLeft(2, '0');
+    return '${total.inHours}:$minutes:$secs';
+  }
+  return '${total.inMinutes}:$secs';
+}
+
+/// Ziel einer aufgelösten Phase: „152–171 bpm“ oder „Kein Ziel“.
+String formatPhaseZone(CardioPhase phase) =>
+    phase.zone == null ? 'Kein Ziel' : '${phase.zone} bpm';
+
+/// Ziel einer Vorlagenphase: „Zone 2 · 114–133“, „140–150 bpm“ oder „Kein
+/// Ziel“. Ohne bekannte [zones] fehlt bei Zonenzielen die bpm-Angabe.
+String formatTemplateTarget(
+  CardioPhaseTarget target, [
+  List<CardioZone> zones = const [],
+]) {
+  switch (target) {
+    case CardioZoneTarget(:final number):
+      final zone = zones.where((z) => z.number == number).firstOrNull;
+      return zone == null
+          ? 'Zone $number'
+          : 'Zone $number · ${zone.lowBpm}–${zone.highBpm}';
+    case CardioBpmTarget(:final low, :final high):
+      return '$low–$high bpm';
+    case CardioNoTarget():
+      return 'Kein Ziel';
+  }
+}
+
+/// Eine Zeile je Phase: „Aufwärmen 10:00 · Zone 2 · 114–133“.
+String formatTemplatePhase(
+  CardioTemplatePhase phase, [
+  List<CardioZone> zones = const [],
+]) =>
+    '${phase.name} ${formatPhaseDuration(phase.durationSeconds)} · '
+    '${formatTemplateTarget(phase.target, zones)}';
+
+/// Gesamtdauer einer Vorlage: „30 min“, „1 h 5 min“.
+String formatTemplateTotal(int seconds) {
+  final minutes = (seconds / 60).round();
+  if (minutes < 60) return '$minutes min';
+  final rest = minutes % 60;
+  return rest == 0 ? '${minutes ~/ 60} h' : '${minutes ~/ 60} h $rest min';
 }

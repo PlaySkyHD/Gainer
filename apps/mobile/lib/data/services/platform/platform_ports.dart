@@ -1,6 +1,9 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show listEquals;
+
 import '../../../domain/models/cardio/cardio_draft.dart';
+import '../../../domain/models/cardio/cardio_template.dart';
 import '../../../domain/models/timer/rest_timer_state.dart';
 import 'generated/mobile_platform_api.dart';
 
@@ -393,6 +396,9 @@ class HeartRateMonitoringConfig {
     this.warmupSeconds = 180,
     this.alertsEnabled = true,
     this.liveActivityEnabled = true,
+    this.phases = const [],
+    this.voiceEnabled = false,
+    this.voiceIntervalMinutes = 0,
   });
 
   final String sessionId;
@@ -407,6 +413,13 @@ class HeartRateMonitoringConfig {
   final bool alertsEnabled;
   final bool liveActivityEnabled;
 
+  /// Aufgelöste Phasen einer Vorlage; leer = ein fester Zielbereich.
+  final List<CardioPhase> phases;
+
+  /// Sprachansagen und Intervall der Zeitansage in Minuten (0 = aus).
+  final bool voiceEnabled;
+  final int voiceIntervalMinutes;
+
   @override
   bool operator ==(Object other) =>
       other is HeartRateMonitoringConfig &&
@@ -420,7 +433,10 @@ class HeartRateMonitoringConfig {
       other.repeatSeconds == repeatSeconds &&
       other.warmupSeconds == warmupSeconds &&
       other.alertsEnabled == alertsEnabled &&
-      other.liveActivityEnabled == liveActivityEnabled;
+      other.liveActivityEnabled == liveActivityEnabled &&
+      listEquals(other.phases, phases) &&
+      other.voiceEnabled == voiceEnabled &&
+      other.voiceIntervalMinutes == voiceIntervalMinutes;
 
   @override
   int get hashCode => Object.hash(
@@ -435,6 +451,9 @@ class HeartRateMonitoringConfig {
     warmupSeconds,
     alertsEnabled,
     liveActivityEnabled,
+    Object.hashAll(phases),
+    voiceEnabled,
+    voiceIntervalMinutes,
   );
 }
 
