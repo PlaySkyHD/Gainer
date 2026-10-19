@@ -73,4 +73,50 @@ void main() {
       'baseVersion': 2,
     });
   });
+
+  test('recovery values are sent and survive the snapshot round trip', () {
+    final snapshot =
+        SyncPayloadCodec.normalizeSnapshot('CardioSession', {
+              'sessionId': _id,
+              'version': 2,
+              'activityType': 'IndoorCycling',
+              'startedAtUtc': '2026-10-18T10:00:00Z',
+              'endedAtUtc': '2026-10-18T10:30:00Z',
+              'sampleIntervalSeconds': 5,
+              'heartRateBpm': [100, 130],
+              'recoveryStartBpm': 152,
+              'recoveryEndBpm': 124,
+              'createdAtUtc': '2026-10-18T10:31:00Z',
+              'updatedAtUtc': '2026-10-18T10:31:00Z',
+            })!
+            as Map<String, dynamic>;
+    final payload = SyncPayloadCodec.serverPayload(
+      _mutation(LocalMutationOperation.update, snapshot),
+      snapshot,
+      2,
+    ) as Map<String, Object?>;
+    final session = payload['session'] as Map<String, Object?>;
+    expect(session['recoveryStartBpm'], 152);
+    expect(session['recoveryEndBpm'], 124);
+  });
+
+  test('check-in snapshot values keep resting heart rate and HRV', () {
+    final snapshot =
+        SyncPayloadCodec.normalizeSnapshot('DailyCheckIn', {
+              'checkInId': _id,
+              'localDate': '2026-10-12',
+              'version': 3,
+              'values': {
+                'weightKg': 71,
+                'restingHeartRateBpm': 58,
+                'restingHrvMs': 52,
+              },
+              'createdAtUtc': '2026-10-12T07:00:00Z',
+              'updatedAtUtc': '2026-10-12T07:00:00Z',
+            })!
+            as Map<String, dynamic>;
+    expect(snapshot['restingHeartRateBpm'], 58);
+    expect(snapshot['restingHrvMs'], 52);
+    expect(snapshot['localDate'], '2026-10-12');
+  });
 }

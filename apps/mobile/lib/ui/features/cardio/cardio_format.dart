@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../data/services/platform/platform_ports.dart';
 import '../../core/theme.dart';
-import '../training/training_format.dart';
 
 /// Zahl mit deutschem Komma und Tausenderpunkt, ohne überflüssige Nachkommastellen.
 String formatCardioNumber(num value, {int maxDecimals = 1}) {
@@ -32,12 +31,31 @@ String formatBpm(num value) =>
 /// Ø-Puls mit höchstens einer Nachkommastelle: „128,5 bpm“.
 String formatAverageBpm(double value) => '${formatCardioNumber(value)} bpm';
 
+/// Pulsänderung mit Vorzeichen und Minuszeichen: „−28 bpm“, „+3 bpm“.
+String formatBpmChange(int change) =>
+    '${change < 0 ? '−' : (change > 0 ? '+' : '')}${change.abs()} bpm';
+
 /// „78 %“.
 String formatPercent(double share) => '${(share * 100).round()} %';
 
-/// Dauer als „30:12 min“ bzw. „1:05:12 h“.
-String formatCardioDuration(Duration duration) =>
-    '${formatElapsed(duration)} ${duration.inHours > 0 ? 'h' : 'min'}';
+/// Dauer als „1:20 min“ (ohne führende Null bei Minuten), ab einer Stunde als
+/// „1:02 h“ (Stunden:Minuten, Sekunden entfallen).
+String formatCardioDuration(Duration duration) {
+  final total = duration.isNegative ? Duration.zero : duration;
+  if (total.inHours > 0) {
+    final minutes = (total.inMinutes % 60).toString().padLeft(2, '0');
+    return '${total.inHours}:$minutes h';
+  }
+  final seconds = (total.inSeconds % 60).toString().padLeft(2, '0');
+  return '${total.inMinutes}:$seconds min';
+}
+
+/// Countdown als „0:42“ bzw. „2:30“ (Minuten ohne führende Null).
+String formatCountdown(Duration remaining) {
+  final total = remaining.isNegative ? Duration.zero : remaining;
+  final seconds = (total.inSeconds % 60).toString().padLeft(2, '0');
+  return '${total.inMinutes}:$seconds';
+}
 
 /// Statustext der Zonenlogik.
 String cardioZoneLabel(HeartRateZoneState state, {required bool hasSensor}) =>

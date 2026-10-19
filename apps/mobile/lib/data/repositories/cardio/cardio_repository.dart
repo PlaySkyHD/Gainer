@@ -148,9 +148,19 @@ class CardioRepository {
       notes: note == null || note.isEmpty
           ? null
           : (note.length > 2000 ? note.substring(0, 2000) : note),
+      recoveryStartBpm: _validRecovery(session)
+          ? session.recoveryStartBpm
+          : null,
+      recoveryEndBpm: _validRecovery(session) ? session.recoveryEndBpm : null,
       createdAtUtc: stamp,
       updatedAtUtc: stamp,
     );
+  }
+
+  /// Beide Erholungswerte vorhanden und 25–250.
+  static bool _validRecovery(CardioSession session) {
+    bool ok(int? bpm) => bpm != null && bpm >= 25 && bpm <= 250;
+    return ok(session.recoveryStartBpm) && ok(session.recoveryEndBpm);
   }
 
   /// Ersetzt Ergometerwerte und Notiz (Operation `update`). `null` löscht den
@@ -190,6 +200,42 @@ class CardioRepository {
       averagePowerWatts: () => averagePowerWatts,
       energyKcal: () => energyKcal,
       notes: () => note,
+      updatedAtUtc: _roundToSecond(clock()),
+    );
+    final body = updated.toJson();
+    await store.commitMutation(
+      mutationId: ids(),
+      aggregateType: cardioSessionAggregateType,
+      aggregateId: id,
+      operation: LocalMutationOperation.update,
+      baseVersion: old.serverVersion,
+      body: body,
+      envelope: _pending(old, body),
+      createdAtUtc: clock().toUtc(),
+    );
+    return updated;
+  }
+
+  /// Speichert die Erholungswerte (Puls beim Beenden und 60 s später) als
+  /// Operation `update`. Beide Werte müssen zwischen 25 und 250 liegen.
+  Future<CardioSession> saveRecovery(
+    String id, {
+    required int startBpm,
+    required int endBpm,
+  }) async {
+    for (final bpm in [startBpm, endBpm]) {
+      if (bpm < 25 || bpm > 250) {
+        throw ArgumentError.value(bpm, 'bpm', 'Erlaubt sind 25 bis 250.');
+      }
+    }
+    final old = await _required(id);
+    final current = CardioSession.fromJson(_map(old.workingCopy));
+    if (current.deletedAtUtc != null) {
+      throw StateError('Die Cardio-Einheit ist gelöscht.');
+    }
+    final updated = current.copyWith(
+      recoveryStartBpm: () => startBpm,
+      recoveryEndBpm: () => endBpm,
       updatedAtUtc: _roundToSecond(clock()),
     );
     final body = updated.toJson();

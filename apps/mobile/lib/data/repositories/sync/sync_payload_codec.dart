@@ -183,6 +183,10 @@ class SyncPayloadCodec {
         'sleepMinutes',
       ])
         if (body.containsKey(key)) key: body[key],
+      // Neue optionale Werte nur senden, wenn gesetzt (alte Server kennen sie
+      // nicht).
+      for (final key in ['restingHeartRateBpm', 'restingHrvMs'])
+        if (body[key] != null) key: body[key],
     };
     return mutation.operation == LocalMutationOperation.create
         ? {'checkInId': id, 'localDate': body['localDate'], 'values': values}
@@ -434,6 +438,8 @@ class SyncPayloadCodec {
         'averagePowerWatts': body['averagePowerWatts'],
         'energyKcal': body['energyKcal'],
         'notes': body['notes'],
+        'recoveryStartBpm': body['recoveryStartBpm'],
+        'recoveryEndBpm': body['recoveryEndBpm'],
       }),
     };
   }
