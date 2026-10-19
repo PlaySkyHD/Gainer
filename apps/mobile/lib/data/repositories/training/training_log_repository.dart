@@ -160,12 +160,13 @@ class TrainingLogRepository {
   // Trainings
 
   /// Startet ein leeres Training. Ein zweites aktives Training wird abgelehnt.
-  Future<Workout> startEmpty({String title = 'Training'}) async {
-    await _requireNoActiveWorkout();
-    return _createWorkout(rules.emptyWorkout(_ids, _clock(), title));
-  }
+  Future<Workout> startEmpty({String title = 'Training'}) =>
+      _serialStart(() async {
+        await _requireNoActiveWorkout();
+        return _createWorkout(rules.emptyWorkout(_ids, _clock(), title));
+      });
 
-  Future<Workout> startFromPlan(String planId) async {
+  Future<Workout> startFromPlan(String planId) => _serialStart(() async {
     await _requireNoActiveWorkout();
     final plan = await readPlan(planId);
     if (plan == null || plan.isArchived) {
@@ -178,20 +179,42 @@ class TrainingLogRepository {
       _clock(),
     );
     return _createWorkout(workout);
-  }
+  });
 
   /// Wiederholt ein beendetes Training. Die Vorwertquelle bestimmt der Aufrufer.
   Future<Workout> startRepeat(
     String sourceWorkoutId, {
     required PreviousValueSource previousValueSource,
-  }) async {
+  }) => _serialStart(() async {
     await _requireNoActiveWorkout();
     final source = await readWorkout(sourceWorkoutId);
     if (source == null) throw StateError('Das Training ist nicht verfügbar.');
     return _createWorkout(
       rules.workoutFromRepeat(source, _ids, _clock(), previousValueSource),
     );
+  });
+
+  /// Starts laufen nacheinander: Prüfen auf ein aktives Training und Anlegen
+  /// sind getrennte Schritte. Ohne Reihenfolge legten zwei schnelle Starts
+  /// (Doppeltipp) zwei aktive Trainings an, die der Server dann ablehnt.
+  Future<Workout> _serialStart(Future<Workout> Function() start) {
+    // Ohne laufenden Start sofort in der Zone des Aufrufers starten; eine
+    // vorab angelegte Kette liefe sonst in fremder Zone (z. B. im Widget-Test
+    // mit simulierter Uhr nie).
+    final previous = _startQueue;
+    final result = previous == null
+        ? Future.sync(start)
+        : previous.then((_) => start());
+    final tail = result.then<void>((_) {}, onError: (Object _) {});
+    _startQueue = tail;
+    tail.whenComplete(() {
+      if (identical(_startQueue, tail)) _startQueue = null;
+    });
+    return result;
   }
+
+  /// Ende des zuletzt begonnenen Starts; null, wenn keiner läuft.
+  Future<void>? _startQueue;
 
   /// Speichert eine geänderte Fassung des Trainings. Jede Feldänderung ist
   /// ein Aufruf; aufeinanderfolgende ungesendete Änderungen werden gebündelt.

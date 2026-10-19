@@ -24,6 +24,7 @@ class MobileShellViewModel extends ChangeNotifier {
   int _selectedIndex = MobileArea.progress.index;
   String? _requestedWorkoutId;
   bool _requestedCardio = false;
+  bool _requestedCloseOverlays = false;
 
   int get selectedIndex => _selectedIndex;
   MobileArea get selectedArea => MobileArea.values[_selectedIndex];
@@ -55,6 +56,20 @@ class MobileShellViewModel extends ChangeNotifier {
     final workoutId = _requestedWorkoutId;
     _requestedWorkoutId = null;
     return workoutId;
+  }
+
+  /// Bittet darum, offene Vollbilder und Sheets zu schließen, damit ein von
+  /// außen (Widget, Kurzbefehl) gewählter Tab auch sichtbar wird.
+  void requestCloseOverlays() {
+    _requestedCloseOverlays = true;
+    notifyListeners();
+  }
+
+  /// Liefert die Anfrage zum Schließen einmal und löscht sie danach.
+  bool takeRequestedCloseOverlays() {
+    final requested = _requestedCloseOverlays;
+    _requestedCloseOverlays = false;
+    return requested;
   }
 
   /// Bittet darum, nach dem Tab-Wechsel die Live-Ansicht der Cardio-Einheit

@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import '../../../data/repositories/body/body_repository.dart';
 import '../../../data/repositories/cardio/cardio_preferences.dart';
 import '../../core/components/components.dart';
+import '../../core/navigation/single_instance_route.dart';
 import '../../core/theme.dart';
 import 'cardio_feature.dart';
 import 'cardio_format.dart';
@@ -11,10 +12,13 @@ import 'hrv_measurement_controller.dart';
 
 /// Öffnet die HRV-Messung. Voraussetzung: [CardioFeature.body] ist gesetzt.
 Future<void> openHrvMeasurement(BuildContext context, CardioFeature feature) {
-  return Navigator.of(context).push<void>(
-    CupertinoPageRoute<void>(
-      builder: (_) => HrvMeasurementScreen(feature: feature),
-    ),
+  // Eine zweite Messung würde dieselbe native Überwachung übernehmen.
+  return pushSingleInstance<void>(
+    context,
+    key: 'hrv-measurement',
+    rootNavigator: false,
+    fullscreenDialog: false,
+    builder: (_) => HrvMeasurementScreen(feature: feature),
   );
 }
 

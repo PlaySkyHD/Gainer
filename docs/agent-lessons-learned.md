@@ -45,6 +45,9 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 - **Zahlen deutsch formatieren** (Komma, Tausenderpunkt, keine überflüssigen Nachkommastellen) und **immer beschriften** (z. B. „1RM 101,3 kg“).
 - **Nichts anbieten, was nicht funktionieren kann.** Buttons, die in einem Zustand nur einen Fehler erzeugen (Gerätewechsel ohne Daten, „erneut senden“ für nicht wiederholbare Fehler, „Serverstand nutzen“ ohne Serverstand), werden deaktiviert oder ausgeblendet und der Grund wird erklärt.
 
+- **Screens nur einmal öffnen.** Vollbilder, die von außen (Live Activity, Widget) oder nach einer Wartezeit geöffnet werden, laufen über `pushSingleInstance` (`lib/ui/core/navigation/single_instance_route.dart`). Sonst liegt eine zweite Instanz mit altem Stand darunter, die beim Schließen wieder erscheint und beim Speichern neuere Werte überschreiben kann.
+- **Prüfen-dann-Anlegen serialisieren.** Ein Doppeltipp startet asynchrone Abläufe zweimal. Abläufe wie „kein aktives Training → anlegen“ brauchen eine Warteschlange oder einen gemeinsamen laufenden Future; Flutter verhindert nur das doppelte Pushen synchroner Taps.
+
 ## 6. Sync
 
 - **Ein wartender Stand je Ressource.** Zwischenschritte (gestartet → geändert → beendet) einzeln nachzuspielen erzeugt Konflikte, sobald ein früher Schritt hängt. Neue Änderungen fassen den noch nicht gesendeten Eintrag zusammen.
