@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import '../../../data/services/platform/platform_ports.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../core/components/components.dart';
+import '../../core/navigation/single_instance_route.dart';
 import '../../core/theme.dart';
 import 'cardio_detail_screen.dart';
 import 'cardio_feature.dart';
@@ -18,11 +19,11 @@ const cardioMinimumSaveDuration = Duration(seconds: 60);
 
 /// Öffnet die Live-Ansicht der laufenden Einheit als Vollbild.
 Future<void> openCardioLive(BuildContext context, CardioFeature feature) {
-  return Navigator.of(context, rootNavigator: true).push<void>(
-    CupertinoPageRoute<void>(
-      fullscreenDialog: true,
-      builder: (_) => CardioLiveScreen(feature: feature),
-    ),
+  // Ist die Live-Ansicht schon offen, kommt sie nach vorn statt doppelt.
+  return pushSingleInstance(
+    context,
+    key: 'cardio-live',
+    builder: (_) => CardioLiveScreen(feature: feature),
   );
 }
 
