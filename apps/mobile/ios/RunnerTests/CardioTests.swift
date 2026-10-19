@@ -180,6 +180,156 @@ final class CardioTests: XCTestCase {
     XCTAssertEqual(alarm.tick(now: at(100)), [])
   }
 
+  // MARK: - Phasen
+
+  private func makePhaseAlarm(alertsEnabled: Bool = true) -> CardioZoneAlarm {
+    // Aufwärmen 0–600 s Ziel 110–130, Belastung 600–840 s Ziel 152–171, Ausfahren 840–900 s ohne Zone.
+    CardioZoneAlarm(
+      config: CardioZoneAlarmConfig(
+        zoneLowBpm: nil,
+        zoneHighBpm: nil,
+        graceSeconds: 15,
+        repeatSeconds: 60,
+        warmupSeconds: 0,
+        startedAt: start,
+        alertsEnabled: alertsEnabled,
+        phases: [
+          CardioPhase(startOffsetSeconds: 0, durationSeconds: 600, name: "Aufwärmen", zoneLowBpm: 110, zoneHighBpm: 130),
+          CardioPhase(startOffsetSeconds: 600, durationSeconds: 240, name: "Belastung", zoneLowBpm: 152, zoneHighBpm: 171),
+          CardioPhase(startOffsetSeconds: 840, durationSeconds: 60, name: "Ausfahren", zoneLowBpm: nil, zoneHighBpm: nil),
+        ]
+      ),
+      now: start
+    )
+  }
+
+  func testPhaseEventsAndZoneSwitching() {
+    var alarm = makePhaseAlarm(alertsEnabled: false)
+    XCTAssertEqual(
+      alarm.tick(now: at(0)),
+      [.phaseStarted(index: 0, count: 3, name: "Aufwärmen", durationSeconds: 600, zoneLowBpm: 110, zoneHighBpm: 130)]
+    )
+    XCTAssertEqual(alarm.activeZone, 110...130)
+    XCTAssertEqual(alarm.tick(now: at(300)), [])
+
+    XCTAssertEqual(
+      alarm.tick(now: at(600)),
+      [.phaseStarted(index: 1, count: 3, name: "Belastung", durationSeconds: 240, zoneLowBpm: 152, zoneHighBpm: 171)]
+    )
+    XCTAssertEqual(alarm.activeZone, 152...171)
+    XCTAssertEqual(alarm.currentPhaseIndex, 1)
+
+    // Phase ohne Zone: keine Zone, aber die Phase wird gemeldet.
+    XCTAssertEqual(
+      alarm.tick(now: at(840)),
+      [.phaseStarted(index: 2, count: 3, name: "Ausfahren", durationSeconds: 60, zoneLowBpm: nil, zoneHighBpm: nil)]
+    )
+    XCTAssertNil(alarm.activeZone)
+
+    XCTAssertEqual(alarm.tick(now: at(900)), [.templateFinished])
+    XCTAssertNil(alarm.currentPhaseIndex)
+    XCTAssertEqual(alarm.tick(now: at(960)), [])
+  }
+
+  func testZoneStateFollowsThePhaseZone() {
+    var alarm = makePhaseAlarm()
+    _ = alarm.record(bpm: 120, at: at(100))
+    XCTAssertEqual(alarm.zoneState, .inZone)
+    _ = alarm.record(bpm: 120, at: at(601))
+    XCTAssertEqual(alarm.zoneState, .below)
+  }
+
+  func testGraceRestartsAtPhaseStart() {
+    var alarm = makePhaseAlarm()
+    // Die Belastung beginnt mit Puls 140 bei Ziel 152–171.
+    _ = alarm.record(bpm: 140, at: at(590))
+    let started = alarm.record(bpm: 140, at: at(600))
+    XCTAssertEqual(started.count, 1)
+    XCTAssertEqual(alarm.zoneState, .below)
+    // Innerhalb der Karenz von 15 s steigt der Puls in die Zone: kein Alarm.
+    XCTAssertEqual(alarm.record(bpm: 145, at: at(610)), [])
+    XCTAssertEqual(alarm.record(bpm: 155, at: at(614)), [])
+    XCTAssertEqual(alarm.zoneState, .inZone)
+    XCTAssertEqual(alarm.tick(now: at(640)), [])
+  }
+
+  func testPhaseChangeResetsAnOutsideStreak() {
+    var alarm = makePhaseAlarm()
+    // 135 bpm ist im Aufwärmen über dem Ziel; die Karenz läuft fast ab.
+    _ = alarm.record(bpm: 135, at: at(580))
+    XCTAssertEqual(alarm.record(bpm: 135, at: at(594)), [])
+    // Mit der neuen Phase beginnt die Karenz neu, kein Alarm vor 615 s.
+    _ = alarm.record(bpm: 135, at: at(600))
+    XCTAssertEqual(alarm.record(bpm: 135, at: at(614)), [])
+    XCTAssertEqual(alarm.record(bpm: 135, at: at(616)), [.tooLow(bpm: 135)])
+  }
+
+  func testNoPhaseEventsWithoutPhasesAndNoTemplateEndAfterLateStart() {
+    var plain = makeAlarm()
+    XCTAssertEqual(plain.tick(now: at(10)), [])
+    XCTAssertNil(plain.currentPhaseIndex)
+
+    // Nach einem Neustart hinter dem Ende wird nichts mehr angekündigt.
+    var late = makePhaseAlarm(alertsEnabled: false)
+    XCTAssertEqual(late.tick(now: at(5000)), [])
+  }
+
+  func testPhaseEventsIgnoreDisabledAlerts() {
+    var alarm = makePhaseAlarm(alertsEnabled: false)
+    XCTAssertEqual(alarm.tick(now: at(0)).count, 1)
+  }
+
+  // MARK: - Sprache
+
+  func testVoiceTextsForZoneEvents() {
+    XCTAssertEqual(CardioVoiceText.text(for: .tooHigh(bpm: 146)), "Puls 146, über dem Ziel. Etwas langsamer.")
+    XCTAssertEqual(CardioVoiceText.text(for: .tooLow(bpm: 118)), "Puls 118, unter dem Ziel. Etwas schneller.")
+    XCTAssertEqual(CardioVoiceText.text(for: .backInZone), "Wieder im Zielbereich.")
+    XCTAssertEqual(CardioVoiceText.text(for: .signalLost), "Kein Pulssignal.")
+    XCTAssertEqual(CardioVoiceText.text(for: .templateFinished), "Vorlage beendet.")
+  }
+
+  func testVoiceTextsForPhasesAndDurations() {
+    XCTAssertEqual(
+      CardioVoiceText.text(
+        for: .phaseStarted(index: 2, count: 9, name: "Belastung", durationSeconds: 240, zoneLowBpm: 160, zoneHighBpm: 172)),
+      "Phase 3 von 9, Belastung, 4 Minuten, Ziel 160 bis 172."
+    )
+    XCTAssertEqual(
+      CardioVoiceText.text(
+        for: .phaseStarted(index: 0, count: 2, name: "Pause", durationSeconds: 45, zoneLowBpm: nil, zoneHighBpm: nil)),
+      "Phase 1 von 2, Pause, 45 Sekunden."
+    )
+    XCTAssertEqual(CardioVoiceText.durationText(seconds: 90), "1 Minute 30")
+    XCTAssertEqual(CardioVoiceText.durationText(seconds: 60), "1 Minute")
+    XCTAssertEqual(CardioVoiceText.durationText(seconds: 135), "2 Minuten 15")
+  }
+
+  func testVoiceIntervalText() {
+    XCTAssertEqual(CardioVoiceText.intervalText(minutes: 12, bpm: 134), "12 Minuten, Puls 134.")
+    XCTAssertEqual(CardioVoiceText.intervalText(minutes: 12, bpm: nil), "12 Minuten.")
+    XCTAssertEqual(CardioVoiceText.intervalText(minutes: 1, bpm: 90), "1 Minute, Puls 90.")
+  }
+
+  func testVoiceScheduleAnnouncesEveryIntervalWithoutCatchUp() {
+    var schedule = CardioVoiceSchedule(intervalMinutes: 5, startedAt: start, now: start)
+    XCTAssertNil(schedule.due(now: at(299)))
+    XCTAssertEqual(schedule.due(now: at(300)), 5)
+    XCTAssertNil(schedule.due(now: at(301)))
+    // Nach einer Lücke wird nur die letzte fällige Ansage gesprochen.
+    XCTAssertEqual(schedule.due(now: at(905)), 15)
+    XCTAssertNil(schedule.due(now: at(906)))
+
+    var resumed = CardioVoiceSchedule(intervalMinutes: 5, startedAt: start, now: at(700))
+    XCTAssertNil(resumed.due(now: at(701)))
+    XCTAssertEqual(resumed.due(now: at(900)), 15)
+
+    var off = CardioVoiceSchedule(intervalMinutes: nil, startedAt: start, now: start)
+    XCTAssertNil(off.due(now: at(10_000)))
+    var zero = CardioVoiceSchedule(intervalMinutes: 0, startedAt: start, now: start)
+    XCTAssertNil(zero.due(now: at(10_000)))
+  }
+
   // MARK: - Benachrichtigungen
 
   func testCardioNotificationsArePresentedWhileTheAppIsOpen() {
@@ -213,6 +363,28 @@ final class CardioTests: XCTestCase {
     XCTAssertEqual(lost.body, "Prüfe den Sitz des Gurts.")
   }
 
+  func testPhaseNotificationTexts() {
+    let started = CardioAlertMessage.make(
+      for: .phaseStarted(index: 2, count: 9, name: "Belastung", durationSeconds: 240, zoneLowBpm: 160, zoneHighBpm: 172),
+      zoneLowBpm: nil, zoneHighBpm: nil)
+    XCTAssertEqual(started.kind, "phase")
+    XCTAssertEqual(started.title, "Phase 3/9 · Belastung 4:00")
+    XCTAssertEqual(started.body, "Ziel 160–172")
+    XCTAssertTrue(started.playsSound)
+
+    let noZone = CardioAlertMessage.make(
+      for: .phaseStarted(index: 0, count: 2, name: "Pause", durationSeconds: 90, zoneLowBpm: nil, zoneHighBpm: nil),
+      zoneLowBpm: 120, zoneHighBpm: 140)
+    XCTAssertEqual(noZone.title, "Phase 1/2 · Pause 1:30")
+    XCTAssertEqual(noZone.body, "")
+
+    let finished = CardioAlertMessage.make(for: .templateFinished, zoneLowBpm: nil, zoneHighBpm: nil)
+    XCTAssertEqual(finished.title, "Vorlage beendet")
+    XCTAssertEqual(finished.body, "Du kannst beenden oder weiterfahren.")
+    XCTAssertEqual(finished.kind, "phase")
+    XCTAssertEqual(NativeCardioAlerts.identifier(forKind: "phase"), "com.gainer.mobile.cardio.phase")
+  }
+
   // MARK: - Live Activity
 
   func testLiveActivityThrottlePushesZoneChangesImmediatelyAndBpmAtMostEveryFiveSeconds() {
@@ -222,6 +394,13 @@ final class CardioTests: XCTestCase {
     XCTAssertTrue(throttle.shouldPush(zoneState: "above", bpm: 141, now: at(3)))
     XCTAssertFalse(throttle.shouldPush(zoneState: "above", bpm: 141, now: at(20)))
     XCTAssertTrue(throttle.shouldPush(zoneState: "above", bpm: 143, now: at(8)))
+  }
+
+  func testLiveActivityThrottlePushesPhaseChangesImmediately() {
+    var throttle = CardioLiveActivityThrottle()
+    XCTAssertTrue(throttle.shouldPush(zoneState: "inZone", bpm: 130, phaseIndex: 1, now: at(0)))
+    XCTAssertFalse(throttle.shouldPush(zoneState: "inZone", bpm: 130, phaseIndex: 1, now: at(1)))
+    XCTAssertTrue(throttle.shouldPush(zoneState: "inZone", bpm: 130, phaseIndex: 2, now: at(2)))
   }
 
   // MARK: - Apple Health
@@ -260,9 +439,10 @@ final class CardioTests: XCTestCase {
 
   // MARK: - Eingabeprüfung
 
-  private func config(low: Int64?, high: Int64?, grace: Int64 = 15, repeatEvery: Int64 = 60, warmup: Int64 = 180)
-    -> PlatformCardioMonitoringConfig
-  {
+  private func config(
+    low: Int64?, high: Int64?, grace: Int64 = 15, repeatEvery: Int64 = 60, warmup: Int64 = 180,
+    phases: [PlatformCardioPhase]? = nil, voiceIntervalMinutes: Int64? = nil
+  ) -> PlatformCardioMonitoringConfig {
     PlatformCardioMonitoringConfig(
       sessionId: "22222222-2222-4222-8222-222222222222",
       title: "Rad-Ergometer",
@@ -274,8 +454,18 @@ final class CardioTests: XCTestCase {
       alertsEnabled: true,
       liveActivityEnabled: false,
       zoneLowBpm: low,
-      zoneHighBpm: high
+      zoneHighBpm: high,
+      phases: phases,
+      voiceEnabled: voiceIntervalMinutes == nil ? nil : true,
+      voiceIntervalMinutes: voiceIntervalMinutes
     )
+  }
+
+  private func phase(
+    _ offset: Int64, _ duration: Int64, low: Int64? = nil, high: Int64? = nil
+  ) -> PlatformCardioPhase {
+    PlatformCardioPhase(
+      startOffsetSeconds: offset, durationSeconds: duration, name: "Phase", zoneLowBpm: low, zoneHighBpm: high)
   }
 
   func testCardioConfigValidation() {
@@ -287,5 +477,36 @@ final class CardioTests: XCTestCase {
     XCTAssertThrowsError(try GainerMobilePlatform.validate(cardioConfig: config(low: 120, high: nil)))
     XCTAssertThrowsError(try GainerMobilePlatform.validate(cardioConfig: config(low: 120, high: 140, warmup: 601)))
     XCTAssertThrowsError(try GainerMobilePlatform.validate(cardioConfig: config(low: 120, high: 140, repeatEvery: 0)))
+  }
+
+  func testCardioPhaseValidation() {
+    func validate(_ phases: [PlatformCardioPhase]?, voice: Int64? = nil) throws {
+      try GainerMobilePlatform.validate(
+        cardioConfig: config(low: nil, high: nil, phases: phases, voiceIntervalMinutes: voice))
+    }
+    XCTAssertNoThrow(try validate(nil))
+    XCTAssertNoThrow(try validate([]))
+    XCTAssertNoThrow(try validate([phase(0, 600, low: 110, high: 130), phase(600, 30), phase(700, 3600)]))
+    // Dauer außerhalb 30–3600.
+    XCTAssertThrowsError(try validate([phase(0, 29)]))
+    XCTAssertThrowsError(try validate([phase(0, 3601)]))
+    // Überlappung und falsche Reihenfolge.
+    XCTAssertThrowsError(try validate([phase(0, 600), phase(599, 60)]))
+    XCTAssertThrowsError(try validate([phase(600, 60), phase(0, 60)]))
+    XCTAssertThrowsError(try validate([phase(-1, 60)]))
+    // Zone: beide oder keine, 40–230, von < bis.
+    XCTAssertThrowsError(try validate([phase(0, 60, low: 120)]))
+    XCTAssertThrowsError(try validate([phase(0, 60, low: 140, high: 120)]))
+    XCTAssertThrowsError(try validate([phase(0, 60, low: 30, high: 120)]))
+    XCTAssertThrowsError(try validate([phase(0, 60, low: 120, high: 231)]))
+    // Höchstens 30 Phasen.
+    let thirty = (0..<30).map { phase(Int64($0) * 60, 60) }
+    XCTAssertNoThrow(try validate(thirty))
+    XCTAssertThrowsError(try validate(thirty + [phase(1800, 60)]))
+    // Sprachintervall 0–60.
+    XCTAssertNoThrow(try validate(nil, voice: 0))
+    XCTAssertNoThrow(try validate(nil, voice: 60))
+    XCTAssertThrowsError(try validate(nil, voice: 61))
+    XCTAssertThrowsError(try validate(nil, voice: -1))
   }
 }
