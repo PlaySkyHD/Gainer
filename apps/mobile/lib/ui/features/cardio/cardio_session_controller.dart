@@ -306,16 +306,9 @@ class CardioSessionController extends ChangeNotifier {
     if (zone != null && !zone.isValid) {
       throw ArgumentError.value(zone, 'zone', 'Ungültiger Zielbereich.');
     }
-    var phases = const <CardioPhase>[];
-    if (template != null) {
-      final error = template.validate();
-      if (error != null) throw ArgumentError.value(template, 'template', error);
-      final prefs = await repository.preferences.read();
-      phases = template.resolve(prefs.zones);
-      if (!CardioPhase.isValidList(phases)) {
-        throw ArgumentError.value(template, 'template', 'Ungültige Phasen.');
-      }
-    }
+    final phases = template == null
+        ? const <CardioPhase>[]
+        : await _resolvePhases(template);
     if (_recovery != null) await skipRecovery();
     final draft = CardioDraft(
       sessionId: repository.newSessionId(),
@@ -333,14 +326,7 @@ class CardioSessionController extends ChangeNotifier {
     _lastPersistAt = _clock();
     _dirty = false;
     notifyListeners();
-    if (!_notificationPermissionAsked) {
-      _notificationPermissionAsked = true;
-      try {
-        await notifications.requestPermission();
-      } on Object {
-        // Ohne Erlaubnis läuft die Einheit weiter, nur ohne Alarm.
-      }
-    }
+    await _askNotificationPermissionOnce();
     try {
       await platform.startMonitoring(await _config(draft));
     } on BluetoothUnavailableException catch (error) {
@@ -363,6 +349,28 @@ class CardioSessionController extends ChangeNotifier {
     notifyListeners();
     _syncTimer();
     return draft;
+  }
+
+  /// Löst die Phasen der Vorlage mit den Zonen der Einstellungen in bpm auf.
+  Future<List<CardioPhase>> _resolvePhases(CardioTemplate template) async {
+    final error = template.validate();
+    if (error != null) throw ArgumentError.value(template, 'template', error);
+    final prefs = await repository.preferences.read();
+    final phases = template.resolve(prefs.zones);
+    if (!CardioPhase.isValidList(phases)) {
+      throw ArgumentError.value(template, 'template', 'Ungültige Phasen.');
+    }
+    return phases;
+  }
+
+  Future<void> _askNotificationPermissionOnce() async {
+    if (_notificationPermissionAsked) return;
+    _notificationPermissionAsked = true;
+    try {
+      await notifications.requestPermission();
+    } on Object {
+      // Ohne Erlaubnis läuft die Einheit weiter, nur ohne Alarm.
+    }
   }
 
   /// Startet mit den zuletzt genutzten Werten: zuletzt genutzte Vorlage, sonst
