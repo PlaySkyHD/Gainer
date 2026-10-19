@@ -173,18 +173,30 @@ class _WeeksCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            progress.currentWeekSummary(zone2: zone2),
-            key: const ValueKey('cardio-stats-summary'),
-            style: GainerTypography.cardTitle.copyWith(
-              color: colors.primaryText,
-            ),
-          ),
-          const SizedBox(height: GainerSpacing.xxs),
-          Text(
-            zone2 ? 'Minuten in Zone 2' : 'Minuten im Zielbereich',
-            style: labelStyle,
-          ),
+          // „Diese Woche 95 / 150 min“ als Titel, Einheiten und Dauer
+          // darunter, damit die Zeile nicht mitten im Wert umbricht.
+          ...() {
+            final parts = progress
+                .currentWeekSummary(zone2: zone2)
+                .split(' · ');
+            return [
+              Text(
+                parts.first,
+                key: const ValueKey('cardio-stats-summary'),
+                style: GainerTypography.cardTitle.copyWith(
+                  color: colors.primaryText,
+                ),
+              ),
+              const SizedBox(height: GainerSpacing.xxs),
+              Text(
+                [
+                  ...parts.skip(1),
+                  zone2 ? 'Minuten in Zone 2' : 'Minuten im Zielbereich',
+                ].join(' · '),
+                style: labelStyle,
+              ),
+            ];
+          }(),
           if (progress.hasZone2) ...[
             const SizedBox(height: GainerSpacing.s),
             GainerSegmentedControl<CardioWeekMetric>(
