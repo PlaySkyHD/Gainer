@@ -97,6 +97,14 @@ public sealed class DailyCheckInMutationHandler(
         {
             errors[nameof(values.SleepMinutes)] = "Sleep must be between 0 and 1440 minutes.";
         }
+        if (values.RestingHeartRateBpm is < 25 or > 150)
+        {
+            errors[nameof(values.RestingHeartRateBpm)] = "Resting heart rate must be between 25 and 150 bpm.";
+        }
+        if (values.RestingHrvMs is < 1 or > 300)
+        {
+            errors[nameof(values.RestingHrvMs)] = "Resting HRV must be between 1 and 300 ms.";
+        }
         if (errors.Count > 0)
         {
             throw new DailyCheckInValidationException(errors);
@@ -124,6 +132,8 @@ public sealed class DailyCheckInMutationHandler(
         checkIn.FatGrams = values.FatGrams;
         checkIn.Steps = values.Steps;
         checkIn.SleepMinutes = values.SleepMinutes;
+        checkIn.RestingHeartRateBpm = values.RestingHeartRateBpm;
+        checkIn.RestingHrvMs = values.RestingHrvMs;
     }
 
     private static bool IsUniqueViolation(DbUpdateException exception) =>

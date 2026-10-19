@@ -9,7 +9,9 @@ public sealed record DailyCheckInValues(
     decimal? CarbohydrateGrams = null,
     decimal? FatGrams = null,
     int? Steps = null,
-    int? SleepMinutes = null);
+    int? SleepMinutes = null,
+    int? RestingHeartRateBpm = null,
+    int? RestingHrvMs = null);
 
 public sealed record CreateDailyCheckInMutation : ITypedMutation<DailyCheckInSnapshot>
 {
