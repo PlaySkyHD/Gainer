@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'cardio_session.dart';
+import 'cardio_template.dart';
 
 /// Kennzahlen einer Einheit, deterministisch aus Pulsreihe und RR-Intervallen.
 /// Werte ohne Signal (0) zählen bei Ø, Max und Zone nicht mit.
@@ -26,6 +27,7 @@ class CardioAnalysis {
     rrIntervalsMs: session.rrIntervalsMs,
     sampleIntervalSeconds: session.sampleIntervalSeconds,
     zone: session.targetZone,
+    phases: session.phases,
     activeDuration: session.endedAtUtc.difference(session.startedAtUtc),
   );
 
@@ -35,15 +37,32 @@ class CardioAnalysis {
     List<int> rrIntervalsMs = const [],
     required int sampleIntervalSeconds,
     required CardioTargetZone? zone,
+    List<CardioPhase> phases = const [],
     required Duration activeDuration,
   }) {
     final withSignal = [
       for (final bpm in heartRateBpm)
         if (bpm > 0) bpm,
     ];
-    final inZone = zone == null
-        ? 0
-        : withSignal.where((bpm) => zone.contains(bpm)).length;
+    // Mit Phasen zählt je Intervall die Phase zu dessen Startzeit; ohne
+    // Phasen der feste Zielbereich. Intervalle ohne Ziel zählen nicht.
+    var inZone = 0;
+    var targeted = withSignal.length;
+    if (phases.isNotEmpty) {
+      targeted = 0;
+      for (var i = 0; i < heartRateBpm.length; i++) {
+        final bpm = heartRateBpm[i];
+        if (bpm <= 0) continue;
+        final target = CardioPhase.at(phases, i * sampleIntervalSeconds)?.zone;
+        if (target == null) continue;
+        targeted++;
+        if (target.contains(bpm)) inZone++;
+      }
+    } else if (zone == null) {
+      targeted = 0;
+    } else {
+      inZone = withSignal.where((bpm) => zone.contains(bpm)).length;
+    }
     return CardioAnalysis(
       activeDuration: activeDuration.isNegative
           ? Duration.zero
@@ -53,9 +72,7 @@ class CardioAnalysis {
           : withSignal.reduce((a, b) => a + b) / withSignal.length,
       maxBpm: withSignal.isEmpty ? null : withSignal.reduce(math.max),
       timeInZone: Duration(seconds: inZone * sampleIntervalSeconds),
-      zoneShare: zone == null || withSignal.isEmpty
-          ? null
-          : inZone / withSignal.length,
+      zoneShare: targeted == 0 ? null : inZone / targeted,
       rmssdMs: rmssd(rrIntervalsMs),
     );
   }

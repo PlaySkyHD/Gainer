@@ -110,12 +110,17 @@ class _ActiveWorkoutOpenerState extends State<_ActiveWorkoutOpener> {
   @override
   void initState() {
     super.initState();
+    widget.account.activeWorkout.cardio = _cardioOf(widget.account);
     widget.model.addListener(_handleRequest);
   }
 
   @override
   void didUpdateWidget(_ActiveWorkoutOpener oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.account, widget.account)) {
+      oldWidget.account.activeWorkout.cardio = null;
+      widget.account.activeWorkout.cardio = _cardioOf(widget.account);
+    }
     if (!identical(oldWidget.model, widget.model)) {
       oldWidget.model.removeListener(_handleRequest);
       widget.model.addListener(_handleRequest);

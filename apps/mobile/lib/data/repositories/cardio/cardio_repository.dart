@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../../../domain/models/cardio/cardio_draft.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
+import '../../../domain/models/cardio/cardio_template.dart';
 import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
 import '../sync/local_sync_store.dart';
@@ -101,7 +102,8 @@ class CardioRepository {
   /// Werte außerhalb 200–3000 ms entfallen (höchstens 40 000), die Pulsreihe
   /// hat höchstens `ceil(Dauer / Intervall) + 1` Werte, Ende liegt nach Start
   /// und höchstens 24 h danach, ungültige Zonen und Ergometerwerte entfallen,
-  /// Gurtname und Notiz werden gekürzt.
+  /// Gurtname, Vorlagenname und Notiz werden gekürzt; ungültige Phasenlisten
+  /// (mehr als 30, überlappend, Dauer, Zone, über 4 h) entfallen ganz.
   static CardioSession sanitize(CardioSession session, {DateTime? now}) {
     final stamp = now ?? session.updatedAtUtc;
     final started = session.startedAtUtc.toUtc();
@@ -122,6 +124,17 @@ class CardioRepository {
         : null;
     final name = session.sensorName?.trim();
     final note = session.notes?.trim();
+    final template = session.templateName?.trim();
+    final phases = [
+      for (final phase in session.phases)
+        CardioPhase(
+          startOffsetSeconds: phase.startOffsetSeconds,
+          durationSeconds: phase.durationSeconds,
+          name: phase.name.trim(),
+          lowBpm: phase.lowBpm,
+          highBpm: phase.highBpm,
+        ),
+    ];
     return CardioSession(
       sessionId: session.sessionId,
       activityType: session.activityType,
@@ -152,6 +165,10 @@ class CardioRepository {
           ? session.recoveryStartBpm
           : null,
       recoveryEndBpm: _validRecovery(session) ? session.recoveryEndBpm : null,
+      templateName: template == null || template.isEmpty
+          ? null
+          : (template.length > 100 ? template.substring(0, 100) : template),
+      phases: CardioPhase.isValidList(phases) ? phases : const [],
       createdAtUtc: stamp,
       updatedAtUtc: stamp,
     );

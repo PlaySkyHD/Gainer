@@ -8,6 +8,7 @@ import '../../../data/services/platform/platform_ports.dart';
 import '../../../domain/models/cardio/cardio_analysis.dart';
 import '../../../domain/models/cardio/cardio_draft.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
+import '../../../domain/models/cardio/cardio_template.dart';
 
 /// Erholungsphase nach dem Beenden: 60 s weiter messen, um den Pulsabfall zu
 /// bestimmen. Die Einheit ist dann schon gespeichert.
@@ -155,11 +156,64 @@ class CardioSessionController extends ChangeNotifier {
           ? HeartRateZoneState.none
           : HeartRateZoneState.noSignal;
     }
-    final zone = draft.targetZone;
+    final zone = currentZone;
     if (zone == null) return HeartRateZoneState.none;
     if (bpm < zone.lowBpm) return HeartRateZoneState.below;
     if (bpm > zone.highBpm) return HeartRateZoneState.above;
     return HeartRateZoneState.inZone;
+  }
+
+  /// Gilt der Zielbereich einer Vorlage? Dann wechselt er je Phase.
+  bool get hasTemplate => _active?.phases.isNotEmpty ?? false;
+
+  /// Zielbereich zum jetzigen Zeitpunkt: bei einer Vorlage der Bereich der
+  /// laufenden Phase (nach der letzten Phase keiner), sonst der feste.
+  CardioTargetZone? get currentZone {
+    final draft = _active;
+    if (draft == null) return null;
+    if (draft.phases.isEmpty) return draft.targetZone;
+    return currentPhase?.zone;
+  }
+
+  /// Laufende Phase einer Vorlage; null ohne Vorlage oder nach der letzten
+  /// Phase. Rein aus der Zeit seit Start berechnet, Swift kündigt sie an.
+  CardioPhase? get currentPhase {
+    final draft = _active;
+    if (draft == null || draft.phases.isEmpty) return null;
+    return CardioPhase.at(draft.phases, elapsed.inSeconds);
+  }
+
+  /// Nullbasierter Index der laufenden Phase; null wie bei [currentPhase].
+  int? get phaseIndex {
+    final phase = currentPhase;
+    return phase == null ? null : _active!.phases.indexOf(phase);
+  }
+
+  int get phaseCount => _active?.phases.length ?? 0;
+
+  /// Nächste Phase nach der laufenden; null bei der letzten.
+  CardioPhase? get nextPhase {
+    final index = phaseIndex;
+    final draft = _active;
+    if (index == null || draft == null || index + 1 >= draft.phases.length) {
+      return null;
+    }
+    return draft.phases[index + 1];
+  }
+
+  /// Restzeit der laufenden Phase; null ohne laufende Phase.
+  Duration? get phaseRemaining {
+    final phase = currentPhase;
+    if (phase == null) return null;
+    final left = Duration(seconds: phase.endOffsetSeconds) - elapsed;
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  /// Alle Phasen der Vorlage sind vorbei; die Einheit läuft ohne Ziel weiter.
+  bool get templateFinished {
+    final draft = _active;
+    if (draft == null || draft.phases.isEmpty) return false;
+    return elapsed.inSeconds >= draft.phases.last.endOffsetSeconds;
   }
 
   HeartRateConnectionState get connectionState => _status.connectionState;
@@ -219,22 +273,38 @@ class CardioSessionController extends ChangeNotifier {
 
   /// Startet eine Einheit. Läuft schon eine, wird diese zurückgegeben.
   /// [zone] und [warmupSeconds] gelten für die Einheit; [sensor] wird verbunden,
-  /// sonst bleibt der gemerkte Gurt.
+  /// sonst bleibt der gemerkte Gurt. Mit [template] werden dessen Phasen in bpm
+  /// aufgelöst (Zonen aus den Einstellungen) und [zone] entfällt: die Einheit
+  /// hat dann keinen festen Zielbereich. Fehlen Zonen, wirft der Aufruf
+  /// [CardioTemplateResolutionException], ohne etwas zu starten.
   Future<CardioDraft> start({
+    CardioTemplate? template,
     CardioTargetZone? zone,
     int warmupSeconds = 180,
     HeartRateSensor? sensor,
   }) async {
     final running = _active;
     if (running != null) return running;
-    if (_recovery != null) await skipRecovery();
     if (zone != null && !zone.isValid) {
       throw ArgumentError.value(zone, 'zone', 'Ungültiger Zielbereich.');
     }
+    var phases = const <CardioPhase>[];
+    if (template != null) {
+      final error = template.validate();
+      if (error != null) throw ArgumentError.value(template, 'template', error);
+      final prefs = await repository.preferences.read();
+      phases = template.resolve(prefs.zones);
+      if (!CardioPhase.isValidList(phases)) {
+        throw ArgumentError.value(template, 'template', 'Ungültige Phasen.');
+      }
+    }
+    if (_recovery != null) await skipRecovery();
     final draft = CardioDraft(
       sessionId: repository.newSessionId(),
       startedAtUtc: _roundToSecond(_clock()),
-      targetZone: zone,
+      targetZone: template == null ? zone : null,
+      templateName: template?.name.trim(),
+      phases: phases,
       warmupSeconds: warmupSeconds.clamp(0, 600),
       sensorId: sensor?.id ?? _status.sensorId,
       sensorName: sensor?.name ?? _status.sensorName,
@@ -265,18 +335,44 @@ class CardioSessionController extends ChangeNotifier {
       rethrow;
     }
     if (sensor != null) await _connectQuietly(sensor.id);
-    unawaited(_rememberZone(zone, draft.warmupSeconds));
+    unawaited(
+      _rememberStart(
+        zone: template == null ? zone : null,
+        templateId: template?.id,
+        warmupSeconds: draft.warmupSeconds,
+      ),
+    );
     notifyListeners();
     _syncTimer();
     return draft;
   }
 
-  /// Ändert den Zielbereich der laufenden Einheit; null entfernt ihn. Native
+  /// Startet mit den zuletzt genutzten Werten: zuletzt genutzte Vorlage, sonst
+  /// letzter Zielbereich und Aufwärmzeit. Dasselbe wie „Starten“ im
+  /// Start-Sheet ohne Änderungen. Wirft wie [start].
+  Future<CardioDraft> startWithLastValues() async {
+    final prefs = await repository.preferences.read();
+    final template = prefs.lastTemplate;
+    return start(
+      template: template,
+      zone: template == null ? prefs.lastZone : null,
+      warmupSeconds: prefs.warmupSeconds,
+    );
+  }
+
+  /// Ändert den Zielbereich der laufenden Einheit; null entfernt ihn. Bei einer
+  /// Vorlage nicht möglich (wirft [StateError]): die Phasen bestimmen den
+  /// Bereich, die Oberfläche sperrt die Änderung und erklärt das. Native
   /// Alarmierung und Anzeige gelten sofort, die gespeicherte Einheit enthält
   /// den zuletzt gesetzten Bereich.
   Future<void> updateZone(CardioTargetZone? zone) async {
     final draft = _active;
     if (draft == null) throw StateError('Es läuft keine Cardio-Einheit.');
+    if (draft.phases.isNotEmpty) {
+      throw StateError(
+        'Bei einer Vorlage bestimmen die Phasen den Zielbereich.',
+      );
+    }
     if (zone != null && !zone.isValid) {
       throw ArgumentError.value(zone, 'zone', 'Ungültiger Zielbereich.');
     }
@@ -290,7 +386,7 @@ class CardioSessionController extends ChangeNotifier {
     } on BluetoothUnavailableException catch (error) {
       _bluetoothException = error.problem;
     }
-    unawaited(_rememberZone(zone, next.warmupSeconds));
+    unawaited(_rememberStart(zone: zone, warmupSeconds: next.warmupSeconds));
   }
 
   /// Beendet die Einheit und speichert sie. Gibt die gespeicherte Einheit
@@ -315,7 +411,12 @@ class CardioSessionController extends ChangeNotifier {
       activityType: current.activityType,
       startedAtUtc: current.startedAtUtc,
       endedAtUtc: endedAt,
-      targetZone: current.targetZone,
+      // Vorlage: Zone der längsten Phase, damit Tagebuch und Statistik passen.
+      targetZone: current.phases.isEmpty
+          ? current.targetZone
+          : longestPhaseZone(current.phases),
+      templateName: current.templateName,
+      phases: current.phases,
       sampleIntervalSeconds: current.sampleIntervalSeconds,
       heartRateBpm: CardioBucketer.finish(current, endedAt),
       rrIntervalsMs: current.rrIntervalsMs,
@@ -652,6 +753,7 @@ class CardioSessionController extends ChangeNotifier {
       heartRateBpm: [...draft.buckets, ?open],
       sampleIntervalSeconds: draft.sampleIntervalSeconds,
       zone: draft.targetZone,
+      phases: draft.phases,
       activeDuration: elapsed,
     );
   }
@@ -663,6 +765,7 @@ class CardioSessionController extends ChangeNotifier {
       title: draft.activityType.label,
       startedAtUtc: draft.startedAtUtc,
       soundId: trainingPreferences.timerSoundId.value,
+      // Bei einer Vorlage gelten die Phasen; der feste Bereich entfällt.
       zoneLowBpm: draft.targetZone?.lowBpm,
       zoneHighBpm: draft.targetZone?.highBpm,
       graceSeconds: graceSeconds,
@@ -671,16 +774,27 @@ class CardioSessionController extends ChangeNotifier {
       // Ohne Gurt gibt es keinen Puls und damit auch keinen Signalverlust-Alarm.
       alertsEnabled: prefs.alertsEnabled && draft.sensorId != null,
       liveActivityEnabled: liveActivityEnabled,
+      phases: draft.phases,
+      voiceEnabled: prefs.voiceEnabled,
+      voiceIntervalMinutes: prefs.voiceEnabled ? prefs.voiceIntervalMinutes : 0,
     );
   }
 
-  Future<void> _rememberZone(CardioTargetZone? zone, int warmupSeconds) async {
+  /// Merkt Vorlage bzw. Zielbereich und Aufwärmzeit für den nächsten Start.
+  /// Eine freie Einheit löscht die gemerkte Vorlage, eine Vorlage lässt den
+  /// letzten Zielbereich unverändert.
+  Future<void> _rememberStart({
+    CardioTargetZone? zone,
+    String? templateId,
+    required int warmupSeconds,
+  }) async {
     try {
       await repository.preferences.update(
         (current) => current.copyWith(
           lastZoneLow: zone?.lowBpm,
           lastZoneHigh: zone?.highBpm,
           warmupSeconds: warmupSeconds,
+          lastTemplateId: () => templateId,
         ),
       );
     } on Object {

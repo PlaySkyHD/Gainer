@@ -8,9 +8,9 @@
 - [ ] 2.2 Sprachansagen (`AVSpeechSynthesizer`, Audio-Session, `UIBackgroundModes` `audio`); XCTests für Texte.
 
 ## 3. Flutter
-- [ ] 3.1 Vorlagenmodell, mitgelieferte Vorlagen, Auflösung von Zonen, Zeit im Ziel je Phase; Unit-Tests.
-- [ ] 3.2 Vorlagenwahl und -editor, Phasenanzeige in Live/Detail, Einstellungen (Anbieten, Sprache); Widget- und Golden-Tests.
-- [ ] 3.3 „Cardio anhängen“ in der Workout-Zusammenfassung; Tests.
+- [x] 3.1 Vorlagenmodell, mitgelieferte Vorlagen, Auflösung von Zonen, Zeit im Ziel je Phase; Unit-Tests.
+- [x] 3.2 Vorlagenwahl und -editor, Phasenanzeige in Live/Detail, Einstellungen (Anbieten, Sprache); Widget- und Golden-Tests.
+- [x] 3.3 „Cardio anhängen“ in der Workout-Zusammenfassung; Tests.
 
 ## 4. Abschluss
 - [ ] 4.1 Analyse, Tests, Format, `openspec validate --strict`, CI grün.

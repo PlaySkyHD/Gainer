@@ -122,6 +122,13 @@ struct GainerCardioActivityAttributes: ActivityAttributes {
     /// One of `inZone`, `above`, `below`, `noSignal`, `none`.
     let zoneState: String
     let updatedAt: Date
+    /// Laufende Phase der Vorlage. Optional, damit ältere Zustände decodierbar bleiben.
+    var phaseName: String? = nil
+    /// Nummer der Phase ab 1 („Phase 3/9“).
+    var phaseIndex: Int? = nil
+    var phaseCount: Int? = nil
+    /// Ende der Phase; das System zählt den Countdown selbst.
+    var phaseEndsAt: Date? = nil
   }
 
   /// Cardio-Session (UUID), eine Activity je Einheit.
