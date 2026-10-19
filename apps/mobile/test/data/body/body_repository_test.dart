@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/body/body_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
+import 'package:gainer_mobile/data/repositories/sync/sync_payload_codec.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 
@@ -187,4 +188,132 @@ void main() {
       }
     },
   );
+
+  group('Ruhepuls und HRV', () {
+    Future<String> checkIn(String date, {double weight = 71}) =>
+        repository.saveCheckIn(
+          localDate: date,
+          weightKg: weight,
+          caloriesKcal: 2200,
+          proteinGrams: null,
+          carbohydrateGrams: null,
+          fatGrams: null,
+          steps: 8000,
+          sleepMinutes: 420,
+        );
+
+    test(
+      'korrigiert einen vorhandenen Check-in und sendet die Werte',
+      () async {
+        final id = await checkIn('2026-10-12');
+        final status = await repository.recordRestingMeasurement(
+          localDate: '2026-10-12',
+          restingHeartRateBpm: 58,
+          restingHrvMs: 52,
+        );
+        expect(status, RestingMeasurementStatus.savedToCheckIn);
+        final value = (await repository.read()).checkIns.single.value;
+        expect((value.restingHeartRateBpm, value.restingHrvMs), (58, 52));
+        expect(value.weightKg, 71);
+        expect(value.caloriesKcal, 2200);
+        final outbox = await repository.store.readOutbox(
+          aggregateType: 'daily-check-in',
+        );
+        final last = outbox.last;
+        final payload = SyncPayloadCodec.serverPayload(
+          last,
+          last.body as Map<String, dynamic>,
+          1,
+        ) as Map<String, Object?>;
+        expect(payload['checkInId'], id);
+        final values = payload['values'] as Map<String, Object?>;
+        expect(values['restingHeartRateBpm'], 58);
+        expect(values['restingHrvMs'], 52);
+        expect(values['weightKg'], 71);
+      },
+    );
+
+    test(
+      'ohne Check-in wartet der Wert und kommt beim Speichern mit',
+      () async {
+        final status = await repository.recordRestingMeasurement(
+          localDate: '2026-10-12',
+          restingHeartRateBpm: 60,
+          restingHrvMs: 48,
+        );
+        expect(status, RestingMeasurementStatus.pending);
+        var snapshot = await repository.read();
+        expect(snapshot.checkIns, isEmpty);
+        expect(snapshot.pendingResting.single.isPending, isTrue);
+        expect(snapshot.restingEntries.single.restingHrvMs, 48);
+        expect(await repository.store.readOutbox(), isEmpty);
+
+        await checkIn('2026-10-12');
+        snapshot = await repository.read();
+        expect(snapshot.pendingResting, isEmpty);
+        final value = snapshot.checkIns.single.value;
+        expect((value.restingHeartRateBpm, value.restingHrvMs), (60, 48));
+        // Ein späteres Speichern des Check-ins behält die Werte.
+        await checkIn('2026-10-12', weight: 70);
+        expect(
+          (await repository.read()).checkIns.single.value.restingHrvMs,
+          48,
+        );
+      },
+    );
+
+    test('flushPendingResting überträgt Werte in einen später entstandenen Check-in', () async {
+      await repository.recordRestingMeasurement(
+        localDate: '2026-10-12',
+        restingHeartRateBpm: 60,
+        restingHrvMs: 48,
+      );
+      await repository.recordRestingMeasurement(
+        localDate: '2026-10-11',
+        restingHeartRateBpm: 61,
+        restingHrvMs: 40,
+      );
+      // Der Check-in entsteht am Repository vorbei (z. B. Health-Import).
+      await repository.importHealthWeight(
+        probeId: 'probe-1',
+        localDate: '2026-10-12',
+        weightKg: 70,
+        replaceExistingCheckIn: false,
+        sessionGuard: () => true,
+      );
+      await repository.flushPendingResting();
+      final snapshot = await repository.read();
+      expect(snapshot.checkIns.single.value.restingHrvMs, 48);
+      // Tage ohne Check-in warten weiter.
+      expect(snapshot.pendingResting.single.localDate, '2026-10-11');
+    });
+
+    test('lehnt Werte außerhalb der Grenzen ab', () async {
+      for (final (rate, hrv) in [(24, 50), (151, 50), (60, 0), (60, 301)]) {
+        await expectLater(
+          repository.recordRestingMeasurement(
+            localDate: '2026-10-12',
+            restingHeartRateBpm: rate,
+            restingHrvMs: hrv,
+          ),
+          throwsA(isA<BodyTrackingValidationException>()),
+        );
+      }
+    });
+
+    test('Check-in ohne Ruhewerte sendet die Schlüssel nicht', () async {
+      await checkIn('2026-10-12');
+      final outbox = await repository.store.readOutbox(
+        aggregateType: 'daily-check-in',
+      );
+      final payload = SyncPayloadCodec.serverPayload(
+        outbox.single,
+        outbox.single.body as Map<String, dynamic>,
+        0,
+      ) as Map<String, Object?>;
+      final values = payload['values'] as Map<String, Object?>;
+      expect(values.containsKey('restingHeartRateBpm'), isFalse);
+      expect(values.containsKey('restingHrvMs'), isFalse);
+    });
+  });
 }

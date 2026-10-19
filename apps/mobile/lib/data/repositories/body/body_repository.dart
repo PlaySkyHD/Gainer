@@ -15,12 +15,44 @@ class BodyTrackingSnapshot {
     required this.activeGoal,
     required this.goalHistory,
     required this.checkIns,
+    this.pendingResting = const [],
   });
 
   final ({String id, BodyGoal value})? activeGoal;
   final List<({String id, BodyGoal value})> goalHistory;
   final List<({String id, DailyCheckIn value})> checkIns;
+
+  /// Gemessene Ruhewerte von Tagen ohne Check-in (warten auf den Check-in).
+  final List<RestingEntry> pendingResting;
+
+  /// Ruhewerte aus Check-ins und wartende Werte, ältester Tag zuerst.
+  List<RestingEntry> get restingEntries {
+    final entries = <RestingEntry>[
+      for (final item in checkIns)
+        if (item.value.restingHeartRateBpm != null ||
+            item.value.restingHrvMs != null)
+          RestingEntry(
+            localDate: item.value.localDate,
+            restingHeartRateBpm: item.value.restingHeartRateBpm,
+            restingHrvMs: item.value.restingHrvMs,
+          ),
+      ...pendingResting,
+    ]..sort((a, b) => a.localDate.compareTo(b.localDate));
+    return List.unmodifiable(entries);
+  }
 }
+
+/// Ergebnis von [BodyRepository.recordRestingMeasurement].
+enum RestingMeasurementStatus {
+  /// In den Check-in des Tages geschrieben.
+  savedToCheckIn,
+
+  /// Kein Check-in für den Tag: lokal gemerkt, bis er gespeichert wird.
+  pending,
+}
+
+/// Sync-Metadatum mit den wartenden Ruhewerten je Tag.
+const _pendingRestingKey = 'body-resting-pending';
 
 enum HealthCheckInCommitStatus { imported, duplicate, dayConflict }
 
@@ -80,8 +112,135 @@ class BodyRepository {
       activeGoal: active.isEmpty ? null : active.single,
       goalHistory: List.unmodifiable(history),
       checkIns: List.unmodifiable(parsedCheckIns),
+      pendingResting: [
+        for (final entry in (await _readPending()).entries)
+          RestingEntry(
+            localDate: entry.key,
+            restingHeartRateBpm: entry.value.heartRate,
+            restingHrvMs: entry.value.hrv,
+            isPending: true,
+          ),
+      ],
     );
   }
+
+  Future<Map<String, ({int? heartRate, int? hrv})>> _readPending() async {
+    final raw = await store.readSyncMetadata(_pendingRestingKey);
+    if (raw is! Map<String, dynamic>) return {};
+    final result = <String, ({int? heartRate, int? hrv})>{};
+    for (final entry in raw.entries) {
+      final value = entry.value;
+      if (value is! Map<String, dynamic>) continue;
+      result[entry.key] = (
+        heartRate: (value['restingHeartRateBpm'] as num?)?.toInt(),
+        hrv: (value['restingHrvMs'] as num?)?.toInt(),
+      );
+    }
+    return result;
+  }
+
+  Future<void> _writePending(
+    Map<String, ({int? heartRate, int? hrv})> pending,
+  ) async {
+    if (pending.isEmpty) {
+      await store.deleteSyncMetadata(_pendingRestingKey);
+      return;
+    }
+    await store.writeSyncMetadata(_pendingRestingKey, {
+      for (final entry in pending.entries)
+        entry.key: {
+          'restingHeartRateBpm': entry.value.heartRate,
+          'restingHrvMs': entry.value.hrv,
+        },
+    });
+  }
+
+  /// Schreibt Ruhepuls und HRV (jeweils 25–150 bpm bzw. 1–300 ms) in den
+  /// Check-in von [localDate]. Existiert der Check-in, wird er korrigiert
+  /// (Operation `update`, übrige Werte bleiben). Fehlt er, verlangt der
+  /// Check-in ein Gewicht: Die Werte werden lokal als „wartender Wert“
+  /// gemerkt und beim nächsten Speichern des Check-ins dieses Tages
+  /// mitgeschrieben ([saveCheckIn], [flushPendingResting]).
+  Future<RestingMeasurementStatus> recordRestingMeasurement({
+    required String localDate,
+    required int restingHeartRateBpm,
+    required int restingHrvMs,
+  }) async {
+    validateDailyCheckIn(
+      localDate: localDate,
+      weightKg: 1,
+      caloriesKcal: null,
+      proteinGrams: null,
+      carbohydrateGrams: null,
+      fatGrams: null,
+      steps: null,
+      sleepMinutes: null,
+      restingHeartRateBpm: restingHeartRateBpm,
+      restingHrvMs: restingHrvMs,
+    );
+    final existing = _findCheckInForDay(
+      await store.readAggregates(_dailyCheckInType),
+      localDate,
+    );
+    if (existing == null) {
+      final pending = await _readPending();
+      pending[localDate] = (heartRate: restingHeartRateBpm, hrv: restingHrvMs);
+      await _writePending(pending);
+      return RestingMeasurementStatus.pending;
+    }
+    final prior = DailyCheckIn.fromJson(_map(existing.workingCopy));
+    await _writeCheckIn(
+      existing: existing,
+      checkIn: _copyCheckIn(
+        prior,
+        restingHeartRateBpm: restingHeartRateBpm,
+        restingHrvMs: restingHrvMs,
+        updatedAtUtc: clock().toUtc().toIso8601String(),
+      ),
+    );
+    return RestingMeasurementStatus.savedToCheckIn;
+  }
+
+  /// Überträgt wartende Ruhewerte in Check-ins, die es inzwischen gibt (z. B.
+  /// aus dem Health-Import). Wartende Werte ohne Check-in bleiben liegen.
+  Future<void> flushPendingResting() async {
+    final pending = await _readPending();
+    if (pending.isEmpty) return;
+    final rows = await store.readAggregates(_dailyCheckInType);
+    var changed = false;
+    for (final date in [...pending.keys]) {
+      final existing = _findCheckInForDay(rows, date);
+      if (existing == null) continue;
+      final value = pending[date]!;
+      final prior = DailyCheckIn.fromJson(_map(existing.workingCopy));
+      await _writeCheckIn(
+        existing: existing,
+        checkIn: _copyCheckIn(
+          prior,
+          restingHeartRateBpm: value.heartRate,
+          restingHrvMs: value.hrv,
+          updatedAtUtc: clock().toUtc().toIso8601String(),
+        ),
+      );
+      pending.remove(date);
+      changed = true;
+    }
+    if (changed) await _writePending(pending);
+  }
+
+  Future<void> _writeCheckIn({
+    required LocalAggregateEnvelope<Object?> existing,
+    required DailyCheckIn checkIn,
+  }) => store.commitMutation(
+    mutationId: ids(),
+    aggregateType: _dailyCheckInType,
+    aggregateId: existing.aggregateId,
+    operation: LocalMutationOperation.update,
+    baseVersion: existing.serverVersion,
+    body: checkIn.toJson(),
+    envelope: _pendingEnvelope(existing, checkIn.toJson()),
+    createdAtUtc: clock().toUtc(),
+  );
 
   Future<String> activateGoal({
     required BodyGoalKind kind,
@@ -172,6 +331,8 @@ class BodyRepository {
     required double? fatGrams,
     required int? steps,
     required int? sleepMinutes,
+    int? restingHeartRateBpm,
+    int? restingHrvMs,
   }) async {
     validateDailyCheckIn(
       localDate: localDate,
@@ -182,6 +343,8 @@ class BodyRepository {
       fatGrams: fatGrams,
       steps: steps,
       sleepMinutes: sleepMinutes,
+      restingHeartRateBpm: restingHeartRateBpm,
+      restingHrvMs: restingHrvMs,
     );
     final now = clock().toUtc();
     final existing = _findCheckInForDay(
@@ -190,6 +353,10 @@ class BodyRepository {
     );
     final id = existing?.aggregateId ?? ids();
     final prior = existing == null ? null : _map(existing.workingCopy);
+    // Ruhewerte: ein wartender Wert des Tages (neuere Messung) gewinnt, sonst
+    // der übergebene, sonst der bisherige Wert des Check-ins.
+    final pending = await _readPending();
+    final waiting = pending[localDate];
     final checkIn = DailyCheckIn(
       localDate: localDate,
       weightKg: weightKg,
@@ -199,6 +366,14 @@ class BodyRepository {
       fatGrams: fatGrams,
       steps: steps,
       sleepMinutes: sleepMinutes,
+      restingHeartRateBpm:
+          waiting?.heartRate ??
+          restingHeartRateBpm ??
+          (prior?['restingHeartRateBpm'] as num?)?.toInt(),
+      restingHrvMs:
+          waiting?.hrv ??
+          restingHrvMs ??
+          (prior?['restingHrvMs'] as num?)?.toInt(),
       createdAtUtc: prior?['createdAtUtc'] as String? ?? now.toIso8601String(),
       updatedAtUtc: now.toIso8601String(),
     );
@@ -216,6 +391,10 @@ class BodyRepository {
           : _pendingEnvelope(existing, checkIn.toJson()),
       createdAtUtc: now,
     );
+    if (waiting != null) {
+      pending.remove(localDate);
+      await _writePending(pending);
+    }
     return id;
   }
 
@@ -292,6 +471,8 @@ class BodyRepository {
       fatGrams: previous?['fatGrams'] as double?,
       steps: previous?['steps'] as int?,
       sleepMinutes: previous?['sleepMinutes'] as int?,
+      restingHeartRateBpm: (previous?['restingHeartRateBpm'] as num?)?.toInt(),
+      restingHrvMs: (previous?['restingHrvMs'] as num?)?.toInt(),
       createdAtUtc:
           previous?['createdAtUtc'] as String? ?? now.toIso8601String(),
       updatedAtUtc: now.toIso8601String(),
@@ -348,6 +529,26 @@ class BodyRepository {
     );
   }
 }
+
+DailyCheckIn _copyCheckIn(
+  DailyCheckIn prior, {
+  required int? restingHeartRateBpm,
+  required int? restingHrvMs,
+  required String updatedAtUtc,
+}) => DailyCheckIn(
+  localDate: prior.localDate,
+  weightKg: prior.weightKg,
+  caloriesKcal: prior.caloriesKcal,
+  proteinGrams: prior.proteinGrams,
+  carbohydrateGrams: prior.carbohydrateGrams,
+  fatGrams: prior.fatGrams,
+  steps: prior.steps,
+  sleepMinutes: prior.sleepMinutes,
+  restingHeartRateBpm: restingHeartRateBpm ?? prior.restingHeartRateBpm,
+  restingHrvMs: restingHrvMs ?? prior.restingHrvMs,
+  createdAtUtc: prior.createdAtUtc,
+  updatedAtUtc: updatedAtUtc,
+);
 
 LocalAggregateEnvelope<Object?> _pendingEnvelope(
   LocalAggregateEnvelope<Object?> old,

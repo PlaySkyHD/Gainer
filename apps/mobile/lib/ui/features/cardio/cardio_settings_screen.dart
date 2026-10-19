@@ -5,15 +5,19 @@ import '../../../data/repositories/cardio/cardio_preferences.dart';
 import '../../../domain/models/cardio/cardio_zones.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import 'cardio_feature.dart';
+import 'cardio_hrv_measurement_screen.dart';
 import 'cardio_warmup_picker.dart';
 
 Future<void> openCardioSettings(
   BuildContext context, {
   required CardioPreferences preferences,
+  CardioFeature? feature,
 }) {
   return Navigator.of(context).push<void>(
     CupertinoPageRoute<void>(
-      builder: (_) => CardioSettingsScreen(preferences: preferences),
+      builder: (_) =>
+          CardioSettingsScreen(preferences: preferences, feature: feature),
     ),
   );
 }
@@ -21,9 +25,16 @@ Future<void> openCardioSettings(
 /// Einstellungen für Cardio: Maximalpuls, Alter, Ruhepuls, Alarm, Aufwärmzeit
 /// und die daraus berechneten Zonen. Änderungen gelten sofort.
 class CardioSettingsScreen extends StatefulWidget {
-  const CardioSettingsScreen({required this.preferences, super.key});
+  const CardioSettingsScreen({
+    required this.preferences,
+    this.feature,
+    super.key,
+  });
 
   final CardioPreferences preferences;
+
+  /// Mit Check-in und Gurt erscheint die Zeile „HRV-Messung“.
+  final CardioFeature? feature;
 
   @override
   State<CardioSettingsScreen> createState() => _CardioSettingsScreenState();
@@ -33,6 +44,7 @@ class _CardioSettingsScreenState extends State<CardioSettingsScreen> {
   final _max = TextEditingController();
   final _age = TextEditingController();
   final _rest = TextEditingController();
+  final _weekly = TextEditingController();
   final _errors = <String, String>{};
 
   CardioPreferences get _preferences => widget.preferences;
@@ -50,6 +62,7 @@ class _CardioSettingsScreenState extends State<CardioSettingsScreen> {
     _max.text = values.maxHeartRate?.toString() ?? '';
     _age.text = values.age?.toString() ?? '';
     _rest.text = values.restingHeartRate?.toString() ?? '';
+    _weekly.text = values.weeklyTargetMinutes.toString();
   }
 
   @override
@@ -57,6 +70,7 @@ class _CardioSettingsScreenState extends State<CardioSettingsScreen> {
     _max.dispose();
     _age.dispose();
     _rest.dispose();
+    _weekly.dispose();
     super.dispose();
   }
 
@@ -162,6 +176,63 @@ class _CardioSettingsScreenState extends State<CardioSettingsScreen> {
                 (values, value) =>
                     values.copyWith(restingHeartRate: () => value),
               ),
+            ),
+          ],
+        ),
+        if (widget.feature case final feature? when feature.body != null) ...[
+          const SizedBox(height: GainerSpacing.l),
+          GainerGroupedSection(
+            header: 'Ruhe',
+            footer:
+                'Eine geführte Messung mit Pulsgurt liefert Ruhepuls und HRV '
+                'für den Check-in.',
+            children: [
+              GainerListRow(
+                key: const ValueKey('cardio-settings-hrv'),
+                title: 'HRV-Messung',
+                leadingIcon: CupertinoIcons.waveform_path_ecg,
+                showChevron: true,
+                onTap: () async {
+                  await openHrvMeasurement(context, feature);
+                  if (mounted) setState(() => _fill(_preferences.values.value));
+                },
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: GainerSpacing.l),
+        GainerGroupedSection(
+          header: 'Wochenziel',
+          footer:
+              'Minuten pro Woche im Zielbereich (30 bis 600). Die Statistik '
+              'zeigt dein Ziel als Linie.',
+          children: [
+            GainerTextFieldRow(
+              label: 'Pro Woche',
+              unit: 'min',
+              controller: _weekly,
+              fieldKey: const ValueKey('cardio-settings-weekly'),
+              keyboardType: TextInputType.number,
+              inputFormatters: digits,
+              errorText: _errors['weekly'],
+              onChanged: (text) {
+                final value = int.tryParse(text.trim());
+                if (value == null ||
+                    value < CardioPreferenceValues.minWeeklyTargetMinutes ||
+                    value > CardioPreferenceValues.maxWeeklyTargetMinutes) {
+                  setState(
+                    () => _errors['weekly'] =
+                        'Erlaubt sind '
+                        '${CardioPreferenceValues.minWeeklyTargetMinutes} bis '
+                        '${CardioPreferenceValues.maxWeeklyTargetMinutes}.',
+                  );
+                  return;
+                }
+                setState(() => _errors.remove('weekly'));
+                _preferences.update(
+                  (current) => current.copyWith(weeklyTargetMinutes: value),
+                );
+              },
             ),
           ],
         ),

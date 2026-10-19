@@ -31,6 +31,12 @@ public sealed class CardioSession : UserOwnedEntity
     public decimal? AveragePowerWatts { get; set; }
     public decimal? EnergyKcal { get; set; }
     public string? Notes { get; set; }
+    public int? RecoveryStartBpm { get; set; }
+    public int? RecoveryEndBpm { get; set; }
+    public string? TemplateName { get; set; }
+
+    /// <summary>Planned phases of a guided session; stored as jsonb. Null when the session was free.</summary>
+    public IReadOnlyList<CardioPhaseValues>? Phases { get; set; }
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; set; }
     public long Version { get; set; }

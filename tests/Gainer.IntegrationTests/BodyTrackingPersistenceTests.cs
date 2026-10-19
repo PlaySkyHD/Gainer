@@ -211,6 +211,44 @@ public sealed class BodyTrackingPersistenceTests
     }
 
     [TestMethod]
+    public async Task CheckInStoresRestingValuesAndValidatesTheirRanges()
+    {
+        (string connectionString, Guid firstUser, _) = await CreateDatabaseAsync();
+        var time = new FixedTimeProvider(new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero));
+        Guid checkInId = Guid.NewGuid();
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        {
+            var handler = new DailyCheckInMutationHandler(context, new TestUserContext(firstUser), time);
+            DailyCheckInSnapshot created = await handler.CreateAsync(CreateCheckInMutation(
+                checkInId, new DailyCheckInValues(82.5m, RestingHeartRateBpm: 25, RestingHrvMs: 300)));
+            Assert.AreEqual(25, created.Values.RestingHeartRateBpm);
+            Assert.AreEqual(300, created.Values.RestingHrvMs);
+        }
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        {
+            DailyCheckIn stored = await context.DailyCheckIns.AsNoTracking().SingleAsync();
+            Assert.AreEqual(25, stored.RestingHeartRateBpm);
+            Assert.AreEqual(300, stored.RestingHrvMs);
+        }
+        foreach ((int? hr, int? hrv) in new (int?, int?)[] { (24, null), (151, null), (null, 0), (null, 301) })
+        {
+            await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+            var handler = new DailyCheckInMutationHandler(context, new TestUserContext(firstUser), time);
+            DailyCheckInValidationException exception = await Assert.ThrowsAsync<DailyCheckInValidationException>(
+                () => handler.CorrectAsync(CorrectCheckInMutation(
+                    checkInId, 1, new DailyCheckInValues(82.5m, RestingHeartRateBpm: hr, RestingHrvMs: hrv))));
+            Assert.HasCount(1, exception.Errors);
+        }
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        {
+            var handler = new DailyCheckInMutationHandler(context, new TestUserContext(firstUser), time);
+            DailyCheckInSnapshot cleared = await handler.CorrectAsync(CorrectCheckInMutation(
+                checkInId, 1, new DailyCheckInValues(82.5m)));
+            Assert.IsNull(cleared.Values.RestingHeartRateBpm);
+        }
+    }
+
+    [TestMethod]
     public async Task CheckInCreationAndCorrectionAreValidatedAndAtomic()
     {
         (string connectionString, Guid firstUser, _) = await CreateDatabaseAsync();

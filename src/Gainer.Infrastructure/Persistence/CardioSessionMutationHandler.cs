@@ -113,6 +113,10 @@ public sealed class CardioSessionMutationHandler(
         session.AveragePowerWatts = values.AveragePowerWatts;
         session.EnergyKcal = values.EnergyKcal;
         session.Notes = values.Notes;
+        session.RecoveryStartBpm = values.RecoveryStartBpm;
+        session.RecoveryEndBpm = values.RecoveryEndBpm;
+        session.TemplateName = values.TemplateName;
+        session.Phases = values.Phases is { Count: > 0 } ? values.Phases.ToArray() : null;
     }
 
     private static CardioSessionSnapshot ToSnapshot(CardioSession session) => new(
@@ -133,5 +137,9 @@ public sealed class CardioSessionMutationHandler(
         session.Notes,
         session.CreatedAtUtc,
         session.UpdatedAtUtc,
-        session.Version);
+        session.Version,
+        session.RecoveryStartBpm,
+        session.RecoveryEndBpm,
+        session.TemplateName,
+        session.Phases?.ToArray());
 }

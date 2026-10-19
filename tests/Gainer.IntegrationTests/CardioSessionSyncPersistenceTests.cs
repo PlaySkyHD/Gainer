@@ -97,6 +97,81 @@ public sealed class CardioSessionSyncPersistenceTests
     }
 
     [TestMethod]
+    public async Task RecoveryTemplateAndJsonbPhasesRoundTripThroughSaveAndUpdate()
+    {
+        (string connectionString, Guid firstUser, Guid _) = await CreateDatabaseAsync();
+        Guid client = Guid.NewGuid();
+        await RegisterAsync(connectionString, firstUser, client);
+        Guid sessionId = Guid.NewGuid();
+        CardioSessionValues values = Session(sessionId) with
+        {
+            RecoveryStartBpm = 160,
+            RecoveryEndBpm = 128,
+            TemplateName = "  Intervals 4x1  ",
+            Phases = [new(0, 120, "Warm-up", 100, 120), new(120, 60, "Push", 150, 170), new(180, 60, "Rest", null, null)],
+        };
+        Guid createId = Guid.NewGuid();
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        {
+            ProcessedSyncMutationResult applied = await Processor(context, firstUser)
+                .ProcessAsync(Save(createId, client, 1, 0, values));
+            var snapshot = (CardioSessionSnapshot)applied.Changes.Single().Snapshot!;
+            Assert.AreEqual(160, snapshot.RecoveryStartBpm);
+            Assert.AreEqual("Intervals 4x1", snapshot.TemplateName);
+            Assert.HasCount(3, snapshot.Phases!);
+        }
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        {
+            CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync();
+            Assert.AreEqual(160, stored.RecoveryStartBpm);
+            Assert.AreEqual(128, stored.RecoveryEndBpm);
+            Assert.AreEqual("Intervals 4x1", stored.TemplateName);
+            Assert.HasCount(3, stored.Phases!);
+            Assert.AreEqual(new CardioPhaseValues(120, 60, "Push", 150, 170), stored.Phases![1]);
+            Assert.IsNull(stored.Phases[2].LowBpm);
+        }
+
+        CardioSessionValues edited = values with { Phases = [new(0, 300, "Steady", 120, 140)], RecoveryStartBpm = null, RecoveryEndBpm = null };
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        {
+            await Processor(context, firstUser).ProcessAsync(Save(Guid.NewGuid(), client, 2, 1, edited, createId));
+            CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync();
+            Assert.HasCount(1, stored.Phases!);
+            Assert.AreEqual("Steady", stored.Phases![0].Name);
+            Assert.IsNull(stored.RecoveryStartBpm);
+            Assert.AreEqual(2, stored.Version);
+        }
+    }
+
+    [TestMethod]
+    public async Task OldPayloadWithoutTheNewFieldsIsStillAccepted()
+    {
+        (string connectionString, Guid firstUser, Guid _) = await CreateDatabaseAsync();
+        Guid client = Guid.NewGuid();
+        await RegisterAsync(connectionString, firstUser, client);
+        Guid sessionId = Guid.NewGuid();
+        var oldSession = new
+        {
+            sessionId,
+            activityType = CardioActivityTypes.IndoorCycling,
+            startedAtUtc = Start,
+            endedAtUtc = Start.AddMinutes(10),
+            targetZone = new { lowBpm = 120, highBpm = 140 },
+            sampleIntervalSeconds = 5,
+            heartRateBpm = new[] { 100, 110 },
+            rrIntervalsMs = new[] { 800 },
+            sensorName = "Polar H10",
+        };
+        await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+        await Processor(context, firstUser).ProcessAsync(Command(
+            Guid.NewGuid(), client, 1, "saveCardioSession", sessionId, 0, new { baseVersion = 0, session = oldSession }, null));
+        CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync();
+        Assert.IsNull(stored.RecoveryStartBpm);
+        Assert.IsNull(stored.TemplateName);
+        Assert.IsNull(stored.Phases);
+    }
+
+    [TestMethod]
     public async Task StaleBaseVersionAndExistingCreateConflictWhileMissingUpdateIsNotFound()
     {
         (string connectionString, Guid user, Guid _) = await CreateDatabaseAsync();

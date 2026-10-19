@@ -16,7 +16,16 @@ final class CardioPreferenceValues {
     this.lastZoneHigh = 140,
     this.warmupSeconds = 180,
     this.alertsEnabled = true,
+    this.weeklyTargetMinutes = defaultWeeklyTargetMinutes,
+    this.hrvMinutes = defaultHrvMinutes,
   });
+
+  static const defaultWeeklyTargetMinutes = 150;
+  static const minWeeklyTargetMinutes = 30;
+  static const maxWeeklyTargetMinutes = 600;
+  static const defaultHrvMinutes = 2;
+  static const minHrvMinutes = 1;
+  static const maxHrvMinutes = 5;
 
   /// Manuell angegebener Maximalpuls; hat Vorrang vor dem Alter.
   final int? maxHeartRate;
@@ -30,6 +39,12 @@ final class CardioPreferenceValues {
   /// Aufwärmzeit ohne Alarm (0–600 s).
   final int warmupSeconds;
   final bool alertsEnabled;
+
+  /// Wochenziel in Minuten im Zielbereich (30–600).
+  final int weeklyTargetMinutes;
+
+  /// Messdauer der HRV-Messung in Minuten (1–5).
+  final int hrvMinutes;
 
   /// Maximalpuls: angegebener Wert, sonst aus dem Alter, sonst null.
   int? get effectiveMaxHeartRate =>
@@ -53,6 +68,8 @@ final class CardioPreferenceValues {
     int? lastZoneHigh,
     int? warmupSeconds,
     bool? alertsEnabled,
+    int? weeklyTargetMinutes,
+    int? hrvMinutes,
   }) => CardioPreferenceValues(
     maxHeartRate: maxHeartRate == null ? this.maxHeartRate : maxHeartRate(),
     age: age == null ? this.age : age(),
@@ -63,6 +80,8 @@ final class CardioPreferenceValues {
     lastZoneHigh: lastZoneHigh ?? this.lastZoneHigh,
     warmupSeconds: warmupSeconds ?? this.warmupSeconds,
     alertsEnabled: alertsEnabled ?? this.alertsEnabled,
+    weeklyTargetMinutes: weeklyTargetMinutes ?? this.weeklyTargetMinutes,
+    hrvMinutes: hrvMinutes ?? this.hrvMinutes,
   );
 
   Map<String, Object?> toJson() => {
@@ -73,6 +92,8 @@ final class CardioPreferenceValues {
     'lastZoneHigh': lastZoneHigh,
     'warmupSeconds': warmupSeconds,
     'alertsEnabled': alertsEnabled,
+    'weeklyTargetMinutes': weeklyTargetMinutes,
+    'hrvMinutes': hrvMinutes,
   };
 
   @override
@@ -84,7 +105,9 @@ final class CardioPreferenceValues {
       other.lastZoneLow == lastZoneLow &&
       other.lastZoneHigh == lastZoneHigh &&
       other.warmupSeconds == warmupSeconds &&
-      other.alertsEnabled == alertsEnabled;
+      other.alertsEnabled == alertsEnabled &&
+      other.weeklyTargetMinutes == weeklyTargetMinutes &&
+      other.hrvMinutes == hrvMinutes;
 
   @override
   int get hashCode => Object.hash(
@@ -95,6 +118,8 @@ final class CardioPreferenceValues {
     lastZoneHigh,
     warmupSeconds,
     alertsEnabled,
+    weeklyTargetMinutes,
+    hrvMinutes,
   );
 }
 
@@ -172,6 +197,20 @@ class CardioPreferences {
       alertsEnabled: raw['alertsEnabled'] is bool
           ? raw['alertsEnabled'] as bool
           : true,
+      weeklyTargetMinutes:
+          number(
+            'weeklyTargetMinutes',
+            CardioPreferenceValues.minWeeklyTargetMinutes,
+            CardioPreferenceValues.maxWeeklyTargetMinutes,
+          ) ??
+          CardioPreferenceValues.defaultWeeklyTargetMinutes,
+      hrvMinutes:
+          number(
+            'hrvMinutes',
+            CardioPreferenceValues.minHrvMinutes,
+            CardioPreferenceValues.maxHrvMinutes,
+          ) ??
+          CardioPreferenceValues.defaultHrvMinutes,
     );
   }
 }

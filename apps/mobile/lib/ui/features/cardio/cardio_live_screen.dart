@@ -6,7 +6,6 @@ import '../../../data/services/platform/platform_ports.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
-import '../training/training_format.dart';
 import 'cardio_detail_screen.dart';
 import 'cardio_feature.dart';
 import 'cardio_format.dart';
@@ -41,6 +40,9 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
   bool _finishing = false;
   bool _closing = false;
   String? _error;
+
+  /// Gespeicherte Einheit, solange die Erholung noch läuft.
+  String? _savedId;
 
   @override
   void initState() {
@@ -115,15 +117,15 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
       }
       final saved = await session.finish();
       if (!mounted) return;
-      _closing = true;
-      await Navigator.of(context).pushReplacement<void, void>(
-        CupertinoPageRoute<void>(
-          builder: (_) => CardioDetailScreen(
-            feature: widget.feature,
-            sessionId: saved.sessionId,
-          ),
-        ),
-      );
+      if (session.isRecovering) {
+        // Die Einheit ist gespeichert; die Erholung misst noch 60 s.
+        setState(() {
+          _finishing = false;
+          _savedId = saved.sessionId;
+        });
+        return;
+      }
+      await _openDetail(saved.sessionId);
     } on Object {
       if (mounted) {
         setState(() {
@@ -134,13 +136,34 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
     }
   }
 
+  Future<void> _openDetail(String sessionId) async {
+    _closing = true;
+    await Navigator.of(context).pushReplacement<void, void>(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            CardioDetailScreen(feature: widget.feature, sessionId: sessionId),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = widget.feature.session;
     return ListenableBuilder(
       listenable: session,
       builder: (context, _) {
-        if (!session.isRunning && !_finishing && !_closing) {
+        final savedId = _savedId;
+        if (savedId != null && !session.isRecovering && !_closing) {
+          // Erholung beendet oder übersprungen: weiter zur Einheit.
+          _closing = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _openDetail(savedId);
+          });
+        }
+        if (!session.isRunning &&
+            !session.isRecovering &&
+            !_finishing &&
+            !_closing) {
           // Die Einheit wurde anderswo beendet.
           _closing = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -154,10 +177,86 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
             semanticLabel: 'Minimieren',
             onPressed: () => Navigator.of(context).pop(),
           ),
-          children: session.isRunning ? _content(context) : const [],
+          children: session.isRecovering
+              ? _recoveryContent(context)
+              : session.isRunning
+              ? _content(context)
+              : const [],
         );
       },
     );
+  }
+
+  List<Widget> _recoveryContent(BuildContext context) {
+    final session = widget.feature.session;
+    final colors = GainerDesign.colorsOf(context);
+    final remaining = session.recoveryRemaining;
+    final evaluating = remaining == Duration.zero;
+    final bpm = session.liveBpm;
+    return [
+      GainerCard(
+        padding: const EdgeInsets.symmetric(
+          vertical: GainerSpacing.l,
+          horizontal: GainerSpacing.m,
+        ),
+        child: Semantics(
+          label: evaluating
+              ? 'Erholung wird ausgewertet'
+              : 'Erholung ${remaining.inSeconds} Sekunden',
+          excludeSemantics: true,
+          child: Column(
+            children: [
+              Text(
+                'Erholung',
+                style: GainerTypography.cardTitle.copyWith(
+                  color: colors.secondaryText,
+                ),
+              ),
+              const SizedBox(height: GainerSpacing.xs),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  evaluating ? '–' : formatCountdown(remaining),
+                  key: const ValueKey('cardio-recovery-countdown'),
+                  style: GainerTypography.timer.copyWith(
+                    fontSize: 72,
+                    fontWeight: FontWeight.w700,
+                    color: colors.primaryText,
+                  ),
+                ),
+              ),
+              const SizedBox(height: GainerSpacing.s),
+              Text(
+                bpm == null ? 'Kein Signal' : formatBpm(bpm),
+                key: const ValueKey('cardio-recovery-bpm'),
+                style: GainerTypography.cardTitle.copyWith(
+                  color: colors.primaryText,
+                ),
+              ),
+              const SizedBox(height: GainerSpacing.xs),
+              Text(
+                evaluating
+                    ? 'Die Erholung wird ausgewertet …'
+                    : 'Die Einheit ist gespeichert. Bleib ruhig stehen oder '
+                          'sitzen, Gainer misst, wie schnell dein Puls fällt.',
+                textAlign: TextAlign.center,
+                style: GainerTypography.label.copyWith(
+                  color: colors.secondaryText,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: GainerSpacing.l),
+      GainerPillButton(
+        key: const ValueKey('cardio-recovery-skip'),
+        label: 'Überspringen',
+        expand: true,
+        variant: GainerPillVariant.tonal,
+        onPressed: session.skipRecovery,
+      ),
+    ];
   }
 
   List<Widget> _content(BuildContext context) {
@@ -184,7 +283,10 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
             showChevron: true,
             onTap: _editZone,
           ),
-          GainerListRow(title: 'Dauer', value: formatElapsed(session.elapsed)),
+          GainerListRow(
+            title: 'Dauer',
+            value: formatCardioDuration(session.elapsed),
+          ),
           GainerListRow(
             title: 'Ø-Puls',
             value: average == null ? '–' : formatAverageBpm(average),

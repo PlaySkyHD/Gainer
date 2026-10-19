@@ -1,8 +1,10 @@
 import 'package:flutter/cupertino.dart';
 
+import '../../../data/repositories/cardio/cardio_repository.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import '../cardio/cardio_statistics_area.dart';
 import 'exercise_statistics_screen.dart';
 import 'training_format.dart';
 import 'training_statistics_view_model.dart';
@@ -12,9 +14,16 @@ import 'warmup_sets_row.dart';
 /// Reihenfolge ist „zuletzt trainiert“ zuerst, damit die Übungen des letzten
 /// Trainings oben stehen. Die Suche filtert nach Name.
 class TrainingStatisticsSection extends StatefulWidget {
-  const TrainingStatisticsSection({required this.repository, super.key});
+  const TrainingStatisticsSection({
+    required this.repository,
+    this.cardio,
+    super.key,
+  });
 
   final TrainingLogRepository repository;
+
+  /// Cardio-Einheiten für den Bereich „Cardio“; ohne Wert entfällt er.
+  final CardioRepository? cardio;
 
   @override
   State<TrainingStatisticsSection> createState() =>
@@ -56,6 +65,11 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.cardio case final cardio?) ...[
+              CardioStatisticsArea(repository: cardio),
+              const GainerSectionHeader(title: 'Kraft'),
+              const SizedBox(height: GainerSpacing.xs),
+            ],
             WarmupSetsRow(
               value: model.includeWarmups,
               onChanged: model.setIncludeWarmups,
