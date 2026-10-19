@@ -7,8 +7,12 @@ import '../../../data/repositories/body/body_repository.dart';
 import '../../../domain/models/body/body_tracking.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import '../cardio/cardio_feature.dart';
+import '../cardio/cardio_format.dart';
+import '../cardio/cardio_hrv_measurement_screen.dart';
 import 'body_view_model.dart';
 import 'check_in_format.dart';
+import 'resting_history_card.dart';
 
 const _checkInTitle = 'Check-in';
 
@@ -20,9 +24,12 @@ const _defaultBedMinutes = 23 * 60;
 const _defaultWakeMinutes = 7 * 60;
 
 class BodyScreen extends StatefulWidget {
-  const BodyScreen({required this.viewModel, super.key});
+  const BodyScreen({required this.viewModel, this.cardio, super.key});
 
   final BodyViewModel viewModel;
+
+  /// Pulsgurt und Check-in für die HRV-Messung; ohne Wert entfällt der Einstieg.
+  final CardioFeature? cardio;
 
   @override
   State<BodyScreen> createState() => _BodyScreenState();
@@ -91,6 +98,10 @@ class _BodyScreenState extends State<BodyScreen> {
           ),
           const SizedBox(height: GainerSpacing.m),
           GainerGroupedSection(header: 'Heute', children: _todayRows(model)),
+          if (_restingCard(model) case final card?) ...[
+            const SizedBox(height: GainerSpacing.m),
+            card,
+          ],
           const SizedBox(height: GainerSpacing.l),
           const GainerSectionHeader(title: 'Verlauf'),
           const SizedBox(height: GainerSpacing.xs),
@@ -138,6 +149,24 @@ class _BodyScreenState extends State<BodyScreen> {
     ];
   }
 
+  Widget? _restingCard(BodyViewModel model) {
+    final snapshot = model.snapshot;
+    final cardio = widget.cardio;
+    final canMeasure = cardio != null && cardio.body != null;
+    final entries = snapshot?.restingEntries ?? const <RestingEntry>[];
+    if (!canMeasure && entries.isEmpty) return null;
+    return RestingHistoryCard(
+      entries: entries,
+      today: DateTime.now(),
+      onMeasure: canMeasure
+          ? () async {
+              await openHrvMeasurement(context, cardio);
+              if (mounted) await widget.viewModel.load();
+            }
+          : null,
+    );
+  }
+
   List<Widget> _todayRows(BodyViewModel model) {
     final snapshot = model.snapshot;
     if (snapshot == null) {
@@ -155,7 +184,19 @@ class _BodyScreenState extends State<BodyScreen> {
         .firstOrNull
         ?.value;
     if (entry == null) {
-      return const [GainerListRow(title: 'Noch kein Check-in für heute')];
+      final waiting = snapshot.pendingResting
+          .where((item) => item.localDate == today)
+          .firstOrNull;
+      return [
+        const GainerListRow(title: 'Noch kein Check-in für heute'),
+        if (waiting != null)
+          GainerListRow(
+            key: const ValueKey('body-pending-resting'),
+            title: 'Ruhepuls und HRV',
+            subtitle: 'wartet auf Check-in',
+            value: _restingText(waiting),
+          ),
+      ];
     }
     return [
       GainerListRow(title: 'Gewicht', value: _formatWeight(entry.weightKg)),
@@ -166,8 +207,17 @@ class _BodyScreenState extends State<BodyScreen> {
         ),
       if (entry.steps case final steps?)
         GainerListRow(title: 'Schritte', value: formatStepCount(steps)),
+      if (entry.restingHeartRateBpm case final rate?)
+        GainerListRow(title: 'Ruhepuls', value: formatBpm(rate)),
+      if (entry.restingHrvMs case final hrv?)
+        GainerListRow(title: 'HRV (RMSSD)', value: '$hrv ms'),
     ];
   }
+
+  String _restingText(RestingEntry entry) => [
+    if (entry.restingHeartRateBpm case final rate?) formatBpm(rate),
+    if (entry.restingHrvMs case final hrv?) '$hrv ms',
+  ].join(' · ');
 
   Widget _history(BodyTrackingSnapshot? snapshot, {required bool isLoading}) {
     if (snapshot == null) {

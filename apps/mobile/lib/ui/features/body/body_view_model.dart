@@ -26,6 +26,7 @@ class BodyViewModel extends ChangeNotifier {
   bool _disposed = false;
 
   Future<void> load() => _run(() async {
+    await repository.flushPendingResting();
     final loaded = await repository.read();
     if (_disposed) return;
     snapshot = loaded;

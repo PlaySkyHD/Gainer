@@ -67,6 +67,8 @@ class CardioSession {
     this.averagePowerWatts,
     this.energyKcal,
     this.notes,
+    this.recoveryStartBpm,
+    this.recoveryEndBpm,
     required this.createdAtUtc,
     required this.updatedAtUtc,
     this.deletedAtUtc,
@@ -96,6 +98,8 @@ class CardioSession {
     averagePowerWatts: (json['averagePowerWatts'] as num?)?.toDouble(),
     energyKcal: (json['energyKcal'] as num?)?.toDouble(),
     notes: json['notes'] as String?,
+    recoveryStartBpm: (json['recoveryStartBpm'] as num?)?.toInt(),
+    recoveryEndBpm: (json['recoveryEndBpm'] as num?)?.toInt(),
     createdAtUtc: DateTime.parse(json['createdAtUtc'] as String).toUtc(),
     updatedAtUtc: DateTime.parse(json['updatedAtUtc'] as String).toUtc(),
     deletedAtUtc: json['deletedAtUtc'] == null
@@ -118,6 +122,10 @@ class CardioSession {
   final double? averagePowerWatts;
   final double? energyKcal;
   final String? notes;
+
+  /// Puls beim Beenden und 60 s später (Erholung); beide oder keiner.
+  final int? recoveryStartBpm;
+  final int? recoveryEndBpm;
   final DateTime createdAtUtc;
   final DateTime updatedAtUtc;
 
@@ -125,6 +133,11 @@ class CardioSession {
   final DateTime? deletedAtUtc;
 
   Duration get duration => endedAtUtc.difference(startedAtUtc);
+
+  /// Pulsabfall in der Erholung (negativ bei Abfall); null ohne Erholungswerte.
+  int? get recoveryDropBpm => recoveryStartBpm == null || recoveryEndBpm == null
+      ? null
+      : recoveryEndBpm! - recoveryStartBpm!;
 
   /// Nullable Felder werden über Funktionen gesetzt, damit `null` übergeben
   /// werden kann (`notes: () => null`).
@@ -139,6 +152,8 @@ class CardioSession {
     double? Function()? averagePowerWatts,
     double? Function()? energyKcal,
     String? Function()? notes,
+    int? Function()? recoveryStartBpm,
+    int? Function()? recoveryEndBpm,
     DateTime? updatedAtUtc,
     DateTime? Function()? deletedAtUtc,
   }) => CardioSession(
@@ -157,6 +172,12 @@ class CardioSession {
         : averagePowerWatts(),
     energyKcal: energyKcal == null ? this.energyKcal : energyKcal(),
     notes: notes == null ? this.notes : notes(),
+    recoveryStartBpm: recoveryStartBpm == null
+        ? this.recoveryStartBpm
+        : recoveryStartBpm(),
+    recoveryEndBpm: recoveryEndBpm == null
+        ? this.recoveryEndBpm
+        : recoveryEndBpm(),
     createdAtUtc: createdAtUtc,
     updatedAtUtc: updatedAtUtc ?? this.updatedAtUtc,
     deletedAtUtc: deletedAtUtc == null ? this.deletedAtUtc : deletedAtUtc(),
@@ -177,6 +198,8 @@ class CardioSession {
     'averagePowerWatts': ?averagePowerWatts,
     'energyKcal': ?energyKcal,
     'notes': ?notes,
+    'recoveryStartBpm': ?recoveryStartBpm,
+    'recoveryEndBpm': ?recoveryEndBpm,
     'createdAtUtc': createdAtUtc.toUtc().toIso8601String(),
     'updatedAtUtc': updatedAtUtc.toUtc().toIso8601String(),
     if (deletedAtUtc != null)
