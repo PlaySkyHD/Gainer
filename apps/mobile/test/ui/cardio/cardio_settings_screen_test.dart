@@ -1,9 +1,12 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/body/body_repository.dart';
 import 'package:gainer_mobile/data/repositories/cardio/cardio_preferences.dart';
+import 'package:gainer_mobile/ui/features/cardio/cardio_feature.dart';
+import 'package:gainer_mobile/ui/features/cardio/cardio_hrv_measurement_screen.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_settings_screen.dart';
 
-import '../training/training_test_support.dart';
+import '../training/training_test_support.dart' hide testId;
 import 'cardio_test_support.dart';
 
 void main() {
@@ -116,5 +119,52 @@ void main() {
 
     expect(find.text('185'), findsOneWidget);
     expect(find.text('55'), findsOneWidget);
+  });
+
+  testWidgets('Wochenziel: 30 bis 600, Standard 150', (tester) async {
+    await openSettings(tester);
+    final field = find.byKey(const ValueKey('cardio-settings-weekly'));
+    expect(tester.widget<CupertinoTextField>(field).controller!.text, '150');
+
+    await tester.enterText(field, '240');
+    await settle(tester);
+    expect((await stored(tester)).weeklyTargetMinutes, 240);
+
+    await tester.enterText(field, '10');
+    await settle(tester);
+    expect(find.text('Erlaubt sind 30 bis 600.'), findsOneWidget);
+    expect((await stored(tester)).weeklyTargetMinutes, 240);
+
+    await tester.enterText(field, '601');
+    await settle(tester);
+    expect(find.text('Erlaubt sind 30 bis 600.'), findsOneWidget);
+    expect((await stored(tester)).weeklyTargetMinutes, 240);
+  });
+
+  testWidgets('HRV-Messung ist nur mit Check-in erreichbar', (tester) async {
+    await openSettings(tester);
+    expect(find.byKey(const ValueKey('cardio-settings-hrv')), findsNothing);
+
+    var id = 900;
+    final feature = CardioFeature(
+      repository: harness.repository,
+      session: harness.controller,
+      health: harness.feature.health,
+      body: BodyRepository(store: harness.store, ids: () => testId(id++)),
+    );
+    phoneSize(tester, height: 1400);
+    await tester.pumpWidget(
+      trainingTestApp(
+        home: CardioSettingsScreen(
+          preferences: harness.repository.preferences,
+          feature: feature,
+        ),
+      ),
+    );
+    await settle(tester);
+    expect(find.text('HRV-Messung'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('cardio-settings-hrv')));
+    await settle(tester);
+    expect(find.byType(HrvMeasurementScreen), findsOneWidget);
   });
 }

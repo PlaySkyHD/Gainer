@@ -55,6 +55,111 @@ void main() {
     }, tags: ['golden']);
   }
 
+  testWidgets('Ruhepuls und HRV: Verlauf, heutige Zeilen und wartender Wert', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final now = DateTime.now();
+    String day(int back) {
+      final date = DateTime(now.year, now.month, now.day - back);
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-'
+          '${date.day.toString().padLeft(2, '0')}';
+    }
+
+    var id = 700;
+    final repository = BodyRepository(
+      store: LocalSyncStore(database: database, accountId: accountId),
+      ids: () =>
+          '00000000-0000-4000-8000-${(id++).toString().padLeft(12, '0')}',
+    );
+    await tester.runAsync(() async {
+      for (final (back, rate, hrv) in [(6, 60, 45), (3, 58, 50), (0, 57, 55)]) {
+        await repository.saveCheckIn(
+          localDate: day(back),
+          weightKg: 71,
+          caloriesKcal: null,
+          proteinGrams: null,
+          carbohydrateGrams: null,
+          fatGrams: null,
+          steps: null,
+          sleepMinutes: null,
+          restingHeartRateBpm: rate,
+          restingHrvMs: hrv,
+        );
+      }
+    });
+    final model = BodyViewModel(repository);
+    addTearDown(model.dispose);
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.forBrightness(Brightness.light),
+        home: BodyScreen(viewModel: model),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(model.load);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ruhepuls und HRV'), findsOneWidget);
+    expect(find.byKey(const ValueKey('resting-history')), findsOneWidget);
+    expect(find.text('HRV 55 ms'), findsOneWidget);
+    expect(find.text('Ruhepuls 57 bpm'), findsOneWidget);
+    // Heute-Zeilen mit Beschriftung.
+    expect(find.text('Ruhepuls'), findsOneWidget);
+    expect(find.text('57 bpm'), findsOneWidget);
+    expect(find.text('HRV (RMSSD)'), findsOneWidget);
+    expect(find.text('55 ms'), findsOneWidget);
+    // Ohne Gurt-Funktion kein Einstieg in die Messung.
+    expect(find.byKey(const ValueKey('body-open-hrv')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('wartender Ruhewert erscheint als „wartet auf Check-in“', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final repository = BodyRepository(
+      store: LocalSyncStore(database: database, accountId: accountId),
+    );
+    final now = DateTime.now();
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+    await tester.runAsync(
+      () => repository.recordRestingMeasurement(
+        localDate: today,
+        restingHeartRateBpm: 59,
+        restingHrvMs: 47,
+      ),
+    );
+    final model = BodyViewModel(repository);
+    addTearDown(model.dispose);
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.forBrightness(Brightness.light),
+        home: BodyScreen(viewModel: model),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(model.load);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Noch kein Check-in für heute'), findsOneWidget);
+    expect(find.byKey(const ValueKey('body-pending-resting')), findsOneWidget);
+    expect(find.text('wartet auf Check-in'), findsWidgets);
+    expect(find.text('59 bpm · 47 ms'), findsOneWidget);
+  });
+
   test(
     'BodyViewModel does not notify after disposal during a pending read',
     () async {
@@ -622,5 +727,7 @@ class _DeferredSaveBodyRepository extends BodyRepository {
     required double? fatGrams,
     required int? steps,
     required int? sleepMinutes,
+    int? restingHeartRateBpm,
+    int? restingHrvMs,
   }) => completion.future;
 }
