@@ -1,12 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../data/models/api/api_models.dart';
 import '../../../data/repositories/insights/insights_repository.dart';
+import '../../../data/repositories/nutrition/nutrition_repository.dart';
 
 class ProgressViewModel extends ChangeNotifier {
-  ProgressViewModel(this.repository);
+  ProgressViewModel(this.repository, {this.nutrition, DateTime Function()? now})
+    : _now = now ?? DateTime.now;
 
   final InsightsRepository repository;
+
+  /// Lokale Ernährungsdaten für die Kalorien von heute (offline verfügbar).
+  final NutritionRepository? nutrition;
+  final DateTime Function() _now;
+
+  /// Kalorien und Protein des lokalen heutigen Tages; `null`, solange sie
+  /// nicht gelesen werden konnten.
+  double? todayCaloriesKcal;
+  double? todayProteinGrams;
   ApiDashboardInsights? dashboard;
   bool isLoading = false;
   bool dashboardIsStale = false;
@@ -15,8 +28,33 @@ class ProgressViewModel extends ChangeNotifier {
   String? errorMessage;
   bool _disposed = false;
 
+  /// Liest nur die lokalen Tageswerte neu, etwa wenn der Tab wieder sichtbar
+  /// wird. Braucht keine Verbindung.
+  Future<void> refreshToday() async {
+    final repo = nutrition;
+    if (repo == null || _disposed) return;
+    final day = _now();
+    final localDate =
+        '${day.year.toString().padLeft(4, '0')}-'
+        '${day.month.toString().padLeft(2, '0')}-'
+        '${day.day.toString().padLeft(2, '0')}';
+    try {
+      final totals = (await repo.read(localDate)).day.totals;
+      if (_disposed) return;
+      final kcal = totals.kilocalories;
+      final protein = totals.proteinGrams;
+      if (kcal == todayCaloriesKcal && protein == todayProteinGrams) return;
+      todayCaloriesKcal = kcal;
+      todayProteinGrams = protein;
+      notifyListeners();
+    } on Object {
+      // Ein Lesefehler lässt den zuletzt gezeigten Wert stehen.
+    }
+  }
+
   Future<void> load() async {
     if (_disposed) return;
+    unawaited(refreshToday());
     final request = ++_dashboardRequest;
     isLoading = true;
     errorMessage = null;
