@@ -7,18 +7,19 @@ import Foundation
 struct CardioLiveActivityThrottle {
   static let minimumInterval: TimeInterval = 5
 
-  private var last: (zoneState: String, bpm: Int?, at: Date)?
+  private var last: (zoneState: String, bpm: Int?, phaseIndex: Int?, at: Date)?
 
-  mutating func shouldPush(zoneState: String, bpm: Int?, now: Date) -> Bool {
+  /// Ein Wechsel von Zonenstatus oder Phase wird sofort übernommen.
+  mutating func shouldPush(zoneState: String, bpm: Int?, phaseIndex: Int? = nil, now: Date) -> Bool {
     guard let last else {
-      self.last = (zoneState, bpm, now)
+      self.last = (zoneState, bpm, phaseIndex, now)
       return true
     }
-    let zoneChanged = last.zoneState != zoneState
+    let zoneChanged = last.zoneState != zoneState || last.phaseIndex != phaseIndex
     let bpmChanged = last.bpm != bpm
     let due = now.timeIntervalSince(last.at) >= Self.minimumInterval
     guard zoneChanged || (bpmChanged && due) else { return false }
-    self.last = (zoneState, bpm, now)
+    self.last = (zoneState, bpm, phaseIndex, now)
     return true
   }
 
@@ -56,13 +57,15 @@ final class NativeCardioLiveActivity {
         return
       }
     }
-    _ = throttle.shouldPush(zoneState: state.zoneState, bpm: state.bpm, now: state.updatedAt)
+    _ = throttle.shouldPush(
+      zoneState: state.zoneState, bpm: state.bpm, phaseIndex: state.phaseIndex, now: state.updatedAt)
   }
 
   /// Aktualisiert die Activity, sofern der Drosselregler es zulässt.
   func update(state: GainerCardioActivityAttributes.ContentState) async {
     guard let sessionId,
-      throttle.shouldPush(zoneState: state.zoneState, bpm: state.bpm, now: state.updatedAt),
+      throttle.shouldPush(
+        zoneState: state.zoneState, bpm: state.bpm, phaseIndex: state.phaseIndex, now: state.updatedAt),
       let activity = Activity.activities.first(where: { $0.attributes.sessionId == sessionId })
     else { return }
     await activity.update(ActivityContent(state: state, staleDate: nil))

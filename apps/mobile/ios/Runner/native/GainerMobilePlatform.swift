@@ -346,7 +346,8 @@ final class GainerMobilePlatform: MobilePlatformApi {
   }
 
   /// Prüft die Eingaben aus Dart: Zone 40–230 mit von < bis (beide Grenzen oder keine),
-  /// Karenz 0–300 s, Wiederholung 10–3600 s, Aufwärmen 0–600 s.
+  /// Karenz 0–300 s, Wiederholung 10–3600 s, Aufwärmen 0–600 s, Phasen (siehe
+  /// `arePhasesValid`) und Sprachintervall 0–60 min.
   nonisolated static func validate(cardioConfig config: PlatformCardioMonitoringConfig) throws {
     let zoneIsValid: Bool
     switch (config.zoneLowBpm, config.zoneHighBpm) {
@@ -358,6 +359,8 @@ final class GainerMobilePlatform: MobilePlatformApi {
       zoneIsValid = false
     }
     guard zoneIsValid,
+      arePhasesValid(config.phases),
+      config.voiceIntervalMinutes.map({ (0...60).contains($0) }) ?? true,
       !config.sessionId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       config.startedAtUtcEpochMilliseconds > 0,
       (0...300).contains(config.graceSeconds),
@@ -370,6 +373,29 @@ final class GainerMobilePlatform: MobilePlatformApi {
         details: nil
       )
     }
+  }
+
+  /// Höchstens 30 Phasen, je 30–3600 s, Versatz aufsteigend ohne Überlappung, Zone wie
+  /// beim Zielbereich (beide Grenzen oder keine, 40–230, von < bis).
+  nonisolated static func arePhasesValid(_ phases: [PlatformCardioPhase]?) -> Bool {
+    guard let phases else { return true }
+    guard phases.count <= 30 else { return false }
+    var nextFreeOffset: Int64 = 0
+    for phase in phases {
+      guard phase.startOffsetSeconds >= nextFreeOffset,
+        (30...3600).contains(phase.durationSeconds)
+      else { return false }
+      nextFreeOffset = phase.startOffsetSeconds + phase.durationSeconds
+      switch (phase.zoneLowBpm, phase.zoneHighBpm) {
+      case (nil, nil):
+        continue
+      case (let low?, let high?):
+        guard (40...230).contains(low), (40...230).contains(high), low < high else { return false }
+      default:
+        return false
+      }
+    }
+    return true
   }
 
   func openAppSettings() async throws {

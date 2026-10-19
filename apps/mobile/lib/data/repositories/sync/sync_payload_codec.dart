@@ -440,6 +440,8 @@ class SyncPayloadCodec {
         'notes': body['notes'],
         'recoveryStartBpm': body['recoveryStartBpm'],
         'recoveryEndBpm': body['recoveryEndBpm'],
+        'templateName': body['templateName'],
+        'phases': body['phases'],
       }),
     };
   }

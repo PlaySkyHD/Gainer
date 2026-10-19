@@ -1,4 +1,5 @@
 import 'cardio_session.dart';
+import 'cardio_template.dart';
 
 /// Ein Messwert des Pulsgurts (Domänentyp, unabhängig von der Plattform).
 class CardioSample {
@@ -29,6 +30,8 @@ class CardioDraft {
     required this.warmupSeconds,
     this.sensorId,
     this.sensorName,
+    this.templateName,
+    List<CardioPhase> phases = const [],
     this.sampleIntervalSeconds = CardioSession.defaultSampleIntervalSeconds,
     List<int> buckets = const [],
     List<int> rrIntervalsMs = const [],
@@ -36,7 +39,8 @@ class CardioDraft {
     this.openSum = 0,
     this.openCount = 0,
   }) : buckets = List.unmodifiable(buckets),
-       rrIntervalsMs = List.unmodifiable(rrIntervalsMs);
+       rrIntervalsMs = List.unmodifiable(rrIntervalsMs),
+       phases = List.unmodifiable(phases);
 
   factory CardioDraft.fromJson(Map<String, dynamic> json) => CardioDraft(
     sessionId: json['sessionId'] as String,
@@ -48,6 +52,11 @@ class CardioDraft {
     warmupSeconds: (json['warmupSeconds'] as num).toInt(),
     sensorId: json['sensorId'] as String?,
     sensorName: json['sensorName'] as String?,
+    templateName: json['templateName'] as String?,
+    phases: [
+      for (final phase in (json['phases'] as List?) ?? const [])
+        CardioPhase.fromJson(phase as Map<String, dynamic>),
+    ],
     sampleIntervalSeconds: (json['sampleIntervalSeconds'] as num).toInt(),
     buckets: [for (final v in json['buckets'] as List) (v as num).toInt()],
     rrIntervalsMs: [
@@ -65,6 +74,10 @@ class CardioDraft {
   final int warmupSeconds;
   final String? sensorId;
   final String? sensorName;
+
+  /// Vorlage der Einheit und deren aufgelöste Phasen (leer: freie Einheit).
+  final String? templateName;
+  final List<CardioPhase> phases;
   final int sampleIntervalSeconds;
 
   /// Abgeschlossene Intervalle ab Start (0 = kein Signal).
@@ -95,6 +108,8 @@ class CardioDraft {
     warmupSeconds: warmupSeconds,
     sensorId: sensorId == null ? this.sensorId : sensorId(),
     sensorName: sensorName == null ? this.sensorName : sensorName(),
+    templateName: templateName,
+    phases: phases,
     sampleIntervalSeconds: sampleIntervalSeconds,
     buckets: buckets ?? this.buckets,
     rrIntervalsMs: rrIntervalsMs ?? this.rrIntervalsMs,
@@ -111,6 +126,8 @@ class CardioDraft {
     'warmupSeconds': warmupSeconds,
     'sensorId': sensorId,
     'sensorName': sensorName,
+    'templateName': templateName,
+    if (phases.isNotEmpty) 'phases': [for (final p in phases) p.toJson()],
     'sampleIntervalSeconds': sampleIntervalSeconds,
     'buckets': buckets,
     'rrIntervalsMs': rrIntervalsMs,

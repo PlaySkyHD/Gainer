@@ -191,17 +191,21 @@ private struct GainerCardioLiveActivity: Widget {
             .frame(width: 64, alignment: .trailing)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          HStack(spacing: 8) {
-            if let label = GainerCardioStyle.label(for: context.state.zoneState) {
-              Text(label)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(GainerCardioStyle.color(for: context.state.zoneState))
-            }
-            Spacer(minLength: 0)
-            if let target = GainerCardioStyle.targetText(context.state) {
-              Text(target)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+          VStack(spacing: 4) {
+            GainerCardioPhaseRow(state: context.state)
+              .font(.subheadline)
+            HStack(spacing: 8) {
+              if let label = GainerCardioStyle.label(for: context.state.zoneState) {
+                Text(label)
+                  .font(.subheadline.weight(.semibold))
+                  .foregroundStyle(GainerCardioStyle.color(for: context.state.zoneState))
+              }
+              Spacer(minLength: 0)
+              if let target = GainerCardioStyle.targetText(context.state) {
+                Text(target)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
             }
           }
         }
@@ -244,6 +248,9 @@ private struct GainerCardioActivityView: View {
           .foregroundStyle(Color("GainerSecondaryText"))
           .frame(width: 72, alignment: .trailing)
       }
+      GainerCardioPhaseRow(state: state)
+        .font(.subheadline)
+        .foregroundStyle(Color("GainerPrimaryText"))
       HStack(alignment: .center, spacing: 12) {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
           Image(systemName: "heart.fill")
@@ -288,6 +295,30 @@ private struct GainerCardioActivityView: View {
   }
 }
 
+/// „Phase 3/9 · Belastung“ mit Countdown bis zum Phasenende; leer ohne laufende Phase.
+private struct GainerCardioPhaseRow: View {
+  let state: GainerCardioActivityAttributes.ContentState
+
+  var body: some View {
+    if let name = state.phaseName {
+      HStack(spacing: 8) {
+        Text(GainerCardioStyle.phaseText(name: name, index: state.phaseIndex, count: state.phaseCount))
+          .fontWeight(.semibold)
+          .lineLimit(1)
+        Spacer(minLength: 0)
+        if let endsAt = state.phaseEndsAt {
+          // Das System zählt herunter; die Obergrenze verhindert eine ungültige Spanne.
+          Text(timerInterval: Date.now...max(Date.now, endsAt), countsDown: true)
+            .monospacedDigit()
+            .multilineTextAlignment(.trailing)
+            .frame(width: 64, alignment: .trailing)
+            .accessibilityLabel("Verbleibende Phasenzeit")
+        }
+      }
+    }
+  }
+}
+
 /// Vergangene Zeit; das System zählt selbst, die App läuft dafür nicht.
 private struct GainerCardioElapsed: View {
   let startedAt: Date
@@ -320,6 +351,11 @@ private enum GainerCardioStyle {
     case "noSignal": .gray
     default: Color("GainerAccent")
     }
+  }
+
+  static func phaseText(name: String, index: Int?, count: Int?) -> String {
+    guard let index, let count else { return name }
+    return "Phase \(index)/\(count) · \(name)"
   }
 
   static func bpmText(_ state: GainerCardioActivityAttributes.ContentState) -> String {

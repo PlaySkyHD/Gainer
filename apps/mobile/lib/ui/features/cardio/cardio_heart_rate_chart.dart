@@ -3,16 +3,19 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 
 import '../../../domain/models/cardio/cardio_session.dart';
+import '../../../domain/models/cardio/cardio_template.dart';
 import '../../core/theme.dart';
 import '../training/training_format.dart';
 
-/// Pulskurve einer Einheit mit Zielbereich als Band. Werte ohne Signal (0)
+/// Pulskurve einer Einheit mit Zielbereich als Band, bei einer Vorlage als
+/// Stufen je Phase ([phases] ersetzt dann [zone]). Werte ohne Signal (0)
 /// unterbrechen die Linie.
 class CardioHeartRateChart extends StatelessWidget {
   const CardioHeartRateChart({
     required this.heartRateBpm,
     required this.sampleIntervalSeconds,
     required this.zone,
+    this.phases = const [],
     this.height = 180,
     super.key,
   });
@@ -20,6 +23,7 @@ class CardioHeartRateChart extends StatelessWidget {
   final List<int> heartRateBpm;
   final int sampleIntervalSeconds;
   final CardioTargetZone? zone;
+  final List<CardioPhase> phases;
   final double height;
 
   @override
@@ -42,6 +46,8 @@ class CardioHeartRateChart extends StatelessWidget {
               painter: CardioChartPainter(
                 heartRateBpm: heartRateBpm,
                 zone: zone,
+                phases: phases,
+                sampleIntervalSeconds: sampleIntervalSeconds,
                 lineColor: colors.accent,
                 gridColor: colors.separator,
                 labelColor: colors.secondaryText,
@@ -69,13 +75,15 @@ class CardioHeartRateChart extends StatelessWidget {
 /// Wertebereich der y-Achse in vollen 10 bpm, inklusive Zielbereich.
 ({int low, int high}) cardioChartRange(
   List<int> heartRateBpm,
-  CardioTargetZone? zone,
-) {
+  CardioTargetZone? zone, [
+  List<CardioPhase> phases = const [],
+]) {
   final values = [
     for (final bpm in heartRateBpm)
       if (bpm > 0) bpm,
     ?zone?.lowBpm,
     ?zone?.highBpm,
+    for (final phase in phases) ...[?phase.lowBpm, ?phase.highBpm],
   ];
   if (values.isEmpty) return (low: 60, high: 180);
   var low = (values.reduce(math.min) - 5) ~/ 10 * 10;
@@ -89,6 +97,8 @@ class CardioChartPainter extends CustomPainter {
   const CardioChartPainter({
     required this.heartRateBpm,
     required this.zone,
+    this.phases = const [],
+    this.sampleIntervalSeconds = 5,
     required this.lineColor,
     required this.gridColor,
     required this.labelColor,
@@ -100,6 +110,8 @@ class CardioChartPainter extends CustomPainter {
 
   final List<int> heartRateBpm;
   final CardioTargetZone? zone;
+  final List<CardioPhase> phases;
+  final int sampleIntervalSeconds;
   final Color lineColor;
   final Color gridColor;
   final Color labelColor;
@@ -110,12 +122,37 @@ class CardioChartPainter extends CustomPainter {
     if (size.isEmpty) return;
     const top = 6.0;
     final plot = Rect.fromLTRB(axisWidth, top, size.width, size.height - top);
-    final range = cardioChartRange(heartRateBpm, zone);
+    final range = cardioChartRange(heartRateBpm, zone, phases);
     double yOf(num bpm) =>
         plot.bottom -
         plot.height * (bpm - range.low) / (range.high - range.low);
 
-    final band = zone;
+    final bandPaint = Paint()..color = lineColor.withValues(alpha: .16);
+    if (phases.isNotEmpty) {
+      // Stufen: je Phase ein Band über deren Zeitraum, am Ende der Kurve
+      // abgeschnitten.
+      final totalSeconds = math.max(
+        1,
+        (heartRateBpm.length - 1) * sampleIntervalSeconds,
+      );
+      for (final phase in phases) {
+        final phaseZone = phase.zone;
+        if (phaseZone == null || phase.startOffsetSeconds >= totalSeconds) {
+          continue;
+        }
+        final end = math.min(phase.endOffsetSeconds, totalSeconds);
+        canvas.drawRect(
+          Rect.fromLTRB(
+            plot.left + plot.width * phase.startOffsetSeconds / totalSeconds,
+            yOf(phaseZone.highBpm),
+            plot.left + plot.width * end / totalSeconds,
+            yOf(phaseZone.lowBpm),
+          ),
+          bandPaint,
+        );
+      }
+    }
+    final band = phases.isEmpty ? zone : null;
     if (band != null) {
       canvas.drawRect(
         Rect.fromLTRB(
@@ -124,7 +161,7 @@ class CardioChartPainter extends CustomPainter {
           plot.right,
           yOf(band.lowBpm),
         ),
-        Paint()..color = lineColor.withValues(alpha: .16),
+        bandPaint,
       );
     }
 
@@ -197,6 +234,7 @@ class CardioChartPainter extends CustomPainter {
   bool shouldRepaint(covariant CardioChartPainter old) =>
       old.heartRateBpm != heartRateBpm ||
       old.zone != zone ||
+      old.phases != phases ||
       old.lineColor != lineColor ||
       old.gridColor != gridColor ||
       old.labelColor != labelColor;
