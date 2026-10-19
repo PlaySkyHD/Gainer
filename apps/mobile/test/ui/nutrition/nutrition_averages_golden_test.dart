@@ -13,7 +13,7 @@ void main() {
     (name: 'light_scale2', brightness: Brightness.light, scale: 2.0, days: 7),
   ]) {
     testWidgets('nutrition averages ${variant.name}', (tester) async {
-      tester.view.physicalSize = Size(390, variant.scale > 1 ? 2400 : 1000);
+      tester.view.physicalSize = Size(390, variant.scale > 1 ? 1500 : 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -33,14 +33,10 @@ void main() {
           home: CupertinoPageScaffold(
             child: Align(
               alignment: Alignment.bottomCenter,
-              child: SizedBox(
-                height: variant.scale > 1 ? 2300 : 900,
-                child: GainerSheetFrame(
-                  heightFactor: 1,
-                  child: NutritionAveragesSheet(
-                    overview: overview,
-                    initialDays: variant.days,
-                  ),
+              child: GainerSheetFrame(
+                child: NutritionAveragesSheet(
+                  overview: overview,
+                  initialDays: variant.days,
                 ),
               ),
             ),

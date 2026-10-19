@@ -168,7 +168,6 @@ Future<void> showNutritionAverages(
   NutritionAveragesOverview overview,
 ) => showGainerSheet<void>(
   context: context,
-  heightFactor: 0.9,
   builder: (_) => NutritionAveragesSheet(overview: overview),
 );
 
@@ -194,11 +193,13 @@ class _NutritionAveragesSheetState extends State<NutritionAveragesSheet> {
   Widget build(BuildContext context) {
     final averages = _days == 7 ? widget.overview.week : widget.overview.month;
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const GainerSheetHeader(title: 'Durchschnitt'),
-        Expanded(
+        Flexible(
           child: ListView(
+            shrinkWrap: true,
             padding: const EdgeInsets.fromLTRB(
               GainerSpacing.m,
               GainerSpacing.m,
@@ -220,16 +221,16 @@ class _NutritionAveragesSheetState extends State<NutritionAveragesSheet> {
                 GainerGroupedSection(
                   header: 'Ø pro erfasstem Tag',
                   children: [
-                    GainerListRow(
-                      title: 'Protein',
+                    _MacroRow(
+                      label: 'Protein',
                       value: _grams(averages.averageProteinGrams),
                     ),
-                    GainerListRow(
-                      title: 'Kohlenhydrate',
+                    _MacroRow(
+                      label: 'Kohlenhydrate',
                       value: _grams(averages.averageCarbohydrateGrams),
                     ),
-                    GainerListRow(
-                      title: 'Fett',
+                    _MacroRow(
+                      label: 'Fett',
                       value: _grams(averages.averageFatGrams),
                     ),
                   ],
@@ -241,6 +242,51 @@ class _NutritionAveragesSheetState extends State<NutritionAveragesSheet> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Beschriftung links, Wert rechts. Bei großer Schrift steht der Wert unter
+/// der Beschriftung, damit kein Wort mitten im Wort umbricht.
+class _MacroRow extends StatelessWidget {
+  const _MacroRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final stacked = MediaQuery.textScalerOf(context).scale(1) >= 1.5;
+    final labelText = Text(
+      label,
+      style: GainerTypography.body.copyWith(color: colors.primaryText),
+    );
+    final valueText = Text(
+      value,
+      style: GainerTypography.value.copyWith(color: colors.secondaryText),
+    );
+    return Semantics(
+      label: '$label, $value',
+      excludeSemantics: true,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 44),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: GainerSpacing.m,
+            vertical: 11,
+          ),
+          child: stacked
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [labelText, valueText],
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [labelText, valueText],
+                ),
+        ),
+      ),
     );
   }
 }
