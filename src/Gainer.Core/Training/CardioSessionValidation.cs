@@ -16,6 +16,12 @@ public static class CardioSessionValidation
     private const int MaximumRrMs = 3_000;
     private const int MaximumSensorNameLength = 100;
     private const int MaximumNotesLength = 2_000;
+    private const int MaximumTemplateNameLength = 100;
+    private const int MaximumPhases = 30;
+    private const int MinimumPhaseSeconds = 30;
+    private const int MaximumPhaseSeconds = 3_600;
+    private const int MaximumPlannedSeconds = 4 * 3_600;
+    private const int MaximumPhaseNameLength = 60;
     private const decimal MaximumDistanceKm = 1_000m;
     private const decimal MaximumPowerWatts = 3_000m;
     private const decimal MaximumEnergyKcal = 20_000m;
@@ -92,6 +98,27 @@ public static class CardioSessionValidation
             errors[nameof(CardioSessionValues.Notes)] = $"Notes cannot exceed {MaximumNotesLength} characters.";
         }
 
+        if ((session.RecoveryStartBpm is null) != (session.RecoveryEndBpm is null))
+        {
+            errors[nameof(CardioSessionValues.RecoveryStartBpm)] = "Recovery start and end must be set together.";
+        }
+        else if (session.RecoveryStartBpm is { } recoveryStart && session.RecoveryEndBpm is { } recoveryEnd &&
+                 (recoveryStart is < MinimumHeartRateBpm or > MaximumHeartRateBpm ||
+                  recoveryEnd is < MinimumHeartRateBpm or > MaximumHeartRateBpm))
+        {
+            errors[nameof(CardioSessionValues.RecoveryStartBpm)] =
+                $"Recovery heart rates must be between {MinimumHeartRateBpm} and {MaximumHeartRateBpm}.";
+        }
+
+        string? templateName = WorkoutValidation.NormalizeText(session.TemplateName);
+        if (templateName?.Length > MaximumTemplateNameLength)
+        {
+            errors[nameof(CardioSessionValues.TemplateName)] =
+                $"The template name cannot exceed {MaximumTemplateNameLength} characters.";
+        }
+
+        IReadOnlyList<CardioPhaseValues>? phases = NormalizePhases(session.Phases, errors);
+
         if (errors.Count > 0)
         {
             throw new CardioSessionValidationException(errors);
@@ -109,7 +136,70 @@ public static class CardioSessionValidation
             session.DistanceKm,
             session.AveragePowerWatts,
             session.EnergyKcal,
-            notes);
+            notes,
+            session.RecoveryStartBpm,
+            session.RecoveryEndBpm,
+            templateName,
+            phases);
+    }
+
+    private static IReadOnlyList<CardioPhaseValues>? NormalizePhases(
+        IReadOnlyList<CardioPhaseValues>? phases,
+        Dictionary<string, string> errors)
+    {
+        if (phases is null || phases.Count == 0)
+        {
+            return null;
+        }
+        const string key = nameof(CardioSessionValues.Phases);
+        if (phases.Count > MaximumPhases)
+        {
+            errors[key] = $"At most {MaximumPhases} phases are allowed.";
+            return null;
+        }
+
+        var result = new List<CardioPhaseValues>(phases.Count);
+        long previousEnd = 0;
+        foreach (CardioPhaseValues phase in phases)
+        {
+            if (phase is null)
+            {
+                errors[key] = "A phase cannot be empty.";
+                return null;
+            }
+            string name = (phase.Name ?? string.Empty).Trim();
+            if (name.Length is < 1 or > MaximumPhaseNameLength)
+            {
+                errors[key] = $"A phase name must be between 1 and {MaximumPhaseNameLength} characters.";
+                return null;
+            }
+            if (phase.DurationSeconds is < MinimumPhaseSeconds or > MaximumPhaseSeconds)
+            {
+                errors[key] = $"A phase must last between {MinimumPhaseSeconds} and {MaximumPhaseSeconds} seconds.";
+                return null;
+            }
+            if (phase.StartOffsetSeconds < previousEnd)
+            {
+                errors[key] = "Phases must be in order, start at 0 or later and must not overlap.";
+                return null;
+            }
+            if ((phase.LowBpm is null) != (phase.HighBpm is null) ||
+                (phase.LowBpm is { } low && phase.HighBpm is { } high &&
+                 (low < MinimumZoneBpm || high > MaximumZoneBpm || low >= high)))
+            {
+                errors[key] = $"A phase zone must be set together and satisfy {MinimumZoneBpm} <= low < high <= {MaximumZoneBpm}.";
+                return null;
+            }
+            long end = (long)phase.StartOffsetSeconds + phase.DurationSeconds;
+            if (end > MaximumPlannedSeconds)
+            {
+                errors[key] = "The phases cannot exceed 4 hours in total.";
+                return null;
+            }
+            previousEnd = end;
+            result.Add(phase with { Name = name });
+        }
+        return result;
     }
 
     private static void ValidateRange(decimal? value, decimal maximum, string key, Dictionary<string, string> errors)

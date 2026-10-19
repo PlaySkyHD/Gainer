@@ -1,7 +1,7 @@
 # Tasks
 
 ## 1. Backend
-- [ ] 1.1 `Phases` (jsonb) und `TemplateName` an `CardioSession`; Migration, Validierung, Tests.
+- [x] 1.1 `Phases` (jsonb) und `TemplateName` an `CardioSession`; Migration, Validierung, Tests.
 
 ## 2. iOS
 - [ ] 2.1 Pigeon-Erweiterung (Phasen, Sprache), Phasenlogik im `CardioZoneAlarm`/Monitor, Benachrichtigungen, Live Activity mit Phase; XCTests.

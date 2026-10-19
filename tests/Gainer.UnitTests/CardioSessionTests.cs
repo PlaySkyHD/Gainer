@@ -123,6 +123,77 @@ public sealed class CardioSessionTests
         Assert.AreEqual(ResourceKey.Create(ResourceKind.CardioSession, id), snapshot.Resource);
     }
 
+    [TestMethod]
+    public void RecoveryValuesMustComeTogetherAndBeInRange()
+    {
+        CardioSessionValidation.Normalize(Valid() with { RecoveryStartBpm = 25, RecoveryEndBpm = 250 });
+        AssertInvalid(Valid() with { RecoveryStartBpm = 150 }, nameof(CardioSessionValues.RecoveryStartBpm));
+        AssertInvalid(Valid() with { RecoveryEndBpm = 100 }, nameof(CardioSessionValues.RecoveryStartBpm));
+        AssertInvalid(Valid() with { RecoveryStartBpm = 24, RecoveryEndBpm = 100 }, nameof(CardioSessionValues.RecoveryStartBpm));
+        AssertInvalid(Valid() with { RecoveryStartBpm = 150, RecoveryEndBpm = 251 }, nameof(CardioSessionValues.RecoveryStartBpm));
+    }
+
+    [TestMethod]
+    public void TemplateNameIsTrimmedAndBounded()
+    {
+        Assert.AreEqual("Intervals", CardioSessionValidation.Normalize(Valid() with { TemplateName = "  Intervals " }).TemplateName);
+        Assert.IsNull(CardioSessionValidation.Normalize(Valid() with { TemplateName = "   " }).TemplateName);
+        CardioSessionValidation.Normalize(Valid() with { TemplateName = new string('a', 100) });
+        AssertInvalid(Valid() with { TemplateName = new string('a', 101) }, nameof(CardioSessionValues.TemplateName));
+    }
+
+    [TestMethod]
+    public void ValidPhasesAreKeptAndEmptyBecomesNull()
+    {
+        CardioSessionValues normalized = CardioSessionValidation.Normalize(Valid() with
+        {
+            Phases = [new(0, 60, " Warm-up ", 100, 120), new(60, 30, "Push", null, null), new(120, 3_600, "Easy", 40, 230)],
+        });
+        Assert.HasCount(3, normalized.Phases!);
+        Assert.AreEqual("Warm-up", normalized.Phases![0].Name);
+        Assert.IsNull(normalized.Phases[1].LowBpm);
+        Assert.IsNull(CardioSessionValidation.Normalize(Valid() with { Phases = [] }).Phases);
+        Assert.IsNull(CardioSessionValidation.Normalize(Valid()).Phases);
+    }
+
+    [TestMethod]
+    public void PhaseOrderOverlapAndDurationAreEnforced()
+    {
+        string key = nameof(CardioSessionValues.Phases);
+        AssertInvalid(Valid() with { Phases = [new(0, 60, "A", null, null), new(59, 60, "B", null, null)] }, key);
+        AssertInvalid(Valid() with { Phases = [new(100, 60, "A", null, null), new(0, 60, "B", null, null)] }, key);
+        AssertInvalid(Valid() with { Phases = [new(-1, 60, "A", null, null)] }, key);
+        AssertInvalid(Valid() with { Phases = [new(0, 29, "A", null, null)] }, key);
+        AssertInvalid(Valid() with { Phases = [new(0, 3_601, "A", null, null)] }, key);
+        CardioSessionValidation.Normalize(Valid() with { Phases = [new(0, 60, "A", null, null), new(60, 60, "B", null, null)] });
+    }
+
+    [TestMethod]
+    public void PhaseCountNameAndTotalAreBounded()
+    {
+        string key = nameof(CardioSessionValues.Phases);
+        CardioPhaseValues[] thirty = Enumerable.Range(0, 30).Select(i => new CardioPhaseValues(i * 60, 60, "P", null, null)).ToArray();
+        CardioSessionValidation.Normalize(Valid() with { Phases = thirty });
+        CardioPhaseValues[] thirtyOne = Enumerable.Range(0, 31).Select(i => new CardioPhaseValues(i * 60, 60, "P", null, null)).ToArray();
+        AssertInvalid(Valid() with { Phases = thirtyOne }, key);
+        AssertInvalid(Valid() with { Phases = [new(0, 60, "  ", null, null)] }, key);
+        AssertInvalid(Valid() with { Phases = [new(0, 60, new string('a', 61), null, null)] }, key);
+        CardioSessionValidation.Normalize(Valid() with { Phases = [new(0, 60, new string('a', 60), null, null)] });
+        CardioSessionValidation.Normalize(Valid() with { Phases = [new(14_400 - 3_600, 3_600, "Last", null, null)] });
+        AssertInvalid(Valid() with { Phases = [new(14_400 - 3_600 + 1, 3_600, "Last", null, null)] }, key);
+    }
+
+    [TestMethod]
+    public void PhaseZoneIsBothOrNoneAndOrdered()
+    {
+        string key = nameof(CardioSessionValues.Phases);
+        AssertInvalid(Valid() with { Phases = [new(0, 60, "A", 120, null)] }, key);
+        AssertInvalid(Valid() with { Phases = [new(0, 60, "A", null, 150)] }, key);
+        AssertInvalid(Valid() with { Phases = [new(0, 60, "A", 39, 150)] }, key);
+        AssertInvalid(Valid() with { Phases = [new(0, 60, "A", 120, 231)] }, key);
+        AssertInvalid(Valid() with { Phases = [new(0, 60, "A", 140, 140)] }, key);
+    }
+
     private static CardioSessionValues Valid() => new(
         Guid.NewGuid(),
         CardioActivityTypes.IndoorCycling,
