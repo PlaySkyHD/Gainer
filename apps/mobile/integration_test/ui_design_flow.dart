@@ -56,7 +56,7 @@ Future<void> runUiDesignCaptureFlow(
   expect(find.text('Ernährung'), findsOneWidget);
   expect(find.text('Gewicht'), findsOneWidget);
   expect(find.text('Training'), findsWidgets);
-  expect(find.text('Protein 148 g'), findsOneWidget);
+  expect(find.textContaining('kcal heute', findRichText: true), findsOneWidget);
 
   await _tapTab(tester, 'Check-in');
   expect(find.text('Verlauf'), findsOneWidget);

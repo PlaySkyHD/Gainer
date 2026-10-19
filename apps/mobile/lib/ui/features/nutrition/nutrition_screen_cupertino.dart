@@ -5,6 +5,7 @@ import '../../../domain/models/nutrition/nutrition.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'food_add_target.dart';
+import 'nutrition_averages_view.dart';
 import 'nutrition_view_model.dart';
 
 const _notRecognizedLabel = 'nicht erkannt';
@@ -203,6 +204,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       target: _targetFor(vm.localDate, snapshot.targetSchedule),
       onManage: _openPlanning,
     ),
+    NutritionAveragesEntry(repository: vm.repository, refreshKey: snapshot),
     if (vm.statusMessage != null)
       Semantics(liveRegion: true, child: _notice(context, vm.statusMessage!)),
     for (final meal in NutritionMeal.values)
@@ -2940,22 +2942,8 @@ String _grams(double value) =>
     value.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
 
 /// Anzeige-Format: deutsches Komma, Tausenderpunkt, keine Nullen am Ende.
-String _formatNumber(double value, {int decimals = 0}) {
-  final fixed = value.abs().toStringAsFixed(decimals);
-  final parts = fixed.split('.');
-  final digits = parts.first;
-  final grouped = StringBuffer();
-  for (var i = 0; i < digits.length; i++) {
-    if (i > 0 && (digits.length - i) % 3 == 0) grouped.write('.');
-    grouped.write(digits[i]);
-  }
-  final fraction = parts.length > 1
-      ? parts[1].replaceFirst(RegExp(r'0+$'), '')
-      : '';
-  final isZero = double.parse(fixed) == 0;
-  return '${value < 0 && !isZero ? '-' : ''}$grouped'
-      '${fraction.isEmpty ? '' : ',$fraction'}';
-}
+String _formatNumber(double value, {int decimals = 0}) =>
+    formatNutritionNumber(value, decimals: decimals);
 
 /// Kilokalorien als ganze Zahl, z. B. `1.240`.
 String _fmtKcal(double value) => _formatNumber(value);

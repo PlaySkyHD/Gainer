@@ -4,7 +4,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/repositories/insights/insights_repository.dart';
+import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
+import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/ui/core/shell/mobile_tab_scaffold.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
@@ -21,7 +23,10 @@ void main() {
     ) async {
       _useGoldenPhone(tester);
       final api = _DashboardApi((_) async => _insights(trendKgPerWeek: -0.4));
-      final model = ProgressViewModel(InsightsRepository(api));
+      final model = ProgressViewModel(
+        InsightsRepository(api),
+        nutrition: _FakeNutrition(kcal: 1280, protein: 42),
+      );
       addTearDown(model.dispose);
       addTearDown(api.close);
 
@@ -44,7 +49,10 @@ void main() {
   ) async {
     _useTallView(tester);
     final api = _DashboardApi((_) async => _insights(trendKgPerWeek: -0.4));
-    final model = ProgressViewModel(InsightsRepository(api));
+    final model = ProgressViewModel(
+      InsightsRepository(api),
+      nutrition: _FakeNutrition(kcal: 1280, protein: 42),
+    );
     addTearDown(model.dispose);
     addTearDown(api.close);
 
@@ -68,11 +76,12 @@ void main() {
 
     // Werte sind deutsch formatiert (Komma, Tausenderpunkt).
     expect(find.text('Ernährung'), findsOneWidget);
-    expect(_rich('2.350 kcal pro Tag'), findsOneWidget);
-    expect(find.text('Protein 145 g'), findsOneWidget);
+    expect(_rich('1.280 kcal heute'), findsOneWidget);
+    expect(find.text('Protein 42 g'), findsOneWidget);
 
     expect(find.text('Gewicht'), findsOneWidget);
     expect(_rich('81,5 kg'), findsOneWidget);
+    expect(find.text('vor 4 Tagen'), findsOneWidget);
     expect(find.text('−0,4 kg/Woche'), findsOneWidget);
     expect(find.text('Ziel 82,0 kg'), findsOneWidget);
     expect(
@@ -84,6 +93,144 @@ void main() {
     expect(_rich('4 Trainings in 7 Tagen'), findsOneWidget);
     expect(find.text('Volumen 4.200 kg · 30 Tage'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('empty diary day shows 0 kcal heute', (tester) async {
+    _useTallView(tester);
+    final api = _DashboardApi((_) async => _insights());
+    final model = ProgressViewModel(
+      InsightsRepository(api),
+      nutrition: _FakeNutrition(kcal: 0),
+    );
+    addTearDown(model.dispose);
+    addTearDown(api.close);
+
+    await _pumpScreen(tester, model);
+
+    expect(_rich('0 kcal heute'), findsOneWidget);
+    expect(find.textContaining('Noch nichts erfasst'), findsNothing);
+    expect(find.textContaining('Protein'), findsNothing);
+  });
+
+  testWidgets('returning to the tab refreshes today from local data', (
+    tester,
+  ) async {
+    _useTallView(tester);
+    final api = _DashboardApi((_) async => _insights());
+    final nutrition = _FakeNutrition(kcal: 100);
+    final model = ProgressViewModel(
+      InsightsRepository(api),
+      nutrition: nutrition,
+    );
+    final tabs = ValueNotifier<int>(0);
+    addTearDown(model.dispose);
+    addTearDown(api.close);
+    addTearDown(tabs.dispose);
+
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.light,
+        home: ProgressScreen(
+          viewModel: model,
+          today: _today,
+          visibility: tabs,
+          isVisible: () => tabs.value == 0,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(_rich('100 kcal heute'), findsOneWidget);
+
+    tabs.value = 1;
+    nutrition.kcal = 450;
+    await tester.pumpAndSettle();
+    expect(_rich('100 kcal heute'), findsOneWidget);
+
+    tabs.value = 0;
+    await tester.pumpAndSettle();
+    expect(_rich('450 kcal heute'), findsOneWidget);
+  });
+
+  testWidgets('cards do not overflow at text scale 2', (tester) async {
+    _useGoldenPhone(tester);
+    final api = _DashboardApi(
+      (_) async => _insights(
+        trendKgPerWeek: null,
+        weightSeries: const [
+          ApiWeightPoint(date: '2026-10-09', weightKg: 81.5),
+        ],
+      ),
+    );
+    final model = ProgressViewModel(
+      InsightsRepository(api),
+      nutrition: _FakeNutrition(kcal: 12800, protein: 420),
+    );
+    addTearDown(model.dispose);
+    addTearDown(api.close);
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.light,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: ProgressScreen(viewModel: model, today: _today),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('vor 9 Tagen'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  group('weight age label', () {
+    const cases = <(String, String, bool, bool)>[
+      ('2026-10-18', 'Heute', false, false),
+      ('2026-10-17', 'Gestern', false, false),
+      ('2026-10-16', 'vor 2 Tagen', true, false),
+      ('2026-10-12', 'vor 6 Tagen', true, false),
+      ('2026-10-11', 'vor 7 Tagen', false, true),
+      ('2026-09-18', 'vor 30 Tagen', false, true),
+    ];
+    for (final (date, label, warning, destructive) in cases) {
+      for (final brightness in [Brightness.light, Brightness.dark]) {
+        testWidgets('$date reads "$label" in ${brightness.name}', (
+          tester,
+        ) async {
+          _useTallView(tester);
+          final api = _DashboardApi(
+            (_) async => _insights(
+              weightSeries: [ApiWeightPoint(date: date, weightKg: 81.5)],
+            ),
+          );
+          final model = ProgressViewModel(InsightsRepository(api));
+          addTearDown(model.dispose);
+          addTearDown(api.close);
+          await tester.pumpWidget(
+            CupertinoApp(
+              theme: brightness == Brightness.dark
+                  ? GainerTheme.dark
+                  : GainerTheme.light,
+              home: ProgressScreen(viewModel: model, today: _today),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final finder = find.text(label).last;
+          expect(find.text(label), findsWidgets);
+          final colors = brightness == Brightness.dark
+              ? GainerColors.dark
+              : GainerColors.light;
+          final expected = warning
+              ? colors.warning
+              : destructive
+              ? colors.destructive
+              : colors.secondaryText;
+          expect(tester.widget<Text>(finder).style?.color, expected);
+          expect(_chartLabel('Letztes Gewicht: $label'), findsOneWidget);
+        });
+      }
+    }
   });
 
   testWidgets('a single training reads in singular and trend gets a plus', (
@@ -296,6 +443,7 @@ void main() {
       findsOneWidget,
     );
     expect(_rich('81,5 kg'), findsOneWidget);
+    expect(find.text('vor 4 Tagen'), findsOneWidget);
     expect(find.text('−0,5 kg/Woche'), findsOneWidget);
     expect(find.text('Erneut versuchen'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -325,6 +473,7 @@ void main() {
     _useTallView(tester);
     final api = _DashboardApi(
       (_) async => _insights(
+        trendKgPerWeek: null,
         weightSeries: const [
           ApiWeightPoint(date: '2026-10-14', weightKg: 81.5),
         ],
@@ -337,6 +486,7 @@ void main() {
     await _pumpScreen(tester, model);
 
     expect(_rich('81,5 kg'), findsOneWidget);
+    expect(find.text('vor 4 Tagen'), findsOneWidget);
     expect(_chartLabel('Gewichtsverlauf. 2026-10-14: 81.5 kg'), findsNothing);
   });
 
@@ -344,6 +494,7 @@ void main() {
     _useTallView(tester);
     final api = _DashboardApi(
       (_) async => _insights(
+        trendKgPerWeek: null,
         weightSeries: const [
           ApiWeightPoint(date: '2026-10-10', weightKg: 80),
           ApiWeightPoint(date: '2026-10-11', weightKg: 80),
@@ -516,6 +667,43 @@ ApiDashboardInsights _emptyInsights() => const ApiDashboardInsights(
   ),
   workoutsLast7Days: 0,
 );
+
+class _FakeNutrition implements NutritionRepository {
+  _FakeNutrition({required this.kcal, this.protein});
+
+  double kcal;
+  double? protein;
+
+  @override
+  Future<NutritionSnapshot> read(String localDate) async => NutritionSnapshot(
+    day: NutritionDay(
+      localDate: localDate,
+      entries: kcal == 0
+          ? const []
+          : [
+              NutritionEntry(
+                entryId: '00000000-0000-4000-8000-000000000001',
+                meal: NutritionMeal.breakfast,
+                position: 0,
+                productName: 'Test',
+                brand: null,
+                amountGrams: 100,
+                per100Grams: NutritionTotals(
+                  kilocalories: kcal,
+                  proteinGrams: protein,
+                ),
+                source: null,
+              ),
+            ],
+    ),
+    meals: const [],
+    targetSchedule: null,
+    recentFoods: const [],
+  );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 class _DashboardApi extends ApiClient {
   _DashboardApi(this.onLoad)
