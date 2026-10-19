@@ -61,29 +61,11 @@ class NutritionAverages {
     final byDate = {for (final day in days) day.localDate: day};
     final includesToday = byDate[today]?.entries.isNotEmpty ?? false;
     final end = includesToday ? today : shiftLocalDate(today, -1);
-    final window = <NutritionAverageDay>[];
-    for (var offset = windowDays - 1; offset >= 0; offset--) {
-      final date = shiftLocalDate(end, -offset);
-      final day = byDate[date];
-      final logged = day != null && day.entries.isNotEmpty;
-      window.add(
-        NutritionAverageDay(
-          localDate: date,
-          kilocalories: logged ? day.totals.kilocalories : null,
-          targetKilocalories: _targetOn(schedule, date)?.kilocalories,
-        ),
-      );
-    }
+    final window = _window(byDate, schedule, end, windowDays);
     final logged = [
       for (final item in window)
         if (item.isLogged) byDate[item.localDate]!,
     ];
-    double? mean(double? Function(NutritionTotals) select) {
-      final values = [for (final day in logged) ?select(day.totals)];
-      if (values.isEmpty) return null;
-      return values.reduce((a, b) => a + b) / values.length;
-    }
-
     final withTarget = [
       for (final item in window)
         if (item.isLogged && item.targetKilocalories != null) item,
@@ -92,21 +74,54 @@ class NutritionAverages {
       windowDays: windowDays,
       days: List.unmodifiable(window),
       loggedDays: logged.length,
-      averageKilocalories: mean((totals) => totals.kilocalories),
-      averageProteinGrams: mean((totals) => totals.proteinGrams),
-      averageCarbohydrateGrams: mean((totals) => totals.carbohydrateGrams),
-      averageFatGrams: mean((totals) => totals.fatGrams),
-      averageTargetKilocalories: withTarget.isEmpty
-          ? null
-          : withTarget
-                    .map((item) => item.targetKilocalories!)
-                    .reduce((a, b) => a + b) /
-                withTarget.length,
+      averageKilocalories: _mean(logged, (totals) => totals.kilocalories),
+      averageProteinGrams: _mean(logged, (totals) => totals.proteinGrams),
+      averageCarbohydrateGrams: _mean(
+        logged,
+        (totals) => totals.carbohydrateGrams,
+      ),
+      averageFatGrams: _mean(logged, (totals) => totals.fatGrams),
+      averageTargetKilocalories: _average([
+        for (final item in withTarget) item.targetKilocalories!,
+      ]),
       daysWithinTarget: withTarget.where((item) => item.isWithinTarget).length,
       daysWithTarget: withTarget.length,
       includesToday: includesToday,
     );
   }
+
+  /// Ein Eintrag je Kalendertag bis [end], älteste zuerst.
+  static List<NutritionAverageDay> _window(
+    Map<String, NutritionDay> byDate,
+    NutritionTargetSchedule? schedule,
+    String end,
+    int windowDays,
+  ) => [
+    for (var offset = windowDays - 1; offset >= 0; offset--)
+      _averageDay(byDate, schedule, shiftLocalDate(end, -offset)),
+  ];
+
+  static NutritionAverageDay _averageDay(
+    Map<String, NutritionDay> byDate,
+    NutritionTargetSchedule? schedule,
+    String date,
+  ) {
+    final day = byDate[date];
+    final logged = day != null && day.entries.isNotEmpty;
+    return NutritionAverageDay(
+      localDate: date,
+      kilocalories: logged ? day.totals.kilocalories : null,
+      targetKilocalories: _targetOn(schedule, date)?.kilocalories,
+    );
+  }
+
+  static double? _mean(
+    List<NutritionDay> logged,
+    double? Function(NutritionTotals) select,
+  ) => _average([for (final day in logged) ?select(day.totals)]);
+
+  static double? _average(List<double> values) =>
+      values.isEmpty ? null : values.reduce((a, b) => a + b) / values.length;
 
   final int windowDays;
 
