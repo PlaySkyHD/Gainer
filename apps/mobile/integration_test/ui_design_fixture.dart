@@ -115,7 +115,10 @@ Future<UiDesignFixture> createUiDesignFixture() async {
     repository: nutritionRepository,
     localDate: today,
   );
-  final progress = ProgressViewModel(InsightsRepository(api, store: store));
+  final progress = ProgressViewModel(
+    InsightsRepository(api, store: store),
+    nutrition: nutritionRepository,
+  );
   final sync = SyncRepository(
     store: store,
     api: api,

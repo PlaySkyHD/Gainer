@@ -68,6 +68,8 @@ class MobileShell extends StatelessWidget {
                 MobileArea.progress => ProgressScreen(
                   viewModel: account.progressViewModel,
                   onOpenArea: (area) => model.selectTab(area.index),
+                  visibility: model,
+                  isVisible: () => model.selectedIndex == area.index,
                 ),
                 MobileArea.more => _MoreScreen(
                   controller: controller,

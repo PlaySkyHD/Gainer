@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../core/view_models/mobile_shell_view_model.dart';
 import 'bodyweight_missing_hint.dart';
 import 'progress_view_model.dart';
+import 'weight_age.dart';
 
 const _weekdays = [
   'Montag',
@@ -40,6 +41,8 @@ class ProgressScreen extends StatefulWidget {
     required this.viewModel,
     this.onOpenArea,
     this.today,
+    this.visibility,
+    this.isVisible,
     super.key,
   });
 
@@ -51,21 +54,44 @@ class ProgressScreen extends StatefulWidget {
   /// Heutiges Datum für die Anzeige; Standard ist die aktuelle Systemzeit.
   final DateTime Function()? today;
 
+  /// Meldet Wechsel des aktiven Tabs; zusammen mit [isVisible] lädt die
+  /// Übersicht die lokalen Tageswerte neu, sobald der Tab wieder sichtbar ist.
+  final Listenable? visibility;
+  final bool Function()? isVisible;
+
   @override
   State<ProgressScreen> createState() => _ProgressScreenState();
 }
 
 class _ProgressScreenState extends State<ProgressScreen> {
+  bool _wasVisible = true;
+
+  void _onVisibility() {
+    final visible = widget.isVisible?.call() ?? true;
+    if (visible && !_wasVisible) widget.viewModel.refreshToday();
+    _wasVisible = visible;
+  }
+
+  @override
+  void dispose() {
+    widget.visibility?.removeListener(_onVisibility);
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    widget.visibility?.addListener(_onVisibility);
+    _wasVisible = widget.isVisible?.call() ?? true;
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => widget.viewModel.load(),
     );
   }
 
+  DateTime get _today => (widget.today ?? DateTime.now)();
+
   String get _todayLabel {
-    final date = (widget.today ?? DateTime.now)();
+    final date = _today;
     return '${_weekdays[date.weekday - 1]}, ${date.day}. ${_months[date.month - 1]}';
   }
 
@@ -103,10 +129,16 @@ class _ProgressScreenState extends State<ProgressScreen> {
               if (data != null) ...[
                 _NutritionCard(
                   data: data,
+                  todayKcal: model.todayCaloriesKcal,
+                  todayProtein: model.todayProteinGrams,
                   onTap: () => _open(MobileArea.nutrition),
                 ),
                 const SizedBox(height: GainerSpacing.m),
-                _WeightCard(data: data, onTap: () => _open(MobileArea.body)),
+                _WeightCard(
+                  data: data,
+                  today: _today,
+                  onTap: () => _open(MobileArea.body),
+                ),
                 const SizedBox(height: GainerSpacing.m),
                 _TrainingCard(
                   data: data,
@@ -256,23 +288,32 @@ class _SecondaryText extends StatelessWidget {
 }
 
 class _NutritionCard extends StatelessWidget {
-  const _NutritionCard({required this.data, required this.onTap});
+  const _NutritionCard({
+    required this.data,
+    required this.todayKcal,
+    required this.todayProtein,
+    required this.onTap,
+  });
 
   final ApiDashboardInsights data;
+
+  /// Lokale Werte von heute; `null`, wenn sie nicht gelesen werden konnten.
+  final double? todayKcal;
+  final double? todayProtein;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final calories = data.nutrition.caloriesKcal.value;
-    final protein = data.nutrition.proteinGrams.value;
+    final kcal = todayKcal;
+    final protein = todayProtein;
     return _OverviewCard(
       title: 'Ernährung',
       onTap: onTap,
       children: [
-        if (calories == null)
+        if (kcal == null)
           const _SecondaryText('Noch nichts erfasst')
         else ...[
-          _BigFigure(value: _formatNumber(calories), unit: 'kcal pro Tag'),
+          _BigFigure(value: _formatNumber(kcal), unit: 'kcal heute'),
           if (protein != null) ...[
             const SizedBox(height: GainerSpacing.xxs),
             _SecondaryText('Protein ${_formatNumber(protein)} g'),
@@ -284,9 +325,14 @@ class _NutritionCard extends StatelessWidget {
 }
 
 class _WeightCard extends StatelessWidget {
-  const _WeightCard({required this.data, required this.onTap});
+  const _WeightCard({
+    required this.data,
+    required this.today,
+    required this.onTap,
+  });
 
   final ApiDashboardInsights data;
+  final DateTime today;
   final VoidCallback onTap;
 
   @override
@@ -311,22 +357,23 @@ class _WeightCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              _BigFigure(
-                value: _formatNumber(latest.weightKg, digits: 1),
-                unit: 'kg',
+              Expanded(
+                child: _BigFigure(
+                  value: _formatNumber(latest.weightKg, digits: 1),
+                  unit: 'kg',
+                ),
               ),
               if (trend != null)
-                Expanded(
-                  child: Text(
-                    _formatTrend(trend),
-                    textAlign: TextAlign.end,
-                    style: GainerTypography.label.copyWith(
-                      color: colors.secondaryText,
-                    ),
+                Text(
+                  _formatTrend(trend),
+                  style: GainerTypography.label.copyWith(
+                    color: colors.secondaryText,
                   ),
                 ),
             ],
           ),
+          const SizedBox(height: GainerSpacing.xxs),
+          _WeightAgeLabel(age: WeightAge.fromDate(latest.date, today)),
           if (data.weightSeries.length > 1) ...[
             const SizedBox(height: GainerSpacing.s),
             _WeightChart(points: data.weightSeries),
@@ -342,6 +389,30 @@ class _WeightCard extends StatelessWidget {
           ],
         ],
       ],
+    );
+  }
+}
+
+class _WeightAgeLabel extends StatelessWidget {
+  const _WeightAgeLabel({required this.age});
+
+  final WeightAge age;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final color = switch (age.severity) {
+      WeightAgeSeverity.fresh => colors.secondaryText,
+      WeightAgeSeverity.aging => colors.warning,
+      WeightAgeSeverity.stale => colors.destructive,
+    };
+    return Semantics(
+      label: 'Letztes Gewicht: ${age.label}',
+      excludeSemantics: true,
+      child: Text(
+        age.label,
+        style: GainerTypography.body.copyWith(color: color),
+      ),
     );
   }
 }
