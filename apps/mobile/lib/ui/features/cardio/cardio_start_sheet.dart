@@ -5,8 +5,8 @@ import '../../../domain/models/cardio/cardio_session.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'cardio_feature.dart';
-import 'cardio_format.dart';
 import 'cardio_live_screen.dart';
+import 'cardio_sensor_section.dart';
 import 'cardio_session_controller.dart';
 import 'cardio_settings_screen.dart';
 import 'cardio_warmup_picker.dart';
@@ -57,7 +57,6 @@ class _CardioStartSheetState extends State<CardioStartSheet> {
   );
   int _warmupSeconds = 180;
   bool _touched = false;
-  bool _scanned = false;
   bool _starting = false;
   HeartRateSensor? _selected;
   String? _error;
@@ -88,24 +87,6 @@ class _CardioStartSheetState extends State<CardioStartSheet> {
     super.dispose();
   }
 
-  Future<void> _scan() async {
-    setState(() => _error = null);
-    await _session.scan();
-    if (mounted) setState(() => _scanned = true);
-  }
-
-  Future<void> _connect(HeartRateSensor sensor) async {
-    final ok = await _session.connect(sensor.id);
-    if (!mounted) return;
-    setState(() {
-      if (ok) {
-        _selected = sensor;
-      } else {
-        _error = 'Der Gurt konnte nicht verbunden werden.';
-      }
-    });
-  }
-
   Future<void> _start() async {
     final zone = _zone;
     if (zone == null || _starting) return;
@@ -134,6 +115,7 @@ class _CardioStartSheetState extends State<CardioStartSheet> {
     await openCardioSettings(
       context,
       preferences: widget.feature.repository.preferences,
+      feature: widget.feature,
     );
   }
 
@@ -159,7 +141,10 @@ class _CardioStartSheetState extends State<CardioStartSheet> {
                 builder: (context, _) => Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _sensorSection(context),
+                    CardioSensorSection(
+                      session: _session,
+                      onConnected: (sensor) => _selected = sensor,
+                    ),
                     const SizedBox(height: GainerSpacing.l),
                     CardioZoneFields(
                       key: _zoneKey,
@@ -217,88 +202,6 @@ class _CardioStartSheetState extends State<CardioStartSheet> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _sensorSection(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    final session = _session;
-    final problem = session.bluetoothProblem;
-    final name = session.sensorName;
-    final others = [
-      for (final sensor in session.sensors)
-        if (sensor.id != session.sensorId) sensor,
-    ];
-    return GainerGroupedSection(
-      header: 'Gurt',
-      footer: name == null ? 'Ohne Gurt wird kein Puls erfasst.' : null,
-      children: [
-        if (problem != null)
-          Padding(
-            padding: const EdgeInsets.all(GainerSpacing.m),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  bluetoothProblemText(problem),
-                  key: const ValueKey('cardio-bluetooth-problem'),
-                  style: GainerTypography.body.copyWith(
-                    color: colors.destructive,
-                  ),
-                ),
-                if (problem != BluetoothProblem.unsupported &&
-                    session.openSettings != null) ...[
-                  const SizedBox(height: GainerSpacing.s),
-                  GainerPillButton(
-                    key: const ValueKey('cardio-open-settings'),
-                    label: 'Einstellungen öffnen',
-                    variant: GainerPillVariant.tonal,
-                    onPressed: session.openSettings,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        if (name != null)
-          GainerListRow(
-            title: name,
-            subtitle: cardioSensorStatus(
-              session.connectionState,
-              batteryPercent: session.batteryPercent,
-            ),
-            leadingIcon: CupertinoIcons.heart_fill,
-          ),
-        if (problem == null) ...[
-          GainerListRow(
-            key: const ValueKey('cardio-scan'),
-            title: name == null ? 'Gurt suchen' : 'Anderen Gurt suchen',
-            leadingIcon: CupertinoIcons.search,
-            trailing: session.isScanning
-                ? const CupertinoActivityIndicator()
-                : null,
-            onTap: session.isScanning ? null : _scan,
-          ),
-          for (final sensor in others)
-            GainerListRow(
-              key: ValueKey('cardio-sensor-${sensor.id}'),
-              title: sensor.name,
-              subtitle: sensor.isConnected ? 'Verbunden' : null,
-              leadingIcon: CupertinoIcons.antenna_radiowaves_left_right,
-              onTap: () => _connect(sensor),
-            ),
-          if (_scanned && !session.isScanning && others.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(GainerSpacing.m),
-              child: Text(
-                'Kein Gurt gefunden. Lege den Gurt an und prüfe, ob er nicht '
-                'mit einem anderen Gerät verbunden ist.',
-                style: GainerTypography.label.copyWith(
-                  color: colors.secondaryText,
-                ),
-              ),
-            ),
-        ],
-      ],
     );
   }
 }

@@ -116,6 +116,78 @@ void main() {
     expect(await repository.readSession(b), isNull);
   });
 
+  test('saveRecovery writes both values as an update payload', () async {
+    final id = repository.newSessionId();
+    await repository.saveFinished(finished(id));
+    final updated = await repository.saveRecovery(
+      id,
+      startBpm: 152,
+      endBpm: 124,
+    );
+    expect(updated.recoveryDropBpm, -28);
+    final read = (await repository.readSession(id))!;
+    expect((read.recoveryStartBpm, read.recoveryEndBpm), (152, 124));
+    final outbox = await store.readOutbox(
+      aggregateType: cardioSessionAggregateType,
+    );
+    final last = outbox.last;
+    final payload = SyncPayloadCodec.serverPayload(
+      last,
+      last.body as Map<String, dynamic>,
+      1,
+    ) as Map<String, Object?>;
+    final session = payload['session'] as Map<String, Object?>;
+    expect(session['recoveryStartBpm'], 152);
+    expect(session['recoveryEndBpm'], 124);
+    // Erholungswerte bleiben bei späteren Änderungen erhalten.
+    await repository.updateDetails(id, distanceKm: 10);
+    expect((await repository.readSession(id))!.recoveryEndBpm, 124);
+    expect(
+      () => repository.saveRecovery(id, startBpm: 24, endBpm: 100),
+      throwsArgumentError,
+    );
+    expect(
+      () => repository.saveRecovery(id, startBpm: 100, endBpm: 251),
+      throwsArgumentError,
+    );
+  });
+
+  test('sessions without recovery send no recovery keys', () async {
+    final id = repository.newSessionId();
+    await repository.saveFinished(finished(id));
+    final outbox = await store.readOutbox(
+      aggregateType: cardioSessionAggregateType,
+    );
+    final payload = SyncPayloadCodec.serverPayload(
+      outbox.single,
+      outbox.single.body as Map<String, dynamic>,
+      0,
+    ) as Map<String, Object?>;
+    final session = payload['session'] as Map<String, Object?>;
+    expect(session.containsKey('recoveryStartBpm'), isFalse);
+    expect(session.containsKey('recoveryEndBpm'), isFalse);
+  });
+
+  test(
+    'weekly target and HRV duration are stored and clamped on read',
+    () async {
+      final prefs = repository.preferences;
+      expect((await prefs.read()).weeklyTargetMinutes, 150);
+      expect((await prefs.read()).hrvMinutes, 2);
+      await prefs.update(
+        (current) => current.copyWith(weeklyTargetMinutes: 240, hrvMinutes: 5),
+      );
+      final again = await prefs.read();
+      expect((again.weeklyTargetMinutes, again.hrvMinutes), (240, 5));
+      await store.writeSyncMetadata('cardioPreferences', {
+        'weeklyTargetMinutes': 10,
+        'hrvMinutes': 9,
+      });
+      final invalid = await prefs.read();
+      expect((invalid.weeklyTargetMinutes, invalid.hrvMinutes), (150, 2));
+    },
+  );
+
   test('updateDetails writes an update and validates ranges', () async {
     final id = repository.newSessionId();
     await repository.saveFinished(finished(id));

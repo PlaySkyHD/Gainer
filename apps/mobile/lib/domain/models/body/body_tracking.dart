@@ -72,6 +72,8 @@ class DailyCheckIn {
     required this.fatGrams,
     required this.steps,
     required this.sleepMinutes,
+    this.restingHeartRateBpm,
+    this.restingHrvMs,
     required this.createdAtUtc,
     required this.updatedAtUtc,
   });
@@ -84,6 +86,10 @@ class DailyCheckIn {
   final double? fatGrams;
   final int? steps;
   final int? sleepMinutes;
+
+  /// Ruhepuls (25–150 bpm) und HRV als RMSSD (1–300 ms) aus der HRV-Messung.
+  final int? restingHeartRateBpm;
+  final int? restingHrvMs;
   final String createdAtUtc;
   final String updatedAtUtc;
 
@@ -96,6 +102,8 @@ class DailyCheckIn {
     fatGrams: _nullableNumber(json, 'fatGrams'),
     steps: json['steps'] as int?,
     sleepMinutes: json['sleepMinutes'] as int?,
+    restingHeartRateBpm: (json['restingHeartRateBpm'] as num?)?.toInt(),
+    restingHrvMs: (json['restingHrvMs'] as num?)?.toInt(),
     createdAtUtc: _requiredString(json, 'createdAtUtc'),
     updatedAtUtc: _requiredString(json, 'updatedAtUtc'),
   );
@@ -109,9 +117,27 @@ class DailyCheckIn {
     'fatGrams': fatGrams,
     'steps': steps,
     'sleepMinutes': sleepMinutes,
+    'restingHeartRateBpm': ?restingHeartRateBpm,
+    'restingHrvMs': ?restingHrvMs,
     'createdAtUtc': createdAtUtc,
     'updatedAtUtc': updatedAtUtc,
   };
+}
+
+/// Ruhepuls und HRV eines Tages aus der HRV-Messung. [isPending]: Es gibt
+/// noch keinen Check-in für den Tag, der Wert wartet lokal darauf.
+class RestingEntry {
+  const RestingEntry({
+    required this.localDate,
+    required this.restingHeartRateBpm,
+    required this.restingHrvMs,
+    this.isPending = false,
+  });
+
+  final String localDate;
+  final int? restingHeartRateBpm;
+  final int? restingHrvMs;
+  final bool isPending;
 }
 
 String? validateBodyGoal({
@@ -149,6 +175,8 @@ void validateDailyCheckIn({
   required double? fatGrams,
   required int? steps,
   required int? sleepMinutes,
+  int? restingHeartRateBpm,
+  int? restingHrvMs,
 }) {
   final errors = <String, String>{};
   if (!_validDate(localDate)) errors['localDate'] = _invalidCalendarDayMessage;
@@ -170,6 +198,14 @@ void validateDailyCheckIn({
   }
   if (sleepMinutes != null && (sleepMinutes < 0 || sleepMinutes > 1440)) {
     errors['sleepMinutes'] = 'Schlaf muss zwischen 0 und 1440 Minuten liegen.';
+  }
+  if (restingHeartRateBpm != null &&
+      (restingHeartRateBpm < 25 || restingHeartRateBpm > 150)) {
+    errors['restingHeartRateBpm'] =
+        'Der Ruhepuls muss zwischen 25 und 150 bpm liegen.';
+  }
+  if (restingHrvMs != null && (restingHrvMs < 1 || restingHrvMs > 300)) {
+    errors['restingHrvMs'] = 'Die HRV muss zwischen 1 und 300 ms liegen.';
   }
   if (errors.isNotEmpty) {
     throw BodyTrackingValidationException(errors);
