@@ -46,8 +46,10 @@ String formatMonthTitle(DateTime local) =>
 String formatClockTime(DateTime local) =>
     '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
 
-/// Dauer in ganzen Minuten: „129 min“.
-String formatDurationMinutes(Duration duration) => '${duration.inMinutes} min';
+/// Dauer auf die nächste ganze Minute gerundet: „129 min“ (80 s → „1 min“,
+/// 100 s → „2 min“).
+String formatDurationMinutes(Duration duration) =>
+    '${(duration.inSeconds + 30) ~/ 60} min';
 
 /// Verstrichene Zeit als „mm:ss“, ab einer Stunde als „h:mm:ss“.
 String formatElapsed(Duration elapsed) {
