@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../data/repositories/cardio/cardio_preferences.dart';
 import '../../../domain/models/cardio/cardio_zones.dart';
 import '../../core/components/components.dart';
+import '../../core/navigation/single_instance_route.dart';
 import '../../core/theme.dart';
 import 'cardio_feature.dart';
 import 'cardio_hrv_measurement_screen.dart';
@@ -15,11 +16,13 @@ Future<void> openCardioSettings(
   required CardioPreferences preferences,
   CardioFeature? feature,
 }) {
-  return Navigator.of(context).push<void>(
-    CupertinoPageRoute<void>(
-      builder: (_) =>
-          CardioSettingsScreen(preferences: preferences, feature: feature),
-    ),
+  return pushSingleInstance<void>(
+    context,
+    key: 'cardio-settings',
+    rootNavigator: false,
+    fullscreenDialog: false,
+    builder: (_) =>
+        CardioSettingsScreen(preferences: preferences, feature: feature),
   );
 }
 

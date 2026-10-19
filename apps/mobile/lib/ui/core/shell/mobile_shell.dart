@@ -134,6 +134,11 @@ class _ActiveWorkoutOpenerState extends State<_ActiveWorkoutOpener> {
   }
 
   void _handleRequest() {
+    if (widget.model.takeRequestedCloseOverlays()) {
+      // Vollbilder (Training, Cardio) und Sheets liegen im Root-Navigator
+      // über den Tabs; ohne Schließen wechselte der Tab unsichtbar darunter.
+      Navigator.of(context, rootNavigator: true).popUntil((r) => r.isFirst);
+    }
     if (widget.model.takeRequestedCardio()) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;

@@ -6,6 +6,7 @@ import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/cardio/cardio_template.dart';
 import '../../../domain/models/cardio/cardio_zones.dart';
 import '../../core/components/components.dart';
+import '../../core/navigation/single_instance_route.dart';
 import '../../core/theme.dart';
 import 'cardio_format.dart';
 
@@ -13,10 +14,12 @@ Future<void> openCardioTemplates(
   BuildContext context, {
   required CardioPreferences preferences,
 }) {
-  return Navigator.of(context).push<void>(
-    CupertinoPageRoute<void>(
-      builder: (_) => CardioTemplatesScreen(preferences: preferences),
-    ),
+  return pushSingleInstance<void>(
+    context,
+    key: 'cardio-templates',
+    rootNavigator: false,
+    fullscreenDialog: false,
+    builder: (_) => CardioTemplatesScreen(preferences: preferences),
   );
 }
 
