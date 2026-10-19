@@ -5,6 +5,7 @@ import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_rules.dart';
 import '../../core/components/components.dart';
+import '../../core/navigation/single_instance_route.dart';
 import '../../core/theme.dart';
 import 'active_workout_controller.dart';
 import 'exercise_picker_sheet.dart';
@@ -29,14 +30,14 @@ Future<void> openWorkoutScreen(
   required ActiveWorkoutController activeWorkout,
   required String workoutId,
 }) {
-  return Navigator.of(context, rootNavigator: true).push<void>(
-    CupertinoPageRoute<void>(
-      fullscreenDialog: true,
-      builder: (_) => WorkoutScreen(
-        repository: repository,
-        activeWorkout: activeWorkout,
-        workoutId: workoutId,
-      ),
+  // Ist das Training schon offen, kommt es nach vorn statt doppelt.
+  return pushSingleInstance(
+    context,
+    key: 'workout:$workoutId',
+    builder: (_) => WorkoutScreen(
+      repository: repository,
+      activeWorkout: activeWorkout,
+      workoutId: workoutId,
     ),
   );
 }
