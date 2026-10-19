@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/domain/models/cardio/cardio_draft.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_session.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_detail_screen.dart';
@@ -79,7 +80,7 @@ void main() {
     expect(stateColor(tester), GainerStatusColors.success(Brightness.light));
     expect(find.text('Ziel'), findsOneWidget);
     expect(find.text('125–140 bpm'), findsOneWidget);
-    expect(find.text('01:30'), findsOneWidget);
+    expect(find.text('1:30 min'), findsOneWidget);
     expect(find.text('Polar H10'), findsOneWidget);
     expect(find.text('Verbunden · Akku 80\u00A0%'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -124,11 +125,11 @@ void main() {
   testWidgets('die Dauer läuft jede Sekunde weiter', (tester) async {
     await startRunning(tester, bpm: 130, after: const Duration(seconds: 10));
     await openLive(tester);
-    expect(find.text('00:10'), findsOneWidget);
+    expect(find.text('0:10 min'), findsOneWidget);
 
     harness.now = t0.add(const Duration(seconds: 12));
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('00:12'), findsOneWidget);
+    expect(find.text('0:12 min'), findsOneWidget);
   });
 
   testWidgets('Zielbereich ändern gilt sofort', (tester) async {
@@ -210,6 +211,107 @@ void main() {
     expect(harness.controller.isRunning, isFalse);
     expect(find.byType(CardioDetailScreen), findsOneWidget);
     expect(find.text('Kennzahlen'), findsOneWidget);
+  });
+
+  group('Erholung', () {
+    final end = t0.add(const Duration(minutes: 5));
+
+    /// Läuft 5 min mit Puls 152 und beendet die Einheit über die Oberfläche.
+    Future<void> finishWithSignal(WidgetTester tester) async {
+      await startRunning(tester, bpm: 152, after: const Duration(minutes: 5));
+      await tester.runAsync(() async {
+        harness.platform.samples.add(
+          CardioSample(
+            sequence: 1,
+            atUtc: end.subtract(const Duration(seconds: 3)),
+            bpm: 152,
+          ),
+        );
+        await harness.controller.poll();
+      });
+      await openLive(tester);
+      await tester.tap(find.byKey(const ValueKey('cardio-finish')));
+      await pumpUi(tester);
+      await tester.tap(inDialog('Beenden'));
+      await pumpUi(tester);
+    }
+
+    testWidgets('nach dem Beenden zählt die Erholung 60 s herunter', (
+      tester,
+    ) async {
+      await finishWithSignal(tester);
+
+      expect(harness.controller.isRecovering, isTrue);
+      expect(find.byType(CardioDetailScreen), findsNothing);
+      expect(find.text('Erholung'), findsOneWidget);
+      expect(find.text('1:00'), findsOneWidget);
+      expect(find.text('152 bpm'), findsOneWidget);
+      expect(find.text('Überspringen'), findsOneWidget);
+
+      harness.now = end.add(const Duration(seconds: 18));
+      harness.platform.latestBpm = 140;
+      harness.platform.latestAt = harness.now;
+      await tester.runAsync(harness.controller.poll);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('0:42'), findsOneWidget);
+      expect(find.text('140 bpm'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Überspringen öffnet die Einheit ohne Erholungswerte', (
+      tester,
+    ) async {
+      await finishWithSignal(tester);
+      await tester.tap(find.byKey(const ValueKey('cardio-recovery-skip')));
+      await pumpUi(tester);
+      await pumpUi(tester);
+
+      expect(harness.controller.isRecovering, isFalse);
+      expect(find.byType(CardioDetailScreen), findsOneWidget);
+      expect(find.text('Erholung'), findsNothing);
+      final saved = await tester.runAsync(harness.repository.readSessions);
+      expect(saved!.single.recoveryDropBpm, isNull);
+    });
+
+    testWidgets('nach 65 s öffnet sich die Einheit mit dem Pulsabfall', (
+      tester,
+    ) async {
+      await finishWithSignal(tester);
+      harness.platform.samples.add(
+        CardioSample(
+          sequence: 2,
+          atUtc: end.add(const Duration(seconds: 58)),
+          bpm: 124,
+        ),
+      );
+      harness.now = end.add(const Duration(seconds: 66));
+      await tester.runAsync(harness.controller.poll);
+      await tester.pump(const Duration(seconds: 1));
+      await pumpUi(tester);
+      await pumpUi(tester);
+
+      expect(find.byType(CardioDetailScreen), findsOneWidget);
+      expect(find.text('Erholung'), findsOneWidget);
+      expect(find.text('−28 bpm in 1 min'), findsOneWidget);
+    });
+
+    testWidgets('Textgröße 2 läuft nicht über', (tester) async {
+      await startRunning(tester, bpm: 152, after: const Duration(minutes: 5));
+      await tester.runAsync(() async {
+        harness.platform.samples.add(
+          CardioSample(
+            sequence: 1,
+            atUtc: end.subtract(const Duration(seconds: 3)),
+            bpm: 152,
+          ),
+        );
+        await harness.controller.poll();
+        await harness.controller.finish();
+      });
+      await openLive(tester, textScale: 2);
+      expect(find.text('Überspringen'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   testWidgets('laufende Karte zeigt Zeit und Puls', (tester) async {

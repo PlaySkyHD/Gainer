@@ -118,6 +118,10 @@ void main() {
     expect(session.targetZone, zone);
     expect(session.sensorName, 'Polar H10');
     expect(session.endedAtUtc, t0.add(const Duration(seconds: 23)));
+    // Mit Pulssignal läuft die Erholung weiter; erst „Überspringen“ stoppt.
+    expect(controller.isRecovering, isTrue);
+    expect(platform.stopped, isEmpty);
+    await controller.skipRecovery();
     expect(platform.stopped, [draft.sessionId]);
     expect(await repository.readDraft(), isNull);
     expect((await repository.readSessions()).single.sessionId, draft.sessionId);
@@ -216,5 +220,124 @@ void main() {
     final controller = newController();
     await controller.forget();
     expect(platform.disconnects, 1);
+  });
+
+  group('Erholung', () {
+    Future<CardioSession> runUntilFinished(
+      CardioSessionController controller,
+    ) async {
+      await controller.start();
+      platform.samples.addAll([
+        sample(1, 12, 150),
+        sample(2, 18, 154),
+        // Älter als 10 s vor dem Beenden: zählt nicht zum Startwert.
+        sample(3, 5, 90),
+      ]);
+      platform.latestBpm = 154;
+      platform.latestAt = t0.add(const Duration(seconds: 18));
+      now = t0.add(const Duration(seconds: 20));
+      return controller.finish();
+    }
+
+    test('misst 60 s weiter und speichert den Pulsabfall', () async {
+      final controller = newController();
+      final session = await runUntilFinished(controller);
+      expect(session.endedAtUtc, t0.add(const Duration(seconds: 20)));
+      expect(controller.isRecovering, isTrue);
+      expect(controller.isRunning, isFalse);
+      expect(controller.recovery!.startBpm, 152);
+      expect(controller.recoveryRemaining, const Duration(seconds: 60));
+      // Ohne Alarm, Zone und Live Activity weiter überwachen.
+      final config = platform.updated.single;
+      expect(config.sessionId, session.sessionId);
+      expect(config.alertsEnabled, isFalse);
+      expect(config.zoneLowBpm, isNull);
+      expect(config.liveActivityEnabled, isFalse);
+      expect(platform.stopped, isEmpty);
+
+      platform.samples.addAll([
+        sample(4, 40, 140),
+        sample(5, 75, 126),
+        sample(6, 80, 122),
+        sample(7, 84, 124),
+        // Nach dem Fenster 55–65 s.
+        sample(8, 95, 100),
+      ]);
+      now = t0.add(const Duration(seconds: 50));
+      await controller.poll();
+      expect(controller.isRecovering, isTrue);
+      expect(controller.recoveryRemaining, const Duration(seconds: 30));
+
+      now = t0.add(const Duration(seconds: 86));
+      await controller.poll();
+      expect(controller.isRecovering, isFalse);
+      expect(platform.stopped, [session.sessionId]);
+      final saved = (await repository.readSession(session.sessionId))!;
+      expect(saved.recoveryStartBpm, 152);
+      expect(saved.recoveryEndBpm, 124);
+      expect(saved.recoveryDropBpm, -28);
+      // Die Dauer der Einheit endet beim Beenden.
+      expect(saved.endedAtUtc, t0.add(const Duration(seconds: 20)));
+    });
+
+    test('Überspringen speichert keine Erholungswerte', () async {
+      final controller = newController();
+      final session = await runUntilFinished(controller);
+      await controller.skipRecovery();
+      expect(controller.isRecovering, isFalse);
+      expect(platform.stopped, [session.sessionId]);
+      final saved = (await repository.readSession(session.sessionId))!;
+      expect(saved.recoveryStartBpm, isNull);
+      expect(saved.recoveryEndBpm, isNull);
+    });
+
+    test(
+      'ohne Messwerte im Endfenster bleibt die Einheit ohne Erholung',
+      () async {
+        final controller = newController();
+        final session = await runUntilFinished(controller);
+        platform.samples.add(sample(4, 40, 140));
+        // App kam erst nach 120 s zurück; im Fenster 55–65 s gibt es nichts.
+        now = t0.add(const Duration(seconds: 140));
+        await controller.poll();
+        expect(controller.isRecovering, isFalse);
+        expect(platform.stopped, [session.sessionId]);
+        expect(
+          (await repository.readSession(session.sessionId))!.recoveryEndBpm,
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'nach Rückkehr in die App zählen gepufferte Werte im Fenster',
+      () async {
+        final controller = newController();
+        final session = await runUntilFinished(controller);
+        platform.samples.addAll([sample(4, 78, 130), sample(5, 82, 128)]);
+        now = t0.add(const Duration(seconds: 200));
+        await controller.poll();
+        final saved = (await repository.readSession(session.sessionId))!;
+        expect(saved.recoveryDropBpm, 129 - 152);
+      },
+    );
+
+    test('ohne Puls vor dem Beenden gibt es keine Erholung', () async {
+      final controller = newController();
+      final draft = await controller.start();
+      now = t0.add(const Duration(seconds: 20));
+      await controller.finish();
+      expect(controller.isRecovering, isFalse);
+      expect(platform.stopped, [draft.sessionId]);
+    });
+
+    test('eine neue Einheit beendet die Erholung zuerst', () async {
+      final controller = newController();
+      final first = await runUntilFinished(controller);
+      final second = await controller.start();
+      expect(controller.isRecovering, isFalse);
+      expect(platform.stopped, [first.sessionId]);
+      expect(controller.active!.sessionId, second.sessionId);
+    });
   });
 }
