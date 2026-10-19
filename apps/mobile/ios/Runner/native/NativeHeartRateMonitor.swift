@@ -81,7 +81,7 @@ final class NativeHeartRateMonitor {
   static let batteryService = CBUUID(string: "180F")
   static let batteryLevel = CBUUID(string: "2A19")
   nonisolated static let storedSensorKey = "com.gainer.mobile.cardio.sensorId"
-  nonisolated static let tickIntervalSeconds: TimeInterval = 5
+  nonisolated static let tickIntervalSeconds: TimeInterval = 1
   nonisolated static let defaultSensorName = "Pulsgurt"
 
   private struct ScanEntry {
@@ -93,6 +93,7 @@ final class NativeHeartRateMonitor {
   private struct ActiveMonitoring {
     var config: PlatformCardioMonitoringConfig
     var alarm: CardioZoneAlarm
+    var voiceSchedule: CardioVoiceSchedule
     var samples: [PlatformHeartRateSample] = []
     var sequence: Int64 = 0
   }
@@ -100,6 +101,7 @@ final class NativeHeartRateMonitor {
   private let defaults: UserDefaults
   private let alerts: NativeCardioAlerts
   private let liveActivity = NativeCardioLiveActivity()
+  private let voice = NativeCardioVoice()
   private let bridge = HeartRateCentralBridge()
 
   private var central: CBCentralManager?
@@ -231,8 +233,10 @@ final class NativeHeartRateMonitor {
     let now = Date()
     monitoring = ActiveMonitoring(
       config: config,
-      alarm: CardioZoneAlarm(config: Self.alarmConfig(from: config), now: now)
+      alarm: CardioZoneAlarm(config: Self.alarmConfig(from: config), now: now),
+      voiceSchedule: Self.voiceSchedule(from: config, now: now)
     )
+    if config.voiceEnabled != true { voice.stop() }
     startTimer()
     if central == nil {
       if targetSensorId != nil { ensureCentral() }
@@ -257,6 +261,10 @@ final class NativeHeartRateMonitor {
     guard let current = monitoring, current.config.sessionId == config.sessionId else { return }
     let now = Date()
     monitoring?.config = config
+    if current.config.voiceIntervalMinutes != config.voiceIntervalMinutes {
+      monitoring?.voiceSchedule = Self.voiceSchedule(from: config, now: now)
+    }
+    if config.voiceEnabled != true { voice.stop() }
     let events = monitoring?.alarm.update(config: Self.alarmConfig(from: config), now: now) ?? []
     handle(events)
 
@@ -282,6 +290,7 @@ final class NativeHeartRateMonitor {
     monitoring = nil
     tickTimer?.invalidate()
     tickTimer = nil
+    voice.stop()
     await liveActivity.end()
     await alerts.clearDelivered()
   }
@@ -511,19 +520,42 @@ final class NativeHeartRateMonitor {
     guard monitoring != nil else { return }
     let now = Date()
     evaluateAlarm(now: now)
+    announceInterval(now: now)
     pushLiveActivity(now: now)
   }
 
+  /// Sagt im gewählten Intervall Dauer und Puls an.
+  private func announceInterval(now: Date) {
+    guard monitoring?.config.voiceEnabled == true,
+      let minutes = monitoring?.voiceSchedule.due(now: now)
+    else { return }
+    // Ein veralteter Puls (Signalverlust) wird nicht vorgelesen.
+    var bpm = latestBpm
+    if let latestAtMilliseconds,
+      now.timeIntervalSince1970 * 1000 - Double(latestAtMilliseconds) > CardioZoneAlarm.signalTimeoutSeconds * 1000
+    {
+      bpm = nil
+    }
+    voice.speak(CardioVoiceText.intervalText(minutes: minutes, bpm: bpm))
+  }
+
   private func handle(_ events: [CardioZoneEvent]) {
-    guard let config = monitoring?.config else { return }
+    guard let config = monitoring?.config, !events.isEmpty else { return }
+    // Zonenmeldungen nennen die Zone, die gerade gilt (ggf. die der Phase).
+    let zone = monitoring?.alarm.activeZone
+    let speaks = config.voiceEnabled == true
     for event in events {
+      if speaks { voice.speak(CardioVoiceText.text(for: event)) }
       let alerts = alerts
+      let soundId = config.soundId
       Task {
+        // Mit Sprachansage bleibt die Meldung stumm, damit nichts doppelt klingt.
         await alerts.post(
           event: event,
-          zoneLowBpm: config.zoneLowBpm.map { Int($0) },
-          zoneHighBpm: config.zoneHighBpm.map { Int($0) },
-          soundId: config.soundId
+          zoneLowBpm: zone?.lowerBound,
+          zoneHighBpm: zone?.upperBound,
+          soundId: soundId,
+          silent: speaks
         )
       }
     }
@@ -546,12 +578,24 @@ final class NativeHeartRateMonitor {
     let zoneState = monitoring?.alarm.zoneState ?? .none
     // Ohne Signal zeigt die Activity keinen veralteten Puls.
     let bpm = zoneState == .noSignal ? nil : latestBpm
+    let zone = monitoring?.alarm.activeZone
+    let phase = monitoring?.alarm.currentPhase
+    let phaseIndex = monitoring?.alarm.currentPhaseIndex
+    let startedAt = monitoring.map {
+      Date(timeIntervalSince1970: Double($0.config.startedAtUtcEpochMilliseconds) / 1000)
+    }
     return GainerCardioActivityAttributes.ContentState(
       bpm: bpm,
-      zoneLowBpm: monitoring?.config.zoneLowBpm.map { Int($0) },
-      zoneHighBpm: monitoring?.config.zoneHighBpm.map { Int($0) },
+      zoneLowBpm: zone?.lowerBound,
+      zoneHighBpm: zone?.upperBound,
       zoneState: zoneState.rawValue,
-      updatedAt: now
+      updatedAt: now,
+      phaseName: phase?.name,
+      phaseIndex: phaseIndex.map { $0 + 1 },
+      phaseCount: phase == nil ? nil : monitoring?.config.phases?.count,
+      phaseEndsAt: phase.flatMap { phase in
+        startedAt?.addingTimeInterval(TimeInterval(phase.endOffsetSeconds))
+      }
     )
   }
 
@@ -571,7 +615,24 @@ final class NativeHeartRateMonitor {
       repeatSeconds: Int(clamping: config.repeatSeconds),
       warmupSeconds: Int(clamping: config.warmupSeconds),
       startedAt: Date(timeIntervalSince1970: Double(config.startedAtUtcEpochMilliseconds) / 1000),
-      alertsEnabled: config.alertsEnabled
+      alertsEnabled: config.alertsEnabled,
+      phases: (config.phases ?? []).map {
+        CardioPhase(
+          startOffsetSeconds: Int(clamping: $0.startOffsetSeconds),
+          durationSeconds: Int(clamping: $0.durationSeconds),
+          name: $0.name,
+          zoneLowBpm: $0.zoneLowBpm.map { Int(clamping: $0) },
+          zoneHighBpm: $0.zoneHighBpm.map { Int(clamping: $0) }
+        )
+      }
+    )
+  }
+
+  nonisolated static func voiceSchedule(from config: PlatformCardioMonitoringConfig, now: Date) -> CardioVoiceSchedule {
+    CardioVoiceSchedule(
+      intervalMinutes: config.voiceIntervalMinutes.map { Int(clamping: $0) },
+      startedAt: Date(timeIntervalSince1970: Double(config.startedAtUtcEpochMilliseconds) / 1000),
+      now: now
     )
   }
 

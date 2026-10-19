@@ -29,7 +29,22 @@ struct CardioAlertMessage: Equatable {
     case .signalLost:
       return CardioAlertMessage(
         kind: "signal", title: "Kein Pulssignal", body: "Prüfe den Sitz des Gurts.", playsSound: true)
+    case .phaseStarted(let index, let count, let name, let durationSeconds, let low, let high):
+      let title = "Phase \(index + 1)/\(count) · \(name) \(clockText(seconds: durationSeconds))"
+      var phaseTarget = ""
+      if let low, let high { phaseTarget = "Ziel \(low)–\(high)" }
+      return CardioAlertMessage(kind: "phase", title: title, body: phaseTarget, playsSound: true)
+    case .templateFinished:
+      return CardioAlertMessage(
+        kind: "phase", title: "Vorlage beendet", body: "Du kannst beenden oder weiterfahren.",
+        playsSound: true)
     }
+  }
+
+  /// Dauer als Minuten und Sekunden, z. B. 240 -> „4:00“.
+  static func clockText(seconds: Int) -> String {
+    let clamped = max(seconds, 0)
+    return String(format: "%d:%02d", clamped / 60, clamped % 60)
   }
 
   private static func bodyText(bpm: Int, target: String) -> String {
@@ -60,12 +75,16 @@ final class NativeCardioAlerts {
   }
 
   /// Zeigt die Meldung sofort. Fehlt die Berechtigung, bleibt der Aufruf wirkungslos.
-  func post(event: CardioZoneEvent, zoneLowBpm: Int?, zoneHighBpm: Int?, soundId: String) async {
+  ///
+  /// Bei `silent` bleibt die Meldung ohne Ton, etwa weil eine Sprachansage läuft.
+  func post(
+    event: CardioZoneEvent, zoneLowBpm: Int?, zoneHighBpm: Int?, soundId: String, silent: Bool = false
+  ) async {
     let message = CardioAlertMessage.make(for: event, zoneLowBpm: zoneLowBpm, zoneHighBpm: zoneHighBpm)
     let content = UNMutableNotificationContent()
     content.title = message.title
     content.body = message.body
-    if message.playsSound {
+    if message.playsSound && !silent {
       content.sound = sounds.notificationSound(forSoundId: soundId)
     }
     let identifier = Self.identifier(forKind: message.kind)
