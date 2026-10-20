@@ -47,6 +47,11 @@ internal static class ExerciseCatalogSnapshot
             {
                 throw new InvalidOperationException("Every exercise catalog entry needs known category keys.");
             }
+
+            if (entry.PrimaryMuscles.Count == 0 || MuscleKeys.Validate(entry.PrimaryMuscles, entry.SecondaryMuscles) is not null)
+            {
+                throw new InvalidOperationException("Every exercise catalog entry needs valid muscles with at least one primary muscle.");
+            }
         }
 
         return document;
@@ -77,5 +82,7 @@ internal sealed record ExerciseCatalogEntry(
     string Equipment,
     string ExerciseType,
     IReadOnlyList<string> CategoryKeys,
+    IReadOnlyList<string> PrimaryMuscles,
+    IReadOnlyList<string> SecondaryMuscles,
     decimal? BodyweightFactor,
     decimal? WeightFactor);
