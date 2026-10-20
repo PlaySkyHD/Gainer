@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/muscle_volume.dart';
 import '../../../domain/models/training/training_plan_model.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_validation.dart';
@@ -9,6 +10,7 @@ import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'active_workout_controller.dart';
 import 'exercise_picker_sheet.dart';
+import 'muscle_map_widgets.dart';
 import 'plan_entry_editor_sheet.dart';
 import 'plan_start.dart';
 import 'training_plans_view_model.dart';
@@ -339,6 +341,40 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
         const SizedBox(height: GainerSpacing.m),
         _buildNotice('Gespeichert.'),
       ],
+      if (_entries.isNotEmpty) ..._buildMuscles(),
+    ];
+  }
+
+  /// Körperkarte des aktuellen, auch ungespeicherten Stands.
+  List<Widget> _buildMuscles() {
+    final colors = GainerDesign.colorsOf(context);
+    final volume = MuscleVolume.fromPlans([_draft()], _exercises);
+    final missing = volume.exercisesWithoutMuscles;
+    return [
+      const SizedBox(height: GainerSpacing.m),
+      const GainerSectionHeader(title: 'Muskeln'),
+      const SizedBox(height: GainerSpacing.xs),
+      MuscleVolumeCard(
+        key: const ValueKey('plan-muscle-map'),
+        volume: volume,
+        mapHeight: 260,
+        onMuscleTap: (muscle) =>
+            showMuscleDetailSheet(context, muscle: muscle, volume: volume),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+          GainerSpacing.m,
+          GainerSpacing.xs,
+          GainerSpacing.m,
+          0,
+        ),
+        child: Text(
+          missing.isEmpty
+              ? 'Arbeitssätze je Muskel. Hilfsmuskeln zählen einen halben Satz.'
+              : 'Ohne Muskeln: ${missing.join(', ')}. Ergänze sie im Übungseditor.',
+          style: GainerTypography.caption.copyWith(color: colors.secondaryText),
+        ),
+      ),
     ];
   }
 

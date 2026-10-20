@@ -219,6 +219,8 @@ void main() {
           'bodyweightFactor': null,
           'weightFactor': 2.5,
           'categoryIds': ['shoulders'],
+          'primaryMuscles': <String>[],
+          'secondaryMuscles': <String>[],
           'isBase': false,
           'isArchived': false,
         };

@@ -18,10 +18,8 @@ Future<TrainingPreferenceValues> _stored(
   TrainingPreferences preferences,
 ) async => (await tester.runAsync(preferences.read))!;
 
-Future<void> _show(WidgetTester tester, Finder finder) async {
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
-}
+Future<void> _show(WidgetTester tester, Finder finder) =>
+    scrollIntoView(tester, finder);
 
 Future<TrainingPreferences> _openSheet(WidgetTester tester) async {
   usePhoneSize(tester);

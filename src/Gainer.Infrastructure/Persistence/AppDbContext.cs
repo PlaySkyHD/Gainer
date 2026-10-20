@@ -241,6 +241,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             exercise.Property(item => item.Description).HasMaxLength(2_000);
             exercise.Property(item => item.TargetMuscle).HasMaxLength(100);
             exercise.Property(item => item.MuscleGroup).HasMaxLength(100);
+            exercise.Property(item => item.PrimaryMuscles).HasDefaultValueSql("'{}'::text[]");
+            exercise.Property(item => item.SecondaryMuscles).HasDefaultValueSql("'{}'::text[]");
             exercise.Property(item => item.Equipment).HasMaxLength(100);
             exercise.Property(item => item.ExerciseType)
                 .HasConversion(new ValueConverter<ExerciseType, string>(
@@ -270,6 +272,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 Name = item.Name,
                 TargetMuscle = item.TargetMuscle,
                 MuscleGroup = item.MuscleGroup,
+                PrimaryMuscles = [.. item.PrimaryMuscles],
+                SecondaryMuscles = [.. item.SecondaryMuscles],
                 Equipment = item.Equipment,
                 ExerciseType = ExerciseTypes.Parse(item.ExerciseType),
                 BodyweightFactor = item.BodyweightFactor,

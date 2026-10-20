@@ -55,6 +55,8 @@ class ApiExerciseCatalogItem {
     this.bodyweightFactor,
     this.weightFactor,
     this.categoryIds = const [],
+    this.primaryMuscles = const [],
+    this.secondaryMuscles = const [],
     this.catalogVersion,
   });
 
@@ -69,6 +71,8 @@ class ApiExerciseCatalogItem {
   final double? bodyweightFactor;
   final double? weightFactor;
   final List<String> categoryIds;
+  final List<String> primaryMuscles;
+  final List<String> secondaryMuscles;
   final bool isCustom;
   final String? catalogVersion;
   final int version;
@@ -88,6 +92,14 @@ class ApiExerciseCatalogItem {
         categoryIds: [
           for (final id in (json['categoryIds'] as List<Object?>? ?? const []))
             id! as String,
+        ],
+        primaryMuscles: [
+          for (final key in (json['primaryMuscles'] as List<Object?>? ?? []))
+            key! as String,
+        ],
+        secondaryMuscles: [
+          for (final key in (json['secondaryMuscles'] as List<Object?>? ?? []))
+            key! as String,
         ],
         isCustom: _requiredBool(json, 'isCustom'),
         catalogVersion: json['catalogVersion'] as String?,
