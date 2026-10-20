@@ -61,9 +61,11 @@ class ActiveWorkoutController extends ChangeNotifier {
       notifyListeners();
     } catch (error, stackTrace) {
       lastLoadError = error;
-      debugPrint(
-        'Aktives Training konnte nicht geladen werden: $error\n$stackTrace',
-      );
+      if (kDebugMode) {
+        debugPrint(
+          'Aktives Training konnte nicht geladen werden: $error\n$stackTrace',
+        );
+      }
     }
   }
 

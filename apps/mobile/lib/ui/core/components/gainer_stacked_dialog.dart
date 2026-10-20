@@ -39,12 +39,16 @@ class GainerStackedDialog<T> extends StatelessWidget {
     required this.title,
     required this.message,
     required this.actions,
+    this.content,
     super.key,
   });
 
   final String title;
   final String message;
   final List<GainerDialogAction<T>> actions;
+
+  /// Optional zwischen Text und Aktionen, etwa ein Eingabefeld.
+  final Widget? content;
 
   @override
   Widget build(BuildContext context) {
@@ -93,6 +97,10 @@ class GainerStackedDialog<T> extends StatelessWidget {
                 color: colors.secondaryText,
               ),
             ),
+            if (content case final content?) ...[
+              const SizedBox(height: GainerSpacing.m),
+              content,
+            ],
             const SizedBox(height: GainerSpacing.l),
             for (final (index, action) in actions.indexed) ...[
               if (index > 0) const SizedBox(height: GainerSpacing.xs),
