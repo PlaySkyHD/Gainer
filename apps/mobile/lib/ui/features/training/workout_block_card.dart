@@ -6,6 +6,7 @@ import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_rules.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import 'exercise_editor_screen.dart';
 import 'exercise_picker_sheet.dart';
 import 'exercise_statistics_screen.dart';
 import 'reorder_blocks_sheet.dart';
@@ -18,6 +19,7 @@ enum _BlockAction {
   replace,
   delete,
   note,
+  editExercise,
   connect,
   detach,
   history,
@@ -335,6 +337,14 @@ class WorkoutBlockCard extends StatelessWidget {
             icon: CupertinoIcons.doc_text,
             value: _BlockAction.note,
           ),
+          if (viewModel.hasExercise(block.sourceExerciseId))
+            GainerSheetAction(
+              label: viewModel.isBaseExercise(block.sourceExerciseId)
+                  ? 'Übung anzeigen'
+                  : 'Übung bearbeiten',
+              icon: CupertinoIcons.pencil,
+              value: _BlockAction.editExercise,
+            ),
           if (next != null && !connectedToNext)
             const GainerSheetAction(
               label: 'Mit nächster Übung verbinden',
@@ -398,6 +408,13 @@ class WorkoutBlockCard extends StatelessWidget {
         if (text != null) {
           await viewModel.setBlockNotes(blockId, text);
         }
+      case _BlockAction.editExercise:
+        final changed = await openExerciseEditorById(
+          context,
+          repository: viewModel.repository,
+          exerciseId: block.sourceExerciseId,
+        );
+        if (changed) await viewModel.refreshExercises();
       case _BlockAction.connect:
         await viewModel.connectWithNextBlock(blockId);
       case _BlockAction.detach:
