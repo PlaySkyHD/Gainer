@@ -4,8 +4,8 @@ using System.Text.Json;
 using Gainer.Api.Composition;
 using Gainer.Api.Security;
 using Gainer.Contracts.Security;
+using Gainer.Core.Access;
 using Gainer.Infrastructure.Persistence;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
@@ -23,6 +23,7 @@ public sealed class AuthenticationApiTests
     private const string TestOrigin = "https://auth.gainer.test";
     private const string Email = "athlete@example.test";
     private const string Password = "Correct-horse-42!";
+    private static readonly DateTimeOffset Start = new(2026, 8, 18, 12, 0, 0, TimeSpan.Zero);
     private static PostgreSqlTestFixture? fixture;
     private readonly List<string> keyRingPaths = [];
 
@@ -56,29 +57,25 @@ public sealed class AuthenticationApiTests
     }
 
     [TestMethod]
-    public async Task ValidLoginCreatesSessionAndLogoutInvalidatesIt()
+    public async Task LoginIssuesBearerTokensAndLogoutRevokesTheDeviceSession()
     {
         await using WebApplication app = await CreateApplicationAsync();
         Guid userId = await CreateUserAsync(app, Email, Password);
         using HttpClient client = CreateClient(app);
-        var cookies = new TestCookieJar();
 
-        AntiforgeryTokenResponse anonymousToken = await GetAntiforgeryTokenAsync(client, cookies);
-        using HttpResponseMessage login = await SendMutationAsync(
-            client,
-            cookies,
+        using HttpResponseMessage login = await client.PostAsJsonAsync(
             "/api/v1/auth/login",
-            new LoginRequest(Email, Password),
-            anonymousToken.RequestToken);
-        Assert.AreEqual(HttpStatusCode.NoContent, login.StatusCode);
-        string authCookie = login.Headers.GetValues("Set-Cookie")
-            .Single(value => value.StartsWith($"{GainerIdentityOptions.ApplicationCookieName}=", StringComparison.Ordinal));
-        Assert.Contains("; secure", authCookie, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("; httponly", authCookie, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("; samesite=lax", authCookie, StringComparison.OrdinalIgnoreCase);
-        Assert.IsFalse(authCookie.Contains("domain=", StringComparison.OrdinalIgnoreCase));
+            new LoginRequest(Email, Password, "Test-iPhone"));
+        Assert.AreEqual(HttpStatusCode.OK, login.StatusCode);
+        Assert.IsFalse(login.Headers.Contains("Set-Cookie"));
+        Assert.IsTrue(login.Headers.CacheControl?.NoStore);
+        TokenResponse? tokens = await login.Content.ReadFromJsonAsync<TokenResponse>();
+        Assert.IsNotNull(tokens);
+        Assert.AreEqual((int)GainerIdentityOptions.AccessTokenLifetime.TotalSeconds, tokens.ExpiresIn);
+        Assert.IsGreaterThanOrEqualTo(43, tokens.RefreshToken.Length);
 
-        using HttpResponseMessage session = await SendGetAsync(client, cookies, "/api/v1/auth/session");
+        client.UseAccessToken(tokens.AccessToken);
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
         SessionResponse? payload = await session.Content.ReadFromJsonAsync<SessionResponse>();
         Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
         Assert.IsNotNull(payload);
@@ -87,56 +84,166 @@ public sealed class AuthenticationApiTests
         Assert.IsFalse(payload.IsAccountOperator);
         Assert.IsTrue(session.Headers.CacheControl?.NoStore);
 
-        AntiforgeryTokenResponse authenticatedToken = await GetAntiforgeryTokenAsync(client, cookies);
-        using HttpResponseMessage logout = await SendMutationAsync(
-            client,
-            cookies,
-            "/api/v1/auth/logout",
-            new { },
-            authenticatedToken.RequestToken);
+        await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
+        {
+            AppDbContext database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            DeviceSession stored = await database.DeviceSessions.SingleAsync(item => item.UserId == userId);
+            Assert.AreEqual("Test-iPhone", stored.DeviceName);
+            Assert.HasCount(32, stored.RefreshTokenHash);
+        }
+
+        using HttpResponseMessage logout = await client.PostAsync("/api/v1/auth/logout", content: null);
         Assert.AreEqual(HttpStatusCode.NoContent, logout.StatusCode);
 
-        using HttpResponseMessage afterLogout = await SendGetAsync(client, cookies, "/api/v1/auth/session");
+        using HttpResponseMessage afterLogout = await client.GetAsync("/api/v1/auth/session");
         Assert.AreEqual(HttpStatusCode.Unauthorized, afterLogout.StatusCode);
+        using HttpResponseMessage refreshAfterLogout = await BearerTestClient.RefreshAsync(client, tokens.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, refreshAfterLogout.StatusCode);
     }
 
     [TestMethod]
-    public async Task AntiforgeryBootstrapIsBoundToAuthenticatedAccountAndRejectsCookieSwitch()
+    public async Task CookiesAndAntiforgeryAreNoLongerPartOfTheApi()
     {
         await using WebApplication app = await CreateApplicationAsync();
-        Guid firstUserId = await CreateUserAsync(app, "first@example.test", Password);
-        Guid secondUserId = await CreateUserAsync(app, "second@example.test", Password);
+        await CreateUserAsync(app, Email, Password);
         using HttpClient client = CreateClient(app);
-        var firstCookies = new TestCookieJar();
-        var secondCookies = new TestCookieJar();
 
-        AntiforgeryTokenResponse firstAnonymousToken = await GetAntiforgeryTokenAsync(client, firstCookies);
-        Assert.IsNull(firstAnonymousToken.AuthenticatedUserId);
-        using HttpResponseMessage firstLogin = await SendMutationAsync(
-            client, firstCookies, "/api/v1/auth/login", new LoginRequest("first@example.test", Password), firstAnonymousToken.RequestToken);
-        Assert.AreEqual(HttpStatusCode.NoContent, firstLogin.StatusCode);
-        AntiforgeryTokenResponse firstToken = await GetAntiforgeryTokenAsync(client, firstCookies);
-        Assert.AreEqual(firstUserId, firstToken.AuthenticatedUserId);
+        using HttpResponseMessage antiforgery = await client.GetAsync("/api/v1/auth/antiforgery");
+        Assert.AreEqual(HttpStatusCode.NotFound, antiforgery.StatusCode);
 
-        AntiforgeryTokenResponse secondAnonymousToken = await GetAntiforgeryTokenAsync(client, secondCookies);
-        using HttpResponseMessage secondLogin = await SendMutationAsync(
-            client, secondCookies, "/api/v1/auth/login", new LoginRequest("second@example.test", Password), secondAnonymousToken.RequestToken);
-        Assert.AreEqual(HttpStatusCode.NoContent, secondLogin.StatusCode);
-        AntiforgeryTokenResponse secondToken = await GetAntiforgeryTokenAsync(client, secondCookies);
-        Assert.AreEqual(secondUserId, secondToken.AuthenticatedUserId);
+        using var foreignOriginLogin = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login")
+        {
+            Content = JsonContent.Create(new LoginRequest(Email, Password)),
+        };
+        foreignOriginLogin.Headers.Add("Origin", "https://attacker.example");
+        foreignOriginLogin.Headers.Add("Cookie", ".AspNetCore.Identity.Application=forged");
+        using HttpResponseMessage login = await client.SendAsync(foreignOriginLogin);
+        Assert.AreEqual(HttpStatusCode.OK, login.StatusCode);
 
-        using var switchedCookieRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout");
-        switchedCookieRequest.Headers.Add("Origin", TestOrigin);
-        switchedCookieRequest.Headers.Add(GainerRequestSecurityOptions.AntiforgeryHeaderName, firstToken.RequestToken);
-        firstCookies.ApplyWithAuthenticationFrom(switchedCookieRequest, secondCookies);
-        switchedCookieRequest.Content = JsonContent.Create(new { });
-        using HttpResponseMessage rejected = await client.SendAsync(switchedCookieRequest);
-        Assert.AreEqual(HttpStatusCode.BadRequest, rejected.StatusCode);
+        using var cookieOnly = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/session");
+        cookieOnly.Headers.Add("Cookie", ".AspNetCore.Identity.Application=forged");
+        using HttpResponseMessage session = await client.SendAsync(cookieOnly);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, session.StatusCode);
+    }
 
-        using HttpResponseMessage stillSecondAccount = await SendGetAsync(client, secondCookies, "/api/v1/auth/session");
-        SessionResponse? session = await stillSecondAccount.Content.ReadFromJsonAsync<SessionResponse>();
-        Assert.AreEqual(HttpStatusCode.OK, stillSecondAccount.StatusCode);
-        Assert.AreEqual(secondUserId, session?.UserId);
+    [TestMethod]
+    public async Task RefreshRotatesTheTokenAndRevokesTheSessionWhenAnOldTokenReturns()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+
+        TokenResponse second = await RefreshSucceedsAsync(client, first.RefreshToken);
+        Assert.AreNotEqual(first.RefreshToken, second.RefreshToken);
+        Assert.AreNotEqual(first.AccessToken, second.AccessToken);
+        client.UseAccessToken(second.AccessToken);
+        using (HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session"))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
+        }
+
+        timeProvider.Advance(TimeSpan.FromMinutes(2));
+        using HttpResponseMessage reused = await BearerTestClient.RefreshAsync(client, first.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, reused.StatusCode);
+        Assert.AreEqual("invalid_refresh_token", await ReadCodeAsync(reused));
+
+        using HttpResponseMessage current = await BearerTestClient.RefreshAsync(client, second.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, current.StatusCode);
+        using HttpResponseMessage revokedAccess = await client.GetAsync("/api/v1/auth/session");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, revokedAccess.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task PreviousTokenIsAcceptedWithinTheGracePeriodForALostResponse()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        TokenResponse lost = await RefreshSucceedsAsync(client, first.RefreshToken);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(20));
+        TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
+
+        using HttpResponseMessage lostToken = await BearerTestClient.RefreshAsync(client, lost.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, lostToken.StatusCode);
+        TokenResponse next = await RefreshSucceedsAsync(client, retried.RefreshToken);
+        client.UseAccessToken(next.AccessToken);
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
+        Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ExpiredAccessTokenIsRejectedAndRefreshIssuesANewOne()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse tokens = await client.AuthenticateAsync(Email, Password);
+
+        timeProvider.Advance(GainerIdentityOptions.AccessTokenLifetime + TimeSpan.FromSeconds(1));
+        using HttpResponseMessage expired = await client.GetAsync("/api/v1/auth/session");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, expired.StatusCode);
+
+        TokenResponse renewed = await RefreshSucceedsAsync(client, tokens.RefreshToken);
+        client.UseAccessToken(renewed.AccessToken);
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
+        Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task RegularRefreshKeepsTheSessionAliveAndIdleSessionsExpire()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse tokens = await BearerTestClient.LoginAsync(client, Email, Password);
+        Assert.AreEqual(Start + TimeSpan.FromDays(60), tokens.RefreshTokenExpiresAt);
+
+        for (int month = 0; month < 4; month++)
+        {
+            timeProvider.Advance(TimeSpan.FromDays(50));
+            tokens = await RefreshSucceedsAsync(client, tokens.RefreshToken);
+        }
+
+        Assert.AreEqual(timeProvider.GetUtcNow() + TimeSpan.FromDays(60), tokens.RefreshTokenExpiresAt);
+        timeProvider.Advance(TimeSpan.FromDays(60) + TimeSpan.FromSeconds(1));
+        using HttpResponseMessage idle = await BearerTestClient.RefreshAsync(client, tokens.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, idle.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task DeactivatingAnAccountEndsItsDeviceSessionsImmediately()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        Guid userId = await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse tokens = await client.AuthenticateAsync(Email, Password);
+
+        await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
+        {
+            IAccountStatusService status = scope.ServiceProvider.GetRequiredService<IAccountStatusService>();
+            Assert.IsTrue(await status.SetActiveAsync(userId, isActive: false));
+        }
+
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, session.StatusCode);
+        using HttpResponseMessage refresh = await BearerTestClient.RefreshAsync(client, tokens.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, refresh.StatusCode);
+
+        await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
+        {
+            IAccountStatusService status = scope.ServiceProvider.GetRequiredService<IAccountStatusService>();
+            Assert.IsTrue(await status.SetActiveAsync(userId, isActive: true));
+        }
+
+        using HttpResponseMessage afterReactivation = await BearerTestClient.RefreshAsync(client, tokens.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, afterReactivation.StatusCode);
     }
 
     [TestMethod]
@@ -145,21 +252,13 @@ public sealed class AuthenticationApiTests
         await using WebApplication app = await CreateApplicationAsync();
         await CreateUserAsync(app, Email, Password);
         using HttpClient client = CreateClient(app);
-        var cookies = new TestCookieJar();
-        AntiforgeryTokenResponse token = await GetAntiforgeryTokenAsync(client, cookies);
 
-        using HttpResponseMessage unknown = await SendMutationAsync(
-            client,
-            cookies,
+        using HttpResponseMessage unknown = await client.PostAsJsonAsync(
             "/api/v1/auth/login",
-            new LoginRequest("unknown@example.test", Password),
-            token.RequestToken);
-        using HttpResponseMessage wrongPassword = await SendMutationAsync(
-            client,
-            cookies,
+            new LoginRequest("unknown@example.test", Password));
+        using HttpResponseMessage wrongPassword = await client.PostAsJsonAsync(
             "/api/v1/auth/login",
-            new LoginRequest(Email, "Wrong-password-42!"),
-            token.RequestToken);
+            new LoginRequest(Email, "Wrong-password-42!"));
         using JsonDocument unknownBody = JsonDocument.Parse(await unknown.Content.ReadAsStringAsync());
         using JsonDocument wrongPasswordBody = JsonDocument.Parse(await wrongPassword.Content.ReadAsStringAsync());
 
@@ -168,6 +267,7 @@ public sealed class AuthenticationApiTests
         Assert.AreEqual(
             unknownBody.RootElement.GetProperty("title").GetString(),
             wrongPasswordBody.RootElement.GetProperty("title").GetString());
+        Assert.AreEqual("invalid_credentials", unknownBody.RootElement.GetProperty("code").GetString());
         Assert.AreEqual(
             unknownBody.RootElement.GetProperty("code").GetString(),
             wrongPasswordBody.RootElement.GetProperty("code").GetString());
@@ -177,30 +277,7 @@ public sealed class AuthenticationApiTests
         Assert.AreEqual(HttpStatusCode.NotFound, registration.StatusCode);
     }
 
-    [TestMethod]
-    public async Task ExpiredApplicationCookieReturnsUnauthorized()
-    {
-        var timeProvider = new MutableTimeProvider(new DateTimeOffset(2026, 8, 18, 12, 0, 0, TimeSpan.Zero));
-        await using WebApplication app = await CreateApplicationAsync(timeProvider);
-        await CreateUserAsync(app, Email, Password);
-        using HttpClient client = CreateClient(app);
-        var cookies = new TestCookieJar();
-        AntiforgeryTokenResponse token = await GetAntiforgeryTokenAsync(client, cookies);
-        using HttpResponseMessage login = await SendMutationAsync(
-            client,
-            cookies,
-            "/api/v1/auth/login",
-            new LoginRequest(Email, Password),
-            token.RequestToken);
-        Assert.AreEqual(HttpStatusCode.NoContent, login.StatusCode);
-
-        timeProvider.Advance(GainerIdentityOptions.ApplicationCookieLifetime + TimeSpan.FromSeconds(1));
-        using HttpResponseMessage session = await SendGetAsync(client, cookies, "/api/v1/auth/session");
-
-        Assert.AreEqual(HttpStatusCode.Unauthorized, session.StatusCode);
-    }
-
-    private async Task<WebApplication> CreateApplicationAsync(TimeProvider? authenticationTimeProvider = null)
+    private async Task<WebApplication> CreateApplicationAsync(TimeProvider? timeProvider = null)
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         await using (AppDbContext context = Fixture.CreateContext(connectionString))
@@ -215,16 +292,14 @@ public sealed class AuthenticationApiTests
         builder.WebHost.UseTestServer();
         builder.Configuration["ConnectionStrings:gainer-db"] = connectionString;
         builder.Configuration[GainerIdentityOptions.DataProtectionKeysPathConfigurationKey] = keyRingPath;
-        builder.Configuration[GainerRequestSecurityOptions.FrontendOriginConfigurationKey] = TestOrigin;
+        if (timeProvider is not null)
+        {
+            builder.Services.AddSingleton(timeProvider);
+        }
+
         builder.AddGainerApi();
         builder.AddGainerPersistence();
         builder.AddGainerIdentity();
-        if (authenticationTimeProvider is not null)
-        {
-            builder.Services.PostConfigure<CookieAuthenticationOptions>(
-                IdentityConstants.ApplicationScheme,
-                options => options.TimeProvider = authenticationTimeProvider);
-        }
 
         var app = builder.Build();
         app.MapGainerApi();
@@ -256,97 +331,18 @@ public sealed class AuthenticationApiTests
         return client;
     }
 
-    private static async Task<AntiforgeryTokenResponse> GetAntiforgeryTokenAsync(
-        HttpClient client,
-        TestCookieJar cookies)
+    private static async Task<TokenResponse> RefreshSucceedsAsync(HttpClient client, string refreshToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/antiforgery");
-        cookies.Apply(request);
-        using HttpResponseMessage response = await client.SendAsync(request);
-        cookies.Capture(response);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<AntiforgeryTokenResponse>()
-            ?? throw new InvalidOperationException("The antiforgery response was empty.");
+        using HttpResponseMessage response = await BearerTestClient.RefreshAsync(client, refreshToken);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+        return await response.Content.ReadFromJsonAsync<TokenResponse>()
+            ?? throw new InvalidOperationException("The refresh response was empty.");
     }
 
-    private static async Task<HttpResponseMessage> SendMutationAsync<TBody>(
-        HttpClient client,
-        TestCookieJar cookies,
-        string path,
-        TBody? body,
-        string requestToken)
+    private static async Task<string?> ReadCodeAsync(HttpResponseMessage response)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, path);
-        request.Headers.Add("Origin", TestOrigin);
-        request.Headers.Add(GainerRequestSecurityOptions.AntiforgeryHeaderName, requestToken);
-        cookies.Apply(request);
-        if (body is not null)
-        {
-            request.Content = JsonContent.Create(body);
-        }
-
-        HttpResponseMessage response = await client.SendAsync(request);
-        cookies.Capture(response);
-        request.Dispose();
-        return response;
-    }
-
-    private static async Task<HttpResponseMessage> SendGetAsync(
-        HttpClient client,
-        TestCookieJar cookies,
-        string path)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Get, path);
-        cookies.Apply(request);
-        HttpResponseMessage response = await client.SendAsync(request);
-        request.Dispose();
-        return response;
-    }
-
-    private sealed class TestCookieJar
-    {
-        private readonly Dictionary<string, string> values = new(StringComparer.Ordinal);
-
-        public void Capture(HttpResponseMessage response)
-        {
-            if (!response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? headers))
-            {
-                return;
-            }
-
-            foreach (string header in headers)
-            {
-                string[] pair = header.Split(';', 2)[0].Split('=', 2);
-                if (pair[1].Length == 0)
-                {
-                    values.Remove(pair[0]);
-                }
-                else
-                {
-                    values[pair[0]] = pair[1];
-                }
-            }
-        }
-
-        public void Apply(HttpRequestMessage request)
-        {
-            if (values.Count > 0)
-            {
-                request.Headers.Add("Cookie", string.Join("; ", values.Select(pair => $"{pair.Key}={pair.Value}")));
-            }
-        }
-
-        public void ApplyWithAuthenticationFrom(HttpRequestMessage request, TestCookieJar authenticationCookies)
-        {
-            var combined = new Dictionary<string, string>(values, StringComparer.Ordinal);
-            if (!authenticationCookies.values.TryGetValue(GainerIdentityOptions.ApplicationCookieName, out string? authenticationCookie))
-            {
-                throw new InvalidOperationException("The authentication cookie was not captured.");
-            }
-
-            combined[GainerIdentityOptions.ApplicationCookieName] = authenticationCookie;
-            request.Headers.Add("Cookie", string.Join("; ", combined.Select(pair => $"{pair.Key}={pair.Value}")));
-        }
+        using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return body.RootElement.GetProperty("code").GetString();
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider

@@ -1,14 +1,11 @@
-using System.Net;
 using System.Security.Claims;
 using Gainer.Api.Composition;
 using Gainer.Api.Security;
 using Gainer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -19,54 +16,33 @@ namespace Gainer.IntegrationTests;
 [TestClass]
 public sealed class IdentitySecurityTests
 {
-    private const string TestOrigin = "https://identity.gainer.test";
-
     [TestMethod]
-    public async Task ApplicationCookieIsHostBoundAndSurvivesApplicationRestart()
+    public async Task AccessTokensAreShortLivedAndSurviveApplicationRestart()
     {
         string keyRingPath = Path.Combine(Path.GetTempPath(), $"gainer-identity-{Guid.NewGuid():N}");
 
         try
         {
-            string cookie;
+            string userId = Guid.NewGuid().ToString();
+            string accessToken;
             await using (WebApplication firstApp = await CreateApplicationAsync(keyRingPath))
             {
-                using HttpClient firstClient = firstApp.GetTestClient();
-                firstClient.BaseAddress = new Uri(TestOrigin);
-                using var signInRequest = new HttpRequestMessage(HttpMethod.Post, "/test/sign-in");
-                signInRequest.Headers.Add("Origin", TestOrigin);
-                using HttpResponseMessage signInResponse = await firstClient.SendAsync(signInRequest);
-
-                Assert.AreEqual(HttpStatusCode.NoContent, signInResponse.StatusCode);
-                string setCookie = signInResponse.Headers.GetValues("Set-Cookie").Single();
-                Assert.StartsWith($"{GainerIdentityOptions.ApplicationCookieName}=", setCookie);
-                Assert.Contains("; path=/", setCookie, StringComparison.OrdinalIgnoreCase);
-                Assert.Contains("; secure", setCookie, StringComparison.OrdinalIgnoreCase);
-                Assert.Contains("; httponly", setCookie, StringComparison.OrdinalIgnoreCase);
-                Assert.Contains("; samesite=lax", setCookie, StringComparison.OrdinalIgnoreCase);
-                Assert.IsFalse(setCookie.Contains("domain=", StringComparison.OrdinalIgnoreCase));
-                cookie = setCookie.Split(';', 2)[0];
-
-                CookieAuthenticationOptions cookieOptions = firstApp.Services
-                    .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
-                    .Get(IdentityConstants.ApplicationScheme);
-                Assert.AreEqual(CookieSecurePolicy.Always, cookieOptions.Cookie.SecurePolicy);
-                Assert.AreEqual(SameSiteMode.Lax, cookieOptions.Cookie.SameSite);
+                BearerTokenOptions options = BearerOptions(firstApp);
+                Assert.AreEqual(GainerIdentityOptions.AccessTokenLifetime, options.BearerTokenExpiration);
+                Assert.AreEqual(TimeSpan.FromMinutes(15), options.BearerTokenExpiration);
+                var identity = new ClaimsIdentity(
+                    [new Claim(ClaimTypes.NameIdentifier, userId)],
+                    GainerIdentityOptions.AuthenticationScheme);
+                accessToken = options.BearerTokenProtector.Protect(new AuthenticationTicket(
+                    new ClaimsPrincipal(identity),
+                    GainerIdentityOptions.AuthenticationScheme));
             }
 
             await using WebApplication restartedApp = await CreateApplicationAsync(keyRingPath);
-            using HttpClient restartedClient = restartedApp.GetTestClient();
-            using var protectedRequest = new HttpRequestMessage(HttpMethod.Get, "/test/protected");
-            protectedRequest.Headers.Add("Cookie", cookie);
+            AuthenticationTicket? restored = BearerOptions(restartedApp).BearerTokenProtector.Unprotect(accessToken);
 
-            using HttpResponseMessage protectedResponse = await restartedClient.SendAsync(protectedRequest);
-            string protectedResponseBody = await protectedResponse.Content.ReadAsStringAsync();
-
-            Assert.AreEqual(HttpStatusCode.NoContent, protectedResponse.StatusCode, protectedResponseBody);
-            SecurityStampValidatorOptions stampOptions = restartedApp.Services
-                .GetRequiredService<IOptions<SecurityStampValidatorOptions>>()
-                .Value;
-            Assert.AreEqual(GainerIdentityOptions.SecurityStampValidationInterval, stampOptions.ValidationInterval);
+            Assert.IsNotNull(restored);
+            Assert.AreEqual(userId, restored.Principal.FindFirstValue(ClaimTypes.NameIdentifier));
             Assert.IsTrue(Directory.EnumerateFiles(keyRingPath, "*.xml").Any());
         }
         finally
@@ -78,14 +54,17 @@ public sealed class IdentitySecurityTests
         }
     }
 
+    private static BearerTokenOptions BearerOptions(WebApplication app) =>
+        app.Services
+            .GetRequiredService<IOptionsMonitor<BearerTokenOptions>>()
+            .Get(GainerIdentityOptions.AuthenticationScheme);
+
     private static async Task<WebApplication> CreateApplicationAsync(string keyRingPath)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
-        builder.Logging.AddConsole();
         builder.WebHost.UseTestServer();
         builder.Configuration[GainerIdentityOptions.DataProtectionKeysPathConfigurationKey] = keyRingPath;
-        builder.Configuration[GainerRequestSecurityOptions.FrontendOriginConfigurationKey] = TestOrigin;
         builder.Configuration["ConnectionStrings:gainer-db"] =
             "Host=127.0.0.1;Port=1;Database=unused;Username=unused;Password=unused";
         builder.AddGainerApi();
@@ -94,18 +73,6 @@ public sealed class IdentitySecurityTests
 
         var app = builder.Build();
         app.MapGainerApi();
-        app.MapPost("/test/sign-in", async context =>
-        {
-            var identity = new ClaimsIdentity(
-                [new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString())],
-                IdentityConstants.ApplicationScheme);
-            await context.SignInAsync(
-                IdentityConstants.ApplicationScheme,
-                new ClaimsPrincipal(identity),
-                new AuthenticationProperties { IssuedUtc = DateTimeOffset.UtcNow });
-            context.Response.StatusCode = StatusCodes.Status204NoContent;
-        });
-        app.MapGet("/test/protected", () => Results.NoContent()).RequireAuthorization();
         await app.StartAsync();
 
         return app;

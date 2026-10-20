@@ -18,16 +18,25 @@ class ApiSession {
   );
 }
 
-class ApiAntiforgeryToken {
-  const ApiAntiforgeryToken(this.requestToken, this.authenticatedUserId);
+/// Token pair of a device session. The refresh token rotates on every use.
+class ApiTokenResponse {
+  const ApiTokenResponse({
+    required this.accessToken,
+    required this.expiresIn,
+    required this.refreshToken,
+  });
 
-  final String requestToken;
-  final String? authenticatedUserId;
+  final String accessToken;
 
-  factory ApiAntiforgeryToken.fromJson(Map<String, dynamic> json) =>
-      ApiAntiforgeryToken(
-        _requiredString(json, 'requestToken'),
-        json['authenticatedUserId'] as String?,
+  /// Lifetime of [accessToken] in seconds.
+  final int expiresIn;
+  final String refreshToken;
+
+  factory ApiTokenResponse.fromJson(Map<String, dynamic> json) =>
+      ApiTokenResponse(
+        accessToken: _requiredString(json, 'accessToken'),
+        expiresIn: _requiredInt(json, 'expiresIn'),
+        refreshToken: _requiredString(json, 'refreshToken'),
       );
 }
 
@@ -852,12 +861,23 @@ class ApiCoachResponse {
 }
 
 class ApiLoginRequest {
-  const ApiLoginRequest({required this.email, required this.password});
+  const ApiLoginRequest({
+    required this.email,
+    required this.password,
+    this.deviceName,
+  });
 
   final String email;
   final String password;
 
-  Map<String, Object?> toJson() => {'email': email, 'password': password};
+  /// Shown in the device session list, e.g. „Gainer iPhone“.
+  final String? deviceName;
+
+  Map<String, Object?> toJson() => {
+    'email': email,
+    'password': password,
+    'deviceName': ?deviceName,
+  };
 }
 
 class ApiAcceptInvitationRequest {

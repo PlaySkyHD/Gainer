@@ -153,20 +153,13 @@ public sealed class NutritionApiControllerTests
         await using WebApplication app = await CreateApplicationAsync(estimator);
         using HttpClient client = app.GetTestClient();
         client.BaseAddress = new Uri("https://localhost");
-        using HttpResponseMessage tokenResponse = await client.GetAsync("/api/v1/auth/antiforgery");
-        AntiforgeryTokenResponse token = (await tokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenResponse>())!;
-        string cookie = tokenResponse.Headers.GetValues("Set-Cookie").Single().Split(';', 2)[0];
-
         using var anonymous = new MultipartFormDataContent { { new StringContent("oats"), "text" } };
-        using var anonymousRequest = MealEstimateRequest(anonymous, token.RequestToken, cookie);
+        using var anonymousRequest = MealEstimateRequest(anonymous);
         Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.SendAsync(anonymousRequest)).StatusCode);
 
         client.DefaultRequestHeaders.Add("X-Test-User", Guid.NewGuid().ToString());
-        using HttpResponseMessage authenticatedTokenResponse = await client.GetAsync("/api/v1/auth/antiforgery");
-        token = (await authenticatedTokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenResponse>())!;
-        cookie = authenticatedTokenResponse.Headers.GetValues("Set-Cookie").Single().Split(';', 2)[0];
         using var textOnly = new MultipartFormDataContent { { new StringContent("oats"), "text" } };
-        using HttpResponseMessage success = await client.SendAsync(MealEstimateRequest(textOnly, token.RequestToken, cookie));
+        using HttpResponseMessage success = await client.SendAsync(MealEstimateRequest(textOnly));
         Assert.AreEqual(HttpStatusCode.OK, success.StatusCode, await success.Content.ReadAsStringAsync());
         Assert.IsTrue(success.Headers.CacheControl?.NoStore);
         Assert.IsTrue(success.Headers.CacheControl?.Private);
@@ -174,7 +167,7 @@ public sealed class NutritionApiControllerTests
 
         using var missingConsent = new MultipartFormDataContent();
         missingConsent.Add(new ByteArrayContent([0x89, 0x50, 0x4E, 0x47]), "image", "meal.png");
-        using HttpResponseMessage consentFailure = await client.SendAsync(MealEstimateRequest(missingConsent, token.RequestToken, cookie));
+        using HttpResponseMessage consentFailure = await client.SendAsync(MealEstimateRequest(missingConsent));
         Assert.AreEqual(HttpStatusCode.BadRequest, consentFailure.StatusCode);
         Assert.AreEqual("image_consent_required", (await consentFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
         Assert.AreEqual(1, estimator.Calls);
@@ -183,26 +176,20 @@ public sealed class NutritionApiControllerTests
         multipleImages.Add(new ByteArrayContent([1]), "image", "first.png");
         multipleImages.Add(new ByteArrayContent([2]), "otherImage", "second.png");
         multipleImages.Add(new StringContent("true"), "imageConsent");
-        using HttpResponseMessage multipleFailure = await client.SendAsync(MealEstimateRequest(multipleImages, token.RequestToken, cookie));
+        using HttpResponseMessage multipleFailure = await client.SendAsync(MealEstimateRequest(multipleImages));
         Assert.AreEqual(HttpStatusCode.BadRequest, multipleFailure.StatusCode);
         Assert.AreEqual("too_many_images", (await multipleFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
 
         using var oversized = new MultipartFormDataContent();
         oversized.Add(new ByteArrayContent(new byte[(8 * 1024 * 1024) + 1]), "image", "large.png");
         oversized.Add(new StringContent("true"), "imageConsent");
-        using HttpResponseMessage sizeFailure = await client.SendAsync(MealEstimateRequest(oversized, token.RequestToken, cookie));
+        using HttpResponseMessage sizeFailure = await client.SendAsync(MealEstimateRequest(oversized));
         Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, sizeFailure.StatusCode);
         Assert.AreEqual(1, estimator.Calls, "Rejected requests and returned drafts must not create persisted estimate state.");
     }
 
-    private static HttpRequestMessage MealEstimateRequest(HttpContent content, string token, string cookie)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/nutrition/meal-estimates") { Content = content };
-        request.Headers.Add("Origin", "https://localhost");
-        request.Headers.Add("Cookie", cookie);
-        request.Headers.Add(GainerRequestSecurityOptions.AntiforgeryHeaderName, token);
-        return request;
-    }
+    private static HttpRequestMessage MealEstimateRequest(HttpContent content) =>
+        new(HttpMethod.Post, "/api/v1/nutrition/meal-estimates") { Content = content };
 
     private static T Value<T>(ActionResult<T> action) => (T)((OkObjectResult)action.Result!).Value!;
 
@@ -216,7 +203,6 @@ public sealed class NutritionApiControllerTests
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
-        builder.Configuration[GainerRequestSecurityOptions.FrontendOriginConfigurationKey] = "https://localhost";
         builder.WebHost.UseTestServer();
         builder.AddGainerApi();
         builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();

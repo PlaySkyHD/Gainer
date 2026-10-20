@@ -18,7 +18,6 @@ namespace Gainer.IntegrationTests;
 [DoNotParallelize]
 public sealed class AccountOperatorProvisioningTests
 {
-    private const string TestOrigin = "https://operator.gainer.test";
     private static PostgreSqlTestFixture? fixture;
     private readonly List<string> temporaryPaths = [];
 
@@ -135,7 +134,6 @@ public sealed class AccountOperatorProvisioningTests
         builder.WebHost.UseTestServer();
         builder.Configuration["ConnectionStrings:gainer-db"] = connectionString;
         builder.Configuration[GainerIdentityOptions.DataProtectionKeysPathConfigurationKey] = keyRingPath;
-        builder.Configuration[GainerRequestSecurityOptions.FrontendOriginConfigurationKey] = TestOrigin;
         if (secretPath is not null)
         {
             builder.Configuration[InitialAccountOperatorProvisioning.SecretPathConfigurationKey] = secretPath;

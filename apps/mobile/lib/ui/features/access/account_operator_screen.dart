@@ -70,7 +70,7 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
       final invitation = await widget.controller.createOperatorInvitation(
         email,
       );
-      final link = widget.controller.configuration.trustedOrigin.resolve(
+      final link = widget.controller.configuration.api.resolve(
         invitation.activationPath,
       );
       if (!mounted) return;

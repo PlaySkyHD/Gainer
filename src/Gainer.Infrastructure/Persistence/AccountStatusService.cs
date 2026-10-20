@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Identity;
 namespace Gainer.Infrastructure.Persistence;
 
 /// <summary>Identity-only account status management.</summary>
-public sealed class AccountStatusService(UserManager<AppUser> userManager) : IAccountStatusService
+public sealed class AccountStatusService(
+    UserManager<AppUser> userManager,
+    IDeviceSessionService deviceSessions) : IAccountStatusService
 {
     /// <inheritdoc />
     public async Task<bool> SetActiveAsync(Guid accountId, bool isActive)
@@ -20,6 +22,11 @@ public sealed class AccountStatusService(UserManager<AppUser> userManager) : IAc
         if (!result.Succeeded)
         {
             throw new InvalidOperationException("The account status could not be updated.");
+        }
+
+        if (!isActive)
+        {
+            await deviceSessions.RevokeAllAsync(accountId);
         }
 
         return true;

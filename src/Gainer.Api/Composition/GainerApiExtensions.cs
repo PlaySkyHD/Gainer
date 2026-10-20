@@ -36,29 +36,6 @@ public static class GainerApiExtensions
         builder.Services.AddProblemDetails(options =>
             options.CustomizeProblemDetails = ProblemDetailsConfiguration.Customize);
         builder.Services.AddOpenApi("v1");
-        builder.Services.AddAntiforgery(options =>
-        {
-            options.HeaderName = GainerRequestSecurityOptions.AntiforgeryHeaderName;
-            options.Cookie.Name = GainerRequestSecurityOptions.AntiforgeryCookieName;
-            options.Cookie.Domain = null;
-            options.Cookie.Path = "/";
-            options.Cookie.HttpOnly = true;
-            options.Cookie.SameSite = SameSiteMode.Lax;
-            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-        });
-        if (builder.Environment.IsDevelopment())
-        {
-            string frontendOrigin = builder.Configuration[
-                GainerRequestSecurityOptions.FrontendOriginConfigurationKey]
-                ?? throw new InvalidOperationException("Development requires a concrete frontend origin.");
-            builder.Services.AddCors(options => options.AddPolicy(
-                GainerRequestSecurityOptions.DevelopmentCorsPolicy,
-                policy => policy
-                    .WithOrigins(frontendOrigin)
-                    .WithMethods("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE")
-                    .WithHeaders("Content-Type", GainerRequestSecurityOptions.AntiforgeryHeaderName)
-                    .AllowCredentials()));
-        }
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddRateLimiter(options =>
         {
@@ -72,14 +49,21 @@ public static class GainerApiExtensions
                     QueueLimit = 0,
                     AutoReplenishment = true,
                 }));
+            options.AddPolicy(ApiConstants.AuthenticationRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 30,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }));
         });
-        builder.Services.AddScoped<AntiforgeryValidationFilter>();
         builder.Services.AddScoped<IUserContext, HttpUserContext>();
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services
             .AddControllers()
             .AddApplicationPart(typeof(SystemController).Assembly)
-            .AddMvcOptions(options => options.Filters.AddService<AntiforgeryValidationFilter>())
             .ConfigureApiBehaviorOptions(ConfigureApiBehavior);
 
         return builder;
@@ -94,15 +78,10 @@ public static class GainerApiExtensions
         app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseExceptionHandler();
         app.UseMiddleware<RequestSizeLimitMiddleware>();
-        if (app.Environment.IsDevelopment())
-        {
-            app.UseCors(GainerRequestSecurityOptions.DevelopmentCorsPolicy);
-        }
-        app.UseMiddleware<RequestOriginMiddleware>();
         app.UseAuthentication();
+        app.UseMiddleware<DeviceSessionValidationMiddleware>();
         app.UseRateLimiter();
         app.UseAuthorization();
-        app.UseAntiforgery();
         app.UseStatusCodePages(async statusCodeContext =>
         {
             HttpContext httpContext = statusCodeContext.HttpContext;

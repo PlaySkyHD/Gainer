@@ -54,7 +54,6 @@ services:
     environment:
       <<: *database_environment
       ASPNETCORE_ENVIRONMENT: Production
-      Security__FrontendOrigin: ${GAINER_PUBLIC_ORIGIN:?set GAINER_PUBLIC_ORIGIN}
       Security__DataProtection__KeysPath: /var/lib/gainer/data-protection
       OpenAI__ApiKeyFile: /run/secrets/openai_api_key
       OpenAI__Model: ${OPENAI_MODEL:-gpt-5.4-mini}
