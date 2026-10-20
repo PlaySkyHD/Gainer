@@ -11,7 +11,7 @@
 
 - [x] 2.1 `apple-app-site-association` im Edge, CI-Smoke-Test.
 - [x] 2.2 Entitlement, `NativePasskeys.swift`, Pigeon-Methoden, Profilprüfung im Workflow (D6).
-- [ ] 2.3 Associated Domains im Apple-Portal aktivieren, App-Profil neu erzeugen, Secret ersetzen (Betreiber).
+- [x] 2.3 Associated Domains im Apple-Portal aktivieren (Betreiber); das bestehende App-Profil enthielt die Berechtigung bereits.
 
 ## 3. App
 
@@ -20,4 +20,4 @@
 
 ## 4. Abschluss
 
-- [ ] 4.1 Production-Deploy, AASA öffentlich prüfen, TestFlight; auf dem iPhone Passkey anlegen, abmelden, mit Face ID anmelden.
+- [x] 4.1 Production-Deploy, AASA öffentlich prüfen, TestFlight; auf dem iPhone Passkey anlegen, abmelden, mit Face ID anmelden.
