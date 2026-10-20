@@ -14,7 +14,9 @@ public sealed record ExerciseCatalogItemResponse(
     string? Notes,
     decimal? BodyweightFactor,
     decimal? WeightFactor,
-    IReadOnlyList<Guid> CategoryIds);
+    IReadOnlyList<Guid> CategoryIds,
+    IReadOnlyList<string> PrimaryMuscles,
+    IReadOnlyList<string> SecondaryMuscles);
 
 public sealed record ExerciseCategoryResponse(
     Guid Id,

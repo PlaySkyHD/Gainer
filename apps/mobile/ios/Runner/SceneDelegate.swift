@@ -2,6 +2,10 @@ import Flutter
 import UIKit
 
 class SceneDelegate: FlutterSceneDelegate {
+  /// Covers health data in the snapshot iOS takes for the app switcher. Added on entering the
+  /// background rather than on resign-active, so Face ID and system sheets do not blur the app.
+  private var privacyCover: UIView?
+
   override func scene(
     _ scene: UIScene,
     willConnectTo session: UISceneSession,
@@ -29,6 +33,22 @@ class SceneDelegate: FlutterSceneDelegate {
         await NativeLiveActivities().reconcileStaleActivities()
       }
     }
+  }
+
+  override func sceneDidEnterBackground(_ scene: UIScene) {
+    super.sceneDidEnterBackground(scene)
+    guard privacyCover == nil, let window else { return }
+    let cover = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+    cover.frame = window.bounds
+    cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    window.addSubview(cover)
+    privacyCover = cover
+  }
+
+  override func sceneWillEnterForeground(_ scene: UIScene) {
+    super.sceneWillEnterForeground(scene)
+    privacyCover?.removeFromSuperview()
+    privacyCover = nil
   }
 
   private func receive(_ url: URL) {
