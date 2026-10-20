@@ -349,7 +349,9 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
   List<Widget> _buildMuscles() {
     final colors = GainerDesign.colorsOf(context);
     final volume = MuscleVolume.fromPlans([_draft()], _exercises);
-    final missing = volume.exercisesWithoutMuscles;
+    final missing = [
+      for (final exercise in volume.exercisesWithoutMuscles) exercise.name,
+    ];
     return [
       const SizedBox(height: GainerSpacing.m),
       const GainerSectionHeader(title: 'Muskeln'),

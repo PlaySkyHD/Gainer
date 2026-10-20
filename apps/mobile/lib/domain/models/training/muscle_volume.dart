@@ -9,6 +9,9 @@ const secondaryMuscleShare = 0.5;
 
 enum MuscleRole { primary, secondary }
 
+/// Verweis auf eine Übung mit dem angezeigten Namen.
+typedef ExerciseRef = ({String id, String name});
+
 /// Beitrag einer Übung zu einem Muskel.
 class MuscleContribution {
   const MuscleContribution({
@@ -102,8 +105,8 @@ class MuscleVolume {
 
   final Map<Muscle, List<MuscleContribution>> _contributions;
 
-  /// Namen der Übungen ohne Muskelangabe, alphabetisch.
-  final List<String> exercisesWithoutMuscles;
+  /// Übungen ohne Muskelangabe, alphabetisch nach Name.
+  final List<ExerciseRef> exercisesWithoutMuscles;
 
   double setsFor(Muscle muscle) {
     var total = 0.0;
@@ -150,14 +153,14 @@ class _Builder {
 
   MuscleVolume build() {
     final contributions = <Muscle, List<MuscleContribution>>{};
-    final withoutMuscles = <String>{};
+    final withoutMuscles = <ExerciseRef>[];
     for (final MapEntry(key: id, value: sets) in _sets.entries) {
       final exercise = exercisesById[id];
       final name = _names[id]!;
       final primary = exercise?.primaryMuscles ?? const <Muscle>[];
       final secondary = exercise?.secondaryMuscles ?? const <Muscle>[];
       if (primary.isEmpty && secondary.isEmpty) {
-        withoutMuscles.add(name);
+        withoutMuscles.add((id: id, name: name));
         continue;
       }
       void put(Muscle muscle, MuscleRole role) =>
@@ -182,8 +185,8 @@ class _Builder {
         return bySets != 0 ? bySets : a.exerciseName.compareTo(b.exerciseName);
       });
     }
-    final names = withoutMuscles.toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final names = withoutMuscles
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return MuscleVolume._({
       for (final MapEntry(:key, :value) in contributions.entries)
         key: List.unmodifiable(value),

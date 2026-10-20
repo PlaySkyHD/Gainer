@@ -57,3 +57,18 @@ Der Plan-Editor SHALL eine Körperkarte des Plans zeigen, sobald er eine Übung 
 - **GIVEN** ein Plan mit nur Bankdrücken
 - **WHEN** der Nutzer Klimmzüge hinzufügt
 - **THEN** färbt die Karte sofort zusätzlich den Latissimus ein
+
+### Requirement: Muskeln nachtragen
+
+Die App SHALL den Übungseditor aus dem Übungsmenü eines Trainings und aus der Liste „Ohne Muskeln“ der Muskelübersicht öffnen. Übungen, die nicht im Katalog bekannt sind, MUST NOT einen Editor anbieten.
+
+#### Scenario: Aus dem Training
+- **GIVEN** ein aktives Training mit der eigenen Übung „Schrägbankdrücken“
+- **WHEN** der Nutzer im Übungsmenü „Übung bearbeiten“ wählt
+- **THEN** öffnet sich der Übungseditor mit dem Abschnitt „Muskeln“
+
+#### Scenario: Aus der Übersicht
+- **GIVEN** die Übersicht listet „Curls“ unter „Ohne Muskeln“
+- **WHEN** der Nutzer „Curls“ antippt, Bizeps als Hauptmuskel wählt und speichert
+- **THEN** fehlt „Curls“ in der Gruppe und die Karte zählt die Sätze beim Bizeps
+

@@ -55,6 +55,9 @@ class MuscleMapViewModel extends ChangeNotifier {
 
   MuscleVolume get volume => _volume ??= _compute();
 
+  /// True, wenn die Übung bekannt ist und ihr Editor geöffnet werden kann.
+  bool canOpenExercise(String exerciseId) => _exercises.containsKey(exerciseId);
+
   Future<void> load() async {
     if (_disposed) return;
     isLoading = true;

@@ -18,6 +18,8 @@
 - [x] 3.3 `MuscleMapScreen` und Einstieg im Statistik-Segment (D6); Widget- und Golden-Tests.
 - [x] 3.4 Karte „Muskeln“ im Plan-Editor (D6); Widget-Test.
 
+- [x] 3.5 Abkürzungen zum Übungseditor aus Training und Muskelübersicht (D8); Widget-Tests.
+
 ## 4. Abschluss
 
 - [ ] 4.1 TestFlight und Abnahme auf dem iPhone.
