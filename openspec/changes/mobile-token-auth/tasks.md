@@ -17,5 +17,5 @@
 
 ## 3. Abschluss
 
-- [ ] 3.1 Nach Merge `accepted-breaking-changes.json` leeren.
+- [x] 3.1 Nach Merge `accepted-breaking-changes.json` leeren.
 - [ ] 3.2 Production-Deploy, dann TestFlight; auf dem iPhone einmal neu anmelden, App über Nacht liegen lassen und prüfen, dass sie angemeldet bleibt und synchronisiert.
