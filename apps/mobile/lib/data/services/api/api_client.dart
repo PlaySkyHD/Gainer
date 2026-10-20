@@ -217,6 +217,27 @@ class ApiClient {
     return ApiFoodProduct.fromJson(_asObject(response.data));
   }
 
+  /// Fragt die KI nach den Muskeln einer Übung. Die Antwort ist eine
+  /// Rückfrage (`kind: question`) oder ein Vorschlag (`kind: suggestion`).
+  Future<Map<String, dynamic>> suggestMuscles({
+    required String name,
+    required String exerciseType,
+    String? notes,
+    List<Map<String, Object?>> turns = const [],
+  }) async {
+    final response = await _mutate(
+      'POST',
+      '/api/v1/exercises/muscle-suggestions',
+      body: {
+        'name': name,
+        'exerciseType': exerciseType,
+        'notes': notes,
+        'turns': turns,
+      },
+    );
+    return _asObject(response.data);
+  }
+
   /// Returns an estimate draft only. The caller must obtain explicit consent
   /// before sending an image and must require user review before creating a
   /// nutrition mutation.

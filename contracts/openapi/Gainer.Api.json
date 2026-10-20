@@ -921,6 +921,115 @@
         }
       }
     },
+    "/api/v1/exercises/muscle-suggestions": {
+      "post": {
+        "tags": [
+          "MuscleSuggestions"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MuscleSuggestionRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MuscleSuggestionRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/MuscleSuggestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MuscleSuggestionResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MuscleSuggestionResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MuscleSuggestionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/nutrition/days/{localDate}": {
       "get": {
         "tags": [
@@ -3307,6 +3416,99 @@
           }
         }
       },
+      "MuscleSuggestionRequest": {
+        "required": [
+          "name",
+          "exerciseType",
+          "notes",
+          "turns"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "exerciseType": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "turns": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MuscleSuggestionTurnRequest"
+            }
+          }
+        }
+      },
+      "MuscleSuggestionResponse": {
+        "required": [
+          "kind",
+          "question",
+          "options",
+          "primaryMuscles",
+          "secondaryMuscles",
+          "explanation"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "question": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "primaryMuscles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "secondaryMuscles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "explanation": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "MuscleSuggestionTurnRequest": {
+        "required": [
+          "question",
+          "answer"
+        ],
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          }
+        }
+      },
       "NutrientProgressResponse": {
         "required": [
           "consumed",
@@ -4767,6 +4969,9 @@
     },
     {
       "name": "InvitationAcceptance"
+    },
+    {
+      "name": "MuscleSuggestions"
     },
     {
       "name": "Nutrition"

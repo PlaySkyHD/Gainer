@@ -6,10 +6,14 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/models/api/sync_api_models.dart';
+import 'package:gainer_mobile/data/repositories/training/muscle_suggestion_service.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
 import 'package:gainer_mobile/data/services/api/api_session_service.dart';
 import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/domain/models/training/muscle_ai.dart';
+import 'package:gainer_mobile/domain/models/training/muscles.dart';
+import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 
 void main() {
   group('ApiClient', () {
@@ -203,6 +207,74 @@ void main() {
         await server.close();
       }
     });
+
+    test(
+      'asks for muscle suggestions and parses question and suggestion',
+      () async {
+        final bodies = <Map<String, dynamic>>[];
+        final server = await _TestApiServer.start((request) async {
+          if (request.uri.path == '/api/v1/exercises/muscle-suggestions') {
+            final body = jsonDecode(
+              await utf8.decoder.bind(request).join(),
+            ) as Map<String, dynamic>;
+            bodies.add(body);
+            return _json(
+              request,
+              (body['turns'] as List).isEmpty
+                  ? {
+                      'kind': 'question',
+                      'question': 'Welcher Griff?',
+                      'options': ['Eng', 'Weit'],
+                      'primaryMuscles': [],
+                      'secondaryMuscles': [],
+                      'explanation': null,
+                    }
+                  : {
+                      'kind': 'suggestion',
+                      'question': null,
+                      'options': [],
+                      'primaryMuscles': ['lats', 'futureMuscle'],
+                      'secondaryMuscles': ['biceps'],
+                      'explanation': 'Latissimus.',
+                    },
+            );
+          }
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+        });
+        final api = ApiClient(
+          configuration: ApiConfiguration(
+            apiOrigin: server.origin,
+            allowInsecureLoopbackForDevelopment: true,
+          ),
+        );
+        try {
+          final service = ApiMuscleSuggestionService(api);
+          final question = await service.suggest(
+            name: 'Rudern',
+            kind: ExerciseKind.strength,
+          );
+          final suggestion = await service.suggest(
+            name: 'Rudern',
+            kind: ExerciseKind.strength,
+            turns: const [
+              MuscleAiTurn(question: 'Welcher Griff?', answer: 'Eng'),
+            ],
+          );
+
+          expect((question as MuscleAiQuestion).options, ['Eng', 'Weit']);
+          expect((suggestion as MuscleAiSuggestion).primary, [Muscle.lats]);
+          expect(suggestion.secondary, [Muscle.biceps]);
+          expect(bodies.first['exerciseType'], 'strength');
+          expect(bodies.last['turns'], [
+            {'question': 'Welcher Griff?', 'answer': 'Eng'},
+          ]);
+        } finally {
+          api.close();
+          await server.close();
+        }
+      },
+    );
 
     test(
       'uploads nutrition estimate and label scan as consented multipart drafts',
