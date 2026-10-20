@@ -1,34 +1,33 @@
 using Gainer.Infrastructure.Persistence;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 
 namespace Gainer.Api.Security;
 
-/// <summary>Stable security settings for the browser session.</summary>
+/// <summary>Stable security settings for mobile device sessions.</summary>
 public static class GainerIdentityOptions
 {
-    /// <summary>The host-only application cookie.</summary>
-    public const string ApplicationCookieName = "__Host-Gainer.Auth";
+    /// <summary>The bearer scheme that authenticates every API request.</summary>
+    public static readonly string AuthenticationScheme = IdentityConstants.BearerScheme;
+
+    /// <summary>Claim carrying the device session an access token belongs to.</summary>
+    public const string DeviceSessionClaimType = "gainer:device_session";
 
     /// <summary>Configuration key for the durable data-protection key ring.</summary>
     public const string DataProtectionKeysPathConfigurationKey = "Security:DataProtection:KeysPath";
 
-    /// <summary>Maximum delay before Identity revalidates a session against the user store.</summary>
-    public static readonly TimeSpan SecurityStampValidationInterval = TimeSpan.FromMinutes(1);
-
-    /// <summary>Absolute lifetime of an authenticated browser session.</summary>
-    public static readonly TimeSpan ApplicationCookieLifetime = TimeSpan.FromHours(12);
+    /// <summary>Lifetime of an access token. Revocation applies sooner because every request checks the session.</summary>
+    public static readonly TimeSpan AccessTokenLifetime = TimeSpan.FromMinutes(15);
 }
 
-/// <summary>Registers the Identity session boundary for the API.</summary>
+/// <summary>Registers Identity and bearer authentication for the API.</summary>
 public static class GainerIdentityExtensions
 {
     private const string DataProtectionApplicationName = "Gainer";
     private const string DefaultKeysDirectoryName = ".data-protection-keys";
 
-    /// <summary>Adds Identity, its secure application cookie, and a durable data-protection key ring.</summary>
+    /// <summary>Adds Identity, bearer access tokens, and a durable data-protection key ring.</summary>
     public static WebApplicationBuilder AddGainerIdentity(this WebApplicationBuilder builder)
     {
         string configuredKeysPath = builder.Configuration[
@@ -42,47 +41,26 @@ public static class GainerIdentityExtensions
             .PersistKeysToFileSystem(new DirectoryInfo(keysPath));
 
         builder.Services
-            .AddIdentity<AppUser, IdentityRole<Guid>>(options =>
+            .AddIdentityCore<AppUser>(options =>
             {
                 options.User.RequireUniqueEmail = true;
                 options.SignIn.RequireConfirmedAccount = true;
             })
+            .AddRoles<IdentityRole<Guid>>()
             .AddEntityFrameworkStores<AppDbContext>()
+            .AddSignInManager()
             .AddDefaultTokenProviders();
         builder.Services.AddScoped<IUserConfirmation<AppUser>, GainerUserConfirmation>();
+        builder.Services
+            .AddAuthentication(GainerIdentityOptions.AuthenticationScheme)
+            .AddBearerToken(GainerIdentityOptions.AuthenticationScheme, options =>
+                options.BearerTokenExpiration = GainerIdentityOptions.AccessTokenLifetime);
         builder.Services.AddAuthorizationBuilder().AddPolicy(
             AccountOperatorAuthorization.PolicyName,
             policy => policy.RequireRole(AccountOperatorAuthorization.RoleName));
+        builder.Services.AddScoped<AccessTokenIssuer>();
         builder.Services.AddScoped<IInitialAccountOperatorProvisioner, InitialAccountOperatorProvisioner>();
-        builder.Services.ConfigureApplicationCookie(options =>
-        {
-            options.Cookie.Name = GainerIdentityOptions.ApplicationCookieName;
-            options.Cookie.Domain = null;
-            options.Cookie.Path = "/";
-            options.Cookie.HttpOnly = true;
-            options.Cookie.SameSite = SameSiteMode.Lax;
-            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-            options.Cookie.IsEssential = true;
-            options.ExpireTimeSpan = GainerIdentityOptions.ApplicationCookieLifetime;
-            options.SlidingExpiration = false;
-            options.Events.OnRedirectToLogin = ReturnUnauthorizedAsync;
-            options.Events.OnRedirectToAccessDenied = ReturnForbiddenAsync;
-        });
-        builder.Services.Configure<SecurityStampValidatorOptions>(options =>
-            options.ValidationInterval = GainerIdentityOptions.SecurityStampValidationInterval);
 
         return builder;
-    }
-
-    private static Task ReturnUnauthorizedAsync(RedirectContext<CookieAuthenticationOptions> context)
-    {
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        return Task.CompletedTask;
-    }
-
-    private static Task ReturnForbiddenAsync(RedirectContext<CookieAuthenticationOptions> context)
-    {
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
-        return Task.CompletedTask;
     }
 }

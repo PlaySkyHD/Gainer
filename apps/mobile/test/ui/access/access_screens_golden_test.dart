@@ -7,7 +7,6 @@ import 'package:gainer_mobile/ui/features/access/auth_screen.dart';
 
 final _configuration = MobileAppConfiguration(
   api: Uri.parse('https://api.example.test'),
-  trustedOrigin: Uri.parse('https://app.example.test'),
 );
 
 void main() {

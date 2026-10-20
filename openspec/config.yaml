@@ -28,7 +28,9 @@ context: |
 
   Authentifizierung: ASP.NET Core Identity mit getrenntem Konto pro Nutzer.
   Konten werden eingeladen oder administrativ angelegt; öffentliche
-  Registrierung ist deaktiviert.
+  Registrierung ist deaktiviert. Die App meldet sich mit Bearer-Access-Tokens
+  (15 Minuten) und rotierenden Refresh-Tokens pro Geräte-Session an; es gibt
+  keine Cookie-Sessions und kein Antiforgery.
 
   Jeder Nutzer darf über die Anwendung ausschließlich seine eigenen Daten
   sehen und verändern. Es gibt keine Betreiber-, Admin-, Coach-, Sharing- oder

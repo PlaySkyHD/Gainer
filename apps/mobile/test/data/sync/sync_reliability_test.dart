@@ -77,13 +77,6 @@ void main() {
             'isAccountOperator': false,
           }),
         );
-      } else if (path == '/api/v1/auth/antiforgery') {
-        request.response.write(
-          jsonEncode({
-            'requestToken': 'csrf-fixture',
-            'authenticatedUserId': _accountId,
-          }),
-        );
       } else if (path.startsWith('/api/v1/sync/clients/')) {
         await utf8.decoder.bind(request).join();
         request.response.write(
@@ -151,7 +144,6 @@ void main() {
     api = ApiClient(
       configuration: ApiConfiguration(
         apiOrigin: Uri.parse('http://127.0.0.1:${server.port}'),
-        trustedFrontendOrigin: Uri.parse('http://127.0.0.1:${server.port}'),
         allowInsecureLoopbackForDevelopment: true,
       ),
     );

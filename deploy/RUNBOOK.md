@@ -21,7 +21,7 @@ Do not publish container port 443 and do not add a UFW rule for 8081. The existi
 3. Keep Docker Engine, the Compose plugin, Caddy, and OS security updates installed. UFW permits public TCP 80/443 and the restricted SSH rule only.
 4. Create a private Azure Blob container. Disable anonymous access and issue a container-scoped SAS with only the Restic permissions required for listing, reading, creating, writing, and pruning blobs. Record and rotate its expiry.
 5. Create `/etc/gainer/secrets` owned by root with mode `0700`. Keep the secret files root-owned with mode `0444`: the root-only parent directory prevents host users from traversing to them, while Docker's non-root application UID can read the individual bind-mounted secret. Never put their values in the repository, image, Compose output, logs, or shell history.
-6. Copy `deploy/.env.example` to `/etc/gainer/deployment.env`, make it root-readable, and set the Azure account/repository and immutable image tags. Keep `GAINER_PUBLIC_ORIGIN=https://gainer.markfort.xyz`, `GAINER_SITE_ADDRESS=:80`, and `GAINER_EDGE_PORT=8081`.
+6. Copy `deploy/.env.example` to `/etc/gainer/deployment.env`, make it root-readable, and set the Azure account/repository and immutable image tags. Keep `GAINER_SITE_ADDRESS=:80` and `GAINER_EDGE_PORT=8081`.
 7. Set `OPENFOODFACTS_CONTACT_EMAIL` to a monitored technical address. Keep the default HTTPS base URL unless a deliberate compatible mirror is used. The shipped limits (12 barcode and 8 search requests/minute), 8-second timeout and 1 MB response cap stay below the provider budgets; reduce them if the provider requests it.
 
 The account operator file has this shape and is consumed only by the explicit one-time provision command:
