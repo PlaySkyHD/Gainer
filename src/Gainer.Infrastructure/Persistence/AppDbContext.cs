@@ -872,8 +872,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             session.Property(item => item.DeviceName).HasMaxLength(100).IsRequired();
             session.Property(item => item.RefreshTokenHash).HasColumnType("bytea").IsRequired();
             session.Property(item => item.PreviousRefreshTokenHash).HasColumnType("bytea");
+            session.Property(item => item.DiscardedRefreshTokenHash).HasColumnType("bytea");
             session.HasIndex(item => item.RefreshTokenHash).IsUnique();
             session.HasIndex(item => item.PreviousRefreshTokenHash).IsUnique();
+            session.HasIndex(item => item.DiscardedRefreshTokenHash).IsUnique();
             session.HasIndex(item => item.UserId);
             session.HasOne(item => item.User)
                 .WithMany()

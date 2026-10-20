@@ -181,6 +181,33 @@ public sealed class PasskeyApiTests
     }
 
     [TestMethod]
+    public async Task PasswordLockoutDoesNotBlockPasskeySignIn()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        await CreateUserAsync(app, Email);
+        using var authenticator = new SoftwarePasskeyAuthenticator();
+        using HttpClient client = CreateClient(app);
+        await client.AuthenticateAsync(Email, Password);
+        await RegisterAsync(client, authenticator, "iPhone");
+
+        using HttpClient anonymous = CreateClient(app);
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            using HttpResponseMessage wrong = await anonymous.PostAsJsonAsync(
+                "/api/v1/auth/login",
+                new LoginRequest(Email, "Wrong-password-1!"));
+            Assert.AreEqual(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        }
+
+        using HttpResponseMessage locked = await anonymous.PostAsJsonAsync(
+            "/api/v1/auth/login",
+            new LoginRequest(Email, Password));
+        Assert.AreEqual(HttpStatusCode.Unauthorized, locked.StatusCode);
+        TokenResponse tokens = await SignInAsync(anonymous, authenticator, "iPhone");
+        Assert.IsFalse(string.IsNullOrEmpty(tokens.AccessToken));
+    }
+
+    [TestMethod]
     public async Task PasskeyManagementRequiresAnAccessToken()
     {
         await using WebApplication app = await CreateApplicationAsync();
