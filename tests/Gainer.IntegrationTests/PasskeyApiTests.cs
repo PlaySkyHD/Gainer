@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Gainer.Api.Composition;
+using Gainer.Api.Controllers;
 using Gainer.Api.Security;
 using Gainer.Contracts.Security;
 using Gainer.Core.Access;
@@ -208,6 +209,60 @@ public sealed class PasskeyApiTests
     }
 
     [TestMethod]
+    public async Task AddingAPasskeyLaterRequiresThePassword()
+    {
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email);
+        using var authenticator = new SoftwarePasskeyAuthenticator();
+        using HttpClient client = CreateClient(app);
+        await client.AuthenticateAsync(Email, Password);
+
+        timeProvider.Advance(PasskeysController.RecentSignInWindow + TimeSpan.FromMinutes(1));
+        using HttpResponseMessage withoutPassword = await client.PostAsync("/api/v1/auth/passkeys/creation-options", content: null);
+        Assert.AreEqual(HttpStatusCode.Forbidden, withoutPassword.StatusCode);
+        Assert.AreEqual("reauthentication_required", await ReadCodeAsync(withoutPassword));
+        using HttpResponseMessage wrongPassword = await client.PostAsJsonAsync(
+            "/api/v1/auth/passkeys/creation-options",
+            new PasskeyCreationOptionsRequest("Wrong-password-1!"));
+        Assert.AreEqual(HttpStatusCode.Forbidden, wrongPassword.StatusCode);
+
+        using HttpResponseMessage confirmed = await client.PostAsJsonAsync(
+            "/api/v1/auth/passkeys/creation-options",
+            new PasskeyCreationOptionsRequest(Password));
+        Assert.AreEqual(HttpStatusCode.OK, confirmed.StatusCode, await confirmed.Content.ReadAsStringAsync());
+        PasskeyOptionsResponse options = (await confirmed.Content.ReadFromJsonAsync<PasskeyOptionsResponse>())!;
+        using HttpResponseMessage registered = await client.PostAsJsonAsync(
+            "/api/v1/auth/passkeys",
+            new RegisterPasskeyRequest(authenticator.Register(options.OptionsJson), options.State, "iPhone"));
+        Assert.AreEqual(HttpStatusCode.Created, registered.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task LogoutAllEndsEverySessionButKeepsPasskeys()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        await CreateUserAsync(app, Email);
+        using var authenticator = new SoftwarePasskeyAuthenticator();
+        using HttpClient phone = CreateClient(app);
+        await phone.AuthenticateAsync(Email, Password);
+        await RegisterAsync(phone, authenticator, "iPhone");
+        using HttpClient tablet = CreateClient(app);
+        await tablet.AuthenticateAsync(Email, Password);
+
+        using HttpResponseMessage logoutAll = await phone.PostAsync("/api/v1/auth/logout-all", content: null);
+        Assert.AreEqual(HttpStatusCode.NoContent, logoutAll.StatusCode);
+        using HttpResponseMessage phoneSession = await phone.GetAsync("/api/v1/auth/session");
+        using HttpResponseMessage tabletSession = await tablet.GetAsync("/api/v1/auth/session");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, phoneSession.StatusCode);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, tabletSession.StatusCode);
+
+        using HttpClient anonymous = CreateClient(app);
+        TokenResponse again = await SignInAsync(anonymous, authenticator, "iPhone");
+        Assert.IsFalse(string.IsNullOrEmpty(again.AccessToken));
+    }
+
+    [TestMethod]
     public async Task PasskeyManagementRequiresAnAccessToken()
     {
         await using WebApplication app = await CreateApplicationAsync();
@@ -267,7 +322,7 @@ public sealed class PasskeyApiTests
         return body.RootElement.GetProperty("code").GetString();
     }
 
-    private async Task<WebApplication> CreateApplicationAsync()
+    private async Task<WebApplication> CreateApplicationAsync(TimeProvider? timeProvider = null)
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         await using (AppDbContext context = Fixture.CreateContext(connectionString))
@@ -283,6 +338,11 @@ public sealed class PasskeyApiTests
         builder.Configuration["ConnectionStrings:gainer-db"] = connectionString;
         builder.Configuration[GainerIdentityOptions.DataProtectionKeysPathConfigurationKey] = keyRingPath;
         builder.Configuration[GainerIdentityOptions.PasskeyServerDomainConfigurationKey] = "gainer.markfort.xyz";
+        if (timeProvider is not null)
+        {
+            builder.Services.AddSingleton(timeProvider);
+        }
+
         builder.AddGainerApi();
         builder.AddGainerPersistence();
         builder.AddGainerIdentity();
@@ -315,5 +375,17 @@ public sealed class PasskeyApiTests
         HttpClient client = app.GetTestClient();
         client.BaseAddress = new Uri(BaseAddress);
         return client;
+    }
+
+    private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset currentUtc = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => currentUtc;
+
+        public void Advance(TimeSpan duration)
+        {
+            currentUtc += duration;
+        }
     }
 }

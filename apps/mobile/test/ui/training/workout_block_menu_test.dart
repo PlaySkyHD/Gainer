@@ -1,7 +1,9 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
+import 'package:gainer_mobile/ui/features/training/exercise_editor_screen.dart';
 import 'package:gainer_mobile/ui/features/training/exercise_statistics_screen.dart';
 import 'package:gainer_mobile/ui/features/training/workout_block_card.dart';
 
@@ -338,5 +340,55 @@ void main() {
     expect(stored.exercises.map((block) => block.exerciseNameSnapshot), [
       'Bankdrücken',
     ]);
+  });
+
+  testWidgets('Übung bearbeiten öffnet den Übungseditor', (tester) async {
+    final exercise = await tester.runAsync(
+      () => seedExercise(harness, name: 'Schrägbankdrücken'),
+    );
+    final id = await startActiveWorkout(
+      tester,
+      harness,
+      active,
+      blocks: [
+        WorkoutBlock(
+          workoutExerciseId: 'incline',
+          sourceExerciseId: exercise!.id,
+          exerciseNameSnapshot: 'Schrägbankdrücken',
+          exerciseTypeSnapshot: ExerciseKind.strength,
+          sets: const [LoggedSet(setId: 's')],
+        ),
+      ],
+    );
+    await pumpWorkoutFromHost(tester, harness, active, id);
+
+    await openBlockMenu(tester, 'Schrägbankdrücken');
+    await tester.tap(find.text('Übung bearbeiten'));
+    await settle(tester);
+
+    expect(find.byType(ExerciseEditorScreen), findsOneWidget);
+    await scrollIntoView(
+      tester,
+      find.byKey(const ValueKey('exercise-primary-muscles')),
+    );
+    expect(
+      find.byKey(const ValueKey('exercise-primary-muscles')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('ohne bekannte Übung fehlt „Übung bearbeiten“', (tester) async {
+    final id = await startActiveWorkout(
+      tester,
+      harness,
+      active,
+      blocks: [_block('bench', 'Bankdrücken')],
+    );
+    await pumpWorkoutFromHost(tester, harness, active, id);
+
+    await openBlockMenu(tester, 'Bankdrücken');
+
+    expect(find.text('Übung bearbeiten'), findsNothing);
+    expect(find.text('Übung anzeigen'), findsNothing);
   });
 }

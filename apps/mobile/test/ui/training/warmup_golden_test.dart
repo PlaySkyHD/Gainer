@@ -140,8 +140,10 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('open-under-test')));
       await settle(tester);
-      await tester.ensureVisible(find.byKey(const ValueKey('warmup-rounding')));
-      await tester.pumpAndSettle();
+      await scrollIntoView(
+        tester,
+        find.byKey(const ValueKey('warmup-rounding')),
+      );
 
       expect(tester.takeException(), isNull);
       await expectLater(

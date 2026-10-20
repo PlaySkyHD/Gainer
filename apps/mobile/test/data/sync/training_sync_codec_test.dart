@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/local/local_mutation.dart';
 import 'package:gainer_mobile/data/repositories/sync/sync_payload_codec.dart';
 import 'package:gainer_mobile/domain/models/training/exercise_catalog_model.dart';
+import 'package:gainer_mobile/domain/models/training/muscles.dart';
 import 'package:gainer_mobile/domain/models/training/training_plan_model.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 
@@ -426,6 +427,32 @@ void main() {
         );
       },
     );
+
+    test('custom exercise update sends muscle keys', () {
+      final exercise = CatalogExercise(
+        id: _exerciseId,
+        name: 'Schrägbankdrücken',
+        exerciseType: ExerciseKind.strength,
+        primaryMuscles: const [Muscle.chest],
+        secondaryMuscles: const [Muscle.triceps, Muscle.frontDelts],
+        isBase: false,
+      ).toJson();
+      final payload =
+          SyncPayloadCodec.serverPayload(
+                _mutation(
+                  'custom-exercise',
+                  LocalMutationOperation.update,
+                  _exerciseId,
+                  exercise,
+                ),
+                exercise,
+                3,
+              )!
+              as Map<String, Object?>;
+      final values = payload['values']! as Map<String, Object?>;
+      expect(values['primaryMuscles'], ['chest']);
+      expect(values['secondaryMuscles'], ['triceps', 'frontDelts']);
+    });
 
     test('custom exercise archive sends id and base version only', () {
       final exercise = CatalogExercise(
