@@ -129,3 +129,17 @@ Widget trainingTestApp({
   ),
   home: home,
 );
+
+/// Scrollt die Seite, bis [finder] gebaut ist, und holt ihn ganz ins Bild.
+/// Lange Seiten bauen Abschnitte außerhalb des Bildes erst beim Scrollen.
+Future<void> scrollIntoView(WidgetTester tester, Finder finder) async {
+  final list = find.byType(CustomScrollView).first;
+  for (final step in const [-200.0, 200.0]) {
+    for (var i = 0; i < 30 && finder.evaluate().isEmpty; i++) {
+      await tester.drag(list, Offset(0, step));
+      await tester.pump();
+    }
+  }
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+}

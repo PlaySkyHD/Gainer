@@ -39,6 +39,12 @@ public interface IDeviceSessionService
         Guid userId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Returns when the account signed in on this session, or null when the session is not active.</summary>
+    Task<DateTimeOffset?> GetSignedInAtAsync(
+        Guid sessionId,
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Revokes one session of the given account.</summary>
     Task RevokeAsync(
         Guid sessionId,
