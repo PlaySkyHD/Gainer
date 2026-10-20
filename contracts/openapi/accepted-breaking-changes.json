@@ -1,9 +1,5 @@
 {
   "baseRef": null,
-  "reason": "Cookie sessions are replaced by bearer device sessions for the iOS app (OpenSpec change mobile-token-auth): login now returns the token pair with 200 instead of 204, and the antiforgery bootstrap endpoint is removed. Empty this list after merge.",
-  "accepted": [
-    "Removed response 204 from POST /api/v1/auth/login",
-    "Removed path: /api/v1/auth/antiforgery",
-    "Removed schema: AntiforgeryTokenResponse"
-  ]
+  "reason": "No accepted breaking changes. Add exact findings here only for an intentional, coordinated contract break and empty the list again after merge.",
+  "accepted": []
 }
