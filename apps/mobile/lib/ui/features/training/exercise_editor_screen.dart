@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/muscle_suggestion.dart';
 import '../../../domain/models/training/muscles.dart';
 import '../../../domain/models/training/warmup.dart';
 import '../../../domain/models/training/workout_input.dart';
@@ -86,9 +87,15 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     );
     _kind = exercise?.exerciseType ?? ExerciseKind.strength;
     _categoryIds = {...?exercise?.categoryIds};
+    _nameController.addListener(_nameChanged);
     _primaryMuscles = [...?exercise?.primaryMuscles];
     _secondaryMuscles = [...?exercise?.secondaryMuscles];
     WidgetsBinding.instance.addPostFrameCallback((_) => _viewModel.load());
+  }
+
+  /// Der Muskel-Vorschlag folgt dem Namen.
+  void _nameChanged() {
+    if (_primaryMuscles.isEmpty && _secondaryMuscles.isEmpty) setState(() {});
   }
 
   @override
@@ -289,6 +296,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (editable) ..._suggestion(colors),
           GainerCard(
             child: Center(
               child: SizedBox(
@@ -330,6 +338,62 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
         ],
       ),
     );
+  }
+
+  /// Vorschlag aus dem Katalog, solange noch keine Muskeln gewählt sind.
+  List<Widget> _suggestion(GainerColors colors) {
+    if (_primaryMuscles.isNotEmpty || _secondaryMuscles.isNotEmpty) {
+      return const [];
+    }
+    final source = suggestMuscleSource(
+      _nameController.text,
+      _viewModel.suggestionSources,
+    );
+    if (source == null) return const [];
+    final muscles = [
+      ...source.primaryMuscles,
+      ...source.secondaryMuscles,
+    ].map((muscle) => muscle.label).join(', ');
+    return [
+      GainerCard(
+        key: const ValueKey('exercise-muscle-suggestion'),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Vorschlag: wie „${source.name}“',
+                    style: GainerTypography.body.copyWith(
+                      color: colors.primaryText,
+                    ),
+                  ),
+                  const SizedBox(height: GainerSpacing.xxs),
+                  Text(
+                    muscles,
+                    style: GainerTypography.caption.copyWith(
+                      color: colors.secondaryText,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: GainerSpacing.xs),
+            GainerPillButton(
+              key: const ValueKey('exercise-muscle-suggestion-apply'),
+              label: 'Übernehmen',
+              variant: GainerPillVariant.tonal,
+              onPressed: () => setState(() {
+                _primaryMuscles = [...source.primaryMuscles];
+                _secondaryMuscles = [...source.secondaryMuscles];
+              }),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: GainerSpacing.xs),
+    ];
   }
 
   void _cycleMuscle(Muscle muscle) {
@@ -572,6 +636,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
             title: 'Kategorien',
             value: names.isEmpty ? 'Keine' : names.join(', '),
           ),
+          if (exercise.equipment case final equipment?)
+            GainerListRow(title: 'Equipment', value: equipment),
           GainerListRow(
             title: 'Körpergewichtsfaktor',
             value: bodyweight == null
@@ -587,6 +653,17 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
         ],
       ),
       const SizedBox(height: GainerSpacing.m),
+      if (exercise.description case final description?)
+        _Section(
+          header: 'Anleitung',
+          child: GainerCard(
+            key: const ValueKey('exercise-description'),
+            child: Text(
+              description,
+              style: GainerTypography.body.copyWith(color: colors.primaryText),
+            ),
+          ),
+        ),
       _muscleSection(context, editable: false),
       ..._warmupSection(context),
     ];
