@@ -1,11 +1,14 @@
 using Gainer.Api.Composition;
 using Gainer.Api.Errors;
 using Gainer.Api.Security;
+using System.Security.Claims;
 using Gainer.Contracts.Security;
+using Gainer.Core.Access;
 using Gainer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 
@@ -20,9 +23,14 @@ public sealed class PasskeysController(
     PasskeyCeremonyProtector ceremonies,
     SignInManager<AppUser> signInManager,
     UserManager<AppUser> userManager,
-    DeviceSignIn deviceSignIn) : ControllerBase
+    DeviceSignIn deviceSignIn,
+    IDeviceSessionService deviceSessions,
+    TimeProvider timeProvider) : ControllerBase
 {
     private const string DefaultPasskeyName = "iPhone";
+
+    /// <summary>How long after signing in a passkey can be added without entering the password again.</summary>
+    public static readonly TimeSpan RecentSignInWindow = TimeSpan.FromMinutes(5);
 
     /// <summary>Lists the passkeys of the signed-in account.</summary>
     [Authorize]
@@ -45,14 +53,29 @@ public sealed class PasskeysController(
 
     /// <summary>Starts creating a passkey for the signed-in account.</summary>
     [Authorize]
+    [EnableRateLimiting(ApiConstants.AuthenticationRateLimitPolicy)]
     [HttpPost("creation-options")]
     [ProducesResponseType<PasskeyOptionsResponse>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<PasskeyOptionsResponse>> CreationOptions()
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden, "application/problem+json")]
+    public async Task<ActionResult<PasskeyOptionsResponse>> CreationOptions(
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] PasskeyCreationOptionsRequest? request,
+        CancellationToken cancellationToken)
     {
         AppUser? user = await userManager.GetUserAsync(User);
         if (user is null)
         {
             return Unauthorized();
+        }
+
+        // A passkey outlives every device session, so a stolen access token alone must not add one.
+        if (!await SignedInRecentlyAsync(user, cancellationToken)
+            && (string.IsNullOrEmpty(request?.Password)
+                || !(await signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true)).Succeeded))
+        {
+            return AuthenticationProblems.Forbidden(
+                HttpContext,
+                "Confirm your password to add a passkey.",
+                "reauthentication_required");
         }
 
         string name = user.Email ?? user.UserName ?? user.Id.ToString();
@@ -179,6 +202,17 @@ public sealed class PasskeysController(
         // Keeps the signature counter and backup flags current.
         await userManager.AddOrUpdatePasskeyAsync(assertion.User, assertion.Passkey);
         return Ok(await deviceSignIn.StartAsync(assertion.User, request.DeviceName, cancellationToken));
+    }
+
+    private async Task<bool> SignedInRecentlyAsync(AppUser user, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(User.FindFirstValue(GainerIdentityOptions.DeviceSessionClaimType), out Guid sessionId))
+        {
+            return false;
+        }
+
+        DateTimeOffset? signedInAt = await deviceSessions.GetSignedInAtAsync(sessionId, user.Id, cancellationToken);
+        return signedInAt is DateTimeOffset at && timeProvider.GetUtcNow() - at <= RecentSignInWindow;
     }
 
     private static PasskeySummaryResponse Summary(UserPasskeyInfo passkey) => new(

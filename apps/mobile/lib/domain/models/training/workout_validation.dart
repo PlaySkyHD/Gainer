@@ -1,4 +1,5 @@
 import 'exercise_catalog_model.dart';
+import 'muscles.dart';
 import 'training_plan_model.dart';
 import 'workout_input.dart';
 import 'workout_model.dart';
@@ -139,6 +140,16 @@ void validateCatalogExercise(CatalogExercise exercise) {
   } else if (exercise.categoryIds.toSet().length !=
       exercise.categoryIds.length) {
     fields['categoryIds'] = 'Kategorien dürfen nicht doppelt vorkommen.';
+  }
+  final primary = exercise.primaryMuscles;
+  final secondary = exercise.secondaryMuscles;
+  if (primary.length > maxPrimaryMuscles ||
+      secondary.length > maxSecondaryMuscles) {
+    fields['primaryMuscles'] =
+        'Höchstens $maxPrimaryMuscles Haupt- und $maxSecondaryMuscles Hilfsmuskeln.';
+  } else if ({...primary, ...secondary}.length !=
+      primary.length + secondary.length) {
+    fields['primaryMuscles'] = 'Ein Muskel darf nur einmal vorkommen.';
   }
 
   _throwIfAny(fields);
