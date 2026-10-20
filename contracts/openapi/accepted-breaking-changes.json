@@ -1,5 +1,8 @@
 {
   "baseRef": null,
-  "reason": "No accepted breaking changes. Add exact findings here only for an intentional, coordinated contract break and empty the list again after merge.",
-  "accepted": []
+  "reason": "The exercise catalog response gains primaryMuscles and secondaryMuscles (OpenSpec change add-muscle-map). New required properties in a response do not break the app, which reads them as optional. Empty this list after merge.",
+  "accepted": [
+    "Added required property: ExerciseCatalogItemResponse.primaryMuscles",
+    "Added required property: ExerciseCatalogItemResponse.secondaryMuscles"
+  ]
 }

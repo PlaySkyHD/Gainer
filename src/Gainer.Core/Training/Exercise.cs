@@ -16,6 +16,12 @@ public sealed class Exercise
 
     public string? MuscleGroup { get; set; }
 
+    /// <summary>Muscle keys from <see cref="MuscleKeys"/> that the exercise mainly trains.</summary>
+    public string[] PrimaryMuscles { get; set; } = [];
+
+    /// <summary>Muscle keys from <see cref="MuscleKeys"/> that the exercise also trains; they count half.</summary>
+    public string[] SecondaryMuscles { get; set; } = [];
+
     public string? Equipment { get; set; }
 
     public ExerciseType ExerciseType { get; set; } = ExerciseType.Strength;

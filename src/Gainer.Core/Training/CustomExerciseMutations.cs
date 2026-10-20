@@ -13,7 +13,9 @@ public sealed record CustomExerciseValues(
     string? Notes = null,
     decimal? BodyweightFactor = null,
     decimal? WeightFactor = null,
-    IReadOnlyList<Guid>? CategoryIds = null);
+    IReadOnlyList<Guid>? CategoryIds = null,
+    IReadOnlyList<string>? PrimaryMuscles = null,
+    IReadOnlyList<string>? SecondaryMuscles = null);
 
 public sealed record CreateCustomExerciseMutation : ITypedMutation<CustomExerciseSnapshot>
 {
