@@ -128,7 +128,10 @@ void main() {
       _plan('b', [('curl', 2), ('unknown', 1)]),
     ], _byId);
 
-    expect(volume.exercisesWithoutMuscles, ['Curls', 'Übung']);
+    expect(volume.exercisesWithoutMuscles, [
+      (id: 'curl', name: 'Curls'),
+      (id: 'unknown', name: 'Übung'),
+    ]);
     expect(volume.isEmpty, isTrue);
   });
 

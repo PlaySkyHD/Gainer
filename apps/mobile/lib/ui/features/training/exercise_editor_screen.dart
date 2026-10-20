@@ -16,6 +16,26 @@ import 'muscle_map_widgets.dart';
 import 'muscle_picker_sheet.dart';
 import 'warmup_steps_editor.dart';
 
+/// Öffnet den Editor der Übung [exerciseId], z. B. aus dem Training oder der
+/// Muskelübersicht. Liefert true, wenn etwas gespeichert wurde. Eine
+/// unbekannte Übung öffnet nichts.
+Future<bool> openExerciseEditorById(
+  BuildContext context, {
+  required TrainingLogRepository repository,
+  required String exerciseId,
+}) async {
+  final exercises = await repository.readExercises(includeArchived: true);
+  final exercise = exercises.where((item) => item.id == exerciseId).firstOrNull;
+  if (exercise == null || !context.mounted) return false;
+  final changed = await Navigator.of(context).push<bool>(
+    CupertinoPageRoute<bool>(
+      builder: (_) =>
+          ExerciseEditorScreen(repository: repository, exercise: exercise),
+    ),
+  );
+  return changed == true;
+}
+
 /// Editor für eigene Übungen. Basis- und archivierte Übungen werden nur gelesen.
 /// Liefert true, wenn etwas gespeichert, archiviert oder zusammengeführt wurde.
 class ExerciseEditorScreen extends StatefulWidget {

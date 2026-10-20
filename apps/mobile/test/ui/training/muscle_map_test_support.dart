@@ -10,7 +10,11 @@ import 'exercise_catalog_test_support.dart';
 import 'training_plans_test_support.dart';
 import 'training_test_support.dart';
 
-typedef MuscleScenario = ({TrainingPlanModel push, TrainingPlanModel pull});
+typedef MuscleScenario = ({
+  TrainingPlanModel push,
+  TrainingPlanModel pull,
+  String curlId,
+});
 
 Future<CatalogExercise> _exercise(
   TrainingHarness harness,
@@ -104,7 +108,7 @@ Future<MuscleScenario> seedMuscleScenario(TrainingHarness harness) async {
     );
   }
   harness.now = now;
-  return (push: push, pull: pull);
+  return (push: push, pull: pull, curlId: curl.id);
 }
 
 /// Öffnet den Übungseditor über eine Host-Seite, damit Speichern zurückkehrt.
