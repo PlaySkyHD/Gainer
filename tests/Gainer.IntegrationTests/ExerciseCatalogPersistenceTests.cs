@@ -66,20 +66,24 @@ public sealed class ExerciseCatalogPersistenceTests
         Guid secondUser = Guid.NewGuid();
         await SeedUserAsync(connectionString, firstUser);
         await SeedUserAsync(connectionString, secondUser);
-        await AddCustomAsync(connectionString, firstUser, "My Bench Variation", "Chest", "Barbell");
-        await AddCustomAsync(connectionString, secondUser, "Secret Bench Variation", "Chest", "Barbell");
+        await AddCustomAsync(connectionString, firstUser, "Mein Bankdrücken", "Brust", "Langhantel");
+        await AddCustomAsync(connectionString, secondUser, "Secret Bankdrücken", "Brust", "Langhantel");
 
         await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
         var queries = new ExerciseCatalogQueries(context, new TestUserContext(firstUser));
         ExerciseCatalogPage page = await queries.SearchAsync(new ExerciseCatalogFilter(
-            Search: "Bench",
-            MuscleGroup: "Chest",
-            Equipment: "Barbell",
+            Search: "Bankdrücken",
+            MuscleGroup: "Brust",
+            Equipment: "Langhantel",
             Limit: 10), TestContext.CancellationToken);
 
-        Assert.AreEqual(2, page.Total);
-        Assert.IsTrue(page.Items.Any(item => item.Name == "Barbell Bench Press" && !item.IsCustom));
-        Assert.IsTrue(page.Items.Any(item => item.Name == "My Bench Variation" && item.IsCustom));
+        int baseMatches = ExerciseCatalogSnapshot.Document.Entries.Count(item =>
+            item.Name.Contains("Bankdrücken", StringComparison.OrdinalIgnoreCase) &&
+            item.MuscleGroup == "Brust" &&
+            item.Equipment == "Langhantel");
+        Assert.AreEqual(baseMatches + 1, page.Total);
+        Assert.IsTrue(page.Items.Any(item => item.Name == "Bankdrücken (Langhantel)" && !item.IsCustom));
+        Assert.IsTrue(page.Items.Any(item => item.Name == "Mein Bankdrücken" && item.IsCustom));
         Assert.IsFalse(page.Items.Any(item => item.Name.Contains("Secret", StringComparison.Ordinal)));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             queries.SearchAsync(new ExerciseCatalogFilter(Limit: 101), TestContext.CancellationToken));

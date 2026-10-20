@@ -10,6 +10,7 @@ import 'package:gainer_mobile/ui/features/training/muscle_map_screen.dart';
 import 'package:gainer_mobile/ui/features/training/plan_editor_screen.dart';
 import 'package:gainer_mobile/ui/features/training/training_statistics_section.dart';
 
+import 'exercise_catalog_test_support.dart';
 import 'muscle_map_test_support.dart';
 import 'training_plans_test_support.dart';
 import 'training_test_support.dart';
@@ -285,6 +286,8 @@ void main() {
     await scrollIntoView(tester, map);
 
     Future<void> tapChest() async {
+      // Der Vorschlag über der Karte verschwindet nach der ersten Wahl.
+      await scrollIntoView(tester, map);
       final box = tester.getRect(map);
       await tester.tapAt(
         box.topLeft + Offset(86 * box.width / 408, 102 * box.height / 430),
@@ -329,5 +332,61 @@ void main() {
     expect(find.text('Oberer Rücken, Latissimus'), findsOneWidget);
     expect(find.text('Bizeps'), findsOneWidget);
     expect(find.byKey(const ValueKey('exercise-save')), findsNothing);
+  });
+
+  testWidgets('neue Übung bekommt einen Muskel-Vorschlag aus dem Namen', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await tester.pumpWidget(
+      catalogHost(
+        buildRoute: (_) => ExerciseEditorScreen(repository: harness.repository),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('open-under-test')));
+    await settle(tester);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('exercise-name')),
+      'Bankdrücken Schrägbank',
+    );
+    await tester.pump();
+    final apply = find.byKey(
+      const ValueKey('exercise-muscle-suggestion-apply'),
+    );
+    await scrollIntoView(tester, apply);
+    expect(find.text('Vorschlag: wie „Bankdrücken“'), findsOneWidget);
+
+    await tester.tap(apply);
+    await tester.pump();
+
+    expect(apply, findsNothing);
+    final primary = tester.widgetList<Text>(
+      find.descendant(
+        of: find.byKey(const ValueKey('exercise-primary-muscles')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(primary.last.data, 'Brust');
+  });
+
+  testWidgets('Basisübung zeigt Anleitung und Equipment', (tester) async {
+    const base = CatalogExercise(
+      id: 'base-bench',
+      name: 'Bankdrücken (Langhantel)',
+      exerciseType: ExerciseKind.strength,
+      description: 'Stange zur Brust senken und drücken.',
+      equipment: 'Langhantel',
+      primaryMuscles: [Muscle.chest],
+      isBase: true,
+    );
+    await openEditorFor(tester, harness, base);
+
+    expect(find.text('Langhantel'), findsOneWidget);
+    await scrollIntoView(
+      tester,
+      find.byKey(const ValueKey('exercise-description')),
+    );
+    expect(find.text('Stange zur Brust senken und drücken.'), findsOneWidget);
   });
 }
