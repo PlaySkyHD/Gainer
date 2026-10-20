@@ -22,7 +22,7 @@ Nicht Bestandteil des MVP sind öffentliche Veröffentlichung, Bezahlung, sozial
 ## Struktur
 
 ```text
-apps/web/                    Next.js-, React-, Tailwind- und PWA-Frontend
+apps/mobile/                 Flutter-iOS-App (einziger Client)
 src/Gainer.Api/              ASP.NET-Core-Composition-Root und HTTP-API
 src/Gainer.Core/             Domänenmodell und Anwendungsfälle
 src/Gainer.Infrastructure/   EF Core, Npgsql, Identity und externe Adapter
@@ -32,16 +32,14 @@ src/Gainer.ServiceDefaults/  Health Checks, Service Discovery und OpenTelemetry
 tests/Gainer.UnitTests/      Schnelle Domänen- und Anwendungsfalltests
 tests/Gainer.IntegrationTests/ PostgreSQL- und API-Integrationstests
 tests/Gainer.ArchitectureTests/ Automatisierte Modul- und Abhängigkeitsregeln
-apps/web/tests/browser/      Playwright-Browsertests
 openspec/                    Anforderungen, Design und Implementierungsaufgaben
 ```
 
-Das Backend ist als modularer Monolith ausgelegt. Das Frontend greift ausschließlich über `/api/v1` auf Serverfunktionen zu. In Produktion liefert ein Reverse Proxy den statischen PWA-Export und leitet API-Aufrufe an ASP.NET Core weiter; Aspire ist die Entwicklungs- und Publikationsbeschreibung, nicht der Produktions-Orchestrator.
+Das Backend ist als modularer Monolith ausgelegt. Die iOS-App greift ausschließlich über `/api/v1` auf Serverfunktionen zu. In Produktion leitet ein Reverse Proxy API- und Health-Aufrufe an ASP.NET Core weiter; Aspire ist die Entwicklungs- und Publikationsbeschreibung, nicht der Produktions-Orchestrator.
 
 ## Voraussetzungen
 
 - .NET SDK gemäß [`global.json`](global.json)
-- Node.js 24 und npm
 - PowerShell 7 für das gebündelte Verifikationsskript
 - Docker für die späteren PostgreSQL-, Aspire- und Container-Szenarien
 
@@ -60,21 +58,12 @@ dotnet restore Gainer.slnx --locked-mode
 dotnet format Gainer.slnx --verify-no-changes --no-restore
 dotnet build Gainer.slnx --no-restore
 dotnet test Gainer.slnx --no-restore --no-build
-
-Set-Location apps/web
-npm ci
-npm run typecheck
-npm run lint
-npm run build
-npx playwright install chromium
-npm run test:browser
 ```
 
-NuGet-Paketversionen werden zentral in [`Directory.Packages.props`](Directory.Packages.props) verwaltet. `packages.lock.json` und `apps/web/package-lock.json` werden eingecheckt und im CI reproduzierbar verwendet.
+NuGet-Paketversionen werden zentral in [`Directory.Packages.props`](Directory.Packages.props) verwaltet. `packages.lock.json`-Dateien werden eingecheckt und im CI reproduzierbar verwendet.
 
 ASP.NET OpenAPI ist die einzige HTTP-Vertragsquelle. Ein Backend-Build erzeugt
-`contracts/openapi/Gainer.Api.json`; `npm run generate:api` erzeugt daraus
-`apps/web/src/lib/api/generated.ts`. Beide Dateien werden eingecheckt und CI
+`contracts/openapi/Gainer.Api.json`. Die Datei wird eingecheckt und CI
 lehnt nicht regenerierte oder gegenüber dem Ziel-Branch inkompatible Änderungen ab.
 
 Bewusst inkompatible Änderungen werden in `contracts/openapi/accepted-breaking-changes.json` eingetragen: Jeder Eintrag in `accepted` muss exakt der Meldung von `scripts/Test-OpenApiCompatibility.ps1` entsprechen, und `reason` begründet die Änderung. Die Liste ist nur für den Change gedacht, der den Vertrag ändert; neue Befunde, die nicht gelistet sind, lassen das Skript weiterhin fehlschlagen. Nach dem Merge ist die Liste zu leeren, sobald das Skript die Einträge nicht mehr meldet (veraltete Einträge erzeugen eine Warnung), damit der Schutz für spätere Änderungen wieder vollständig greift.

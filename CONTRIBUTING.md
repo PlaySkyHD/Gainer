@@ -46,7 +46,7 @@ Beispiele:
 ```text
 feat(sync): add idempotent mutation receipt
 test(access): cover cross-user workout lookup
-build(web): pin playwright dependency
+build(mobile): pin pigeon dependency
 ```
 
 Ein Commit soll genau einen verständlichen Zweck haben. Breaking Changes müssen im Commit-Body mit `BREAKING CHANGE:` erläutert werden; für den Greenfield-MVP sind sie nur nach Anpassung der OpenSpec-Artefakte zulässig.

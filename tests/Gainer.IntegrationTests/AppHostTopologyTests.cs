@@ -7,10 +7,10 @@ namespace Gainer.IntegrationTests;
 [TestClass]
 public sealed class AppHostTopologyTests
 {
-    private static readonly string[] ExpectedResourceNames = ["postgres", "gainer-db", "backup-storage", "backup-blobs", "api", "web"];
+    private static readonly string[] ExpectedResourceNames = ["postgres", "gainer-db", "backup-storage", "backup-blobs", "api"];
 
     [TestMethod]
-    public async Task AppHostDefinesPostgresAzuriteApiAndWebWithReferences()
+    public async Task AppHostDefinesPostgresAzuriteAndApiWithReferences()
     {
         var appHost = await DistributedApplicationTestingBuilder
             .CreateAsync<Projects.Gainer_AppHost>();
@@ -26,7 +26,6 @@ public sealed class AppHostTopologyTests
         Assert.IsInstanceOfType<AzureStorageResource>(resources["backup-storage"]);
         Assert.IsInstanceOfType<AzureBlobStorageResource>(resources["backup-blobs"]);
         AssertHasReference(resources["api"], resources["gainer-db"]);
-        AssertHasReference(resources["web"], resources["api"]);
     }
 
     private static void AssertHasReference(IResource source, IResource target)

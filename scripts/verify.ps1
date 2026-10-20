@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
-    [switch] $SkipRestore,
-    [switch] $SkipBrowser
+    [switch] $SkipRestore
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,21 +38,11 @@ function Invoke-CheckedCommand {
 
 if (-not $SkipRestore) {
     Invoke-CheckedCommand -Executable "dotnet" -Arguments @("restore", "Gainer.slnx", "--locked-mode") -WorkingDirectory $repositoryRoot
-    Invoke-CheckedCommand -Executable "npm" -Arguments @("ci") -WorkingDirectory (Join-Path $repositoryRoot "apps/web")
 }
 
 Invoke-CheckedCommand -Executable "dotnet" -Arguments @("format", "Gainer.slnx", "--verify-no-changes", "--no-restore") -WorkingDirectory $repositoryRoot
 Invoke-CheckedCommand -Executable "dotnet" -Arguments @("build", "Gainer.slnx", "--no-restore") -WorkingDirectory $repositoryRoot
-Invoke-CheckedCommand -Executable "npm" -Arguments @("run", "generate:api") -WorkingDirectory (Join-Path $repositoryRoot "apps/web")
 Invoke-CheckedCommand -Executable "dotnet" -Arguments @("test", "Gainer.slnx", "--no-restore", "--no-build") -WorkingDirectory $repositoryRoot
-Invoke-CheckedCommand -Executable "npm" -Arguments @("run", "typecheck") -WorkingDirectory (Join-Path $repositoryRoot "apps/web")
-Invoke-CheckedCommand -Executable "npm" -Arguments @("run", "lint") -WorkingDirectory (Join-Path $repositoryRoot "apps/web")
-Invoke-CheckedCommand -Executable "npm" -Arguments @("run", "build") -WorkingDirectory (Join-Path $repositoryRoot "apps/web")
-Invoke-CheckedCommand -Executable "node" -Arguments @("deploy/generate-edge-csp.mjs", "apps/web/out", "deploy/Caddyfile", "--check") -WorkingDirectory $repositoryRoot
 Invoke-CheckedCommand -Executable "dotnet" -Arguments @("publish", "src/Gainer.Api/Gainer.Api.csproj", "--no-restore", "--configuration", "Release", "--output", "artifacts/api") -WorkingDirectory $repositoryRoot
-Invoke-CheckedCommand -Executable $powerShellCommand.Source -Arguments @("./scripts/Test-ReleaseSafety.ps1", "-ArtifactPaths", "artifacts/api,apps/web/out", "-CheckRepositoryPolicy") -WorkingDirectory $repositoryRoot
+Invoke-CheckedCommand -Executable $powerShellCommand.Source -Arguments @("./scripts/Test-ReleaseSafety.ps1", "-ArtifactPaths", "artifacts/api", "-CheckRepositoryPolicy") -WorkingDirectory $repositoryRoot
 Invoke-CheckedCommand -Executable $powerShellCommand.Source -Arguments @("./scripts/Test-DeploymentTopology.ps1") -WorkingDirectory $repositoryRoot
-
-if (-not $SkipBrowser) {
-    Invoke-CheckedCommand -Executable "npm" -Arguments @("run", "test:browser") -WorkingDirectory (Join-Path $repositoryRoot "apps/web")
-}

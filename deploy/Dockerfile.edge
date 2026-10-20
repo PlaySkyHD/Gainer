@@ -1,14 +1,3 @@
-FROM node:24.7.0-alpine3.22 AS build
-WORKDIR /src
-COPY apps/web/package.json apps/web/package-lock.json ./
-RUN npm install --global --ignore-scripts npm@11.19.0 && npm ci --ignore-scripts
-COPY apps/web/ ./
-COPY deploy/Caddyfile /build/edge/Caddyfile
-COPY deploy/generate-edge-csp.mjs /build/edge/generate-edge-csp.mjs
-RUN npm run build
-RUN node /build/edge/generate-edge-csp.mjs /src/out /build/edge/Caddyfile /build/edge/Caddyfile.generated
-
 FROM caddy:2.10.2-alpine
-COPY --from=build /build/edge/Caddyfile.generated /etc/caddy/Caddyfile
-COPY --from=build /src/out /srv
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
 EXPOSE 80
