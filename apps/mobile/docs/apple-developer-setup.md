@@ -233,9 +233,9 @@ weder Secret noch Base64-Upload.
 
 Der Workflow prüft Team, Bundle-IDs, exakte App-Group-Mitgliedschaft in beiden
 Profilen und das aktivierte HealthKit-Entitlement der App vor dem Archivieren.
-`GAINER_API_ORIGIN` und `GAINER_TRUSTED_FRONTEND_ORIGIN` sind nicht geheim und
-verwenden standardmäßig `https://gainer.markfort.xyz`; bei Änderung müssen es
-weiterhin reine HTTPS-Ursprünge ohne Pfad oder Zugangsdaten sein.
+`GAINER_API_ORIGIN` ist nicht geheim und verwendet standardmäßig
+`https://gainer.markfort.xyz`; bei Änderung muss es weiterhin ein reiner
+HTTPS-Ursprung ohne Pfad oder Zugangsdaten sein.
 
 Der signierte Lauf startet ausschließlich manuell von `main`, nachdem die
 unsignierte Simulator-CI erfolgreich war und `ios-beta` manuell freigegeben

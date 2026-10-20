@@ -44,37 +44,25 @@ const _operatorOnlineRequiredMessage =
     'Operatoraktionen erfordern eine Online-Sitzung.';
 
 class MobileAppConfiguration {
-  const MobileAppConfiguration({
-    required this.api,
-    required this.trustedOrigin,
-  });
+  const MobileAppConfiguration({required this.api});
   final Uri api;
-  final Uri trustedOrigin;
 
   static MobileAppConfiguration? fromEnvironment({bool debug = kDebugMode}) {
     const rawApi = String.fromEnvironment('GAINER_API_ORIGIN');
-    const rawTrustedOrigin = String.fromEnvironment(
-      'GAINER_TRUSTED_FRONTEND_ORIGIN',
-    );
     const loopbackOptIn = bool.fromEnvironment('GAINER_ALLOW_LOOPBACK_HTTP');
     if (rawApi.isEmpty) return null;
     final api = Uri.tryParse(rawApi);
-    final trusted = rawTrustedOrigin.isEmpty
-        ? api
-        : Uri.tryParse(rawTrustedOrigin);
-    if (api == null || trusted == null) return null;
-    final allowLoopback =
-        debug && loopbackOptIn && _isLoopback(api) && _isLoopback(trusted);
+    if (api == null) return null;
+    final allowLoopback = debug && loopbackOptIn && _isLoopback(api);
     try {
       ApiConfiguration(
         apiOrigin: api,
-        trustedFrontendOrigin: trusted,
         allowInsecureLoopbackForDevelopment: allowLoopback,
       );
     } on ArgumentError {
       return null;
     }
-    return MobileAppConfiguration(api: api, trustedOrigin: trusted);
+    return MobileAppConfiguration(api: api);
   }
 
   static bool _isLoopback(Uri value) =>
@@ -88,7 +76,8 @@ ApiClient _createDefaultApi(ApiConfiguration configuration) =>
 
 /// Owns the active account scope. A profile becomes available only after the
 /// API confirms its identity or after a valid secure checkpoint identifies a
-/// previously authenticated local profile.
+/// previously authenticated local profile. When the server rejects the device
+/// session, the profile closes and its local data stays on the device.
 class MobileAuthController extends ChangeNotifier
     implements NativeRouteConsumer {
   MobileAuthController({
@@ -162,11 +151,8 @@ class MobileAuthController extends ChangeNotifier
         }
       } on ApiException catch (error) {
         if (error.code != 'network_error') rethrow;
-        final bytes = await secureSessions.readCheckpoint(
-          api.configuration.canonicalApiOrigin,
-        );
-        if (bytes == null || bytes.isEmpty) rethrow;
-        final checkpoint = await api.restoreSecureCheckpoint(bytes);
+        final checkpoint = await sessions.restoreOffline();
+        if (checkpoint == null) rethrow;
         await _openAccount(
           ApiSession(
             userId: checkpoint.userId,
@@ -353,12 +339,13 @@ class MobileAuthController extends ChangeNotifier
     final store = LocalSyncStore(database: db, accountId: session.userId);
     await store.ensureAccountBound();
     final generation = ++_sessionGeneration;
+    api.onSessionRejected = () => unawaited(_onSessionRejected(generation));
     final identity = InstallationIdentityStore(installDb);
     final sync = SyncRepository(
       store: store,
       api: api,
       installationIdentity: identity,
-      displayName: 'Gainer iPhone',
+      displayName: ApiSessionService.defaultDeviceName,
       handoverSecrets: handoverSecrets,
     );
     final body = BodyRepository(store: store);
@@ -526,10 +513,27 @@ class MobileAuthController extends ChangeNotifier
     }
   }
 
+  Future<void> _onSessionRejected(int generation) async {
+    final api = _api;
+    if (_disposed || api == null || generation != _sessionGeneration) return;
+    final apiOrigin = api.configuration.canonicalApiOrigin;
+    await _closeCurrentAccount();
+    if (_disposed || generation + 1 != _sessionGeneration) return;
+    _api = null;
+    try {
+      await secureSessions.clearCheckpoint(apiOrigin);
+    } catch (_) {
+      // The stored token is already rejected by the server.
+    }
+    state = MobileAuthState.signedOut;
+    statusMessage = null;
+    errorMessage = 'Deine Anmeldung ist abgelaufen. Melde dich erneut an; deine lokalen Daten bleiben auf dem Gerät.';
+    if (!_disposed) notifyListeners();
+  }
+
   ApiClient _newApi() => apiFactory(
     ApiConfiguration(
       apiOrigin: configuration.api,
-      trustedFrontendOrigin: configuration.trustedOrigin,
       allowInsecureLoopbackForDevelopment:
           configuration.api.scheme == 'http' && kDebugMode,
     ),

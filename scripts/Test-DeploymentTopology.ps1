@@ -7,7 +7,6 @@ $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $composePath = Join-Path $repositoryRoot $ComposeFile
 $temporaryEnvironment = @{
-    GAINER_PUBLIC_ORIGIN = "https://gainer.markfort.xyz"
     GAINER_EDGE_PORT = "8081"
     GAINER_SITE_ADDRESS = ":80"
     GAINER_SECRETS_DIR = (Join-Path $repositoryRoot "deploy")

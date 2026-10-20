@@ -30,6 +30,9 @@ public static class GainerPersistenceExtensions
         builder.Services.AddSingleton<UtcTimestampInterceptor>();
         builder.Services.AddScoped<UserOwnershipInterceptor>();
         builder.Services.AddScoped<IAccountInvitationService, AccountInvitationService>();
+        builder.Services.Configure<DeviceSessionOptions>(
+            builder.Configuration.GetSection(DeviceSessionOptions.SectionName));
+        builder.Services.AddScoped<IDeviceSessionService, DeviceSessionService>();
         builder.Services.AddScoped<IAccountStatusService, AccountStatusService>();
         builder.Services.AddScoped<IAccountDirectoryService, AccountDirectoryService>();
         builder.Services.AddScoped<IBodyGoalMutationHandler, BodyGoalMutationHandler>();

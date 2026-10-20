@@ -58,7 +58,6 @@ void main() {
     final client = ApiClient(
       configuration: ApiConfiguration(
         apiOrigin: Uri.parse('http://127.0.0.1:5099'),
-        trustedFrontendOrigin: Uri.parse('http://127.0.0.1:5099'),
         allowInsecureLoopbackForDevelopment: true,
       ),
     );
@@ -256,7 +255,6 @@ class _CatalogApi extends ApiClient {
     : super(
         configuration: ApiConfiguration(
           apiOrigin: Uri.parse('http://127.0.0.1:5099'),
-          trustedFrontendOrigin: Uri.parse('http://127.0.0.1:5099'),
           allowInsecureLoopbackForDevelopment: true,
         ),
       );

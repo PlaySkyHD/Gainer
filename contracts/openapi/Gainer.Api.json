@@ -191,8 +191,84 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized",
@@ -1227,35 +1303,6 @@
         }
       }
     },
-    "/api/v1/auth/antiforgery": {
-      "get": {
-        "tags": [
-          "RequestSecurity"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/AntiforgeryTokenResponse"
-                }
-              },
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AntiforgeryTokenResponse"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AntiforgeryTokenResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/sync/changes": {
       "get": {
         "tags": [
@@ -1856,24 +1903,6 @@
               "string"
             ],
             "format": "date"
-          }
-        }
-      },
-      "AntiforgeryTokenResponse": {
-        "required": [
-          "requestToken"
-        ],
-        "type": "object",
-        "properties": {
-          "requestToken": {
-            "type": "string"
-          },
-          "authenticatedUserId": {
-            "type": [
-              "null",
-              "string"
-            ],
-            "format": "uuid"
           }
         }
       },
@@ -2806,6 +2835,12 @@
           },
           "password": {
             "type": "string"
+          },
+          "deviceName": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -3668,6 +3703,17 @@
           }
         }
       },
+      "RefreshTokenRequest": {
+        "required": [
+          "refreshToken"
+        ],
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "type": "string"
+          }
+        }
+      },
       "RegisterSyncClientRequest": {
         "required": [
           "clientId",
@@ -4089,6 +4135,35 @@
           }
         }
       },
+      "TokenResponse": {
+        "required": [
+          "accessToken",
+          "expiresIn",
+          "refreshToken",
+          "refreshTokenExpiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "expiresIn": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "refreshTokenExpiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "TrainingInsightsResponse": {
         "required": [
           "volumeAlgorithmVersion",
@@ -4267,9 +4342,6 @@
     },
     {
       "name": "Nutrition"
-    },
-    {
-      "name": "RequestSecurity"
     },
     {
       "name": "SyncChanges"

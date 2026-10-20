@@ -1,35 +1,29 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
-import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 
 import '../../models/api/api_models.dart';
 import '../../models/api/sync_api_models.dart';
 
-const csrfHeaderName = 'X-CSRF-TOKEN';
 const accountIdentityHeaderName = 'X-Gainer-Account-Id';
 const syncProtocolVersion = 3;
+
+/// Keychain checkpoint format. Version 1 held cookies, version 2 a refresh token.
+const secureCheckpointSchemaVersion = 2;
 
 class ApiConfiguration {
   ApiConfiguration({
     required this.apiOrigin,
-    required this.trustedFrontendOrigin,
     this.allowInsecureLoopbackForDevelopment = false,
   }) {
     _validateOrigin(
       apiOrigin,
       allowLoopbackHttp: allowInsecureLoopbackForDevelopment,
     );
-    _validateOrigin(
-      trustedFrontendOrigin,
-      allowLoopbackHttp: allowInsecureLoopbackForDevelopment,
-    );
   }
 
   final Uri apiOrigin;
-  final Uri trustedFrontendOrigin;
   final bool allowInsecureLoopbackForDevelopment;
 
   String get canonicalApiOrigin => _canonicalOrigin(apiOrigin);
@@ -54,11 +48,12 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// Cookie/Origin/Antiforgery transport for the existing Gainer API.
-/// Redirects are rejected so cookies and request data cannot follow another host.
+/// Bearer-token transport for the Gainer API. Access tokens are short-lived
+/// and renewed with the rotating refresh token of the device session.
+/// Redirects are rejected so tokens and request data cannot follow another host.
 class ApiClient {
-  ApiClient({required this.configuration, CookieJar? cookieJar})
-    : cookieJar = cookieJar ?? CookieJar(),
+  ApiClient({required this.configuration, DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now,
       _dio = Dio() {
     _dio.options = BaseOptions(
       baseUrl: '${configuration.canonicalApiOrigin}/',
@@ -69,15 +64,30 @@ class ApiClient {
       receiveTimeout: const Duration(seconds: 30),
       sendTimeout: const Duration(seconds: 30),
     );
-    _dio.interceptors
-      ..add(_ApiOriginGuard(configuration))
-      ..add(CookieManager(this.cookieJar));
+    _dio.interceptors.add(_ApiOriginGuard(configuration));
   }
+
+  /// Renew the access token this long before it expires.
+  static const accessTokenRenewalMargin = Duration(seconds: 30);
 
   final ApiConfiguration configuration;
   final Dio _dio;
-  final CookieJar cookieJar;
+  final DateTime Function() _clock;
   bool _closed = false;
+  String? _accessToken;
+  DateTime? _accessTokenExpiresAt;
+  String? _refreshToken;
+  Future<bool>? _refreshInFlight;
+
+  /// Called with each new refresh token so it can be stored before the old one
+  /// stops working.
+  Future<void> Function(String refreshToken)? onRefreshTokenRotated;
+
+  /// Called once when the server rejects the refresh token, i.e. the device
+  /// session was revoked, expired or its account deactivated.
+  void Function()? onSessionRejected;
+
+  bool get hasDeviceSession => _refreshToken != null;
 
   Future<ApiSession?> getSession() async {
     final response = await _request(
@@ -275,19 +285,35 @@ class ApiClient {
     );
   }
 
-  Future<void> login(ApiLoginRequest request) async {
-    await _mutate('POST', '/api/v1/auth/login', body: request.toJson());
+  /// Starts a device session and keeps its tokens for later requests.
+  Future<ApiTokenResponse> login(ApiLoginRequest request) async {
+    clearTokens();
+    final response = await _request(
+      'POST',
+      '/api/v1/auth/login',
+      body: request.toJson(),
+      authenticate: false,
+    );
+    final tokens = ApiTokenResponse.fromJson(_asObject(response.data));
+    _applyTokens(tokens);
+    return tokens;
   }
 
+  /// Revokes the device session on the server and forgets its tokens.
   Future<void> logout() async {
-    await _mutate('POST', '/api/v1/auth/logout');
+    try {
+      if (_refreshToken != null) await _mutate('POST', '/api/v1/auth/logout');
+    } finally {
+      clearTokens();
+    }
   }
 
   Future<void> acceptInvitation(ApiAcceptInvitationRequest request) async {
-    await _mutate(
+    await _request(
       'POST',
       '/api/v1/auth/invitations/accept',
       body: request.toJson(),
+      authenticate: false,
     );
   }
 
@@ -416,29 +442,33 @@ class ApiClient {
     );
   }
 
-  Future<Uint8List> createSecureCheckpoint(ApiSession session) async {
-    final cookies = await cookieJar.loadForRequest(configuration.apiOrigin);
-    if (cookies.isEmpty) {
-      throw StateError('No API session cookie is available.');
+  /// Serializes the device session for the keychain. Only the refresh token
+  /// is stored; access tokens are renewed after a restart.
+  Uint8List createSecureCheckpoint(ApiSession session) {
+    final refreshToken = _refreshToken;
+    if (refreshToken == null) {
+      throw StateError('No API device session is available.');
     }
     return Uint8List.fromList(
       utf8.encode(
         jsonEncode({
-          'schemaVersion': 1,
+          'schemaVersion': secureCheckpointSchemaVersion,
           'apiOrigin': configuration.canonicalApiOrigin,
           'userId': session.userId,
           'email': session.email,
-          'cookies': cookies
-              .map(_serializeSessionCookie)
-              .toList(growable: false),
+          'refreshToken': refreshToken,
         }),
       ),
     );
   }
 
-  Future<ApiSessionCheckpoint> restoreSecureCheckpoint(Uint8List bytes) async {
+  /// Restores a device session written by [createSecureCheckpoint]. Older
+  /// cookie checkpoints are rejected with a [FormatException], which signs the
+  /// user out once.
+  ApiSessionCheckpoint restoreSecureCheckpoint(Uint8List bytes) {
     final decoded = jsonDecode(utf8.decode(bytes));
-    if (decoded is! Map<String, dynamic> || decoded['schemaVersion'] != 1) {
+    if (decoded is! Map<String, dynamic> ||
+        decoded['schemaVersion'] != secureCheckpointSchemaVersion) {
       throw const FormatException('Unsupported secure session checkpoint.');
     }
     if (decoded['apiOrigin'] != configuration.canonicalApiOrigin) {
@@ -448,22 +478,23 @@ class ApiClient {
     }
     final userId = decoded['userId'];
     final email = decoded['email'];
-    final serializedCookies = decoded['cookies'];
-    if (userId is! String || email is! String || serializedCookies is! List) {
+    final refreshToken = decoded['refreshToken'];
+    if (userId is! String ||
+        email is! String ||
+        refreshToken is! String ||
+        refreshToken.isEmpty) {
       throw const FormatException('Invalid secure session checkpoint.');
     }
-    final cookies = serializedCookies.map(_restoreSessionCookie).toList();
-    if (cookies.isEmpty ||
-        (configuration.apiOrigin.scheme == 'https' &&
-            cookies.any((cookie) => !cookie.secure))) {
-      throw const FormatException('Checkpoint contains an invalid API cookie.');
-    }
-    await clearCookies();
-    await cookieJar.saveFromResponse(configuration.apiOrigin, cookies);
+    clearTokens();
+    _refreshToken = refreshToken;
     return ApiSessionCheckpoint(userId: userId, email: email);
   }
 
-  Future<void> clearCookies() => cookieJar.deleteAll();
+  void clearTokens() {
+    _accessToken = null;
+    _accessTokenExpiresAt = null;
+    _refreshToken = null;
+  }
 
   void close() {
     if (_closed) return;
@@ -476,40 +507,66 @@ class ApiClient {
     String path, {
     Object? body,
     String? expectedAccountId,
-  }) async {
+  }) {
     if (expectedAccountId != null) {
       _validateIdentifier(expectedAccountId, 'expectedAccountId');
     }
-    final token = await _fetchAntiforgeryToken(
-      expectedAccountId: expectedAccountId,
+    return _request(
+      method,
+      path,
+      body: body,
+      headers: {accountIdentityHeaderName: ?expectedAccountId},
     );
-    final headers = <String, String>{csrfHeaderName: token};
-    if (expectedAccountId case final accountId?) {
-      headers[accountIdentityHeaderName] = accountId;
-    }
-    return _request(method, path, body: body, headers: headers);
   }
 
-  Future<String> _fetchAntiforgeryToken({String? expectedAccountId}) async {
-    final response = await _request('GET', '/api/v1/auth/antiforgery');
-    final token = ApiAntiforgeryToken.fromJson(_asObject(response.data));
-    if (expectedAccountId != null && token.authenticatedUserId == null) {
-      throw const ApiException(
-        statusCode: 426,
-        code: 'api_upgrade_required',
-        message: 'Die Kontoidentität der API-Sitzung konnte nicht bestätigt werden. Bitte aktualisiere die App und melde dich erneut an.',
-      );
+  /// Exchanges the refresh token for a new pair. Concurrent callers share one
+  /// request, because a refresh token is valid for a single rotation. Returns
+  /// false when the server rejected the session.
+  Future<bool> _refreshTokens() {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+    final run = _performRefresh();
+    _refreshInFlight = run;
+    return run.whenComplete(() {
+      if (identical(_refreshInFlight, run)) _refreshInFlight = null;
+    });
+  }
+
+  Future<bool> _performRefresh() async {
+    final refreshToken = _refreshToken;
+    if (refreshToken == null) return false;
+    final response = await _send(
+      'POST',
+      '/api/v1/auth/refresh',
+      body: {'refreshToken': refreshToken},
+    );
+    if (response.statusCode == 401) {
+      if (_refreshToken == refreshToken) {
+        clearTokens();
+        onSessionRejected?.call();
+      }
+      return false;
     }
-    if (expectedAccountId != null &&
-        token.authenticatedUserId!.toLowerCase() !=
-            expectedAccountId.toLowerCase()) {
-      throw const ApiException(
-        statusCode: 409,
-        code: 'account_changed',
-        message: 'Das angemeldete Konto hat sich geändert. Deine lokalen Änderungen bleiben erhalten; melde dich mit dem passenden Konto an.',
-      );
-    }
-    return token.requestToken;
+    _throwForStatus(response);
+    // A logout or new login during the request owns the token state now.
+    if (_refreshToken != refreshToken) return _refreshToken != null;
+    final tokens = ApiTokenResponse.fromJson(_asObject(response.data));
+    _applyTokens(tokens);
+    await onRefreshTokenRotated?.call(tokens.refreshToken);
+    return true;
+  }
+
+  void _applyTokens(ApiTokenResponse tokens) {
+    _accessToken = tokens.accessToken;
+    _accessTokenExpiresAt = _clock().add(Duration(seconds: tokens.expiresIn));
+    _refreshToken = tokens.refreshToken;
+  }
+
+  bool get _accessTokenUsable {
+    final expiresAt = _accessTokenExpiresAt;
+    return _accessToken != null &&
+        expiresAt != null &&
+        _clock().isBefore(expiresAt.subtract(accessTokenRenewalMargin));
   }
 
   Future<Response<dynamic>> _request(
@@ -519,6 +576,56 @@ class ApiClient {
     Map<String, Object?>? queryParameters,
     Map<String, String>? headers,
     bool allow401 = false,
+    bool authenticate = true,
+  }) async {
+    if (!authenticate) {
+      final response = await _send(
+        method,
+        path,
+        body: body,
+        queryParameters: queryParameters,
+        headers: headers,
+      );
+      _throwForStatus(response, allow401: allow401);
+      return response;
+    }
+    if (!_accessTokenUsable && _refreshToken != null) {
+      await _refreshTokens();
+    }
+    var response = await _send(
+      method,
+      path,
+      body: body,
+      queryParameters: queryParameters,
+      headers: headers,
+      accessToken: _accessToken,
+    );
+    // The token may have been revoked or expired early; retry once with a
+    // fresh one. Multipart bodies cannot be resent and surface the 401.
+    if (response.statusCode == 401 &&
+        body is! FormData &&
+        _refreshToken != null &&
+        await _refreshTokens()) {
+      response = await _send(
+        method,
+        path,
+        body: body,
+        queryParameters: queryParameters,
+        headers: headers,
+        accessToken: _accessToken,
+      );
+    }
+    _throwForStatus(response, allow401: allow401);
+    return response;
+  }
+
+  Future<Response<dynamic>> _send(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, Object?>? queryParameters,
+    Map<String, String>? headers,
+    String? accessToken,
   }) async {
     if (_closed) throw StateError('ApiClient is closed.');
     final isMultipart = body is FormData;
@@ -540,8 +647,8 @@ class ApiClient {
         options: Options(
           method: method,
           headers: {
-            'Origin': configuration.trustedFrontendOrigin.origin,
             'Cache-Control': 'no-store',
+            if (accessToken != null) 'Authorization': 'Bearer $accessToken',
             if (body != null && !isMultipart)
               'Content-Type': 'application/json',
             ...?headers,
@@ -561,15 +668,6 @@ class ApiClient {
           message: 'Die API hat eine Weiterleitung zurückgegeben; sie wurde blockiert.',
         );
       }
-      if (status >= 400 && !(allow401 && status == 401)) {
-        final problem = _problemFromResponse(response.data);
-        throw ApiException(
-          statusCode: status,
-          code: problem.code ?? 'http_$status',
-          message: problem.message,
-          errors: problem.errors,
-        );
-      }
       return response;
     } on DioException catch (error) {
       throw ApiException(
@@ -580,43 +678,17 @@ class ApiClient {
     }
   }
 
-  Map<String, dynamic> _serializeSessionCookie(Cookie cookie) {
-    final domain = cookie.domain;
-    if (domain != null &&
-        !_domainMatches(domain, configuration.apiOrigin.host)) {
-      throw StateError('Refusing to checkpoint a cookie for another host.');
+  void _throwForStatus(Response<dynamic> response, {bool allow401 = false}) {
+    final status = response.statusCode ?? 0;
+    if (status >= 400 && !(allow401 && status == 401)) {
+      final problem = _problemFromResponse(response.data);
+      throw ApiException(
+        statusCode: status,
+        code: problem.code ?? 'http_$status',
+        message: problem.message,
+        errors: problem.errors,
+      );
     }
-    return {
-      'name': cookie.name,
-      'value': cookie.value,
-      'path': cookie.path,
-      'secure': cookie.secure,
-      'httpOnly': cookie.httpOnly,
-      if (cookie.expires != null)
-        'expiresAtUtc': cookie.expires!.toUtc().toIso8601String(),
-      if (cookie.maxAge != null) 'maxAge': cookie.maxAge,
-    };
-  }
-
-  Cookie _restoreSessionCookie(Object? value) {
-    if (value is! Map<String, dynamic> ||
-        value['name'] is! String ||
-        value['value'] is! String ||
-        value['path'] is! String ||
-        value['secure'] is! bool ||
-        value['httpOnly'] is! bool) {
-      throw const FormatException('Invalid cookie in secure checkpoint.');
-    }
-    final cookie = Cookie(value['name'] as String, value['value'] as String)
-      ..path = value['path'] as String
-      ..secure = value['secure'] as bool
-      ..httpOnly = value['httpOnly'] as bool
-      ..domain = configuration.apiOrigin.host;
-    final expires = value['expiresAtUtc'];
-    if (expires is String) cookie.expires = DateTime.parse(expires).toUtc();
-    final maxAge = value['maxAge'];
-    if (maxAge is int) cookie.maxAge = maxAge;
-    return cookie;
   }
 }
 
@@ -727,15 +799,6 @@ class _ApiOriginGuard extends Interceptor {
     }
     handler.next(options);
   }
-}
-
-bool _domainMatches(String cookieDomain, String host) {
-  final normalized = cookieDomain.toLowerCase().replaceFirst(
-    RegExp(r'^\.'),
-    '',
-  );
-  return host.toLowerCase() == normalized ||
-      host.toLowerCase().endsWith('.$normalized');
 }
 
 String _dateOnly(DateTime value) {

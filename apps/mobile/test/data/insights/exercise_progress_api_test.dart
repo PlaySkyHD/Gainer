@@ -72,7 +72,6 @@ void main() {
             host: server.address.address,
             port: server.port,
           ),
-          trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
           allowInsecureLoopbackForDevelopment: true,
         ),
       );

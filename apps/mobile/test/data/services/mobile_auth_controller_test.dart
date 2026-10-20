@@ -44,6 +44,39 @@ void main() {
   });
 
   test(
+    'a rejected device session signs out with a hint to sign in again',
+    () async {
+      final secure = _MemorySecureSession();
+      final databases = <String, LocalDatabase>{};
+      final apiFactory = _FakeApiFactory();
+      final controller = _controller(
+        secure: secure,
+        databases: databases,
+        apiFactory: apiFactory,
+      );
+      try {
+        await controller.initialize();
+        await controller.login('a@example.test', 'password');
+        expect(controller.state, MobileAuthState.signedIn);
+        expect(apiFactory.loginDeviceNames, ['Gainer iPhone']);
+        expect(secure.value, isNotNull);
+
+        controller.account!.api.onSessionRejected!();
+        await pumpEventQueue();
+
+        expect(controller.state, MobileAuthState.signedOut);
+        expect(controller.account, isNull);
+        expect(secure.value, isNull);
+        expect(controller.errorMessage, contains('Anmeldung ist abgelaufen'));
+        expect(databases.keys, {_accountA});
+      } finally {
+        await controller.logout();
+        controller.dispose();
+      }
+    },
+  );
+
+  test(
     '401 shows a safe login error and never opens an account scope',
     () async {
       final secure = _MemorySecureSession();
@@ -305,7 +338,6 @@ MobileAuthController _controller({
 }) => MobileAuthController(
   configuration: MobileAppConfiguration(
     api: Uri.parse('https://api.example.test'),
-    trustedOrigin: Uri.parse('https://app.example.test'),
   ),
   apiFactory: apiFactory.call,
   secureSessions: secure,
@@ -377,6 +409,7 @@ class _FakeApiFactory {
     ),
   };
   ApiSession? activeSession;
+  final loginDeviceNames = <String?>[];
 
   ApiClient call(ApiConfiguration configuration) =>
       _FakeApiClient(configuration: configuration, factory: this);
@@ -388,10 +421,10 @@ class _FakeApiClient extends ApiClient {
   final _FakeApiFactory factory;
 
   @override
-  Future<void> clearCookies() async => factory.activeSession = null;
+  void clearTokens() => factory.activeSession = null;
 
   @override
-  Future<void> login(ApiLoginRequest request) async {
+  Future<ApiTokenResponse> login(ApiLoginRequest request) async {
     if (factory.rejectPassword || request.password != 'password') {
       throw const ApiException(
         statusCode: 401,
@@ -401,6 +434,12 @@ class _FakeApiClient extends ApiClient {
     }
     final id = request.email == 'b@example.test' ? _accountB : _accountA;
     factory.activeSession = factory.sessions[id];
+    factory.loginDeviceNames.add(request.deviceName);
+    return const ApiTokenResponse(
+      accessToken: 'access',
+      expiresIn: 900,
+      refreshToken: 'refresh',
+    );
   }
 
   @override
@@ -416,11 +455,11 @@ class _FakeApiClient extends ApiClient {
   }
 
   @override
-  Future<Uint8List> createSecureCheckpoint(ApiSession session) async =>
+  Uint8List createSecureCheckpoint(ApiSession session) =>
       Uint8List.fromList(session.userId.codeUnits);
 
   @override
-  Future<ApiSessionCheckpoint> restoreSecureCheckpoint(Uint8List bytes) async {
+  ApiSessionCheckpoint restoreSecureCheckpoint(Uint8List bytes) {
     final userId = String.fromCharCodes(bytes);
     final session = factory.sessions[userId];
     if (session == null) throw const FormatException('unknown user');

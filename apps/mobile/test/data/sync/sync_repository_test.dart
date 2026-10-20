@@ -32,11 +32,11 @@ void main() {
   Map<String, Object?>? mutationFailureErrors;
   late String? pullFailureCode;
   late int pullFailureStatus;
-  late bool switchAntiforgeryAfterRegistration;
+  late bool switchAccountAfterRegistration;
   late int pullCursor;
   late int pullRevision;
   late String sessionUserId;
-  late String antiforgeryUserId;
+  late String serverAccountId;
   late String pullResourceType;
   String? pullResourceId;
   Map<String, Object?>? pullSnapshot;
@@ -71,11 +71,11 @@ void main() {
     mutationFailureErrors = null;
     pullFailureCode = null;
     pullFailureStatus = 409;
-    switchAntiforgeryAfterRegistration = false;
+    switchAccountAfterRegistration = false;
     pullCursor = 0;
     pullRevision = 1;
     sessionUserId = accountId;
-    antiforgeryUserId = accountId;
+    serverAccountId = accountId;
     pullResourceType = 'DailyCheckIn';
     pullResourceId = null;
     pullSnapshot = null;
@@ -103,6 +103,21 @@ void main() {
     server.listen((request) async {
       received.add(request);
       final path = request.uri.path;
+      // Mirrors the API's account guard on scoped sync requests.
+      final expectedAccount = request.headers.value('x-gainer-account-id');
+      if (expectedAccount != null && expectedAccount != serverAccountId) {
+        request.response.statusCode = 409;
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(
+          jsonEncode({
+            'code': 'account_changed',
+            'title':
+                'The authenticated account does not match this sync profile.',
+          }),
+        );
+        await request.response.close();
+        return;
+      }
       if (path == '/api/v1/auth/session' && request.method == 'GET') {
         if (sessionGate != null) {
           sessionEntered?.complete();
@@ -114,15 +129,6 @@ void main() {
             'userId': sessionUserId,
             'email': 'fixture@example.test',
             'isAccountOperator': false,
-          }),
-        );
-      } else if (path == '/api/v1/auth/antiforgery' &&
-          request.method == 'GET') {
-        request.response.headers.contentType = ContentType.json;
-        request.response.write(
-          jsonEncode({
-            'requestToken': 'csrf-fixture',
-            'authenticatedUserId': antiforgeryUserId,
           }),
         );
       } else if (path.startsWith('/api/v1/sync/clients/') &&
@@ -143,9 +149,9 @@ void main() {
               'lastSeenAtUtc': '2026-10-12T10:00:00Z',
             }),
           );
-          if (switchAntiforgeryAfterRegistration) {
-            antiforgeryUserId = 'f1234567-1234-4234-8234-123456789abc';
-            switchAntiforgeryAfterRegistration = false;
+          if (switchAccountAfterRegistration) {
+            serverAccountId = 'f1234567-1234-4234-8234-123456789abc';
+            switchAccountAfterRegistration = false;
           }
         } else {
           request.response.write(
@@ -347,7 +353,6 @@ void main() {
     final api = ApiClient(
       configuration: ApiConfiguration(
         apiOrigin: Uri.parse('http://127.0.0.1:${server.port}'),
-        trustedFrontendOrigin: Uri.parse('http://127.0.0.1:${server.port}'),
         allowInsecureLoopbackForDevelopment: true,
       ),
     );
@@ -413,8 +418,9 @@ void main() {
     final push = received.firstWhere(
       (request) => request.uri.path.startsWith('/api/v1/sync/mutations/'),
     );
-    expect(push.headers.value('Origin'), 'http://127.0.0.1:${server.port}');
-    expect(push.headers.value('X-CSRF-TOKEN'), 'csrf-fixture');
+    expect(push.headers.value('Origin'), isNull);
+    expect(push.headers.value('X-CSRF-TOKEN'), isNull);
+    expect(push.headers.value('X-Gainer-Account-Id'), accountId);
     api.close();
     await database.close();
   });
@@ -518,39 +524,43 @@ void main() {
     },
   );
 
-  test('antiforgery identity mismatch pauses the outbox before client registration', () async {
-    antiforgeryUserId = 'f1234567-1234-4234-8234-123456789abc';
-    final (store, database, api, repository) = await fixture();
-    await store.commitMutation(
-      mutationId: mutationId,
-      aggregateType: 'daily-check-in',
-      aggregateId: checkInId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'localDate': '2026-10-12'},
-      envelope: localEnvelope(
+  test(
+    'server account guard pauses the outbox at client registration',
+    () async {
+      serverAccountId = 'f1234567-1234-4234-8234-123456789abc';
+      final (store, database, api, repository) = await fixture();
+      await store.commitMutation(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
         aggregateId: checkInId,
-        workingCopy: {'localDate': '2026-10-12'},
-      ),
-    );
-    final report = await repository.synchronize();
-    expect(report.state, SyncRunState.authBlocked);
-    expect(
-      (await store.readOutbox()).single.status,
-      LocalMutationStatus.authBlocked,
-    );
-    expect(
-      received.any(
-        (request) => request.uri.path.startsWith('/api/v1/sync/clients/'),
-      ),
-      isFalse,
-    );
-    api.close();
-    await database.close();
-  });
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12'},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12'},
+        ),
+      );
+      final report = await repository.synchronize();
+      expect(report.state, SyncRunState.authBlocked);
+      expect(
+        (await store.readOutbox()).single.status,
+        LocalMutationStatus.authBlocked,
+      );
+      expect(registrationRequests, isEmpty);
+      expect(
+        received.any(
+          (request) => request.uri.path.startsWith('/api/v1/sync/mutations/'),
+        ),
+        isFalse,
+      );
+      api.close();
+      await database.close();
+    },
+  );
 
   test('account_changed during push preserves the outbox without creating a conflict', () async {
-    switchAntiforgeryAfterRegistration = true;
+    switchAccountAfterRegistration = true;
     final (store, database, api, repository) = await fixture();
     await store.commitMutation(
       mutationId: mutationId,
@@ -571,12 +581,8 @@ void main() {
       (await store.readOutbox()).single.status,
       LocalMutationStatus.authBlocked,
     );
-    expect(
-      received.any(
-        (request) => request.uri.path.startsWith('/api/v1/sync/mutations/'),
-      ),
-      isFalse,
-    );
+    // The server's account guard rejects the push before applying it.
+    expect(receivedMutations, isEmpty);
     api.close();
     await database.close();
   });

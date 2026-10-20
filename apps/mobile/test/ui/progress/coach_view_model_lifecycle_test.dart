@@ -12,7 +12,6 @@ class _PendingApiClient extends ApiClient {
     : super(
         configuration: ApiConfiguration(
           apiOrigin: Uri.parse('http://127.0.0.1:5099'),
-          trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
           allowInsecureLoopbackForDevelopment: true,
         ),
       );

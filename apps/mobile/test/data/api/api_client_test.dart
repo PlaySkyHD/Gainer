@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/models/api/sync_api_models.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
 import 'package:gainer_mobile/data/services/api/api_session_service.dart';
@@ -15,9 +16,6 @@ void main() {
       final requests = <String>[];
       final server = await _TestApiServer.start((request) async {
         requests.add('${request.method} ${request.uri.path}');
-        if (request.uri.path == '/api/v1/auth/antiforgery') {
-          return _json(request, {'requestToken': 'csrf'});
-        }
         if (request.uri.path == '/api/v1/insights/dashboard') {
           return _json(request, {
             'asOfRevision': 12,
@@ -77,7 +75,6 @@ void main() {
           });
         }
         if (request.uri.path == '/api/v1/coach/responses') {
-          expect(request.headers.value('x-csrf-token'), 'csrf');
           final body = jsonDecode(
             await utf8.decoder.bind(request).join(),
           ) as Map<String, dynamic>;
@@ -102,7 +99,6 @@ void main() {
       final api = ApiClient(
         configuration: ApiConfiguration(
           apiOrigin: server.origin,
-          trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
           allowInsecureLoopbackForDevelopment: true,
         ),
       );
@@ -179,7 +175,6 @@ void main() {
       final api = ApiClient(
         configuration: ApiConfiguration(
           apiOrigin: server.origin,
-          trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
           allowInsecureLoopbackForDevelopment: true,
         ),
       );
@@ -213,15 +208,11 @@ void main() {
       () async {
         final uploadPaths = <String>[];
         final server = await _TestApiServer.start((request) async {
-          if (request.uri.path == '/api/v1/auth/antiforgery') {
-            return _json(request, {'requestToken': 'csrf-token'});
-          }
           if (request.uri.path.endsWith('/meal-estimates') ||
               request.uri.path.endsWith('/label-scans')) {
             final contentType = request.headers.contentType;
             expect(contentType?.mimeType, 'multipart/form-data');
             expect(contentType?.parameters['boundary'], isNotEmpty);
-            expect(request.headers.value('x-csrf-token'), 'csrf-token');
             final body = await utf8.decoder.bind(request).join();
             expect(body, contains('image/jpeg'));
             uploadPaths.add(request.uri.path);
@@ -275,7 +266,6 @@ void main() {
         final api = ApiClient(
           configuration: ApiConfiguration(
             apiOrigin: server.origin,
-            trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
             allowInsecureLoopbackForDevelopment: true,
           ),
         );
@@ -308,130 +298,254 @@ void main() {
       },
     );
 
+    test('runs login, restore by refresh, protected mutation, and logout with bearer tokens', () async {
+      final requests = <String>[];
+      final server = await _TestApiServer.start((request) async {
+        requests.add('${request.method} ${request.uri.path}');
+        expect(request.headers.value('origin'), isNull);
+        expect(request.headers.value('cookie'), isNull);
+        expect(request.headers.value('x-csrf-token'), isNull);
+
+        if (request.uri.path == '/api/v1/auth/login') {
+          expect(request.headers.value('authorization'), isNull);
+          final body = jsonDecode(
+            await utf8.decoder.bind(request).join(),
+          ) as Map<String, dynamic>;
+          expect(body, {
+            'email': 'member@example.test',
+            'password': 'secret-never-store',
+            'deviceName': 'Gainer iPhone',
+          });
+          return _json(request, _tokens(1));
+        }
+
+        if (request.uri.path == '/api/v1/auth/refresh') {
+          expect(request.headers.value('authorization'), isNull);
+          expect(jsonDecode(await utf8.decoder.bind(request).join()), {
+            'refreshToken': 'refresh-1',
+          });
+          return _json(request, _tokens(2));
+        }
+
+        if (request.uri.path == '/api/v1/auth/session') {
+          final authorization = request.headers.value('authorization');
+          expect(authorization, anyOf('Bearer access-1', 'Bearer access-2'));
+          return _json(request, {
+            'userId': '11111111-1111-4111-8111-111111111111',
+            'email': 'member@example.test',
+            'isAccountOperator': false,
+          });
+        }
+
+        if (request.uri.path.endsWith('/status') && request.method == 'PUT') {
+          expect(request.headers.value('authorization'), 'Bearer access-2');
+          expect(jsonDecode(await utf8.decoder.bind(request).join()), {
+            'isActive': false,
+          });
+          request.response.statusCode = HttpStatus.noContent;
+          return request.response.close();
+        }
+
+        if (request.uri.path == '/api/v1/auth/logout') {
+          expect(request.headers.value('authorization'), 'Bearer access-2');
+          request.response.statusCode = HttpStatus.noContent;
+          return request.response.close();
+        }
+
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+      final secureStorage = _MemorySecureSession();
+      final api = ApiClient(
+        configuration: ApiConfiguration(
+          apiOrigin: server.origin,
+          allowInsecureLoopbackForDevelopment: true,
+        ),
+      );
+      final sessions = ApiSessionService(
+        api: api,
+        secureStorage: secureStorage,
+      );
+
+      try {
+        final signedIn = await sessions.login(
+          'member@example.test',
+          'secret-never-store',
+        );
+        expect(signedIn.email, 'member@example.test');
+        final checkpointText = utf8.decode(secureStorage.checkpoint!);
+        expect(checkpointText, contains('"schemaVersion":2'));
+        expect(checkpointText, contains('refresh-1'));
+        expect(checkpointText, isNot(contains('secret-never-store')));
+        expect(checkpointText, isNot(contains('access-1')));
+
+        // A restart keeps only the refresh token; the first request renews.
+        api.clearTokens();
+        final restored = await sessions.restore();
+        expect(restored?.userId, signedIn.userId);
+        final rotatedText = utf8.decode(secureStorage.checkpoint!);
+        expect(rotatedText, contains('refresh-2'));
+        expect(rotatedText, isNot(contains('refresh-1')));
+
+        await api.setAccountStatus(
+          '22222222-2222-4222-8222-222222222222',
+          false,
+        );
+        await sessions.logout();
+
+        expect(secureStorage.checkpoint, isNull);
+        expect(api.hasDeviceSession, isFalse);
+        expect(requests, [
+          'POST /api/v1/auth/login',
+          'GET /api/v1/auth/session',
+          'POST /api/v1/auth/refresh',
+          'GET /api/v1/auth/session',
+          'PUT /api/v1/account-operator/accounts/22222222-2222-4222-8222-222222222222/status',
+          'POST /api/v1/auth/logout',
+        ]);
+      } finally {
+        api.close();
+        await server.close();
+      }
+    });
+
     test(
-      'runs login, session restore, protected mutation, and logout with CSRF',
+      'renews an expiring access token once for concurrent requests',
       () async {
         final requests = <String>[];
-        var antiforgeryRequest = 0;
         final server = await _TestApiServer.start((request) async {
           requests.add('${request.method} ${request.uri.path}');
-          expect(request.headers.value('origin'), 'https://app.gainer.example');
-
-          if (request.uri.path == '/api/v1/auth/antiforgery') {
-            antiforgeryRequest++;
-            request.response.headers.add(
-              HttpHeaders.setCookieHeader,
-              'gainer.csrf=$antiforgeryRequest; Path=/; HttpOnly; SameSite=Lax',
-            );
-            return _json(request, {
-              'requestToken': 'request-token-$antiforgeryRequest',
-            });
-          }
-
           if (request.uri.path == '/api/v1/auth/login') {
-            expect(request.headers.value('x-csrf-token'), 'request-token-1');
-            expect(request.headers.value('cookie'), contains('gainer.csrf=1'));
-            final body = jsonDecode(
-              await utf8.decoder.bind(request).join(),
-            ) as Map<String, dynamic>;
-            expect(body, {
-              'email': 'member@example.test',
-              'password': 'secret-never-store',
-            });
-            request.response.headers.add(
-              HttpHeaders.setCookieHeader,
-              'gainer.session=opaque-session; Path=/; HttpOnly; SameSite=Lax',
-            );
-            request.response.statusCode = HttpStatus.noContent;
-            return request.response.close();
+            return _json(request, _tokens(1));
           }
-
-          if (request.uri.path == '/api/v1/auth/session') {
-            expect(
-              request.headers.value('cookie'),
-              contains('gainer.session=opaque-session'),
-            );
-            return _json(request, {
-              'userId': '11111111-1111-4111-8111-111111111111',
-              'email': 'member@example.test',
-              'isAccountOperator': false,
-            });
+          if (request.uri.path == '/api/v1/auth/refresh') {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            return _json(request, _tokens(2));
           }
-
-          if (request.uri.path.endsWith('/status') && request.method == 'PUT') {
-            expect(request.headers.value('x-csrf-token'), 'request-token-2');
-            expect(request.headers.value('cookie'), contains('gainer.csrf=2'));
-            expect(
-              request.headers.value('cookie'),
-              contains('gainer.session=opaque-session'),
-            );
-            expect(jsonDecode(await utf8.decoder.bind(request).join()), {
-              'isActive': false,
-            });
-            request.response.statusCode = HttpStatus.noContent;
-            return request.response.close();
-          }
-
-          if (request.uri.path == '/api/v1/auth/logout') {
-            expect(request.headers.value('x-csrf-token'), 'request-token-3');
-            expect(
-              request.headers.value('cookie'),
-              contains('gainer.session=opaque-session'),
-            );
-            request.response.headers.add(
-              HttpHeaders.setCookieHeader,
-              'gainer.session=; Path=/; Max-Age=0; HttpOnly',
-            );
-            request.response.statusCode = HttpStatus.noContent;
-            return request.response.close();
-          }
-
-          request.response.statusCode = HttpStatus.notFound;
-          await request.response.close();
+          expect(request.headers.value('authorization'), 'Bearer access-2');
+          return _json(request, {
+            'userId': '11111111-1111-4111-8111-111111111111',
+            'email': 'member@example.test',
+            'isAccountOperator': false,
+          });
         });
-        final secureStorage = _MemorySecureSession();
+        var now = DateTime.utc(2026, 10, 20, 12);
+        final rotated = <String>[];
         final api = ApiClient(
           configuration: ApiConfiguration(
             apiOrigin: server.origin,
-            trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
             allowInsecureLoopbackForDevelopment: true,
           ),
+          clock: () => now,
+        )..onRefreshTokenRotated = (token) async => rotated.add(token);
+        try {
+          await api.login(
+            const ApiLoginRequest(email: 'member@example.test', password: 'pw'),
+          );
+          now = now.add(const Duration(seconds: 900 - 10));
+          await Future.wait([api.getSession(), api.getSession()]);
+
+          expect(rotated, ['refresh-2']);
+          expect(requests, [
+            'POST /api/v1/auth/login',
+            'POST /api/v1/auth/refresh',
+            'GET /api/v1/auth/session',
+            'GET /api/v1/auth/session',
+          ]);
+        } finally {
+          api.close();
+          await server.close();
+        }
+      },
+    );
+
+    test('retries once with a renewed token after a 401', () async {
+      final requests = <String>[];
+      final server = await _TestApiServer.start((request) async {
+        requests.add(
+          '${request.method} ${request.uri.path} '
+          '${request.headers.value('authorization')}',
         );
+        if (request.uri.path == '/api/v1/auth/login') {
+          return _json(request, _tokens(1));
+        }
+        if (request.uri.path == '/api/v1/auth/refresh') {
+          return _json(request, _tokens(2));
+        }
+        if (request.headers.value('authorization') == 'Bearer access-1') {
+          request.response.statusCode = HttpStatus.unauthorized;
+          return request.response.close();
+        }
+        return _json(request, {'products': [], 'page': 1, 'hasMore': false});
+      });
+      final api = ApiClient(
+        configuration: ApiConfiguration(
+          apiOrigin: server.origin,
+          allowInsecureLoopbackForDevelopment: true,
+        ),
+      );
+      try {
+        await api.login(
+          const ApiLoginRequest(email: 'member@example.test', password: 'pw'),
+        );
+        final foods = await api.searchFoods(query: 'oats');
+        expect(foods.hasMore, isFalse);
+        expect(requests, [
+          'POST /api/v1/auth/login null',
+          'GET /api/v1/foods/search Bearer access-1',
+          'POST /api/v1/auth/refresh null',
+          'GET /api/v1/foods/search Bearer access-2',
+        ]);
+      } finally {
+        api.close();
+        await server.close();
+      }
+    });
+
+    test(
+      'a rejected refresh token ends the device session without retrying',
+      () async {
+        final requests = <String>[];
+        final server = await _TestApiServer.start((request) async {
+          requests.add('${request.method} ${request.uri.path}');
+          if (request.uri.path == '/api/v1/auth/refresh') {
+            request.response.statusCode = HttpStatus.unauthorized;
+            return _json(request, {'code': 'invalid_refresh_token'});
+          }
+          request.response.statusCode = HttpStatus.unauthorized;
+          await request.response.close();
+        });
+        final secureStorage = _MemorySecureSession()
+          ..checkpoint = Uint8List.fromList(
+            utf8.encode(
+              jsonEncode({
+                'schemaVersion': 2,
+                'apiOrigin': server.origin.origin,
+                'userId': '11111111-1111-4111-8111-111111111111',
+                'email': 'member@example.test',
+                'refreshToken': 'revoked',
+              }),
+            ),
+          );
+        var rejected = 0;
+        final api = ApiClient(
+          configuration: ApiConfiguration(
+            apiOrigin: server.origin,
+            allowInsecureLoopbackForDevelopment: true,
+          ),
+        )..onSessionRejected = () => rejected++;
         final sessions = ApiSessionService(
           api: api,
           secureStorage: secureStorage,
         );
-
         try {
-          final signedIn = await sessions.login(
-            'member@example.test',
-            'secret-never-store',
-          );
-          expect(signedIn.email, 'member@example.test');
-          expect(secureStorage.checkpoint, isNotNull);
-          final checkpointText = utf8.decode(secureStorage.checkpoint!);
-          expect(checkpointText, isNot(contains('secret-never-store')));
-          expect(checkpointText, isNot(contains('request-token-')));
-
-          await api.clearCookies();
-          final restored = await sessions.restore();
-          expect(restored?.userId, signedIn.userId);
-          await api.setAccountStatus(
-            '22222222-2222-4222-8222-222222222222',
-            false,
-          );
-          await sessions.logout();
-
+          expect(await sessions.restore(), isNull);
+          expect(rejected, 1);
+          expect(api.hasDeviceSession, isFalse);
           expect(secureStorage.checkpoint, isNull);
           expect(requests, [
-            'GET /api/v1/auth/antiforgery',
-            'POST /api/v1/auth/login',
+            'POST /api/v1/auth/refresh',
             'GET /api/v1/auth/session',
-            'GET /api/v1/auth/session',
-            'GET /api/v1/auth/antiforgery',
-            'PUT /api/v1/account-operator/accounts/22222222-2222-4222-8222-222222222222/status',
-            'GET /api/v1/auth/antiforgery',
-            'POST /api/v1/auth/logout',
           ]);
         } finally {
           api.close();
@@ -456,7 +570,6 @@ void main() {
         final api = ApiClient(
           configuration: ApiConfiguration(
             apiOrigin: server.origin,
-            trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
             allowInsecureLoopbackForDevelopment: true,
           ),
         );
@@ -479,23 +592,22 @@ void main() {
       },
     );
 
-    test('blocks account-scoped sync write when antiforgery bootstrap identifies another account', () async {
-      final requests = <String>[];
+    test('surfaces the server account guard as account_changed', () async {
       final server = await _TestApiServer.start((request) async {
-        requests.add('${request.method} ${request.uri.path}');
-        if (request.uri.path == '/api/v1/auth/antiforgery') {
-          return _json(request, {
-            'requestToken': 'token-for-account-b',
-            'authenticatedUserId': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-          });
-        }
-        request.response.statusCode = HttpStatus.noContent;
-        return request.response.close();
+        expect(
+          request.headers.value('x-gainer-account-id'),
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        );
+        request.response.statusCode = HttpStatus.conflict;
+        return _json(request, {
+          'title':
+              'The authenticated account does not match this sync profile.',
+          'code': 'account_changed',
+        });
       });
       final api = ApiClient(
         configuration: ApiConfiguration(
           apiOrigin: server.origin,
-          trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
           allowInsecureLoopbackForDevelopment: true,
         ),
       );
@@ -518,7 +630,6 @@ void main() {
             ),
           ),
         );
-        expect(requests, ['GET /api/v1/auth/antiforgery']);
       } finally {
         api.close();
         await server.close();
@@ -545,7 +656,6 @@ void main() {
         final api = ApiClient(
           configuration: ApiConfiguration(
             apiOrigin: server.origin,
-            trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
             allowInsecureLoopbackForDevelopment: true,
           ),
         );
@@ -562,160 +672,115 @@ void main() {
       },
     );
 
-    test(
-      'sends account identity beside CSRF token on scoped sync writes',
-      () async {
-        final requests = <String>[];
-        final server = await _TestApiServer.start((request) async {
-          requests.add('${request.method} ${request.uri.path}');
-          if (request.uri.path == '/api/v1/auth/antiforgery') {
-            return _json(request, {
-              'requestToken': 'csrf-for-a',
-              'authenticatedUserId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-            });
-          }
-          expect(request.headers.value('x-csrf-token'), 'csrf-for-a');
-          expect(
-            request.headers.value('x-gainer-account-id'),
-            'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-          );
-          return _json(request, {
-            'clientId': '22222222-2222-4222-8222-222222222222',
-            'displayName': 'iPhone',
-            'protocolVersion': 2,
-            'isActiveWriter': true,
-            'registeredAtUtc': '2026-10-12T12:00:00Z',
-            'lastSeenAtUtc': '2026-10-12T12:00:00Z',
-          });
-        });
-        final api = ApiClient(
-          configuration: ApiConfiguration(
-            apiOrigin: server.origin,
-            trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
-            allowInsecureLoopbackForDevelopment: true,
-          ),
+    test('sends account identity on scoped sync writes', () async {
+      final requests = <String>[];
+      final server = await _TestApiServer.start((request) async {
+        requests.add('${request.method} ${request.uri.path}');
+        expect(
+          request.headers.value('x-gainer-account-id'),
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         );
-        try {
-          await api.registerSyncClient(
-            const SyncClientRegistrationRequest(
-              clientId: '22222222-2222-4222-8222-222222222222',
-              displayName: 'iPhone',
-              protocolVersion: 2,
-              takeOverWriting: false,
-            ),
-            expectedAccountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-          );
-          expect(requests, [
-            'GET /api/v1/auth/antiforgery',
-            'PUT /api/v1/sync/clients/22222222-2222-4222-8222-222222222222',
-          ]);
-        } finally {
-          api.close();
-          await server.close();
-        }
-      },
-    );
+        return _json(request, {
+          'clientId': '22222222-2222-4222-8222-222222222222',
+          'displayName': 'iPhone',
+          'protocolVersion': 2,
+          'isActiveWriter': true,
+          'registeredAtUtc': '2026-10-12T12:00:00Z',
+          'lastSeenAtUtc': '2026-10-12T12:00:00Z',
+        });
+      });
+      final api = ApiClient(
+        configuration: ApiConfiguration(
+          apiOrigin: server.origin,
+          allowInsecureLoopbackForDevelopment: true,
+        ),
+      );
+      try {
+        await api.registerSyncClient(
+          const SyncClientRegistrationRequest(
+            clientId: '22222222-2222-4222-8222-222222222222',
+            displayName: 'iPhone',
+            protocolVersion: 2,
+            takeOverWriting: false,
+          ),
+          expectedAccountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        );
+        expect(requests, [
+          'PUT /api/v1/sync/clients/22222222-2222-4222-8222-222222222222',
+        ]);
+      } finally {
+        api.close();
+        await server.close();
+      }
+    });
 
     test(
-      'secure session checkpoints are bound to the configured API origin',
-      () async {
-        final server = await _TestApiServer.start((request) async {
-          await request.response.close();
-        });
+      'secure session checkpoints are bound to the API origin and version',
+      () {
         final api = ApiClient(
           configuration: ApiConfiguration(
-            apiOrigin: server.origin,
-            trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
-            allowInsecureLoopbackForDevelopment: true,
+            apiOrigin: Uri.parse('https://api.example.test'),
           ),
         );
-        final bytes = Uint8List.fromList(
+        Uint8List checkpoint(Map<String, Object?> values) => Uint8List.fromList(
           utf8.encode(
             jsonEncode({
-              'schemaVersion': 1,
-              'apiOrigin': 'https://different.example',
+              'schemaVersion': 2,
+              'apiOrigin': 'https://api.example.test',
               'userId': '11111111-1111-4111-8111-111111111111',
               'email': 'member@example.test',
-              'cookies': [],
+              'refreshToken': 'refresh-token',
+              ...values,
             }),
           ),
         );
         try {
-          await expectLater(
-            api.restoreSecureCheckpoint(bytes),
+          expect(
+            () => api.restoreSecureCheckpoint(
+              checkpoint({'apiOrigin': 'https://different.example'}),
+            ),
             throwsA(isA<FormatException>()),
           );
-        } finally {
-          api.close();
-          await server.close();
-        }
-      },
-    );
-
-    test(
-      'requires an updated API when scoped-write identity metadata is missing',
-      () async {
-        final requests = <String>[];
-        final server = await _TestApiServer.start((request) async {
-          requests.add('${request.method} ${request.uri.path}');
-          if (request.uri.path == '/api/v1/auth/antiforgery') {
-            return _json(request, {'requestToken': 'legacy-token'});
-          }
-          request.response.statusCode = HttpStatus.noContent;
-          return request.response.close();
-        });
-        final api = ApiClient(
-          configuration: ApiConfiguration(
-            apiOrigin: server.origin,
-            trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
-            allowInsecureLoopbackForDevelopment: true,
-          ),
-        );
-        try {
-          await expectLater(
-            api.registerSyncClient(
-              const SyncClientRegistrationRequest(
-                clientId: '22222222-2222-4222-8222-222222222222',
-                displayName: 'iPhone',
-                protocolVersion: 2,
-                takeOverWriting: false,
-              ),
-              expectedAccountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          expect(
+            () => api.restoreSecureCheckpoint(
+              checkpoint({'schemaVersion': 1, 'cookies': []}),
             ),
-            throwsA(
-              isA<ApiException>().having(
-                (error) => error.code,
-                'code',
-                'api_upgrade_required',
-              ),
-            ),
+            throwsA(isA<FormatException>()),
           );
-          expect(requests, ['GET /api/v1/auth/antiforgery']);
+          expect(
+            () => api.restoreSecureCheckpoint(checkpoint({'refreshToken': ''})),
+            throwsA(isA<FormatException>()),
+          );
+          final restored = api.restoreSecureCheckpoint(checkpoint({}));
+          expect(restored.userId, '11111111-1111-4111-8111-111111111111');
+          expect(api.hasDeviceSession, isTrue);
         } finally {
           api.close();
-          await server.close();
         }
       },
     );
 
     test('only HTTPS origins or loopback HTTP origins are accepted', () {
       expect(
-        () => ApiConfiguration(
-          apiOrigin: Uri.parse('http://api.example.test'),
-          trustedFrontendOrigin: Uri.parse('https://app.example.test'),
-        ),
+        () => ApiConfiguration(apiOrigin: Uri.parse('http://api.example.test')),
         throwsArgumentError,
       );
       expect(
         () => ApiConfiguration(
           apiOrigin: Uri.parse('https://user:password@api.example.test'),
-          trustedFrontendOrigin: Uri.parse('https://app.example.test'),
         ),
         throwsArgumentError,
       );
     });
   });
 }
+
+Map<String, Object?> _tokens(int generation) => {
+  'accessToken': 'access-$generation',
+  'expiresIn': 900,
+  'refreshToken': 'refresh-$generation',
+  'refreshTokenExpiresAt': '2026-12-19T12:00:00Z',
+};
 
 Future<void> _json(HttpRequest request, Map<String, Object?> body) async {
   request.response.headers.contentType = ContentType.json;

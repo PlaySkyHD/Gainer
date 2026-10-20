@@ -69,7 +69,6 @@ jobs:
       - name: Validate hardened VPS Compose
         shell: pwsh
         env:
-          GAINER_PUBLIC_ORIGIN: https://gainer.markfort.xyz
           GAINER_EDGE_PORT: "8081"
           GAINER_SITE_ADDRESS: :80
           GAINER_SECRETS_DIR: /tmp/gainer-secrets
@@ -79,7 +78,6 @@ jobs:
 
       - name: Build production container images
         env:
-          GAINER_PUBLIC_ORIGIN: https://gainer.example.test
           GAINER_SECRETS_DIR: /tmp/gainer-secrets
           AZURE_STORAGE_ACCOUNT_NAME: gainertest
           RESTIC_REPOSITORY: azure:gainer-backups:/test
@@ -95,7 +93,6 @@ jobs:
       - name: Scan image metadata, history, and rendered Compose
         shell: pwsh
         env:
-          GAINER_PUBLIC_ORIGIN: https://gainer.example.test
           GAINER_SECRETS_DIR: /tmp/gainer-secrets
           AZURE_STORAGE_ACCOUNT_NAME: gainertest
           RESTIC_REPOSITORY: azure:gainer-backups:/test
