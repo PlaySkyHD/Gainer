@@ -1303,6 +1303,260 @@
         }
       }
     },
+    "/api/v1/auth/passkeys": {
+      "get": {
+        "tags": [
+          "Passkeys"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PasskeySummaryResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PasskeySummaryResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PasskeySummaryResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Passkeys"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPasskeyRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPasskeyRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPasskeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeySummaryResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeySummaryResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeySummaryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/passkeys/creation-options": {
+      "post": {
+        "tags": [
+          "Passkeys"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyOptionsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyOptionsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyOptionsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/passkeys/{id}": {
+      "delete": {
+        "tags": [
+          "Passkeys"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/passkeys/request-options": {
+      "post": {
+        "tags": [
+          "Passkeys"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyOptionsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyOptionsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyOptionsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/passkeys/login": {
+      "post": {
+        "tags": [
+          "Passkeys"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyLoginRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyLoginRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sync/changes": {
       "get": {
         "tags": [
@@ -3505,6 +3759,62 @@
           }
         }
       },
+      "PasskeyLoginRequest": {
+        "required": [
+          "credentialJson",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "credentialJson": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "deviceName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PasskeyOptionsResponse": {
+        "required": [
+          "optionsJson",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "optionsJson": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        }
+      },
+      "PasskeySummaryResponse": {
+        "required": [
+          "id",
+          "name",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "ProblemDetails": {
         "type": "object",
         "properties": {
@@ -3711,6 +4021,27 @@
         "properties": {
           "refreshToken": {
             "type": "string"
+          }
+        }
+      },
+      "RegisterPasskeyRequest": {
+        "required": [
+          "credentialJson",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "credentialJson": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -4342,6 +4673,9 @@
     },
     {
       "name": "Nutrition"
+    },
+    {
+      "name": "Passkeys"
     },
     {
       "name": "SyncChanges"

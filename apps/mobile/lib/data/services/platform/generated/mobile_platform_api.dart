@@ -1213,6 +1213,134 @@ class PlatformCardioExport {
   }
 }
 
+/// Rohdaten eines neu erstellten Passkeys; Dart setzt daraus die WebAuthn-Antwort zusammen.
+class PlatformPasskeyRegistration {
+  PlatformPasskeyRegistration({
+    required this.credentialId,
+    required this.clientDataJson,
+    required this.attestationObject,
+  });
+
+  Uint8List credentialId;
+
+  Uint8List clientDataJson;
+
+  Uint8List attestationObject;
+
+  List<Object?> _toList() {
+    return <Object?>[credentialId, clientDataJson, attestationObject];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformPasskeyRegistration decode(Object result) {
+    result as List<Object?>;
+    return PlatformPasskeyRegistration(
+      credentialId: result[0]! as Uint8List,
+      clientDataJson: result[1]! as Uint8List,
+      attestationObject: result[2]! as Uint8List,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformPasskeyRegistration ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(credentialId, other.credentialId) &&
+        _deepEquals(clientDataJson, other.clientDataJson) &&
+        _deepEquals(attestationObject, other.attestationObject);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformPasskeyRegistration(credentialId: $credentialId, clientDataJson: $clientDataJson, attestationObject: $attestationObject)';
+  }
+}
+
+/// Rohdaten einer Passkey-Anmeldung.
+class PlatformPasskeyAssertion {
+  PlatformPasskeyAssertion({
+    required this.credentialId,
+    required this.clientDataJson,
+    required this.authenticatorData,
+    required this.signature,
+    required this.userHandle,
+  });
+
+  Uint8List credentialId;
+
+  Uint8List clientDataJson;
+
+  Uint8List authenticatorData;
+
+  Uint8List signature;
+
+  Uint8List userHandle;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      credentialId,
+      clientDataJson,
+      authenticatorData,
+      signature,
+      userHandle,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformPasskeyAssertion decode(Object result) {
+    result as List<Object?>;
+    return PlatformPasskeyAssertion(
+      credentialId: result[0]! as Uint8List,
+      clientDataJson: result[1]! as Uint8List,
+      authenticatorData: result[2]! as Uint8List,
+      signature: result[3]! as Uint8List,
+      userHandle: result[4]! as Uint8List,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformPasskeyAssertion ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(credentialId, other.credentialId) &&
+        _deepEquals(clientDataJson, other.clientDataJson) &&
+        _deepEquals(authenticatorData, other.authenticatorData) &&
+        _deepEquals(signature, other.signature) &&
+        _deepEquals(userHandle, other.userHandle);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformPasskeyAssertion(credentialId: $credentialId, clientDataJson: $clientDataJson, authenticatorData: $authenticatorData, signature: $signature, userHandle: $userHandle)';
+  }
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -1268,6 +1396,12 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is PlatformCardioExport) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
+    } else if (value is PlatformPasskeyRegistration) {
+      buffer.putUint8(145);
+      writeValue(buffer, value.encode());
+    } else if (value is PlatformPasskeyAssertion) {
+      buffer.putUint8(146);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -1312,6 +1446,10 @@ class _PigeonCodec extends StandardMessageCodec {
         return PlatformHeartRateStatus.decode(readValue(buffer)!);
       case 144:
         return PlatformCardioExport.decode(readValue(buffer)!);
+      case 145:
+        return PlatformPasskeyRegistration.decode(readValue(buffer)!);
+      case 146:
+        return PlatformPasskeyAssertion.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -2315,6 +2453,60 @@ class MobilePlatformApi {
       isNullValid: false,
     );
     return pigeonVar_replyValue! as PlatformWorkoutExportResult;
+  }
+
+  /// Erstellt mit Face ID einen Passkey für die Domain [relyingPartyId].
+  /// Null, wenn der Nutzer abbricht.
+  Future<PlatformPasskeyRegistration?> createPasskey(
+    String relyingPartyId,
+    Uint8List challenge,
+    Uint8List userId,
+    String userName,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.createPasskey$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[relyingPartyId, challenge, userId, userName],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return pigeonVar_replyValue as PlatformPasskeyRegistration?;
+  }
+
+  /// Meldet mit einem gespeicherten Passkey der Domain an. Null bei Abbruch
+  /// oder wenn kein Passkey vorhanden ist.
+  Future<PlatformPasskeyAssertion?> assertPasskey(
+    String relyingPartyId,
+    Uint8List challenge,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.assertPasskey$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[relyingPartyId, challenge],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return pigeonVar_replyValue as PlatformPasskeyAssertion?;
   }
 }
 

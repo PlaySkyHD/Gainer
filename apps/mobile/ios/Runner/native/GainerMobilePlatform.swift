@@ -10,6 +10,7 @@ final class GainerMobilePlatform: MobilePlatformApi {
   private let timerSounds: NativeTimerSounds
   private let timerNotifications: NativeTimerNotifications
   private let health = NativeHealthKit()
+  private let passkeys = NativePasskeys()
   private let heartRateMonitor: NativeHeartRateMonitor
   private let extensionSnapshots = NativeExtensionSnapshotStore()
   private let routeStore = NativeExtensionSnapshotStore()
@@ -342,6 +343,49 @@ final class GainerMobilePlatform: MobilePlatformApi {
       status: result.status,
       syncIdentifier: result.syncIdentifier,
       syncVersion: result.syncVersion
+    )
+  }
+
+  func createPasskey(
+    relyingPartyId: String,
+    challenge: FlutterStandardTypedData,
+    userId: FlutterStandardTypedData,
+    userName: String
+  ) async throws -> PlatformPasskeyRegistration? {
+    guard let registration = try await passkeys.create(
+      relyingPartyId: relyingPartyId,
+      challenge: challenge.data,
+      userId: userId.data,
+      userName: userName
+    ) else {
+      return nil
+    }
+    guard let attestationObject = registration.rawAttestationObject else {
+      throw PigeonError(code: "passkey_failed", message: "The passkey has no attestation object.", details: nil)
+    }
+    return PlatformPasskeyRegistration(
+      credentialId: FlutterStandardTypedData(bytes: registration.credentialID),
+      clientDataJson: FlutterStandardTypedData(bytes: registration.rawClientDataJSON),
+      attestationObject: FlutterStandardTypedData(bytes: attestationObject)
+    )
+  }
+
+  func assertPasskey(
+    relyingPartyId: String,
+    challenge: FlutterStandardTypedData
+  ) async throws -> PlatformPasskeyAssertion? {
+    guard let assertion = try await passkeys.assert(
+      relyingPartyId: relyingPartyId,
+      challenge: challenge.data
+    ) else {
+      return nil
+    }
+    return PlatformPasskeyAssertion(
+      credentialId: FlutterStandardTypedData(bytes: assertion.credentialID),
+      clientDataJson: FlutterStandardTypedData(bytes: assertion.rawClientDataJSON),
+      authenticatorData: FlutterStandardTypedData(bytes: assertion.rawAuthenticatorData),
+      signature: FlutterStandardTypedData(bytes: assertion.signature),
+      userHandle: FlutterStandardTypedData(bytes: assertion.userID)
     )
   }
 

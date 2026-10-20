@@ -612,6 +612,9 @@ jobs:
           check(widget, widget_id, "Widget")
           if app.get("Entitlements", {}).get("com.apple.developer.healthkit") is not True:
               raise SystemExit("App provisioning profile does not enable HealthKit.")
+          # Passkeys need webcredentials; profiles grant Associated Domains as "*".
+          if "com.apple.developer.associated-domains" not in app.get("Entitlements", {}):
+              raise SystemExit("App provisioning profile does not enable Associated Domains; enable it for the App ID and regenerate the profile.")
           PY
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")"

@@ -835,6 +835,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         modelBuilder.Entity<IdentityUserToken<Guid>>().ToTable("user_tokens", DatabaseSchemas.Identity);
         modelBuilder.Entity<IdentityRoleClaim<Guid>>().ToTable("role_claims", DatabaseSchemas.Identity);
         modelBuilder.Entity<IdentityUserRole<Guid>>().ToTable("user_roles", DatabaseSchemas.Identity);
+        // Identity maps passkeys only when its store options request schema version 3, and
+        // design-time tooling has no options. The mapping mirrors Identity's own version 3.
+        modelBuilder.Entity<IdentityUserPasskey<Guid>>(passkey =>
+        {
+            passkey.ToTable("user_passkeys", DatabaseSchemas.Identity);
+            passkey.HasKey(item => item.CredentialId);
+            passkey.Property(item => item.CredentialId).HasMaxLength(1024);
+            passkey.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+            passkey.OwnsOne(item => item.Data).ToJson();
+        });
         modelBuilder.Entity<AccountInvitation>(invitation =>
         {
             invitation.ToTable("account_invitations", DatabaseSchemas.Identity);

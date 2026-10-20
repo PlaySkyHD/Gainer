@@ -8,6 +8,7 @@ import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/models/api/sync_api_models.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
 import 'package:gainer_mobile/data/services/api/api_session_service.dart';
+import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 
 void main() {
@@ -402,6 +403,83 @@ void main() {
           'GET /api/v1/auth/session',
           'PUT /api/v1/account-operator/accounts/22222222-2222-4222-8222-222222222222/status',
           'POST /api/v1/auth/logout',
+        ]);
+      } finally {
+        api.close();
+        await server.close();
+      }
+    });
+
+    test('passkey sign-in stores the device session and a cancelled sheet sends nothing', () async {
+      final requests = <String>[];
+      final server = await _TestApiServer.start((request) async {
+        requests.add('${request.method} ${request.uri.path}');
+        expect(
+          request.headers.value('authorization'),
+          anyOf(isNull, 'Bearer access-1'),
+        );
+        if (request.uri.path == '/api/v1/auth/passkeys/request-options') {
+          return _json(request, {
+            'optionsJson': jsonEncode({
+              'challenge': 'AQID',
+              'rpId': 'gainer.markfort.xyz',
+            }),
+            'state': 'opaque-state',
+          });
+        }
+        if (request.uri.path == '/api/v1/auth/passkeys/login') {
+          final body = jsonDecode(
+            await utf8.decoder.bind(request).join(),
+          ) as Map<String, dynamic>;
+          expect(body['state'], 'opaque-state');
+          expect(body['deviceName'], 'Gainer iPhone');
+          final credential = jsonDecode(
+            body['credentialJson'] as String,
+          ) as Map<String, dynamic>;
+          expect(credential['type'], 'public-key');
+          expect(
+            (credential['response'] as Map<String, dynamic>)['signature'],
+            'BA',
+          );
+          return _json(request, _tokens(1));
+        }
+        if (request.uri.path == '/api/v1/auth/session') {
+          return _json(request, {
+            'userId': '11111111-1111-4111-8111-111111111111',
+            'email': 'member@example.test',
+            'isAccountOperator': false,
+          });
+        }
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+      final secureStorage = _MemorySecureSession();
+      final api = ApiClient(
+        configuration: ApiConfiguration(
+          apiOrigin: server.origin,
+          allowInsecureLoopbackForDevelopment: true,
+        ),
+      );
+      final sessions = ApiSessionService(
+        api: api,
+        secureStorage: secureStorage,
+      );
+      final passkeys = _ScriptedPasskeys();
+      try {
+        passkeys.cancel = true;
+        expect(await sessions.loginWithPasskey(passkeys), isNull);
+        expect(requests, ['POST /api/v1/auth/passkeys/request-options']);
+        expect(secureStorage.checkpoint, isNull);
+
+        passkeys.cancel = false;
+        final session = await sessions.loginWithPasskey(passkeys);
+        expect(session?.email, 'member@example.test');
+        expect(passkeys.challenges.single, [1, 2, 3]);
+        expect(utf8.decode(secureStorage.checkpoint!), contains('refresh-1'));
+        expect(requests.skip(1), [
+          'POST /api/v1/auth/passkeys/request-options',
+          'POST /api/v1/auth/passkeys/login',
+          'GET /api/v1/auth/session',
         ]);
       } finally {
         api.close();
@@ -810,6 +888,36 @@ class _TestApiServer {
   Future<void> close() async {
     await subscription.cancel();
     await server.close(force: true);
+  }
+}
+
+class _ScriptedPasskeys implements PasskeyPlatform {
+  bool cancel = false;
+  final challenges = <Uint8List>[];
+
+  @override
+  Future<PlatformPasskeyRegistration?> createPasskey({
+    required String relyingPartyId,
+    required Uint8List challenge,
+    required Uint8List userId,
+    required String userName,
+  }) async => null;
+
+  @override
+  Future<PlatformPasskeyAssertion?> assertPasskey({
+    required String relyingPartyId,
+    required Uint8List challenge,
+  }) async {
+    expect(relyingPartyId, 'gainer.markfort.xyz');
+    if (cancel) return null;
+    challenges.add(challenge);
+    return PlatformPasskeyAssertion(
+      credentialId: Uint8List.fromList([1]),
+      clientDataJson: Uint8List.fromList([2]),
+      authenticatorData: Uint8List.fromList([3]),
+      signature: Uint8List.fromList([4]),
+      userHandle: Uint8List.fromList([5]),
+    );
   }
 }
 

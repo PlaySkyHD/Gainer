@@ -313,6 +313,36 @@ class PlatformCardioExport {
   final double? energyKcal;
 }
 
+/// Rohdaten eines neu erstellten Passkeys; Dart setzt daraus die WebAuthn-Antwort zusammen.
+class PlatformPasskeyRegistration {
+  const PlatformPasskeyRegistration({
+    required this.credentialId,
+    required this.clientDataJson,
+    required this.attestationObject,
+  });
+
+  final Uint8List credentialId;
+  final Uint8List clientDataJson;
+  final Uint8List attestationObject;
+}
+
+/// Rohdaten einer Passkey-Anmeldung.
+class PlatformPasskeyAssertion {
+  const PlatformPasskeyAssertion({
+    required this.credentialId,
+    required this.clientDataJson,
+    required this.authenticatorData,
+    required this.signature,
+    required this.userHandle,
+  });
+
+  final Uint8List credentialId;
+  final Uint8List clientDataJson;
+  final Uint8List authenticatorData;
+  final Uint8List signature;
+  final Uint8List userHandle;
+}
+
 @HostApi()
 abstract class MobilePlatformApi {
   @async
@@ -501,6 +531,24 @@ abstract class MobilePlatformApi {
 
   @async
   PlatformWorkoutExportResult exportCardioSession(PlatformCardioExport export);
+
+  /// Erstellt mit Face ID einen Passkey für die Domain [relyingPartyId].
+  /// Null, wenn der Nutzer abbricht.
+  @async
+  PlatformPasskeyRegistration? createPasskey(
+    String relyingPartyId,
+    Uint8List challenge,
+    Uint8List userId,
+    String userName,
+  );
+
+  /// Meldet mit einem gespeicherten Passkey der Domain an. Null bei Abbruch
+  /// oder wenn kein Passkey vorhanden ist.
+  @async
+  PlatformPasskeyAssertion? assertPasskey(
+    String relyingPartyId,
+    Uint8List challenge,
+  );
 }
 
 @FlutterApi()

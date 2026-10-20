@@ -122,6 +122,9 @@ jobs:
           echo "$headers"
           grep -q '^HTTP/1.1 404' <<<"$headers"
           grep -qi "^content-security-policy: default-src 'none'; frame-ancestors 'none'" <<<"$headers"
+          association="$(curl --silent --fail http://127.0.0.1:18081/.well-known/apple-app-site-association)"
+          echo "$association"
+          python3 -c 'import json,sys; apps=json.loads(sys.argv[1])["webcredentials"]["apps"]; sys.exit(0 if apps == ["Q7GTYQ282F.xyz.markfort.gainer"] else 1)' "$association"
 
       - name: Reject generated contract drift
         run: git diff --exit-code -- contracts/openapi
