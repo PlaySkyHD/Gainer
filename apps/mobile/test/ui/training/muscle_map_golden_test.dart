@@ -61,6 +61,6 @@ void main() {
         find.byType(MuscleMapScreen),
         matchesGoldenFile('goldens/muscle_map_${brightness.name}.png'),
       );
-    });
+    }, tags: ['golden']);
   }
 }
