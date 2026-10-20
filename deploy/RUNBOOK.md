@@ -41,6 +41,8 @@ gainer.markfort.xyz {
 }
 ```
 
+Do not configure `trusted_proxies` on host Caddy. It must replace any client-supplied `X-Forwarded-For` with the real client address; the Gainer edge trusts host Caddy and passes that address on, and the API uses it for per-client rate limits on sign-in, token refresh and `/health/ready`.
+
 Back up the current file, validate the candidate, and reload only a valid configuration:
 
 ```sh
