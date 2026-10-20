@@ -5,6 +5,7 @@ import 'package:gainer_mobile/domain/models/training/muscles.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/body_map.dart';
+import 'package:gainer_mobile/ui/features/training/exercise_editor_screen.dart';
 import 'package:gainer_mobile/ui/features/training/muscle_map_screen.dart';
 import 'package:gainer_mobile/ui/features/training/plan_editor_screen.dart';
 import 'package:gainer_mobile/ui/features/training/training_statistics_section.dart';
@@ -72,8 +73,6 @@ void main() {
     await pumpScreen(tester);
 
     expect(find.text('Alle Pläne'), findsOneWidget);
-    expect(find.textContaining('1 Übung hat keine Muskeln'), findsOneWidget);
-    expect(find.textContaining('Curls'), findsOneWidget);
     await showRow(tester, Muscle.chest);
     // Push: Bankdrücken 4 Sätze (Brust, Hilfs Trizeps), Trizepsdrücken 3.
     expect(valueOf(tester, Muscle.chest), '4 Sätze');
@@ -83,6 +82,41 @@ void main() {
     expect(valueOf(tester, Muscle.biceps), '1,5 Sätze');
     await showRow(tester, Muscle.quads);
     expect(valueOf(tester, Muscle.quads), 'Nicht trainiert');
+  });
+
+  testWidgets('Übungen ohne Muskeln lassen sich direkt nachtragen', (
+    tester,
+  ) async {
+    await pumpScreen(tester);
+    final row = find.byKey(ValueKey('missing-muscles-${scenario.curlId}'));
+    await scrollIntoView(tester, row);
+    expect(find.text('Ohne Muskeln'), findsOneWidget);
+
+    await tester.tap(row);
+    await settle(tester);
+    expect(find.byType(ExerciseEditorScreen), findsOneWidget);
+    await scrollIntoView(
+      tester,
+      find.byKey(const ValueKey('exercise-primary-muscles')),
+    );
+    await tester.tap(find.byKey(const ValueKey('exercise-primary-muscles')));
+    await settle(tester);
+    await scrollIntoView(
+      tester,
+      find.byKey(const ValueKey('muscle-option-biceps')),
+    );
+    await tester.tap(find.byKey(const ValueKey('muscle-option-biceps')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('muscle-picker-done')));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('exercise-save')));
+    await settle(tester);
+
+    expect(find.byType(MuscleMapScreen), findsOneWidget);
+    expect(find.text('Ohne Muskeln'), findsNothing);
+    await showRow(tester, Muscle.biceps);
+    // Curls 3 Sätze als Hauptmuskel plus 1,5 aus Klimmzügen.
+    expect(valueOf(tester, Muscle.biceps), '4,5 Sätze');
   });
 
   testWidgets('ein Plan zeigt nur seine Sätze', (tester) async {

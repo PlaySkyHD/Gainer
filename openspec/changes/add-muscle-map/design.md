@@ -35,3 +35,9 @@ Eigenes Widget `BodyMap` mit `CustomPainter`. Silhouette und Muskelflächen sind
 ### D7 – Katalog
 
 `exercise-catalog.v2.json` bekommt `primaryMuscles` und `secondaryMuscles` je Eintrag, `catalogVersion` 2026.10.2. Jeder Katalogeintrag braucht mindestens einen Hauptmuskel. Die Migration setzt die Werte der Basisübungen über `HasData`.
+
+### D8 – Abkürzungen zum Übungseditor
+
+- Training: Das Übungsmenü (⋯) bietet „Übung bearbeiten“ (Basisübung: „Übung anzeigen“) und öffnet den Übungseditor der Quellübung. Ohne bekannte Übung fehlt der Eintrag. Nach dem Speichern liest das Training die Übungsdaten neu.
+- Muskelübersicht: Übungen ohne Muskeln stehen als eigene Gruppe „Ohne Muskeln“ mit je einer Zeile. Ein Tipp öffnet den Übungseditor; nach dem Speichern rechnet die Übersicht neu.
+
