@@ -6,7 +6,7 @@ their respective licenses; the project's MIT license does not replace them.
 
 Flutter and its template assets originate from the Flutter project. Pigeon
 generates the platform bindings; package notices remain part of the locked
-dependency tree. Backend, Dart and npm dependency versions are recorded in
+dependency tree. Backend and Dart dependency versions are recorded in
 their committed package manifests and lockfiles.
 
 The dependency and external data policy is documented in

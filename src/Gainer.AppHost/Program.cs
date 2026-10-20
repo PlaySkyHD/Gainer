@@ -43,25 +43,18 @@ var backupBlobs = builder
         .WithLifetime(ContainerLifetime.Persistent))
     .AddBlobs("backup-blobs");
 
-var web = builder
-    .AddJavaScriptApp("web", "../../apps/web", "dev")
-    .WithHttpEndpoint(targetPort: 3000, env: "PORT");
-
 var api = builder
     .AddProject<Projects.Gainer_Api>("api")
     .WithReference(database)
     .WithEnvironment("OpenFoodFacts__ContactEmail", openFoodFactsContactEmail)
     .WithEnvironment("MealEstimation__DailyRequestsPerUser", "20")
     .WithEnvironment("MealEstimation__MaximumConcurrentRequests", "2")
-    .WithEnvironment("Security__FrontendOrigin", web.GetEndpoint("http"))
-    .WaitFor(database);
+    .WaitFor(database)
+    .WithExternalHttpEndpoints();
+
+// The iOS app sends the API origin as its trusted origin unless configured otherwise.
+api.WithEnvironment("Security__FrontendOrigin", api.GetEndpoint("http"));
 
 _ = backupBlobs;
-
-web
-    .WithReference(api)
-    .WithEnvironment("NEXT_PUBLIC_API_BASE_URL", api.GetEndpoint("http"))
-    .WaitFor(api)
-    .WithExternalHttpEndpoints();
 
 await builder.Build().RunAsync();

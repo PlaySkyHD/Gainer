@@ -1,6 +1,6 @@
 # Third-party dependency policy
 
-The MVP accepts the permissive MIT, ISC, BSD, Apache-2.0, 0BSD, BlueOak, CC0, CC-BY, MPL-2.0, Python-2.0, and PostgreSQL license families represented in the committed lockfiles. npm packages containing LGPL metadata are `sharp`/`libvips` platform build dependencies; the application uses Next.js static export with unoptimized images and does not ship those native libraries in the final Caddy image. Their notices remain in the locked dependency tree and image build layers.
+The MVP accepts the permissive MIT, ISC, BSD, Apache-2.0, 0BSD, BlueOak, CC0, CC-BY, MPL-2.0, Python-2.0, and PostgreSQL license families represented in the committed lockfiles.
 
 CI rejects packages with missing or newly introduced license expressions until this file and the explicit allowlists are reviewed. It also fails on RAG/pgvector dependencies and unapproved exercise media. Automated CVE scanning of dependencies and container images is intentionally not a release gate for this private MVP; dependency versions remain locked and updates are reviewed separately.
 
@@ -14,6 +14,6 @@ The application stores only the user-confirmed product name, optional brand, bar
 
 ## OpenAI meal estimation
 
-Meal estimation is an explicit, online-only action. The selected text and at most one server-sanitized image are sent to the OpenAI Responses API with `store=false`, `background=false`, no tools and a bounded structured-output schema. Gainer does not persist the source image, prompt, provider response or editable draft in PostgreSQL, Blob Storage, IndexedDB, application logs, traces or metric labels. Only components reviewed and confirmed by the user become ordinary nutrition-entry snapshots marked with technical AI provenance.
+Meal estimation is an explicit, online-only action. The selected text and at most one server-sanitized image are sent to the OpenAI Responses API with `store=false`, `background=false`, no tools and a bounded structured-output schema. Gainer does not persist the source image, prompt, provider response or editable draft in PostgreSQL, Blob Storage, on-device storage, application logs, traces or metric labels. Only components reviewed and confirmed by the user become ordinary nutrition-entry snapshots marked with technical AI provenance.
 
 `store=false` disables Responses application-state storage but is not a promise of zero provider retention. Under OpenAI's default API data controls, request and response content may occur in abuse-monitoring logs retained for up to 30 days; approved Zero Data Retention or Modified Abuse Monitoring controls can alter this. The in-app consent text must state this distinction, identify OpenAI as recipient, describe the estimate as non-authoritative and remain aligned with the data controls configured for the production OpenAI project.
