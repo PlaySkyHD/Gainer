@@ -54,6 +54,9 @@ class TrainingLogRepository {
   /// Liefert eine neue ID für Trainings, Sätze, Pläne und Übungen.
   String newId() => _ids();
 
+  /// Aktuelle Zeit der Repository-Uhr in UTC, z. B. für Zeiträume.
+  DateTime nowUtc() => _clock().toUtc();
+
   /// True, wenn der Katalog aus dem Cache stammt.
   bool get isCatalogStale => catalog.lastLoadWasStale;
 

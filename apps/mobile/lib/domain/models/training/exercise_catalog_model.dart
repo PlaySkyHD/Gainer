@@ -1,3 +1,4 @@
+import 'muscles.dart';
 import 'workout_model.dart';
 
 class CatalogCategory {
@@ -65,6 +66,8 @@ class CatalogExercise {
     this.bodyweightFactor,
     this.weightFactor,
     this.categoryIds = const [],
+    this.primaryMuscles = const [],
+    this.secondaryMuscles = const [],
     required this.isBase,
     this.isArchived = false,
   });
@@ -87,6 +90,8 @@ class CatalogExercise {
           for (final id in (json['categoryIds'] as List<Object?>? ?? const []))
             id! as String,
         ],
+        primaryMuscles: Muscle.listFromJson(json['primaryMuscles']),
+        secondaryMuscles: Muscle.listFromJson(json['secondaryMuscles']),
         isBase: json['isBase'] as bool? ?? false,
         isArchived: json['isArchived'] as bool? ?? false,
       );
@@ -106,6 +111,12 @@ class CatalogExercise {
   /// Faktor auf das Zusatzgewicht (> 0, höchstens 10).
   final double? weightFactor;
   final List<String> categoryIds;
+
+  /// Hauptmuskeln; zählen einen ganzen Satz je Arbeitssatz.
+  final List<Muscle> primaryMuscles;
+
+  /// Hilfsmuskeln; zählen einen halben Satz je Arbeitssatz.
+  final List<Muscle> secondaryMuscles;
   final bool isBase;
   final bool isArchived;
 
@@ -128,6 +139,8 @@ class CatalogExercise {
     double? Function()? bodyweightFactor,
     double? Function()? weightFactor,
     List<String>? categoryIds,
+    List<Muscle>? primaryMuscles,
+    List<Muscle>? secondaryMuscles,
     bool? isBase,
     bool? isArchived,
   }) => CatalogExercise(
@@ -144,6 +157,8 @@ class CatalogExercise {
         : this.bodyweightFactor,
     weightFactor: weightFactor != null ? weightFactor() : this.weightFactor,
     categoryIds: categoryIds ?? this.categoryIds,
+    primaryMuscles: primaryMuscles ?? this.primaryMuscles,
+    secondaryMuscles: secondaryMuscles ?? this.secondaryMuscles,
     isBase: isBase ?? this.isBase,
     isArchived: isArchived ?? this.isArchived,
   );
@@ -160,6 +175,8 @@ class CatalogExercise {
     'bodyweightFactor': bodyweightFactor,
     'weightFactor': weightFactor,
     'categoryIds': categoryIds,
+    'primaryMuscles': Muscle.listToJson(primaryMuscles),
+    'secondaryMuscles': Muscle.listToJson(secondaryMuscles),
     'isBase': isBase,
     'isArchived': isArchived,
   };
@@ -178,6 +195,8 @@ class CatalogExercise {
       other.bodyweightFactor == bodyweightFactor &&
       other.weightFactor == weightFactor &&
       listsEqual(other.categoryIds, categoryIds) &&
+      listsEqual(other.primaryMuscles, primaryMuscles) &&
+      listsEqual(other.secondaryMuscles, secondaryMuscles) &&
       other.isBase == isBase &&
       other.isArchived == isArchived;
 
@@ -194,6 +213,8 @@ class CatalogExercise {
     bodyweightFactor,
     weightFactor,
     Object.hashAll(categoryIds),
+    Object.hashAll(primaryMuscles),
+    Object.hashAll(secondaryMuscles),
     isBase,
     isArchived,
   );

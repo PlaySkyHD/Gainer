@@ -6,6 +6,7 @@ import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import '../cardio/cardio_statistics_area.dart';
 import 'exercise_statistics_screen.dart';
+import 'muscle_map_screen.dart';
 import 'training_format.dart';
 import 'training_statistics_view_model.dart';
 import 'warmup_sets_row.dart';
@@ -70,6 +71,20 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
               const GainerSectionHeader(title: 'Kraft'),
               const SizedBox(height: GainerSpacing.xs),
             ],
+            GainerGroupedSection(
+              children: [
+                GainerListRow(
+                  key: const ValueKey('statistics-muscles'),
+                  title: 'Muskeln',
+                  subtitle: 'Welche Muskeln du planst und trainierst',
+                  leadingIcon: CupertinoIcons.person_fill,
+                  showChevron: true,
+                  onTap: () =>
+                      openMuscleMap(context, repository: widget.repository),
+                ),
+              ],
+            ),
+            const SizedBox(height: GainerSpacing.s),
             WarmupSetsRow(
               value: model.includeWarmups,
               onChanged: model.setIncludeWarmups,

@@ -1,4 +1,5 @@
 import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/muscles.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../models/api/api_models.dart';
 import '../../services/api/api_client.dart';
@@ -139,6 +140,8 @@ class ApiExerciseCatalogProvider implements ExerciseCatalogProvider {
               bodyweightFactor: item.bodyweightFactor,
               weightFactor: item.weightFactor,
               categoryIds: item.categoryIds,
+              primaryMuscles: Muscle.listFromJson(item.primaryMuscles),
+              secondaryMuscles: Muscle.listFromJson(item.secondaryMuscles),
               isBase: true,
             ),
       ],

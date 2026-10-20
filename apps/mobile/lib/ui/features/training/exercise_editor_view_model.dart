@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../data/repositories/training/training_preferences.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/muscles.dart';
 import '../../../domain/models/training/warmup.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_validation.dart';
@@ -17,6 +18,8 @@ class ExerciseEditorInput {
     this.notes = '',
     this.bodyweightPercent = '',
     this.weightFactor = '',
+    this.primaryMuscles = const [],
+    this.secondaryMuscles = const [],
   });
 
   final String name;
@@ -29,6 +32,9 @@ class ExerciseEditorInput {
 
   /// Zusatzgewichtsfaktor, leer = 1.
   final String weightFactor;
+
+  final List<Muscle> primaryMuscles;
+  final List<Muscle> secondaryMuscles;
 }
 
 /// Hält eine eigene oder Basisübung für den Editor und prüft Eingaben.
@@ -158,6 +164,8 @@ class ExerciseEditorViewModel extends ChangeNotifier {
       bodyweightFactor: bodyweightFactor,
       weightFactor: weightFactor,
       categoryIds: activeCategoryIds(input.categoryIds),
+      primaryMuscles: input.primaryMuscles,
+      secondaryMuscles: input.secondaryMuscles,
       isBase: false,
       isArchived: original?.isArchived ?? false,
     );
