@@ -270,6 +270,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             {
                 Id = item.Id,
                 Name = item.Name,
+                Description = item.Description,
                 TargetMuscle = item.TargetMuscle,
                 MuscleGroup = item.MuscleGroup,
                 PrimaryMuscles = [.. item.PrimaryMuscles],
