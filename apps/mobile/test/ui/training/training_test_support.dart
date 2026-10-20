@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/repositories/training/api_exercise_catalog_provider.dart';
+import 'package:gainer_mobile/data/repositories/training/muscle_suggestion_service.dart';
 import 'package:gainer_mobile/data/repositories/training/training_log_repository.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
@@ -36,7 +37,10 @@ class TrainingHarness {
 
   set now(DateTime value) => _clock.value = value;
 
-  static Future<TrainingHarness> create({DateTime? now}) async {
+  static Future<TrainingHarness> create({
+    DateTime? now,
+    MuscleSuggestionService? muscleSuggestions,
+  }) async {
     final database = LocalDatabase(NativeDatabase.memory());
     final store = LocalSyncStore(
       database: database,
@@ -49,6 +53,7 @@ class TrainingHarness {
       catalog: _NoCatalog(),
       ids: () => testId(id++),
       clock: () => clock.value,
+      muscleSuggestions: muscleSuggestions,
     );
     return TrainingHarness._(database, store, repository, clock);
   }

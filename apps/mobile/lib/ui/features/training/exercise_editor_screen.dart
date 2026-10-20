@@ -13,6 +13,7 @@ import 'body_map.dart';
 import 'exercise_catalog_format.dart';
 import 'exercise_editor_view_model.dart';
 import 'exercise_merge_sheet.dart';
+import 'muscle_ai_sheet.dart';
 import 'muscle_map_widgets.dart';
 import 'muscle_picker_sheet.dart';
 import 'warmup_steps_editor.dart';
@@ -93,10 +94,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _viewModel.load());
   }
 
-  /// Der Muskel-Vorschlag folgt dem Namen.
-  void _nameChanged() {
-    if (_primaryMuscles.isEmpty && _secondaryMuscles.isEmpty) setState(() {});
-  }
+  /// Vorschlag und KI-Button folgen dem Namen.
+  void _nameChanged() => setState(() {});
 
   @override
   void dispose() {
@@ -297,6 +296,17 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (editable) ..._suggestion(colors),
+          if (editable && widget.repository.muscleSuggestions != null) ...[
+            GainerPillButton(
+              key: const ValueKey('exercise-muscle-ai'),
+              label: 'Mit KI ermitteln',
+              icon: CupertinoIcons.sparkles,
+              variant: GainerPillVariant.tonal,
+              expand: true,
+              onPressed: _nameController.text.trim().isEmpty ? null : _askAi,
+            ),
+            const SizedBox(height: GainerSpacing.xs),
+          ],
           GainerCard(
             child: Center(
               child: SizedBox(
@@ -394,6 +404,24 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
       ),
       const SizedBox(height: GainerSpacing.xs),
     ];
+  }
+
+  Future<void> _askAi() async {
+    final service = widget.repository.muscleSuggestions;
+    if (service == null) return;
+    final notes = _notesController.text.trim();
+    final suggestion = await showMuscleAiSheet(
+      context,
+      service: service,
+      name: _nameController.text.trim(),
+      kind: _kind,
+      notes: notes.isEmpty ? null : notes,
+    );
+    if (suggestion == null || !mounted) return;
+    setState(() {
+      _primaryMuscles = [...suggestion.primary];
+      _secondaryMuscles = [...suggestion.secondary];
+    });
   }
 
   void _cycleMuscle(Muscle muscle) {
