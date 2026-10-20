@@ -44,6 +44,15 @@ class _AuthScreenState extends State<AuthScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  Future<void> _loginWithPasskey() async {
+    setState(() {
+      _localError = null;
+      _busy = true;
+    });
+    await widget.controller.loginWithPasskey();
+    if (mounted) setState(() => _busy = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
@@ -148,6 +157,16 @@ class _AuthScreenState extends State<AuthScreen> {
                   isLoading: _busy,
                   onPressed: _busy ? null : _login,
                 ),
+                if (!_acceptingInvitation) ...[
+                  const SizedBox(height: GainerSpacing.s),
+                  GainerPillButton(
+                    label: 'Mit Passkey anmelden',
+                    icon: CupertinoIcons.lock_shield,
+                    variant: GainerPillVariant.tonal,
+                    expand: true,
+                    onPressed: _busy ? null : _loginWithPasskey,
+                  ),
+                ],
                 const SizedBox(height: 14),
                 Text(
                   'Deine Trainings- und Ernährungseinträge werden pro Konto lokal gespeichert und bleiben bei einem Verbindungsabbruch erhalten.',

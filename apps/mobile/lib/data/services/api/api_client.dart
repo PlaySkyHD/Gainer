@@ -299,6 +299,82 @@ class ApiClient {
     return tokens;
   }
 
+  Future<ApiPasskeyOptions> passkeyRequestOptions() async {
+    final response = await _request(
+      'POST',
+      '/api/v1/auth/passkeys/request-options',
+      authenticate: false,
+    );
+    return ApiPasskeyOptions.fromJson(_asObject(response.data));
+  }
+
+  /// Starts a device session with a passkey assertion.
+  Future<ApiTokenResponse> loginWithPasskey({
+    required String credentialJson,
+    required String state,
+    String? deviceName,
+  }) async {
+    clearTokens();
+    final response = await _request(
+      'POST',
+      '/api/v1/auth/passkeys/login',
+      body: {
+        'credentialJson': credentialJson,
+        'state': state,
+        'deviceName': ?deviceName,
+      },
+      authenticate: false,
+    );
+    final tokens = ApiTokenResponse.fromJson(_asObject(response.data));
+    _applyTokens(tokens);
+    return tokens;
+  }
+
+  Future<ApiPasskeyOptions> passkeyCreationOptions() async {
+    final response = await _mutate(
+      'POST',
+      '/api/v1/auth/passkeys/creation-options',
+    );
+    return ApiPasskeyOptions.fromJson(_asObject(response.data));
+  }
+
+  Future<ApiPasskey> registerPasskey({
+    required String credentialJson,
+    required String state,
+    String? name,
+  }) async {
+    final response = await _mutate(
+      'POST',
+      '/api/v1/auth/passkeys',
+      body: {'credentialJson': credentialJson, 'state': state, 'name': ?name},
+    );
+    return ApiPasskey.fromJson(_asObject(response.data));
+  }
+
+  Future<List<ApiPasskey>> listPasskeys() async {
+    final response = await _request('GET', '/api/v1/auth/passkeys');
+    final value = response.data;
+    if (value is! List ||
+        value.any((entry) => entry is! Map<String, dynamic>)) {
+      throw const FormatException('Invalid passkey list response.');
+    }
+    return value
+        .cast<Map<String, dynamic>>()
+        .map(ApiPasskey.fromJson)
+        .toList(growable: false);
+  }
+
+  Future<void> deletePasskey(String id) async {
+    if (!RegExp(r'^[A-Za-z0-9_-]{1,1400}$').hasMatch(id)) {
+      throw ArgumentError.value(
+        id,
+        'id',
+        'Expected a Base64Url credential id.',
+      );
+    }
+    await _mutate('DELETE', '/api/v1/auth/passkeys/$id');
+  }
+
   /// Revokes the device session on the server and forgets its tokens.
   Future<void> logout() async {
     try {

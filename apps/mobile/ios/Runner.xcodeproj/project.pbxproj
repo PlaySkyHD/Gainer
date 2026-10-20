@@ -41,6 +41,7 @@
 		F10000000000000000000083 /* NativeCardioAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000073 /* NativeCardioAlerts.swift */; };
 		F10000000000000000000084 /* NativeCardioLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000074 /* NativeCardioLiveActivity.swift */; };
 		F10000000000000000000086 /* NativeCardioVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000076 /* NativeCardioVoice.swift */; };
+		F10000000000000000000087 /* NativePasskeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000088 /* NativePasskeys.swift */; };
 		F10000000000000000000085 /* CardioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000075 /* CardioTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -130,6 +131,7 @@
 		F10000000000000000000073 /* NativeCardioAlerts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCardioAlerts.swift; sourceTree = "<group>"; };
 		F10000000000000000000074 /* NativeCardioLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCardioLiveActivity.swift; sourceTree = "<group>"; };
 		F10000000000000000000076 /* NativeCardioVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCardioVoice.swift; sourceTree = "<group>"; };
+		F10000000000000000000088 /* NativePasskeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePasskeys.swift; sourceTree = "<group>"; };
 		F10000000000000000000075 /* CardioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardioTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -228,6 +230,7 @@
 				F10000000000000000000073 /* NativeCardioAlerts.swift */,
 				F10000000000000000000074 /* NativeCardioLiveActivity.swift */,
 				F10000000000000000000076 /* NativeCardioVoice.swift */,
+				F10000000000000000000088 /* NativePasskeys.swift */,
 			);
 			path = native;
 			sourceTree = "<group>";
@@ -444,6 +447,7 @@
 				F10000000000000000000083 /* NativeCardioAlerts.swift in Sources */,
 				F10000000000000000000084 /* NativeCardioLiveActivity.swift in Sources */,
 				F10000000000000000000086 /* NativeCardioVoice.swift in Sources */,
+				F10000000000000000000087 /* NativePasskeys.swift in Sources */,
 				F10000000000000000000014 /* GainerAppShortcuts.swift in Sources */,
 				F10000000000000000000015 /* GainerWidgetContracts.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,

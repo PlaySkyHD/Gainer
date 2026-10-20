@@ -20,10 +20,8 @@ public sealed class AuthenticationController(
     SignInManager<AppUser> signInManager,
     UserManager<AppUser> userManager,
     IDeviceSessionService deviceSessions,
-    AccessTokenIssuer accessTokens) : ControllerBase
+    DeviceSignIn deviceSignIn) : ControllerBase
 {
-    private const string DefaultDeviceName = "Gainer";
-
     /// <summary>Starts a device session for valid existing credentials.</summary>
     [AllowAnonymous]
     [EnableRateLimiting(ApiConstants.AuthenticationRateLimitPolicy)]
@@ -47,11 +45,7 @@ public sealed class AuthenticationController(
             return Failure("invalid_credentials");
         }
 
-        IssuedDeviceSession session = await deviceSessions.CreateAsync(
-            user.Id,
-            request.DeviceName ?? DefaultDeviceName,
-            cancellationToken);
-        return Ok(await CreateTokenResponseAsync(user, session));
+        return Ok(await deviceSignIn.StartAsync(user, request.DeviceName, cancellationToken));
     }
 
     /// <summary>Rotates the refresh token of a device session and issues a new access token.</summary>
@@ -76,7 +70,7 @@ public sealed class AuthenticationController(
             return Failure("invalid_refresh_token");
         }
 
-        return Ok(await CreateTokenResponseAsync(user, session));
+        return Ok(await deviceSignIn.TokensAsync(user, session));
     }
 
     /// <summary>Returns the currently authenticated account.</summary>
@@ -116,27 +110,5 @@ public sealed class AuthenticationController(
         return NoContent();
     }
 
-    private async Task<TokenResponse> CreateTokenResponseAsync(AppUser user, IssuedDeviceSession session)
-    {
-        string accessToken = await accessTokens.IssueAsync(user, session.SessionId);
-        return new TokenResponse(accessToken, accessTokens.LifetimeSeconds, session.RefreshToken, session.ExpiresAt);
-    }
-
-    private ObjectResult Failure(string code)
-    {
-        var problemDetails = new ProblemDetails
-        {
-            Status = StatusCodes.Status401Unauthorized,
-            Title = "Authentication failed.",
-            Type = ProblemDetailsConfiguration.GetTypeUri(StatusCodes.Status401Unauthorized),
-        };
-        ProblemDetailsConfiguration.AddStableExtensions(HttpContext, problemDetails);
-        problemDetails.Extensions["code"] = code;
-
-        return new ObjectResult(problemDetails)
-        {
-            StatusCode = StatusCodes.Status401Unauthorized,
-            ContentTypes = { "application/problem+json" },
-        };
-    }
+    private ObjectResult Failure(string code) => AuthenticationProblems.Unauthorized(HttpContext, code);
 }

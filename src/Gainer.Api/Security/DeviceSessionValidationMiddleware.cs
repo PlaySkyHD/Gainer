@@ -1,13 +1,13 @@
 using System.Security.Claims;
-using Gainer.Api.Errors;
 using Gainer.Core.Access;
 using Microsoft.AspNetCore.Authentication;
 
 namespace Gainer.Api.Security;
 
 /// <summary>
-/// Rejects access tokens whose device session was revoked, expired, or belongs to a deactivated
-/// account, so revocation takes effect on the next request rather than at token expiry.
+/// Treats access tokens whose device session was revoked, expired, or belongs to a deactivated
+/// account as absent, so revocation takes effect on the next request rather than at token expiry.
+/// Protected endpoints then answer 401; anonymous ones such as sign-in keep working.
 /// </summary>
 internal sealed class DeviceSessionValidationMiddleware(RequestDelegate next)
 {
@@ -17,11 +17,8 @@ internal sealed class DeviceSessionValidationMiddleware(RequestDelegate next)
         if (authentication?.Ticket?.AuthenticationScheme == GainerIdentityOptions.AuthenticationScheme
             && !await HasActiveDeviceSessionAsync(context, authentication.Ticket.Principal))
         {
-            await Results.Problem(
-                    statusCode: StatusCodes.Status401Unauthorized,
-                    title: ProblemDetailsConfiguration.GetTitle(StatusCodes.Status401Unauthorized))
-                .ExecuteAsync(context);
-            return;
+            context.User = new ClaimsPrincipal(new ClaimsIdentity());
+            context.Features.Set<IAuthenticateResultFeature>(new RejectedAuthentication());
         }
 
         await next(context);
@@ -37,5 +34,10 @@ internal sealed class DeviceSessionValidationMiddleware(RequestDelegate next)
 
         IDeviceSessionService deviceSessions = context.RequestServices.GetRequiredService<IDeviceSessionService>();
         return await deviceSessions.IsActiveAsync(sessionId, userId, context.RequestAborted);
+    }
+
+    private sealed class RejectedAuthentication : IAuthenticateResultFeature
+    {
+        public AuthenticateResult? AuthenticateResult { get; set; } = AuthenticateResult.NoResult();
     }
 }

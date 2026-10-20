@@ -1077,6 +1077,110 @@ struct PlatformCardioExport: Hashable, CustomStringConvertible {
   }
 }
 
+/// Rohdaten eines neu erstellten Passkeys; Dart setzt daraus die WebAuthn-Antwort zusammen.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformPasskeyRegistration: Hashable, CustomStringConvertible {
+  var credentialId: FlutterStandardTypedData
+  var clientDataJson: FlutterStandardTypedData
+  var attestationObject: FlutterStandardTypedData
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformPasskeyRegistration? {
+    let credentialId = pigeonVar_list[0] as! FlutterStandardTypedData
+    let clientDataJson = pigeonVar_list[1] as! FlutterStandardTypedData
+    let attestationObject = pigeonVar_list[2] as! FlutterStandardTypedData
+
+    return PlatformPasskeyRegistration(
+      credentialId: credentialId,
+      clientDataJson: clientDataJson,
+      attestationObject: attestationObject
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      credentialId,
+      clientDataJson,
+      attestationObject,
+    ]
+  }
+  static func == (lhs: PlatformPasskeyRegistration, rhs: PlatformPasskeyRegistration) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.credentialId, rhs.credentialId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.clientDataJson, rhs.clientDataJson) && MobilePlatformApiPigeonInternal.deepEquals(lhs.attestationObject, rhs.attestationObject)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformPasskeyRegistration")
+    MobilePlatformApiPigeonInternal.deepHash(value: credentialId, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: clientDataJson, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: attestationObject, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformPasskeyRegistration(credentialId: \(String(describing: credentialId)), clientDataJson: \(String(describing: clientDataJson)), attestationObject: \(String(describing: attestationObject)))"
+  }
+}
+
+/// Rohdaten einer Passkey-Anmeldung.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformPasskeyAssertion: Hashable, CustomStringConvertible {
+  var credentialId: FlutterStandardTypedData
+  var clientDataJson: FlutterStandardTypedData
+  var authenticatorData: FlutterStandardTypedData
+  var signature: FlutterStandardTypedData
+  var userHandle: FlutterStandardTypedData
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformPasskeyAssertion? {
+    let credentialId = pigeonVar_list[0] as! FlutterStandardTypedData
+    let clientDataJson = pigeonVar_list[1] as! FlutterStandardTypedData
+    let authenticatorData = pigeonVar_list[2] as! FlutterStandardTypedData
+    let signature = pigeonVar_list[3] as! FlutterStandardTypedData
+    let userHandle = pigeonVar_list[4] as! FlutterStandardTypedData
+
+    return PlatformPasskeyAssertion(
+      credentialId: credentialId,
+      clientDataJson: clientDataJson,
+      authenticatorData: authenticatorData,
+      signature: signature,
+      userHandle: userHandle
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      credentialId,
+      clientDataJson,
+      authenticatorData,
+      signature,
+      userHandle,
+    ]
+  }
+  static func == (lhs: PlatformPasskeyAssertion, rhs: PlatformPasskeyAssertion) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.credentialId, rhs.credentialId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.clientDataJson, rhs.clientDataJson) && MobilePlatformApiPigeonInternal.deepEquals(lhs.authenticatorData, rhs.authenticatorData) && MobilePlatformApiPigeonInternal.deepEquals(lhs.signature, rhs.signature) && MobilePlatformApiPigeonInternal.deepEquals(lhs.userHandle, rhs.userHandle)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformPasskeyAssertion")
+    MobilePlatformApiPigeonInternal.deepHash(value: credentialId, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: clientDataJson, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: authenticatorData, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: signature, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: userHandle, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformPasskeyAssertion(credentialId: \(String(describing: credentialId)), clientDataJson: \(String(describing: clientDataJson)), authenticatorData: \(String(describing: authenticatorData)), signature: \(String(describing: signature)), userHandle: \(String(describing: userHandle)))"
+  }
+}
+
 private class MobilePlatformApiPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -1120,6 +1224,10 @@ private class MobilePlatformApiPigeonCodecReader: FlutterStandardReader {
       return PlatformHeartRateStatus.fromList(self.readValue() as! [Any?])
     case 144:
       return PlatformCardioExport.fromList(self.readValue() as! [Any?])
+    case 145:
+      return PlatformPasskeyRegistration.fromList(self.readValue() as! [Any?])
+    case 146:
+      return PlatformPasskeyAssertion.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -1175,6 +1283,12 @@ private class MobilePlatformApiPigeonCodecWriter: FlutterStandardWriter {
       super.writeValue(value.toList())
     } else if let value = value as? PlatformCardioExport {
       super.writeByte(144)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformPasskeyRegistration {
+      super.writeByte(145)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformPasskeyAssertion {
+      super.writeByte(146)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -1262,6 +1376,12 @@ protocol MobilePlatformApi {
   func stopCardioMonitoring(sessionId: String) async throws
   func requestCardioWriteAuthorization() async throws -> PlatformAuthorizationRequestResult
   func exportCardioSession(export: PlatformCardioExport) async throws -> PlatformWorkoutExportResult
+  /// Erstellt mit Face ID einen Passkey für die Domain [relyingPartyId].
+  /// Null, wenn der Nutzer abbricht.
+  func createPasskey(relyingPartyId: String, challenge: FlutterStandardTypedData, userId: FlutterStandardTypedData, userName: String) async throws -> PlatformPasskeyRegistration?
+  /// Meldet mit einem gespeicherten Passkey der Domain an. Null bei Abbruch
+  /// oder wenn kein Passkey vorhanden ist.
+  func assertPasskey(relyingPartyId: String, challenge: FlutterStandardTypedData) async throws -> PlatformPasskeyAssertion?
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -2040,6 +2160,48 @@ class MobilePlatformApiSetup {
       }
     } else {
       exportCardioSessionChannel.setMessageHandler(nil)
+    }
+    /// Erstellt mit Face ID einen Passkey für die Domain [relyingPartyId].
+    /// Null, wenn der Nutzer abbricht.
+    let createPasskeyChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.createPasskey\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      createPasskeyChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let relyingPartyIdArg = args[0] as! String
+        let challengeArg = args[1] as! FlutterStandardTypedData
+        let userIdArg = args[2] as! FlutterStandardTypedData
+        let userNameArg = args[3] as! String
+        Task { @MainActor in
+          do {
+            let result = try await api.createPasskey(relyingPartyId: relyingPartyIdArg, challenge: challengeArg, userId: userIdArg, userName: userNameArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      createPasskeyChannel.setMessageHandler(nil)
+    }
+    /// Meldet mit einem gespeicherten Passkey der Domain an. Null bei Abbruch
+    /// oder wenn kein Passkey vorhanden ist.
+    let assertPasskeyChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.assertPasskey\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      assertPasskeyChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let relyingPartyIdArg = args[0] as! String
+        let challengeArg = args[1] as! FlutterStandardTypedData
+        Task { @MainActor in
+          do {
+            let result = try await api.assertPasskey(relyingPartyId: relyingPartyIdArg, challenge: challengeArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      assertPasskeyChannel.setMessageHandler(nil)
     }
   }
 }

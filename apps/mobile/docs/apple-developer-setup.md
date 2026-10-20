@@ -51,10 +51,12 @@ Das Widget zeigt neutrale Einstiege; die Haupt-App hält neutrale App-Group-Snap
 Modes und Keychain Sharing bleiben beim Widget aus. Für Kamera/Fotoauswahl,
 lokale Mitteilungen und App Intents ist keine zusätzliche Portal-Capability nötig.
 
-Für die geplanten Universal Links kann **Associated Domains** auf der Haupt-
-App-ID aktiviert werden; nicht auf der Widget-ID. Die App-Entitlement-,
-Domain- und AASA-Konfiguration samt Installationsnachweis steht noch aus.
-Das Aktivieren im Portal allein schaltet Universal Links nicht frei.
+**Associated Domains** muss auf der Haupt-App-ID aktiv sein, nicht auf der
+Widget-ID. Die App nutzt es für Passkeys (`webcredentials:gainer.markfort.xyz`).
+Der Edge-Container liefert dazu `/.well-known/apple-app-site-association` mit
+`Q7GTYQ282F.xyz.markfort.gainer` aus. Nach dem Aktivieren muss das
+App-Provisioning-Profil neu erzeugt und als `IOS_PROVISIONING_PROFILE_BASE64`
+hinterlegt werden; der Workflow bricht sonst vor dem Archivieren ab.
 
 ## Apple-Distribution-Zertifikat unter Windows mit Git Bash
 
