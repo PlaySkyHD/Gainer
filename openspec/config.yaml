@@ -9,14 +9,14 @@ context: |
   Selbstregistrierung, Bezahlfunktionen, soziale Funktionen und Coach-Zugriffe
   sind zunächst nicht vorgesehen.
 
-  Frontend: Next.js, TypeScript und React als installierbare Offline-First-PWA.
-  UI: Tailwind CSS und shadcn/ui.
+  Client: Flutter-App für iOS (Offline-First) als einziger Client. Die frühere
+  Next.js-PWA ist entfernt.
 
-  Backend: ASP.NET Core auf .NET 10 als modularer Monolith. Das Frontend greift
+  Backend: ASP.NET Core auf .NET 10 als modularer Monolith. Die App greift
   ausschließlich über die HTTP-API auf Backend-Funktionen zu. Verwende EF Core
   mit Npgsql für den Datenzugriff.
 
-  Orchestrierung: Aspire beschreibt lokal Frontend, API und Infrastruktur im
+  Orchestrierung: Aspire beschreibt lokal API und Infrastruktur im
   AppHost und stellt Service Discovery, Health Checks und OpenTelemetry bereit.
   Aspire ist kein Produktions-Runtime-Orchestrator. Das MVP läuft mittels von
   Aspire veröffentlichtem Docker Compose hinter einem HTTPS-Reverse-Proxy auf

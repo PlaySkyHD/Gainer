@@ -36,13 +36,6 @@ jobs:
           cache: true
           cache-dependency-path: '**/packages.lock.json'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-
       - name: Install Aspire CLI
         run: dotnet tool install --global Aspire.Cli --version 13.6.1
 
@@ -51,44 +44,21 @@ jobs:
         # so no OS-specific package is restored. Direct versions remain centrally pinned.
         run: dotnet restore Gainer.slnx --force-evaluate
 
-      - name: Install frontend dependencies
-        run: npm ci --ignore-scripts
-        working-directory: apps/web
-
       - name: Verify .NET formatting
         run: dotnet format Gainer.slnx --verify-no-changes --no-restore
 
       - name: Build backend
         run: dotnet build Gainer.slnx --no-restore
 
-      - name: Generate TypeScript API contract
-        run: npm run generate:api
-        working-directory: apps/web
-
       - name: Run backend tests
         run: dotnet test Gainer.slnx --no-restore --no-build --logger trx --results-directory artifacts/test-results
-
-      - name: Typecheck frontend
-        run: npm run typecheck
-        working-directory: apps/web
-
-      - name: Lint frontend
-        run: npm run lint
-        working-directory: apps/web
-
-      - name: Build static frontend
-        run: npm run build
-        working-directory: apps/web
-
-      - name: Validate production script policy
-        run: node deploy/generate-edge-csp.mjs apps/web/out deploy/Caddyfile --check
 
       - name: Publish production API artifact
         run: dotnet publish src/Gainer.Api/Gainer.Api.csproj --no-restore --configuration Release --output artifacts/api
 
       - name: Reject secrets, fixtures, unapproved media, and RAG dependencies
         shell: pwsh
-        run: ./scripts/Test-ReleaseSafety.ps1 -ArtifactPaths artifacts/api,apps/web/out -CheckRepositoryPolicy
+        run: ./scripts/Test-ReleaseSafety.ps1 -ArtifactPaths artifacts/api -CheckRepositoryPolicy
 
       - name: Publish Aspire Docker Compose model
         env:
@@ -138,35 +108,26 @@ jobs:
           docker compose -f deploy/compose.yaml config | Out-File artifacts/container-metadata/compose.yaml
           ./scripts/Test-ReleaseSafety.ps1 -ArtifactPaths artifacts/container-metadata
 
-      - name: Enforce npm license allowlist
-        run: node scripts/check-npm-licenses.mjs
-
       - name: Enforce NuGet license allowlist
         shell: pwsh
         run: ./scripts/Test-NuGetLicenses.ps1
 
-      - name: Install Playwright Chromium
-        run: npx --yes --ignore-scripts playwright@1.62.1 install --with-deps chromium
-        working-directory: apps/web
-
-      - name: Verify frontend hydration behind production CSP
+      - name: Smoke-test the API edge proxy
         shell: bash
         run: |
-          docker run --rm -d --name gainer-edge-csp-test -p 127.0.0.1:18081:80 gainer-edge:local
-          trap 'docker stop gainer-edge-csp-test' EXIT
+          docker run --rm -d --name gainer-edge-smoke-test -e GAINER_SITE_ADDRESS=:80 -p 127.0.0.1:18081:80 gainer-edge:local
+          trap 'docker stop gainer-edge-smoke-test' EXIT
           for _attempt in {1..20}; do
-            curl --fail --silent http://127.0.0.1:18081/ >/dev/null && break
+            curl --silent --output /dev/null http://127.0.0.1:18081/ && break
             sleep 1
           done
-          npm run test:edge
-        working-directory: apps/web
-
-      - name: Run browser tests
-        run: npm run test:browser
-        working-directory: apps/web
+          headers="$(curl --silent --dump-header - --output /dev/null http://127.0.0.1:18081/)"
+          echo "$headers"
+          grep -q '^HTTP/1.1 404' <<<"$headers"
+          grep -qi "^content-security-policy: default-src 'none'; frame-ancestors 'none'" <<<"$headers"
 
       - name: Reject generated contract drift
-        run: git diff --exit-code -- contracts/openapi apps/web/src/lib/api/generated.ts
+        run: git diff --exit-code -- contracts/openapi
 
       - name: Reject incompatible OpenAPI changes
         shell: pwsh
@@ -181,6 +142,5 @@ jobs:
           name: test-reports
           path: |
             artifacts/test-results
-            apps/web/playwright-report
           if-no-files-found: warn
           retention-days: 14

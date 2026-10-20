@@ -8,7 +8,7 @@ This runbook deploys the private, invitation-only MVP at `https://gainer.markfor
 Internet :80/:443
        -> host Caddy (TLS and certificates)
        -> 127.0.0.1:8081
-       -> Gainer edge container :80
+       -> Gainer edge container :80 (API reverse proxy only)
        -> API and PostgreSQL on the private Compose network
 ```
 
@@ -134,16 +134,3 @@ For the local drill use `RESTIC_REPOSITORY=rclone::azureblob:<container>/<path>`
 - Before deployment, record current API, migrator, and edge image digests. On a failed health check, restore all three previous immutable references in `/etc/gainer/deployment.env` and run `docker compose up -d --wait` again.
 - Follow expand/contract migrations: deploy additive schema before new code and remove old columns only after every rollback candidate no longer uses them.
 - Never run `docker compose down -v` in production. Rollbacks change image references, not volumes.
-
-## Physical iPhone nutrition acceptance
-
-Before declaring the nutrition change complete, test the installed PWA on a physical iPhone (Safari alone is not sufficient for the install-path check):
-
-1. Sign in, open **Essen**, switch to airplane mode and add a manual item to each meal section.
-2. Close the PWA from the app switcher, reopen it offline and verify the same date, entries, amounts, order and pending-sync state.
-3. Restore connectivity while the PWA is foregrounded and verify that pending changes synchronize exactly once. iOS background execution is not required or assumed.
-4. Expire the server session, create another offline change, reconnect and verify it stays local until the same account signs in again.
-5. Sign out and sign in as a different account; verify that neither entries nor pending mutations from the first account appear.
-6. Test denied camera permission and an unavailable `BarcodeDetector`; manual barcode input and manual food entry must remain usable.
-
-Record iOS version, device model, installed-PWA status, date/time and results for reload, later sync, expired session, camera fallback and account isolation. The automated Chromium suites cover the corresponding browser paths but do not substitute for this device check.
