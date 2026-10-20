@@ -170,7 +170,9 @@ public sealed class CustomExerciseMutationHandler(
             exercise.Notes,
             exercise.BodyweightFactor,
             exercise.WeightFactor,
-            categoryIds),
+            categoryIds,
+            exercise.PrimaryMuscles,
+            exercise.SecondaryMuscles),
         exercise.IsArchived,
         exercise.CreatedAtUtc,
         exercise.UpdatedAtUtc,
@@ -211,6 +213,13 @@ public sealed class CustomExerciseMutationHandler(
         {
             errors[nameof(values.CategoryIds)] = "Categories must not be repeated.";
         }
+        string[] primaryMuscles = values.PrimaryMuscles?.ToArray() ?? [];
+        string[] secondaryMuscles = values.SecondaryMuscles?.ToArray() ?? [];
+        string? muscleError = MuscleKeys.Validate(primaryMuscles, secondaryMuscles);
+        if (muscleError is not null)
+        {
+            errors[nameof(values.PrimaryMuscles)] = muscleError;
+        }
         if (errors.Count > 0)
         {
             throw new CustomExerciseValidationException(errors);
@@ -225,7 +234,9 @@ public sealed class CustomExerciseMutationHandler(
             Normalize(values.Notes),
             values.BodyweightFactor,
             values.WeightFactor,
-            categoryIds.Order().ToArray());
+            categoryIds.Order().ToArray(),
+            primaryMuscles,
+            secondaryMuscles);
     }
 
     private static void ValidateOptional(
@@ -254,5 +265,7 @@ public sealed class CustomExerciseMutationHandler(
         exercise.Notes = values.Notes;
         exercise.BodyweightFactor = values.BodyweightFactor;
         exercise.WeightFactor = values.WeightFactor;
+        exercise.PrimaryMuscles = [.. values.PrimaryMuscles!];
+        exercise.SecondaryMuscles = [.. values.SecondaryMuscles!];
     }
 }

@@ -97,7 +97,9 @@ public sealed class ExerciseCatalogQueries(AppDbContext context, IUserContext us
                 item.Notes,
                 item.BodyweightFactor,
                 item.WeightFactor,
-                Array.Empty<Guid>()))
+                Array.Empty<Guid>(),
+                item.PrimaryMuscles,
+                item.SecondaryMuscles))
             .ToListAsync(cancellationToken);
         if (exercises.Count == 0)
         {
