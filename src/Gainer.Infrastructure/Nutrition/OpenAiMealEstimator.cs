@@ -1,8 +1,8 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
 using Gainer.Core.Coach;
 using Gainer.Core.Nutrition;
 using Gainer.Core.Security;
+using Gainer.Infrastructure.Coach;
 using Microsoft.Extensions.Options;
 
 namespace Gainer.Infrastructure.Nutrition;
@@ -22,28 +22,18 @@ public interface IMealEstimationQuota
 public sealed class MealEstimationQuota(IOptions<MealEstimationOptions> options, TimeProvider timeProvider)
     : IMealEstimationQuota, IDisposable
 {
-    private readonly MealEstimationOptions settings = Validate(options.Value);
-    private readonly ConcurrentDictionary<Guid, DailyUsage> usage = new();
-    private readonly SemaphoreSlim concurrency = new(Validate(options.Value).MaximumConcurrentRequests);
+    private readonly DailyRequestQuota quota = new(
+        Validate(options.Value).DailyRequestsPerUser,
+        options.Value.MaximumConcurrentRequests,
+        timeProvider);
 
-    public async ValueTask<IAsyncDisposable> AcquireAsync(Guid userId, CancellationToken cancellationToken = default)
-    {
-        if (userId == Guid.Empty) throw new UnauthorizedAccessException("An authenticated user is required.");
-        DateOnly today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
-        DailyUsage current = usage.AddOrUpdate(
+    public ValueTask<IAsyncDisposable> AcquireAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        quota.AcquireAsync(
             userId,
-            _ => new DailyUsage(today, 1),
-            (_, existing) => existing.Date == today
-                ? existing with { Requests = checked(existing.Requests + 1) }
-                : new DailyUsage(today, 1));
-        if (current.Requests > settings.DailyRequestsPerUser)
-            throw new MealEstimationException("daily_budget_exhausted", "The daily AI estimation budget is exhausted.", 429);
+            () => new MealEstimationException("daily_budget_exhausted", "The daily AI estimation budget is exhausted.", 429),
+            cancellationToken);
 
-        await concurrency.WaitAsync(cancellationToken);
-        return new Lease(concurrency);
-    }
-
-    public void Dispose() => concurrency.Dispose();
+    public void Dispose() => quota.Dispose();
 
     private static MealEstimationOptions Validate(MealEstimationOptions value)
     {
@@ -52,18 +42,6 @@ public sealed class MealEstimationQuota(IOptions<MealEstimationOptions> options,
         if (value.MaximumConcurrentRequests is < 1 or > 32)
             throw new InvalidOperationException("MealEstimation concurrency limit is invalid.");
         return value;
-    }
-
-    private sealed record DailyUsage(DateOnly Date, int Requests);
-
-    private sealed class Lease(SemaphoreSlim semaphore) : IAsyncDisposable
-    {
-        private int disposed;
-        public ValueTask DisposeAsync()
-        {
-            if (Interlocked.Exchange(ref disposed, 1) == 0) semaphore.Release();
-            return ValueTask.CompletedTask;
-        }
     }
 }
 

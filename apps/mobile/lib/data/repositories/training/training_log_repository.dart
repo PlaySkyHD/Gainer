@@ -9,6 +9,7 @@ import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
 import '../sync/local_sync_store.dart';
 import 'api_exercise_catalog_provider.dart';
+import 'muscle_suggestion_service.dart';
 import 'training_preferences.dart';
 
 const _workoutType = 'workout';
@@ -38,11 +39,15 @@ class TrainingLogRepository {
     required this.catalog,
     IdFactory? ids,
     DateTime Function()? clock,
+    this.muscleSuggestions,
   }) : _ids = ids ?? newUuidV4,
        _clock = clock ?? DateTime.now;
 
   final LocalSyncStore store;
   final ExerciseCatalogProvider catalog;
+
+  /// KI für Muskeln einer Übung; ohne Wert bietet die App sie nicht an.
+  final MuscleSuggestionService? muscleSuggestions;
 
   /// Trainingseinstellungen des Kontos; ein gemeinsamer Stand für alle Beobachter.
   late final TrainingPreferences preferences = TrainingPreferences(
