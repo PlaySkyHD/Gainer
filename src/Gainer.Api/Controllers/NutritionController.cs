@@ -15,6 +15,9 @@ public sealed class NutritionController(
     ISmartNutritionQueries smartQueries,
     IMealEstimator mealEstimator) : ControllerBase
 {
+    // The app scales meal photos to fit 8 MiB; the whole multipart request is bounded by the same size.
+    private const int MealEstimateRequestBytes = 8 * 1024 * 1024;
+
     [HttpGet("days/{localDate}")]
     [ProducesResponseType<NutritionDayResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<NutritionDayResponse>> Day(
@@ -104,7 +107,8 @@ public sealed class NutritionController(
 
     [HttpPost("meal-estimates")]
     [Consumes("multipart/form-data")]
-    [RequestSizeLimit(9 * 1024 * 1024)]
+    [RequestSizeLimit(MealEstimateRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MealEstimateRequestBytes)]
     [ProducesResponseType<MealEstimateResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]

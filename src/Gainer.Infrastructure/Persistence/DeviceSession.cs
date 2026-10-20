@@ -17,6 +17,12 @@ public sealed class DeviceSession
 
     public DateTimeOffset? RotatedAt { get; set; }
 
+    /// <summary>SHA-256 hash of the token a grace-period retry replaced; it never comes back from the real device.</summary>
+    public byte[]? DiscardedRefreshTokenHash { get; set; }
+
+    /// <summary>When a grace-period retry happened since the last rotation; one retry is allowed per rotation.</summary>
+    public DateTimeOffset? DiscardedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset LastUsedAt { get; set; }
