@@ -35,7 +35,7 @@ Future<void> _openEditor(
 }
 
 Future<void> _enter(WidgetTester tester, Key key, String text) async {
-  await tester.ensureVisible(find.byKey(key));
+  await scrollIntoView(tester, find.byKey(key));
   await tester.enterText(find.byKey(key), text);
   await settle(tester);
 }
@@ -218,10 +218,9 @@ void main() {
     });
     await _openEditor(tester, harness, exercise: exercise);
 
-    await tester.dragUntilVisible(
+    await scrollIntoView(
+      tester,
       find.byKey(const ValueKey('exercise-archive')),
-      find.byType(CustomScrollView),
-      const Offset(0, -200),
     );
     await tester.tap(find.byKey(const ValueKey('exercise-archive')));
     await settle(tester);

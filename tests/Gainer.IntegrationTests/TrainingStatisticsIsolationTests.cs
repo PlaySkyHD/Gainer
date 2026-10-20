@@ -301,7 +301,7 @@ public sealed class TrainingStatisticsIsolationTests
         public Task<ExerciseCatalogPage> SearchAsync(ExerciseCatalogFilter filter, CancellationToken cancellationToken = default) =>
             Task.FromResult(new ExerciseCatalogPage(
                 [new ExerciseCatalogItem(exerciseId, "Basisübung", null, null, null, null, false, "test-catalog", 1,
-                    ExerciseType.Strength, null, null, null, [])],
+                    ExerciseType.Strength, null, null, null, [], [], [])],
                 0, filter.Limit, 1, []));
     }
 

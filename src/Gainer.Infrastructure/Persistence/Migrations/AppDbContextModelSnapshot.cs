@@ -991,6 +991,18 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("OwnerUserId")
                         .HasColumnType("uuid");
 
+                    b.PrimitiveCollection<string[]>("PrimaryMuscles")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasDefaultValueSql("'{}'::text[]");
+
+                    b.PrimitiveCollection<string[]>("SecondaryMuscles")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasDefaultValueSql("'{}'::text[]");
+
                     b.Property<string>("TargetMuscle")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -1033,13 +1045,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("0159d8e1-ec7a-527a-9887-5cb4f70b1c83"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Barbell",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Chest",
                             Name = "Barbell Bench Press",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "triceps", "frontDelts" },
                             TargetMuscle = "Pectoralis major",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1047,13 +1061,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("07859f08-0fa6-5da4-882f-f5db0a7c310d"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Barbell",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Legs",
                             Name = "Back Squat",
+                            PrimaryMuscles = new[] { "quads", "glutes" },
+                            SecondaryMuscles = new[] { "adductors", "lowerBack" },
                             TargetMuscle = "Quadriceps",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1061,13 +1077,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("173d2d47-c8a1-5967-8f5b-88de90a30659"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Barbell",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Legs",
                             Name = "Romanian Deadlift",
+                            PrimaryMuscles = new[] { "hamstrings", "glutes" },
+                            SecondaryMuscles = new[] { "lowerBack" },
                             TargetMuscle = "Hamstrings",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1075,13 +1093,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("28d6db67-f2d0-5e15-a63b-759fc96e01cb"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Cable",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Back",
                             Name = "Lat Pulldown",
+                            PrimaryMuscles = new[] { "lats" },
+                            SecondaryMuscles = new[] { "biceps", "rearDelts" },
                             TargetMuscle = "Latissimus dorsi",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1090,13 +1110,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         {
                             Id = new Guid("42ce4803-05e3-5f07-92b6-326c9aa95658"),
                             BodyweightFactor = 1.0m,
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Bodyweight",
                             ExerciseType = "bodyweightLoaded",
                             IsArchived = false,
                             MuscleGroup = "Back",
                             Name = "Pull-Up",
+                            PrimaryMuscles = new[] { "lats" },
+                            SecondaryMuscles = new[] { "biceps", "traps", "forearms" },
                             TargetMuscle = "Latissimus dorsi",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1104,13 +1126,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("4ec1e1c8-e2c9-56ac-bec1-4ba0936f6a97"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Cable",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Back",
                             Name = "Seated Cable Row",
+                            PrimaryMuscles = new[] { "traps", "lats" },
+                            SecondaryMuscles = new[] { "rearDelts", "biceps" },
                             TargetMuscle = "Rhomboids",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1118,13 +1142,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("66f8d486-cedf-54ee-8154-6b295371d2f7"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Dumbbell",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Shoulders",
                             Name = "Dumbbell Lateral Raise",
+                            PrimaryMuscles = new[] { "sideDelts" },
+                            SecondaryMuscles = new[] { "traps" },
                             TargetMuscle = "Lateral deltoid",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1132,13 +1158,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("71f9157f-2cec-5517-a910-a3a8c6d82f07"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Barbell",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Shoulders",
                             Name = "Standing Overhead Press",
+                            PrimaryMuscles = new[] { "frontDelts" },
+                            SecondaryMuscles = new[] { "sideDelts", "triceps" },
                             TargetMuscle = "Anterior deltoid",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1146,13 +1174,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("85c4145d-e045-5153-a18a-1934d16ad4de"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Machine",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Legs",
                             Name = "Leg Curl",
+                            PrimaryMuscles = new[] { "hamstrings" },
+                            SecondaryMuscles = new[] { "calves" },
                             TargetMuscle = "Hamstrings",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1160,13 +1190,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("9a23aa0d-a43b-5d10-a25e-b22db398578e"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Machine",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Legs",
                             Name = "Leg Extension",
+                            PrimaryMuscles = new[] { "quads" },
+                            SecondaryMuscles = new string[0],
                             TargetMuscle = "Quadriceps",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1174,13 +1206,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("b33d40e4-e84e-5317-83e2-9df3ddb6bc4d"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Dumbbell",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Arms",
                             Name = "Dumbbell Biceps Curl",
+                            PrimaryMuscles = new[] { "biceps" },
+                            SecondaryMuscles = new[] { "forearms" },
                             TargetMuscle = "Biceps brachii",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1188,13 +1222,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("c6fb4053-2f69-597f-890e-e7bd58444a3e"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Cable",
                             ExerciseType = "strength",
                             IsArchived = false,
                             MuscleGroup = "Arms",
                             Name = "Cable Triceps Pushdown",
+                            PrimaryMuscles = new[] { "triceps" },
+                            SecondaryMuscles = new string[0],
                             TargetMuscle = "Triceps brachii",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1203,13 +1239,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         {
                             Id = new Guid("2b8f7aee-2d29-4d6e-8dc8-d5b39bff5f9d"),
                             BodyweightFactor = 0.64m,
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Bodyweight",
                             ExerciseType = "bodyweightOnly",
                             IsArchived = false,
                             MuscleGroup = "Chest",
                             Name = "Push-Up",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "triceps", "frontDelts", "abs" },
                             TargetMuscle = "Pectoralis major",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1218,13 +1256,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         {
                             Id = new Guid("679b0f26-ac2b-4dc8-bb45-4121b2d3b8e6"),
                             BodyweightFactor = 1.0m,
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
                             Equipment = "Bodyweight",
                             ExerciseType = "bodyweightLoaded",
                             IsArchived = false,
                             MuscleGroup = "Arms",
                             Name = "Dips",
+                            PrimaryMuscles = new[] { "triceps" },
+                            SecondaryMuscles = new[] { "chest", "frontDelts" },
                             TargetMuscle = "Triceps brachii",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
@@ -1277,7 +1317,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Brust",
@@ -1287,7 +1327,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("092c9ade-1948-412b-927c-7daea71fb381"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Rücken",
@@ -1297,7 +1337,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Schultern",
@@ -1307,7 +1347,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Bizeps",
@@ -1317,7 +1357,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("74d2162c-349e-4845-b808-da9339b9d497"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Trizeps",
@@ -1327,7 +1367,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("6272a453-0cdc-4bae-90db-e299fca34817"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Beine",
@@ -1337,7 +1377,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Gesäß",
@@ -1347,7 +1387,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("396b4f80-26de-4c59-aff0-b7eb6d938e4f"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Waden",
@@ -1357,7 +1397,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Bauch",
@@ -1367,7 +1407,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("2a147135-db68-4768-84b1-e10f270fc7a5"),
-                            CatalogVersion = "2026.10.1",
+                            CatalogVersion = "2026.10.2",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Ganzkörper",

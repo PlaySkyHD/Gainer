@@ -187,6 +187,66 @@ public sealed class ExerciseCatalogPersistenceTests
     }
 
     [TestMethod]
+    public async Task CustomExerciseMusclesAreValidatedStoredAndReturned()
+    {
+        string connectionString = await CreateDatabaseAsync();
+        Guid ownerId = Guid.NewGuid();
+        await SeedUserAsync(connectionString, ownerId);
+        Guid exerciseId = Guid.NewGuid();
+        await using AppDbContext context = Fixture.CreateContext(connectionString, ownerId);
+        var handler = new CustomExerciseMutationHandler(context, new TestUserContext(ownerId), TimeProvider.System);
+
+        CustomExerciseValidationException overlap = await Assert.ThrowsAsync<CustomExerciseValidationException>(() => handler.CreateAsync(
+            CreateCustomExerciseMutation.Create(Metadata(), exerciseId, new CustomExerciseValues(
+                "Incline Press", "strength", PrimaryMuscles: ["chest"], SecondaryMuscles: ["chest"])),
+            TestContext.CancellationToken));
+        Assert.IsTrue(overlap.Errors.ContainsKey(nameof(CustomExerciseValues.PrimaryMuscles)));
+        await Assert.ThrowsAsync<CustomExerciseValidationException>(() => handler.CreateAsync(
+            CreateCustomExerciseMutation.Create(Metadata(), exerciseId, new CustomExerciseValues(
+                "Incline Press", "strength", PrimaryMuscles: ["pecs"])),
+            TestContext.CancellationToken));
+
+        CustomExerciseSnapshot created = await handler.CreateAsync(CreateCustomExerciseMutation.Create(
+            Metadata(), exerciseId, new CustomExerciseValues(
+                "Incline Press", "strength", PrimaryMuscles: ["chest"], SecondaryMuscles: ["triceps", "frontDelts"])),
+            TestContext.CancellationToken);
+        CollectionAssert.AreEqual(new[] { "triceps", "frontDelts" }, created.Values.SecondaryMuscles!.ToArray());
+
+        CustomExerciseSnapshot updated = await handler.UpdateAsync(UpdateCustomExerciseMutation.Create(
+            Metadata(), exerciseId, created.Version, new CustomExerciseValues("Incline Press", "strength")),
+            TestContext.CancellationToken);
+        Assert.IsEmpty(updated.Values.PrimaryMuscles!);
+
+        await handler.UpdateAsync(UpdateCustomExerciseMutation.Create(
+            Metadata(), exerciseId, updated.Version, new CustomExerciseValues(
+                "Incline Press", "strength", PrimaryMuscles: ["chest", "frontDelts"])),
+            TestContext.CancellationToken);
+        context.ChangeTracker.Clear();
+        var queries = new ExerciseCatalogQueries(context, new TestUserContext(ownerId));
+        ExerciseCatalogItem? item = await queries.ResolveAsync(exerciseId, includeArchived: false, TestContext.CancellationToken);
+        Assert.IsNotNull(item);
+        CollectionAssert.AreEqual(new[] { "chest", "frontDelts" }, item.PrimaryMuscles.ToArray());
+        Assert.IsEmpty(item.SecondaryMuscles);
+    }
+
+    [TestMethod]
+    public async Task BaseExercisesCarryTheirCatalogMuscles()
+    {
+        string connectionString = await CreateDatabaseAsync();
+        await using AppDbContext context = Fixture.CreateContext(connectionString, Guid.NewGuid());
+        Dictionary<Guid, Exercise> exercises = await context.Exercises
+            .IgnoreQueryFilters()
+            .Where(item => item.OwnerUserId == null)
+            .ToDictionaryAsync(item => item.Id, TestContext.CancellationToken);
+
+        foreach (ExerciseCatalogEntry entry in ExerciseCatalogSnapshot.Document.Entries)
+        {
+            CollectionAssert.AreEqual(entry.PrimaryMuscles.ToArray(), exercises[entry.Id].PrimaryMuscles);
+            CollectionAssert.AreEqual(entry.SecondaryMuscles.ToArray(), exercises[entry.Id].SecondaryMuscles);
+        }
+    }
+
+    [TestMethod]
     public async Task EveryBaseExerciseHasTypeBaseCategoriesAndFactorsInAllowedRange()
     {
         string connectionString = await CreateDatabaseAsync();
@@ -369,7 +429,11 @@ public sealed class ExerciseCatalogPersistenceTests
 
         await context.GetInfrastructure().GetRequiredService<IMigrator>().MigrateAsync(migration, TestContext.CancellationToken);
         context.ChangeTracker.Clear();
-        Exercise migrated = await context.Exercises.SingleAsync(item => item.Id == exerciseId, TestContext.CancellationToken);
+        // Project only columns that exist at this migration; later migrations add more.
+        var migrated = await context.Exercises
+            .Where(item => item.Id == exerciseId)
+            .Select(item => new { item.ExerciseType, item.BodyweightFactor, item.WeightFactor })
+            .SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual(ExerciseType.Strength, migrated.ExerciseType);
         Assert.IsNull(migrated.BodyweightFactor);
         Assert.IsNull(migrated.WeightFactor);

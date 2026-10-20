@@ -90,4 +90,23 @@ public sealed class ExerciseCatalogDomainTests
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => ExerciseFactors.EnsureValid(null, 0m));
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => ExerciseFactors.EnsureValid(null, 10.01m));
     }
+
+    [TestMethod]
+    public void MuscleSelectionAcceptsKnownDisjointKeysWithinLimits()
+    {
+        Assert.IsNull(MuscleKeys.Validate(["chest"], ["triceps", "frontDelts"]));
+        Assert.IsNull(MuscleKeys.Validate([], []));
+        Assert.HasCount(17, MuscleKeys.Known);
+    }
+
+    [TestMethod]
+    public void MuscleSelectionRejectsUnknownRepeatedOverlappingOrTooManyKeys()
+    {
+        Assert.IsNotNull(MuscleKeys.Validate(["pecs"], []));
+        Assert.IsNotNull(MuscleKeys.Validate(["Chest"], []));
+        Assert.IsNotNull(MuscleKeys.Validate(["chest", "chest"], []));
+        Assert.IsNotNull(MuscleKeys.Validate(["chest"], ["chest"]));
+        Assert.IsNotNull(MuscleKeys.Validate(["chest", "lats", "quads", "calves"], []));
+        Assert.IsNotNull(MuscleKeys.Validate([], ["chest", "lats", "quads", "calves", "abs", "glutes", "traps"]));
+    }
 }
