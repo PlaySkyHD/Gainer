@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/models/api/api_models.dart';
+import '../../../data/services/api/api_client.dart';
 import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
@@ -59,9 +60,12 @@ class _PasskeysScreenState extends State<PasskeysScreen> {
       _error = null;
     });
     try {
-      final created = await widget.controller.addPasskey();
+      final created = await _addConfirmingPassword();
       if (!mounted) return;
       if (created != null) setState(() => _passkeys = [..._passkeys, created]);
+    } on _PasswordRejected {
+      if (!mounted) return;
+      setState(() => _error = 'Das Passwort war falsch.');
     } catch (_) {
       if (!mounted) return;
       setState(
@@ -70,6 +74,59 @@ class _PasskeysScreenState extends State<PasskeysScreen> {
       );
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Kurz nach der Anmeldung geht es ohne Passwort, danach fragt der Server
+  /// es erneut ab, damit ein gestohlener Token allein keinen Passkey anlegt.
+  /// Null bei Abbruch.
+  Future<ApiPasskey?> _addConfirmingPassword() async {
+    try {
+      return await widget.controller.addPasskey();
+    } on ApiException catch (error) {
+      if (error.code != 'reauthentication_required') rethrow;
+    }
+    final password = await _askPassword();
+    if (password == null) return null;
+    try {
+      return await widget.controller.addPasskey(password: password);
+    } on ApiException catch (error) {
+      if (error.code == 'reauthentication_required') throw _PasswordRejected();
+      rethrow;
+    }
+  }
+
+  Future<String?> _askPassword() async {
+    final field = TextEditingController();
+    try {
+      final colors = GainerDesign.colorsOf(context);
+      final confirmed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (context) => GainerStackedDialog<bool>(
+          title: 'Passwort bestätigen',
+          message: 'Gib dein Passwort ein, um einen neuen Passkey anzulegen.',
+          content: CupertinoTextField(
+            controller: field,
+            placeholder: 'Passwort',
+            obscureText: true,
+            autofocus: true,
+            autocorrect: false,
+            autofillHints: const [AutofillHints.password],
+            style: GainerTypography.body.copyWith(color: colors.primaryText),
+            placeholderStyle: GainerTypography.body.copyWith(
+              color: colors.placeholderText,
+            ),
+            onSubmitted: (_) => Navigator.of(context).pop(true),
+          ),
+          actions: const [
+            GainerDialogAction(label: 'Weiter', value: true),
+            GainerDialogAction(label: 'Abbrechen', value: false),
+          ],
+        ),
+      );
+      return confirmed == true && field.text.isNotEmpty ? field.text : null;
+    } finally {
+      field.dispose();
     }
   }
 
@@ -171,3 +228,5 @@ class _PasskeysScreenState extends State<PasskeysScreen> {
     return '$day.$month.${local.year}';
   }
 }
+
+final class _PasswordRejected implements Exception {}
