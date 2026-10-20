@@ -330,10 +330,13 @@ class ApiClient {
     return tokens;
   }
 
-  Future<ApiPasskeyOptions> passkeyCreationOptions() async {
+  /// Without [password] this only works shortly after signing in; otherwise
+  /// the server answers 403 `reauthentication_required`.
+  Future<ApiPasskeyOptions> passkeyCreationOptions({String? password}) async {
     final response = await _mutate(
       'POST',
       '/api/v1/auth/passkeys/creation-options',
+      body: password == null ? null : {'password': password},
     );
     return ApiPasskeyOptions.fromJson(_asObject(response.data));
   }
@@ -382,6 +385,14 @@ class ApiClient {
     } finally {
       clearTokens();
     }
+  }
+
+  /// Revokes every device session of the account, then forgets the tokens.
+  /// Unlike [logout], a failure is reported, because other devices would stay
+  /// signed in.
+  Future<void> logoutAll() async {
+    await _mutate('POST', '/api/v1/auth/logout-all');
+    clearTokens();
   }
 
   Future<void> acceptInvitation(ApiAcceptInvitationRequest request) async {
