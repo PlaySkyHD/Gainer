@@ -56,33 +56,18 @@ public sealed class SyncClientApiTests
         await CreateUserAsync(app);
         using HttpClient client = app.GetTestClient();
         client.BaseAddress = new Uri(TestOrigin);
-        var cookies = new CookieJar();
+        await client.AuthenticateAsync(Email, Password);
 
-        AntiforgeryTokenResponse anonymousToken = await GetAntiforgeryTokenAsync(client, cookies);
-        using HttpResponseMessage login = await SendMutationAsync(
-            client,
-            cookies,
-            HttpMethod.Post,
-            "/api/v1/auth/login",
-            new LoginRequest(Email, Password),
-            anonymousToken.RequestToken);
-        Assert.AreEqual(HttpStatusCode.NoContent, login.StatusCode, await login.Content.ReadAsStringAsync());
-
-        AntiforgeryTokenResponse authenticatedToken = await GetAntiforgeryTokenAsync(client, cookies);
         Guid clientId = Guid.NewGuid();
-        using HttpResponseMessage registration = await SendMutationAsync(
-            client,
-            cookies,
-            HttpMethod.Put,
+        using HttpResponseMessage registration = await client.PutAsJsonAsync(
             $"/api/v1/sync/clients/{clientId}",
-            new RegisterSyncClientRequest(clientId, "Integration browser", SyncProtocol.CurrentVersion, false),
-            authenticatedToken.RequestToken);
+            new RegisterSyncClientRequest(clientId, "Integration iPhone", SyncProtocol.CurrentVersion, false));
 
         Assert.AreEqual(HttpStatusCode.OK, registration.StatusCode, await registration.Content.ReadAsStringAsync());
         SyncClientResponse? response = await registration.Content.ReadFromJsonAsync<SyncClientResponse>();
         Assert.IsNotNull(response);
         Assert.AreEqual(clientId, response.ClientId);
-        Assert.AreEqual("Integration browser", response.DisplayName);
+        Assert.AreEqual("Integration iPhone", response.DisplayName);
         Assert.IsTrue(response.IsActiveWriter);
     }
 
@@ -100,7 +85,6 @@ public sealed class SyncClientApiTests
         builder.WebHost.UseTestServer();
         builder.Configuration["ConnectionStrings:gainer-db"] = connectionString;
         builder.Configuration[GainerIdentityOptions.DataProtectionKeysPathConfigurationKey] = keyRingPath;
-        builder.Configuration[GainerRequestSecurityOptions.FrontendOriginConfigurationKey] = TestOrigin;
         builder.AddGainerApi();
         builder.AddGainerPersistence();
         builder.AddGainerIdentity();
@@ -124,57 +108,5 @@ public sealed class SyncClientApiTests
             IsActive = true,
         }, Password);
         Assert.IsTrue(result.Succeeded, string.Join(", ", result.Errors.Select(error => error.Code)));
-    }
-
-    private static async Task<AntiforgeryTokenResponse> GetAntiforgeryTokenAsync(
-        HttpClient client,
-        CookieJar cookies)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/antiforgery");
-        cookies.Apply(request);
-        using HttpResponseMessage response = await client.SendAsync(request);
-        cookies.Capture(response);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<AntiforgeryTokenResponse>()
-            ?? throw new InvalidOperationException("The antiforgery response was empty.");
-    }
-
-    private static async Task<HttpResponseMessage> SendMutationAsync<TBody>(
-        HttpClient client,
-        CookieJar cookies,
-        HttpMethod method,
-        string path,
-        TBody body,
-        string requestToken)
-    {
-        using var request = new HttpRequestMessage(method, path) { Content = JsonContent.Create(body) };
-        request.Headers.Add("Origin", TestOrigin);
-        request.Headers.Add(GainerRequestSecurityOptions.AntiforgeryHeaderName, requestToken);
-        cookies.Apply(request);
-        HttpResponseMessage response = await client.SendAsync(request);
-        cookies.Capture(response);
-        return response;
-    }
-
-    private sealed class CookieJar
-    {
-        private readonly Dictionary<string, string> values = new(StringComparer.Ordinal);
-
-        public void Capture(HttpResponseMessage response)
-        {
-            if (!response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? headers)) return;
-            foreach (string header in headers)
-            {
-                string[] pair = header.Split(';', 2)[0].Split('=', 2);
-                if (pair[1].Length == 0) values.Remove(pair[0]);
-                else values[pair[0]] = pair[1];
-            }
-        }
-
-        public void Apply(HttpRequestMessage request)
-        {
-            if (values.Count > 0)
-                request.Headers.Add("Cookie", string.Join("; ", values.Select(pair => $"{pair.Key}={pair.Value}")));
-        }
     }
 }

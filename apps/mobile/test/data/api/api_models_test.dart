@@ -3,19 +3,32 @@ import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/models/api/sync_api_models.dart';
 
 void main() {
-  test('antiforgery identity metadata remains nullable for older APIs', () {
-    final olderResponse = ApiAntiforgeryToken.fromJson({
-      'requestToken': 'request-token',
-    });
-    final authenticatedResponse = ApiAntiforgeryToken.fromJson({
-      'requestToken': 'request-token',
-      'authenticatedUserId': '11111111-1111-4111-8111-111111111111',
+  test('token response and login request match the backend DTOs', () {
+    final tokens = ApiTokenResponse.fromJson({
+      'accessToken': 'access-token',
+      'expiresIn': 900,
+      'refreshToken': 'refresh-token',
+      'refreshTokenExpiresAt': '2026-12-19T12:00:00+00:00',
     });
 
-    expect(olderResponse.authenticatedUserId, isNull);
+    expect(tokens.accessToken, 'access-token');
+    expect(tokens.expiresIn, 900);
+    expect(tokens.refreshToken, 'refresh-token');
     expect(
-      authenticatedResponse.authenticatedUserId,
-      '11111111-1111-4111-8111-111111111111',
+      const ApiLoginRequest(email: 'a@example.test', password: 'pw').toJson(),
+      {'email': 'a@example.test', 'password': 'pw'},
+    );
+    expect(
+      const ApiLoginRequest(
+        email: 'a@example.test',
+        password: 'pw',
+        deviceName: 'Gainer iPhone',
+      ).toJson(),
+      {
+        'email': 'a@example.test',
+        'password': 'pw',
+        'deviceName': 'Gainer iPhone',
+      },
     );
   });
 

@@ -14,4 +14,7 @@ public static class ApiConstants
 
     /// <summary>The response header carrying the distributed trace identifier.</summary>
     public const string TraceIdHeader = "X-Trace-ID";
+
+    /// <summary>Rate-limit policy for anonymous sign-in and token refresh requests.</summary>
+    public const string AuthenticationRateLimitPolicy = "authentication";
 }

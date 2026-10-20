@@ -9,7 +9,6 @@ ProgressViewModel _model(NutritionRepository nutrition, DateTime now) {
   final api = ApiClient(
     configuration: ApiConfiguration(
       apiOrigin: Uri.parse('http://127.0.0.1:5099'),
-      trustedFrontendOrigin: Uri.parse('http://127.0.0.1:5099'),
       allowInsecureLoopbackForDevelopment: true,
     ),
   );

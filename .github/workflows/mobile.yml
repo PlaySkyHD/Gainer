@@ -278,7 +278,6 @@ jobs:
         shell: bash
         env:
           GAINER_API_ORIGIN: ${{ vars.GAINER_API_ORIGIN || 'https://gainer.markfort.xyz' }}
-          GAINER_TRUSTED_FRONTEND_ORIGIN: ${{ vars.GAINER_TRUSTED_FRONTEND_ORIGIN || 'https://gainer.markfort.xyz' }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
           IOS_WIDGET_BUNDLE_ID: ${{ vars.IOS_WIDGET_BUNDLE_ID }}
@@ -302,7 +301,7 @@ jobs:
               exit 1
             fi
           done
-          for name in GAINER_API_ORIGIN GAINER_TRUSTED_FRONTEND_ORIGIN; do
+          for name in GAINER_API_ORIGIN; do
             value="${!name}"
             if ! python3 -c 'import sys,urllib.parse; u=urllib.parse.urlsplit(sys.argv[1]); sys.exit(0 if u.scheme == "https" and u.hostname and not u.username and not u.password and u.path in ("", "/") and not u.query and not u.fragment else 1)' "$value"; then
               echo "::error::$name must be an HTTPS origin without credentials, path, query, or fragment."
@@ -638,7 +637,6 @@ jobs:
         working-directory: apps/mobile
         env:
           GAINER_API_ORIGIN: ${{ vars.GAINER_API_ORIGIN || 'https://gainer.markfort.xyz' }}
-          GAINER_TRUSTED_FRONTEND_ORIGIN: ${{ vars.GAINER_TRUSTED_FRONTEND_ORIGIN || 'https://gainer.markfort.xyz' }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
           IOS_WIDGET_BUNDLE_ID: ${{ vars.IOS_WIDGET_BUNDLE_ID }}
@@ -652,8 +650,7 @@ jobs:
           flutter build ios --config-only --release --no-codesign \
             --build-name="$APP_MARKETING_VERSION" \
             --build-number="$APP_BUILD_NUMBER" \
-            --dart-define="GAINER_API_ORIGIN=$GAINER_API_ORIGIN" \
-            --dart-define="GAINER_TRUSTED_FRONTEND_ORIGIN=$GAINER_TRUSTED_FRONTEND_ORIGIN"
+            --dart-define="GAINER_API_ORIGIN=$GAINER_API_ORIGIN"
           xcodebuild \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \

@@ -196,7 +196,6 @@ Future<UiDesignFixture> createUiDesignFixture() async {
   final controller = MobileAuthController(
     configuration: MobileAppConfiguration(
       api: Uri.parse('https://api.gainer.example'),
-      trustedOrigin: Uri.parse('https://app.gainer.example'),
     ),
   );
   return UiDesignFixture(account: account, controller: controller);
@@ -238,7 +237,6 @@ class _FixtureApi extends ApiClient {
     : super(
         configuration: ApiConfiguration(
           apiOrigin: Uri.parse('https://api.gainer.example'),
-          trustedFrontendOrigin: Uri.parse('https://app.gainer.example'),
         ),
       );
 

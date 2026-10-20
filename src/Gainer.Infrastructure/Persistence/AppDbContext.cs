@@ -26,6 +26,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     /// <summary>Hash-only metadata for pending account invitations.</summary>
     public DbSet<AccountInvitation> AccountInvitations => Set<AccountInvitation>();
 
+    /// <summary>Signed-in mobile installations and their refresh tokens.</summary>
+    public DbSet<DeviceSession> DeviceSessions => Set<DeviceSession>();
+
     public DbSet<BodyGoal> BodyGoals => Set<BodyGoal>();
 
     public DbSet<DailyCheckIn> DailyCheckIns => Set<DailyCheckIn>();
@@ -843,6 +846,28 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             invitation.HasOne(item => item.User)
                 .WithOne()
                 .HasForeignKey<AccountInvitation>(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<DeviceSession>(session =>
+        {
+            session.ToTable("device_sessions", DatabaseSchemas.Identity, table =>
+            {
+                table.HasCheckConstraint("CK_identity_device_sessions_name", "length(trim(\"DeviceName\")) > 0");
+                table.HasCheckConstraint(
+                    "CK_identity_device_sessions_token_hash",
+                    "octet_length(\"RefreshTokenHash\") = 32");
+            });
+            session.HasKey(item => item.Id);
+            session.Property(item => item.Id).ValueGeneratedNever();
+            session.Property(item => item.DeviceName).HasMaxLength(100).IsRequired();
+            session.Property(item => item.RefreshTokenHash).HasColumnType("bytea").IsRequired();
+            session.Property(item => item.PreviousRefreshTokenHash).HasColumnType("bytea");
+            session.HasIndex(item => item.RefreshTokenHash).IsUnique();
+            session.HasIndex(item => item.PreviousRefreshTokenHash).IsUnique();
+            session.HasIndex(item => item.UserId);
+            session.HasOne(item => item.User)
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

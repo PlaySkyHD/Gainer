@@ -1,16 +1,21 @@
-import 'dart:typed_data';
-
 import '../../models/api/api_models.dart';
 import '../platform/platform_ports.dart';
 import 'api_client.dart';
 
-/// Owns session bootstrap and stores only an opaque API-host-bound cookie
-/// checkpoint through the platform's secure storage port.
+/// Owns session bootstrap and keeps the device session's refresh token in the
+/// platform's secure storage, bound to the API host.
 class ApiSessionService {
-  ApiSessionService({required this.api, required this.secureStorage});
+  ApiSessionService({
+    required this.api,
+    required this.secureStorage,
+    this.deviceName = defaultDeviceName,
+  });
+
+  static const defaultDeviceName = 'Gainer iPhone';
 
   final ApiClient api;
   final SecureSessionPlatform secureStorage;
+  final String deviceName;
 
   Future<ApiSession?> restore() async {
     final bytes = await secureStorage.readCheckpoint(
@@ -20,14 +25,12 @@ class ApiSessionService {
 
     late ApiSessionCheckpoint checkpoint;
     try {
-      checkpoint = await api.restoreSecureCheckpoint(bytes);
+      checkpoint = api.restoreSecureCheckpoint(bytes);
     } on FormatException {
       await _clearLocalSession();
       return null;
-    } on StateError {
-      await _clearLocalSession();
-      return null;
     }
+    _persistRotations(checkpoint);
 
     final session = await api.getSession();
     if (session == null || session.userId != checkpoint.userId) {
@@ -37,10 +40,28 @@ class ApiSessionService {
     return session;
   }
 
+  /// Restores the stored device session without contacting the API, so a
+  /// known account can open offline. Returns null without a usable checkpoint.
+  Future<ApiSessionCheckpoint?> restoreOffline() async {
+    final bytes = await secureStorage.readCheckpoint(
+      api.configuration.canonicalApiOrigin,
+    );
+    if (bytes == null || bytes.isEmpty) return null;
+    final checkpoint = api.restoreSecureCheckpoint(bytes);
+    _persistRotations(checkpoint);
+    return checkpoint;
+  }
+
   Future<ApiSession> login(String email, String password) async {
     await _clearLocalSession();
     try {
-      await api.login(ApiLoginRequest(email: email, password: password));
+      await api.login(
+        ApiLoginRequest(
+          email: email,
+          password: password,
+          deviceName: deviceName,
+        ),
+      );
       final session = await api.getSession();
       if (session == null) {
         throw const ApiException(
@@ -49,10 +70,9 @@ class ApiSessionService {
           message: 'Die Anmeldung konnte nicht bestätigt werden.',
         );
       }
-      final checkpoint = await api.createSecureCheckpoint(session);
-      await secureStorage.writeCheckpoint(
-        api.configuration.canonicalApiOrigin,
-        Uint8List.fromList(checkpoint),
+      await _writeCheckpoint(session.userId, session.email);
+      _persistRotations(
+        ApiSessionCheckpoint(userId: session.userId, email: session.email),
       );
       return session;
     } catch (_) {
@@ -74,8 +94,24 @@ class ApiSessionService {
     }
   }
 
+  /// Every refresh rotates the token; the keychain must follow, or the next
+  /// launch would present a token the server already replaced.
+  void _persistRotations(ApiSessionCheckpoint checkpoint) {
+    api.onRefreshTokenRotated = (_) =>
+        _writeCheckpoint(checkpoint.userId, checkpoint.email);
+  }
+
+  Future<void> _writeCheckpoint(String userId, String email) =>
+      secureStorage.writeCheckpoint(
+        api.configuration.canonicalApiOrigin,
+        api.createSecureCheckpoint(
+          ApiSession(userId: userId, email: email, isAccountOperator: false),
+        ),
+      );
+
   Future<void> _clearLocalSession() async {
-    await api.clearCookies();
+    api.onRefreshTokenRotated = null;
+    api.clearTokens();
     await secureStorage.clearCheckpoint(api.configuration.canonicalApiOrigin);
   }
 }

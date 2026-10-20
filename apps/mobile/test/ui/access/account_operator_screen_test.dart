@@ -15,11 +15,10 @@ import 'package:gainer_mobile/ui/features/access/account_operator_screen.dart';
 
 const _operatorId = '10000000-0000-4000-8000-000000000001';
 const _memberId = '20000000-0000-4000-8000-000000000002';
-const _inviteLink = 'https://app.example.test/accept-invitation?token=abc123';
+const _inviteLink = 'https://api.example.test/accept-invitation?token=abc123';
 
 final _configuration = MobileAppConfiguration(
   api: Uri.parse('https://api.example.test'),
-  trustedOrigin: Uri.parse('https://app.example.test'),
 );
 
 void main() {
@@ -314,10 +313,15 @@ class _OperatorApi extends ApiClient {
   final _OperatorDirectory directory;
 
   @override
-  Future<void> clearCookies() async {}
+  void clearTokens() {}
 
   @override
-  Future<void> login(ApiLoginRequest request) async {}
+  Future<ApiTokenResponse> login(ApiLoginRequest request) async =>
+      const ApiTokenResponse(
+        accessToken: 'access',
+        expiresIn: 900,
+        refreshToken: 'refresh',
+      );
 
   @override
   Future<ApiSession?> getSession() async => const ApiSession(
@@ -327,7 +331,7 @@ class _OperatorApi extends ApiClient {
   );
 
   @override
-  Future<Uint8List> createSecureCheckpoint(ApiSession session) async =>
+  Uint8List createSecureCheckpoint(ApiSession session) =>
       Uint8List.fromList(session.userId.codeUnits);
 
   @override

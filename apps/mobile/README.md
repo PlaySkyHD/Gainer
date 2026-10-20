@@ -99,11 +99,11 @@ the three Environment secrets `APP_STORE_CONNECT_KEY_ID`,
 `APP_STORE_CONNECT_ISSUER_ID`, and `APP_STORE_CONNECT_PRIVATE_KEY`; these are
 read only when an upload is explicitly requested. See the [Apple Developer setup
 guide](docs/apple-developer-setup.md) for profile and variable setup. The
-non-secret GitHub variables
-`GAINER_API_ORIGIN` and `GAINER_TRUSTED_FRONTEND_ORIGIN` may override the
-documented deployment origin `https://gainer.markfort.xyz`; both values must
-be HTTPS origins without credentials, paths, queries or fragments. The
-workflow passes them as Dart defines, and missing or mismatched signing data
+non-secret GitHub variable
+`GAINER_API_ORIGIN` may override the documented deployment origin
+`https://gainer.markfort.xyz`; it must be an HTTPS origin without
+credentials, paths, queries or fragments. The workflow passes it as a Dart
+define, and missing or mismatched signing data
 fails before archiving. Runner and widget share the marketing version from
 `pubspec.yaml` and a default build number from the workflow run and attempt.
 The `ios-beta` environment currently requires manual review by `PlaySkyHD` and
@@ -142,4 +142,5 @@ adapter; other native ports and feature journeys remain in progress.
 The iOS bridge stores only opaque, API-origin-bound session checkpoints in the
 Keychain with `WhenUnlockedThisDeviceOnly` accessibility and iCloud
 synchronization disabled. A new app installation clears retained checkpoints.
-Passwords and CSRF request tokens are not stored by this bridge.
+The checkpoint holds the device session's rotating refresh token; it is
+rewritten after every refresh. Passwords and access tokens are never stored.

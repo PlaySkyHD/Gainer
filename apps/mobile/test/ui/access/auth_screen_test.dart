@@ -12,7 +12,6 @@ void main() {
       final controller = MobileAuthController(
         configuration: MobileAppConfiguration(
           api: Uri.parse('https://api.example.test'),
-          trustedOrigin: Uri.parse('https://app.example.test'),
         ),
       );
       addTearDown(controller.dispose);
@@ -40,7 +39,6 @@ void main() {
     final controller = MobileAuthController(
       configuration: MobileAppConfiguration(
         api: Uri.parse('https://api.example.test'),
-        trustedOrigin: Uri.parse('https://app.example.test'),
       ),
       apiFactory: (configuration) => api = _InviteApi(configuration),
     );

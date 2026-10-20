@@ -1,41 +1,82 @@
+using System.Security.Claims;
 using Gainer.Api.Composition;
 using Gainer.Api.Errors;
 using Gainer.Api.Security;
 using Gainer.Contracts.Security;
+using Gainer.Core.Access;
 using Gainer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Gainer.Api.Controllers;
 
-/// <summary>Manages sessions for privately provisioned accounts.</summary>
+/// <summary>Manages device sessions for privately provisioned accounts.</summary>
 [ApiController]
 [Route(ApiConstants.Version1Route + "/auth")]
 [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
 public sealed class AuthenticationController(
     SignInManager<AppUser> signInManager,
-    UserManager<AppUser> userManager) : ControllerBase
+    UserManager<AppUser> userManager,
+    IDeviceSessionService deviceSessions,
+    AccessTokenIssuer accessTokens) : ControllerBase
 {
-    /// <summary>Creates a browser session for valid existing credentials.</summary>
-    [AllowAnonymous]
-    [HttpPost("login")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized, "application/problem+json")]
-    public async Task<IActionResult> Login(LoginRequest request)
-    {
-        Microsoft.AspNetCore.Identity.SignInResult result = await signInManager.PasswordSignInAsync(
-            request.Email.Trim(),
-            request.Password,
-            isPersistent: false,
-            lockoutOnFailure: true);
+    private const string DefaultDeviceName = "Gainer";
 
-        if (!result.Succeeded)
+    /// <summary>Starts a device session for valid existing credentials.</summary>
+    [AllowAnonymous]
+    [EnableRateLimiting(ApiConstants.AuthenticationRateLimitPolicy)]
+    [HttpPost("login")]
+    [ProducesResponseType<TokenResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized, "application/problem+json")]
+    public async Task<ActionResult<TokenResponse>> Login(LoginRequest request, CancellationToken cancellationToken)
+    {
+        AppUser? user = await userManager.FindByNameAsync(request.Email.Trim());
+        if (user is null)
         {
-            return InvalidCredentials();
+            return Failure("invalid_credentials");
         }
 
-        return NoContent();
+        Microsoft.AspNetCore.Identity.SignInResult result = await signInManager.CheckPasswordSignInAsync(
+            user,
+            request.Password,
+            lockoutOnFailure: true);
+        if (!result.Succeeded)
+        {
+            return Failure("invalid_credentials");
+        }
+
+        IssuedDeviceSession session = await deviceSessions.CreateAsync(
+            user.Id,
+            request.DeviceName ?? DefaultDeviceName,
+            cancellationToken);
+        return Ok(await CreateTokenResponseAsync(user, session));
+    }
+
+    /// <summary>Rotates the refresh token of a device session and issues a new access token.</summary>
+    [AllowAnonymous]
+    [EnableRateLimiting(ApiConstants.AuthenticationRateLimitPolicy)]
+    [HttpPost("refresh")]
+    [ProducesResponseType<TokenResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized, "application/problem+json")]
+    public async Task<ActionResult<TokenResponse>> Refresh(
+        RefreshTokenRequest request,
+        CancellationToken cancellationToken)
+    {
+        DeviceSessionRefreshResult result = await deviceSessions.RefreshAsync(request.RefreshToken, cancellationToken);
+        if (result is not { Status: DeviceSessionRefreshStatus.Refreshed, Session: IssuedDeviceSession session })
+        {
+            return Failure("invalid_refresh_token");
+        }
+
+        AppUser? user = await userManager.FindByIdAsync(session.UserId.ToString());
+        if (user is null)
+        {
+            return Failure("invalid_refresh_token");
+        }
+
+        return Ok(await CreateTokenResponseAsync(user, session));
     }
 
     /// <summary>Returns the currently authenticated account.</summary>
@@ -59,18 +100,29 @@ public sealed class AuthenticationController(
         return Ok(new SessionResponse(user.Id, email, isAccountOperator));
     }
 
-    /// <summary>Invalidates the current browser session.</summary>
+    /// <summary>Revokes the current device session.</summary>
     [Authorize]
     [HttpPost("logout")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized, "application/problem+json")]
-    public async Task<IActionResult> Logout()
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
-        await signInManager.SignOutAsync();
+        if (Guid.TryParse(User.FindFirstValue(GainerIdentityOptions.DeviceSessionClaimType), out Guid sessionId)
+            && Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out Guid userId))
+        {
+            await deviceSessions.RevokeAsync(sessionId, userId, cancellationToken);
+        }
+
         return NoContent();
     }
 
-    private ObjectResult InvalidCredentials()
+    private async Task<TokenResponse> CreateTokenResponseAsync(AppUser user, IssuedDeviceSession session)
+    {
+        string accessToken = await accessTokens.IssueAsync(user, session.SessionId);
+        return new TokenResponse(accessToken, accessTokens.LifetimeSeconds, session.RefreshToken, session.ExpiresAt);
+    }
+
+    private ObjectResult Failure(string code)
     {
         var problemDetails = new ProblemDetails
         {
@@ -79,7 +131,7 @@ public sealed class AuthenticationController(
             Type = ProblemDetailsConfiguration.GetTypeUri(StatusCodes.Status401Unauthorized),
         };
         ProblemDetailsConfiguration.AddStableExtensions(HttpContext, problemDetails);
-        problemDetails.Extensions["code"] = "invalid_credentials";
+        problemDetails.Extensions["code"] = code;
 
         return new ObjectResult(problemDetails)
         {

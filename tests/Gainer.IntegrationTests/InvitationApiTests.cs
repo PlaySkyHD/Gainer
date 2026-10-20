@@ -62,13 +62,13 @@ public sealed class InvitationApiTests
     {
         await using TestApplication test = await CreateApplicationAsync();
         await CreateOperatorAsync(test.App);
-        var operatorCookies = new CookieJar();
+        var operatorAuth = new TestSession();
         using HttpClient client = CreateClient(test.App);
-        await LoginAsync(client, operatorCookies, OperatorEmail, OperatorPassword);
+        await LoginAsync(client, operatorAuth, OperatorEmail, OperatorPassword);
 
         InvitationResponse invitation = await IssueInvitationAsync(
             client,
-            operatorCookies,
+            operatorAuth,
             "invitee@example.test");
         string token = ExtractToken(invitation.ActivationPath);
 
@@ -83,17 +83,15 @@ public sealed class InvitationApiTests
                 && property.Name.Contains("Token", StringComparison.Ordinal)));
         }
 
-        var inviteeCookies = new CookieJar();
-        AntiforgeryTokenResponse tokenPair = await GetAntiforgeryTokenAsync(client, inviteeCookies);
+        var inviteeAuth = new TestSession();
         using HttpResponseMessage activation = await SendMutationAsync(
             client,
-            inviteeCookies,
+            inviteeAuth,
             "/api/v1/auth/invitations/accept",
-            new AcceptInvitationRequest(token, InviteePassword),
-            tokenPair.RequestToken);
+            new AcceptInvitationRequest(token, InviteePassword));
         Assert.AreEqual(HttpStatusCode.NoContent, activation.StatusCode);
 
-        await LoginAsync(client, inviteeCookies, "invitee@example.test", InviteePassword);
+        await LoginAsync(client, inviteeAuth, "invitee@example.test", InviteePassword);
     }
 
     [TestMethod]
@@ -103,36 +101,31 @@ public sealed class InvitationApiTests
         await using TestApplication test = await CreateApplicationAsync(time);
         await CreateOperatorAsync(test.App);
         using HttpClient client = CreateClient(test.App);
-        var operatorCookies = new CookieJar();
-        await LoginAsync(client, operatorCookies, OperatorEmail, OperatorPassword);
-        InvitationResponse first = await IssueInvitationAsync(client, operatorCookies, "first@example.test");
-        InvitationResponse second = await IssueInvitationAsync(client, operatorCookies, "second@example.test");
+        var operatorAuth = new TestSession();
+        await LoginAsync(client, operatorAuth, OperatorEmail, OperatorPassword);
+        InvitationResponse first = await IssueInvitationAsync(client, operatorAuth, "first@example.test");
+        InvitationResponse second = await IssueInvitationAsync(client, operatorAuth, "second@example.test");
 
-        var anonymousCookies = new CookieJar();
-        AntiforgeryTokenResponse requestToken = await GetAntiforgeryTokenAsync(client, anonymousCookies);
+        var anonymousAuth = new TestSession();
         using HttpResponseMessage accepted = await SendMutationAsync(
             client,
-            anonymousCookies,
+            anonymousAuth,
             "/api/v1/auth/invitations/accept",
-            new AcceptInvitationRequest(ExtractToken(first.ActivationPath), InviteePassword),
-            requestToken.RequestToken);
+            new AcceptInvitationRequest(ExtractToken(first.ActivationPath), InviteePassword));
         Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
 
         time.Advance(AccountInvitationOptions.Lifetime + TimeSpan.FromSeconds(1));
         using HttpResponseMessage reused = await AcceptInvalidAsync(
             client,
-            anonymousCookies,
-            requestToken.RequestToken,
+            anonymousAuth,
             ExtractToken(first.ActivationPath));
         using HttpResponseMessage expired = await AcceptInvalidAsync(
             client,
-            anonymousCookies,
-            requestToken.RequestToken,
+            anonymousAuth,
             ExtractToken(second.ActivationPath));
         using HttpResponseMessage unknown = await AcceptInvalidAsync(
             client,
-            anonymousCookies,
-            requestToken.RequestToken,
+            anonymousAuth,
             "unknown-invitation-token");
 
         string reusedBody = await reused.Content.ReadAsStringAsync();
@@ -153,23 +146,21 @@ public sealed class InvitationApiTests
         await using TestApplication test = await CreateApplicationAsync();
         await CreateOperatorAsync(test.App);
         using HttpClient client = CreateClient(test.App);
-        var operatorCookies = new CookieJar();
-        await LoginAsync(client, operatorCookies, OperatorEmail, OperatorPassword);
+        var operatorAuth = new TestSession();
+        await LoginAsync(client, operatorAuth, OperatorEmail, OperatorPassword);
         InvitationResponse invitation = await IssueInvitationAsync(
             client,
-            operatorCookies,
+            operatorAuth,
             "member@example.test");
 
-        var memberCookies = new CookieJar();
-        AntiforgeryTokenResponse memberToken = await GetAntiforgeryTokenAsync(client, memberCookies);
+        var memberAuth = new TestSession();
         using HttpResponseMessage activation = await SendMutationAsync(
             client,
-            memberCookies,
+            memberAuth,
             "/api/v1/auth/invitations/accept",
-            new AcceptInvitationRequest(ExtractToken(invitation.ActivationPath), InviteePassword),
-            memberToken.RequestToken);
+            new AcceptInvitationRequest(ExtractToken(invitation.ActivationPath), InviteePassword));
         Assert.AreEqual(HttpStatusCode.NoContent, activation.StatusCode);
-        await LoginAsync(client, memberCookies, "member@example.test", InviteePassword);
+        await LoginAsync(client, memberAuth, "member@example.test", InviteePassword);
 
         Guid memberId;
         await using (AsyncServiceScope scope = test.App.Services.CreateAsyncScope())
@@ -181,23 +172,20 @@ public sealed class InvitationApiTests
 
         using HttpResponseMessage disabled = await SetAccountStatusAsync(
             client,
-            operatorCookies,
+            operatorAuth,
             memberId,
             isActive: false);
         Assert.AreEqual(HttpStatusCode.NoContent, disabled.StatusCode);
         using HttpResponseMessage revokedSession = await SendGetAsync(
             client,
-            memberCookies,
+            memberAuth,
             "/api/v1/auth/session");
         Assert.AreEqual(HttpStatusCode.Unauthorized, revokedSession.StatusCode);
-
-        AntiforgeryTokenResponse disabledLoginToken = await GetAntiforgeryTokenAsync(client, memberCookies);
         using HttpResponseMessage disabledLogin = await SendMutationAsync(
             client,
-            memberCookies,
+            memberAuth,
             "/api/v1/auth/login",
-            new LoginRequest("member@example.test", InviteePassword),
-            disabledLoginToken.RequestToken);
+            new LoginRequest("member@example.test", InviteePassword));
         Assert.AreEqual(HttpStatusCode.Unauthorized, disabledLogin.StatusCode);
 
         await using (AsyncServiceScope scope = test.App.Services.CreateAsyncScope())
@@ -209,11 +197,11 @@ public sealed class InvitationApiTests
 
         using HttpResponseMessage enabled = await SetAccountStatusAsync(
             client,
-            operatorCookies,
+            operatorAuth,
             memberId,
             isActive: true);
         Assert.AreEqual(HttpStatusCode.NoContent, enabled.StatusCode);
-        await LoginAsync(client, memberCookies, "member@example.test", InviteePassword);
+        await LoginAsync(client, memberAuth, "member@example.test", InviteePassword);
     }
 
     private async Task<TestApplication> CreateApplicationAsync(TimeProvider? timeProvider = null)
@@ -231,12 +219,9 @@ public sealed class InvitationApiTests
         builder.WebHost.UseTestServer();
         builder.Configuration["ConnectionStrings:gainer-db"] = connectionString;
         builder.Configuration[GainerIdentityOptions.DataProtectionKeysPathConfigurationKey] = keyRingPath;
-        builder.Configuration[GainerRequestSecurityOptions.FrontendOriginConfigurationKey] = TestOrigin;
         builder.AddGainerApi();
         builder.AddGainerPersistence();
         builder.AddGainerIdentity();
-        builder.Services.PostConfigure<SecurityStampValidatorOptions>(options =>
-            options.ValidationInterval = TimeSpan.Zero);
         if (timeProvider is not null)
         {
             builder.Services.RemoveAll<TimeProvider>();
@@ -270,32 +255,24 @@ public sealed class InvitationApiTests
 
     private static async Task LoginAsync(
         HttpClient client,
-        CookieJar cookies,
+        TestSession auth,
         string email,
         string password)
     {
-        AntiforgeryTokenResponse token = await GetAntiforgeryTokenAsync(client, cookies);
-        using HttpResponseMessage response = await SendMutationAsync(
-            client,
-            cookies,
-            "/api/v1/auth/login",
-            new LoginRequest(email, password),
-            token.RequestToken);
-        Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode, await response.Content.ReadAsStringAsync());
+        TokenResponse tokens = await BearerTestClient.LoginAsync(client, email, password);
+        auth.AccessToken = tokens.AccessToken;
     }
 
     private static async Task<InvitationResponse> IssueInvitationAsync(
         HttpClient client,
-        CookieJar cookies,
+        TestSession auth,
         string email)
     {
-        AntiforgeryTokenResponse token = await GetAntiforgeryTokenAsync(client, cookies);
         using HttpResponseMessage response = await SendMutationAsync(
             client,
-            cookies,
+            auth,
             "/api/v1/account-operator/invitations",
-            new CreateInvitationRequest(email),
-            token.RequestToken);
+            new CreateInvitationRequest(email));
         Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
         return await response.Content.ReadFromJsonAsync<InvitationResponse>()
             ?? throw new InvalidOperationException("The invitation response was empty.");
@@ -303,29 +280,25 @@ public sealed class InvitationApiTests
 
     private static async Task<HttpResponseMessage> AcceptInvalidAsync(
         HttpClient client,
-        CookieJar cookies,
-        string requestToken,
+        TestSession auth,
         string token) =>
         await SendMutationAsync(
             client,
-            cookies,
+            auth,
             "/api/v1/auth/invitations/accept",
-            new AcceptInvitationRequest(token, InviteePassword),
-            requestToken);
+            new AcceptInvitationRequest(token, InviteePassword));
 
     private static async Task<HttpResponseMessage> SetAccountStatusAsync(
         HttpClient client,
-        CookieJar cookies,
+        TestSession auth,
         Guid accountId,
         bool isActive)
     {
-        AntiforgeryTokenResponse token = await GetAntiforgeryTokenAsync(client, cookies);
         return await SendMutationAsync(
             client,
-            cookies,
+            auth,
             $"/api/v1/account-operator/accounts/{accountId}/status",
             new SetAccountStatusRequest(isActive),
-            token.RequestToken,
             HttpMethod.Put);
     }
 
@@ -356,85 +329,33 @@ public sealed class InvitationApiTests
         return client;
     }
 
-    private static async Task<AntiforgeryTokenResponse> GetAntiforgeryTokenAsync(
-        HttpClient client,
-        CookieJar cookies)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/antiforgery");
-        cookies.Apply(request);
-        using HttpResponseMessage response = await client.SendAsync(request);
-        cookies.Capture(response);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<AntiforgeryTokenResponse>()
-            ?? throw new InvalidOperationException("The antiforgery response was empty.");
-    }
-
     private static async Task<HttpResponseMessage> SendMutationAsync<TBody>(
         HttpClient client,
-        CookieJar cookies,
+        TestSession auth,
         string path,
         TBody body,
-        string requestToken,
         HttpMethod? method = null)
     {
         var request = new HttpRequestMessage(method ?? HttpMethod.Post, path)
         {
             Content = JsonContent.Create(body),
         };
-        request.Headers.Add("Origin", TestOrigin);
-        request.Headers.Add(GainerRequestSecurityOptions.AntiforgeryHeaderName, requestToken);
-        cookies.Apply(request);
+        auth.Apply(request);
         HttpResponseMessage response = await client.SendAsync(request);
-        cookies.Capture(response);
         request.Dispose();
         return response;
     }
 
     private static async Task<HttpResponseMessage> SendGetAsync(
         HttpClient client,
-        CookieJar cookies,
+        TestSession auth,
         string path)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, path);
-        cookies.Apply(request);
+        auth.Apply(request);
         HttpResponseMessage response = await client.SendAsync(request);
-        cookies.Capture(response);
         request.Dispose();
         return response;
-    }
-
-    private sealed class CookieJar
-    {
-        private readonly Dictionary<string, string> values = new(StringComparer.Ordinal);
-
-        public void Capture(HttpResponseMessage response)
-        {
-            if (!response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? headers))
-            {
-                return;
-            }
-
-            foreach (string header in headers)
-            {
-                string[] pair = header.Split(';', 2)[0].Split('=', 2);
-                if (pair[1].Length == 0)
-                {
-                    values.Remove(pair[0]);
-                }
-                else
-                {
-                    values[pair[0]] = pair[1];
-                }
-            }
-        }
-
-        public void Apply(HttpRequestMessage request)
-        {
-            if (values.Count > 0)
-            {
-                request.Headers.Add("Cookie", string.Join("; ", values.Select(pair => $"{pair.Key}={pair.Value}")));
-            }
-        }
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
