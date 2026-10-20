@@ -141,6 +141,21 @@ internal sealed class DeviceSessionService(
             cancellationToken);
     }
 
+    public async Task<DateTimeOffset?> GetSignedInAtAsync(
+        Guid sessionId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        return await database.DeviceSessions
+            .Where(item => item.Id == sessionId
+                && item.UserId == userId
+                && item.RevokedAt == null
+                && item.ExpiresAt > now)
+            .Select(item => (DateTimeOffset?)item.CreatedAt)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task RevokeAsync(
         Guid sessionId,
         Guid userId,

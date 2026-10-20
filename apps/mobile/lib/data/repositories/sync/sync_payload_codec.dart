@@ -221,6 +221,8 @@ class SyncPayloadCodec {
       'bodyweightFactor': body['bodyweightFactor'],
       'weightFactor': body['weightFactor'],
       'categoryIds': body['categoryIds'],
+      'primaryMuscles': _nonEmptyList(body['primaryMuscles']),
+      'secondaryMuscles': _nonEmptyList(body['secondaryMuscles']),
     });
     return mutation.operation == LocalMutationOperation.create
         ? {'exerciseId': id, 'values': values}
@@ -409,6 +411,9 @@ class SyncPayloadCodec {
 
   /// Optionale Felder ohne Wert fehlen in der Payload, wie der Vertrag sie
   /// vorsieht; ein Update ersetzt die Werte vollständig.
+  static Object? _nonEmptyList(Object? value) =>
+      value is List && value.isEmpty ? null : value;
+
   static Map<String, Object?> _compact(Map<String, Object?> source) => {
     for (final entry in source.entries)
       if (entry.value != null) entry.key: entry.value,

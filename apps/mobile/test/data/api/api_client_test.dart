@@ -564,6 +564,51 @@ void main() {
     });
 
     test(
+      'sends the password for a passkey and signs every device out',
+      () async {
+        final requests = <String>[];
+        final bodies = <String>[];
+        final server = await _TestApiServer.start((request) async {
+          requests.add('${request.method} ${request.uri.path}');
+          bodies.add(await utf8.decoder.bind(request).join());
+          if (request.uri.path == '/api/v1/auth/login') {
+            return _json(request, _tokens(1));
+          }
+          expect(request.headers.value('authorization'), 'Bearer access-1');
+          if (request.uri.path == '/api/v1/auth/passkeys/creation-options') {
+            return _json(request, {'optionsJson': '{}', 'state': 'state'});
+          }
+          request.response.statusCode = HttpStatus.noContent;
+          await request.response.close();
+        });
+        final api = ApiClient(
+          configuration: ApiConfiguration(
+            apiOrigin: server.origin,
+            allowInsecureLoopbackForDevelopment: true,
+          ),
+        );
+        try {
+          await api.login(
+            const ApiLoginRequest(email: 'member@example.test', password: 'pw'),
+          );
+          await api.passkeyCreationOptions(password: 'pw');
+          await api.logoutAll();
+
+          expect(jsonDecode(bodies[1]), {'password': 'pw'});
+          expect(api.hasDeviceSession, isFalse);
+          expect(requests, [
+            'POST /api/v1/auth/login',
+            'POST /api/v1/auth/passkeys/creation-options',
+            'POST /api/v1/auth/logout-all',
+          ]);
+        } finally {
+          api.close();
+          await server.close();
+        }
+      },
+    );
+
+    test(
       'renews an expiring access token once for concurrent requests',
       () async {
         final requests = <String>[];

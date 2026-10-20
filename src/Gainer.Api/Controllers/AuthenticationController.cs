@@ -20,8 +20,11 @@ public sealed class AuthenticationController(
     SignInManager<AppUser> signInManager,
     UserManager<AppUser> userManager,
     IDeviceSessionService deviceSessions,
-    DeviceSignIn deviceSignIn) : ControllerBase
+    DeviceSignIn deviceSignIn,
+    IPasswordHasher<AppUser> passwordHasher) : ControllerBase
 {
+    private static string? timingHash;
+
     /// <summary>Starts a device session for valid existing credentials.</summary>
     [AllowAnonymous]
     [EnableRateLimiting(ApiConstants.AuthenticationRateLimitPolicy)]
@@ -33,6 +36,7 @@ public sealed class AuthenticationController(
         AppUser? user = await userManager.FindByNameAsync(request.Email.Trim());
         if (user is null)
         {
+            HashForEqualTiming(request.Password);
             return Failure("invalid_credentials");
         }
 
@@ -42,6 +46,12 @@ public sealed class AuthenticationController(
             lockoutOnFailure: true);
         if (!result.Succeeded)
         {
+            // Identity skips the hash for locked, inactive or unconfirmed accounts.
+            if (result.IsLockedOut || result.IsNotAllowed)
+            {
+                HashForEqualTiming(request.Password);
+            }
+
             return Failure("invalid_credentials");
         }
 
@@ -108,6 +118,29 @@ public sealed class AuthenticationController(
         }
 
         return NoContent();
+    }
+
+    /// <summary>Revokes every device session of the account, including this one.</summary>
+    [Authorize]
+    [HttpPost("logout-all")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized, "application/problem+json")]
+    public async Task<IActionResult> LogoutAll(CancellationToken cancellationToken)
+    {
+        if (Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out Guid userId))
+        {
+            await deviceSessions.RevokeAllAsync(userId, cancellationToken);
+        }
+
+        return NoContent();
+    }
+
+    /// <summary>Spends the same hashing time as a real password check, so the response time does not reveal accounts.</summary>
+    private void HashForEqualTiming(string password)
+    {
+        var placeholder = new AppUser();
+        timingHash ??= passwordHasher.HashPassword(placeholder, Guid.NewGuid().ToString());
+        _ = passwordHasher.VerifyHashedPassword(placeholder, timingHash, password);
     }
 
     private ObjectResult Failure(string code) => AuthenticationProblems.Unauthorized(HttpContext, code);

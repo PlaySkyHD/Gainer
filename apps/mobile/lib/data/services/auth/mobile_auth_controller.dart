@@ -238,13 +238,19 @@ class MobileAuthController extends ChangeNotifier
 
   Future<List<ApiPasskey>> listPasskeys() => _onlineScope().api.listPasskeys();
 
-  /// Creates a passkey for the signed-in account; null when cancelled.
-  Future<ApiPasskey?> addPasskey() {
+  /// Creates a passkey for the signed-in account; null when cancelled. Some
+  /// minutes after sign-in the server wants the [password] again and answers
+  /// 403 `reauthentication_required` without it.
+  Future<ApiPasskey?> addPasskey({String? password}) {
     final scope = _onlineScope();
     return ApiSessionService(
       api: scope.api,
       secureStorage: secureSessions,
-    ).registerPasskey(passkeys, name: ApiSessionService.defaultDeviceName);
+    ).registerPasskey(
+      passkeys,
+      name: ApiSessionService.defaultDeviceName,
+      password: password,
+    );
   }
 
   Future<void> removePasskey(String id) => _onlineScope().api.deletePasskey(id);
@@ -323,6 +329,13 @@ class MobileAuthController extends ChangeNotifier
       );
     }
     await scope.api.setAccountStatus(accountId, isActive);
+  }
+
+  /// Signs every device of the account out, this one included. Throws while
+  /// offline or when the server refuses, and then keeps this device signed in.
+  Future<void> logoutEverywhere() async {
+    await _onlineScope().api.logoutAll();
+    await logout();
   }
 
   Future<void> logout() async {

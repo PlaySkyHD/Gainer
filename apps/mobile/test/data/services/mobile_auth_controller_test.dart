@@ -44,6 +44,35 @@ void main() {
     }
   });
 
+  test('logout everywhere signs out only after the server agreed', () async {
+    final secure = _MemorySecureSession();
+    final apiFactory = _FakeApiFactory()..rejectLogoutAll = true;
+    final controller = _controller(
+      secure: secure,
+      databases: {},
+      apiFactory: apiFactory,
+    );
+    try {
+      await controller.initialize();
+      await controller.login('a@example.test', 'password');
+
+      await expectLater(
+        controller.logoutEverywhere(),
+        throwsA(isA<ApiException>()),
+      );
+      expect(controller.state, MobileAuthState.signedIn);
+      expect(secure.value, isNotNull);
+
+      apiFactory.rejectLogoutAll = false;
+      await controller.logoutEverywhere();
+      expect(apiFactory.logoutAllCalls, 2);
+      expect(controller.state, MobileAuthState.signedOut);
+      expect(secure.value, isNull);
+    } finally {
+      controller.dispose();
+    }
+  });
+
   test(
     'passkey sign-in opens the account and cancelling changes nothing',
     () async {
@@ -469,6 +498,8 @@ class _FakeApiFactory {
   };
   ApiSession? activeSession;
   final loginDeviceNames = <String?>[];
+  bool rejectLogoutAll = false;
+  int logoutAllCalls = 0;
 
   ApiClient call(ApiConfiguration configuration) =>
       _FakeApiClient(configuration: configuration, factory: this);
@@ -528,6 +559,19 @@ class _FakeApiClient extends ApiClient {
 
   @override
   Future<void> logout() async => factory.activeSession = null;
+
+  @override
+  Future<void> logoutAll() async {
+    factory.logoutAllCalls++;
+    if (factory.rejectLogoutAll) {
+      throw const ApiException(
+        statusCode: 503,
+        code: 'unavailable',
+        message: 'unavailable',
+      );
+    }
+    factory.activeSession = null;
+  }
 
   @override
   Future<ApiPasskeyOptions> passkeyRequestOptions() async {
