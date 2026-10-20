@@ -6,6 +6,7 @@ import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
 import 'package:gainer_mobile/data/services/auth/mobile_auth_controller.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
+import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/pigeon_native_features_platform.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
@@ -39,6 +40,62 @@ void main() {
       expect(secure.value, isNotNull);
     } finally {
       await controller.logout();
+      controller.dispose();
+    }
+  });
+
+  test(
+    'passkey sign-in opens the account and cancelling changes nothing',
+    () async {
+      final secure = _MemorySecureSession();
+      final databases = <String, LocalDatabase>{};
+      final apiFactory = _FakeApiFactory();
+      final passkeys = _FakePasskeys()..cancel = true;
+      final controller = _controller(
+        secure: secure,
+        databases: databases,
+        apiFactory: apiFactory,
+        passkeys: passkeys,
+      );
+      try {
+        await controller.initialize();
+        await controller.loginWithPasskey();
+        expect(passkeys.assertions, 1);
+        expect(controller.state, MobileAuthState.signedOut);
+        expect(controller.errorMessage, isNull);
+        expect(secure.value, isNull);
+
+        passkeys.cancel = false;
+        await controller.loginWithPasskey();
+        expect(controller.state, MobileAuthState.signedIn);
+        expect(controller.account?.session.userId, _accountB);
+        expect(apiFactory.loginDeviceNames, ['Gainer iPhone']);
+        expect(secure.value, isNotNull);
+      } finally {
+        await controller.logout();
+        controller.dispose();
+      }
+    },
+  );
+
+  test('passkey sign-in reports unknown passkeys and offline state', () async {
+    final apiFactory = _FakeApiFactory(rejectPassword: true);
+    final controller = _controller(
+      secure: _MemorySecureSession(),
+      databases: <String, LocalDatabase>{},
+      apiFactory: apiFactory,
+    );
+    try {
+      await controller.initialize();
+      await controller.loginWithPasskey();
+      expect(controller.state, MobileAuthState.signedOut);
+      expect(controller.errorMessage, contains('keinem aktiven Konto'));
+
+      apiFactory.offline = true;
+      await controller.loginWithPasskey();
+      expect(controller.errorMessage, contains('Prüfe die Verbindung'));
+      expect(() => controller.listPasskeys(), throwsStateError);
+    } finally {
       controller.dispose();
     }
   });
@@ -335,7 +392,9 @@ MobileAuthController _controller({
   required _MemorySecureSession secure,
   required Map<String, LocalDatabase> databases,
   required _FakeApiFactory apiFactory,
+  PasskeyPlatform? passkeys,
 }) => MobileAuthController(
+  passkeys: passkeys ?? _FakePasskeys(),
   configuration: MobileAppConfiguration(
     api: Uri.parse('https://api.example.test'),
   ),
@@ -469,4 +528,70 @@ class _FakeApiClient extends ApiClient {
 
   @override
   Future<void> logout() async => factory.activeSession = null;
+
+  @override
+  Future<ApiPasskeyOptions> passkeyRequestOptions() async {
+    if (factory.offline) {
+      throw const ApiException(
+        statusCode: null,
+        code: 'network_error',
+        message: 'offline',
+      );
+    }
+    return const ApiPasskeyOptions(
+      optionsJson: '{"challenge":"AQID","rpId":"gainer.markfort.xyz"}',
+      state: 'state',
+    );
+  }
+
+  @override
+  Future<ApiTokenResponse> loginWithPasskey({
+    required String credentialJson,
+    required String state,
+    String? deviceName,
+  }) async {
+    if (factory.rejectPassword) {
+      throw const ApiException(
+        statusCode: 401,
+        code: 'invalid_passkey',
+        message: 'invalid passkey',
+      );
+    }
+    factory.activeSession = factory.sessions[_accountB];
+    factory.loginDeviceNames.add(deviceName);
+    return const ApiTokenResponse(
+      accessToken: 'access',
+      expiresIn: 900,
+      refreshToken: 'refresh',
+    );
+  }
+}
+
+class _FakePasskeys implements PasskeyPlatform {
+  bool cancel = false;
+  int assertions = 0;
+
+  @override
+  Future<PlatformPasskeyRegistration?> createPasskey({
+    required String relyingPartyId,
+    required Uint8List challenge,
+    required Uint8List userId,
+    required String userName,
+  }) async => null;
+
+  @override
+  Future<PlatformPasskeyAssertion?> assertPasskey({
+    required String relyingPartyId,
+    required Uint8List challenge,
+  }) async {
+    assertions++;
+    if (cancel) return null;
+    return PlatformPasskeyAssertion(
+      credentialId: Uint8List.fromList([1]),
+      clientDataJson: Uint8List.fromList([2]),
+      authenticatorData: Uint8List.fromList([3]),
+      signature: Uint8List.fromList([4]),
+      userHandle: Uint8List.fromList([5]),
+    );
+  }
 }

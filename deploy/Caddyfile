@@ -12,6 +12,12 @@
         Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
     }
 
+    # Lets iOS bind passkeys of the app to this domain (webcredentials).
+    handle /.well-known/apple-app-site-association {
+        header Content-Type application/json
+        respond `{"webcredentials":{"apps":["{$GAINER_APPLE_APP_ID:Q7GTYQ282F.xyz.markfort.gainer}"]}}` 200
+    }
+
     handle /api/v1/* {
         reverse_proxy api:8080 {
             header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}

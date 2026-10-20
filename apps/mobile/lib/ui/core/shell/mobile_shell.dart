@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../features/access/account_operator_screen.dart';
+import '../../features/access/passkeys_screen.dart';
 import '../../features/body/body_screen.dart';
 import '../../features/body/health/health_review_screen.dart';
 import '../../features/cardio/cardio_feature.dart';
@@ -239,6 +240,16 @@ class _MoreScreen extends StatelessWidget {
                     apiOrigin: account.api.configuration.canonicalApiOrigin,
                     isScopeActive: account.isSessionActive,
                   ),
+                ),
+              ),
+            ),
+            GainerListRow(
+              title: 'Passkeys',
+              leadingIcon: CupertinoIcons.lock_shield,
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                CupertinoPageRoute<void>(
+                  builder: (_) => PasskeysScreen(controller: controller),
                 ),
               ),
             ),

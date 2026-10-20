@@ -35,6 +35,7 @@ import '../../services/native/native_feature_lifecycle_coordinator.dart';
 import '../../services/native/training_live_activity_coordinator.dart';
 import '../../services/platform/pigeon_native_features_platform.dart';
 import '../../services/platform/platform_ports.dart';
+import '../platform/pigeon_passkey_platform.dart';
 import '../platform/pigeon_pending_handover_secret_store.dart';
 import '../platform/pigeon_secure_session_platform.dart';
 import 'sync_foreground_scheduler.dart';
@@ -84,6 +85,7 @@ class MobileAuthController extends ChangeNotifier
     required this.configuration,
     ApiClient Function(ApiConfiguration configuration)? apiFactory,
     SecureSessionPlatform? secureSessions,
+    PasskeyPlatform? passkeys,
     PendingHandoverSecretStore? handoverSecrets,
     PigeonNativeFeaturesPlatform? nativeFeatures,
     CapturePlatform? capture,
@@ -94,6 +96,7 @@ class MobileAuthController extends ChangeNotifier
     Future<LocalDatabase> Function()? installationDatabaseFactory,
   }) : apiFactory = apiFactory ?? _createDefaultApi,
        secureSessions = secureSessions ?? PigeonSecureSessionPlatform(),
+       passkeys = passkeys ?? PigeonPasskeyPlatform(),
        handoverSecrets = handoverSecrets ?? PigeonPendingHandoverSecretStore(),
        nativeFeatures = nativeFeatures ?? PigeonNativeFeaturesPlatform(),
        capture = capture ?? nativeFeatures ?? PigeonNativeFeaturesPlatform(),
@@ -109,6 +112,7 @@ class MobileAuthController extends ChangeNotifier
   final MobileAppConfiguration configuration;
   final ApiClient Function(ApiConfiguration configuration) apiFactory;
   final SecureSessionPlatform secureSessions;
+  final PasskeyPlatform passkeys;
   final PendingHandoverSecretStore handoverSecrets;
   final PigeonNativeFeaturesPlatform nativeFeatures;
   final CapturePlatform capture;
@@ -200,6 +204,62 @@ class MobileAuthController extends ChangeNotifier
           'Anmeldung fehlgeschlagen. Deine lokalen Profile bleiben erhalten.';
     }
     if (!_disposed) notifyListeners();
+  }
+
+  /// Signs in with a passkey. Cancelling the system sheet changes nothing.
+  Future<void> loginWithPasskey() async {
+    errorMessage = null;
+    statusMessage = null;
+    final api = _newApi();
+    try {
+      final session = await ApiSessionService(
+        api: api,
+        secureStorage: secureSessions,
+      ).loginWithPasskey(passkeys);
+      if (session == null) {
+        api.close();
+        if (!_disposed) notifyListeners();
+        return;
+      }
+      await _closeCurrentAccount();
+      _api = api;
+      await _openAccount(session, online: true);
+    } on ApiException catch (error) {
+      api.close();
+      errorMessage = error.statusCode == 401
+          ? 'Dieser Passkey gehört zu keinem aktiven Konto. Melde dich mit Passwort an.'
+          : 'Anmeldung derzeit nicht möglich. Prüfe die Verbindung und versuche es erneut.';
+    } catch (_) {
+      api.close();
+      errorMessage = 'Anmeldung mit Passkey fehlgeschlagen. Deine lokalen Profile bleiben erhalten.';
+    }
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<List<ApiPasskey>> listPasskeys() => _onlineScope().api.listPasskeys();
+
+  /// Creates a passkey for the signed-in account; null when cancelled.
+  Future<ApiPasskey?> addPasskey() {
+    final scope = _onlineScope();
+    return ApiSessionService(
+      api: scope.api,
+      secureStorage: secureSessions,
+    ).registerPasskey(passkeys, name: ApiSessionService.defaultDeviceName);
+  }
+
+  Future<void> removePasskey(String id) => _onlineScope().api.deletePasskey(id);
+
+  AccountScope _onlineScope() {
+    final scope = account;
+    if (scope == null) throw StateError('An active account is required.');
+    if (!scope.online) {
+      throw const ApiException(
+        statusCode: null,
+        code: 'network_error',
+        message: 'Passkeys lassen sich nur online verwalten.',
+      );
+    }
+    return scope;
   }
 
   Future<void> acceptInvitation(String token, String password) async {
