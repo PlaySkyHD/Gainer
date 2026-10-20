@@ -196,14 +196,7 @@ public sealed class NutritionApiControllerTests
         oversized.Add(new ByteArrayContent(new byte[(8 * 1024 * 1024) + 1]), "image", "large.png");
         oversized.Add(new StringContent("true"), "imageConsent");
         using HttpResponseMessage sizeFailure = await client.SendAsync(MealEstimateRequest(oversized));
-        Assert.AreEqual(HttpStatusCode.BadRequest, sizeFailure.StatusCode);
-        Assert.AreEqual("invalid_image_size", (await sizeFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
-
-        using var beyondEndpointLimit = new MultipartFormDataContent();
-        beyondEndpointLimit.Add(new ByteArrayContent(new byte[10 * 1024 * 1024]), "image", "huge.png");
-        beyondEndpointLimit.Add(new StringContent("true"), "imageConsent");
-        using HttpResponseMessage endpointLimit = await client.SendAsync(MealEstimateRequest(beyondEndpointLimit));
-        Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, endpointLimit.StatusCode);
+        Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, sizeFailure.StatusCode);
         Assert.AreEqual(2, estimator.Calls, "Rejected requests and returned drafts must not create persisted estimate state.");
     }
 

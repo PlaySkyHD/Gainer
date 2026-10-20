@@ -15,8 +15,8 @@ public sealed class NutritionController(
     ISmartNutritionQueries smartQueries,
     IMealEstimator mealEstimator) : ControllerBase
 {
-    // An 8 MB photo plus the form fields and multipart framing.
-    private const int MealEstimateRequestBytes = 9 * 1024 * 1024;
+    // The app scales meal photos to fit 8 MiB; the whole multipart request is bounded by the same size.
+    private const int MealEstimateRequestBytes = 8 * 1024 * 1024;
 
     [HttpGet("days/{localDate}")]
     [ProducesResponseType<NutritionDayResponse>(StatusCodes.Status200OK)]
