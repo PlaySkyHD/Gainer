@@ -46,6 +46,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('asks for the password when the sign-in is no longer fresh', (
+    tester,
+  ) async {
+    final server = _PasskeyServer()..requirePassword = true;
+    final platform = _FakePasskeys();
+    final controller = await _signedIn(tester, server, platform);
+
+    await _pumpScreen(tester, controller);
+    await tester.tap(find.text('Passkey hinzufügen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Passwort bestätigen'), findsOneWidget);
+
+    await tester.enterText(find.byType(CupertinoTextField), 'password');
+    await tester.tap(find.text('Weiter'));
+    await tester.pumpAndSettle();
+
+    expect(server.passwords, [null, 'password']);
+    expect(server.registeredNames, ['Gainer iPhone']);
+    expect(find.text('Gainer iPhone'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a wrong password is reported and adds nothing', (tester) async {
+    final server = _PasskeyServer()..requirePassword = true;
+    final controller = await _signedIn(tester, server, _FakePasskeys());
+
+    await _pumpScreen(tester, controller);
+    await tester.tap(find.text('Passkey hinzufügen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField), 'wrong');
+    await tester.tap(find.text('Weiter'));
+    await tester.pumpAndSettle();
+
+    expect(server.registeredNames, isEmpty);
+    expect(find.text('Das Passwort war falsch.'), findsOneWidget);
+  });
+
+  testWidgets('cancelling the password prompt adds nothing', (tester) async {
+    final server = _PasskeyServer()..requirePassword = true;
+    final controller = await _signedIn(tester, server, _FakePasskeys());
+
+    await _pumpScreen(tester, controller);
+    await tester.tap(find.text('Passkey hinzufügen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Abbrechen'));
+    await tester.pumpAndSettle();
+
+    expect(server.passwords, [null]);
+    expect(server.registeredNames, isEmpty);
+    expect(find.text('Das Passwort war falsch.'), findsNothing);
+  });
+
   testWidgets('cancelling the system sheet adds nothing', (tester) async {
     final server = _PasskeyServer();
     final platform = _FakePasskeys()..cancel = true;
@@ -128,6 +180,8 @@ class _PasskeyServer {
   final passkeys = <ApiPasskey>[];
   final registeredNames = <String?>[];
   final deleted = <String>[];
+  final passwords = <String?>[];
+  bool requirePassword = false;
 }
 
 class _PasskeyApi extends ApiClient {
@@ -163,11 +217,20 @@ class _PasskeyApi extends ApiClient {
       List.unmodifiable(server.passkeys);
 
   @override
-  Future<ApiPasskeyOptions> passkeyCreationOptions() async =>
-      const ApiPasskeyOptions(
-        optionsJson: '{"rp":{"id":"gainer.markfort.xyz"},"user":{"id":"YWJj","name":"athlete@example.test"},"challenge":"AQID"}',
-        state: 'state',
+  Future<ApiPasskeyOptions> passkeyCreationOptions({String? password}) async {
+    server.passwords.add(password);
+    if (server.requirePassword && password != 'password') {
+      throw const ApiException(
+        statusCode: 403,
+        code: 'reauthentication_required',
+        message: 'Confirm your password to add a passkey.',
       );
+    }
+    return const ApiPasskeyOptions(
+      optionsJson: '{"rp":{"id":"gainer.markfort.xyz"},"user":{"id":"YWJj","name":"athlete@example.test"},"challenge":"AQID"}',
+      state: 'state',
+    );
+  }
 
   @override
   Future<ApiPasskey> registerPasskey({

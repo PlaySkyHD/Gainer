@@ -2,15 +2,39 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/muscles.dart';
 import '../../../domain/models/training/warmup.dart';
 import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import 'body_map.dart';
 import 'exercise_catalog_format.dart';
 import 'exercise_editor_view_model.dart';
 import 'exercise_merge_sheet.dart';
+import 'muscle_map_widgets.dart';
+import 'muscle_picker_sheet.dart';
 import 'warmup_steps_editor.dart';
+
+/// Öffnet den Editor der Übung [exerciseId], z. B. aus dem Training oder der
+/// Muskelübersicht. Liefert true, wenn etwas gespeichert wurde. Eine
+/// unbekannte Übung öffnet nichts.
+Future<bool> openExerciseEditorById(
+  BuildContext context, {
+  required TrainingLogRepository repository,
+  required String exerciseId,
+}) async {
+  final exercises = await repository.readExercises(includeArchived: true);
+  final exercise = exercises.where((item) => item.id == exerciseId).firstOrNull;
+  if (exercise == null || !context.mounted) return false;
+  final changed = await Navigator.of(context).push<bool>(
+    CupertinoPageRoute<bool>(
+      builder: (_) =>
+          ExerciseEditorScreen(repository: repository, exercise: exercise),
+    ),
+  );
+  return changed == true;
+}
 
 /// Editor für eigene Übungen. Basis- und archivierte Übungen werden nur gelesen.
 /// Liefert true, wenn etwas gespeichert, archiviert oder zusammengeführt wurde.
@@ -41,6 +65,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
   late final TextEditingController _weightController;
   late ExerciseKind _kind;
   late Set<String> _categoryIds;
+  late List<Muscle> _primaryMuscles;
+  late List<Muscle> _secondaryMuscles;
 
   @override
   void initState() {
@@ -60,6 +86,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     );
     _kind = exercise?.exerciseType ?? ExerciseKind.strength;
     _categoryIds = {...?exercise?.categoryIds};
+    _primaryMuscles = [...?exercise?.primaryMuscles];
+    _secondaryMuscles = [...?exercise?.secondaryMuscles];
     WidgetsBinding.instance.addPostFrameCallback((_) => _viewModel.load());
   }
 
@@ -83,6 +111,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     notes: _notesController.text,
     bodyweightPercent: _bodyweightController.text,
     weightFactor: _weightController.text,
+    primaryMuscles: _primaryMuscles,
+    secondaryMuscles: _secondaryMuscles,
   );
 
   Future<void> _save() async {
@@ -247,6 +277,98 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     );
   }
 
+  /// Abschnitt „Muskeln“: Karte mit Haupt- (voll) und Hilfsmuskeln (halb).
+  /// Im Formular schaltet ein Tipp auf die Karte Haupt → Hilfs → keiner.
+  Widget _muscleSection(BuildContext context, {required bool editable}) {
+    final colors = GainerDesign.colorsOf(context);
+    String names(List<Muscle> muscles) => muscles.isEmpty
+        ? 'Keine'
+        : muscles.map((muscle) => muscle.label).join(', ');
+    return _Section(
+      header: 'Muskeln',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GainerCard(
+            child: Center(
+              child: SizedBox(
+                height: 200,
+                child: BodyMap(
+                  key: const ValueKey('exercise-muscle-map'),
+                  fills: roleFills(_primaryMuscles, _secondaryMuscles, colors),
+                  onMuscleTap: editable ? _cycleMuscle : null,
+                  semanticLabel:
+                      'Hauptmuskeln: ${names(_primaryMuscles)}. '
+                      'Hilfsmuskeln: ${names(_secondaryMuscles)}.',
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: GainerSpacing.xs),
+          GainerGroupedSection(
+            footer: editable
+                ? 'Tippe auf die Karte: einmal Hauptmuskel, zweimal Hilfsmuskel, '
+                      'dreimal entfernen. Hilfsmuskeln zählen einen halben Satz.'
+                : null,
+            children: [
+              GainerListRow(
+                key: const ValueKey('exercise-primary-muscles'),
+                title: 'Hauptmuskeln',
+                value: names(_primaryMuscles),
+                showChevron: editable,
+                onTap: editable ? () => _pickMuscles(primary: true) : null,
+              ),
+              GainerListRow(
+                key: const ValueKey('exercise-secondary-muscles'),
+                title: 'Hilfsmuskeln',
+                value: names(_secondaryMuscles),
+                showChevron: editable,
+                onTap: editable ? () => _pickMuscles(primary: false) : null,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _cycleMuscle(Muscle muscle) {
+    setState(() {
+      if (_primaryMuscles.remove(muscle)) {
+        if (_secondaryMuscles.length < maxSecondaryMuscles) {
+          _secondaryMuscles.add(muscle);
+        }
+      } else if (!_secondaryMuscles.remove(muscle)) {
+        if (_primaryMuscles.length < maxPrimaryMuscles) {
+          _primaryMuscles.add(muscle);
+        } else if (_secondaryMuscles.length < maxSecondaryMuscles) {
+          _secondaryMuscles.add(muscle);
+        }
+      }
+    });
+  }
+
+  Future<void> _pickMuscles({required bool primary}) async {
+    final picked = await showMusclePickerSheet(
+      context,
+      title: primary ? 'Hauptmuskeln' : 'Hilfsmuskeln',
+      selected: primary ? _primaryMuscles : _secondaryMuscles,
+      maximum: primary ? maxPrimaryMuscles : maxSecondaryMuscles,
+      locked: {
+        for (final muscle in primary ? _secondaryMuscles : _primaryMuscles)
+          muscle: primary ? 'Hilfsmuskel' : 'Hauptmuskel',
+      },
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (primary) {
+        _primaryMuscles = picked;
+      } else {
+        _secondaryMuscles = picked;
+      }
+    });
+  }
+
   void _toggleCategory(String id) {
     setState(() {
       if (!_categoryIds.remove(id)) _categoryIds.add(id);
@@ -362,6 +484,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
           error: errors['notes'],
         ),
       ),
+      _muscleSection(context, editable: true),
+      if (errors['primaryMuscles'] case final error?) _ErrorText(error),
       ..._warmupSection(context),
       if (!_viewModel.isNew) ...[
         const SizedBox(height: GainerSpacing.m),
@@ -463,6 +587,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
         ],
       ),
       const SizedBox(height: GainerSpacing.m),
+      _muscleSection(context, editable: false),
       ..._warmupSection(context),
     ];
   }

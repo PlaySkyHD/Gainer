@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../features/access/account_operator_screen.dart';
+import '../../features/access/logout_everywhere.dart';
 import '../../features/access/passkeys_screen.dart';
 import '../../features/body/body_screen.dart';
 import '../../features/body/health/health_review_screen.dart';
@@ -313,11 +314,24 @@ class _MoreScreen extends StatelessWidget {
         ),
         const SizedBox(height: GainerSpacing.l),
         GainerGroupedSection(
+          footer: account.online
+              ? null
+              : 'Auf allen Geräten abmelden geht nur mit Verbindung.',
           children: [
             GainerListRow(
               title: 'Abmelden',
               leadingIcon: CupertinoIcons.square_arrow_right,
               onTap: controller.logout,
+            ),
+            GainerListRow(
+              title: 'Auf allen Geräten abmelden',
+              leadingIcon: CupertinoIcons.device_phone_portrait,
+              onTap: account.online
+                  ? () => confirmLogoutEverywhere(
+                      context,
+                      controller.logoutEverywhere,
+                    )
+                  : null,
             ),
           ],
         ),

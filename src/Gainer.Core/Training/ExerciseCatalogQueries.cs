@@ -22,7 +22,9 @@ public sealed record ExerciseCatalogItem(
     string? Notes,
     decimal? BodyweightFactor,
     decimal? WeightFactor,
-    IReadOnlyList<Guid> CategoryIds);
+    IReadOnlyList<Guid> CategoryIds,
+    IReadOnlyList<string> PrimaryMuscles,
+    IReadOnlyList<string> SecondaryMuscles);
 
 public sealed record ExerciseCategoryItem(
     Guid Id,

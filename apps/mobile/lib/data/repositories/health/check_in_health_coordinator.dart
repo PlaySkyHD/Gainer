@@ -198,6 +198,7 @@ class CheckInHealthCoordinator {
   String _syncIdentifier(String localDate, String kind) =>
       '$checkInSyncPrefix$accountId-$localDate-$kind';
 
-  static void _logError(Object error) =>
-      debugPrint('Apple Health (Check-in): $error');
+  static void _logError(Object error) {
+    if (kDebugMode) debugPrint('Apple Health (Check-in): $error');
+  }
 }

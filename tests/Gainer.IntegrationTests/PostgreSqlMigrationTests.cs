@@ -148,21 +148,13 @@ public sealed class PostgreSqlMigrationTests
                 VALUES (@workout, @user, NULL, 'Legacy workout', 'Completed', now() - interval '2 hours', now() - interval '1 hour', now(), 2);
                 INSERT INTO training.workout_exercises ("Id", "WorkoutId", "SourceExerciseId", "ExerciseNameSnapshot", "Position", "PlannedSets", "MinimumRepetitions", "MaximumRepetitions", "UserId")
                 VALUES (gen_random_uuid(), @workout, NULL, 'Legacy bench', 0, 1, 6, 8, @user);
-                """, ("user", userId), ("workout", workoutId));
+                INSERT INTO training.exercises ("Id", "OwnerUserId", "Name", "ExerciseType", "IsArchived", "CreatedAtUtc", "UpdatedAtUtc", "Version")
+                VALUES (@exercise, @user, 'Legacy custom', 'strength', FALSE, now(), now(), 1);
+                """, ("user", userId), ("workout", workoutId), ("exercise", customExerciseId));
         }
 
         await using (AppDbContext previous = Fixture.CreateContext(ConnectionString, userId))
         {
-            previous.Exercises.Add(new Exercise
-            {
-                Id = customExerciseId,
-                OwnerUserId = userId,
-                Name = "Legacy custom",
-                ExerciseType = ExerciseType.Strength,
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow,
-                Version = 1,
-            });
             previous.SyncClients.Add(new SyncClient
             {
                 Id = clientId,

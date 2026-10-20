@@ -99,8 +99,9 @@ class ApiSessionService {
   Future<ApiPasskey?> registerPasskey(
     PasskeyPlatform passkeys, {
     String? name,
+    String? password,
   }) async {
-    final options = await api.passkeyCreationOptions();
+    final options = await api.passkeyCreationOptions(password: password);
     final request = PasskeyCeremony.creationRequest(options.optionsJson);
     final registration = await passkeys.createPasskey(
       relyingPartyId: request.relyingPartyId,
