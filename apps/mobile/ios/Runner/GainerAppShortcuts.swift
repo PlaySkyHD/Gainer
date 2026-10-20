@@ -1,7 +1,11 @@
 import AppIntents
 import Foundation
 
-private func queueRoute(_ destination: GainerRoute) throws {
+/// Legt das Ziel ab und stellt es sofort zu. Bei `openAppWhenRun` ist die App
+/// schon im Vordergrund, wenn `perform()` läuft; der Abruf beim Aktivwerden der
+/// Szene fand dann noch kein Ziel. Ohne eigenen Abruf griff das Ziel erst beim
+/// nächsten Öffnen (die App hing einen Kurzbefehl hinterher).
+private func queueRoute(_ destination: GainerRoute) async throws {
   let createdAt = Int64(Date().timeIntervalSince1970 * 1000)
   guard let route = GainerPendingRoute(
     destination: destination.rawValue,
@@ -9,6 +13,7 @@ private func queueRoute(_ destination: GainerRoute) throws {
     createdAtUtcEpochMilliseconds: createdAt
   ) else { throw NativeExtensionSnapshotError.invalidRoute }
   try NativeExtensionSnapshotStore().recordRoute(route)
+  await NativeRouteDispatcher.shared.dispatchPendingRoute()
 }
 
 struct GainerOpenTrainingIntent: AppIntent {
@@ -17,7 +22,7 @@ struct GainerOpenTrainingIntent: AppIntent {
   static let openAppWhenRun = true
 
   func perform() async throws -> some IntentResult {
-    try queueRoute(.training)
+    try await queueRoute(.training)
     return .result()
   }
 }
@@ -28,7 +33,7 @@ struct GainerOpenCheckInIntent: AppIntent {
   static let openAppWhenRun = true
 
   func perform() async throws -> some IntentResult {
-    try queueRoute(.checkIn)
+    try await queueRoute(.checkIn)
     return .result()
   }
 }
@@ -39,7 +44,7 @@ struct GainerOpenNutritionIntent: AppIntent {
   static let openAppWhenRun = true
 
   func perform() async throws -> some IntentResult {
-    try queueRoute(.nutrition)
+    try await queueRoute(.nutrition)
     return .result()
   }
 }
