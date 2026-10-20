@@ -11,7 +11,7 @@ Das Refresh von `MapIdentityApi` hat weder Rotation noch Wiederverwendungserkenn
 ## D3 Rotation, Kulanzzeit und Wiederverwendung
 
 - Aktueller Token: neuer Token wird aktuell, der alte wird „vorheriger“, `RotatedAt` = jetzt.
-- Vorheriger Token innerhalb von `ReuseGracePeriod` (1 Minute) nach der Rotation: Die Antwort ging vermutlich verloren. Es wird erneut ein Token ausgestellt, der vorherige bleibt Bezug, `RotatedAt` bleibt. Der Token aus der verlorenen Antwort wird damit ungültig, und die Kulanz verlängert sich nicht.
+- Vorheriger Token innerhalb von `ReuseGracePeriod` (1 Minute) nach der Rotation: Die Antwort ging vermutlich verloren. Es wird einmal erneut ein Token ausgestellt, der vorherige bleibt Bezug, `RotatedAt` bleibt. Der Token aus der verlorenen Antwort wird als „verworfen“ gespeichert; kommt er zurück oder folgt ein zweiter Retry, wird die Session widerrufen (nachgezogen in `harden-auth-edge`, D2).
 - Vorheriger Token danach: Eine Kopie ist im Umlauf. Die Session wird widerrufen.
 - Gleichzeitige Refreshes derselben Session scheitern bis auf einen an der Versionsprüfung. Die App verhindert das, weil sie Refreshes bündelt (D6).
 

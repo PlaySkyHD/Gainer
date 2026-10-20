@@ -72,7 +72,9 @@ internal sealed class DeviceSessionService(
         DeviceSession? session = await database.DeviceSessions
             .Include(item => item.User)
             .SingleOrDefaultAsync(
-                item => item.RefreshTokenHash == presentedHash || item.PreviousRefreshTokenHash == presentedHash,
+                item => item.RefreshTokenHash == presentedHash
+                    || item.PreviousRefreshTokenHash == presentedHash
+                    || item.DiscardedRefreshTokenHash == presentedHash,
                 cancellationToken);
         DateTimeOffset now = timeProvider.GetUtcNow();
         if (session is null
@@ -85,10 +87,9 @@ internal sealed class DeviceSessionService(
         }
 
         bool presentedCurrent = CryptographicOperations.FixedTimeEquals(session.RefreshTokenHash, presentedHash);
-        if (!presentedCurrent && (session.RotatedAt is not DateTimeOffset rotatedAt
-            || now - rotatedAt > settings.ReuseGracePeriod))
+        if (!presentedCurrent && !IsGraceRetry(session, presentedHash, now))
         {
-            // A rotated token came back after the grace period: either copy may be stolen.
+            // An old or discarded token came back: either copy may be stolen.
             session.RevokedAt = now;
             session.Version++;
             await SaveIgnoringConcurrencyAsync(cancellationToken);
@@ -96,11 +97,22 @@ internal sealed class DeviceSessionService(
         }
 
         // Within the grace period the previous token stays the reference, so a client whose
-        // response was lost can retry; the token issued by the lost response becomes invalid.
+        // response was lost can retry once. The token from the lost response is remembered: if it
+        // shows up later, someone else used the previous token and the session is revoked.
         string token = CreateToken();
-        session.PreviousRefreshTokenHash = presentedCurrent ? session.RefreshTokenHash : session.PreviousRefreshTokenHash;
+        if (presentedCurrent)
+        {
+            session.PreviousRefreshTokenHash = session.RefreshTokenHash;
+            session.RotatedAt = now;
+            session.DiscardedAt = null;
+        }
+        else
+        {
+            session.DiscardedRefreshTokenHash = session.RefreshTokenHash;
+            session.DiscardedAt = now;
+        }
+
         session.RefreshTokenHash = HashToken(token);
-        session.RotatedAt = presentedCurrent ? now : session.RotatedAt;
         session.LastUsedAt = now;
         session.ExpiresAt = NextExpiry(session, now);
         session.Version++;
@@ -155,6 +167,13 @@ internal sealed class DeviceSessionService(
                     .SetProperty(item => item.Version, item => item.Version + 1),
                 cancellationToken);
     }
+
+    private bool IsGraceRetry(DeviceSession session, byte[] presentedHash, DateTimeOffset now) =>
+        session.PreviousRefreshTokenHash is byte[] previous
+        && CryptographicOperations.FixedTimeEquals(previous, presentedHash)
+        && session.RotatedAt is DateTimeOffset rotatedAt
+        && now - rotatedAt <= settings.ReuseGracePeriod
+        && session.DiscardedAt is null;
 
     private DateTimeOffset NextExpiry(DeviceSession session, DateTimeOffset now)
     {

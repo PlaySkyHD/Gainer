@@ -1,5 +1,12 @@
 {
     admin off
+
+    # Only host Caddy (via the loopback-published port) and the private Compose networks reach
+    # this edge. Trusting them keeps the real client address in X-Forwarded-For, which the API
+    # needs for its per-client rate limits.
+    servers {
+        trusted_proxies static private_ranges
+    }
 }
 
 {$GAINER_SITE_ADDRESS::80} {

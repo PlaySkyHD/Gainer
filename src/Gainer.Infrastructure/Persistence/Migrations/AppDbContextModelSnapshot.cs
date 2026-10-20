@@ -1973,6 +1973,12 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<DateTimeOffset?>("DiscardedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("DiscardedRefreshTokenHash")
+                        .HasColumnType("bytea");
+
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2000,6 +2006,9 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DiscardedRefreshTokenHash")
+                        .IsUnique();
 
                     b.HasIndex("PreviousRefreshTokenHash")
                         .IsUnique();

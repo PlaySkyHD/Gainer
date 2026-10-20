@@ -180,12 +180,31 @@ public sealed class NutritionApiControllerTests
         Assert.AreEqual(HttpStatusCode.BadRequest, multipleFailure.StatusCode);
         Assert.AreEqual("too_many_images", (await multipleFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
 
+        using var photoSized = new MultipartFormDataContent();
+        photoSized.Add(new ByteArrayContent(new byte[3 * 1024 * 1024]), "image", "photo.png");
+        photoSized.Add(new StringContent("true"), "imageConsent");
+        using HttpResponseMessage photoSizedResponse = await client.SendAsync(MealEstimateRequest(photoSized));
+        Assert.AreEqual(HttpStatusCode.OK, photoSizedResponse.StatusCode, "Photos above the general 1 MiB limit must reach the estimator.");
+        Assert.AreEqual(2, estimator.Calls);
+
+        using var largeJson = new ByteArrayContent(new byte[2 * 1024 * 1024]);
+        largeJson.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        using HttpResponseMessage generalLimit = await client.PostAsync("/api/v1/nutrition/days/2026-08-19/entries", largeJson);
+        Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, generalLimit.StatusCode);
+
         using var oversized = new MultipartFormDataContent();
         oversized.Add(new ByteArrayContent(new byte[(8 * 1024 * 1024) + 1]), "image", "large.png");
         oversized.Add(new StringContent("true"), "imageConsent");
         using HttpResponseMessage sizeFailure = await client.SendAsync(MealEstimateRequest(oversized));
-        Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, sizeFailure.StatusCode);
-        Assert.AreEqual(1, estimator.Calls, "Rejected requests and returned drafts must not create persisted estimate state.");
+        Assert.AreEqual(HttpStatusCode.BadRequest, sizeFailure.StatusCode);
+        Assert.AreEqual("invalid_image_size", (await sizeFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
+
+        using var beyondEndpointLimit = new MultipartFormDataContent();
+        beyondEndpointLimit.Add(new ByteArrayContent(new byte[10 * 1024 * 1024]), "image", "huge.png");
+        beyondEndpointLimit.Add(new StringContent("true"), "imageConsent");
+        using HttpResponseMessage endpointLimit = await client.SendAsync(MealEstimateRequest(beyondEndpointLimit));
+        Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, endpointLimit.StatusCode);
+        Assert.AreEqual(2, estimator.Calls, "Rejected requests and returned drafts must not create persisted estimate state.");
     }
 
     private static HttpRequestMessage MealEstimateRequest(HttpContent content) =>

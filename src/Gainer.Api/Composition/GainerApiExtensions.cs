@@ -15,6 +15,11 @@ namespace Gainer.Api.Composition;
 /// <summary>Registers and maps the versioned Gainer HTTP API.</summary>
 public static class GainerApiExtensions
 {
+    private const string ReadinessPath = "/health/ready";
+
+    private static readonly string[] TrustedProxyNetworks =
+        ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"];
+
     /// <summary>Adds the API composition-root services.</summary>
     public static WebApplicationBuilder AddGainerApi(this WebApplicationBuilder builder)
     {
@@ -28,8 +33,14 @@ public static class GainerApiExtensions
                 ForwardedHeaders.XForwardedHost |
                 ForwardedHeaders.XForwardedProto;
             options.ForwardLimit = 2;
+            // Only the private Compose networks and loopback may forward. The first public
+            // address in X-Forwarded-For is the client that host Caddy saw.
             options.KnownIPNetworks.Clear();
             options.KnownProxies.Clear();
+            foreach (string network in TrustedProxyNetworks)
+            {
+                options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
+            }
             options.AllowedHosts.Add("gainer.markfort.xyz");
         });
         builder.Services.AddExceptionHandler<UnexpectedExceptionHandler>();
@@ -40,6 +51,10 @@ public static class GainerApiExtensions
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+                context.Request.Path.StartsWithSegments(ReadinessPath)
+                    ? PerClientWindow(context, "readiness", permitLimit: 30)
+                    : RateLimitPartition.GetNoLimiter(string.Empty));
             options.AddPolicy("coach", context => RateLimitPartition.GetFixedWindowLimiter(
                 $"{context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous"}:{context.Connection.RemoteIpAddress}",
                 _ => new FixedWindowRateLimiterOptions
@@ -49,15 +64,12 @@ public static class GainerApiExtensions
                     QueueLimit = 0,
                     AutoReplenishment = true,
                 }));
-            options.AddPolicy(ApiConstants.AuthenticationRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 30,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0,
-                    AutoReplenishment = true,
-                }));
+            options.AddPolicy(
+                ApiConstants.AuthenticationRateLimitPolicy,
+                context => PerClientWindow(context, ApiConstants.AuthenticationRateLimitPolicy, permitLimit: 30));
+            options.AddPolicy(
+                ApiConstants.TokenRefreshRateLimitPolicy,
+                context => PerClientWindow(context, ApiConstants.TokenRefreshRateLimitPolicy, permitLimit: 60));
         });
         builder.Services.AddScoped<IUserContext, HttpUserContext>();
         builder.Services.TryAddSingleton(TimeProvider.System);
@@ -73,7 +85,8 @@ public static class GainerApiExtensions
     public static WebApplication MapGainerApi(this WebApplication app)
     {
         // The API is reachable only from the private Compose network. The two trusted hops are
-        // the loopback-bound Gainer edge and the VPS host Caddy that owns public HTTPS.
+        // the loopback-bound Gainer edge and the VPS host Caddy that owns public HTTPS; the edge
+        // keeps the client address host Caddy appended (trusted_proxies in deploy/Caddyfile).
         app.UseForwardedHeaders();
         app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseExceptionHandler();
@@ -94,6 +107,17 @@ public static class GainerApiExtensions
 
         return app;
     }
+
+    private static RateLimitPartition<string> PerClientWindow(HttpContext context, string scope, int permitLimit) =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            $"{scope}:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = permitLimit,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            });
 
     private static void ConfigureApiBehavior(ApiBehaviorOptions options)
     {

@@ -167,10 +167,70 @@ public sealed class AuthenticationApiTests
 
         timeProvider.Advance(TimeSpan.FromSeconds(20));
         TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
+        Assert.AreNotEqual(lost.RefreshToken, retried.RefreshToken);
 
-        using HttpResponseMessage lostToken = await BearerTestClient.RefreshAsync(client, lost.RefreshToken);
-        Assert.AreEqual(HttpStatusCode.Unauthorized, lostToken.StatusCode);
         TokenResponse next = await RefreshSucceedsAsync(client, retried.RefreshToken);
+        client.UseAccessToken(next.AccessToken);
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
+        Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task TokenDiscardedByAGraceRetryRevokesTheSessionWhenItReturns()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse stolen = await BearerTestClient.LoginAsync(client, Email, Password);
+        TokenResponse device = await RefreshSucceedsAsync(client, stolen.RefreshToken);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(20));
+        TokenResponse attacker = await RefreshSucceedsAsync(client, stolen.RefreshToken);
+
+        using HttpResponseMessage deviceRefresh = await BearerTestClient.RefreshAsync(client, device.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, deviceRefresh.StatusCode);
+        Assert.AreEqual("invalid_refresh_token", await ReadCodeAsync(deviceRefresh));
+        using HttpResponseMessage attackerRefresh = await BearerTestClient.RefreshAsync(client, attacker.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, attackerRefresh.StatusCode);
+        client.UseAccessToken(attacker.AccessToken);
+        using HttpResponseMessage attackerAccess = await client.GetAsync("/api/v1/auth/session");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, attackerAccess.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task OnlyOneGraceRetryIsAllowedPerRotation()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
+        TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
+
+        using HttpResponseMessage secondRetry = await BearerTestClient.RefreshAsync(client, first.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, secondRetry.StatusCode);
+        using HttpResponseMessage current = await BearerTestClient.RefreshAsync(client, retried.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, current.StatusCode);
+
+    }
+
+    [TestMethod]
+    public async Task EachRotationAllowsItsOwnGraceRetry()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
+        TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
+
+        timeProvider.Advance(TimeSpan.FromMinutes(15));
+        _ = await RefreshSucceedsAsync(client, retried.RefreshToken);
+        TokenResponse retriedAgain = await RefreshSucceedsAsync(client, retried.RefreshToken);
+        TokenResponse next = await RefreshSucceedsAsync(client, retriedAgain.RefreshToken);
         client.UseAccessToken(next.AccessToken);
         using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
         Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);

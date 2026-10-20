@@ -169,9 +169,9 @@ public sealed class PasskeysController(
             CredentialJson = request.CredentialJson,
             AssertionState = state,
         });
-        if (!assertion.Succeeded
-            || !await signInManager.CanSignInAsync(assertion.User)
-            || await userManager.IsLockedOutAsync(assertion.User))
+        // The password lockout is deliberately not applied: a passkey cannot be guessed, and
+        // honouring it would let anyone who knows the email address block passkey sign-in.
+        if (!assertion.Succeeded || !await signInManager.CanSignInAsync(assertion.User))
         {
             return InvalidPasskey();
         }

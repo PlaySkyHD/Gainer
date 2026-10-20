@@ -50,7 +50,7 @@ public sealed class AuthenticationController(
 
     /// <summary>Rotates the refresh token of a device session and issues a new access token.</summary>
     [AllowAnonymous]
-    [EnableRateLimiting(ApiConstants.AuthenticationRateLimitPolicy)]
+    [EnableRateLimiting(ApiConstants.TokenRefreshRateLimitPolicy)]
     [HttpPost("refresh")]
     [ProducesResponseType<TokenResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized, "application/problem+json")]

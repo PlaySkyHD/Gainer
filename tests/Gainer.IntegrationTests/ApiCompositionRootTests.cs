@@ -112,6 +112,48 @@ public sealed class ApiCompositionRootTests
         Assert.AreEqual("203.0.113.10", payload.RootElement.GetProperty("remoteIp").GetString());
     }
 
+    [TestMethod]
+    public async Task ForwardedAddressesBeyondTheFirstPublicHopAreIgnored()
+    {
+        await using var app = await CreateApplicationAsync();
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/forwarded-probe");
+        // A client-supplied entry in front of the address host Caddy saw must not become the client.
+        request.Headers.Add("X-Forwarded-For", "198.51.100.1, 203.0.113.10");
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.AreEqual("203.0.113.10", payload.RootElement.GetProperty("remoteIp").GetString());
+    }
+
+    [TestMethod]
+    public async Task ReadinessIsRateLimitedPerClient()
+    {
+        await using var app = await CreateApplicationAsync();
+        using var client = app.GetTestClient();
+
+        for (int attempt = 0; attempt < 30; attempt++)
+        {
+            using HttpResponseMessage allowed = await ReadinessAsync(client, "203.0.113.20");
+            Assert.AreEqual(HttpStatusCode.OK, allowed.StatusCode);
+        }
+
+        using HttpResponseMessage limited = await ReadinessAsync(client, "203.0.113.20");
+        using HttpResponseMessage otherClient = await ReadinessAsync(client, "203.0.113.21");
+        using HttpResponseMessage otherPath = await client.GetAsync("/forwarded-probe");
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, otherClient.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, otherPath.StatusCode);
+    }
+
+    private static async Task<HttpResponseMessage> ReadinessAsync(HttpClient client, string clientAddress)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/health/ready");
+        request.Headers.Add("X-Forwarded-For", clientAddress);
+        return await client.SendAsync(request);
+    }
+
     private static async Task<WebApplication> CreateApplicationAsync(ILoggerProvider? loggerProvider = null)
     {
         var builder = WebApplication.CreateBuilder();
@@ -126,6 +168,7 @@ public sealed class ApiCompositionRootTests
 
         var app = builder.Build();
         app.MapGainerApi();
+        app.MapGet("/health/ready", () => Results.Ok());
         app.MapGet("/forwarded-probe", (HttpContext context) => Results.Json(new
         {
             scheme = context.Request.Scheme,
