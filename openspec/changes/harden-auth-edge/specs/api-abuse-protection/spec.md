@@ -17,7 +17,7 @@ Die API SHALL als Client-Adresse den ersten öffentlichen Eintrag von rechts in 
 
 ### Requirement: Größenlimit pro Endpunkt
 
-Request-Bodies SHALL höchstens 1 MiB groß sein, außer ein Endpunkt erlaubt mit `[RequestSizeLimit]` mehr. Die Mahlzeit-Schätzung MUST Fotos bis 8 MB annehmen und Requests über 9 MiB mit 413 ablehnen.
+Request-Bodies SHALL höchstens 1 MiB groß sein, außer ein Endpunkt erlaubt mit `[RequestSizeLimit]` mehr. Die Mahlzeit-Schätzung MUST Requests bis 8 MiB annehmen und größere mit 413 ablehnen.
 
 #### Scenario: Foto über 1 MiB
 - **WHEN** die App ein 3-MB-Foto zur Mahlzeit-Schätzung sendet
