@@ -911,6 +911,39 @@ class ApiAccountSummary {
       );
 }
 
+/// WebAuthn options and the opaque single-use state of a passkey ceremony.
+class ApiPasskeyOptions {
+  const ApiPasskeyOptions({required this.optionsJson, required this.state});
+
+  final String optionsJson;
+  final String state;
+
+  factory ApiPasskeyOptions.fromJson(Map<String, dynamic> json) =>
+      ApiPasskeyOptions(
+        optionsJson: _requiredString(json, 'optionsJson'),
+        state: _requiredString(json, 'state'),
+      );
+}
+
+class ApiPasskey {
+  const ApiPasskey({
+    required this.id,
+    required this.name,
+    required this.createdAt,
+  });
+
+  /// Base64Url credential id.
+  final String id;
+  final String name;
+  final DateTime createdAt;
+
+  factory ApiPasskey.fromJson(Map<String, dynamic> json) => ApiPasskey(
+    id: _requiredString(json, 'id'),
+    name: _requiredString(json, 'name'),
+    createdAt: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
+  );
+}
+
 class ApiInvitation {
   const ApiInvitation({required this.activationPath, required this.expiresAt});
 

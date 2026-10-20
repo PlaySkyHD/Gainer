@@ -261,10 +261,15 @@ void main() {
           reason: area.label,
         );
       }
-      expect(
-        find.text('Zuletzt synchronisiert vor 2 Min. · 3 ausstehend'),
-        findsOneWidget,
+      final footnote = find.text(
+        'Zuletzt synchronisiert vor 2 Min. · 3 ausstehend',
       );
+      await tester.scrollUntilVisible(
+        footnote,
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(footnote, findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

@@ -26,6 +26,21 @@ abstract interface class SecureSessionPlatform {
   Future<void> clearCheckpoint(String apiOrigin);
 }
 
+/// System passkey sheet with Face ID. Returns null when the user cancels.
+abstract interface class PasskeyPlatform {
+  Future<PlatformPasskeyRegistration?> createPasskey({
+    required String relyingPartyId,
+    required Uint8List challenge,
+    required Uint8List userId,
+    required String userName,
+  });
+
+  Future<PlatformPasskeyAssertion?> assertPasskey({
+    required String relyingPartyId,
+    required Uint8List challenge,
+  });
+}
+
 abstract interface class TimerNotificationPlatform {
   Future<bool> requestPermission();
   Future<void> schedule({
