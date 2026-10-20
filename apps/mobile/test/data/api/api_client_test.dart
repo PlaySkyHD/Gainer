@@ -487,6 +487,82 @@ void main() {
       }
     });
 
+    test('manages passkeys of the signed-in account', () async {
+      final requests = <String>[];
+      final server = await _TestApiServer.start((request) async {
+        requests.add('${request.method} ${request.uri.path}');
+        if (request.uri.path == '/api/v1/auth/login') {
+          return _json(request, _tokens(1));
+        }
+        expect(request.headers.value('authorization'), 'Bearer access-1');
+        if (request.uri.path == '/api/v1/auth/passkeys/creation-options') {
+          return _json(request, {'optionsJson': '{}', 'state': 'create-state'});
+        }
+        if (request.uri.path == '/api/v1/auth/passkeys' &&
+            request.method == 'POST') {
+          expect(jsonDecode(await utf8.decoder.bind(request).join()), {
+            'credentialJson': '{"id":"x"}',
+            'state': 'create-state',
+            'name': 'Gainer iPhone',
+          });
+          request.response.statusCode = HttpStatus.created;
+          return _json(request, {
+            'id': 'AQ',
+            'name': 'Gainer iPhone',
+            'createdAt': '2026-10-20T12:00:00+00:00',
+          });
+        }
+        if (request.uri.path == '/api/v1/auth/passkeys') {
+          return _jsonList(request, [
+            {
+              'id': 'AQ',
+              'name': 'Gainer iPhone',
+              'createdAt': '2026-10-20T12:00:00+00:00',
+            },
+          ]);
+        }
+        if (request.method == 'DELETE') {
+          request.response.statusCode = HttpStatus.noContent;
+          return request.response.close();
+        }
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+      final api = ApiClient(
+        configuration: ApiConfiguration(
+          apiOrigin: server.origin,
+          allowInsecureLoopbackForDevelopment: true,
+        ),
+      );
+      try {
+        await api.login(
+          const ApiLoginRequest(email: 'member@example.test', password: 'pw'),
+        );
+        final options = await api.passkeyCreationOptions();
+        final created = await api.registerPasskey(
+          credentialJson: '{"id":"x"}',
+          state: options.state,
+          name: 'Gainer iPhone',
+        );
+        final listed = await api.listPasskeys();
+        await api.deletePasskey(created.id);
+
+        expect(created.createdAt, DateTime.utc(2026, 10, 20, 12));
+        expect(listed.single.name, 'Gainer iPhone');
+        expect(() => api.deletePasskey('../x'), throwsArgumentError);
+        expect(requests, [
+          'POST /api/v1/auth/login',
+          'POST /api/v1/auth/passkeys/creation-options',
+          'POST /api/v1/auth/passkeys',
+          'GET /api/v1/auth/passkeys',
+          'DELETE /api/v1/auth/passkeys/AQ',
+        ]);
+      } finally {
+        api.close();
+        await server.close();
+      }
+    });
+
     test(
       'renews an expiring access token once for concurrent requests',
       () async {
@@ -859,6 +935,12 @@ Map<String, Object?> _tokens(int generation) => {
   'refreshToken': 'refresh-$generation',
   'refreshTokenExpiresAt': '2026-12-19T12:00:00Z',
 };
+
+Future<void> _jsonList(HttpRequest request, List<Object?> body) async {
+  request.response.headers.contentType = ContentType.json;
+  request.response.write(jsonEncode(body));
+  await request.response.close();
+}
 
 Future<void> _json(HttpRequest request, Map<String, Object?> body) async {
   request.response.headers.contentType = ContentType.json;
