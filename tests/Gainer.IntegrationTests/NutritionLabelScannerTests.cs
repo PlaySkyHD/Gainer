@@ -87,13 +87,14 @@ public sealed class NutritionLabelScannerTests
     public void KilojoulesAndMillilitresAreConvertedAndMisreadsBlockConfirmation()
     {
         NutritionLabelScanDraft drink = NutritionLabelScanDraft.Create(
-            NutritionLabelBasis.Per100Milliliters,
-            null,
-            NutritionLabelReading.Empty,
-            new NutritionLabelReading(180m, "180 kJ"),
-            new NutritionLabelReading(0m, null),
-            new NutritionLabelReading(10.6m, null),
-            NutritionLabelReading.Empty,
+            new NutritionLabelReadings(
+                NutritionLabelBasis.Per100Milliliters,
+                null,
+                NutritionLabelReading.Empty,
+                new NutritionLabelReading(180m, "180 kJ"),
+                new NutritionLabelReading(0m, null),
+                new NutritionLabelReading(10.6m, null),
+                NutritionLabelReading.Empty),
             "OpenAI", "model", "v1", ScannedAt);
         Assert.AreEqual(43m, drink.Kilocalories.Per100Grams);
         Assert.AreEqual(NutritionLabelFieldStatus.Converted, drink.Kilocalories.Status);
@@ -118,13 +119,14 @@ public sealed class NutritionLabelScannerTests
         decimal protein,
         decimal carbs,
         decimal fat) => NutritionLabelScanDraft.Create(
-            basis,
-            servingMass,
-            new NutritionLabelReading(kcal, null),
-            NutritionLabelReading.Empty,
-            new NutritionLabelReading(protein, null),
-            new NutritionLabelReading(carbs, null),
-            new NutritionLabelReading(fat, null),
+            new NutritionLabelReadings(
+                basis,
+                servingMass,
+                new NutritionLabelReading(kcal, null),
+                NutritionLabelReading.Empty,
+                new NutritionLabelReading(protein, null),
+                new NutritionLabelReading(carbs, null),
+                new NutritionLabelReading(fat, null)),
             "OpenAI", "model", "v1", ScannedAt);
 
     private static OpenAiNutritionLabelScanner Scanner(IOpenAiResponsesProvider provider) => new(

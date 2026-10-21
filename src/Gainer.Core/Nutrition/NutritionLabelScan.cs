@@ -21,6 +21,16 @@ public sealed record NutritionLabelReading(decimal? Value, string? Evidence)
     public static readonly NutritionLabelReading Empty = new(null, null);
 }
 
+/// <summary>Everything read from one basis column of a label, before conversion.</summary>
+public sealed record NutritionLabelReadings(
+    NutritionLabelBasis Basis,
+    decimal? ServingMassGrams,
+    NutritionLabelReading Kilocalories,
+    NutritionLabelReading Kilojoules,
+    NutritionLabelReading ProteinGrams,
+    NutritionLabelReading CarbohydrateGrams,
+    NutritionLabelReading FatGrams);
+
 public sealed record NutritionLabelFieldDraft(
     decimal? OriginalValue,
     decimal? Per100Grams,
@@ -53,18 +63,16 @@ public sealed record NutritionLabelScanDraft(
     /// serving values need the serving mass, and energy printed only in kJ is converted to kcal.
     /// </summary>
     public static NutritionLabelScanDraft Create(
-        NutritionLabelBasis basis,
-        decimal? servingMassGrams,
-        NutritionLabelReading kilocalories,
-        NutritionLabelReading kilojoules,
-        NutritionLabelReading proteinGrams,
-        NutritionLabelReading carbohydrateGrams,
-        NutritionLabelReading fatGrams,
+        NutritionLabelReadings readings,
         string provider,
         string providerModelVersion,
         string parserVersion,
         DateTime scannedAtUtc)
     {
+        ArgumentNullException.ThrowIfNull(readings);
+        (NutritionLabelBasis basis, decimal? servingMassGrams, NutritionLabelReading kilocalories,
+            NutritionLabelReading kilojoules, NutritionLabelReading proteinGrams,
+            NutritionLabelReading carbohydrateGrams, NutritionLabelReading fatGrams) = readings;
         ArgumentNullException.ThrowIfNull(kilocalories);
         ArgumentNullException.ThrowIfNull(kilojoules);
         ArgumentNullException.ThrowIfNull(proteinGrams);

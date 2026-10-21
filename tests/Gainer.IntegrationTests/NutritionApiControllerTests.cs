@@ -299,13 +299,14 @@ public sealed class NutritionApiControllerTests
             Calls++;
             if (Failure is not null) return Task.FromException<NutritionLabelScanDraft>(Failure);
             return Task.FromResult(NutritionLabelScanDraft.Create(
-                NutritionLabelBasis.Per100Grams,
-                null,
-                new NutritionLabelReading(377m, "377 kcal"),
-                NutritionLabelReading.Empty,
-                new NutritionLabelReading(13m, null),
-                new NutritionLabelReading(60m, null),
-                new NutritionLabelReading(7m, null),
+                new NutritionLabelReadings(
+                    NutritionLabelBasis.Per100Grams,
+                    null,
+                    new NutritionLabelReading(377m, "377 kcal"),
+                    NutritionLabelReading.Empty,
+                    new NutritionLabelReading(13m, null),
+                    new NutritionLabelReading(60m, null),
+                    new NutritionLabelReading(7m, null)),
                 "test",
                 "model",
                 "v1",
