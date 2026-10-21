@@ -13,6 +13,7 @@ final class GainerMobilePlatform: MobilePlatformApi {
   private let passkeys = NativePasskeys()
   private let webAuthentication = NativeWebAuthentication()
   private let heartRateMonitor: NativeHeartRateMonitor
+  private let dictation = NativeDictation()
   private let extensionSnapshots = NativeExtensionSnapshotStore()
   private let routeStore = NativeExtensionSnapshotStore()
   @available(iOS 17.0, *)
@@ -397,6 +398,22 @@ final class GainerMobilePlatform: MobilePlatformApi {
       throw PigeonError(code: "invalid_web_authentication", message: "The sign-in URL is invalid.", details: nil)
     }
     return try await webAuthentication.authenticate(url: target, callbackScheme: callbackScheme)?.absoluteString
+  }
+
+  func startDictation(localeId: String) async throws -> PlatformDictationState {
+    await dictation.start(localeId: localeId)
+  }
+
+  func readDictation() async throws -> PlatformDictationState {
+    dictation.state
+  }
+
+  func stopDictation() async throws {
+    dictation.stop()
+  }
+
+  func cancelDictation() async throws {
+    dictation.cancel()
   }
 
   /// Prüft die Eingaben aus Dart: Zone 40–230 mit von < bis (beide Grenzen oder keine),
