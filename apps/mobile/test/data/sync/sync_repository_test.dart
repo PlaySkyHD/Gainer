@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/local/local_aggregate.dart';
@@ -881,6 +882,110 @@ void main() {
       await database.close();
     },
   );
+
+  group('training schedule tombstones', () {
+    const scheduleId = '77777777-7777-4777-8777-777777777777';
+    Map<String, Object?> scheduleBody({String? deletedAtUtc}) => {
+      'scheduleId': scheduleId,
+      'mode': 'cycle',
+      'anchorDate': '2026-10-12',
+      'validFrom': '2026-10-12',
+      'slots': [
+        {'planId': null},
+      ],
+      'shifts': <Object?>[],
+      'exceptions': <Object?>[],
+      'deletedAtUtc': ?deletedAtUtc,
+    };
+
+    test('a pulled schedule tombstone keeps a deletion marker with its '
+        'version', () async {
+      pullResourceType = 'TrainingSchedule';
+      pullResourceId = scheduleId;
+      pullTombstone = true;
+      pullVersion = 6;
+      final (store, database, api, repository) = await fixture();
+      await repository.synchronize();
+
+      final marker = await store.readAggregate('training-schedule', scheduleId);
+      expect(marker, isNotNull);
+      expect(marker!.serverVersion, 6);
+      expect(marker.syncState, LocalSyncState.clean);
+      expect((marker.workingCopy! as Map)['deletedAtUtc'], isNotNull);
+      api.close();
+      await database.close();
+    });
+
+    test('own confirmed delete followed by a new save is no conflict and '
+        'moves the save onto the tombstone version', () async {
+      pullResourceType = 'TrainingSchedule';
+      pullResourceId = scheduleId;
+      pullTombstone = true;
+      pullVersion = 4;
+      final (store, database, api, repository) = await fixture();
+      final deletedBody = scheduleBody(deletedAtUtc: '2026-10-12T10:00:00Z');
+      await store.commitMutation(
+        mutationId: mutationId,
+        aggregateType: 'training-schedule',
+        aggregateId: scheduleId,
+        operation: LocalMutationOperation.delete,
+        baseVersion: 3,
+        body: deletedBody,
+        envelope: LocalAggregateEnvelope<Object?>(
+          aggregateId: scheduleId,
+          serverSnapshot: scheduleBody(),
+          workingCopy: deletedBody,
+          serverVersion: 3,
+          optimisticVersion: 4,
+          syncState: LocalSyncState.pending,
+        ),
+      );
+      // Der Server hat die Löschung bestätigt; ihr Batch kommt erst beim Pull.
+      await (database.update(
+        database.localOutbox,
+      )..where((t) => t.mutationId.equals(mutationId))).write(
+        LocalOutboxCompanion(
+          status: const Value('clean'),
+          sentAtUtc: Value(DateTime.utc(2026, 10, 12).toIso8601String()),
+        ),
+      );
+      await store.commitMutation(
+        mutationId: 'e7777777-7777-4777-8777-777777777777',
+        aggregateType: 'training-schedule',
+        aggregateId: scheduleId,
+        operation: LocalMutationOperation.update,
+        baseVersion: 3,
+        body: scheduleBody(),
+        envelope: LocalAggregateEnvelope<Object?>(
+          aggregateId: scheduleId,
+          serverSnapshot: scheduleBody(),
+          workingCopy: scheduleBody(),
+          serverVersion: 3,
+          optimisticVersion: 5,
+          syncState: LocalSyncState.pending,
+        ),
+      );
+      lenientMutations = true;
+
+      await repository.synchronize();
+
+      expect(await database.select(database.localConflicts).get(), isEmpty);
+      final save = (await store.readOutbox(aggregateType: 'training-schedule'))
+          .single;
+      expect(save.mutationId, 'e7777777-7777-4777-8777-777777777777');
+      final envelope = await store.readAggregate(
+        'training-schedule',
+        scheduleId,
+      );
+      expect(envelope!.workingCopy, scheduleBody());
+      expect(save.status, LocalMutationStatus.pending);
+      expect(save.baseVersion, 4);
+      expect(envelope.serverVersion, 4);
+      expect(envelope.syncState, LocalSyncState.pending);
+      api.close();
+      await database.close();
+    });
+  });
 
   test('an archived plan arrives as a snapshot, not as a tombstone', () async {
     await pullTrainingSnapshot(

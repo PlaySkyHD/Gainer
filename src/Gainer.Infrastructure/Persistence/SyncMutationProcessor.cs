@@ -205,11 +205,18 @@ public sealed class SyncMutationProcessor(
         return new ProcessedSyncMutationResult(
             command.MutationId, true, stored.Revision,
             stored.Changes.Select(change => new ExecutedSyncChange(
-                ResourceKey.Create(Enum.Parse<ResourceKind>(change.ResourceType), change.ResourceId),
+                ResourceKey.Create(StoredResourceKind(change.ResourceType), change.ResourceId),
                 change.Version,
                 change.Snapshot,
                 change.IsTombstone)).ToList());
     }
+
+    /// <summary>Receipts of removed resource types (such as the workout rotation) are rejected like their operation.</summary>
+    private static ResourceKind StoredResourceKind(string resourceType) =>
+        Enum.TryParse(resourceType, ignoreCase: false, out ResourceKind kind) && Enum.IsDefined(kind) &&
+        string.Equals(kind.ToString(), resourceType, StringComparison.Ordinal)
+            ? kind
+            : throw new SyncMutationValidationException("unsupported_operation", "The mutation operation is not supported.");
 
     private static void ValidateCommand(ProcessSyncMutationCommand command)
     {

@@ -10,6 +10,9 @@ public static class TrainingScheduleValidation
     public const int MaximumShiftDays = 31;
     public const int MaximumShiftsAndExceptions = 1_000;
 
+    /// <summary>Moves go a few days forward or catch up from at most a week back; 31 days in either direction is ample.</summary>
+    public const int MaximumMoveDays = 31;
+
     public static TrainingScheduleValues Normalize(TrainingScheduleValues schedule)
     {
         ArgumentNullException.ThrowIfNull(schedule);
@@ -53,15 +56,6 @@ public static class TrainingScheduleValidation
             Shifts = shifts.ToArray(),
             Exceptions = exceptions.ToArray(),
         };
-    }
-
-    /// <summary>All distinct plans the schedule references in slots and exceptions.</summary>
-    public static IReadOnlyCollection<Guid> ReferencedPlanIds(TrainingScheduleValues schedule)
-    {
-        ArgumentNullException.ThrowIfNull(schedule);
-        return schedule.Slots.Where(item => item.PlanId is not null).Select(item => item.PlanId!.Value)
-            .Concat(schedule.Exceptions.Select(item => item.PlanId))
-            .ToHashSet();
     }
 
     private static void ValidateCycle(
@@ -127,6 +121,10 @@ public static class TrainingScheduleValidation
             errors[nameof(TrainingScheduleValues.Shifts)] =
                 $"A shift must move the schedule by {MinimumShiftDays} to {MaximumShiftDays} days.";
         }
+        else if (shifts.Select(item => item.FromDate).Distinct().Count() != shifts.Count)
+        {
+            errors[nameof(TrainingScheduleValues.Shifts)] = "At most one shift can start on each day.";
+        }
     }
 
     private static void ValidateExceptions(
@@ -144,6 +142,12 @@ public static class TrainingScheduleValidation
         else if (exceptions.Select(item => (item.Date, item.PlanId)).Distinct().Count() != exceptions.Count)
         {
             errors[nameof(TrainingScheduleValues.Exceptions)] = "Each plan can have at most one exception per day.";
+        }
+        else if (exceptions.Any(item => item.MovedToDate is { } target &&
+                     (target == item.Date || Math.Abs(target.DayNumber - item.Date.DayNumber) > MaximumMoveDays)))
+        {
+            errors[nameof(TrainingScheduleValues.Exceptions)] =
+                $"A moved workout must land on another day at most {MaximumMoveDays} days away.";
         }
     }
 }

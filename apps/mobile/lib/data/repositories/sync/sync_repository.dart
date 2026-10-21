@@ -726,7 +726,24 @@ class SyncRepository implements MobileSyncActions {
                   t.status.isNotValue(LocalMutationStatus.clean.name),
             ))
             .get();
-    if (pending.isNotEmpty) {
+    if (pending.isNotEmpty &&
+        _recreatableAggregateTypes.contains(aggregateType) &&
+        await _isOwnMutation(batch.originMutationId, aggregateType, change)) {
+      // Die eigene Löschung ist bestätigt, danach wurde neu gespeichert: kein
+      // Konflikt. Der wartende Stand baut auf der Version der Löschung auf.
+      await _keepAfterOwnDelete(aggregateType, change, keepWorkingCopy: true);
+      await _advanceNextMutationBase(
+        aggregateType: aggregateType,
+        aggregateId: change.resourceId,
+        originMutationId: batch.originMutationId!,
+        version: change.version,
+      );
+    } else if (pending.isEmpty &&
+        _recreatableAggregateTypes.contains(aggregateType)) {
+      // Löschmarke mit der Version der Löschung behalten, damit ein neuer
+      // Stand dieselbe ID mit der richtigen Basis speichert.
+      await _keepAfterOwnDelete(aggregateType, change, keepWorkingCopy: false);
+    } else if (pending.isNotEmpty) {
       final old =
           await (database.select(database.localResources)..where(
                 (t) =>
@@ -799,6 +816,76 @@ class SyncRepository implements MobileSyncActions {
             resourceType: change.resourceType,
             resourceId: change.resourceId,
             revision: batch.revision,
+          ),
+        );
+  }
+
+  Future<bool> _isOwnMutation(
+    String? originMutationId,
+    String aggregateType,
+    SyncChangeResponse change,
+  ) async {
+    if (originMutationId == null) return false;
+    final database = store.database;
+    final row =
+        await (database.select(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(store.accountId) &
+                  t.mutationId.equals(originMutationId) &
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(change.resourceId),
+            ))
+            .getSingleOrNull();
+    return row != null;
+  }
+
+  /// Schreibt die Zeile einer gelöschten, neu speicherbaren Ressource mit
+  /// der Version der Löschung. Mit [keepWorkingCopy] bleibt ein wartender
+  /// neuer Stand erhalten, sonst bleibt nur eine Löschmarke.
+  Future<void> _keepAfterOwnDelete(
+    String aggregateType,
+    SyncChangeResponse change, {
+    required bool keepWorkingCopy,
+  }) async {
+    final database = store.database;
+    final existing =
+        await (database.select(database.localResources)..where(
+              (t) =>
+                  t.aggregateType.equals(aggregateType) &
+                  t.aggregateId.equals(change.resourceId),
+            ))
+            .getSingleOrNull();
+    final old = existing == null
+        ? null
+        : LocalAggregateEnvelope<Object?>.fromJson(
+            jsonDecode(existing.envelopeJson) as Map<String, dynamic>,
+          );
+    final envelope = LocalAggregateEnvelope<Object?>(
+      aggregateId: change.resourceId,
+      serverSnapshot: null,
+      workingCopy: keepWorkingCopy && old != null
+          ? old.workingCopy
+          : {
+              'deletedAtUtc':
+                  (old?.workingCopy is Map
+                      ? (old!.workingCopy! as Map)['deletedAtUtc']
+                      : null) ??
+                  DateTime.now().toUtc().toIso8601String(),
+            },
+      serverVersion: change.version,
+      optimisticVersion: old?.optimisticVersion ?? change.version,
+      syncState: keepWorkingCopy
+          ? LocalSyncState.pending
+          : LocalSyncState.clean,
+    );
+    await database
+        .into(database.localResources)
+        .insertOnConflictUpdate(
+          LocalResourcesCompanion.insert(
+            aggregateType: aggregateType,
+            aggregateId: change.resourceId,
+            envelopeJson: envelope.encode(),
+            updatedAtEpochMs: DateTime.now().toUtc().millisecondsSinceEpoch,
           ),
         );
   }
@@ -1392,6 +1479,10 @@ LocalMutation _copyMutation(
       : (nextAttemptAtUtc ?? source.nextAttemptAtUtc),
   lastErrorCode: clearError ? null : (lastErrorCode ?? source.lastErrorCode),
 );
+
+/// Ressourcen, die nach dem Löschen unter derselben ID neu gespeichert
+/// werden; ihre Löschmarke behält die Version der Löschung.
+const _recreatableAggregateTypes = {'training-schedule'};
 
 String _resourceTypeForAggregate(String aggregateType) =>
     switch (aggregateType) {

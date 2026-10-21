@@ -11,6 +11,21 @@ public partial class AddTrainingSchedule : Migration
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
     {
+        // Change history and idempotency receipts of the removed rotation, as in RebuildTrainingModel; clients
+        // reject unknown resource types in the pull feed and replays could not map the removed kind.
+        migrationBuilder.Sql(
+            """
+            DELETE FROM sync.change_batches
+            WHERE "Id" IN (
+                SELECT "BatchId" FROM sync.change_items
+                WHERE "ResourceType" = 'WorkoutRotation');
+            """);
+        migrationBuilder.Sql(
+            """
+            DELETE FROM sync.processed_mutations
+            WHERE "ResultJson"::text ~ '"resourceType"\s*:\s*"WorkoutRotation"';
+            """);
+
         migrationBuilder.DropTable(
             name: "workout_rotation_items",
             schema: "training");
@@ -31,6 +46,7 @@ public partial class AddTrainingSchedule : Migration
                 CreatedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                 UpdatedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                 Version = table.Column<long>(type: "bigint", nullable: false),
+                DeletedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                 UserId = table.Column<Guid>(type: "uuid", nullable: false)
             },
             constraints: table =>
@@ -217,11 +233,12 @@ public partial class AddTrainingSchedule : Migration
             columns: new[] { "UserId", "ScheduleId" });
 
         migrationBuilder.CreateIndex(
-            name: "IX_training_schedules_UserId",
+            name: "UX_training_schedules_one_live_per_user",
             schema: "training",
             table: "training_schedules",
             column: "UserId",
-            unique: true);
+            unique: true,
+            filter: "\"DeletedAtUtc\" IS NULL");
     }
 
     /// <inheritdoc />
