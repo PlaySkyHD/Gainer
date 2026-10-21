@@ -102,7 +102,7 @@ class _TrainingScheduleEditorState extends State<TrainingScheduleEditor> {
       _cycle = [
         for (final slot in schedule.slots) _Slot(_nextKey++, slot.planId),
       ];
-      final index = _currentCycleIndex(schedule);
+      final index = schedule.effectiveCycleIndex(_today) ?? 0;
       _todayKey = _cycle.isEmpty ? null : _cycle[index].key;
     } else {
       // Vorschlag: alle aktiven Pläne nacheinander, danach ein Ruhetag.
@@ -118,17 +118,6 @@ class _TrainingScheduleEditorState extends State<TrainingScheduleEditor> {
       _weekly = [for (final slot in schedule.slots) slot.planId];
     }
     _dirty = schedule == null;
-  }
-
-  /// Slot, der heute gilt. An einem pausierten Tag der Slot vor dem nächsten
-  /// nicht pausierten Tag.
-  int _currentCycleIndex(TrainingSchedule schedule) {
-    final length = schedule.slots.length;
-    for (var offset = 0; offset <= maxShiftDays * 2; offset++) {
-      final index = schedule.cycleSlotIndexOn(_today.addDays(offset));
-      if (index != null) return (index - offset) % length;
-    }
-    return 0;
   }
 
   Set<String> get _activePlanIds => {
