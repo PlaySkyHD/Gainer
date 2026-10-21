@@ -551,3 +551,21 @@ abstract interface class CardioHealthPlatform {
   Future<void> requestWriteAuthorization();
   Future<WorkoutExportReceipt> exportCardioSession(CardioHealthExport export);
 }
+
+enum DictationStatus { idle, listening, finished, denied, unavailable, failed }
+
+class DictationState {
+  const DictationState({required this.status, required this.transcript});
+
+  final DictationStatus status;
+  final String transcript;
+}
+
+/// Diktat mit Spracherkennung auf dem Gerät. Den Text liefert [readDictation], bis der
+/// Zustand nicht mehr [DictationStatus.listening] ist.
+abstract interface class DictationPlatform {
+  Future<DictationState> startDictation({required String localeId});
+  Future<DictationState> readDictation();
+  Future<void> stopDictation();
+  Future<void> cancelDictation();
+}

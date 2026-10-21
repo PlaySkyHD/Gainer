@@ -13,6 +13,7 @@
 		F10000000000000000000003 /* SecureSessionKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000006 /* SecureSessionKeychain.swift */; };
 		F10000000000000000000008 /* NativeCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000000C /* NativeCapture.swift */; };
 		F10000000000000000000009 /* NativeHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000000D /* NativeHaptics.swift */; };
+		D1C7A7E000000000000000A1 /* NativeDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1C7A7E000000000000000A2 /* NativeDictation.swift */; };
 		F10000000000000000000060 /* NativeTimerSounds.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000061 /* NativeTimerSounds.swift */; };
 		F1000000000000000000000A /* NativeTimerNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000000E /* NativeTimerNotifications.swift */; };
 		F10000000000000000000010 /* NativeHealthKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000020 /* NativeHealthKit.swift */; };
@@ -99,6 +100,7 @@
 		F10000000000000000000006 /* SecureSessionKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureSessionKeychain.swift; sourceTree = "<group>"; };
 		F1000000000000000000000C /* NativeCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCapture.swift; sourceTree = "<group>"; };
 		F1000000000000000000000D /* NativeHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHaptics.swift; sourceTree = "<group>"; };
+		D1C7A7E000000000000000A2 /* NativeDictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDictation.swift; sourceTree = "<group>"; };
 		F10000000000000000000061 /* NativeTimerSounds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTimerSounds.swift; sourceTree = "<group>"; };
 		F1000000000000000000000E /* NativeTimerNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTimerNotifications.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -218,6 +220,7 @@
 				F10000000000000000000006 /* SecureSessionKeychain.swift */,
 				F1000000000000000000000C /* NativeCapture.swift */,
 				F1000000000000000000000D /* NativeHaptics.swift */,
+				D1C7A7E000000000000000A2 /* NativeDictation.swift */,
 				F1000000000000000000000E /* NativeTimerNotifications.swift */,
 				F10000000000000000000061 /* NativeTimerSounds.swift */,
 				F10000000000000000000020 /* NativeHealthKit.swift */,
@@ -435,6 +438,7 @@
 				F10000000000000000000003 /* SecureSessionKeychain.swift in Sources */,
 				F10000000000000000000008 /* NativeCapture.swift in Sources */,
 				F10000000000000000000009 /* NativeHaptics.swift in Sources */,
+				D1C7A7E000000000000000A1 /* NativeDictation.swift in Sources */,
 				F1000000000000000000000A /* NativeTimerNotifications.swift in Sources */,
 				F10000000000000000000060 /* NativeTimerSounds.swift in Sources */,
 				F10000000000000000000010 /* NativeHealthKit.swift in Sources */,
