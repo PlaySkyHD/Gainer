@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/exercise_picker_sheet.dart';
@@ -13,7 +14,7 @@ void main() {
   for (final brightness in [Brightness.light, Brightness.dark]) {
     final name = brightness.name;
 
-    testWidgets('Planliste mit Rotationsvorschlag $name', (tester) async {
+    testWidgets('Planliste mit Heute-Karte $name', (tester) async {
       usePhoneSize(tester);
       final harness = await tester.runAsync(TrainingHarness.create);
       if (harness == null) throw StateError('Harness nicht erstellt.');
@@ -42,15 +43,15 @@ void main() {
           name: 'Beine',
           entries: [planEntry(harness, exerciseId: squat.id)],
         );
-        await harness.repository.saveRotation([
-          push.planId,
-          pull.planId,
-          legs.planId,
-        ]);
-        await seedFinishedFromPlan(
-          harness,
-          push,
-          DateTime.utc(2026, 10, 14, 18),
+        await harness.repository.schedule.saveRhythm(
+          mode: TrainingScheduleMode.cycle,
+          slots: [
+            TrainingScheduleSlot(planId: push.planId),
+            TrainingScheduleSlot(planId: pull.planId),
+            TrainingScheduleSlot(planId: legs.planId),
+            const TrainingScheduleSlot.rest(),
+          ],
+          todaySlotIndex: 1,
         );
       });
       await tester.pumpWidget(

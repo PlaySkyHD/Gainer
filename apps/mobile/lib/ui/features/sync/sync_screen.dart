@@ -725,7 +725,7 @@ class _SyncScreenState extends State<SyncScreen> {
   String _aggregateLabel(String type) => switch (type) {
     'workout' => 'Training',
     'training-plan' => 'Plan',
-    'workout-rotation' => 'Rotation',
+    'training-schedule' => 'Rhythmus',
     'custom-exercise' => 'Übung',
     'exercise-category' => 'Kategorie',
     'daily-check-in' => 'Check-in',

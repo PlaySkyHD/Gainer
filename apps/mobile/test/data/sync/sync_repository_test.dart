@@ -816,14 +816,21 @@ void main() {
     );
   });
 
-  test('pulls a rotation snapshot', () async {
+  test('pulls a training schedule snapshot', () async {
     await pullTrainingSnapshot(
-      resourceType: 'WorkoutRotation',
+      resourceType: 'TrainingSchedule',
       resourceId: '99999999-9999-4999-8999-999999999999',
-      aggregateType: 'workout-rotation',
+      aggregateType: 'training-schedule',
       snapshot: {
-        'rotationId': '99999999-9999-4999-8999-999999999999',
-        'planIds': <Object?>[],
+        'scheduleId': '99999999-9999-4999-8999-999999999999',
+        'mode': 'weekly',
+        'anchorDate': null,
+        'validFrom': '2026-10-17',
+        'slots': [
+          for (var i = 0; i < 7; i++) {'planId': null},
+        ],
+        'shifts': <Object?>[],
+        'exceptions': <Object?>[],
         'updatedAtUtc': '2026-10-17T08:00:00Z',
       },
     );
