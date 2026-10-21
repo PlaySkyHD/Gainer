@@ -551,3 +551,9 @@ abstract interface class CardioHealthPlatform {
   Future<void> requestWriteAuthorization();
   Future<WorkoutExportReceipt> exportCardioSession(CardioHealthExport export);
 }
+
+/// Anmelde-Sheet des Systems für OAuth (z. B. Strava).
+abstract interface class WebAuthenticationPlatform {
+  /// Rückleitung auf [callbackScheme]; null, wenn der Nutzer abbricht.
+  Future<Uri?> authenticate(Uri url, {required String callbackScheme});
+}

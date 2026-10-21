@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Text.Json;
 using Gainer.Core.Security;
 using Gainer.Core.BodyTracking;
+using Gainer.Core.Integrations;
 using Gainer.Core.Nutrition;
 using Gainer.Core.Training;
 using Gainer.Core.Sync;
@@ -63,6 +64,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 
     public DbSet<CardioSession> CardioSessions => Set<CardioSession>();
 
+    public DbSet<StravaConnection> StravaConnections => Set<StravaConnection>();
+
+    public DbSet<StravaExport> StravaExports => Set<StravaExport>();
+
     public DbSet<WorkoutExercise> WorkoutExercises => Set<WorkoutExercise>();
 
     public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
@@ -90,8 +95,52 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         ConfigureNutrition(builder);
         ConfigureTraining(builder);
         ConfigureSync(builder);
+        ConfigureIntegrations(builder);
         ApplyStorageConventions(builder.Model);
         ApplyUserQueryFilters(builder);
+    }
+
+    private static void ConfigureIntegrations(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<StravaConnection>(connection =>
+        {
+            connection.ToTable("strava_connections", DatabaseSchemas.Integrations, table =>
+                table.HasCheckConstraint("CK_strava_connections_athlete", "\"AthleteId\" > 0"));
+            connection.HasKey(item => item.UserId);
+            connection.Property(item => item.UserId).ValueGeneratedNever();
+            connection.Property(item => item.AthleteName).HasMaxLength(200);
+            connection.Property(item => item.Scope).HasMaxLength(200).IsRequired();
+            connection.Property(item => item.ProtectedAccessToken).HasMaxLength(4_000).IsRequired();
+            connection.Property(item => item.ProtectedRefreshToken).HasMaxLength(4_000).IsRequired();
+            connection.HasOne<AppUser>()
+                .WithOne()
+                .HasForeignKey<StravaConnection>(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<StravaExport>(export =>
+        {
+            export.ToTable("strava_exports", DatabaseSchemas.Integrations, table =>
+            {
+                table.HasCheckConstraint("CK_strava_exports_kind", "\"Kind\" IN ('Cardio', 'Strength')");
+                table.HasCheckConstraint(
+                    "CK_strava_exports_status",
+                    "\"Status\" IN ('Pending', 'Processing', 'Completed', 'Failed')");
+                table.HasCheckConstraint("CK_strava_exports_attempts", "\"Attempts\" >= 0");
+            });
+            export.HasKey(item => item.Id);
+            export.Property(item => item.Id).ValueGeneratedNever();
+            export.Property(item => item.UserId).ValueGeneratedNever();
+            export.Property(item => item.Kind).HasConversion<string>().HasMaxLength(16);
+            export.Property(item => item.Status).HasConversion<string>().HasMaxLength(16);
+            export.Property(item => item.LastErrorCode).HasMaxLength(64);
+            export.HasIndex(item => new { item.UserId, item.Kind, item.ResourceId, item.AthleteId }).IsUnique();
+            export.HasIndex(item => new { item.UserId, item.Status, item.NextAttemptAtUtc });
+            export.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     private static void ConfigureSync(ModelBuilder modelBuilder)
