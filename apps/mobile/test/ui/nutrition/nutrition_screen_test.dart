@@ -1128,7 +1128,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
     await tester.pump();
-    expect(find.text('Fertig'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.stop_fill), findsOneWidget);
     expect(find.textContaining('Ich höre zu.'), findsOneWidget);
 
     dictation.transcript = 'Zwei Eier und ein Toast';
@@ -1138,7 +1138,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
     await tester.pump(const Duration(milliseconds: 200));
     expect(dictation.stopped, isTrue);
-    expect(find.text('Diktieren'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.mic_fill), findsOneWidget);
     expect(find.text('Zwei Eier und ein Toast'), findsOneWidget);
   });
 
