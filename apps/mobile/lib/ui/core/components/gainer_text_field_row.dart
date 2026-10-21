@@ -17,6 +17,7 @@ class GainerTextFieldRow extends StatelessWidget {
     this.errorText,
     this.textAlign = TextAlign.right,
     this.fieldKey,
+    this.maxLines = 1,
     super.key,
   });
 
@@ -33,12 +34,17 @@ class GainerTextFieldRow extends StatelessWidget {
   /// Schlüssel des Eingabefelds, damit Tests es direkt finden.
   final Key? fieldKey;
 
+  /// Mehr als eine Zeile stapelt die Beschriftung über ein wachsendes Feld,
+  /// z. B. für diktierte Beschreibungen.
+  final int maxLines;
+
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
     final error = errorText;
     // Bei sehr großer Schrift steht die Beschriftung über der Eingabe.
-    final stacked = MediaQuery.textScalerOf(context).scale(1) > 1.5;
+    final stacked =
+        maxLines > 1 || MediaQuery.textScalerOf(context).scale(1) > 1.5;
     final labelText = Text(
       label,
       style: GainerTypography.body.copyWith(color: colors.primaryText),
@@ -47,7 +53,10 @@ class GainerTextFieldRow extends StatelessWidget {
       key: fieldKey,
       controller: controller,
       placeholder: placeholder,
-      keyboardType: keyboardType,
+      keyboardType:
+          keyboardType ?? (maxLines > 1 ? TextInputType.multiline : null),
+      minLines: 1,
+      maxLines: maxLines,
       inputFormatters: inputFormatters,
       onChanged: onChanged,
       textAlign: stacked ? TextAlign.start : textAlign,
