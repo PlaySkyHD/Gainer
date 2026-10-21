@@ -26,6 +26,19 @@ void main() {
     },
   );
 
+  test('a photo without a nutrition table explains how to retake it', () {
+    final failure = mapNutritionApiException(
+      const ApiException(
+        statusCode: 422,
+        code: 'no_nutrition_label',
+        message: 'No nutrition table was found in the photo.',
+      ),
+      operation: 'Etikettenanalyse',
+    );
+
+    expect(failure.toString(), contains('keine Nährwerttabelle erkannt'));
+  });
+
   test('barcode not found gives a manual-entry path', () {
     final failure = mapNutritionApiException(
       const ApiException(
