@@ -395,6 +395,13 @@ class NutritionViewModel extends ChangeNotifier {
     }, saving: true);
   }
 
+  /// Verwirft einen offenen Vorschlag ohne Statusmeldung, z. B. beim Schließen.
+  void clearEstimateDraft() {
+    if (mealEstimateDraft == null) return;
+    mealEstimateDraft = null;
+    _notify();
+  }
+
   void discardEstimate() {
     mealEstimateDraft = null;
     statusMessage = 'Schätzung verworfen; es wurde nichts gespeichert.';

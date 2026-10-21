@@ -339,7 +339,15 @@ class _NutritionScreenState extends State<NutritionScreen> {
           ),
         ),
       ),
-    );
+    ).whenComplete(_resetEstimate);
+  }
+
+  /// Beim Schließen des Sheets beginnt die nächste Schätzung leer.
+  void _resetEstimate() {
+    if (!mounted) return;
+    _dictation?.cancel();
+    _estimateText.clear();
+    widget.viewModel.clearEstimateDraft();
   }
 
   Widget _entryHeader(
@@ -471,11 +479,22 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _NutritionEntryMode.barcode => _barcodeTools(vm, submit),
       _NutritionEntryMode.estimate => _estimateTools(vm),
       _NutritionEntryMode.label => [
+        GainerGroupedSection(
+          footer: 'Du prüfst alle Werte, bevor etwas gespeichert wird.',
+          children: [
+            GainerListRow(
+              leadingIcon: CupertinoIcons.doc_text_viewfinder,
+              title: 'Nährwerttabelle fotografieren',
+              subtitle: 'Gerade und gut lesbar, mit Kalorien und Makros.',
+            ),
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.m),
         GainerPillButton(
-          label: 'Nährwertetikett erfassen',
-          icon: CupertinoIcons.doc_text_viewfinder,
-          variant: GainerPillVariant.tonal,
+          label: 'Etikett fotografieren',
+          icon: CupertinoIcons.camera,
           expand: true,
+          isLoading: vm.isOnlineOperation,
           onPressed: vm.isOnlineOperation ? null : _scanLabel,
         ),
       ],
@@ -591,45 +610,28 @@ class _NutritionScreenState extends State<NutritionScreen> {
     _withDictation(
       (dictation) => GainerGroupedSection(
         footer: switch (dictation) {
-          MealDictationController(isListening: true) => 'Ich höre zu. Nenne Lebensmittel und Mengen und tippe dann „Fertig“.',
+          MealDictationController(isListening: true) => 'Ich höre zu. Nenne Lebensmittel und Mengen und tippe dann auf Stopp.',
           MealDictationController(:final message?) => message,
           _ => 'Vorschläge werden erst nach deiner Bestätigung gespeichert.',
         },
         children: [
-          GainerTextFieldRow(
-            label: 'Beschreibung',
-            placeholder: 'z. B. Haferflocken mit Banane',
+          _MealDescriptionInput(
             controller: _estimateText,
-            maxLines: 5,
+            dictation: dictation,
+            dictationEnabled: !vm.isOnlineOperation,
+            onPhoto: vm.isOnlineOperation ? null : _captureMealEstimate,
           ),
         ],
       ),
     ),
-    if (_dictation != null) ...[
-      const SizedBox(height: GainerSpacing.m),
-      _withDictation(
-        (dictation) => GainerPillButton(
-          key: const ValueKey('nutrition-dictation'),
-          label: dictation!.isListening ? 'Fertig' : 'Diktieren',
-          icon: dictation.isListening
-              ? CupertinoIcons.stop_fill
-              : CupertinoIcons.mic,
-          variant: GainerPillVariant.tonal,
-          expand: true,
-          onPressed: dictation.isStarting || vm.isOnlineOperation
-              ? null
-              : dictation.toggle,
-        ),
-      ),
-    ],
     const SizedBox(height: GainerSpacing.m),
     ValueListenableBuilder<TextEditingValue>(
       valueListenable: _estimateText,
       builder: (context, value, _) => GainerPillButton(
         label: 'Mahlzeit schätzen',
         icon: CupertinoIcons.sparkles,
-        variant: GainerPillVariant.tonal,
         expand: true,
+        isLoading: vm.isOnlineOperation,
         onPressed: vm.isOnlineOperation || value.text.trim().isEmpty
             ? null
             : () async {
@@ -637,14 +639,6 @@ class _NutritionScreenState extends State<NutritionScreen> {
                 await vm.estimateMeal(_estimateText.text);
               },
       ),
-    ),
-    const SizedBox(height: GainerSpacing.xs),
-    GainerPillButton(
-      label: 'Foto aufnehmen',
-      icon: CupertinoIcons.camera,
-      variant: GainerPillVariant.tonal,
-      expand: true,
-      onPressed: vm.isOnlineOperation ? null : _captureMealEstimate,
     ),
     if (vm.mealEstimateDraft case final estimate?) ...[
       const SizedBox(height: GainerSpacing.l),
@@ -1766,21 +1760,23 @@ class _NutritionScreenState extends State<NutritionScreen> {
     final recipeName = TextEditingController();
     final target = _LabelTargetDraft();
     try {
-      final accepted = await Navigator.of(context).push<String>(
-        CupertinoPageRoute<String>(
-          builder: (context) => StatefulBuilder(
-            builder: (context, setDialogState) => _labelDraftPage(
-              context,
-              setDialogState,
-              draft,
-              name: name,
-              amount: amount,
-              recipeName: recipeName,
-              target: target,
+      // Über dem Hinzufügen-Sheet, das auf dem Root-Navigator liegt.
+      final accepted = await Navigator.of(context, rootNavigator: true)
+          .push<String>(
+            CupertinoPageRoute<String>(
+              builder: (context) => StatefulBuilder(
+                builder: (context, setDialogState) => _labelDraftPage(
+                  context,
+                  setDialogState,
+                  draft,
+                  name: name,
+                  amount: amount,
+                  recipeName: recipeName,
+                  target: target,
+                ),
+              ),
             ),
-          ),
-        ),
-      );
+          );
       if (accepted == 'diary' && mounted) {
         await widget.viewModel.confirmLabelDraft(
           productName: name.text,
@@ -3046,4 +3042,124 @@ String _targetPart(
   return _grams(
     mode == NutritionTargetInputMode.percent ? (percent ?? 0) : grams,
   );
+}
+
+/// Beschreibung der Mahlzeit mit Foto- und Diktat-Button im selben Feld.
+class _MealDescriptionInput extends StatelessWidget {
+  const _MealDescriptionInput({
+    required this.controller,
+    required this.dictation,
+    required this.dictationEnabled,
+    required this.onPhoto,
+  });
+
+  final TextEditingController controller;
+  final MealDictationController? dictation;
+  final bool dictationEnabled;
+  final VoidCallback? onPhoto;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final dictation = this.dictation;
+    final listening = dictation?.isListening ?? false;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        GainerSpacing.m,
+        GainerSpacing.xs,
+        GainerSpacing.xs,
+        GainerSpacing.xs,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CupertinoTextField.borderless(
+            key: const ValueKey('nutrition-estimate-text'),
+            controller: controller,
+            placeholder: 'Was hast du gegessen? z. B. Haferflocken mit Banane',
+            minLines: 3,
+            maxLines: 8,
+            keyboardType: TextInputType.multiline,
+            padding: const EdgeInsets.only(
+              top: GainerSpacing.xs,
+              right: GainerSpacing.xs,
+            ),
+            style: GainerTypography.body.copyWith(color: colors.primaryText),
+            placeholderStyle: GainerTypography.body.copyWith(
+              color: colors.placeholderText,
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              _RoundIconButton(
+                key: const ValueKey('nutrition-estimate-photo'),
+                icon: CupertinoIcons.camera,
+                semanticLabel: 'Foto aufnehmen',
+                onPressed: onPhoto,
+              ),
+              if (dictation != null) ...[
+                const SizedBox(width: GainerSpacing.xs),
+                _RoundIconButton(
+                  key: const ValueKey('nutrition-dictation'),
+                  icon: listening
+                      ? CupertinoIcons.stop_fill
+                      : CupertinoIcons.mic_fill,
+                  semanticLabel: listening ? 'Diktat beenden' : 'Diktieren',
+                  prominent: listening,
+                  onPressed: dictation.isStarting || !dictationEnabled
+                      ? null
+                      : dictation.toggle,
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({
+    required this.icon,
+    required this.semanticLabel,
+    required this.onPressed,
+    this.prominent = false,
+    super.key,
+  });
+
+  final IconData icon;
+  final String semanticLabel;
+  final VoidCallback? onPressed;
+
+  /// Gefüllt in Akzentfarbe, z. B. während einer laufenden Aufnahme.
+  final bool prominent;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final enabled = onPressed != null;
+    final background = prominent
+        ? colors.accent
+        : colors.accent.withValues(alpha: 0.14);
+    final foreground = !enabled
+        ? colors.placeholderText
+        : prominent
+        ? colors.onAccent
+        : colors.accent;
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: CupertinoButton(
+        minimumSize: const Size.square(GainerRadii.iconButtonDiameter),
+        padding: EdgeInsets.zero,
+        borderRadius: GainerRadii.pill,
+        color: background,
+        disabledColor: colors.accent.withValues(alpha: 0.06),
+        onPressed: onPressed,
+        child: ExcludeSemantics(child: Icon(icon, size: 20, color: foreground)),
+      ),
+    );
+  }
 }

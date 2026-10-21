@@ -1054,6 +1054,7 @@ void main() {
     await _pumpDiary(
       tester,
       [],
+      inTab: true,
       capture: _FakeCapture(),
       online: _LabelOnline(
         NutritionLabelScanDraft(
@@ -1099,7 +1100,7 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('nutrition-mode-label')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Nährwertetikett erfassen'));
+    await tester.tap(find.text('Etikett fotografieren'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Fortfahren'));
     await tester.pumpAndSettle();
@@ -1114,6 +1115,11 @@ void main() {
     expect(find.text('nicht erkannt'), findsOneWidget);
     expect(find.text('unplausibel'), findsOneWidget);
     expect(find.textContaining('30 g pro Portion'), findsOneWidget);
+    // Die Prüfseite liegt über dem Hinzufügen-Sheet und ist bedienbar.
+    expect(
+      find.byKey(const ValueKey('nutrition-label-close')).hitTestable(),
+      findsOneWidget,
+    );
   });
 
   testWidgets('dictation writes into the meal description and stops', (
@@ -1128,7 +1134,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
     await tester.pump();
-    expect(find.text('Fertig'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.stop_fill), findsOneWidget);
     expect(find.textContaining('Ich höre zu.'), findsOneWidget);
 
     dictation.transcript = 'Zwei Eier und ein Toast';
@@ -1138,8 +1144,40 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
     await tester.pump(const Duration(milliseconds: 200));
     expect(dictation.stopped, isTrue);
-    expect(find.text('Diktieren'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.mic_fill), findsOneWidget);
     expect(find.text('Zwei Eier und ein Toast'), findsOneWidget);
+  });
+
+  testWidgets('closing the sheet clears the description and stops dictation', (
+    tester,
+  ) async {
+    final dictation = _FakeDictation();
+    await _pumpDiary(tester, [], dictation: dictation);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-estimate-text')),
+      'Pizza',
+    );
+    await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
+    await tester.pump();
+    expect(dictation.status, DictationStatus.listening);
+
+    Navigator.of(
+      tester.element(find.byKey(const ValueKey('nutrition-estimate-text'))),
+    ).pop();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+    expect(dictation.status, DictationStatus.idle);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    expect(find.text('Pizza'), findsNothing);
   });
 
   testWidgets('dictation is hidden without a platform', (tester) async {
@@ -1229,6 +1267,7 @@ Future<_DiaryHarness> _pumpDiary(
   CapturePlatform? capture,
   NutritionOnlineProvider? online,
   DictationPlatform? dictation,
+  bool inTab = false,
 }) async {
   _usePhoneViewport(tester);
   final database = LocalDatabase(NativeDatabase.memory());
@@ -1269,7 +1308,14 @@ Future<_DiaryHarness> _pumpDiary(
     dictation: dictation,
   );
   await tester.pumpWidget(
-    CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
+    CupertinoApp(
+      // Wie in der App: eigener Navigator je Tab, Sheets auf dem Root-Navigator.
+      home: inTab
+          ? CupertinoTabView(
+              builder: (_) => NutritionScreen(viewModel: viewModel),
+            )
+          : NutritionScreen(viewModel: viewModel),
+    ),
   );
   await tester.pumpAndSettle();
   return _DiaryHarness(viewModel: viewModel, entryIds: entryIds, store: store);
