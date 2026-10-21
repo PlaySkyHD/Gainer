@@ -6,6 +6,7 @@ using Gainer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -301,6 +302,160 @@ public sealed class StravaExportTests
             .CompleteAuthorizationAsync(state, "code", scope, null, "https://gainer.example/cb");
     }
 
+    [TestMethod]
+    public async Task WorkerRunsEachConnectedUserInTheirOwnScope()
+    {
+        (string db, Guid first, Guid second) = await CreateDatabaseAsync();
+        await ConnectAsync(db, first);
+        await ConnectAsync(db, second);
+        Guid firstSession = await AddCardioAsync(db, first, Connected.AddDays(1));
+        Guid secondSession = await AddCardioAsync(db, second, Connected.AddDays(2));
+        strava.Upload = _ => new StravaUploadState(1, 2, null, null);
+
+        var services = new ServiceCollection();
+        services.AddScoped<BackgroundUserScope>();
+        services.AddScoped<IUserContext>(provider => new ScopedUserContext(provider.GetRequiredService<BackgroundUserScope>()));
+        services.AddScoped(provider => Fixture.CreateContext(db, provider.GetRequiredService<IUserContext>()));
+        services.AddScoped(provider => new StravaExportProcessor(
+            provider.GetRequiredService<AppDbContext>(), strava, Vault(), Settings(), time, NullLogger<StravaExportProcessor>.Instance));
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        var worker = new StravaExportWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            new StravaExportSignal(),
+            Settings(),
+            time,
+            NullLogger<StravaExportWorker>.Instance);
+
+        await worker.RunOnceAsync(CancellationToken.None);
+
+        CollectionAssert.AreEquivalent(
+            new[] { $"gainer-cardio-{firstSession:N}", $"gainer-cardio-{secondSession:N}" },
+            strava.Uploads.Select(upload => upload.ExternalId).ToArray());
+    }
+
+    [TestMethod]
+    public async Task UnconfiguredWorkerStopsImmediately()
+    {
+        var worker = new StravaExportWorker(
+            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+            new StravaExportSignal(),
+            Options.Create(new StravaOptions()),
+            time,
+            NullLogger<StravaExportWorker>.Instance);
+
+        await worker.StartAsync(CancellationToken.None);
+        await worker.ExecuteTask!;
+        await worker.StopAsync(CancellationToken.None);
+    }
+
+    [TestMethod]
+    public async Task RateLimitPausesTheUserAndRejectionFails()
+    {
+        (string db, Guid user, Guid _) = await CreateDatabaseAsync();
+        await ConnectAsync(db, user);
+        await AddCardioAsync(db, user, Connected.AddDays(1));
+        strava.Upload = _ => throw new StravaApiException(StravaFailure.RateLimited, "429", 429);
+
+        await RunAsync(db, user);
+
+        await using (AppDbContext context = Fixture.CreateContext(db, user))
+        {
+            Assert.IsGreaterThan(time.Now, (await context.StravaConnections.SingleAsync()).PausedUntilUtc!.Value);
+        }
+        await RunAsync(db, user);
+        Assert.HasCount(1, strava.Uploads, "A paused user is skipped.");
+
+        time.Advance(TimeSpan.FromMinutes(20));
+        strava.Upload = _ => throw new StravaApiException(StravaFailure.Rejected, "400", 400);
+        await RunAsync(db, user);
+        StravaExport export = await SingleExportAsync(db, user);
+        Assert.AreEqual(StravaExportStatus.Failed, export.Status);
+        Assert.AreEqual("strava_rejected", export.LastErrorCode);
+    }
+
+    [TestMethod]
+    public async Task UploadErrorsAndEndlessProcessingFail()
+    {
+        (string db, Guid user, Guid _) = await CreateDatabaseAsync();
+        await ConnectAsync(db, user);
+        await AddCardioAsync(db, user, Connected.AddDays(1));
+        strava.Upload = _ => new StravaUploadState(3, null, null, null);
+        await RunAsync(db, user);
+
+        for (int check = 0; check <= StravaExportProcessor.MaximumProcessingChecks; check++)
+        {
+            time.Advance(TimeSpan.FromSeconds(10));
+            await RunAsync(db, user);
+        }
+        StravaExport timedOut = await SingleExportAsync(db, user);
+        Assert.AreEqual(StravaExportStatus.Failed, timedOut.Status);
+        Assert.AreEqual("strava_processing_timeout", timedOut.LastErrorCode);
+
+        (string db2, Guid user2, Guid _) = await CreateDatabaseAsync();
+        await ConnectAsync(db2, user2);
+        await AddCardioAsync(db2, user2, Connected.AddDays(1));
+        strava.Upload = _ => new StravaUploadState(4, null, "Improperly formatted data.", null);
+        await RunAsync(db2, user2);
+        Assert.AreEqual("strava_upload_error", (await SingleExportAsync(db2, user2)).LastErrorCode);
+    }
+
+    [TestMethod]
+    public async Task DeletedRecordsAreDroppedAndStrengthTypeIsRetried()
+    {
+        (string db, Guid user, Guid _) = await CreateDatabaseAsync();
+        await ConnectAsync(db, user);
+        Guid workout = await AddWorkoutAsync(db, user, Connected.AddDays(1));
+        Guid cardio = await AddCardioAsync(db, user, Connected.AddDays(-5));
+        await using (AppDbContext context = Fixture.CreateContext(db, user))
+        {
+            StravaIntegrationService service = Service(context, user);
+            await service.RequestExportAsync(StravaExportKind.Strength, workout);
+            await service.RequestExportAsync(StravaExportKind.Cardio, cardio);
+            context.CardioSessions.Remove(await context.CardioSessions.SingleAsync());
+            await context.SaveChangesAsync();
+        }
+        strava.Upload = _ => new StravaUploadState(1, 300, null, null);
+        strava.SportTypeFailure = new StravaApiException(StravaFailure.Transient, "503", 503);
+
+        await RunAsync(db, user);
+
+        StravaExport pending = await SingleExportAsync(db, user);
+        Assert.AreEqual(StravaExportKind.Strength, pending.Kind, "The deleted cardio entry is gone.");
+        Assert.AreEqual(StravaExportStatus.Processing, pending.Status);
+        Assert.AreEqual(300, pending.ActivityId);
+
+        strava.SportTypeFailure = null;
+        time.Advance(TimeSpan.FromMinutes(2));
+        await RunAsync(db, user);
+        Assert.AreEqual(StravaExportStatus.Completed, (await SingleExportAsync(db, user)).Status);
+        Assert.HasCount(1, strava.Uploads);
+        Assert.AreEqual((300L, "WeightTraining"), strava.SportTypes.Single());
+    }
+
+    [TestMethod]
+    public async Task ServiceRejectsUnfinishedWorkoutsAndUnconfiguredServer()
+    {
+        (string db, Guid user, Guid _) = await CreateDatabaseAsync();
+        await ConnectAsync(db, user);
+        Guid workout = await AddWorkoutAsync(db, user, Connected.AddDays(1));
+        await using AppDbContext context = Fixture.CreateContext(db, user);
+        Workout stored = await context.Workouts.SingleAsync();
+        stored.EndedAtUtc = null;
+        await context.SaveChangesAsync();
+
+        StravaIntegrationException unfinished = await Assert.ThrowsExactlyAsync<StravaIntegrationException>(() =>
+            Service(context, user).RequestExportAsync(StravaExportKind.Strength, workout));
+        Assert.AreEqual(StravaIntegrationException.ResourceNotFinished, unfinished.Code);
+
+        var off = new StravaIntegrationService(
+            context, new FixedUser(user), new BackgroundUserScope(), strava, Vault(), new StravaExportSignal(),
+            dataProtection, usedStates, Options.Create(new StravaOptions()), time, NullLogger<StravaIntegrationService>.Instance);
+        Assert.IsFalse((await off.GetStatusAsync()).Configured);
+        StravaIntegrationException notConfigured = Assert.ThrowsExactly<StravaIntegrationException>(() => off.BeginAuthorization("https://x.test/cb"));
+        Assert.AreEqual(StravaIntegrationException.NotConfigured, notConfigured.Code);
+        Assert.AreEqual(StravaAuthorizationResult.Failed, await off.CompleteAuthorizationAsync("s", "c", "activity:write", null, "https://x.test/cb"));
+    }
+
     private async Task RunAsync(string db, Guid user)
     {
         await using AppDbContext context = Fixture.CreateContext(db, user);
@@ -507,8 +662,11 @@ public sealed class StravaExportTests
         public Task<StravaUploadState> GetUploadAsync(string accessToken, long uploadId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Poll(uploadId));
 
+        public StravaApiException? SportTypeFailure { get; set; }
+
         public Task SetSportTypeAsync(string accessToken, long activityId, string sportType, CancellationToken cancellationToken = default)
         {
+            if (SportTypeFailure is not null) throw SportTypeFailure;
             SportTypes.Add((activityId, sportType));
             return Task.CompletedTask;
         }
