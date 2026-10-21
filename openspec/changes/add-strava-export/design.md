@@ -67,6 +67,6 @@ Eine manuelle Anforderung setzt den Eintrag auf `Pending` und weckt den Worker.
 
 ## D6 Konfiguration
 
-- `Strava:ClientId`, `Strava:ClientSecretFile` (Compose-Secret `strava_client_secret`), `Strava:CallbackUrl`.
+- `Strava:ClientId`, `Strava:ClientSecret` (oder `Strava:ClientSecretFile`), `Strava:CallbackUrl`. Compose liest sie aus `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET` und `STRAVA_CALLBACK_URL` in `/etc/gainer/deployment.env`.
 - `Strava:ApiBaseUrl` ist einstellbar, weil Strava die API ab Januar 2027 unter `https://api-v3.strava.com/` anbietet.
-- Eine leere Secret-Datei schaltet die Funktion ab. Der Worker bleibt dann untätig und die App erklärt den Grund.
+- Fehlen Client-Id oder Secret, ist die Funktion aus. Der Worker bleibt dann untätig und die App erklärt den Grund.
