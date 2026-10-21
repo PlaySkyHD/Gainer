@@ -213,6 +213,26 @@ class NutritionRepository {
     );
   }
 
+  /// Alle lokalen Tage von [from] bis [to] (einschließlich) in einem
+  /// Durchlauf, dazu die Zielphasen. Für den Kalender; braucht keine
+  /// Verbindung. Tage ohne Eintrag fehlen.
+  Future<({List<NutritionDay> days, NutritionTargetSchedule? targets})>
+  readDays(String from, String to) async {
+    if (!isValidLocalDate(from) || !isValidLocalDate(to)) {
+      throw const NutritionValidationException({
+        'localDate': 'Ungültiger Kalendertag.',
+      });
+    }
+    final rows = await store.readAggregates(_nutritionDayType);
+    final days = <NutritionDay>[
+      for (final row in rows)
+        if (_map(row.workingCopy)['localDate'] case final String date
+            when date.compareTo(from) >= 0 && date.compareTo(to) <= 0)
+          NutritionDay.fromJson(_map(row.workingCopy)),
+    ];
+    return (days: days, targets: await _readTargetSchedule());
+  }
+
   /// Durchschnitte der letzten 7 und 30 Tage aus den lokalen Tagen (offline).
   Future<NutritionAveragesOverview> readAverages(String today) async {
     if (!isValidLocalDate(today)) {
