@@ -1434,6 +1434,156 @@
         }
       }
     },
+    "/api/v1/nutrition/label-scans": {
+      "post": {
+        "tags": [
+          "Nutrition"
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ContentType": {
+                    "type": "string"
+                  },
+                  "ContentDisposition": {
+                    "type": "string"
+                  },
+                  "Headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "Length": {
+                    "pattern": "^-?(?:0|[1-9]\\d*)$",
+                    "type": [
+                      "integer",
+                      "string"
+                    ],
+                    "format": "int64"
+                  },
+                  "Name": {
+                    "type": "string"
+                  },
+                  "FileName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/NutritionLabelScanResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NutritionLabelScanResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NutritionLabelScanResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/passkeys": {
       "get": {
         "tags": [
@@ -4109,6 +4259,102 @@
           },
           "fatGrams": {
             "$ref": "#/components/schemas/MetricAverageResponse"
+          }
+        }
+      },
+      "NutritionLabelFieldResponse": {
+        "required": [
+          "originalValue",
+          "per100Grams",
+          "status",
+          "evidence"
+        ],
+        "type": "object",
+        "properties": {
+          "originalValue": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "per100Grams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "status": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "NutritionLabelScanResponse": {
+        "required": [
+          "basis",
+          "servingMassGrams",
+          "kilocalories",
+          "proteinGrams",
+          "carbohydrateGrams",
+          "fatGrams",
+          "canConfirm",
+          "provider",
+          "providerModelVersion",
+          "parserVersion",
+          "scannedAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "basis": {
+            "type": "string"
+          },
+          "servingMassGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "kilocalories": {
+            "$ref": "#/components/schemas/NutritionLabelFieldResponse"
+          },
+          "proteinGrams": {
+            "$ref": "#/components/schemas/NutritionLabelFieldResponse"
+          },
+          "carbohydrateGrams": {
+            "$ref": "#/components/schemas/NutritionLabelFieldResponse"
+          },
+          "fatGrams": {
+            "$ref": "#/components/schemas/NutritionLabelFieldResponse"
+          },
+          "canConfirm": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "providerModelVersion": {
+            "type": "string"
+          },
+          "parserVersion": {
+            "type": "string"
+          },
+          "scannedAtUtc": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

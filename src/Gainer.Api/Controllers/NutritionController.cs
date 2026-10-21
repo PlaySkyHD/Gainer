@@ -13,7 +13,8 @@ namespace Gainer.Api.Controllers;
 public sealed class NutritionController(
     INutritionQueries queries,
     ISmartNutritionQueries smartQueries,
-    IMealEstimator mealEstimator) : ControllerBase
+    IMealEstimator mealEstimator,
+    INutritionLabelScanner labelScanner) : ControllerBase
 {
     // The app scales meal photos to fit 8 MiB; the whole multipart request is bounded by the same size.
     private const int MealEstimateRequestBytes = 8 * 1024 * 1024;
@@ -122,19 +123,8 @@ public sealed class NutritionController(
         byte[]? uploadedBytes = null;
         try
         {
-            if (Request.HasFormContentType && (await Request.ReadFormAsync(cancellationToken)).Files.Count > 1)
-                throw new MealEstimationException("too_many_images", "Exactly one image may be uploaded.");
-            MealImageInput? imageInput = null;
-            if (image is not null)
-            {
-                if (image.Length is <= 0 or > 8 * 1024 * 1024)
-                    throw new MealEstimationException("invalid_image_size", "The image is empty or too large.");
-                await using var stream = new MemoryStream(capacity: checked((int)image.Length));
-                await image.CopyToAsync(stream, cancellationToken);
-                uploadedBytes = stream.ToArray();
-                imageInput = new MealImageInput(uploadedBytes, image.ContentType);
-            }
-
+            MealImageInput? imageInput = await ReadImageAsync(image, cancellationToken);
+            uploadedBytes = imageInput?.Bytes;
             MealEstimateDraft draft = await mealEstimator.EstimateAsync(
                 MealEstimationInput.Create(text, imageInput, imageConsent), cancellationToken);
             Response.Headers.CacheControl = "no-store, private";
@@ -154,20 +144,87 @@ public sealed class NutritionController(
         }
         catch (MealEstimationException exception)
         {
-            var problem = new ProblemDetails
-            {
-                Status = exception.StatusCode,
-                Title = "Meal estimation failed",
-                Detail = exception.Message,
-            };
-            problem.Extensions["code"] = exception.Code;
-            return StatusCode(exception.StatusCode, problem);
+            return EstimationProblem("Meal estimation failed", exception);
         }
         finally
         {
             if (uploadedBytes is not null) Array.Clear(uploadedBytes);
         }
     }
+
+    [HttpPost("label-scans")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MealEstimateRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MealEstimateRequestBytes)]
+    [ProducesResponseType<NutritionLabelScanResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<NutritionLabelScanResponse>> ScanLabel(
+        [FromForm] IFormFile? image,
+        CancellationToken cancellationToken = default)
+    {
+        byte[]? uploadedBytes = null;
+        try
+        {
+            MealImageInput imageInput = await ReadImageAsync(image, cancellationToken)
+                ?? throw new MealEstimationException("invalid_input", "An image of the nutrition label is required.");
+            uploadedBytes = imageInput.Bytes;
+            NutritionLabelScanDraft draft = await labelScanner.ScanAsync(imageInput, cancellationToken);
+            Response.Headers.CacheControl = "no-store, private";
+            return Ok(new NutritionLabelScanResponse(
+                draft.Basis.ToString(),
+                draft.ServingMassGrams,
+                LabelField(draft.Kilocalories),
+                LabelField(draft.ProteinGrams),
+                LabelField(draft.CarbohydrateGrams),
+                LabelField(draft.FatGrams),
+                draft.CanConfirm,
+                draft.Provider,
+                draft.ProviderModelVersion,
+                draft.ParserVersion,
+                draft.ScannedAtUtc));
+        }
+        catch (MealEstimationException exception)
+        {
+            return EstimationProblem("Nutrition label scan failed", exception);
+        }
+        finally
+        {
+            if (uploadedBytes is not null) Array.Clear(uploadedBytes);
+        }
+    }
+
+    private async Task<MealImageInput?> ReadImageAsync(IFormFile? image, CancellationToken cancellationToken)
+    {
+        if (Request.HasFormContentType && (await Request.ReadFormAsync(cancellationToken)).Files.Count > 1)
+            throw new MealEstimationException("too_many_images", "Exactly one image may be uploaded.");
+        if (image is null) return null;
+        if (image.Length is <= 0 or > 8 * 1024 * 1024)
+            throw new MealEstimationException("invalid_image_size", "The image is empty or too large.");
+        await using var stream = new MemoryStream(capacity: checked((int)image.Length));
+        await image.CopyToAsync(stream, cancellationToken);
+        return new MealImageInput(stream.ToArray(), image.ContentType);
+    }
+
+    private ObjectResult EstimationProblem(string title, MealEstimationException exception)
+    {
+        var problem = new ProblemDetails
+        {
+            Status = exception.StatusCode,
+            Title = title,
+            Detail = exception.Message,
+        };
+        problem.Extensions["code"] = exception.Code;
+        return StatusCode(exception.StatusCode, problem);
+    }
+
+    private static NutritionLabelFieldResponse LabelField(NutritionLabelFieldDraft field) => new(
+        field.OriginalValue,
+        field.Per100Grams,
+        field.Status.ToString(),
+        field.Evidence);
 
     private static NutritionEntryResponse Entry(NutritionEntrySnapshot entry) => new(
         entry.EntryId,
