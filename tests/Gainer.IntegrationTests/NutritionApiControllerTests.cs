@@ -200,6 +200,53 @@ public sealed class NutritionApiControllerTests
         Assert.AreEqual(2, estimator.Calls, "Rejected requests and returned drafts must not create persisted estimate state.");
     }
 
+    [TestMethod]
+    public async Task LabelScanHttpEndpointRequiresAuthenticationAndOneImage()
+    {
+        var scanner = new StubLabelScanner();
+        await using WebApplication app = await CreateApplicationAsync(scanner: scanner);
+        using HttpClient client = app.GetTestClient();
+        client.BaseAddress = new Uri("https://localhost");
+        using var anonymous = new MultipartFormDataContent();
+        anonymous.Add(new ByteArrayContent([1]), "image", "label.jpg");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.SendAsync(LabelScanRequest(anonymous))).StatusCode);
+
+        client.DefaultRequestHeaders.Add("X-Test-User", Guid.NewGuid().ToString());
+        using var missingImage = new MultipartFormDataContent { { new StringContent("x"), "text" } };
+        using HttpResponseMessage missingFailure = await client.SendAsync(LabelScanRequest(missingImage));
+        Assert.AreEqual(HttpStatusCode.BadRequest, missingFailure.StatusCode);
+        Assert.AreEqual("invalid_input", (await missingFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
+
+        using var multipleImages = new MultipartFormDataContent();
+        multipleImages.Add(new ByteArrayContent([1]), "image", "first.jpg");
+        multipleImages.Add(new ByteArrayContent([2]), "otherImage", "second.jpg");
+        using HttpResponseMessage multipleFailure = await client.SendAsync(LabelScanRequest(multipleImages));
+        Assert.AreEqual(HttpStatusCode.BadRequest, multipleFailure.StatusCode);
+        Assert.AreEqual(0, scanner.Calls);
+
+        using var photo = new MultipartFormDataContent();
+        photo.Add(new ByteArrayContent(new byte[3 * 1024 * 1024]), "image", "label.jpg");
+        using HttpResponseMessage success = await client.SendAsync(LabelScanRequest(photo));
+        Assert.AreEqual(HttpStatusCode.OK, success.StatusCode, await success.Content.ReadAsStringAsync());
+        Assert.IsTrue(success.Headers.CacheControl?.NoStore);
+        NutritionLabelScanResponse body = (await success.Content.ReadFromJsonAsync<NutritionLabelScanResponse>())!;
+        Assert.AreEqual("Per100Grams", body.Basis);
+        Assert.AreEqual("Confirmed", body.Kilocalories.Status);
+        Assert.AreEqual(377m, body.Kilocalories.Per100Grams);
+        Assert.IsTrue(body.CanConfirm);
+        Assert.AreEqual(1, scanner.Calls);
+
+        scanner.Failure = new MealEstimationException("no_nutrition_label", "none", 422);
+        using var noLabel = new MultipartFormDataContent();
+        noLabel.Add(new ByteArrayContent([1]), "image", "label.jpg");
+        using HttpResponseMessage noLabelFailure = await client.SendAsync(LabelScanRequest(noLabel));
+        Assert.AreEqual(HttpStatusCode.UnprocessableEntity, noLabelFailure.StatusCode);
+        Assert.AreEqual("no_nutrition_label", (await noLabelFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
+    }
+
+    private static HttpRequestMessage LabelScanRequest(HttpContent content) =>
+        new(HttpMethod.Post, "/api/v1/nutrition/label-scans") { Content = content };
+
     private static HttpRequestMessage MealEstimateRequest(HttpContent content) =>
         new(HttpMethod.Post, "/api/v1/nutrition/meal-estimates") { Content = content };
 
@@ -211,7 +258,9 @@ public sealed class NutritionApiControllerTests
         return controller;
     }
 
-    private static async Task<WebApplication> CreateApplicationAsync(IMealEstimator? estimator = null)
+    private static async Task<WebApplication> CreateApplicationAsync(
+        IMealEstimator? estimator = null,
+        INutritionLabelScanner? scanner = null)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
@@ -226,6 +275,7 @@ public sealed class NutritionApiControllerTests
         builder.Services.AddSingleton<INutritionQueries, RequestUserNutritionQueries>();
         builder.Services.AddSingleton<ISmartNutritionQueries>(StubSmartNutritionQueries.Empty);
         builder.Services.AddSingleton<IMealEstimator>(estimator ?? new StubMealEstimator());
+        builder.Services.AddSingleton<INutritionLabelScanner>(scanner ?? new StubLabelScanner());
         builder.Services.AddSingleton<IExternalFoodCatalog>(new StubCatalog(new FoodCatalogException("unused", "unused", false)));
         WebApplication app = builder.Build();
         app.MapGainerApi();
@@ -237,7 +287,31 @@ public sealed class NutritionApiControllerTests
         INutritionQueries queries,
         ISmartNutritionQueries smart,
         IMealEstimator? estimator = null) => WithHttpContext(new NutritionController(
-            queries, smart, estimator ?? new StubMealEstimator()));
+            queries, smart, estimator ?? new StubMealEstimator(), new StubLabelScanner()));
+
+    private sealed class StubLabelScanner : INutritionLabelScanner
+    {
+        public int Calls { get; private set; }
+        public MealEstimationException? Failure { get; set; }
+
+        public Task<NutritionLabelScanDraft> ScanAsync(MealImageInput image, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            if (Failure is not null) return Task.FromException<NutritionLabelScanDraft>(Failure);
+            return Task.FromResult(NutritionLabelScanDraft.Create(
+                NutritionLabelBasis.Per100Grams,
+                null,
+                new NutritionLabelReading(377m, "377 kcal"),
+                NutritionLabelReading.Empty,
+                new NutritionLabelReading(13m, null),
+                new NutritionLabelReading(60m, null),
+                new NutritionLabelReading(7m, null),
+                "test",
+                "model",
+                "v1",
+                DateTime.SpecifyKind(new DateTime(2026, 8, 19), DateTimeKind.Utc)));
+        }
+    }
 
     private sealed class StubMealEstimator : IMealEstimator
     {
