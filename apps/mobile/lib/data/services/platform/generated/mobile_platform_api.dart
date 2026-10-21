@@ -1341,6 +1341,54 @@ class PlatformPasskeyAssertion {
   }
 }
 
+/// Stand des Diktats. [status] ist `idle`, `listening`, `finished`,
+/// `denied`, `unavailable` oder `failed`.
+class PlatformDictationState {
+  PlatformDictationState({required this.status, required this.transcript});
+
+  String status;
+
+  String transcript;
+
+  List<Object?> _toList() {
+    return <Object?>[status, transcript];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PlatformDictationState decode(Object result) {
+    result as List<Object?>;
+    return PlatformDictationState(
+      status: result[0]! as String,
+      transcript: result[1]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlatformDictationState || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(status, other.status) &&
+        _deepEquals(transcript, other.transcript);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PlatformDictationState(status: $status, transcript: $transcript)';
+  }
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -1402,6 +1450,9 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is PlatformPasskeyAssertion) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
+    } else if (value is PlatformDictationState) {
+      buffer.putUint8(147);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -1450,6 +1501,8 @@ class _PigeonCodec extends StandardMessageCodec {
         return PlatformPasskeyRegistration.decode(readValue(buffer)!);
       case 146:
         return PlatformPasskeyAssertion.decode(readValue(buffer)!);
+      case 147:
+        return PlatformDictationState.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -2534,6 +2587,87 @@ class MobilePlatformApi {
       isNullValid: true,
     );
     return pigeonVar_replyValue as String?;
+  }
+
+  /// Startet das Diktat mit Spracherkennung nur auf dem Gerät. Fragt beim
+  /// ersten Mal Mikrofon und Spracherkennung an.
+  Future<PlatformDictationState> startDictation(String localeId) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.startDictation$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[localeId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as PlatformDictationState;
+  }
+
+  /// Aktueller Text und Zustand des Diktats.
+  Future<PlatformDictationState> readDictation() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readDictation$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as PlatformDictationState;
+  }
+
+  /// Beendet die Aufnahme; der endgültige Text folgt über [readDictation].
+  Future<void> stopDictation() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.stopDictation$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Bricht das Diktat ab und verwirft den Text.
+  Future<void> cancelDictation() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.cancelDictation$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 }
 

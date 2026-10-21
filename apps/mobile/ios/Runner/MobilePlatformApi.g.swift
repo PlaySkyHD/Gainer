@@ -1181,6 +1181,49 @@ struct PlatformPasskeyAssertion: Hashable, CustomStringConvertible {
   }
 }
 
+/// Stand des Diktats. [status] ist `idle`, `listening`, `finished`,
+/// `denied`, `unavailable` oder `failed`.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PlatformDictationState: Hashable, CustomStringConvertible {
+  var status: String
+  var transcript: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PlatformDictationState? {
+    let status = pigeonVar_list[0] as! String
+    let transcript = pigeonVar_list[1] as! String
+
+    return PlatformDictationState(
+      status: status,
+      transcript: transcript
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      status,
+      transcript,
+    ]
+  }
+  static func == (lhs: PlatformDictationState, rhs: PlatformDictationState) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.status, rhs.status) && MobilePlatformApiPigeonInternal.deepEquals(lhs.transcript, rhs.transcript)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PlatformDictationState")
+    MobilePlatformApiPigeonInternal.deepHash(value: status, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: transcript, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PlatformDictationState(status: \(String(describing: status)), transcript: \(String(describing: transcript)))"
+  }
+}
+
 private class MobilePlatformApiPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -1228,6 +1271,8 @@ private class MobilePlatformApiPigeonCodecReader: FlutterStandardReader {
       return PlatformPasskeyRegistration.fromList(self.readValue() as! [Any?])
     case 146:
       return PlatformPasskeyAssertion.fromList(self.readValue() as! [Any?])
+    case 147:
+      return PlatformDictationState.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -1289,6 +1334,9 @@ private class MobilePlatformApiPigeonCodecWriter: FlutterStandardWriter {
       super.writeValue(value.toList())
     } else if let value = value as? PlatformPasskeyAssertion {
       super.writeByte(146)
+      super.writeValue(value.toList())
+    } else if let value = value as? PlatformDictationState {
+      super.writeByte(147)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -1386,6 +1434,15 @@ protocol MobilePlatformApi {
   /// teilt die Anmeldung mit Safari) und liefert die Rückleitung auf
   /// [callbackScheme]. Null, wenn der Nutzer abbricht.
   func authenticateWebSession(url: String, callbackScheme: String) async throws -> String?
+  /// Startet das Diktat mit Spracherkennung nur auf dem Gerät. Fragt beim
+  /// ersten Mal Mikrofon und Spracherkennung an.
+  func startDictation(localeId: String) async throws -> PlatformDictationState
+  /// Aktueller Text und Zustand des Diktats.
+  func readDictation() async throws -> PlatformDictationState
+  /// Beendet die Aufnahme; der endgültige Text folgt über [readDictation].
+  func stopDictation() async throws
+  /// Bricht das Diktat ab und verwirft den Text.
+  func cancelDictation() async throws
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -2227,6 +2284,73 @@ class MobilePlatformApiSetup {
       }
     } else {
       authenticateWebSessionChannel.setMessageHandler(nil)
+    }
+    /// Startet das Diktat mit Spracherkennung nur auf dem Gerät. Fragt beim
+    /// ersten Mal Mikrofon und Spracherkennung an.
+    let startDictationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.startDictation\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startDictationChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let localeIdArg = args[0] as! String
+        Task { @MainActor in
+          do {
+            let result = try await api.startDictation(localeId: localeIdArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      startDictationChannel.setMessageHandler(nil)
+    }
+    /// Aktueller Text und Zustand des Diktats.
+    let readDictationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readDictation\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      readDictationChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            let result = try await api.readDictation()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      readDictationChannel.setMessageHandler(nil)
+    }
+    /// Beendet die Aufnahme; der endgültige Text folgt über [readDictation].
+    let stopDictationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.stopDictation\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      stopDictationChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            try await api.stopDictation()
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      stopDictationChannel.setMessageHandler(nil)
+    }
+    /// Bricht das Diktat ab und verwirft den Text.
+    let cancelDictationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.cancelDictation\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      cancelDictationChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            try await api.cancelDictation()
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      cancelDictationChannel.setMessageHandler(nil)
     }
   }
 }

@@ -5,6 +5,7 @@ import '../../../domain/models/nutrition/nutrition.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'food_add_target.dart';
+import 'meal_dictation_controller.dart';
 import 'nutrition_averages_view.dart';
 import 'nutrition_view_model.dart';
 
@@ -89,15 +90,23 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _fat = TextEditingController();
   final _search = TextEditingController();
   final _estimateText = TextEditingController();
+  MealDictationController? _dictation;
 
   @override
   void initState() {
     super.initState();
     widget.viewModel.load();
+    if (widget.viewModel.dictation case final platform?) {
+      _dictation = MealDictationController(
+        platform: platform,
+        text: _estimateText,
+      );
+    }
   }
 
   @override
   void dispose() {
+    _dictation?.dispose();
     for (final controller in [
       _name,
       _brand,
@@ -566,18 +575,53 @@ class _NutritionScreenState extends State<NutritionScreen> {
     ],
   ];
 
+  /// Baut neu, sobald sich das Diktat ändert; ohne Diktat einmal mit null.
+  Widget _withDictation(
+    Widget Function(MealDictationController? dictation) builder,
+  ) {
+    final dictation = _dictation;
+    if (dictation == null) return builder(null);
+    return ListenableBuilder(
+      listenable: dictation,
+      builder: (context, _) => builder(dictation),
+    );
+  }
+
   List<Widget> _estimateTools(NutritionViewModel vm) => [
-    GainerGroupedSection(
-      footer: 'Vorschläge werden erst nach deiner Bestätigung gespeichert.',
-      children: [
-        GainerTextFieldRow(
-          label: 'Beschreibung',
-          placeholder: 'z. B. Haferflocken mit Banane',
-          controller: _estimateText,
-          textAlign: TextAlign.end,
-        ),
-      ],
+    _withDictation(
+      (dictation) => GainerGroupedSection(
+        footer: switch (dictation) {
+          MealDictationController(isListening: true) => 'Ich höre zu. Nenne Lebensmittel und Mengen und tippe dann „Fertig“.',
+          MealDictationController(:final message?) => message,
+          _ => 'Vorschläge werden erst nach deiner Bestätigung gespeichert.',
+        },
+        children: [
+          GainerTextFieldRow(
+            label: 'Beschreibung',
+            placeholder: 'z. B. Haferflocken mit Banane',
+            controller: _estimateText,
+            maxLines: 5,
+          ),
+        ],
+      ),
     ),
+    if (_dictation != null) ...[
+      const SizedBox(height: GainerSpacing.m),
+      _withDictation(
+        (dictation) => GainerPillButton(
+          key: const ValueKey('nutrition-dictation'),
+          label: dictation!.isListening ? 'Fertig' : 'Diktieren',
+          icon: dictation.isListening
+              ? CupertinoIcons.stop_fill
+              : CupertinoIcons.mic,
+          variant: GainerPillVariant.tonal,
+          expand: true,
+          onPressed: dictation.isStarting || vm.isOnlineOperation
+              ? null
+              : dictation.toggle,
+        ),
+      ),
+    ],
     const SizedBox(height: GainerSpacing.m),
     ValueListenableBuilder<TextEditingValue>(
       valueListenable: _estimateText,
@@ -588,7 +632,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
         expand: true,
         onPressed: vm.isOnlineOperation || value.text.trim().isEmpty
             ? null
-            : () => vm.estimateMeal(_estimateText.text),
+            : () async {
+                await _dictation?.finish();
+                await vm.estimateMeal(_estimateText.text);
+              },
       ),
     ),
     const SizedBox(height: GainerSpacing.xs),

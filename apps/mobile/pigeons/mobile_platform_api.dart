@@ -343,6 +343,15 @@ class PlatformPasskeyAssertion {
   final Uint8List userHandle;
 }
 
+/// Stand des Diktats. [status] ist `idle`, `listening`, `finished`,
+/// `denied`, `unavailable` oder `failed`.
+class PlatformDictationState {
+  PlatformDictationState({required this.status, required this.transcript});
+
+  String status;
+  String transcript;
+}
+
 @HostApi()
 abstract class MobilePlatformApi {
   @async
@@ -555,6 +564,23 @@ abstract class MobilePlatformApi {
   /// [callbackScheme]. Null, wenn der Nutzer abbricht.
   @async
   String? authenticateWebSession(String url, String callbackScheme);
+
+  /// Startet das Diktat mit Spracherkennung nur auf dem Gerät. Fragt beim
+  /// ersten Mal Mikrofon und Spracherkennung an.
+  @async
+  PlatformDictationState startDictation(String localeId);
+
+  /// Aktueller Text und Zustand des Diktats.
+  @async
+  PlatformDictationState readDictation();
+
+  /// Beendet die Aufnahme; der endgültige Text folgt über [readDictation].
+  @async
+  void stopDictation();
+
+  /// Bricht das Diktat ab und verwirft den Text.
+  @async
+  void cancelDictation();
 }
 
 @FlutterApi()

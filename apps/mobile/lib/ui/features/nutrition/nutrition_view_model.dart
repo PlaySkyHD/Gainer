@@ -1,16 +1,24 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/nutrition/nutrition_repository.dart';
+import '../../../data/services/platform/platform_ports.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
 
 class NutritionViewModel extends ChangeNotifier {
-  NutritionViewModel({required this.repository, required this.localDate}) {
+  NutritionViewModel({
+    required this.repository,
+    required this.localDate,
+    this.dictation,
+  }) {
     if (!isValidLocalDate(localDate)) {
       throw ArgumentError.value(localDate, 'localDate');
     }
   }
 
   final NutritionRepository repository;
+
+  /// Diktat für die Mahlzeiten-Schätzung; ohne Plattform kein Diktat-Button.
+  final DictationPlatform? dictation;
   String localDate;
   NutritionMeal selectedMeal = NutritionMeal.breakfast;
   NutritionSnapshot? snapshot;

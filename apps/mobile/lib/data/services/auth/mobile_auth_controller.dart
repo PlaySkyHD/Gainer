@@ -93,6 +93,7 @@ class MobileAuthController extends ChangeNotifier
     HealthPlatform? health,
     ExtensionSnapshotPlatform? snapshots,
     HapticsPlatform? haptics,
+    DictationPlatform? dictation,
     Future<LocalDatabase> Function(String accountId)? accountDatabaseFactory,
     Future<LocalDatabase> Function()? installationDatabaseFactory,
   }) : apiFactory = apiFactory ?? _createDefaultApi,
@@ -105,6 +106,8 @@ class MobileAuthController extends ChangeNotifier
        snapshots =
            snapshots ?? nativeFeatures ?? PigeonNativeFeaturesPlatform(),
        haptics = haptics ?? nativeFeatures ?? PigeonNativeFeaturesPlatform(),
+       dictation =
+           dictation ?? nativeFeatures ?? PigeonNativeFeaturesPlatform(),
        accountDatabaseFactory =
            accountDatabaseFactory ?? LocalDatabase.openForAccount,
        installationDatabaseFactory =
@@ -120,6 +123,7 @@ class MobileAuthController extends ChangeNotifier
   final HealthPlatform health;
   final ExtensionSnapshotPlatform snapshots;
   final HapticsPlatform haptics;
+  final DictationPlatform dictation;
   final Future<LocalDatabase> Function(String accountId) accountDatabaseFactory;
   final Future<LocalDatabase> Function() installationDatabaseFactory;
   final MobileShellViewModel shell = MobileShellViewModel();
@@ -466,6 +470,7 @@ class MobileAuthController extends ChangeNotifier
     );
     final nutritionViewModel = NutritionViewModel(
       repository: nutrition,
+      dictation: dictation,
       localDate: DateTime.now().toIso8601String().substring(0, 10),
     );
     late final AccountScope nextScope;

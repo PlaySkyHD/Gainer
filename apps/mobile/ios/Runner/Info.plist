@@ -30,6 +30,10 @@
 	<string>Gainer verbindet sich mit deinem Pulsgurt, um während des Cardio-Trainings deinen Puls anzuzeigen und dich zu warnen, wenn du deinen Zielbereich verlässt.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Gainer nutzt die Kamera, wenn du einen Barcode scannen oder ein Lebensmittelfoto aufnehmen möchtest.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Gainer nutzt das Mikrofon, wenn du eine Mahlzeit diktierst. Die Sprache wird auf dem iPhone erkannt und nicht gespeichert.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Gainer wandelt deine diktierte Mahlzeitbeschreibung auf dem iPhone in Text um. Die Aufnahme verlässt das Gerät nicht.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Gainer liest Körpergewicht, Schritte und Schlaf, um deinen Check-in vorauszufüllen und Körpergewichtsproben auf deine Anfrage zu prüfen.</string>
 	<key>NSHealthUpdateUsageDescription</key>
