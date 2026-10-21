@@ -224,6 +224,106 @@ public sealed class PostgreSqlMigrationTests
         }
     }
 
+    [TestMethod]
+    public async Task AddTrainingSchedulePurgesRotationHistoryAndReceiptsAndKeepsOtherChanges()
+    {
+        const string previousMigration = "20261021062600_AddStravaExport";
+        Guid userId = Guid.NewGuid();
+        Guid clientId = Guid.NewGuid();
+        Guid rotationMutation = Guid.NewGuid();
+        Guid workoutMutation = Guid.NewGuid();
+        Guid workoutId = Guid.NewGuid();
+        await using (AppDbContext previous = Fixture.CreateContext(ConnectionString))
+        {
+            await ((IInfrastructure<IServiceProvider>)previous).Instance.GetRequiredService<IMigrator>().MigrateAsync(previousMigration, TestContext.CancellationToken);
+            previous.Users.Add(new AppUser
+            {
+                Id = userId,
+                UserName = "rotation@example.test",
+                NormalizedUserName = "ROTATION@EXAMPLE.TEST",
+                Email = "rotation@example.test",
+                NormalizedEmail = "ROTATION@EXAMPLE.TEST",
+                IsActive = true,
+                SecurityStamp = Guid.NewGuid().ToString("N"),
+                ConcurrencyStamp = Guid.NewGuid().ToString("N"),
+            });
+            await previous.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        await using (AppDbContext previous = Fixture.CreateContext(ConnectionString, userId))
+        {
+            previous.SyncClients.Add(new SyncClient
+            {
+                Id = clientId,
+                DisplayName = "Rotation device",
+                ProtocolVersion = 3,
+                RegisteredAtUtc = DateTime.UtcNow,
+                LastSeenAtUtc = DateTime.UtcNow,
+            });
+            await previous.SaveChangesAsync(TestContext.CancellationToken);
+            previous.UserSyncStates.Add(new UserSyncState
+            {
+                CurrentRevision = 2,
+                ActiveClientId = clientId,
+                UpdatedAtUtc = DateTime.UtcNow,
+                Version = 1,
+            });
+            (Guid MutationId, long Revision, string ResourceType, Guid ResourceId)[] seeded =
+            [
+                (rotationMutation, 1, "WorkoutRotation", Guid.NewGuid()),
+                (workoutMutation, 2, "Workout", workoutId),
+            ];
+            foreach ((Guid mutationId, long revision, string resourceType, Guid resourceId) in seeded)
+            {
+                previous.ProcessedMutations.Add(new ProcessedMutation
+                {
+                    MutationId = mutationId,
+                    ClientId = clientId,
+                    ClientSequence = revision,
+                    ContentHash = Enumerable.Repeat((byte)revision, 32).ToArray(),
+                    ResultJson = $$"""{"revision":{{revision}},"changes":[{"resourceType":"{{resourceType}}","resourceId":"{{resourceId}}","version":1}]}""",
+                    Revision = revision,
+                    AppliedAtUtc = DateTime.UtcNow,
+                });
+                Guid batchId = Guid.NewGuid();
+                previous.ChangeBatches.Add(new ChangeBatch
+                {
+                    Id = batchId,
+                    Revision = revision,
+                    MutationId = mutationId,
+                    CreatedAtUtc = DateTime.UtcNow,
+                });
+                previous.ChangeItems.Add(new ChangeItem
+                {
+                    Id = Guid.NewGuid(),
+                    BatchId = batchId,
+                    Position = 0,
+                    ResourceType = resourceType,
+                    ResourceId = resourceId,
+                    ResourceVersion = 1,
+                    SnapshotJson = "{\"version\":1}",
+                });
+            }
+            await previous.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        await using (AppDbContext context = Fixture.CreateContext(ConnectionString))
+        {
+            await context.Database.MigrateAsync(TestContext.CancellationToken);
+        }
+
+        await using (AppDbContext context = Fixture.CreateContext(ConnectionString, userId))
+        {
+            SyncChangeFeedPage page = await new SyncChangeFeed(context).GetAsync(0, 200, TestContext.CancellationToken);
+            List<SyncFeedChange> changes = page.Batches.SelectMany(batch => batch.Changes).ToList();
+            Assert.IsFalse(changes.Any(change => change.ResourceType == "WorkoutRotation"));
+            Assert.AreEqual(workoutId, changes.Single().ResourceId);
+            Assert.AreEqual(2, page.NextCursor);
+            Assert.IsFalse(await context.ProcessedMutations.AnyAsync(item => item.MutationId == rotationMutation, TestContext.CancellationToken));
+            Assert.IsTrue(await context.ProcessedMutations.AnyAsync(item => item.MutationId == workoutMutation, TestContext.CancellationToken));
+        }
+    }
+
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params (string Name, Guid Value)[] parameters)
     {
         await using var command = new NpgsqlCommand(sql, connection);

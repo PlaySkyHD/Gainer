@@ -188,6 +188,10 @@ public sealed class SyncMutationExecutor(
                 {
                     SaveTrainingSchedulePayload payload = Deserialize<SaveTrainingSchedulePayload>(content.Payload);
                     ValidateExpectation(content, ResourceKind.TrainingSchedule, payload.ScheduleId, payload.BaseVersion);
+                    if (payload.ValidFrom is null)
+                    {
+                        throw new SyncMutationValidationException(InvalidPayloadCode, "The valid-from date is missing.");
+                    }
                     TrainingScheduleSnapshot snapshot = await new TrainingScheduleMutationHandler(context, userContext, timeProvider, collector)
                         .SaveAsync(SaveTrainingScheduleMutation.Create(
                             Metadata(mutationId, content), payload.BaseVersion, payload.ToValues()), cancellationToken);
@@ -518,13 +522,13 @@ public sealed class SyncMutationExecutor(
         long BaseVersion,
         string? Mode,
         DateOnly? AnchorDate,
-        DateOnly ValidFrom,
+        DateOnly? ValidFrom,
         IReadOnlyList<TrainingScheduleSlotValues>? Slots,
         IReadOnlyList<TrainingScheduleShiftValues>? Shifts,
         IReadOnlyList<TrainingScheduleExceptionValues>? Exceptions)
     {
         public TrainingScheduleValues ToValues() =>
-            new(ScheduleId, Mode ?? string.Empty, AnchorDate, ValidFrom, Slots!, Shifts!, Exceptions!);
+            new(ScheduleId, Mode ?? string.Empty, AnchorDate, ValidFrom!.Value, Slots!, Shifts!, Exceptions!);
     }
     private sealed record DeleteTrainingSchedulePayload(Guid ScheduleId, long BaseVersion);
     private sealed record SaveNutritionDayPayload(
