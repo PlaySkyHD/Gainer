@@ -1827,28 +1827,25 @@ class _NutritionScreenState extends State<NutritionScreen> {
       children: [
         GainerGroupedSection(
           header:
-              'Erkannt${draft.servingMassGrams == null ? '' : ' · ${draft.servingMassGrams} g pro Portion'}',
-          footer: 'Prüfe alle Werte. Der Scan allein speichert nichts.',
+              'Erkannt${draft.servingMassGrams == null ? '' : ' · ${_fmtGrams(draft.servingMassGrams!)} g pro Portion'}',
+          footer: 'Werte pro 100 g. Prüfe alle Werte. Der Scan allein speichert nichts.',
           children: [
-            GainerListRow(title: 'Basis', value: draft.basis),
+            GainerListRow(title: 'Gelesen', value: _labelBasis(draft.basis)),
             GainerListRow(
               title: 'Kalorien',
-              value:
-                  '${draft.kilocalories.per100Grams ?? _notRecognizedLabel} kcal / 100 g',
+              value: _labelValue(draft.kilocalories, _fmtKcal, 'kcal'),
             ),
             GainerListRow(
               title: 'Protein',
-              value:
-                  '${draft.proteinGrams.per100Grams ?? _notRecognizedLabel} g',
+              value: _labelValue(draft.proteinGrams, _fmtGrams, 'g'),
             ),
             GainerListRow(
               title: 'Kohlenhydrate',
-              value:
-                  '${draft.carbohydrateGrams.per100Grams ?? _notRecognizedLabel} g',
+              value: _labelValue(draft.carbohydrateGrams, _fmtGrams, 'g'),
             ),
             GainerListRow(
               title: 'Fett',
-              value: '${draft.fatGrams.per100Grams ?? _notRecognizedLabel} g',
+              value: _labelValue(draft.fatGrams, _fmtGrams, 'g'),
             ),
           ],
         ),
@@ -2997,6 +2994,24 @@ String _fmtKcal(double value) => _formatNumber(value);
 
 /// Gramm mit höchstens einer Nachkommastelle, z. B. `12,5`.
 String _fmtGrams(double value) => _formatNumber(value, decimals: 1);
+
+const _labelBasisNames = {
+  'Per100Grams': 'pro 100 g',
+  'Per100Milliliters': 'pro 100 ml (1 ml ≈ 1 g)',
+  'PerServing': 'pro Portion',
+};
+
+String _labelBasis(String basis) => _labelBasisNames[basis] ?? basis;
+
+String _labelValue(
+  NutritionLabelFieldDraft field,
+  String Function(double) format,
+  String unit,
+) {
+  final value = field.per100Grams;
+  if (value != null) return '${format(value)} $unit';
+  return field.status == 'Implausible' ? 'unplausibel' : _notRecognizedLabel;
+}
 
 String _mealShortName(NutritionMeal meal) => switch (meal) {
   NutritionMeal.breakfast => 'Frühstück',

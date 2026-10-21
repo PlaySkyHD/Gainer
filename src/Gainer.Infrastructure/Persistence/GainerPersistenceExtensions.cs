@@ -71,6 +71,7 @@ public static class GainerPersistenceExtensions
         builder.Services.AddSingleton<IMealEstimationQuota, MealEstimationQuota>();
         builder.Services.AddScoped<IMealImageSanitizer, MealImageSanitizer>();
         builder.Services.AddScoped<IMealEstimator, OpenAiMealEstimator>();
+        builder.Services.AddScoped<INutritionLabelScanner, OpenAiNutritionLabelScanner>();
         builder.Services.Configure<MuscleSuggestionOptions>(builder.Configuration.GetSection(MuscleSuggestionOptions.SectionName));
         builder.Services.AddSingleton<IMuscleSuggestionQuota, MuscleSuggestionQuota>();
         builder.Services.AddScoped<IMuscleSuggester, OpenAiMuscleSuggester>();

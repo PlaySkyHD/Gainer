@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:drift/native.dart';
 import 'package:flutter/cupertino.dart';
@@ -1047,6 +1048,74 @@ void main() {
     expect(find.text('Reis'), findsOneWidget);
     expect(harness.viewModel.snapshot!.day.entries, isEmpty);
   });
+  testWidgets('label review shows converted values per 100 g in German', (
+    tester,
+  ) async {
+    await _pumpDiary(
+      tester,
+      [],
+      capture: _FakeCapture(),
+      online: _LabelOnline(
+        NutritionLabelScanDraft(
+          basis: 'PerServing',
+          servingMassGrams: 30,
+          kilocalories: const NutritionLabelFieldDraft(
+            originalValue: 120,
+            per100Grams: 400,
+            status: 'Converted',
+            evidence: '120 kcal',
+          ),
+          proteinGrams: const NutritionLabelFieldDraft(
+            originalValue: 3.75,
+            per100Grams: 12.5,
+            status: 'Converted',
+            evidence: null,
+          ),
+          carbohydrateGrams: const NutritionLabelFieldDraft(
+            originalValue: null,
+            per100Grams: null,
+            status: 'Missing',
+            evidence: null,
+          ),
+          fatGrams: const NutritionLabelFieldDraft(
+            originalValue: 400,
+            per100Grams: null,
+            status: 'Implausible',
+            evidence: null,
+          ),
+          canConfirm: true,
+          provider: 'OpenAI',
+          providerModelVersion: 'model',
+          parserVersion: 'nutrition-label-v1',
+          scannedAtUtc: DateTime.utc(2026, 10, 12, 10),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('nutrition-mode-label')),
+    );
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-label')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nährwertetikett erfassen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fortfahren'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fotomediathek'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Einmalig hochladen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('pro Portion'), findsOneWidget);
+    expect(find.text('400 kcal'), findsOneWidget);
+    expect(find.text('12,5 g'), findsOneWidget);
+    expect(find.text('nicht erkannt'), findsOneWidget);
+    expect(find.text('unplausibel'), findsOneWidget);
+    expect(find.textContaining('30 g pro Portion'), findsOneWidget);
+  });
+
   testWidgets('dictation writes into the meal description and stops', (
     tester,
   ) async {
@@ -1081,6 +1150,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('nutrition-dictation')), findsNothing);
   });
+}
+
+class _FakeCapture implements CapturePlatform {
+  @override
+  Future<CapturedImage?> capturePhoto() => chooseImage();
+
+  @override
+  Future<CapturedImage?> chooseImage() async => CapturedImage(
+    bytes: Uint8List.fromList([1, 2, 3]),
+    mimeType: 'image/jpeg',
+  );
+
+  @override
+  Future<String?> scanBarcode() async => null;
+}
+
+class _LabelOnline implements NutritionOnlineProvider {
+  _LabelOnline(this.draft);
+
+  final NutritionLabelScanDraft draft;
+
+  @override
+  Future<NutritionLabelScanDraft> scanLabel({
+    required Uint8List image,
+    required String mimeType,
+  }) async => draft;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError(invocation.memberName.toString());
 }
 
 class _FakeDictation implements DictationPlatform {
@@ -1127,6 +1226,8 @@ Future<_DiaryHarness> _pumpDiary(
   WidgetTester tester,
   List<String> names, {
   NutritionTargetSchedule? schedule,
+  CapturePlatform? capture,
+  NutritionOnlineProvider? online,
   DictationPlatform? dictation,
 }) async {
   _usePhoneViewport(tester);
@@ -1139,6 +1240,8 @@ Future<_DiaryHarness> _pumpDiary(
     ids: () =>
         '00000000-0000-4000-8000-${(nextId++).toString().padLeft(12, '0')}',
     clock: () => DateTime.utc(2026, 10, 12, 10),
+    capture: capture,
+    online: online,
   );
   if (schedule != null) await repository.saveTargetSchedule(schedule);
   final entryIds = <String>[];
