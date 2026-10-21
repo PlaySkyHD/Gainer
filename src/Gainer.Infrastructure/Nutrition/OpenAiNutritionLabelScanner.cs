@@ -26,27 +26,15 @@ public sealed class OpenAiNutritionLabelScanner(
         SanitizedMealImage? sanitized = null;
         try
         {
-            sanitized = await sanitizer.SanitizeAsync(image, cancellationToken);
-            JsonElement response = await provider.CreateResponseAsync(BuildRequest(sanitized), cancellationToken);
-            return ParseResponse(response, timeProvider.GetUtcNow().UtcDateTime);
-        }
-        catch (OpenAiProviderException exception)
-        {
-            int status = exception.Code switch
-            {
-                "provider_rate_limited" => 429,
-                "provider_timeout" => 504,
-                _ => 503,
-            };
-            throw new MealEstimationException(exception.Code, "The nutrition label scanner is temporarily unavailable.", status, exception);
-        }
-        catch (NutritionValidationException exception)
-        {
-            throw new MealEstimationException("invalid_provider_response", "The AI provider returned an invalid label reading.", 502, exception);
-        }
-        catch (JsonException exception)
-        {
-            throw new MealEstimationException("invalid_provider_response", "The AI provider returned an invalid label reading.", 502, exception);
+            return await NutritionAiErrors.MapAsync(
+                async () =>
+                {
+                    sanitized = await sanitizer.SanitizeAsync(image, cancellationToken);
+                    JsonElement response = await provider.CreateResponseAsync(BuildRequest(sanitized), cancellationToken);
+                    return ParseResponse(response, timeProvider.GetUtcNow().UtcDateTime);
+                },
+                "The nutrition label scanner is temporarily unavailable.",
+                "The AI provider returned an invalid label reading.");
         }
         finally
         {
@@ -105,13 +93,14 @@ public sealed class OpenAiNutritionLabelScanner(
                 ? modelElement.GetString()!
                 : ProviderName;
         return NutritionLabelScanDraft.Create(
-            ParseBasis(payload.Basis),
-            payload.ServingMassGrams,
-            Reading(payload.Kilocalories),
-            Reading(payload.Kilojoules),
-            Reading(payload.ProteinGrams),
-            Reading(payload.CarbohydrateGrams),
-            Reading(payload.FatGrams),
+            new NutritionLabelReadings(
+                ParseBasis(payload.Basis),
+                payload.ServingMassGrams,
+                Reading(payload.Kilocalories),
+                Reading(payload.Kilojoules),
+                Reading(payload.ProteinGrams),
+                Reading(payload.CarbohydrateGrams),
+                Reading(payload.FatGrams)),
             ProviderName,
             model.Length > 80 ? model[..80] : model,
             ParserVersion,

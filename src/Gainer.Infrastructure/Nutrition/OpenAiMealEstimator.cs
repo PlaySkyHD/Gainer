@@ -64,27 +64,15 @@ public sealed class OpenAiMealEstimator(
         SanitizedMealImage? image = null;
         try
         {
-            if (input.Image is not null) image = await sanitizer.SanitizeAsync(input.Image, cancellationToken);
-            JsonElement response = await provider.CreateResponseAsync(BuildRequest(input.Text, image), cancellationToken);
-            return ParseResponse(response, timeProvider.GetUtcNow().UtcDateTime);
-        }
-        catch (OpenAiProviderException exception)
-        {
-            int status = exception.Code switch
-            {
-                "provider_rate_limited" => 429,
-                "provider_timeout" => 504,
-                _ => 503,
-            };
-            throw new MealEstimationException(exception.Code, "The AI meal estimator is temporarily unavailable.", status, exception);
-        }
-        catch (NutritionValidationException exception)
-        {
-            throw new MealEstimationException("invalid_provider_response", "The AI provider returned an invalid estimate.", 502, exception);
-        }
-        catch (JsonException exception)
-        {
-            throw new MealEstimationException("invalid_provider_response", "The AI provider returned an invalid estimate.", 502, exception);
+            return await NutritionAiErrors.MapAsync(
+                async () =>
+                {
+                    if (input.Image is not null) image = await sanitizer.SanitizeAsync(input.Image, cancellationToken);
+                    JsonElement response = await provider.CreateResponseAsync(BuildRequest(input.Text, image), cancellationToken);
+                    return ParseResponse(response, timeProvider.GetUtcNow().UtcDateTime);
+                },
+                "The AI meal estimator is temporarily unavailable.",
+                "The AI provider returned an invalid estimate.");
         }
         finally
         {
