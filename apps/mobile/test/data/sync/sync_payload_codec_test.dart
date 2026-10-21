@@ -31,7 +31,7 @@ void main() {
         'CustomExercise',
         'ExerciseCategory',
         'TrainingPlan',
-        'WorkoutRotation',
+        'TrainingSchedule',
         'Workout',
         'NutritionDay',
         'ReusableMeal',
@@ -43,12 +43,16 @@ void main() {
         'custom-exercise',
         'exercise-category',
         'training-plan',
-        'workout-rotation',
+        'training-schedule',
         'workout',
         'nutrition-day',
         'reusable-meal',
         'nutrition-target-schedule',
       ],
+    );
+    expect(
+      SyncPayloadCodec.aggregateTypeForResource('WorkoutRotation'),
+      isNull,
     );
     expect(
       SyncPayloadCodec.aggregateTypeForResource('WorkoutTemplate'),

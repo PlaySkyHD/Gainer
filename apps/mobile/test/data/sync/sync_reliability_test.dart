@@ -604,11 +604,18 @@ void main() {
       );
       expect(
         SyncPayloadCodec.referencedAggregateIds(
-          mutationOf('workout-rotation', {
-            'planIds': [_id(16), _id(2)],
+          mutationOf('training-schedule', {
+            'slots': [
+              {'planId': _id(16)},
+              {'planId': null},
+              {'planId': _id(2)},
+            ],
+            'exceptions': [
+              {'date': '2026-10-22', 'planId': _id(17), 'movedToDate': null},
+            ],
           }),
         ),
-        {_id(16)},
+        {_id(16), _id(17)},
       );
       expect(
         SyncPayloadCodec.referencedAggregateIds(

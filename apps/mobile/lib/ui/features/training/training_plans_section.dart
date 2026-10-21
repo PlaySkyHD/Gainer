@@ -2,18 +2,21 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/training_plan_model.dart';
+import '../../../domain/models/training/training_schedule.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'active_workout_controller.dart';
 import 'category_library_screen.dart';
 import 'exercise_library_screen.dart';
 import 'plan_editor_screen.dart';
-import 'plan_rotation_sheet.dart';
 import 'plan_start.dart';
+import 'schedule_day_actions.dart';
 import 'training_plans_view_model.dart';
+import 'training_schedule_sheet.dart';
+import 'training_today_card.dart';
 
-/// Pläne-Segment: nächstes Training aus der Rotation, Planliste mit Umordnen
-/// und Archivieren sowie die Rotation.
+/// Pläne-Segment: Karte „Heute“ aus dem Rhythmus, Planliste mit Umordnen
+/// und Archivieren sowie der Rhythmus-Editor.
 class TrainingPlansSection extends StatefulWidget {
   const TrainingPlansSection({
     required this.repository,
@@ -72,8 +75,24 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
     if (mounted) await _viewModel.load();
   }
 
-  Future<void> _openRotation() async {
-    await showPlanRotationSheet(context, viewModel: _viewModel);
+  Future<void> _openSchedule() async {
+    final changed = await showTrainingScheduleSheet(
+      context,
+      repository: widget.repository,
+    );
+    if (changed && mounted) await _viewModel.load();
+  }
+
+  Future<void> _openDayActions(ScheduledTraining training) async {
+    final projection = _viewModel.projection;
+    if (projection == null) return;
+    final changed = await showScheduledTrainingActions(
+      context,
+      repository: widget.repository,
+      projection: projection,
+      training: training,
+    );
+    if (changed && mounted) await _viewModel.load();
   }
 
   Future<void> _openExerciseLibrary() async {
@@ -171,7 +190,6 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
 
   List<Widget> _stateChildren(
     List<TrainingPlanModel> plans,
-    String? nextId,
     GainerColors colors,
   ) {
     if (_viewModel.isLoading && _viewModel.plans.isEmpty) {
@@ -188,14 +206,27 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
         ),
       ];
     }
+    final projection = _viewModel.projection;
+    final showToday =
+        !_editing &&
+        projection != null &&
+        (plans.isNotEmpty || projection.schedule != null);
     return [
-      if (nextId != null && !_editing) _buildNextCard(plans, nextId, colors),
+      if (showToday) ...[
+        TrainingTodayCard(
+          projection: projection,
+          onStart: _start,
+          onSetup: _openSchedule,
+          onActions: _openDayActions,
+        ),
+        const SizedBox(height: GainerSpacing.m),
+      ],
       if (plans.isEmpty)
         _buildEmpty(colors)
       else if (_editing)
         _buildEditableList(plans)
       else
-        _buildList(plans, nextId, colors),
+        _buildList(plans),
     ];
   }
 
@@ -205,7 +236,6 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
       listenable: _viewModel,
       builder: (context, _) {
         final plans = _orderedPlans();
-        final nextId = _viewModel.nextPlanId;
         final colors = GainerDesign.colorsOf(context);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -220,9 +250,10 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
                   onPressed: () => _openEditor(null),
                 ),
                 GainerPillButton(
-                  label: 'Rotation',
+                  key: const ValueKey('training-plans-schedule'),
+                  label: 'Rhythmus',
                   variant: GainerPillVariant.tonal,
-                  onPressed: _openRotation,
+                  onPressed: _openSchedule,
                 ),
                 if (plans.isNotEmpty)
                   GainerPillButton(
@@ -234,50 +265,12 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
               ],
             ),
             const SizedBox(height: GainerSpacing.m),
-            ..._stateChildren(plans, nextId, colors),
+            ..._stateChildren(plans, colors),
             const SizedBox(height: GainerSpacing.l),
             _buildCatalogSection(),
           ],
         );
       },
-    );
-  }
-
-  Widget _buildNextCard(
-    List<TrainingPlanModel> plans,
-    String nextId,
-    GainerColors colors,
-  ) {
-    final next = plans.where((plan) => plan.planId == nextId).firstOrNull;
-    if (next == null) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: GainerSpacing.m),
-      child: GainerCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Nächstes Training',
-              style: GainerTypography.caption.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-            const SizedBox(height: GainerSpacing.xxs),
-            Text(
-              next.name,
-              style: GainerTypography.title.copyWith(color: colors.primaryText),
-            ),
-            const SizedBox(height: GainerSpacing.s),
-            GainerPillButton(
-              key: const ValueKey('training-plans-next-start'),
-              label: 'Training starten',
-              icon: CupertinoIcons.play_fill,
-              expand: true,
-              onPressed: () => _start(next.planId),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -292,18 +285,14 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
     );
   }
 
-  Widget _buildList(
-    List<TrainingPlanModel> plans,
-    String? nextId,
-    GainerColors colors,
-  ) {
+  Widget _buildList(List<TrainingPlanModel> plans) {
     return GainerGroupedSection(
       header: 'Pläne',
       children: [
         for (final plan in plans)
           GainerListRow(
             title: plan.name,
-            subtitle: _subtitle(plan, nextId),
+            subtitle: _subtitle(plan),
             showChevron: true,
             onTap: () => _openEditor(plan.planId),
           ),
@@ -330,7 +319,7 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
                 padding: EdgeInsets.zero,
                 child: GainerListRow(
                   title: plan.name,
-                  subtitle: _subtitle(plan, null),
+                  subtitle: _subtitle(plan),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -369,15 +358,10 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
     );
   }
 
-  String _subtitle(TrainingPlanModel plan, String? nextId) {
+  String _subtitle(TrainingPlanModel plan) {
     final count = plan.entries.length;
     final exercises = count == 1 ? '1 Übung' : '$count Übungen';
-    final inRotation =
-        _viewModel.rotation?.planIds.contains(plan.planId) ?? false;
-    return [
-      exercises,
-      if (inRotation) 'In Rotation',
-      if (plan.planId == nextId) 'Nächstes Training',
-    ].join(' · ');
+    final scheduled = _viewModel.scheduledPlanIds.contains(plan.planId);
+    return [exercises, if (scheduled) 'Im Rhythmus'].join(' · ');
   }
 }

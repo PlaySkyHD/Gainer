@@ -4,6 +4,7 @@ import 'package:gainer_mobile/data/repositories/sync/sync_payload_codec.dart';
 import 'package:gainer_mobile/domain/models/training/exercise_catalog_model.dart';
 import 'package:gainer_mobile/domain/models/training/muscles.dart';
 import 'package:gainer_mobile/domain/models/training/training_plan_model.dart';
+import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 
 const _accountId = '11111111-1111-4111-8111-111111111111';
@@ -14,6 +15,26 @@ const _exerciseId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const _planId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const _planId2 = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const _categoryId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+
+const _scheduleId = '44444444-4444-4444-8444-444444444444';
+
+Map<String, Object?> _scheduleBody() => {
+  'scheduleId': _scheduleId,
+  'mode': 'cycle',
+  'anchorDate': '2026-10-20',
+  'validFrom': '2026-10-21',
+  'slots': [
+    {'planId': _planId},
+    {'planId': null},
+  ],
+  'shifts': [
+    {'fromDate': '2026-10-23', 'days': 1},
+  ],
+  'exceptions': [
+    {'date': '2026-10-22', 'planId': _planId, 'movedToDate': '2026-10-23'},
+    {'date': '2026-10-25', 'planId': _planId, 'movedToDate': null},
+  ],
+};
 
 LocalMutation _mutation(
   String type,
@@ -134,7 +155,7 @@ void main() {
       );
     });
 
-    test('maps plan, rotation, exercise and category operations', () {
+    test('maps plan, schedule, exercise and category operations', () {
       String op(String type, LocalMutationOperation operation, Object? body) =>
           SyncPayloadCodec.serverOperation(
             _mutation(type, operation, _planId, body),
@@ -163,11 +184,16 @@ void main() {
         'reorderTrainingPlans',
       );
       expect(
-        op('workout-rotation', LocalMutationOperation.update, {
-          'rotationId': _planId,
-          'planIds': <Object?>[],
-        }),
-        'saveWorkoutRotation',
+        op('training-schedule', LocalMutationOperation.create, _scheduleBody()),
+        'saveTrainingSchedule',
+      );
+      expect(
+        op('training-schedule', LocalMutationOperation.update, _scheduleBody()),
+        'saveTrainingSchedule',
+      );
+      expect(
+        op('training-schedule', LocalMutationOperation.delete, _scheduleBody()),
+        'deleteTrainingSchedule',
       );
       expect(
         op('custom-exercise', LocalMutationOperation.merge, {
@@ -369,27 +395,109 @@ void main() {
       );
     });
 
-    test('save rotation sends ordered plan ids', () {
-      final body = {
-        'rotationId': _planId,
-        'planIds': [_planId2, _planId],
-      };
+    test('save schedule sends the full D3a state', () {
+      final body = _scheduleBody();
       expect(
         SyncPayloadCodec.serverPayload(
           _mutation(
-            'workout-rotation',
+            'training-schedule',
             LocalMutationOperation.update,
-            _planId,
+            _scheduleId,
             body,
           ),
           body,
           9,
         ),
         {
-          'rotationId': _planId,
+          'scheduleId': _scheduleId,
           'baseVersion': 9,
-          'planIds': [_planId2, _planId],
+          'mode': 'cycle',
+          'anchorDate': '2026-10-20',
+          'validFrom': '2026-10-21',
+          'slots': [
+            {'planId': _planId},
+            {'planId': null},
+          ],
+          'shifts': [
+            {'fromDate': '2026-10-23', 'days': 1},
+          ],
+          'exceptions': [
+            {
+              'date': '2026-10-22',
+              'planId': _planId,
+              'movedToDate': '2026-10-23',
+            },
+            {'date': '2026-10-25', 'planId': _planId, 'movedToDate': null},
+          ],
         },
+      );
+    });
+
+    test('first schedule save sends base version 0, weekly without anchor', () {
+      final body = TrainingSchedule.create(
+        scheduleId: _scheduleId,
+        mode: TrainingScheduleMode.weekly,
+        slots: [
+          const TrainingScheduleSlot(planId: _planId),
+          for (var i = 0; i < 6; i++) const TrainingScheduleSlot.rest(),
+        ],
+        today: LocalDay(2026, 10, 21),
+      ).toJson();
+      final payload =
+          SyncPayloadCodec.serverPayload(
+                _mutation(
+                  'training-schedule',
+                  LocalMutationOperation.create,
+                  _scheduleId,
+                  body,
+                  baseVersion: 0,
+                ),
+                body,
+                0,
+              )!
+              as Map<String, Object?>;
+      expect(payload['baseVersion'], 0);
+      expect(payload['mode'], 'weekly');
+      expect(payload.containsKey('anchorDate'), isTrue);
+      expect(payload['anchorDate'], isNull);
+      expect(payload['slots'], hasLength(7));
+      expect(payload['shifts'], isEmpty);
+      expect(payload['exceptions'], isEmpty);
+    });
+
+    test('delete schedule sends id and base version only', () {
+      final body = {..._scheduleBody(), 'deletedAtUtc': '2026-10-21T08:00:00Z'};
+      expect(
+        SyncPayloadCodec.serverPayload(
+          _mutation(
+            'training-schedule',
+            LocalMutationOperation.delete,
+            _scheduleId,
+            body,
+          ),
+          body,
+          3,
+        ),
+        {'scheduleId': _scheduleId, 'baseVersion': 3},
+      );
+    });
+
+    test('schedule references its plans so they are sent first', () {
+      expect(
+        SyncPayloadCodec.referencedAggregateIds(
+          _mutation(
+            'training-schedule',
+            LocalMutationOperation.update,
+            _scheduleId,
+            {
+              ..._scheduleBody(),
+              'exceptions': [
+                {'date': '2026-10-22', 'planId': _planId2, 'movedToDate': null},
+              ],
+            },
+          ),
+        ),
+        {_planId, _planId2},
       );
     });
 
@@ -613,7 +721,7 @@ void main() {
       expect(exercise.categoryIds, [_categoryId]);
     });
 
-    test('category and rotation snapshots keep their identifiers', () {
+    test('category and schedule snapshots keep their identifiers', () {
       final category =
           SyncPayloadCodec.normalizeSnapshot('ExerciseCategory', {
                 'categoryId': _categoryId,
@@ -627,16 +735,23 @@ void main() {
       expect(CatalogCategory.fromJson(category).id, _categoryId);
       expect(CatalogCategory.fromJson(category).isArchived, isTrue);
 
-      final rotation =
-          SyncPayloadCodec.normalizeSnapshot('WorkoutRotation', {
-                'rotationId': _planId,
-                'planIds': [_planId2],
+      final schedule =
+          SyncPayloadCodec.normalizeSnapshot('TrainingSchedule', {
+                ..._scheduleBody(),
                 'updatedAtUtc': '2026-10-17T08:00:00Z',
                 'version': 3,
               })!
               as Map<String, dynamic>;
-      expect(RotationModel.fromJson(rotation).planIds, [_planId2]);
-      expect(rotation.containsKey('version'), isFalse);
+      SyncPayloadCodec.verifyTrainingSnapshot('TrainingSchedule', schedule);
+      expect(TrainingSchedule.fromJson(schedule).scheduleId, _scheduleId);
+      expect(schedule.containsKey('version'), isFalse);
+      expect(
+        () => SyncPayloadCodec.verifyTrainingSnapshot('TrainingSchedule', {
+          ..._scheduleBody(),
+          'mode': 'monthly',
+        }),
+        throwsFormatException,
+      );
     });
 
     test('plan snapshot keeps sort order and archive state', () {

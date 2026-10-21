@@ -68,7 +68,7 @@ PlanEntry planEntry(
 );
 
 /// Startet ein Training aus einem Plan und beendet es zum Startzeitpunkt plus
-/// einer Stunde, damit der Plan als Rotationsvorschlag zählt.
+/// einer Stunde, damit es als erledigtes Training aus dem Plan zählt.
 Future<void> seedFinishedFromPlan(
   TrainingHarness harness,
   TrainingPlanModel plan,
