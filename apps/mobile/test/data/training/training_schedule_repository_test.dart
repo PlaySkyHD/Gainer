@@ -313,13 +313,13 @@ void main() {
     final projection = await repository.readProjection();
     expect(projection.schedule, isNull);
 
-    // Ein neuer Rhythmus bekommt eine neue ID.
+    // Ein neuer Rhythmus behält die ID (höchstens einer je Nutzer).
     final next = await repository.saveRhythm(
       mode: TrainingScheduleMode.cycle,
       slots: [TrainingScheduleSlot(planId: push.planId)],
     );
-    expect(next.scheduleId, isNot(first.scheduleId));
-    expect((await repository.read())!.scheduleId, next.scheduleId);
+    expect(next.scheduleId, first.scheduleId);
+    expect((await repository.read())!.scheduleId, first.scheduleId);
   });
 
   test('a finished workout from the plan marks today as done', () async {
@@ -356,12 +356,224 @@ void main() {
       slots: List.filled(7, TrainingScheduleSlot(planId: push.planId)),
     );
     final projection = await repository.readProjection();
-    await expectLater(
-      repository.applyAction(
-        projection.day(repository.today()).trainings.single,
-        const ScheduleAction.shiftRhythm(1),
-      ),
-      throwsStateError,
+    final result = await repository.applyAction(
+      projection.day(repository.today()).trainings.single,
+      const ScheduleAction.shiftRhythm(1),
     );
+    expect(result.applied, isFalse);
+    expect(await scheduleOutbox(), hasLength(1));
+  });
+
+  test(
+    'save after an unsent delete keeps the id and replaces the delete',
+    () async {
+      final push = await plan('Push');
+      final first = await repository.saveRhythm(
+        mode: TrainingScheduleMode.cycle,
+        slots: [TrainingScheduleSlot(planId: push.planId)],
+      );
+      await markSynced(3);
+      await repository.delete();
+      expect(
+        (await scheduleOutbox()).single.operation,
+        LocalMutationOperation.delete,
+      );
+
+      final next = await repository.saveRhythm(
+        mode: TrainingScheduleMode.cycle,
+        slots: [
+          TrainingScheduleSlot(planId: push.planId),
+          const TrainingScheduleSlot.rest(),
+        ],
+      );
+
+      expect(next.scheduleId, first.scheduleId);
+      final outbox = (await scheduleOutbox()).single;
+      expect(outbox.operation, LocalMutationOperation.update);
+      expect(outbox.baseVersion, 3);
+      final body = outbox.body! as Map<String, dynamic>;
+      expect(body.containsKey('deletedAtUtc'), isFalse);
+      expect(
+        SyncPayloadCodec.serverOperation(outbox, body),
+        'saveTrainingSchedule',
+      );
+      expect((await repository.read())!.slots, hasLength(2));
+      expect(
+        await store.readAggregates(trainingScheduleAggregateType),
+        hasLength(1),
+      );
+    },
+  );
+
+  test('save after a confirmed delete reuses the id on the tombstone version', () async {
+    const id = '00000000-0000-4000-8000-000000000999';
+    // Löschmarke, wie sie der Sync nach dem Tombstone in Version 5 hinterlässt.
+    await database
+        .into(database.localResources)
+        .insertOnConflictUpdate(
+          LocalResourcesCompanion.insert(
+            aggregateType: trainingScheduleAggregateType,
+            aggregateId: id,
+            envelopeJson: serverEnvelope(
+              aggregateId: id,
+              snapshot: {'deletedAtUtc': '2026-10-16T10:00:00.000Z'},
+              version: 5,
+            ).encode(),
+            updatedAtEpochMs: 0,
+          ),
+        );
+    expect(await repository.read(), isNull);
+    final push = await plan('Push');
+
+    final saved = await repository.saveRhythm(
+      mode: TrainingScheduleMode.cycle,
+      slots: [TrainingScheduleSlot(planId: push.planId)],
+    );
+
+    expect(saved.scheduleId, id);
+    final outbox = (await scheduleOutbox()).single;
+    expect(outbox.aggregateId, id);
+    expect(outbox.operation, LocalMutationOperation.update);
+    expect(outbox.baseVersion, 5);
+    expect((await repository.read())!.scheduleId, id);
+  });
+
+  test('saving a shifted cycle with unchanged slots keeps shifts and '
+      'exceptions', () async {
+    final push = await plan('Push');
+    final pull = await plan('Pull');
+    final slots = [
+      TrainingScheduleSlot(planId: push.planId),
+      TrainingScheduleSlot(planId: pull.planId),
+      const TrainingScheduleSlot.rest(),
+    ];
+    await repository.saveRhythm(mode: TrainingScheduleMode.cycle, slots: slots);
+    var projection = await repository.readProjection();
+    await repository.applyAction(
+      projection.day(repository.today()).trainings.single,
+      const ScheduleAction.shiftRhythm(1),
+    );
+    projection = await repository.readProjection();
+    final tomorrow = repository.today().addDays(1);
+    await repository.applyAction(
+      projection.day(tomorrow.addDays(1)).trainings.single,
+      const ScheduleAction.skip(),
+    );
+    final before = (await repository.read())!;
+    await markSynced(2);
+
+    // Der Editor zeigt heute (pausiert) den Slot vor dem nächsten Training.
+    final index = before.effectiveCycleIndex(repository.today())!;
+    final again = await repository.saveRhythm(
+      mode: TrainingScheduleMode.cycle,
+      slots: slots,
+      todaySlotIndex: index,
+    );
+
+    expect(await scheduleOutbox(), isEmpty);
+    expect(again.toJson(), before.toJson());
+    expect(again.shifts, hasLength(1));
+    expect(again.exceptions, hasLength(1));
+  });
+
+  test('a stale action is not possible and writes nothing', () async {
+    final push = await plan('Push');
+    await repository.saveRhythm(
+      mode: TrainingScheduleMode.cycle,
+      slots: [
+        TrainingScheduleSlot(planId: push.planId),
+        const TrainingScheduleSlot.rest(),
+      ],
+    );
+    await markSynced(1);
+    final stale = (await repository.readProjection())
+        .day(repository.today())
+        .trainings
+        .single;
+
+    final first = await repository.applyAction(
+      stale,
+      const ScheduleAction.skip(),
+    );
+    expect(first.applied, isTrue);
+    expect(await scheduleOutbox(), hasLength(1));
+
+    // Zweites Überspringen mit dem alten Stand: nicht mehr möglich.
+    final second = await repository.applyAction(
+      stale,
+      const ScheduleAction.skip(),
+    );
+    expect(second.applied, isFalse);
+    expect(second.message, ScheduleActionResult.notPossibleMessage);
+    final outbox = (await scheduleOutbox()).single;
+    final body = outbox.body! as Map<String, dynamic>;
+    expect(body['exceptions'], hasLength(1));
+
+    // Inzwischen erledigt: Verschieben ist nicht mehr möglich.
+    await repository.applyAction(
+      (await repository.readProjection())
+          .day(repository.today())
+          .trainings
+          .single,
+      const ScheduleAction.undo(),
+    );
+    final workout = await training.startFromPlan(push.planId);
+    now = now.add(const Duration(minutes: 30));
+    await training.finishWorkout(workout.workoutId);
+    final third = await repository.applyAction(
+      stale,
+      ScheduleAction.moveSingle(repository.today().addDays(1)),
+    );
+    expect(third.applied, isFalse);
+    expect((await repository.read())!.exceptions, isEmpty);
+  });
+
+  test('saving compacts old history', () async {
+    final push = await plan('Push');
+    await repository.saveRhythm(
+      mode: TrainingScheduleMode.cycle,
+      slots: [
+        TrainingScheduleSlot(planId: push.planId),
+        const TrainingScheduleSlot.rest(),
+      ],
+    );
+    final today = repository.today();
+    // Zwei Jahre später: alte Ausnahmen und Verschiebungen fallen weg.
+    final old = (await repository.read())!
+        .skip(today, push.planId)
+        .shiftRhythm(today.addDays(2), 1);
+    await database
+        .into(database.localResources)
+        .insertOnConflictUpdate(
+          LocalResourcesCompanion.insert(
+            aggregateType: trainingScheduleAggregateType,
+            aggregateId: old.scheduleId,
+            envelopeJson: serverEnvelope(
+              aggregateId: old.scheduleId,
+              snapshot: old.toJson(),
+              version: 2,
+            ).encode(),
+            updatedAtEpochMs: 0,
+          ),
+        );
+    await database.delete(database.localOutbox).go();
+    now = now.add(const Duration(days: 730));
+
+    final projection = await repository.readProjection();
+    final day = [
+      repository.today(),
+      repository.today().addDays(1),
+    ].firstWhere((date) => projection.day(date).trainings.isNotEmpty);
+    final result = await repository.applyAction(
+      projection.day(day).trainings.single,
+      const ScheduleAction.skip(),
+    );
+
+    expect(result.applied, isTrue);
+    final saved = result.schedule!;
+    expect(saved.shifts, isEmpty);
+    expect(saved.exceptions, hasLength(1));
+    expect(saved.exceptions.single.date, day);
+    expect(saved.anchorDate, old.anchorDate!.addDays(1));
   });
 }

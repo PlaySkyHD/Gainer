@@ -903,4 +903,116 @@ void main() {
       expect(next?.planId, 'Push');
     });
   });
+
+  group('Verdichten', () {
+    /// Vergleichbarer Abdruck eines Tages der Vorschau.
+    List<Object?> fingerprint(ScheduleDay day) => [
+      day.baseKind,
+      day.slotIndex,
+      for (final t in day.trainings)
+        (t.planId, t.status, t.originDate, t.movedToDate, t.isMovedIn),
+    ];
+
+    test('Vorschau der letzten 400 Tage und der nächsten 60 bleibt gleich', () {
+      // Zyklus seit gut zwei Jahren mit Verschiebungen und Ausnahmen über die
+      // ganze Zeit, auch über die Grenze hinweg.
+      final start = _today.addDays(-800);
+      var schedule = _cycle(const [_push, _pull, _legs, _rest], today: start);
+      final projection0 = _project(schedule, today: start);
+      expect(projection0.day(start).effective.single.planId, 'Push');
+      for (var offset = 0; offset < 860; offset += 9) {
+        final date = start.addDays(offset);
+        final plan = _project(schedule).basePlanOn(date);
+        if (plan == null) continue;
+        schedule = switch (offset % 4) {
+          0 => schedule.shiftRhythm(date, 1 + offset % 2),
+          1 => schedule.skip(date, plan),
+          _ => schedule.moveSingle(date, plan, date.addDays(2)),
+        };
+      }
+      // Ausnahme kurz vor der Grenze, deren Ziel dahinter liegt.
+      final cutoff = _today.addDays(-400);
+      final before = cutoff.addDays(-1);
+      final planBefore = _project(schedule).basePlanOn(before);
+      if (planBefore != null) {
+        schedule = schedule.moveSingle(before, planBefore, cutoff.addDays(1));
+      }
+      final workouts = [
+        _workout(cutoff.addDays(3), planId: 'Push'),
+        _workout(_today.addDays(-2), title: 'Frei'),
+      ];
+
+      final compacted = schedule.compacted(_today);
+      expect(compacted.shifts.length, lessThan(schedule.shifts.length));
+      expect(compacted.exceptions.length, lessThan(schedule.exceptions.length));
+      expect(compacted.validFrom.isAfter(schedule.validFrom), isTrue);
+
+      final original = _project(schedule, workouts: workouts);
+      final after = _project(compacted, workouts: workouts);
+      for (
+        var date = cutoff;
+        !date.isAfter(_today.addDays(60));
+        date = date.addDays(1)
+      ) {
+        expect(
+          fingerprint(after.day(date)),
+          fingerprint(original.day(date)),
+          reason: date.toIso(),
+        );
+      }
+      // Erneutes Verdichten ändert nichts mehr.
+      expect(compacted.compacted(_today).toJson(), compacted.toJson());
+    });
+
+    test('Ein junger Rhythmus bleibt unverändert', () {
+      final schedule = _cycle(const [_push, _pull]).skip(_today, 'Push');
+      expect(identical(schedule.compacted(_today), schedule), isTrue);
+    });
+  });
+
+  group('Effektiv gleicher Rhythmus', () {
+    test('Ein verschobener Zyklus mit gleichen Slots ist unverändert', () {
+      final schedule = _cycle(const [
+        _push,
+        _pull,
+        _legs,
+      ], today: _today.addDays(-3)).shiftRhythm(_today.addDays(-1), 1);
+      final index = schedule.effectiveCycleIndex(_today)!;
+      expect(
+        schedule.hasSameRhythm(
+          mode: TrainingScheduleMode.cycle,
+          slots: const [_push, _pull, _legs],
+          today: _today,
+          todaySlotIndex: index,
+        ),
+        isTrue,
+      );
+      expect(
+        schedule.hasSameRhythm(
+          mode: TrainingScheduleMode.cycle,
+          slots: const [_push, _pull, _legs],
+          today: _today,
+          todaySlotIndex: (index + 1) % 3,
+        ),
+        isFalse,
+      );
+      expect(
+        schedule.hasSameRhythm(
+          mode: TrainingScheduleMode.cycle,
+          slots: const [_push, _legs, _pull],
+          today: _today,
+          todaySlotIndex: index,
+        ),
+        isFalse,
+      );
+    });
+
+    test('An einem pausierten Tag gilt der Slot vor dem nächsten Training', () {
+      final schedule = _cycle(const [_push, _pull, _legs])
+          .shiftRhythm(_today, 2);
+      // Heute und morgen pausiert, übermorgen Push (Slot 0).
+      expect(schedule.cycleSlotIndexOn(_today), isNull);
+      expect(schedule.effectiveCycleIndex(_today), 1);
+    });
+  });
 }
