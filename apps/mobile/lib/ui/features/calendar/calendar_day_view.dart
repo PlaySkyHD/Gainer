@@ -99,6 +99,7 @@ class CalendarDayView extends StatelessWidget {
         TodayWeightOverview(
           viewModel: dashboard,
           today: today.toDateTime(),
+          todayWeightKg: day.checkIn?.weightKg,
           onTap: onOpenCheckIn,
         ),
       );
@@ -207,7 +208,7 @@ class CalendarDayView extends StatelessWidget {
             subtitle: [
               formatDurationMinutes(item.duration),
               if (item.volumeKg > 0)
-                'Volumen ${formatGermanNumber(item.volumeKg)} kg',
+                'Volumen ${calendarWholeNumber(item.volumeKg)} kg',
             ].join(' · '),
             leadingIcon: CupertinoIcons.sportscourt,
             showChevron: true,
@@ -271,12 +272,9 @@ class CalendarDayView extends StatelessWidget {
   Widget? _checkInSection(ProgressViewModel? dashboard) {
     final checkIn = day.checkIn;
     if (checkIn == null) return null;
-    // Das Gewicht von heute steht schon in der Gewichtskarte.
-    final latest = dashboard?.dashboard?.latestWeight;
-    final weightShown =
-        latest != null &&
-        latest.date == day.date.toIso() &&
-        (latest.weightKg - checkIn.weightKg).abs() < 0.05;
+    // Heute zeigt die Gewichtskarte das lokal erfasste Gewicht; es steht
+    // dann nicht noch einmal im Check-in.
+    final weightShown = _isToday && dashboard?.dashboard != null;
     final rows = <Widget>[
       if (!weightShown)
         _ValueRow(

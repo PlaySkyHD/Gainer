@@ -6,6 +6,8 @@ import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/body/body_tracking.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
+import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/training_plan_model.dart';
 import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/training_statistics.dart';
 import '../../../domain/models/training/workout_model.dart';
@@ -109,8 +111,44 @@ class CalendarDay {
   ];
 }
 
-/// Lädt den sichtbaren Monat (volle Wochen Mo–So) in einem Durchlauf aus den
-/// lokalen Repositories. Braucht keine Verbindung.
+/// Lokale Bereiche, die der Kalender liest. Jeder kann unabhängig fehlen.
+enum CalendarSource {
+  training('Training'),
+  schedule('Rhythmus'),
+  checkIns('Check-ins'),
+  cardio('Cardio'),
+  nutrition('Ernährung');
+
+  const CalendarSource(this.label);
+
+  final String label;
+}
+
+/// Verlaufsdaten über alle Monate. Sie bleiben beim Monatswechsel erhalten
+/// und werden nur bei einem Neuladen gelesen.
+class _History {
+  const _History({
+    required this.workouts,
+    required this.plans,
+    required this.schedule,
+    required this.checkIns,
+    required this.exercises,
+    required this.sessions,
+    required this.failed,
+  });
+
+  final List<Workout> workouts;
+  final List<TrainingPlanModel> plans;
+  final TrainingSchedule? schedule;
+  final List<DailyCheckIn> checkIns;
+  final List<CatalogExercise> exercises;
+  final List<CardioSession> sessions;
+  final Set<CalendarSource> failed;
+}
+
+/// Lädt den sichtbaren Monat (volle Wochen Mo–So) aus den lokalen
+/// Repositories. Braucht keine Verbindung. Fällt eine Quelle aus, bleiben
+/// Raster und Plan aus den übrigen Quellen sichtbar.
 class CalendarViewModel extends ChangeNotifier {
   CalendarViewModel({required this.training, this.cardio, this.nutrition})
     : _today = training.schedule.today() {
@@ -127,12 +165,13 @@ class CalendarViewModel extends ChangeNotifier {
   late LocalDay _selected;
   Map<LocalDay, CalendarDay> _days = const {};
   TrainingScheduleProjection? _projection;
+  _History? _history;
+  Set<CalendarSource> _failed = const {};
   bool _isLoading = false;
-  String? _errorMessage;
   bool _disposed = false;
-  int _generation = 0;
   Future<void>? _running;
   bool _rerun = false;
+  bool _refreshRequested = false;
 
   /// Heutiger lokaler Tag, beim Laden neu bestimmt.
   LocalDay get today => _today;
@@ -142,7 +181,13 @@ class CalendarViewModel extends ChangeNotifier {
   LocalDay get selected => _selected;
   TrainingScheduleProjection? get projection => _projection;
   bool get isLoading => _isLoading;
-  String? get errorMessage => _errorMessage;
+
+  /// Bereiche, die beim letzten Laden nicht gelesen werden konnten.
+  Set<CalendarSource> get failedSources => _failed;
+
+  String? get errorMessage => _failed.isEmpty
+      ? null
+      : 'Nicht geladen: ${[for (final source in _failed) source.label].join(', ')}.';
 
   /// True, sobald ein Monat geladen wurde.
   bool get isLoaded => _projection != null;
@@ -175,20 +220,20 @@ class CalendarViewModel extends ChangeNotifier {
     if (!isInMonth(date)) {
       _month = LocalDay(date.year, date.month, 1);
       _notify();
-      load();
+      _load(refresh: false);
       return;
     }
     _notify();
   }
 
   /// Wechselt um [delta] Monate. Gewählt ist danach heute, falls er im Monat
-  /// liegt, sonst der Erste.
+  /// liegt, sonst der Erste. Nutzt die gelesenen Verlaufsdaten weiter.
   Future<void> changeMonth(int delta) {
     final next = LocalDay(_month.year, _month.month + delta, 1);
     _month = next;
     _selected = isInMonth(_today) ? _today : next;
     _notify();
-    return load();
+    return _load(refresh: false);
   }
 
   /// Springt zum aktuellen Monat und wählt heute.
@@ -197,12 +242,24 @@ class CalendarViewModel extends ChangeNotifier {
     _month = LocalDay(_today.year, _today.month, 1);
     _selected = _today;
     _notify();
-    return load();
+    return _load(refresh: false);
   }
 
-  /// Lädt den angezeigten Monat neu. Laufende Ladevorgänge werden nicht
-  /// doppelt gestartet; ein Aufruf währenddessen lädt danach noch einmal.
-  Future<void> load() {
+  /// Prüft, ob ein neuer Tag begonnen hat (etwa nach Mitternacht oder bei
+  /// Rückkehr in die App), und lädt dann neu. Liefert true bei neuem Tag.
+  bool checkToday() {
+    if (training.schedule.today() == _today) return false;
+    load();
+    return true;
+  }
+
+  /// Liest alle Quellen neu und berechnet den angezeigten Monat. Laufende
+  /// Ladevorgänge werden nicht doppelt gestartet; ein Aufruf währenddessen
+  /// lädt danach noch einmal.
+  Future<void> load() => _load(refresh: true);
+
+  Future<void> _load({required bool refresh}) {
+    if (refresh) _refreshRequested = true;
     final running = _running;
     if (running != null) {
       _rerun = true;
@@ -222,7 +279,6 @@ class CalendarViewModel extends ChangeNotifier {
 
   Future<void> _loadOnce() async {
     if (_disposed) return;
-    final generation = ++_generation;
     final previousToday = _today;
     _today = training.schedule.today();
     // Nach Mitternacht wandert die Auswahl von gestern auf den neuen Tag.
@@ -231,56 +287,118 @@ class CalendarViewModel extends ChangeNotifier {
       _month = LocalDay(_today.year, _today.month, 1);
     }
     final month = _month;
+    final today = _today;
     _isLoading = true;
     _notify();
+
+    var history = _history;
+    if (history == null || _refreshRequested) {
+      _refreshRequested = false;
+      history = await _readHistory();
+      if (_disposed) return;
+      _history = history;
+    }
+    final days = visibleDaysOf(month);
+    final failed = {...history.failed};
+    final food = await _guard(
+      CalendarSource.nutrition,
+      failed,
+      () async => nutrition?.readDays(days.first.toIso(), days.last.toIso()),
+      null,
+    );
+    if (_disposed) return;
+
+    final projection = TrainingScheduleProjection(
+      schedule: history.schedule,
+      plans: history.plans,
+      workouts: history.workouts,
+      today: today,
+    );
+    _projection = projection;
+    _days = _buildDays(days.first, days.last, history, food, projection);
+    _failed = failed;
+    _isLoading = false;
+    _notify();
+  }
+
+  /// Liest die Verlaufsquellen parallel; jede darf einzeln fehlschlagen.
+  Future<_History> _readHistory() async {
+    final failed = <CalendarSource>{};
+    final results = await Future.wait<Object?>([
+      _guard(
+        CalendarSource.training,
+        failed,
+        training.readDiary,
+        const <Workout>[],
+      ),
+      _guard(
+        CalendarSource.training,
+        failed,
+        () => training.readPlans(includeArchived: true),
+        const <TrainingPlanModel>[],
+      ),
+      _guard(CalendarSource.schedule, failed, training.schedule.read, null),
+      _guard(
+        CalendarSource.checkIns,
+        failed,
+        training.readCheckIns,
+        const <DailyCheckIn>[],
+      ),
+      // Fehlt der Katalog, rechnet das Volumen mit Standardfaktoren.
+      training.readExercisesOffline().then<List<CatalogExercise>>(
+        (value) => value,
+        onError: (Object _) => const <CatalogExercise>[],
+      ),
+      _guard(
+        CalendarSource.cardio,
+        failed,
+        () async => await cardio?.readSessions() ?? const <CardioSession>[],
+        const <CardioSession>[],
+      ),
+    ]);
+    return _History(
+      workouts: results[0]! as List<Workout>,
+      plans: results[1]! as List<TrainingPlanModel>,
+      schedule: results[2] as TrainingSchedule?,
+      checkIns: results[3]! as List<DailyCheckIn>,
+      exercises: results[4]! as List<CatalogExercise>,
+      sessions: results[5]! as List<CardioSession>,
+      failed: failed,
+    );
+  }
+
+  static Future<T> _guard<T>(
+    CalendarSource source,
+    Set<CalendarSource> failed,
+    Future<T> Function() read,
+    T fallback,
+  ) async {
     try {
-      final days = visibleDaysOf(month);
-      final result = await _read(days.first, days.last, _today);
-      if (_disposed || generation != _generation) return;
-      _days = result.days;
-      _projection = result.projection;
-      _errorMessage = null;
-    } catch (_) {
-      if (_disposed || generation != _generation) return;
-      _errorMessage = 'Der Kalender konnte nicht geladen werden.';
-    } finally {
-      if (!_disposed && generation == _generation) {
-        _isLoading = false;
-        _notify();
-      }
+      return await read();
+    } on Object {
+      failed.add(source);
+      return fallback;
     }
   }
 
-  Future<
-    ({Map<LocalDay, CalendarDay> days, TrainingScheduleProjection projection})
-  >
-  _read(LocalDay from, LocalDay to, LocalDay today) async {
-    final workouts = await training.readDiary();
-    final plans = await training.readPlans(includeArchived: true);
-    final schedule = await training.schedule.read();
-    final checkIns = await training.readCheckIns();
-    final ownExercises = await training.readOwnExercises();
-    final sessions = await cardio?.readSessions() ?? const <CardioSession>[];
-    final food = await nutrition?.readDays(from.toIso(), to.toIso());
-
-    final projection = TrainingScheduleProjection(
-      schedule: schedule,
-      plans: plans,
-      workouts: workouts,
-      today: today,
-    );
-
+  Map<LocalDay, CalendarDay> _buildDays(
+    LocalDay from,
+    LocalDay to,
+    _History history,
+    ({List<NutritionDay> days, NutritionTargetSchedule? targets})? food,
+    TrainingScheduleProjection projection,
+  ) {
     bool inRange(LocalDay day) => !day.isBefore(from) && !day.isAfter(to);
 
     final workoutsByDay = <LocalDay, List<CalendarWorkout>>{};
-    for (final workout in workouts.reversed) {
+    for (final workout in history.workouts.reversed) {
       if (!isCountedWorkout(workout)) continue;
       final day = localDayOfUtc(workout.startedAtUtc);
       if (!inRange(day)) continue;
       final stats = workoutExerciseStats(
         workout,
-        checkIns: checkIns,
-        catalog: ownExercises,
+        checkIns: history.checkIns,
+        catalog: history.exercises,
       );
       workoutsByDay
           .putIfAbsent(day, () => [])
@@ -293,14 +411,14 @@ class CalendarViewModel extends ChangeNotifier {
     }
 
     final cardioByDay = <LocalDay, List<CardioSession>>{};
-    for (final session in sessions.reversed) {
+    for (final session in history.sessions.reversed) {
       final day = localDayOfUtc(session.startedAtUtc);
       if (!inRange(day)) continue;
       cardioByDay.putIfAbsent(day, () => []).add(session);
     }
 
     final checkInByDay = <LocalDay, DailyCheckIn>{
-      for (final checkIn in checkIns)
+      for (final checkIn in history.checkIns)
         if (_tryParseDay(checkIn.localDate) case final day? when inRange(day))
           day: checkIn,
     };
@@ -319,20 +437,17 @@ class CalendarViewModel extends ChangeNotifier {
       );
     }
 
-    return (
-      days: {
-        for (final day in projection.days(from, to))
-          day.date: CalendarDay(
-            date: day.date,
-            schedule: day,
-            workouts: workoutsByDay[day.date] ?? const [],
-            cardio: cardioByDay[day.date] ?? const [],
-            nutrition: nutritionByDay[day.date],
-            checkIn: checkInByDay[day.date],
-          ),
-      },
-      projection: projection,
-    );
+    return {
+      for (final day in projection.days(from, to))
+        day.date: CalendarDay(
+          date: day.date,
+          schedule: day,
+          workouts: workoutsByDay[day.date] ?? const [],
+          cardio: cardioByDay[day.date] ?? const [],
+          nutrition: nutritionByDay[day.date],
+          checkIn: checkInByDay[day.date],
+        ),
+    };
   }
 
   void _notify() {

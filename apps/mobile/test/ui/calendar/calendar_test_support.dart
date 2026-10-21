@@ -220,11 +220,16 @@ class FakeDashboardApi extends ApiClient {
   Future<ApiDashboardInsights> getDashboardInsights({
     int days = 30,
     DateTime? through,
-  }) async => calendarDashboard();
+  }) async {
+    calls++;
+    return calendarDashboard();
+  }
+
+  int calls = 0;
 }
 
-ProgressViewModel fakeOverview() {
-  final api = FakeDashboardApi();
+ProgressViewModel fakeOverview([FakeDashboardApi? dashboardApi]) {
+  final api = dashboardApi ?? FakeDashboardApi();
   final model = ProgressViewModel(InsightsRepository(api));
   addTearDown(model.dispose);
   addTearDown(api.close);
@@ -290,6 +295,7 @@ Future<void> pumpCalendar(
   Listenable? visibility,
   bool Function()? isVisible,
   Listenable? refresh,
+  NutritionRepository? nutrition,
 }) async {
   final active = ActiveWorkoutController(harness.repository);
   addTearDown(active.dispose);
@@ -301,7 +307,7 @@ Future<void> pumpCalendar(
         training: harness.repository,
         activeWorkout: active,
         cardioSessions: harness.cardio,
-        nutrition: harness.nutrition,
+        nutrition: nutrition ?? harness.nutrition,
         overview: overview,
         onOpenArea: onOpenArea,
         onOpenNutritionDay: onOpenNutritionDay,

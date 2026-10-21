@@ -134,12 +134,22 @@ class TrainingLogRepository {
     return all;
   }
 
-  /// Nur die eigenen Übungen aus dem lokalen Store, ohne den Basiskatalog
-  /// (der ihn über das Netz lädt). Für Kennzahlen, die offline entstehen.
-  Future<List<CatalogExercise>> readOwnExercises() async => [
-    for (final row in await store.readAggregates(_customExerciseType))
-      CatalogExercise.fromJson(_asMap(row.workingCopy)),
-  ];
+  /// Wie [readExercises] mit Archivierten, aber ohne Netz: der Basiskatalog
+  /// kommt aus dem zuletzt geladenen Stand bzw. dem lokalen Cache. So gelten
+  /// dieselben Faktoren wie in Zusammenfassung und Statistik, auch offline.
+  /// Kataloge ohne Cache (lokal, Tests) werden direkt geladen.
+  Future<List<CatalogExercise>> readExercisesOffline() async {
+    final source = catalog;
+    final base = source is CachedExerciseCatalogProvider
+        ? await (source as CachedExerciseCatalogProvider)
+              .readCachedBaseCatalog()
+        : await source.loadBaseCatalog();
+    return [
+      ...?base?.exercises,
+      for (final row in await store.readAggregates(_customExerciseType))
+        CatalogExercise.fromJson(_asMap(row.workingCopy)),
+    ];
+  }
 
   /// Kategorien: Basiskategorien und eigene Kategorien.
   Future<List<CatalogCategory>> readCategories({

@@ -1,4 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/cardio/cardio_repository.dart';
+import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
+import 'package:gainer_mobile/domain/models/cardio/cardio_session.dart';
+import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/ui/features/calendar/calendar_view_model.dart';
 
@@ -225,4 +229,95 @@ void main() {
     expect(model.day(oct(15))!.workouts, isEmpty);
     expect(model.day(calendarToday)!.workouts, isEmpty);
   });
+
+  test('a failing source keeps grid, plan and the other sources', () async {
+    final push = await harness.plan('Push');
+    await harness.cycle([push.planId, null]);
+    await harness.checkIn(oct(20));
+    final failing = CalendarViewModel(
+      training: harness.repository,
+      cardio: _FailingCardio(harness),
+      nutrition: _FailingNutrition(harness),
+    );
+    addTearDown(failing.dispose);
+
+    await failing.load();
+
+    expect(failing.isLoaded, isTrue);
+    expect(failing.visibleDays.every((d) => failing.day(d) != null), isTrue);
+    expect(
+      failing.day(calendarToday)!.schedule.trainings.single.isOpen,
+      isTrue,
+    );
+    expect(failing.day(oct(20))!.checkIn, isNotNull);
+    expect(failing.failedSources, {
+      CalendarSource.cardio,
+      CalendarSource.nutrition,
+    });
+    expect(failing.errorMessage, 'Nicht geladen: Cardio, Ernährung.');
+  });
+
+  test('month changes reuse history; load reads it again', () async {
+    final cardio = _CountingCardio(harness);
+    final counting = CalendarViewModel(
+      training: harness.repository,
+      cardio: cardio,
+      nutrition: harness.nutrition,
+    );
+    addTearDown(counting.dispose);
+
+    await counting.load();
+    expect(cardio.reads, 1);
+
+    await counting.changeMonth(-1);
+    await counting.changeMonth(1);
+    await counting.goToToday();
+    expect(cardio.reads, 1);
+
+    await counting.load();
+    expect(cardio.reads, 2);
+  });
+
+  test('checkToday reloads only when the date changed', () async {
+    await model.load();
+    expect(model.checkToday(), isFalse);
+
+    harness.training.now = DateTime.utc(2026, 10, 23, 10);
+    expect(model.checkToday(), isTrue);
+    await model.load();
+
+    expect(model.today, oct(23));
+    expect(model.selected, oct(23));
+  });
+}
+
+class _FailingNutrition extends NutritionRepository {
+  _FailingNutrition(CalendarHarness harness)
+    : super(store: harness.training.store);
+
+  @override
+  Future<({List<NutritionDay> days, NutritionTargetSchedule? targets})>
+  readDays(String from, String to) async => throw StateError('kaputt');
+}
+
+class _FailingCardio extends CardioRepository {
+  _FailingCardio(CalendarHarness harness)
+    : super(store: harness.training.store);
+
+  @override
+  Future<List<CardioSession>> readSessions() async =>
+      throw StateError('kaputt');
+}
+
+class _CountingCardio extends CardioRepository {
+  _CountingCardio(CalendarHarness harness)
+    : super(store: harness.training.store);
+
+  int reads = 0;
+
+  @override
+  Future<List<CardioSession>> readSessions() {
+    reads++;
+    return super.readSessions();
+  }
 }
