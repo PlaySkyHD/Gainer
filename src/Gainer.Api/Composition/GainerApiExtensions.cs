@@ -3,6 +3,7 @@ using Gainer.Api.Middleware;
 using Gainer.Api.Controllers;
 using Gainer.Api.Security;
 using Gainer.Core.Security;
+using Gainer.Infrastructure.Integrations;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
@@ -72,6 +73,11 @@ public static class GainerApiExtensions
                 context => PerClientWindow(context, ApiConstants.TokenRefreshRateLimitPolicy, permitLimit: 60));
         });
         builder.Services.AddScoped<IUserContext, HttpUserContext>();
+        // Also registered by the persistence module; the API needs them for the user context and the worker.
+        builder.Services.TryAddScoped<BackgroundUserScope>();
+        builder.Services.TryAddSingleton<StravaExportSignal>();
+        builder.Services.AddOptions<StravaOptions>();
+        builder.Services.AddHostedService<StravaExportWorker>();
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services
             .AddControllers()

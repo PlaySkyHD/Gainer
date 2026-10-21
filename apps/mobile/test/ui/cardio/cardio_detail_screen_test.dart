@@ -1,8 +1,13 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/models/api/strava_api_models.dart';
+import 'package:gainer_mobile/data/models/local/local_aggregate.dart';
+import 'package:gainer_mobile/data/models/local/local_mutation.dart';
+import 'package:gainer_mobile/data/repositories/cardio/cardio_repository.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_session.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_detail_screen.dart';
 
+import '../strava/strava_test_support.dart';
 import '../training/training_test_support.dart';
 import 'cardio_test_support.dart';
 
@@ -234,6 +239,92 @@ void main() {
     final session = await seedSmall(tester);
     await openDetail(tester, session.sessionId, textScale: 2);
 
+    expect(tester.takeException(), isNull);
+  });
+
+  /// Wie nach dem Sync: der Server kennt die Einheit in Version 1.
+  Future<void> markSynced(WidgetTester tester, CardioSession session) async {
+    await tester.runAsync(
+      () => harness.store.commitMutation(
+        mutationId: '00000000-0000-4000-8000-000000000900',
+        aggregateType: cardioSessionAggregateType,
+        aggregateId: session.sessionId,
+        operation: LocalMutationOperation.update,
+        baseVersion: 1,
+        body: session.toJson(),
+        envelope: LocalAggregateEnvelope<Object?>(
+          aggregateId: session.sessionId,
+          serverSnapshot: session.toJson(),
+          workingCopy: session.toJson(),
+          serverVersion: 1,
+          optimisticVersion: 2,
+          syncState: LocalSyncState.pending,
+        ),
+        createdAtUtc: harness.now,
+      ),
+    );
+  }
+
+  testWidgets('sendet eine synchronisierte Einheit an Strava', (tester) async {
+    final session = await seedSmall(tester);
+    await markSynced(tester, session);
+    final strava = FakeStravaService(stravaStatus())
+      ..requestedStatus = StravaExportStatus.processing;
+    harness.strava = strava;
+    await openDetail(tester, session.sessionId);
+
+    final row = find.byKey(const ValueKey('cardio-strava-export'));
+    await scrollIntoView(tester, row);
+    expect(find.text('An Strava senden'), findsOneWidget);
+    await tester.tap(row);
+    await tester.pump();
+    await tester.pump();
+
+    expect(strava.requested, [session.sessionId]);
+    expect(find.text('Wird an Strava gesendet'), findsOneWidget);
+
+    strava.exports[session.sessionId] = const ApiStravaExport(
+      status: StravaExportStatus.completed,
+      activityId: 9001,
+      errorCode: null,
+    );
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+    expect(find.text('An Strava gesendet'), findsOneWidget);
+  });
+
+  testWidgets('ohne Sync oder ohne Strava-Verbindung keine Strava-Zeile', (
+    tester,
+  ) async {
+    final session = await seedSmall(tester);
+    harness.strava = FakeStravaService(stravaStatus());
+    await openDetail(tester, session.sessionId);
+    expect(find.text('Strava'), findsNothing);
+
+    await markSynced(tester, session);
+    harness.strava = FakeStravaService(stravaStatus(connected: false));
+    await openDetail(tester, session.sessionId);
+    await pumpUi(tester);
+    expect(find.text('Strava'), findsNothing);
+  });
+
+  testWidgets('fehlgeschlagener Export bietet erneutes Senden an', (
+    tester,
+  ) async {
+    final session = await seedSmall(tester);
+    await markSynced(tester, session);
+    harness.strava = FakeStravaService(stravaStatus())
+      ..exports[session.sessionId] = const ApiStravaExport(
+        status: StravaExportStatus.failed,
+        activityId: null,
+        errorCode: 'strava_upload_error',
+      );
+    await openDetail(tester, session.sessionId, textScale: 2);
+
+    final row = find.byKey(const ValueKey('cardio-strava-export'));
+    await scrollIntoView(tester, row);
+    expect(find.text('Erneut an Strava senden'), findsOneWidget);
+    expect(find.textContaining('nicht angenommen'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

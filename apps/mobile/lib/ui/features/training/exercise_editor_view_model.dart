@@ -49,6 +49,9 @@ class ExerciseEditorViewModel extends ChangeNotifier {
   /// Nicht archivierte Kategorien, die zugeordnet werden können.
   List<CatalogCategory> categories = const [];
 
+  /// Übungen mit Muskeln als Quelle für den Muskel-Vorschlag beim Anlegen.
+  List<CatalogExercise> suggestionSources = const [];
+
   /// True, wenn Trainings oder Pläne auf die Übung verweisen.
   bool isUsed = false;
 
@@ -76,11 +79,18 @@ class ExerciseEditorViewModel extends ChangeNotifier {
     try {
       final loadedCategories = await repository.readCategories();
       final used = await _isUsed();
+      final exercises = await repository.readExercises().catchError(
+        (_) => const <CatalogExercise>[],
+      );
       final loadedSettings = await repository.preferences.read().catchError(
         (_) => const TrainingPreferenceValues(),
       );
       if (_disposed) return;
       categories = loadedCategories;
+      suggestionSources = [
+        for (final item in exercises)
+          if (item.id != exercise?.id && item.primaryMuscles.isNotEmpty) item,
+      ];
       isUsed = used;
       settings = loadedSettings;
     } catch (_) {

@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
+import '../../../data/repositories/strava/strava_service.dart';
 import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../features/access/account_operator_screen.dart';
 import '../../features/access/logout_everywhere.dart';
@@ -13,6 +14,7 @@ import '../../features/cardio/cardio_settings_screen.dart';
 import '../../features/coach/coach_screen.dart';
 import '../../features/nutrition/nutrition_screen.dart';
 import '../../features/progress/progress_screen.dart';
+import '../../features/strava/strava_screen.dart';
 import '../../features/sync/sync_screen.dart';
 import '../../features/training/compact_training_bar.dart';
 import '../../features/training/training_home_screen.dart';
@@ -91,6 +93,7 @@ CardioFeature _cardioOf(AccountScope account) => CardioFeature(
   session: account.cardioSession,
   health: account.cardioHealth,
   body: account.bodyViewModel.repository,
+  strava: account.online ? ApiStravaService(api: account.api) : null,
 );
 
 /// Öffnet das aktive Training, wenn der Controller es nach einem Tab-Wechsel
@@ -251,6 +254,19 @@ class _MoreScreen extends StatelessWidget {
               onTap: () => Navigator.of(context).push(
                 CupertinoPageRoute<void>(
                   builder: (_) => PasskeysScreen(controller: controller),
+                ),
+              ),
+            ),
+            GainerListRow(
+              title: 'Strava',
+              leadingIcon: CupertinoIcons.arrow_up_right_circle,
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                CupertinoPageRoute<void>(
+                  builder: (_) => StravaScreen(
+                    service: ApiStravaService(api: account.api),
+                    online: account.online,
+                  ),
                 ),
               ),
             ),

@@ -5,10 +5,12 @@ import 'package:gainer_mobile/domain/models/training/muscles.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/body_map.dart';
+import 'package:gainer_mobile/ui/features/training/exercise_editor_screen.dart';
 import 'package:gainer_mobile/ui/features/training/muscle_map_screen.dart';
 import 'package:gainer_mobile/ui/features/training/plan_editor_screen.dart';
 import 'package:gainer_mobile/ui/features/training/training_statistics_section.dart';
 
+import 'exercise_catalog_test_support.dart';
 import 'muscle_map_test_support.dart';
 import 'training_plans_test_support.dart';
 import 'training_test_support.dart';
@@ -72,8 +74,6 @@ void main() {
     await pumpScreen(tester);
 
     expect(find.text('Alle Pläne'), findsOneWidget);
-    expect(find.textContaining('1 Übung hat keine Muskeln'), findsOneWidget);
-    expect(find.textContaining('Curls'), findsOneWidget);
     await showRow(tester, Muscle.chest);
     // Push: Bankdrücken 4 Sätze (Brust, Hilfs Trizeps), Trizepsdrücken 3.
     expect(valueOf(tester, Muscle.chest), '4 Sätze');
@@ -83,6 +83,41 @@ void main() {
     expect(valueOf(tester, Muscle.biceps), '1,5 Sätze');
     await showRow(tester, Muscle.quads);
     expect(valueOf(tester, Muscle.quads), 'Nicht trainiert');
+  });
+
+  testWidgets('Übungen ohne Muskeln lassen sich direkt nachtragen', (
+    tester,
+  ) async {
+    await pumpScreen(tester);
+    final row = find.byKey(ValueKey('missing-muscles-${scenario.curlId}'));
+    await scrollIntoView(tester, row);
+    expect(find.text('Ohne Muskeln'), findsOneWidget);
+
+    await tester.tap(row);
+    await settle(tester);
+    expect(find.byType(ExerciseEditorScreen), findsOneWidget);
+    await scrollIntoView(
+      tester,
+      find.byKey(const ValueKey('exercise-primary-muscles')),
+    );
+    await tester.tap(find.byKey(const ValueKey('exercise-primary-muscles')));
+    await settle(tester);
+    await scrollIntoView(
+      tester,
+      find.byKey(const ValueKey('muscle-option-biceps')),
+    );
+    await tester.tap(find.byKey(const ValueKey('muscle-option-biceps')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('muscle-picker-done')));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('exercise-save')));
+    await settle(tester);
+
+    expect(find.byType(MuscleMapScreen), findsOneWidget);
+    expect(find.text('Ohne Muskeln'), findsNothing);
+    await showRow(tester, Muscle.biceps);
+    // Curls 3 Sätze als Hauptmuskel plus 1,5 aus Klimmzügen.
+    expect(valueOf(tester, Muscle.biceps), '4,5 Sätze');
   });
 
   testWidgets('ein Plan zeigt nur seine Sätze', (tester) async {
@@ -251,6 +286,8 @@ void main() {
     await scrollIntoView(tester, map);
 
     Future<void> tapChest() async {
+      // Der Vorschlag über der Karte verschwindet nach der ersten Wahl.
+      await scrollIntoView(tester, map);
       final box = tester.getRect(map);
       await tester.tapAt(
         box.topLeft + Offset(86 * box.width / 408, 102 * box.height / 430),
@@ -295,5 +332,61 @@ void main() {
     expect(find.text('Oberer Rücken, Latissimus'), findsOneWidget);
     expect(find.text('Bizeps'), findsOneWidget);
     expect(find.byKey(const ValueKey('exercise-save')), findsNothing);
+  });
+
+  testWidgets('neue Übung bekommt einen Muskel-Vorschlag aus dem Namen', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await tester.pumpWidget(
+      catalogHost(
+        buildRoute: (_) => ExerciseEditorScreen(repository: harness.repository),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('open-under-test')));
+    await settle(tester);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('exercise-name')),
+      'Bankdrücken Schrägbank',
+    );
+    await tester.pump();
+    final apply = find.byKey(
+      const ValueKey('exercise-muscle-suggestion-apply'),
+    );
+    await scrollIntoView(tester, apply);
+    expect(find.text('Vorschlag: wie „Bankdrücken“'), findsOneWidget);
+
+    await tester.tap(apply);
+    await tester.pump();
+
+    expect(apply, findsNothing);
+    final primary = tester.widgetList<Text>(
+      find.descendant(
+        of: find.byKey(const ValueKey('exercise-primary-muscles')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(primary.last.data, 'Brust');
+  });
+
+  testWidgets('Basisübung zeigt Anleitung und Equipment', (tester) async {
+    const base = CatalogExercise(
+      id: 'base-bench',
+      name: 'Bankdrücken (Langhantel)',
+      exerciseType: ExerciseKind.strength,
+      description: 'Stange zur Brust senken und drücken.',
+      equipment: 'Langhantel',
+      primaryMuscles: [Muscle.chest],
+      isBase: true,
+    );
+    await openEditorFor(tester, harness, base);
+
+    expect(find.text('Langhantel'), findsOneWidget);
+    await scrollIntoView(
+      tester,
+      find.byKey(const ValueKey('exercise-description')),
+    );
+    expect(find.text('Stange zur Brust senken und drücken.'), findsOneWidget);
   });
 }

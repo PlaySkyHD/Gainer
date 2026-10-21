@@ -41,6 +41,7 @@ class WorkoutViewModel extends ChangeNotifier {
   Workout? _workout;
   List<Workout> _diary = const [];
   Map<String, String?> _exerciseNotes = const {};
+  Set<String> _baseExerciseIds = const {};
   TrainingPreferenceValues _settings = const TrainingPreferenceValues();
   bool isLoading = false;
   String? errorMessage;
@@ -124,6 +125,16 @@ class WorkoutViewModel extends ChangeNotifier {
     );
   }
 
+  /// True, wenn die Übung im Katalog bekannt ist (auch archiviert).
+  bool hasExercise(String exerciseId) => _exerciseNotes.containsKey(exerciseId);
+
+  /// Basisübungen sind schreibgeschützt; ihr Editor zeigt sie nur an.
+  bool isBaseExercise(String exerciseId) =>
+      _baseExerciseIds.contains(exerciseId);
+
+  /// Liest Stammnotizen und Übungsdaten neu, z. B. nach dem Übungseditor.
+  Future<void> refreshExercises() => _loadSupportData();
+
   /// Übungsstammnotiz aus dem Katalog; nur lesend.
   String? exerciseNoteFor(WorkoutBlock block) =>
       _exerciseNotes[block.sourceExerciseId];
@@ -179,6 +190,10 @@ class WorkoutViewModel extends ChangeNotifier {
       if (!_disposed) {
         _exerciseNotes = {
           for (final exercise in exercises) exercise.id: exercise.notes,
+        };
+        _baseExerciseIds = {
+          for (final exercise in exercises)
+            if (exercise.isBase) exercise.id,
         };
       }
     } catch (_) {

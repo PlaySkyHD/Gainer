@@ -18,7 +18,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("identity")
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -159,6 +159,125 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_daily_check_ins_steps", "\"Steps\" IS NULL OR \"Steps\" >= 0");
 
                             t.HasCheckConstraint("CK_daily_check_ins_weight", "\"WeightKg\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Core.Integrations.StravaConnection", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AccessTokenExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("AthleteId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("AthleteName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("CardioExportSinceUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ConnectedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("NeedsReconnect")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("PausedUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProtectedAccessToken")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("ProtectedRefreshToken")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("StrengthExportSinceUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("strava_connections", "integrations", t =>
+                        {
+                            t.HasCheckConstraint("CK_strava_connections_athlete", "\"AthleteId\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Core.Integrations.StravaExport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("ActivityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("AthleteId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UploadId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Status", "NextAttemptAtUtc");
+
+                    b.HasIndex("UserId", "Kind", "ResourceId", "AthleteId")
+                        .IsUnique();
+
+                    b.ToTable("strava_exports", "integrations", t =>
+                        {
+                            t.HasCheckConstraint("CK_strava_exports_attempts", "\"Attempts\" >= 0");
+
+                            t.HasCheckConstraint("CK_strava_exports_kind", "\"Kind\" IN ('Cardio', 'Strength')");
+
+                            t.HasCheckConstraint("CK_strava_exports_status", "\"Status\" IN ('Pending', 'Processing', 'Completed', 'Failed')");
                         });
                 });
 
@@ -1045,193 +1164,170 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("0159d8e1-ec7a-527a-9887-5cb4f70b1c83"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Barbell",
+                            Description = "Schulterblätter zusammenziehen, Stange kontrolliert zur unteren Brust senken und gerade nach oben drücken.",
+                            Equipment = "Langhantel",
                             ExerciseType = "strength",
                             IsArchived = false,
-                            MuscleGroup = "Chest",
-                            Name = "Barbell Bench Press",
+                            MuscleGroup = "Brust",
+                            Name = "Bankdrücken (Langhantel)",
                             PrimaryMuscles = new[] { "chest" },
                             SecondaryMuscles = new[] { "triceps", "frontDelts" },
-                            TargetMuscle = "Pectoralis major",
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
                         new
                         {
-                            Id = new Guid("07859f08-0fa6-5da4-882f-f5db0a7c310d"),
-                            CatalogVersion = "2026.10.2",
+                            Id = new Guid("d93ac4fe-bc50-5a04-adbc-3ce7284d25c8"),
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Barbell",
+                            Description = "Bank auf 30–45° stellen, Stange zur oberen Brust senken und über den Schultern ausdrücken.",
+                            Equipment = "Langhantel",
                             ExerciseType = "strength",
                             IsArchived = false,
-                            MuscleGroup = "Legs",
-                            Name = "Back Squat",
-                            PrimaryMuscles = new[] { "quads", "glutes" },
-                            SecondaryMuscles = new[] { "adductors", "lowerBack" },
-                            TargetMuscle = "Quadriceps",
+                            MuscleGroup = "Brust",
+                            Name = "Schrägbankdrücken (Langhantel)",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "frontDelts", "triceps" },
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
                         new
                         {
-                            Id = new Guid("173d2d47-c8a1-5967-8f5b-88de90a30659"),
-                            CatalogVersion = "2026.10.2",
+                            Id = new Guid("10e59c06-7d69-5c46-82e1-6ccc7abc94d4"),
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Barbell",
+                            Description = "Auf der Negativbank die Füße fixieren, Stange zur unteren Brust senken und drücken.",
+                            Equipment = "Langhantel",
                             ExerciseType = "strength",
                             IsArchived = false,
-                            MuscleGroup = "Legs",
-                            Name = "Romanian Deadlift",
-                            PrimaryMuscles = new[] { "hamstrings", "glutes" },
-                            SecondaryMuscles = new[] { "lowerBack" },
-                            TargetMuscle = "Hamstrings",
+                            MuscleGroup = "Brust",
+                            Name = "Negativbankdrücken (Langhantel)",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "triceps", "frontDelts" },
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
                         new
                         {
-                            Id = new Guid("28d6db67-f2d0-5e15-a63b-759fc96e01cb"),
-                            CatalogVersion = "2026.10.2",
+                            Id = new Guid("c4731fdc-153b-5430-baf7-9ce7d0492ff1"),
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Cable",
+                            Description = "Bank so stellen, dass die Stange über der unteren Brust läuft, kontrolliert senken und drücken.",
+                            Equipment = "Smith-Maschine",
                             ExerciseType = "strength",
                             IsArchived = false,
-                            MuscleGroup = "Back",
-                            Name = "Lat Pulldown",
-                            PrimaryMuscles = new[] { "lats" },
-                            SecondaryMuscles = new[] { "biceps", "rearDelts" },
-                            TargetMuscle = "Latissimus dorsi",
+                            MuscleGroup = "Brust",
+                            Name = "Bankdrücken (Smith-Maschine)",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "triceps", "frontDelts" },
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
                         new
                         {
-                            Id = new Guid("42ce4803-05e3-5f07-92b6-326c9aa95658"),
-                            BodyweightFactor = 1.0m,
-                            CatalogVersion = "2026.10.2",
+                            Id = new Guid("2d3197eb-0518-5851-b49e-b8f81a60665e"),
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Bodyweight",
-                            ExerciseType = "bodyweightLoaded",
-                            IsArchived = false,
-                            MuscleGroup = "Back",
-                            Name = "Pull-Up",
-                            PrimaryMuscles = new[] { "lats" },
-                            SecondaryMuscles = new[] { "biceps", "traps", "forearms" },
-                            TargetMuscle = "Latissimus dorsi",
-                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Version = 1L
-                        },
-                        new
-                        {
-                            Id = new Guid("4ec1e1c8-e2c9-56ac-bec1-4ba0936f6a97"),
-                            CatalogVersion = "2026.10.2",
-                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Cable",
+                            Description = "Hanteln neben der Brust absenken, Ellbogen etwa 45° vom Körper, und über der Brust zusammenführen.",
+                            Equipment = "Kurzhantel",
                             ExerciseType = "strength",
                             IsArchived = false,
-                            MuscleGroup = "Back",
-                            Name = "Seated Cable Row",
-                            PrimaryMuscles = new[] { "traps", "lats" },
-                            SecondaryMuscles = new[] { "rearDelts", "biceps" },
-                            TargetMuscle = "Rhomboids",
+                            MuscleGroup = "Brust",
+                            Name = "Bankdrücken (Kurzhantel)",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "triceps", "frontDelts" },
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
                         new
                         {
-                            Id = new Guid("66f8d486-cedf-54ee-8154-6b295371d2f7"),
-                            CatalogVersion = "2026.10.2",
+                            Id = new Guid("bc15eeae-3bb8-57d8-b24c-12e57c1532f6"),
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Dumbbell",
+                            Description = "Bank auf 30–45°, Hanteln seitlich der oberen Brust absenken und nach oben drücken.",
+                            Equipment = "Kurzhantel",
                             ExerciseType = "strength",
                             IsArchived = false,
-                            MuscleGroup = "Shoulders",
-                            Name = "Dumbbell Lateral Raise",
-                            PrimaryMuscles = new[] { "sideDelts" },
-                            SecondaryMuscles = new[] { "traps" },
-                            TargetMuscle = "Lateral deltoid",
+                            MuscleGroup = "Brust",
+                            Name = "Schrägbankdrücken (Kurzhantel)",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "frontDelts", "triceps" },
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
                         new
                         {
-                            Id = new Guid("71f9157f-2cec-5517-a910-a3a8c6d82f07"),
-                            CatalogVersion = "2026.10.2",
+                            Id = new Guid("fef86868-838e-58c6-a86e-bf594af3611c"),
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Barbell",
+                            Description = "Arme leicht gebeugt in einem Bogen seitlich absenken, bis die Brust gedehnt ist, und zurückführen.",
+                            Equipment = "Kurzhantel",
                             ExerciseType = "strength",
                             IsArchived = false,
-                            MuscleGroup = "Shoulders",
-                            Name = "Standing Overhead Press",
-                            PrimaryMuscles = new[] { "frontDelts" },
-                            SecondaryMuscles = new[] { "sideDelts", "triceps" },
-                            TargetMuscle = "Anterior deltoid",
+                            MuscleGroup = "Brust",
+                            Name = "Fliegende (Kurzhantel)",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "frontDelts" },
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
                         new
                         {
-                            Id = new Guid("85c4145d-e045-5153-a18a-1934d16ad4de"),
-                            CatalogVersion = "2026.10.2",
+                            Id = new Guid("6bca7c42-b716-5990-bd5a-a364ac0ccb93"),
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Machine",
+                            Description = "Griffe mit leicht gebeugten Armen vor dem Körper zusammenführen und langsam öffnen.",
+                            Equipment = "Kabelzug",
                             ExerciseType = "strength",
                             IsArchived = false,
-                            MuscleGroup = "Legs",
-                            Name = "Leg Curl",
-                            PrimaryMuscles = new[] { "hamstrings" },
-                            SecondaryMuscles = new[] { "calves" },
-                            TargetMuscle = "Hamstrings",
+                            MuscleGroup = "Brust",
+                            Name = "Cable Crossover (Kabelzug)",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "frontDelts" },
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
                         new
                         {
-                            Id = new Guid("9a23aa0d-a43b-5d10-a25e-b22db398578e"),
-                            CatalogVersion = "2026.10.2",
+                            Id = new Guid("9f814341-7b1e-5432-8829-f614d124e1c9"),
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Machine",
+                            Description = "Rücken an die Lehne, Arme vor der Brust zusammenführen und kontrolliert öffnen.",
+                            Equipment = "Maschine",
                             ExerciseType = "strength",
                             IsArchived = false,
-                            MuscleGroup = "Legs",
-                            Name = "Leg Extension",
-                            PrimaryMuscles = new[] { "quads" },
-                            SecondaryMuscles = new string[0],
-                            TargetMuscle = "Quadriceps",
+                            MuscleGroup = "Brust",
+                            Name = "Butterfly (Maschine)",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "frontDelts" },
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
                         new
                         {
-                            Id = new Guid("b33d40e4-e84e-5317-83e2-9df3ddb6bc4d"),
-                            CatalogVersion = "2026.10.2",
+                            Id = new Guid("986c4b0b-a86e-5a91-88bd-31c12295de92"),
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Dumbbell",
+                            Description = "Griffe auf Brusthöhe, nach vorn drücken ohne die Ellbogen ganz durchzustrecken.",
+                            Equipment = "Maschine",
                             ExerciseType = "strength",
                             IsArchived = false,
-                            MuscleGroup = "Arms",
-                            Name = "Dumbbell Biceps Curl",
-                            PrimaryMuscles = new[] { "biceps" },
-                            SecondaryMuscles = new[] { "forearms" },
-                            TargetMuscle = "Biceps brachii",
-                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Version = 1L
-                        },
-                        new
-                        {
-                            Id = new Guid("c6fb4053-2f69-597f-890e-e7bd58444a3e"),
-                            CatalogVersion = "2026.10.2",
-                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Cable",
-                            ExerciseType = "strength",
-                            IsArchived = false,
-                            MuscleGroup = "Arms",
-                            Name = "Cable Triceps Pushdown",
-                            PrimaryMuscles = new[] { "triceps" },
-                            SecondaryMuscles = new string[0],
-                            TargetMuscle = "Triceps brachii",
+                            MuscleGroup = "Brust",
+                            Name = "Brustpresse (Maschine)",
+                            PrimaryMuscles = new[] { "chest" },
+                            SecondaryMuscles = new[] { "triceps", "frontDelts" },
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
@@ -1239,16 +1335,17 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         {
                             Id = new Guid("2b8f7aee-2d29-4d6e-8dc8-d5b39bff5f9d"),
                             BodyweightFactor = 0.64m,
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Bodyweight",
+                            Description = "Körper bildet eine Linie, Brust bis knapp über den Boden senken und hochdrücken.",
+                            Equipment = "Körpergewicht",
                             ExerciseType = "bodyweightOnly",
                             IsArchived = false,
-                            MuscleGroup = "Chest",
-                            Name = "Push-Up",
+                            MuscleGroup = "Brust",
+                            Name = "Liegestütze",
                             PrimaryMuscles = new[] { "chest" },
                             SecondaryMuscles = new[] { "triceps", "frontDelts", "abs" },
-                            TargetMuscle = "Pectoralis major",
+                            TargetMuscle = "Brust",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         },
@@ -1256,16 +1353,1581 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         {
                             Id = new Guid("679b0f26-ac2b-4dc8-bb45-4121b2d3b8e6"),
                             BodyweightFactor = 1.0m,
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Equipment = "Bodyweight",
+                            Description = "Am Barren absenken, bis die Oberarme etwa waagerecht sind, und hochdrücken. Vorlage betont die Brust.",
+                            Equipment = "Körpergewicht",
                             ExerciseType = "bodyweightLoaded",
                             IsArchived = false,
-                            MuscleGroup = "Arms",
+                            MuscleGroup = "Arme",
                             Name = "Dips",
+                            PrimaryMuscles = new[] { "triceps", "chest" },
+                            SecondaryMuscles = new[] { "frontDelts" },
+                            TargetMuscle = "Trizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("989e913f-217a-5888-a862-99534b7fc991"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Quer auf der Bank, Hantel mit leicht gebeugten Armen hinter den Kopf senken und über die Brust zurückführen.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Brust",
+                            Name = "Überzüge (Kurzhantel)",
+                            PrimaryMuscles = new[] { "chest", "lats" },
+                            SecondaryMuscles = new[] { "triceps" },
+                            TargetMuscle = "Brust",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("3aca6eb8-0d2b-564c-80db-e1a67d0917f1"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Stange nah am Schienbein, Rücken gerade, aus Hüfte und Beinen aufrichten und kontrolliert absetzen.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Ganzkörper",
+                            Name = "Kreuzheben (Langhantel)",
+                            PrimaryMuscles = new[] { "glutes", "hamstrings", "lowerBack" },
+                            SecondaryMuscles = new[] { "quads", "traps", "forearms" },
+                            TargetMuscle = "Gesäß",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("6ac80f9a-8219-5f58-91e1-005c93c419b7"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Breiter Stand, Füße nach außen, Griff innen. Hüfte nach vorn schieben und aufrichten.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Sumo-Kreuzheben (Langhantel)",
+                            PrimaryMuscles = new[] { "glutes", "quads", "adductors" },
+                            SecondaryMuscles = new[] { "hamstrings", "lowerBack" },
+                            TargetMuscle = "Gesäß",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("173d2d47-c8a1-5967-8f5b-88de90a30659"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Knie leicht gebeugt, Hüfte nach hinten schieben und Stange an den Beinen entlang bis unter die Knie führen.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Rumänisches Kreuzheben (Langhantel)",
+                            PrimaryMuscles = new[] { "hamstrings", "glutes" },
+                            SecondaryMuscles = new[] { "lowerBack" },
+                            TargetMuscle = "Beinbeuger",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("7cfea19e-86df-5075-a090-9a6463ec7b19"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Auf einem Bein stehen, Oberkörper nach vorn neigen, das freie Bein nach hinten strecken und aufrichten.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Einbeiniges Kreuzheben (Kurzhantel)",
+                            PrimaryMuscles = new[] { "hamstrings", "glutes" },
+                            SecondaryMuscles = new[] { "lowerBack" },
+                            TargetMuscle = "Beinbeuger",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("05243d54-7f56-59b6-a901-76abb7272c44"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Stange im Nacken, mit geradem Rücken aus der Hüfte nach vorn beugen und aufrichten.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Good Mornings (Langhantel)",
+                            PrimaryMuscles = new[] { "hamstrings", "lowerBack" },
+                            SecondaryMuscles = new[] { "glutes" },
+                            TargetMuscle = "Beinbeuger",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("42ce4803-05e3-5f07-92b6-326c9aa95658"),
+                            BodyweightFactor = 1.0m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Obergriff etwas breiter als schulterbreit, Brust zur Stange ziehen und kontrolliert ablassen.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightLoaded",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Klimmzüge",
+                            PrimaryMuscles = new[] { "lats" },
+                            SecondaryMuscles = new[] { "biceps", "traps", "forearms" },
+                            TargetMuscle = "Latissimus",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("ee3ed3aa-e22f-56e3-b307-2f8b824fc78b"),
+                            BodyweightFactor = 1.0m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Untergriff schulterbreit, Kinn über die Stange ziehen und langsam ablassen.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightLoaded",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Klimmzüge im Untergriff",
+                            PrimaryMuscles = new[] { "lats", "biceps" },
+                            SecondaryMuscles = new[] { "traps", "forearms" },
+                            TargetMuscle = "Latissimus",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("0bd909a0-6d57-5b36-bebe-38a3461356bb"),
+                            BodyweightFactor = 1.0m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Gegengewicht einstellen, Brust zum Griff ziehen und kontrolliert ablassen.",
+                            Equipment = "Maschine",
+                            ExerciseType = "assisted",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Klimmzüge (Maschine, unterstützt)",
+                            PrimaryMuscles = new[] { "lats" },
+                            SecondaryMuscles = new[] { "biceps", "traps" },
+                            TargetMuscle = "Latissimus",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("28d6db67-f2d0-5e15-a63b-759fc96e01cb"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Breiter Griff, Stange zur oberen Brust ziehen, Schulterblätter nach unten führen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Latziehen (Kabelzug)",
+                            PrimaryMuscles = new[] { "lats" },
+                            SecondaryMuscles = new[] { "biceps", "rearDelts" },
+                            TargetMuscle = "Latissimus",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("44c0cd21-56dd-5f2f-bf59-35bc94f3e063"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Enger Griff, Ellbogen nah am Körper zur Brust ziehen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Latziehen enger Griff (Kabelzug)",
+                            PrimaryMuscles = new[] { "lats" },
+                            SecondaryMuscles = new[] { "biceps", "traps" },
+                            TargetMuscle = "Latissimus",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("f7939d2f-d3d2-5636-9c97-07512964e64a"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Mit fast gestreckten Armen die Stange in einem Bogen bis zu den Oberschenkeln ziehen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Überzüge am Kabel",
+                            PrimaryMuscles = new[] { "lats" },
+                            SecondaryMuscles = new[] { "triceps" },
+                            TargetMuscle = "Latissimus",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("5f259881-118c-52cc-980c-5405130adc79"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Oberkörper etwa 45° vorgeneigt, Stange zum Bauchnabel ziehen und kontrolliert senken.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Langhantelrudern",
+                            PrimaryMuscles = new[] { "traps", "lats" },
+                            SecondaryMuscles = new[] { "rearDelts", "biceps", "lowerBack" },
+                            TargetMuscle = "Oberer Rücken",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("5f8e9f25-aa1a-5fc7-b9c3-f7774df7373a"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Knie und Hand auf der Bank, Hantel zur Hüfte ziehen, Ellbogen nah am Körper.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Kurzhantelrudern einarmig",
+                            PrimaryMuscles = new[] { "lats", "traps" },
+                            SecondaryMuscles = new[] { "rearDelts", "biceps" },
+                            TargetMuscle = "Latissimus",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("4ec1e1c8-e2c9-56ac-bec1-4ba0936f6a97"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Aufrecht sitzen, Griff zum Bauch ziehen, Schulterblätter zusammenführen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Rudern sitzend (Kabelzug)",
+                            PrimaryMuscles = new[] { "traps", "lats" },
+                            SecondaryMuscles = new[] { "rearDelts", "biceps" },
+                            TargetMuscle = "Oberer Rücken",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("ad879102-4b1e-50b6-882a-d3dcf69d1d7c"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Vorgebeugt mit geradem Rücken die Stange zur Brust ziehen.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "T-Bar-Rudern",
+                            PrimaryMuscles = new[] { "traps", "lats" },
+                            SecondaryMuscles = new[] { "rearDelts", "biceps", "lowerBack" },
+                            TargetMuscle = "Oberer Rücken",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("03080ed4-c8ff-564a-b2cd-76abbd85543e"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Brust an das Polster, Griffe nach hinten ziehen und Schulterblätter zusammenführen.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Rudermaschine",
+                            PrimaryMuscles = new[] { "traps", "lats" },
+                            SecondaryMuscles = new[] { "rearDelts", "biceps" },
+                            TargetMuscle = "Oberer Rücken",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("94d5b795-73fc-5442-bef7-3e862e49fd38"),
+                            BodyweightFactor = 0.6m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Unter einer Stange hängend, Körper gestreckt, Brust zur Stange ziehen.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Rudern mit Körpergewicht",
+                            PrimaryMuscles = new[] { "traps", "lats" },
+                            SecondaryMuscles = new[] { "biceps", "rearDelts" },
+                            TargetMuscle = "Oberer Rücken",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("f4057df2-d82e-5aff-a826-9428a7ffcdd2"),
+                            BodyweightFactor = 0.5m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Hüfte am Polster, Oberkörper absenken und bis in die Verlängerung der Beine aufrichten.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Hyperextensions",
+                            PrimaryMuscles = new[] { "lowerBack" },
+                            SecondaryMuscles = new[] { "glutes", "hamstrings" },
+                            TargetMuscle = "Unterer Rücken",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("a58cd97f-0716-5e81-8f90-1e04fb8bbc8f"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Schultern gerade nach oben ziehen, kurz halten und langsam senken.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Rücken",
+                            Name = "Shrugs (Kurzhantel)",
+                            PrimaryMuscles = new[] { "traps" },
+                            SecondaryMuscles = new[] { "forearms" },
+                            TargetMuscle = "Oberer Rücken",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("70a2ddbc-6995-5679-9ea3-25132a51e778"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Seil auf Gesichtshöhe zum Gesicht ziehen, Ellbogen hoch und nach außen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Face Pulls (Kabelzug)",
+                            PrimaryMuscles = new[] { "rearDelts", "traps" },
+                            SecondaryMuscles = new[] { "sideDelts" },
+                            TargetMuscle = "Hintere Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("71f9157f-2cec-5517-a910-a3a8c6d82f07"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Stange vor den Schultern, Bauch fest, über den Kopf drücken und kontrolliert senken.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Schulterdrücken stehend (Langhantel)",
+                            PrimaryMuscles = new[] { "frontDelts" },
+                            SecondaryMuscles = new[] { "sideDelts", "triceps" },
+                            TargetMuscle = "Vordere Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("f061fbb1-0ccb-549c-be30-9ef995a1aebf"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Sitzend oder stehend die Hanteln von Schulterhöhe über den Kopf drücken.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Schulterdrücken (Kurzhantel)",
+                            PrimaryMuscles = new[] { "frontDelts" },
+                            SecondaryMuscles = new[] { "sideDelts", "triceps" },
+                            TargetMuscle = "Vordere Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("086f9bcf-5f98-5a17-b2a4-a90ac5636c5f"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Griffe auf Schulterhöhe, nach oben drücken ohne die Ellbogen zu überstrecken.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Schulterpresse (Maschine)",
+                            PrimaryMuscles = new[] { "frontDelts" },
+                            SecondaryMuscles = new[] { "sideDelts", "triceps" },
+                            TargetMuscle = "Vordere Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("12db891f-8392-5c1c-a58c-8c7ec6a7f524"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Hanteln vor dem Gesicht starten und beim Drücken nach außen drehen.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Arnold Press (Kurzhantel)",
+                            PrimaryMuscles = new[] { "frontDelts", "sideDelts" },
+                            SecondaryMuscles = new[] { "triceps" },
+                            TargetMuscle = "Vordere Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("66f8d486-cedf-54ee-8154-6b295371d2f7"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Arme leicht gebeugt seitlich bis auf Schulterhöhe heben und langsam senken.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Seitheben (Kurzhantel)",
+                            PrimaryMuscles = new[] { "sideDelts" },
+                            SecondaryMuscles = new[] { "traps" },
+                            TargetMuscle = "Seitliche Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("2affd637-a6a2-577f-809a-11bd7162ca66"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Seitlich zum Kabel stehen und den Griff mit leicht gebeugtem Arm bis auf Schulterhöhe führen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Seitheben am Kabel",
+                            PrimaryMuscles = new[] { "sideDelts" },
+                            SecondaryMuscles = new[] { "traps" },
+                            TargetMuscle = "Seitliche Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("f0557f25-9c72-5c55-9e4e-b14bf71cf669"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Arme an die Polster, seitlich bis auf Schulterhöhe heben.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Seitheben (Maschine)",
+                            PrimaryMuscles = new[] { "sideDelts" },
+                            SecondaryMuscles = new[] { "traps" },
+                            TargetMuscle = "Seitliche Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("7e364c6d-572f-5b03-a4c1-b962b8c84138"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Hanteln mit fast gestreckten Armen nach vorn bis auf Schulterhöhe heben.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Frontheben (Kurzhantel)",
+                            PrimaryMuscles = new[] { "frontDelts" },
+                            SecondaryMuscles = new[] { "sideDelts" },
+                            TargetMuscle = "Vordere Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("65c2005c-8285-5963-978e-e3fbb5cb5105"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Vorgebeugt die Hanteln seitlich nach außen heben, Schulterblätter zusammenführen.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Reverse Flys (Kurzhantel)",
+                            PrimaryMuscles = new[] { "rearDelts" },
+                            SecondaryMuscles = new[] { "traps" },
+                            TargetMuscle = "Hintere Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("2e855905-c74d-5971-96ff-1dadfc819714"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Brust an das Polster, Arme nach hinten öffnen und kontrolliert zurückführen.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Reverse Butterfly (Maschine)",
+                            PrimaryMuscles = new[] { "rearDelts" },
+                            SecondaryMuscles = new[] { "traps" },
+                            TargetMuscle = "Hintere Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("cdcf9968-ebe5-5dd9-880b-6ef2170dab9f"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Stange nah am Körper bis unter die Brust ziehen, Ellbogen führen.",
+                            Equipment = "SZ-Stange",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Schultern",
+                            Name = "Aufrechtes Rudern (SZ-Stange)",
+                            PrimaryMuscles = new[] { "sideDelts", "traps" },
+                            SecondaryMuscles = new[] { "biceps" },
+                            TargetMuscle = "Seitliche Schulter",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("b33d40e4-e84e-5317-83e2-9df3ddb6bc4d"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Ellbogen fest am Körper, Hanteln nach oben beugen und langsam senken.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Bizepscurls (Kurzhantel)",
+                            PrimaryMuscles = new[] { "biceps" },
+                            SecondaryMuscles = new[] { "forearms" },
+                            TargetMuscle = "Bizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("229a8cc8-c04f-56c5-a2f3-6553b8e8d7e3"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Schulterbreiter Untergriff, Stange ohne Schwung zur Brust beugen.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Bizepscurls (Langhantel)",
+                            PrimaryMuscles = new[] { "biceps" },
+                            SecondaryMuscles = new[] { "forearms" },
+                            TargetMuscle = "Bizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("29cc1745-868d-5339-9c2f-38b8efa2cfaa"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Am gewinkelten Griff fassen, Ellbogen ruhig halten und beugen.",
+                            Equipment = "SZ-Stange",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Bizepscurls (SZ-Stange)",
+                            PrimaryMuscles = new[] { "biceps" },
+                            SecondaryMuscles = new[] { "forearms" },
+                            TargetMuscle = "Bizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("c67400a6-ca5b-5e56-b067-411c73b5864d"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Daumen zeigen nach oben, Hanteln im Neutralgriff beugen.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Hammercurls (Kurzhantel)",
+                            PrimaryMuscles = new[] { "biceps", "forearms" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Bizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("e57a1210-e482-5bca-9a45-f8cddd6474e3"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Auf der Schrägbank hängen die Arme nach hinten, Hanteln nach oben beugen.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Schrägbank-Curls (Kurzhantel)",
+                            PrimaryMuscles = new[] { "biceps" },
+                            SecondaryMuscles = new[] { "forearms" },
+                            TargetMuscle = "Bizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("f4bdfb0d-3874-5979-a5b4-b36db09facf1"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Oberarme auf dem Pult, Stange beugen und fast ganz strecken.",
+                            Equipment = "SZ-Stange",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Scottcurls (SZ-Stange)",
+                            PrimaryMuscles = new[] { "biceps" },
+                            SecondaryMuscles = new[] { "forearms" },
+                            TargetMuscle = "Bizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("8a0227e3-674f-5423-9c80-a2a489fb0296"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Vor dem Kabelzug stehen, Griff mit ruhigen Ellbogen zur Brust beugen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Bizepscurls am Kabel",
+                            PrimaryMuscles = new[] { "biceps" },
+                            SecondaryMuscles = new[] { "forearms" },
+                            TargetMuscle = "Bizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("7c4c128e-d0d5-5ed5-85f3-4eb927e51ca1"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Sitzend, Ellbogen am Oberschenkel, Hantel langsam nach oben beugen.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Konzentrationscurls (Kurzhantel)",
+                            PrimaryMuscles = new[] { "biceps" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Bizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("aa3a48cb-b062-5c1f-9897-98d942edbc7d"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Oberarme auf dem Polster, Griffe beugen und kontrolliert zurückführen.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Bizepsmaschine",
+                            PrimaryMuscles = new[] { "biceps" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Bizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("c6fb4053-2f69-597f-890e-e7bd58444a3e"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Ellbogen am Körper, Stange nach unten strecken und langsam zurückführen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Trizepsdrücken am Kabel",
+                            PrimaryMuscles = new[] { "triceps" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Trizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("bab9f487-2071-5e56-a7b6-14b0e3f3feda"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Seil nach unten strecken und am Ende die Enden nach außen ziehen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Trizepsdrücken mit Seil",
+                            PrimaryMuscles = new[] { "triceps" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Trizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("dd9d3216-abc9-5567-9915-5e0b465b1add"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Vom Kabel abgewandt, Seil hinter dem Kopf aus gebeugten Armen nach vorn oben strecken.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Trizepsstrecken über Kopf (Kabelzug)",
+                            PrimaryMuscles = new[] { "triceps" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Trizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("9226da76-685c-5f7d-9401-656478d870c1"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Hantel mit beiden Händen hinter dem Kopf absenken und nach oben strecken.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Trizepsstrecken über Kopf (Kurzhantel)",
+                            PrimaryMuscles = new[] { "triceps" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Trizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("74a1130e-6980-52f1-8381-aba08116edf2"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Liegend die Stange zur Stirn senken, Oberarme ruhig, und strecken.",
+                            Equipment = "SZ-Stange",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Stirndrücken (SZ-Stange)",
+                            PrimaryMuscles = new[] { "triceps" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Trizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("e3a5fafb-04dc-5aa1-bd08-c2e0dc432f21"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Schulterbreiter Griff, Ellbogen nah am Körper zur unteren Brust senken und drücken.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Enges Bankdrücken (Langhantel)",
+                            PrimaryMuscles = new[] { "triceps", "chest" },
+                            SecondaryMuscles = new[] { "frontDelts" },
+                            TargetMuscle = "Trizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("74cac498-ac7c-5ec7-ae15-cedbaaa349a8"),
+                            BodyweightFactor = 0.6m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Hände auf der Bankkante, Körper absenken, bis die Ellbogen etwa 90° gebeugt sind.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Dips an der Bank",
                             PrimaryMuscles = new[] { "triceps" },
                             SecondaryMuscles = new[] { "chest", "frontDelts" },
-                            TargetMuscle = "Triceps brachii",
+                            TargetMuscle = "Trizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("4abccd2a-994c-5e49-afc0-9c953554a51e"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Vorgebeugt, Oberarm am Körper, Unterarm nach hinten strecken.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Trizeps-Kickbacks (Kurzhantel)",
+                            PrimaryMuscles = new[] { "triceps" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Trizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("641a2f34-5596-5101-9cd9-19c7c471fb10"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Griffe nach unten drücken, bis die Arme gestreckt sind.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Dips-Maschine",
+                            PrimaryMuscles = new[] { "triceps" },
+                            SecondaryMuscles = new[] { "chest" },
+                            TargetMuscle = "Trizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("d426fa1e-541f-5549-8478-8f8bbc5fe055"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Unterarme auf der Bank, Hanteln nur aus dem Handgelenk nach oben rollen.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Handgelenkcurls (Kurzhantel)",
+                            PrimaryMuscles = new[] { "forearms" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Unterarme",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("c6246a04-69af-5895-8cc6-1380ebbe4e6a"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Obergriff, Stange mit ruhigen Ellbogen nach oben beugen.",
+                            Equipment = "SZ-Stange",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Arme",
+                            Name = "Reverse Curls (SZ-Stange)",
+                            PrimaryMuscles = new[] { "forearms", "biceps" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Unterarme",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("5f1f95c5-724c-5ff5-9778-a0d901138e25"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Schwere Hanteln seitlich halten und aufrecht eine Strecke gehen.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Ganzkörper",
+                            Name = "Farmer's Walk (Kurzhantel)",
+                            PrimaryMuscles = new[] { "forearms", "traps" },
+                            SecondaryMuscles = new[] { "abs", "quads" },
+                            TargetMuscle = "Unterarme",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("07859f08-0fa6-5da4-882f-f5db0a7c310d"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Stange auf dem oberen Rücken, Knie über den Zehen, mindestens bis zur Parallele beugen und aufrichten.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Kniebeugen (Langhantel)",
+                            PrimaryMuscles = new[] { "quads", "glutes" },
+                            SecondaryMuscles = new[] { "adductors", "lowerBack" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("c5c78e54-fa76-5877-8f32-a792e08ff84c"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Stange vorn auf den Schultern, Oberkörper aufrecht, tief beugen und aufrichten.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Frontkniebeugen (Langhantel)",
+                            PrimaryMuscles = new[] { "quads" },
+                            SecondaryMuscles = new[] { "glutes", "abs" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("9fa92a8b-4100-5091-83d7-263f0b8d8c7c"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Hantel vor der Brust halten, tief in die Hocke gehen und aufrichten.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Goblet Squat (Kurzhantel)",
+                            PrimaryMuscles = new[] { "quads", "glutes" },
+                            SecondaryMuscles = new[] { "adductors", "abs" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("b15c581a-cc26-517a-b30c-1c5ca6a896fa"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Füße etwas vor der Stange, kontrolliert beugen und aufrichten.",
+                            Equipment = "Smith-Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Kniebeugen (Smith-Maschine)",
+                            PrimaryMuscles = new[] { "quads", "glutes" },
+                            SecondaryMuscles = new[] { "adductors" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("fa4b8b08-f7ad-59f3-b0a1-c789f19be41f"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Rücken am Polster, tief beugen und über die ganze Fußsohle hochdrücken.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Hackenschmidt-Kniebeugen (Maschine)",
+                            PrimaryMuscles = new[] { "quads" },
+                            SecondaryMuscles = new[] { "glutes" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("45da1d33-f437-5704-a7c9-0c171ee6f569"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Füße schulterbreit auf der Platte, Knie bis etwa 90° beugen und drücken, ohne die Knie zu überstrecken.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Beinpresse",
+                            PrimaryMuscles = new[] { "quads", "glutes" },
+                            SecondaryMuscles = new[] { "hamstrings", "adductors" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("124e12b4-9377-5c00-89d5-e2f3ad4affe0"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Hinterer Fuß auf der Bank, vorderes Knie beugen, bis der Oberschenkel waagerecht ist.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Bulgarische Kniebeugen (Kurzhantel)",
+                            PrimaryMuscles = new[] { "quads", "glutes" },
+                            SecondaryMuscles = new[] { "hamstrings", "adductors" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("25af3a6e-1c74-5047-96c3-00d852283daa"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Großer Schritt nach vorn, beide Knie etwa 90° beugen und zurück in den Stand.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Ausfallschritte (Kurzhantel)",
+                            PrimaryMuscles = new[] { "quads", "glutes" },
+                            SecondaryMuscles = new[] { "hamstrings", "adductors" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("f7859df9-614c-5a43-8d34-c6b87f7f30ee"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Abwechselnd Ausfallschritte nach vorn gehen, Oberkörper aufrecht.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Ausfallschritte gehend (Kurzhantel)",
+                            PrimaryMuscles = new[] { "quads", "glutes" },
+                            SecondaryMuscles = new[] { "hamstrings", "adductors" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("679b4d2b-8bdb-5c11-9cc0-a8205ed0fdfb"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Mit einem Fuß auf die Bank steigen und über dieses Bein ganz aufrichten.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Step-ups (Kurzhantel)",
+                            PrimaryMuscles = new[] { "quads", "glutes" },
+                            SecondaryMuscles = new[] { "hamstrings" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("9a23aa0d-a43b-5d10-a25e-b22db398578e"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Polster über dem Sprunggelenk, Beine strecken und langsam beugen.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Beinstrecker (Maschine)",
+                            PrimaryMuscles = new[] { "quads" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("85c4145d-e045-5153-a18a-1934d16ad4de"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Bauchlage, Polster über den Fersen, Beine zum Gesäß beugen.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Beinbeuger liegend (Maschine)",
+                            PrimaryMuscles = new[] { "hamstrings" },
+                            SecondaryMuscles = new[] { "calves" },
+                            TargetMuscle = "Beinbeuger",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("45659e6e-0a11-5297-b807-50efe2f621ba"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Oberschenkel fixiert, Polster unter den Waden nach unten und hinten beugen.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Beinbeuger sitzend (Maschine)",
+                            PrimaryMuscles = new[] { "hamstrings" },
+                            SecondaryMuscles = new[] { "calves" },
+                            TargetMuscle = "Beinbeuger",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("f6a0e7a5-efdb-532c-9c7e-77754dfb329f"),
+                            BodyweightFactor = 0.6m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Kniend, Fersen fixiert, Oberkörper langsam nach vorn sinken lassen und zurückziehen.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Nordic Hamstring Curls",
+                            PrimaryMuscles = new[] { "hamstrings" },
+                            SecondaryMuscles = new[] { "glutes" },
+                            TargetMuscle = "Beinbeuger",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("60ffef06-d690-5441-917d-7ae3d7f09a9c"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Oberer Rücken an der Bank, Stange auf der Hüfte, Hüfte strecken bis der Körper eine Linie bildet.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Hip Thrust (Langhantel)",
+                            PrimaryMuscles = new[] { "glutes" },
+                            SecondaryMuscles = new[] { "hamstrings", "quads" },
+                            TargetMuscle = "Gesäß",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("a83bab61-2249-5820-921d-772b161cd3c6"),
+                            BodyweightFactor = 0.5m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Rückenlage, Füße aufgestellt, Hüfte anheben und Gesäß anspannen.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Glute Bridge",
+                            PrimaryMuscles = new[] { "glutes" },
+                            SecondaryMuscles = new[] { "hamstrings" },
+                            TargetMuscle = "Gesäß",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("dabb98cb-24ec-5323-bb22-ee5832da9aa2"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Manschette am Fuß, Bein gestreckt nach hinten führen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Gesäß-Kickbacks am Kabel",
+                            PrimaryMuscles = new[] { "glutes" },
+                            SecondaryMuscles = new[] { "hamstrings" },
+                            TargetMuscle = "Gesäß",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("d77c1429-d22e-531e-aa71-5fe353742448"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Beine gegen die Polster nach außen drücken und langsam schließen.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Abduktoren-Maschine",
+                            PrimaryMuscles = new[] { "glutes" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Gesäß",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("8cd645c2-6cad-54e9-adc7-96b85efbbbea"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Beine gegen die Polster nach innen drücken und langsam öffnen.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Adduktoren-Maschine",
+                            PrimaryMuscles = new[] { "adductors" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Adduktoren",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("54522c07-9525-59f5-abea-c989f0abfe92"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Kettlebell aus der Hüfte nach vorn schwingen, Hüfte explosiv strecken.",
+                            Equipment = "Kettlebell",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Kettlebell Swings",
+                            PrimaryMuscles = new[] { "glutes", "hamstrings" },
+                            SecondaryMuscles = new[] { "lowerBack", "abs", "forearms" },
+                            TargetMuscle = "Gesäß",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("6effd19e-2690-55e4-8f7a-9000525295b4"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Fußballen auf der Kante, Fersen tief senken und so hoch wie möglich drücken.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Wadenheben stehend (Maschine)",
+                            PrimaryMuscles = new[] { "calves" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Waden",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("1e1bfeca-1578-5879-b3b3-1e605d2d2ef2"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Polster auf den Knien, Fersen senken und hochdrücken.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Wadenheben sitzend (Maschine)",
+                            PrimaryMuscles = new[] { "calves" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Waden",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("77fa1c52-ae8a-5dee-81bf-6ee8730e5a6b"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Fußballen an der unteren Plattenkante, mit gestreckten Beinen die Platte wegdrücken.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Beine",
+                            Name = "Wadendrücken an der Beinpresse",
+                            PrimaryMuscles = new[] { "calves" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Waden",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("2275dcf2-eea6-5e3c-aab9-2dcbe8921f12"),
+                            BodyweightFactor = 0.3m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Rückenlage, Schultern einrollend vom Boden heben, unterer Rücken bleibt liegen.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Crunches",
+                            PrimaryMuscles = new[] { "abs" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Bauch",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("0e371e65-35fe-5bbe-b5f4-b926844b57ef"),
+                            BodyweightFactor = 0.35m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Rückenlage, Oberkörper ganz bis zu den Knien aufrichten und langsam ablegen.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Sit-ups",
+                            PrimaryMuscles = new[] { "abs" },
+                            SecondaryMuscles = new[] { "obliques" },
+                            TargetMuscle = "Bauch",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("d2a89607-77c8-544a-bb53-b7475fa50000"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Kniend, Seil am Kopf, Oberkörper einrollend nach unten ziehen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Crunches am Kabel",
+                            PrimaryMuscles = new[] { "abs" },
+                            SecondaryMuscles = new[] { "obliques" },
+                            TargetMuscle = "Bauch",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("d89adbcc-66d4-5679-9eea-df9f7f612ddf"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Oberkörper gegen den Widerstand einrollen und langsam zurückführen.",
+                            Equipment = "Maschine",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Bauchmaschine",
+                            PrimaryMuscles = new[] { "abs" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Bauch",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("44d234a4-34e6-5b2d-95eb-a71bff470668"),
+                            BodyweightFactor = 0.35m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "An der Stange hängend die Beine ohne Schwung bis mindestens waagerecht heben.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Beinheben hängend",
+                            PrimaryMuscles = new[] { "abs" },
+                            SecondaryMuscles = new[] { "obliques", "forearms" },
+                            TargetMuscle = "Bauch",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("53bb5413-c0c8-5031-b63e-f7cd672f328e"),
+                            BodyweightFactor = 0.3m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Rückenlage, Beine gestreckt anheben und kurz über dem Boden senken.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Beinheben liegend",
+                            PrimaryMuscles = new[] { "abs" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Bauch",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("236f46fc-a6a9-58c0-835a-6fe98a944ec4"),
+                            BodyweightFactor = 0.5m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Auf Unterarmen und Zehen, Körper in einer Linie halten.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Unterarmstütz (Plank)",
+                            PrimaryMuscles = new[] { "abs" },
+                            SecondaryMuscles = new[] { "obliques", "frontDelts" },
+                            TargetMuscle = "Bauch",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("e218ff8a-a6d2-541d-babe-3b6fff7715d5"),
+                            BodyweightFactor = 0.4m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Seitlich auf einem Unterarm, Hüfte anheben und halten.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Seitstütz",
+                            PrimaryMuscles = new[] { "obliques" },
+                            SecondaryMuscles = new[] { "abs" },
+                            TargetMuscle = "Seitliche Bauchmuskeln",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("e541f4f6-04fb-57d9-92b7-56a2f6ba7a1b"),
+                            BodyweightFactor = 0.35m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Sitzend, Oberkörper zurückgelehnt, abwechselnd zur Seite drehen.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Russian Twist",
+                            PrimaryMuscles = new[] { "obliques" },
+                            SecondaryMuscles = new[] { "abs" },
+                            TargetMuscle = "Seitliche Bauchmuskeln",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("0f45fbc5-d727-586d-b1b2-b035750eb14a"),
+                            BodyweightFactor = 0.5m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Kniend den Roller nach vorn rollen, Rumpf fest, und zurückziehen.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Ab Roller",
+                            PrimaryMuscles = new[] { "abs" },
+                            SecondaryMuscles = new[] { "obliques", "lats" },
+                            TargetMuscle = "Bauch",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("39c2b212-ad72-55f0-b6e4-030c369508cd"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Griff diagonal von oben nach unten vor dem Körper ziehen, aus dem Rumpf drehen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Holzhacker am Kabel",
+                            PrimaryMuscles = new[] { "obliques" },
+                            SecondaryMuscles = new[] { "abs" },
+                            TargetMuscle = "Seitliche Bauchmuskeln",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("e12aacd1-5a12-53fe-9e2a-703c0225fb2b"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Seitlich zum Kabel, Griff vor der Brust nach vorn drücken, ohne sich zu drehen.",
+                            Equipment = "Kabelzug",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Bauch",
+                            Name = "Pallof Press (Kabelzug)",
+                            PrimaryMuscles = new[] { "obliques", "abs" },
+                            SecondaryMuscles = new string[0],
+                            TargetMuscle = "Seitliche Bauchmuskeln",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("cffa8d75-7e82-5e0d-aa44-86e586eff8d7"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Stange explosiv vom Boden ziehen und in der Viertelhocke auf den Schultern fangen.",
+                            Equipment = "Langhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Ganzkörper",
+                            Name = "Umsetzen (Power Clean)",
+                            PrimaryMuscles = new[] { "glutes", "quads", "traps" },
+                            SecondaryMuscles = new[] { "hamstrings", "lowerBack", "forearms" },
+                            TargetMuscle = "Gesäß",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("f5a3b22d-e4e8-5252-b19a-f80b22c48929"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Aus der tiefen Kniebeuge aufrichten und die Hanteln in einer Bewegung über den Kopf drücken.",
+                            Equipment = "Kurzhantel",
+                            ExerciseType = "strength",
+                            IsArchived = false,
+                            MuscleGroup = "Ganzkörper",
+                            Name = "Thruster (Kurzhantel)",
+                            PrimaryMuscles = new[] { "quads", "frontDelts", "glutes" },
+                            SecondaryMuscles = new[] { "triceps", "abs" },
+                            TargetMuscle = "Quadrizeps",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("efcfc194-539c-59d2-be2b-67a011d37082"),
+                            BodyweightFactor = 0.7m,
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 8, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "In den Liegestütz springen, Liegestütz, Beine heranziehen und mit einem Strecksprung aufrichten.",
+                            Equipment = "Körpergewicht",
+                            ExerciseType = "bodyweightOnly",
+                            IsArchived = false,
+                            MuscleGroup = "Ganzkörper",
+                            Name = "Burpees",
+                            PrimaryMuscles = new[] { "quads", "chest", "glutes" },
+                            SecondaryMuscles = new[] { "triceps", "frontDelts", "abs" },
+                            TargetMuscle = "Quadrizeps",
                             UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             Version = 1L
                         });
@@ -1317,7 +2979,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Brust",
@@ -1327,7 +2989,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("092c9ade-1948-412b-927c-7daea71fb381"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Rücken",
@@ -1337,7 +2999,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Schultern",
@@ -1347,7 +3009,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Bizeps",
@@ -1357,7 +3019,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("74d2162c-349e-4845-b808-da9339b9d497"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Trizeps",
@@ -1366,8 +3028,18 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("6dbe2f85-1e9d-5728-815a-4cf5e97055b1"),
+                            CatalogVersion = "2026.10.3",
+                            CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsArchived = false,
+                            Name = "Unterarme",
+                            UpdatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1L
+                        },
+                        new
+                        {
                             Id = new Guid("6272a453-0cdc-4bae-90db-e299fca34817"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Beine",
@@ -1377,7 +3049,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Gesäß",
@@ -1387,7 +3059,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("396b4f80-26de-4c59-aff0-b7eb6d938e4f"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Waden",
@@ -1397,7 +3069,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Bauch",
@@ -1407,7 +3079,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("2a147135-db68-4768-84b1-e10f270fc7a5"),
-                            CatalogVersion = "2026.10.2",
+                            CatalogVersion = "2026.10.3",
                             CreatedAtUtc = new DateTime(2026, 10, 17, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsArchived = false,
                             Name = "Ganzkörper",
@@ -1443,13 +3115,108 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            ExerciseId = new Guid("07859f08-0fa6-5da4-882f-f5db0a7c310d"),
+                            ExerciseId = new Guid("d93ac4fe-bc50-5a04-adbc-3ce7284d25c8"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("10e59c06-7d69-5c46-82e1-6ccc7abc94d4"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("c4731fdc-153b-5430-baf7-9ce7d0492ff1"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("2d3197eb-0518-5851-b49e-b8f81a60665e"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("bc15eeae-3bb8-57d8-b24c-12e57c1532f6"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("fef86868-838e-58c6-a86e-bf594af3611c"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("6bca7c42-b716-5990-bd5a-a364ac0ccb93"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("9f814341-7b1e-5432-8829-f614d124e1c9"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("986c4b0b-a86e-5a91-88bd-31c12295de92"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("2b8f7aee-2d29-4d6e-8dc8-d5b39bff5f9d"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("2b8f7aee-2d29-4d6e-8dc8-d5b39bff5f9d"),
+                            CategoryId = new Guid("74d2162c-349e-4845-b808-da9339b9d497")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("679b0f26-ac2b-4dc8-bb45-4121b2d3b8e6"),
+                            CategoryId = new Guid("74d2162c-349e-4845-b808-da9339b9d497")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("679b0f26-ac2b-4dc8-bb45-4121b2d3b8e6"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("989e913f-217a-5888-a862-99534b7fc991"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("989e913f-217a-5888-a862-99534b7fc991"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("3aca6eb8-0d2b-564c-80db-e1a67d0917f1"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("3aca6eb8-0d2b-564c-80db-e1a67d0917f1"),
                             CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
                         },
                         new
                         {
-                            ExerciseId = new Guid("07859f08-0fa6-5da4-882f-f5db0a7c310d"),
+                            ExerciseId = new Guid("3aca6eb8-0d2b-564c-80db-e1a67d0917f1"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("3aca6eb8-0d2b-564c-80db-e1a67d0917f1"),
+                            CategoryId = new Guid("2a147135-db68-4768-84b1-e10f270fc7a5")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("6ac80f9a-8219-5f58-91e1-005c93c419b7"),
                             CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("6ac80f9a-8219-5f58-91e1-005c93c419b7"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
                         },
                         new
                         {
@@ -1463,7 +3230,22 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            ExerciseId = new Guid("28d6db67-f2d0-5e15-a63b-759fc96e01cb"),
+                            ExerciseId = new Guid("7cfea19e-86df-5075-a090-9a6463ec7b19"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("7cfea19e-86df-5075-a090-9a6463ec7b19"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("05243d54-7f56-59b6-a901-76abb7272c44"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("05243d54-7f56-59b6-a901-76abb7272c44"),
                             CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
                         },
                         new
@@ -1478,13 +3260,83 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            ExerciseId = new Guid("ee3ed3aa-e22f-56e3-b307-2f8b824fc78b"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("ee3ed3aa-e22f-56e3-b307-2f8b824fc78b"),
+                            CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("0bd909a0-6d57-5b36-bebe-38a3461356bb"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("28d6db67-f2d0-5e15-a63b-759fc96e01cb"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("44c0cd21-56dd-5f2f-bf59-35bc94f3e063"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f7939d2f-d3d2-5636-9c97-07512964e64a"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("5f259881-118c-52cc-980c-5405130adc79"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("5f8e9f25-aa1a-5fc7-b9c3-f7774df7373a"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
                             ExerciseId = new Guid("4ec1e1c8-e2c9-56ac-bec1-4ba0936f6a97"),
                             CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
                         },
                         new
                         {
-                            ExerciseId = new Guid("66f8d486-cedf-54ee-8154-6b295371d2f7"),
+                            ExerciseId = new Guid("ad879102-4b1e-50b6-882a-d3dcf69d1d7c"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("03080ed4-c8ff-564a-b2cd-76abbd85543e"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("94d5b795-73fc-5442-bef7-3e862e49fd38"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f4057df2-d82e-5aff-a826-9428a7ffcdd2"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("a58cd97f-0716-5e81-8f90-1e04fb8bbc8f"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("70a2ddbc-6995-5679-9ea3-25132a51e778"),
                             CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("70a2ddbc-6995-5679-9ea3-25132a51e778"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
                         },
                         new
                         {
@@ -1498,17 +3350,107 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            ExerciseId = new Guid("85c4145d-e045-5153-a18a-1934d16ad4de"),
-                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                            ExerciseId = new Guid("f061fbb1-0ccb-549c-be30-9ef995a1aebf"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
                         },
                         new
                         {
-                            ExerciseId = new Guid("9a23aa0d-a43b-5d10-a25e-b22db398578e"),
-                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                            ExerciseId = new Guid("086f9bcf-5f98-5a17-b2a4-a90ac5636c5f"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("12db891f-8392-5c1c-a58c-8c7ec6a7f524"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("66f8d486-cedf-54ee-8154-6b295371d2f7"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("2affd637-a6a2-577f-809a-11bd7162ca66"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f0557f25-9c72-5c55-9e4e-b14bf71cf669"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("7e364c6d-572f-5b03-a4c1-b962b8c84138"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("65c2005c-8285-5963-978e-e3fbb5cb5105"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("2e855905-c74d-5971-96ff-1dadfc819714"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("cdcf9968-ebe5-5dd9-880b-6ef2170dab9f"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("cdcf9968-ebe5-5dd9-880b-6ef2170dab9f"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
                         },
                         new
                         {
                             ExerciseId = new Guid("b33d40e4-e84e-5317-83e2-9df3ddb6bc4d"),
+                            CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("229a8cc8-c04f-56c5-a2f3-6553b8e8d7e3"),
+                            CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("29cc1745-868d-5339-9c2f-38b8efa2cfaa"),
+                            CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("c67400a6-ca5b-5e56-b067-411c73b5864d"),
+                            CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("c67400a6-ca5b-5e56-b067-411c73b5864d"),
+                            CategoryId = new Guid("6dbe2f85-1e9d-5728-815a-4cf5e97055b1")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("e57a1210-e482-5bca-9a45-f8cddd6474e3"),
+                            CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f4bdfb0d-3874-5979-a5b4-b36db09facf1"),
+                            CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("8a0227e3-674f-5423-9c80-a2a489fb0296"),
+                            CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("7c4c128e-d0d5-5ed5-85f3-4eb927e51ca1"),
+                            CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("aa3a48cb-b062-5c1f-9897-98d942edbc7d"),
                             CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
                         },
                         new
@@ -1518,23 +3460,363 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            ExerciseId = new Guid("2b8f7aee-2d29-4d6e-8dc8-d5b39bff5f9d"),
-                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
-                        },
-                        new
-                        {
-                            ExerciseId = new Guid("2b8f7aee-2d29-4d6e-8dc8-d5b39bff5f9d"),
+                            ExerciseId = new Guid("bab9f487-2071-5e56-a7b6-14b0e3f3feda"),
                             CategoryId = new Guid("74d2162c-349e-4845-b808-da9339b9d497")
                         },
                         new
                         {
-                            ExerciseId = new Guid("679b0f26-ac2b-4dc8-bb45-4121b2d3b8e6"),
+                            ExerciseId = new Guid("dd9d3216-abc9-5567-9915-5e0b465b1add"),
                             CategoryId = new Guid("74d2162c-349e-4845-b808-da9339b9d497")
                         },
                         new
                         {
-                            ExerciseId = new Guid("679b0f26-ac2b-4dc8-bb45-4121b2d3b8e6"),
+                            ExerciseId = new Guid("9226da76-685c-5f7d-9401-656478d870c1"),
+                            CategoryId = new Guid("74d2162c-349e-4845-b808-da9339b9d497")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("74a1130e-6980-52f1-8381-aba08116edf2"),
+                            CategoryId = new Guid("74d2162c-349e-4845-b808-da9339b9d497")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("e3a5fafb-04dc-5aa1-bd08-c2e0dc432f21"),
+                            CategoryId = new Guid("74d2162c-349e-4845-b808-da9339b9d497")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("e3a5fafb-04dc-5aa1-bd08-c2e0dc432f21"),
                             CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("74cac498-ac7c-5ec7-ae15-cedbaaa349a8"),
+                            CategoryId = new Guid("74d2162c-349e-4845-b808-da9339b9d497")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("4abccd2a-994c-5e49-afc0-9c953554a51e"),
+                            CategoryId = new Guid("74d2162c-349e-4845-b808-da9339b9d497")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("641a2f34-5596-5101-9cd9-19c7c471fb10"),
+                            CategoryId = new Guid("74d2162c-349e-4845-b808-da9339b9d497")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("d426fa1e-541f-5549-8478-8f8bbc5fe055"),
+                            CategoryId = new Guid("6dbe2f85-1e9d-5728-815a-4cf5e97055b1")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("c6246a04-69af-5895-8cc6-1380ebbe4e6a"),
+                            CategoryId = new Guid("6dbe2f85-1e9d-5728-815a-4cf5e97055b1")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("c6246a04-69af-5895-8cc6-1380ebbe4e6a"),
+                            CategoryId = new Guid("9a77eeda-816d-41c1-be71-b911d8055e67")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("5f1f95c5-724c-5ff5-9778-a0d901138e25"),
+                            CategoryId = new Guid("6dbe2f85-1e9d-5728-815a-4cf5e97055b1")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("5f1f95c5-724c-5ff5-9778-a0d901138e25"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("5f1f95c5-724c-5ff5-9778-a0d901138e25"),
+                            CategoryId = new Guid("2a147135-db68-4768-84b1-e10f270fc7a5")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("07859f08-0fa6-5da4-882f-f5db0a7c310d"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("07859f08-0fa6-5da4-882f-f5db0a7c310d"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("c5c78e54-fa76-5877-8f32-a792e08ff84c"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("9fa92a8b-4100-5091-83d7-263f0b8d8c7c"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("9fa92a8b-4100-5091-83d7-263f0b8d8c7c"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("b15c581a-cc26-517a-b30c-1c5ca6a896fa"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("b15c581a-cc26-517a-b30c-1c5ca6a896fa"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("fa4b8b08-f7ad-59f3-b0a1-c789f19be41f"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("45da1d33-f437-5704-a7c9-0c171ee6f569"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("45da1d33-f437-5704-a7c9-0c171ee6f569"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("124e12b4-9377-5c00-89d5-e2f3ad4affe0"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("124e12b4-9377-5c00-89d5-e2f3ad4affe0"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("25af3a6e-1c74-5047-96c3-00d852283daa"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("25af3a6e-1c74-5047-96c3-00d852283daa"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f7859df9-614c-5a43-8d34-c6b87f7f30ee"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f7859df9-614c-5a43-8d34-c6b87f7f30ee"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("679b4d2b-8bdb-5c11-9cc0-a8205ed0fdfb"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("679b4d2b-8bdb-5c11-9cc0-a8205ed0fdfb"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("9a23aa0d-a43b-5d10-a25e-b22db398578e"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("85c4145d-e045-5153-a18a-1934d16ad4de"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("45659e6e-0a11-5297-b807-50efe2f621ba"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f6a0e7a5-efdb-532c-9c7e-77754dfb329f"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("60ffef06-d690-5441-917d-7ae3d7f09a9c"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("a83bab61-2249-5820-921d-772b161cd3c6"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("dabb98cb-24ec-5323-bb22-ee5832da9aa2"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("d77c1429-d22e-531e-aa71-5fe353742448"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("8cd645c2-6cad-54e9-adc7-96b85efbbbea"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("54522c07-9525-59f5-abea-c989f0abfe92"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("54522c07-9525-59f5-abea-c989f0abfe92"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("54522c07-9525-59f5-abea-c989f0abfe92"),
+                            CategoryId = new Guid("2a147135-db68-4768-84b1-e10f270fc7a5")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("6effd19e-2690-55e4-8f7a-9000525295b4"),
+                            CategoryId = new Guid("396b4f80-26de-4c59-aff0-b7eb6d938e4f")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("1e1bfeca-1578-5879-b3b3-1e605d2d2ef2"),
+                            CategoryId = new Guid("396b4f80-26de-4c59-aff0-b7eb6d938e4f")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("77fa1c52-ae8a-5dee-81bf-6ee8730e5a6b"),
+                            CategoryId = new Guid("396b4f80-26de-4c59-aff0-b7eb6d938e4f")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("2275dcf2-eea6-5e3c-aab9-2dcbe8921f12"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("0e371e65-35fe-5bbe-b5f4-b926844b57ef"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("d2a89607-77c8-544a-bb53-b7475fa50000"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("d89adbcc-66d4-5679-9eea-df9f7f612ddf"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("44d234a4-34e6-5b2d-95eb-a71bff470668"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("53bb5413-c0c8-5031-b63e-f7cd672f328e"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("236f46fc-a6a9-58c0-835a-6fe98a944ec4"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("e218ff8a-a6d2-541d-babe-3b6fff7715d5"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("e541f4f6-04fb-57d9-92b7-56a2f6ba7a1b"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("0f45fbc5-d727-586d-b1b2-b035750eb14a"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("39c2b212-ad72-55f0-b6e4-030c369508cd"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("e12aacd1-5a12-53fe-9e2a-703c0225fb2b"),
+                            CategoryId = new Guid("d1e68f73-aa3b-4950-996b-1cc0d2076868")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("cffa8d75-7e82-5e0d-aa44-86e586eff8d7"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("cffa8d75-7e82-5e0d-aa44-86e586eff8d7"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("cffa8d75-7e82-5e0d-aa44-86e586eff8d7"),
+                            CategoryId = new Guid("092c9ade-1948-412b-927c-7daea71fb381")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("cffa8d75-7e82-5e0d-aa44-86e586eff8d7"),
+                            CategoryId = new Guid("2a147135-db68-4768-84b1-e10f270fc7a5")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f5a3b22d-e4e8-5252-b19a-f80b22c48929"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f5a3b22d-e4e8-5252-b19a-f80b22c48929"),
+                            CategoryId = new Guid("875b1842-01c7-476a-8b7f-ca9637ad4cd8")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f5a3b22d-e4e8-5252-b19a-f80b22c48929"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("f5a3b22d-e4e8-5252-b19a-f80b22c48929"),
+                            CategoryId = new Guid("2a147135-db68-4768-84b1-e10f270fc7a5")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("efcfc194-539c-59d2-be2b-67a011d37082"),
+                            CategoryId = new Guid("6272a453-0cdc-4bae-90db-e299fca34817")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("efcfc194-539c-59d2-be2b-67a011d37082"),
+                            CategoryId = new Guid("a0bc5a82-56ad-4ce4-96ab-968a253c21d2")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("efcfc194-539c-59d2-be2b-67a011d37082"),
+                            CategoryId = new Guid("5bd0bcb1-25d6-4d9d-b132-4c202f126418")
+                        },
+                        new
+                        {
+                            ExerciseId = new Guid("efcfc194-539c-59d2-be2b-67a011d37082"),
+                            CategoryId = new Guid("2a147135-db68-4768-84b1-e10f270fc7a5")
                         });
                 });
 
@@ -2222,6 +4504,24 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Gainer.Core.BodyTracking.DailyCheckIn", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Integrations.StravaConnection", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithOne()
+                        .HasForeignKey("Gainer.Core.Integrations.StravaConnection", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Integrations.StravaExport", b =>
                 {
                     b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
                         .WithMany()

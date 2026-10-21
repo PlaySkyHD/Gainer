@@ -5,11 +5,17 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
+import 'package:gainer_mobile/data/models/api/strava_api_models.dart';
 import 'package:gainer_mobile/data/models/api/sync_api_models.dart';
+import 'package:gainer_mobile/data/repositories/strava/strava_service.dart';
+import 'package:gainer_mobile/data/repositories/training/muscle_suggestion_service.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
 import 'package:gainer_mobile/data/services/api/api_session_service.dart';
 import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/domain/models/training/muscle_ai.dart';
+import 'package:gainer_mobile/domain/models/training/muscles.dart';
+import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 
 void main() {
   group('ApiClient', () {
@@ -203,6 +209,74 @@ void main() {
         await server.close();
       }
     });
+
+    test(
+      'asks for muscle suggestions and parses question and suggestion',
+      () async {
+        final bodies = <Map<String, dynamic>>[];
+        final server = await _TestApiServer.start((request) async {
+          if (request.uri.path == '/api/v1/exercises/muscle-suggestions') {
+            final body = jsonDecode(
+              await utf8.decoder.bind(request).join(),
+            ) as Map<String, dynamic>;
+            bodies.add(body);
+            return _json(
+              request,
+              (body['turns'] as List).isEmpty
+                  ? {
+                      'kind': 'question',
+                      'question': 'Welcher Griff?',
+                      'options': ['Eng', 'Weit'],
+                      'primaryMuscles': [],
+                      'secondaryMuscles': [],
+                      'explanation': null,
+                    }
+                  : {
+                      'kind': 'suggestion',
+                      'question': null,
+                      'options': [],
+                      'primaryMuscles': ['lats', 'futureMuscle'],
+                      'secondaryMuscles': ['biceps'],
+                      'explanation': 'Latissimus.',
+                    },
+            );
+          }
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+        });
+        final api = ApiClient(
+          configuration: ApiConfiguration(
+            apiOrigin: server.origin,
+            allowInsecureLoopbackForDevelopment: true,
+          ),
+        );
+        try {
+          final service = ApiMuscleSuggestionService(api);
+          final question = await service.suggest(
+            name: 'Rudern',
+            kind: ExerciseKind.strength,
+          );
+          final suggestion = await service.suggest(
+            name: 'Rudern',
+            kind: ExerciseKind.strength,
+            turns: const [
+              MuscleAiTurn(question: 'Welcher Griff?', answer: 'Eng'),
+            ],
+          );
+
+          expect((question as MuscleAiQuestion).options, ['Eng', 'Weit']);
+          expect((suggestion as MuscleAiSuggestion).primary, [Muscle.lats]);
+          expect(suggestion.secondary, [Muscle.biceps]);
+          expect(bodies.first['exerciseType'], 'strength');
+          expect(bodies.last['turns'], [
+            {'question': 'Welcher Griff?', 'answer': 'Eng'},
+          ]);
+        } finally {
+          api.close();
+          await server.close();
+        }
+      },
+    );
 
     test(
       'uploads nutrition estimate and label scan as consented multipart drafts',
@@ -971,6 +1045,154 @@ void main() {
         throwsArgumentError,
       );
     });
+
+    test('drives the Strava integration through the server', () async {
+      final requests = <String>[];
+      final bodies = <String>[];
+      const sessionId = '11111111-2222-4333-8444-555555555555';
+      final server = await _TestApiServer.start((request) async {
+        requests.add('${request.method} ${request.uri.path}');
+        bodies.add(await utf8.decoder.bind(request).join());
+        final path = request.uri.path;
+        const status = {
+          'configured': true,
+          'connected': true,
+          'needsReconnect': false,
+          'athleteName': 'Nic M',
+          'exportCardio': true,
+          'exportStrength': true,
+        };
+        if (path == '/api/v1/integrations/strava/authorization') {
+          return _json(request, {
+            'authorizationUrl':
+                'https://www.strava.com/oauth/mobile/authorize?x=1',
+          });
+        }
+        if (path == '/api/v1/integrations/strava' &&
+            request.method == 'DELETE') {
+          request.response.statusCode = HttpStatus.noContent;
+          return request.response.close();
+        }
+        if (path.startsWith('/api/v1/integrations/strava/exports/cardio/')) {
+          if (request.method == 'GET' &&
+              requests
+                      .where(
+                        (r) => r.startsWith(
+                          'GET /api/v1/integrations/strava/exports',
+                        ),
+                      )
+                      .length ==
+                  1) {
+            request.response.statusCode = HttpStatus.notFound;
+            return _json(request, {'status': 404, 'code': 'not_found'});
+          }
+          return _json(request, {
+            'kind': 'cardio',
+            'resourceId': sessionId,
+            'status': request.method == 'POST' ? 'processing' : 'completed',
+            'activityId': request.method == 'POST' ? null : 9001,
+            'errorCode': null,
+            'updatedAtUtc': '2026-10-21T17:00:00Z',
+          });
+        }
+        return _json(request, status);
+      });
+      final api = ApiClient(
+        configuration: ApiConfiguration(
+          apiOrigin: server.origin,
+          allowInsecureLoopbackForDevelopment: true,
+        ),
+      );
+      final web = _ScriptedWebAuthentication(
+        Uri.parse('gainer://strava?result=connected'),
+      );
+      final strava = ApiStravaService(api: api, web: web);
+      try {
+        expect(await strava.connect(), StravaConnectResult.connected);
+        expect(web.opened.single.host, 'www.strava.com');
+        expect(web.schemes.single, 'gainer');
+
+        final status = await strava.status();
+        expect(status.connected, isTrue);
+        expect(status.athleteName, 'Nic M');
+
+        final saved = await strava.updateSettings(
+          exportCardio: true,
+          exportStrength: true,
+        );
+        expect(saved.exportStrength, isTrue);
+        expect(bodies[2], contains('"exportStrength":true'));
+
+        expect(await strava.export(StravaExportKind.cardio, sessionId), isNull);
+        final requested = await strava.requestExport(
+          StravaExportKind.cardio,
+          sessionId,
+        );
+        expect(requested.status, StravaExportStatus.processing);
+        expect(requested.isSending, isTrue);
+        final completed = await strava.export(
+          StravaExportKind.cardio,
+          sessionId,
+        );
+        expect(completed?.status, StravaExportStatus.completed);
+        expect(completed?.activityId, 9001);
+
+        await strava.disconnect();
+        expect(requests, [
+          'POST /api/v1/integrations/strava/authorization',
+          'GET /api/v1/integrations/strava',
+          'PUT /api/v1/integrations/strava/settings',
+          'GET /api/v1/integrations/strava/exports/cardio/$sessionId',
+          'POST /api/v1/integrations/strava/exports/cardio/$sessionId',
+          'GET /api/v1/integrations/strava/exports/cardio/$sessionId',
+          'DELETE /api/v1/integrations/strava',
+        ]);
+
+        web.result = null;
+        expect(await strava.connect(), StravaConnectResult.cancelled);
+        expect(
+          () => api.getStravaExport(StravaExportKind.strength, 'not-a-uuid'),
+          throwsArgumentError,
+        );
+      } finally {
+        api.close();
+        await server.close();
+      }
+    });
+
+    test('maps Strava export states with safe defaults', () {
+      ApiStravaExport parse(String? status) =>
+          ApiStravaExport.fromJson({'status': status});
+      expect(parse('failed').status, StravaExportStatus.failed);
+      expect(parse('failed').isSending, isFalse);
+      expect(parse('unknown').status, StravaExportStatus.pending);
+      expect(parse(null).isSending, isTrue);
+      final empty = ApiStravaStatus.fromJson(const {});
+      expect(empty.configured, isFalse);
+      expect(empty.connected, isFalse);
+      expect(StravaExportKind.strength.wireName, 'strength');
+    });
+
+    test('rejects a non-https Strava authorization address', () async {
+      final server = await _TestApiServer.start(
+        (request) => _json(request, {'authorizationUrl': 'http://evil.test/'}),
+      );
+      final api = ApiClient(
+        configuration: ApiConfiguration(
+          apiOrigin: server.origin,
+          allowInsecureLoopbackForDevelopment: true,
+        ),
+      );
+      try {
+        await expectLater(
+          api.beginStravaAuthorization(),
+          throwsA(isA<FormatException>()),
+        );
+      } finally {
+        api.close();
+        await server.close();
+      }
+    });
   });
 }
 
@@ -1060,5 +1282,20 @@ class _MemorySecureSession implements SecureSessionPlatform {
   @override
   Future<void> writeCheckpoint(String apiOrigin, Uint8List checkpoint) async {
     this.checkpoint = Uint8List.fromList(checkpoint);
+  }
+}
+
+class _ScriptedWebAuthentication implements WebAuthenticationPlatform {
+  _ScriptedWebAuthentication(this.result);
+
+  Uri? result;
+  final opened = <Uri>[];
+  final schemes = <String>[];
+
+  @override
+  Future<Uri?> authenticate(Uri url, {required String callbackScheme}) async {
+    opened.add(url);
+    schemes.add(callbackScheme);
+    return result;
   }
 }
