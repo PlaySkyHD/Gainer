@@ -2948,12 +2948,13 @@ String _fmtKcal(double value) => _formatNumber(value);
 /// Gramm mit höchstens einer Nachkommastelle, z. B. `12,5`.
 String _fmtGrams(double value) => _formatNumber(value, decimals: 1);
 
-String _labelBasis(String basis) => switch (basis) {
-  'Per100Grams' => 'pro 100 g',
-  'Per100Milliliters' => 'pro 100 ml (1 ml ≈ 1 g)',
-  'PerServing' => 'pro Portion',
-  _ => basis,
+const _labelBasisNames = {
+  'Per100Grams': 'pro 100 g',
+  'Per100Milliliters': 'pro 100 ml (1 ml ≈ 1 g)',
+  'PerServing': 'pro Portion',
 };
+
+String _labelBasis(String basis) => _labelBasisNames[basis] ?? basis;
 
 String _labelValue(
   NutritionLabelFieldDraft field,
