@@ -251,47 +251,6 @@ PlanFromWorkout planFromWorkout(
   );
 }
 
-/// Nächster aktiver Plan nach dem jüngsten beendeten, nicht gelöschten Training
-/// aus der Rotation. Ohne solches Training beginnt die Rotation vorn; nach dem
-/// letzten Plan folgt wieder der erste. Archivierte Pläne werden übersprungen.
-String? nextRotationPlanId(
-  RotationModel rotation,
-  List<TrainingPlanModel> plans,
-  List<Workout> workouts,
-) {
-  final order = rotation.planIds;
-  if (order.isEmpty) return null;
-
-  final activePlanIds = {
-    for (final plan in plans)
-      if (!plan.isArchived) plan.planId,
-  };
-
-  String? lastPlanId;
-  DateTime? lastEndedAt;
-  for (final workout in workouts) {
-    final planId = workout.sourcePlanId;
-    final endedAt = workout.endedAtUtc;
-    if (endedAt == null ||
-        workout.deletedAtUtc != null ||
-        planId == null ||
-        !order.contains(planId)) {
-      continue;
-    }
-    if (lastEndedAt == null || endedAt.isAfter(lastEndedAt)) {
-      lastEndedAt = endedAt;
-      lastPlanId = planId;
-    }
-  }
-
-  final start = lastPlanId == null ? -1 : order.indexOf(lastPlanId);
-  for (var step = 1; step <= order.length; step++) {
-    final candidate = order[(start + step) % order.length];
-    if (activePlanIds.contains(candidate)) return candidate;
-  }
-  return null;
-}
-
 CatalogExercise _exerciseById(List<CatalogExercise> catalog, String id) {
   for (final exercise in catalog) {
     if (exercise.id == id) return exercise;
