@@ -377,7 +377,7 @@ void main() {
         await controller.initialize();
         expect(() => controller.onRouteRequested(route()), throwsStateError);
 
-        expect(controller.shell.selectedArea, MobileArea.progress);
+        expect(controller.shell.selectedArea, MobileArea.calendar);
         expect(controller.shell.takeRequestedWorkout(), isNull);
       } finally {
         controller.dispose();

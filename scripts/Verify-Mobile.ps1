@@ -873,8 +873,8 @@ function Invoke-UiCapturePhase {
     if (-not $deviceFound) { throw 'The exact workflow-owned simulator is unavailable or not Booted; refusing UI capture.' }
 
     $expectedScreenshots = @(
-        'tab-heute', 'tab-checkin', 'tab-essen', 'tab-training', 'tab-mehr',
-        'tab-dark-heute', 'tab-dark-checkin', 'tab-dark-essen', 'tab-dark-training', 'tab-dark-mehr',
+        'tab-kalender', 'tab-checkin', 'tab-essen', 'tab-training', 'tab-mehr',
+        'tab-dark-kalender', 'tab-dark-checkin', 'tab-dark-essen', 'tab-dark-training', 'tab-dark-mehr',
         'sheet-checkin', 'sheet-goal', 'date-picker', 'training-workout', 'training-minimized', 'editor-essen',
         'sheet-dark-checkin', 'editor-dark-essen'
     )

@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 enum MobileArea {
-  progress('Heute', CupertinoIcons.chart_bar),
+  calendar('Kalender', CupertinoIcons.calendar),
   body('Check-in', CupertinoIcons.heart),
   nutrition('Essen', CupertinoIcons.drop),
   training('Training', CupertinoIcons.sportscourt),
@@ -16,12 +16,12 @@ enum MobileArea {
 class MobileShellViewModel extends ChangeNotifier {
   MobileShellViewModel() {
     _tabController = CupertinoTabController(
-      initialIndex: MobileArea.progress.index,
+      initialIndex: MobileArea.calendar.index,
     )..addListener(_syncSelectedIndex);
   }
 
   late final CupertinoTabController _tabController;
-  int _selectedIndex = MobileArea.progress.index;
+  int _selectedIndex = MobileArea.calendar.index;
   String? _requestedWorkoutId;
   bool _requestedCardio = false;
   bool _requestedCloseOverlays = false;
