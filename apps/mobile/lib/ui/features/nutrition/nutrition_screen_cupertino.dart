@@ -479,11 +479,22 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _NutritionEntryMode.barcode => _barcodeTools(vm, submit),
       _NutritionEntryMode.estimate => _estimateTools(vm),
       _NutritionEntryMode.label => [
+        GainerGroupedSection(
+          footer: 'Du prüfst alle Werte, bevor etwas gespeichert wird.',
+          children: [
+            GainerListRow(
+              leadingIcon: CupertinoIcons.doc_text_viewfinder,
+              title: 'Nährwerttabelle fotografieren',
+              subtitle: 'Gerade und gut lesbar, mit Kalorien und Makros.',
+            ),
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.m),
         GainerPillButton(
-          label: 'Nährwertetikett erfassen',
-          icon: CupertinoIcons.doc_text_viewfinder,
-          variant: GainerPillVariant.tonal,
+          label: 'Etikett fotografieren',
+          icon: CupertinoIcons.camera,
           expand: true,
+          isLoading: vm.isOnlineOperation,
           onPressed: vm.isOnlineOperation ? null : _scanLabel,
         ),
       ],
@@ -1749,21 +1760,23 @@ class _NutritionScreenState extends State<NutritionScreen> {
     final recipeName = TextEditingController();
     final target = _LabelTargetDraft();
     try {
-      final accepted = await Navigator.of(context).push<String>(
-        CupertinoPageRoute<String>(
-          builder: (context) => StatefulBuilder(
-            builder: (context, setDialogState) => _labelDraftPage(
-              context,
-              setDialogState,
-              draft,
-              name: name,
-              amount: amount,
-              recipeName: recipeName,
-              target: target,
+      // Über dem Hinzufügen-Sheet, das auf dem Root-Navigator liegt.
+      final accepted = await Navigator.of(context, rootNavigator: true)
+          .push<String>(
+            CupertinoPageRoute<String>(
+              builder: (context) => StatefulBuilder(
+                builder: (context, setDialogState) => _labelDraftPage(
+                  context,
+                  setDialogState,
+                  draft,
+                  name: name,
+                  amount: amount,
+                  recipeName: recipeName,
+                  target: target,
+                ),
+              ),
             ),
-          ),
-        ),
-      );
+          );
       if (accepted == 'diary' && mounted) {
         await widget.viewModel.confirmLabelDraft(
           productName: name.text,
