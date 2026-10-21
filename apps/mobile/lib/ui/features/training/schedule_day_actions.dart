@@ -88,7 +88,16 @@ Future<bool> showScheduledTrainingActions(
   if (action == null || !context.mounted) return false;
 
   try {
-    await repository.schedule.applyAction(training, action);
+    final result = await repository.schedule.applyAction(training, action);
+    if (!result.applied && context.mounted) {
+      await showGainerStackedDialog<bool>(
+        context: context,
+        title: 'Nicht geändert',
+        message: result.message!,
+        actions: const [GainerDialogAction(label: 'OK', value: true)],
+      );
+    }
+    // Auch ohne Änderung neu laden: Der angezeigte Stand ist veraltet.
     return true;
   } catch (error) {
     if (context.mounted) {

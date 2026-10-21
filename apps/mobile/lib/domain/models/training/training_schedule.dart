@@ -344,6 +344,89 @@ class TrainingSchedule {
     return raw is _SlotAt && isCycle ? raw.index : null;
   }
 
+  /// Slot, der im Zyklus für [today] gilt, wie ihn der Editor als „Heute
+  /// ist“ zeigt. An einem pausierten Tag ist es der Slot vor dem nächsten
+  /// nicht pausierten Tag. Null bei festen Tagen oder ohne Slots.
+  int? effectiveCycleIndex(LocalDay today) {
+    if (!isCycle || slots.isEmpty) return null;
+    for (var offset = 0; offset <= maxShiftDays * 2; offset++) {
+      final index = cycleSlotIndexOn(today.addDays(offset));
+      if (index != null) return (index - offset) % slots.length;
+    }
+    return null;
+  }
+
+  /// Gleicher Modus, gleiche Slots und im Zyklus heute derselbe Slot wie bei
+  /// [todaySlotIndex]. Dann ändert ein Speichern den Rhythmus nicht.
+  bool hasSameRhythm({
+    required TrainingScheduleMode mode,
+    required List<TrainingScheduleSlot> slots,
+    required LocalDay today,
+    int todaySlotIndex = 0,
+  }) {
+    if (mode != this.mode || slots.length != this.slots.length) return false;
+    for (var i = 0; i < slots.length; i++) {
+      if (slots[i] != this.slots[i]) return false;
+    }
+    return !isCycle || effectiveCycleIndex(today) == todaySlotIndex;
+  }
+
+  /// Wie viele Tage die Vergangenheit beim Verdichten mindestens unverändert
+  /// bleibt (gut 13 Monate).
+  static const compactionKeepDays = 400;
+
+  /// Entfernt Verlauf, der für die Vorschau ab `today - keepDays` keine Rolle
+  /// mehr spielt, damit Verschiebungen und Ausnahmen nicht unbegrenzt
+  /// wachsen (Server-Obergrenze 1000):
+  /// - Ausnahmen, deren Tag und Ziel vor der Grenze liegen, entfallen.
+  /// - Verschiebungen, die vor der Grenze enden, gehen in den Anker ein.
+  /// - Gültig-ab rückt bis zur Grenze vor.
+  /// Die Vorschau ab der Grenze bleibt identisch.
+  TrainingSchedule compacted(
+    LocalDay today, {
+    int keepDays = compactionKeepDays,
+  }) {
+    final cutoff = today.addDays(-keepDays);
+    final kept = [
+      for (final exception in exceptions)
+        if (!exception.date.isBefore(cutoff) ||
+            (exception.movedToDate != null &&
+                !exception.movedToDate!.isBefore(cutoff)))
+          exception,
+    ];
+    // Eine behaltene Ausnahme gilt nur, solange ihr Tag noch vorgesehen ist;
+    // ihr Tag muss deshalb im Gültigkeitsbereich bleiben.
+    var boundary = cutoff;
+    for (final exception in kept) {
+      if (exception.date.isBefore(boundary)) boundary = exception.date;
+    }
+    if (!validFrom.isBefore(boundary)) {
+      if (kept.length == exceptions.length) return this;
+      return copyWith(exceptions: kept);
+    }
+    var anchor = anchorDate;
+    final keptShifts = <TrainingScheduleShift>[];
+    for (final shift in shifts) {
+      if (anchor != null &&
+          !shift.fromDate.addDays(shift.days).isAfter(boundary)) {
+        anchor = anchor.addDays(shift.days);
+      } else {
+        keptShifts.add(shift);
+      }
+    }
+    return TrainingSchedule(
+      scheduleId: scheduleId,
+      mode: mode,
+      anchorDate: anchor,
+      validFrom: boundary,
+      slots: slots,
+      shifts: keptShifts,
+      exceptions: kept,
+      updatedAtUtc: updatedAtUtc,
+      deletedAtUtc: deletedAtUtc,
+    );
+  }
+
   // Tagesaktionen (reine Funktionen, liefern einen neuen Stand)
 
   /// Verschiebt den Zyklus ab [from] um [days] Tage. Gibt es schon eine
