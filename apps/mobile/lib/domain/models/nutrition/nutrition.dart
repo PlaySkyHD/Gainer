@@ -490,6 +490,17 @@ class NutritionTargetSchedule {
     validateTargetSchedule(this.versions);
   }
   final List<NutritionTargetVersion> versions;
+
+  /// Zielphase, die an [localDate] gilt: die zuletzt beginnende passende.
+  NutritionTargetVersion? targetOn(String localDate) => versions
+      .where(
+        (phase) =>
+            phase.effectiveFrom.compareTo(localDate) <= 0 &&
+            (phase.effectiveUntil == null ||
+                phase.effectiveUntil!.compareTo(localDate) >= 0),
+      )
+      .lastOrNull;
+
   Map<String, Object?> toJson() => {
     'versions': [for (final item in versions) item.toJson()],
   };
