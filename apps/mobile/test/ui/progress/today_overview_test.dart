@@ -4,80 +4,52 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/repositories/insights/insights_repository.dart';
-import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
-import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
-import 'package:gainer_mobile/ui/core/shell/mobile_tab_scaffold.dart';
+import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
-import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
-import 'package:gainer_mobile/ui/features/progress/progress_screen.dart';
 import 'package:gainer_mobile/ui/features/progress/progress_view_model.dart';
+import 'package:gainer_mobile/ui/features/progress/today_overview.dart';
 
-/// Fester Sonntag, damit das Datum unter dem Titel stabil ist.
+/// Fester Sonntag als heutiger Tag.
 DateTime _today() => DateTime(2026, 10, 18);
 
 void main() {
   for (final brightness in [Brightness.light, Brightness.dark]) {
-    testWidgets('progress screen matches golden in ${brightness.name} mode', (
+    testWidgets('overview matches golden in ${brightness.name} mode', (
       tester,
     ) async {
       _useGoldenPhone(tester);
       final api = _DashboardApi((_) async => _insights(trendKgPerWeek: -0.4));
-      final model = ProgressViewModel(
-        InsightsRepository(api),
-        nutrition: _FakeNutrition(kcal: 1280, protein: 42),
-      );
+      final model = ProgressViewModel(InsightsRepository(api));
       addTearDown(model.dispose);
       addTearDown(api.close);
 
-      await _pumpGolden(
-        tester,
-        brightness,
-        ProgressScreen(viewModel: model, today: _today),
-      );
+      await _pumpScreen(tester, model, brightness: brightness);
 
       await expectLater(
-        find.byType(ProgressScreen),
-        matchesGoldenFile('goldens/progress_screen_${brightness.name}.png'),
+        find.byType(CupertinoApp),
+        matchesGoldenFile('goldens/today_overview_${brightness.name}.png'),
       );
       expect(tester.takeException(), isNull);
     }, tags: ['golden']);
   }
 
-  testWidgets('dashboard shows nutrition, weight and training cards', (
-    tester,
-  ) async {
+  testWidgets('overview shows weight and training cards', (tester) async {
     _useTallView(tester);
     final api = _DashboardApi((_) async => _insights(trendKgPerWeek: -0.4));
-    final model = ProgressViewModel(
-      InsightsRepository(api),
-      nutrition: _FakeNutrition(kcal: 1280, protein: 42),
-    );
+    final model = ProgressViewModel(InsightsRepository(api));
     addTearDown(model.dispose);
     addTearDown(api.close);
 
     await _pumpScreen(tester, model);
 
     expect(api.calls, 1);
-    expect(find.text('Heute'), findsNWidgets(2));
-    expect(find.text('Sonntag, 18. Oktober'), findsOneWidget);
-    // Kein Untertitel, keine Erklärsätze und keine Toolbar-Pille mehr.
-    expect(find.text('Dein Fortschritt aus deinen Einträgen'), findsNothing);
-    expect(find.text('Aktualisieren'), findsNothing);
-    expect(
-      find.text('Die Werte beruhen auf deinen gespeicherten Einträgen.'),
-      findsNothing,
-    );
-    expect(find.text('Übungsfortschritt'), findsNothing);
     expect(
       find.text('Gespeicherte Fortschrittsdaten · möglicherweise veraltet'),
       findsNothing,
     );
-
-    // Werte sind deutsch formatiert (Komma, Tausenderpunkt).
-    expect(find.text('Ernährung'), findsOneWidget);
-    expect(_rich('1.280 kcal heute'), findsOneWidget);
-    expect(find.text('Protein 42 g'), findsOneWidget);
+    // Die Ernährung von heute zeigt der Kalender selbst.
+    expect(find.textContaining('kcal heute', findRichText: true), findsNothing);
 
     expect(find.text('Gewicht'), findsOneWidget);
     expect(_rich('81,5 kg'), findsOneWidget);
@@ -89,66 +61,10 @@ void main() {
       findsOneWidget,
     );
 
-    expect(find.text('Training'), findsOneWidget);
+    expect(find.text('Trainingsübersicht'), findsOneWidget);
     expect(_rich('4 Trainings in 7 Tagen'), findsOneWidget);
     expect(find.text('Volumen 4.200 kg · 30 Tage'), findsOneWidget);
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('empty diary day shows 0 kcal heute', (tester) async {
-    _useTallView(tester);
-    final api = _DashboardApi((_) async => _insights());
-    final model = ProgressViewModel(
-      InsightsRepository(api),
-      nutrition: _FakeNutrition(kcal: 0),
-    );
-    addTearDown(model.dispose);
-    addTearDown(api.close);
-
-    await _pumpScreen(tester, model);
-
-    expect(_rich('0 kcal heute'), findsOneWidget);
-    expect(find.textContaining('Noch nichts erfasst'), findsNothing);
-    expect(find.textContaining('Protein'), findsNothing);
-  });
-
-  testWidgets('returning to the tab refreshes today from local data', (
-    tester,
-  ) async {
-    _useTallView(tester);
-    final api = _DashboardApi((_) async => _insights());
-    final nutrition = _FakeNutrition(kcal: 100);
-    final model = ProgressViewModel(
-      InsightsRepository(api),
-      nutrition: nutrition,
-    );
-    final tabs = ValueNotifier<int>(0);
-    addTearDown(model.dispose);
-    addTearDown(api.close);
-    addTearDown(tabs.dispose);
-
-    await tester.pumpWidget(
-      CupertinoApp(
-        theme: GainerTheme.light,
-        home: ProgressScreen(
-          viewModel: model,
-          today: _today,
-          visibility: tabs,
-          isVisible: () => tabs.value == 0,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(_rich('100 kcal heute'), findsOneWidget);
-
-    tabs.value = 1;
-    nutrition.kcal = 450;
-    await tester.pumpAndSettle();
-    expect(_rich('100 kcal heute'), findsOneWidget);
-
-    tabs.value = 0;
-    await tester.pumpAndSettle();
-    expect(_rich('450 kcal heute'), findsOneWidget);
   });
 
   testWidgets('cards do not overflow at text scale 2', (tester) async {
@@ -161,24 +77,12 @@ void main() {
         ],
       ),
     );
-    final model = ProgressViewModel(
-      InsightsRepository(api),
-      nutrition: _FakeNutrition(kcal: 12800, protein: 420),
-    );
+    final model = ProgressViewModel(InsightsRepository(api));
     addTearDown(model.dispose);
     addTearDown(api.close);
-    await tester.pumpWidget(
-      CupertinoApp(
-        theme: GainerTheme.light,
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: const TextScaler.linear(2)),
-          child: child!,
-        ),
-        home: ProgressScreen(viewModel: model, today: _today),
-      ),
-    );
-    await tester.pumpAndSettle();
+
+    await _pumpScreen(tester, model, textScale: 2);
+
     expect(find.text('vor 9 Tagen'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -206,15 +110,7 @@ void main() {
           final model = ProgressViewModel(InsightsRepository(api));
           addTearDown(model.dispose);
           addTearDown(api.close);
-          await tester.pumpWidget(
-            CupertinoApp(
-              theme: brightness == Brightness.dark
-                  ? GainerTheme.dark
-                  : GainerTheme.light,
-              home: ProgressScreen(viewModel: model, today: _today),
-            ),
-          );
-          await tester.pumpAndSettle();
+          await _pumpScreen(tester, model, brightness: brightness);
 
           final finder = find.text(label).last;
           expect(find.text(label), findsWidgets);
@@ -259,61 +155,38 @@ void main() {
 
     await _pumpScreen(tester, model);
 
-    expect(find.text('Noch nichts erfasst'), findsOneWidget);
     expect(find.text('Noch kein Gewicht'), findsOneWidget);
     expect(find.text('Check-in eintragen'), findsOneWidget);
     expect(find.text('Noch kein Training diese Woche'), findsOneWidget);
-    expect(find.textContaining('Protein'), findsNothing);
     expect(find.textContaining('Ziel'), findsNothing);
     expect(find.textContaining('kg/Woche'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('each card opens its tab through the shell', (tester) async {
+  testWidgets('cards call their tap callbacks', (tester) async {
     _useTallView(tester);
     final api = _DashboardApi((_) async => _insights());
-    final progress = ProgressViewModel(InsightsRepository(api));
-    final shell = MobileShellViewModel();
-    addTearDown(progress.dispose);
-    addTearDown(shell.dispose);
+    final model = ProgressViewModel(InsightsRepository(api));
+    addTearDown(model.dispose);
     addTearDown(api.close);
+    final taps = <String>[];
 
-    await tester.pumpWidget(
-      CupertinoApp(
-        theme: GainerTheme.light,
-        home: MobileTabScaffold(
-          model: shell,
-          tabBuilder: (context, area) => area == MobileArea.progress
-              ? ProgressScreen(
-                  viewModel: progress,
-                  today: _today,
-                  onOpenArea: (target) => shell.selectTab(target.index),
-                )
-              : CupertinoPageScaffold(child: Text('Inhalt ${area.label}')),
-        ),
-      ),
+    await _pumpScreen(
+      tester,
+      model,
+      onWeight: () => taps.add('weight'),
+      onTraining: () => taps.add('training'),
+    );
+    await tester.tap(find.widgetWithText(CupertinoButton, 'Gewicht'));
+    await tester.tap(
+      find.widgetWithText(CupertinoButton, 'Trainingsübersicht'),
     );
     await tester.pumpAndSettle();
 
-    const cards = {
-      'Ernährung': MobileArea.nutrition,
-      'Gewicht': MobileArea.body,
-      'Training': MobileArea.training,
-    };
-    for (final entry in cards.entries) {
-      shell.selectTab(MobileArea.progress.index);
-      await tester.pumpAndSettle();
-      expect(shell.selectedArea, MobileArea.progress);
-
-      await tester.tap(find.widgetWithText(CupertinoButton, entry.key).first);
-      await tester.pumpAndSettle();
-
-      expect(shell.selectedArea, entry.value, reason: entry.key);
-      expect(find.text('Inhalt ${entry.value.label}'), findsOneWidget);
-    }
+    expect(taps, ['weight', 'training']);
   });
 
-  testWidgets('cards do nothing without a tab callback', (tester) async {
+  testWidgets('cards do nothing without a tap callback', (tester) async {
     _useTallView(tester);
     final api = _DashboardApi((_) async => _insights());
     final model = ProgressViewModel(InsightsRepository(api));
@@ -321,10 +194,10 @@ void main() {
     addTearDown(api.close);
 
     await _pumpScreen(tester, model);
-    await tester.tap(find.widgetWithText(CupertinoButton, 'Ernährung'));
+    await tester.tap(find.widgetWithText(CupertinoButton, 'Gewicht'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Ernährung'), findsOneWidget);
+    expect(find.text('Gewicht'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -341,9 +214,10 @@ void main() {
     await tester.pumpWidget(
       CupertinoApp(
         theme: GainerTheme.light,
-        home: ProgressScreen(viewModel: model),
+        home: _Overview(model: model),
       ),
     );
+    unawaited(model.load());
     await tester.pump();
     await tester.pump();
 
@@ -356,26 +230,6 @@ void main() {
     expect(find.byType(CupertinoActivityIndicator), findsNothing);
     expect(find.text('Gewicht'), findsOneWidget);
   });
-
-  testWidgets('pulling down reloads the dashboard', (tester) async {
-    _useTallView(tester);
-    final api = _DashboardApi(
-      (call) async => _insights(trendKgPerWeek: call == 1 ? -0.4 : 0.5),
-    );
-    final model = ProgressViewModel(InsightsRepository(api));
-    addTearDown(model.dispose);
-    addTearDown(api.close);
-
-    await _pumpScreen(tester, model);
-    expect(api.calls, 1);
-    expect(find.text('−0,4 kg/Woche'), findsOneWidget);
-
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, 300));
-    await tester.pumpAndSettle();
-
-    expect(api.calls, 2);
-    expect(find.text('+0,5 kg/Woche'), findsOneWidget);
-  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
   testWidgets('failed first load shows a safe error and retry recovers', (
     tester,
@@ -449,7 +303,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('dashboard names missing bodyweight in text, not only color', (
+  testWidgets('overview names missing bodyweight in text, not only color', (
     tester,
   ) async {
     _useTallView(tester);
@@ -516,6 +370,12 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  test('formats German numbers with grouping and comma', () {
+    expect(formatGermanNumber(2350), '2.350');
+    expect(formatGermanNumber(81.54, digits: 1), '81,5');
+    expect(formatGermanNumber(-0.4, digits: 1), '−0,4');
+  });
 }
 
 Finder _rich(String text) => find.text(text, findRichText: true);
@@ -531,21 +391,6 @@ void _useGoldenPhone(WidgetTester tester) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-Future<void> _pumpGolden(
-  WidgetTester tester,
-  Brightness brightness,
-  Widget screen,
-) async {
-  await tester.pumpWidget(
-    CupertinoApp(
-      debugShowCheckedModeBanner: false,
-      theme: GainerTheme.forBrightness(brightness),
-      home: screen,
-    ),
-  );
-  await tester.pumpAndSettle();
-}
-
 void _useTallView(WidgetTester tester) {
   tester.view.physicalSize = const Size(800, 2600);
   tester.view.devicePixelRatio = 1;
@@ -553,17 +398,49 @@ void _useTallView(WidgetTester tester) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
+/// Beide Übersichtskarten wie in der Tagesansicht von heute.
+class _Overview extends StatelessWidget {
+  const _Overview({required this.model, this.onWeight, this.onTraining});
+
+  final ProgressViewModel model;
+  final VoidCallback? onWeight;
+  final VoidCallback? onTraining;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: model,
+    builder: (context, _) => GainerScaffold(
+      title: 'Kalender',
+      children: [
+        TodayWeightOverview(viewModel: model, today: _today(), onTap: onWeight),
+        const SizedBox(height: 16),
+        TodayTrainingOverview(viewModel: model, onTap: onTraining),
+      ],
+    ),
+  );
+}
+
 Future<void> _pumpScreen(
   WidgetTester tester,
   ProgressViewModel model, {
-  Key? key,
+  Brightness brightness = Brightness.light,
+  double textScale = 1,
+  VoidCallback? onWeight,
+  VoidCallback? onTraining,
 }) async {
   await tester.pumpWidget(
     CupertinoApp(
-      theme: GainerTheme.light,
-      home: ProgressScreen(key: key, viewModel: model, today: _today),
+      debugShowCheckedModeBanner: false,
+      theme: GainerTheme.forBrightness(brightness),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
+      home: _Overview(model: model, onWeight: onWeight, onTraining: onTraining),
     ),
   );
+  unawaited(model.load());
   await tester.pumpAndSettle();
 }
 
@@ -667,43 +544,6 @@ ApiDashboardInsights _emptyInsights() => const ApiDashboardInsights(
   ),
   workoutsLast7Days: 0,
 );
-
-class _FakeNutrition implements NutritionRepository {
-  _FakeNutrition({required this.kcal, this.protein});
-
-  double kcal;
-  double? protein;
-
-  @override
-  Future<NutritionSnapshot> read(String localDate) async => NutritionSnapshot(
-    day: NutritionDay(
-      localDate: localDate,
-      entries: kcal == 0
-          ? const []
-          : [
-              NutritionEntry(
-                entryId: '00000000-0000-4000-8000-000000000001',
-                meal: NutritionMeal.breakfast,
-                position: 0,
-                productName: 'Test',
-                brand: null,
-                amountGrams: 100,
-                per100Grams: NutritionTotals(
-                  kilocalories: kcal,
-                  proteinGrams: protein,
-                ),
-                source: null,
-              ),
-            ],
-    ),
-    meals: const [],
-    targetSchedule: null,
-    recentFoods: const [],
-  );
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
 
 class _DashboardApi extends ApiClient {
   _DashboardApi(this.onLoad)

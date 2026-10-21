@@ -1,181 +1,104 @@
 import 'package:flutter/cupertino.dart';
-import 'package:provider/provider.dart';
 
 import '../../../data/models/api/api_models.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
-import '../../core/view_models/mobile_shell_view_model.dart';
 import 'bodyweight_missing_hint.dart';
 import 'progress_view_model.dart';
 import 'weight_age.dart';
 
-const _weekdays = [
-  'Montag',
-  'Dienstag',
-  'Mittwoch',
-  'Donnerstag',
-  'Freitag',
-  'Samstag',
-  'Sonntag',
-];
-
-const _months = [
-  'Januar',
-  'Februar',
-  'März',
-  'April',
-  'Mai',
-  'Juni',
-  'Juli',
-  'August',
-  'September',
-  'Oktober',
-  'November',
-  'Dezember',
-];
-
-/// Übersicht „Heute“: drei Karten für Ernährung, Gewicht und Training.
-/// Jede Karte öffnet über [onOpenArea] den passenden Tab.
-class ProgressScreen extends StatefulWidget {
-  const ProgressScreen({
+/// Inhalte des früheren Tabs „Heute“ für die Tagesansicht von heute im
+/// Kalender: Gewichtsverlauf und Trainingsübersicht aus dem Dashboard
+/// ([ProgressViewModel]). Die Ernährung von heute zeigt der Kalender selbst.
+class TodayWeightOverview extends StatelessWidget {
+  const TodayWeightOverview({
     required this.viewModel,
-    this.onOpenArea,
-    this.today,
-    this.visibility,
-    this.isVisible,
+    required this.today,
+    this.todayWeightKg,
+    this.onTap,
     super.key,
   });
 
   final ProgressViewModel viewModel;
+  final DateTime today;
 
-  /// Wechselt in den Tab des gewählten Bereichs.
-  final ValueChanged<MobileArea>? onOpenArea;
-
-  /// Heutiges Datum für die Anzeige; Standard ist die aktuelle Systemzeit.
-  final DateTime Function()? today;
-
-  /// Meldet Wechsel des aktiven Tabs; zusammen mit [isVisible] lädt die
-  /// Übersicht die lokalen Tageswerte neu, sobald der Tab wieder sichtbar ist.
-  final Listenable? visibility;
-  final bool Function()? isVisible;
+  /// Lokal erfasstes Gewicht von heute. Es ersetzt den Dashboard-Wert, der
+  /// erst nach dem nächsten Abruf aktuell wäre.
+  final double? todayWeightKg;
+  final VoidCallback? onTap;
 
   @override
-  State<ProgressScreen> createState() => _ProgressScreenState();
-}
-
-class _ProgressScreenState extends State<ProgressScreen> {
-  bool _wasVisible = true;
-
-  void _onVisibility() {
-    final visible = widget.isVisible?.call() ?? true;
-    if (visible && !_wasVisible) widget.viewModel.refreshToday();
-    _wasVisible = visible;
-  }
-
-  @override
-  void dispose() {
-    widget.visibility?.removeListener(_onVisibility);
-    super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    widget.visibility?.addListener(_onVisibility);
-    _wasVisible = widget.isVisible?.call() ?? true;
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => widget.viewModel.load(),
+  Widget build(BuildContext context) {
+    final data = viewModel.dashboard;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (viewModel.isLoading && data == null)
+          const Center(child: CupertinoActivityIndicator()),
+        if (viewModel.errorMessage case final error?) ...[
+          _Notice(text: error, action: viewModel.load),
+          if (data != null) const SizedBox(height: GainerSpacing.m),
+        ],
+        if (data != null)
+          _WeightCard(
+            data: data,
+            today: today,
+            todayWeightKg: todayWeightKg,
+            onTap: onTap ?? _noop,
+          ),
+      ],
     );
   }
-
-  DateTime get _today => (widget.today ?? DateTime.now)();
-
-  String get _todayLabel {
-    final date = _today;
-    return '${_weekdays[date.weekday - 1]}, ${date.day}. ${_months[date.month - 1]}';
-  }
-
-  void _open(MobileArea area) => widget.onOpenArea?.call(area);
-
-  @override
-  Widget build(BuildContext context) => ChangeNotifierProvider.value(
-    value: widget.viewModel,
-    child: Consumer<ProgressViewModel>(
-      builder: (context, model, _) {
-        final colors = GainerDesign.colorsOf(context);
-        final data = model.dashboard;
-        return KeyedSubtree(
-          key: const ValueKey('progress-overview-scroll'),
-          child: GainerScaffold(
-            title: 'Heute',
-            onRefresh: model.load,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: GainerSpacing.xs,
-                  bottom: GainerSpacing.m,
-                ),
-                child: Text(
-                  _todayLabel,
-                  style: GainerTypography.body.copyWith(
-                    color: colors.secondaryText,
-                  ),
-                ),
-              ),
-              if (model.isLoading && data == null)
-                const Center(child: CupertinoActivityIndicator()),
-              if (model.errorMessage case final error?)
-                _Notice(text: error, action: model.load),
-              if (data != null) ...[
-                _NutritionCard(
-                  data: data,
-                  todayKcal: model.todayCaloriesKcal,
-                  todayProtein: model.todayProteinGrams,
-                  onTap: () => _open(MobileArea.nutrition),
-                ),
-                const SizedBox(height: GainerSpacing.m),
-                _WeightCard(
-                  data: data,
-                  today: _today,
-                  onTap: () => _open(MobileArea.body),
-                ),
-                const SizedBox(height: GainerSpacing.m),
-                _TrainingCard(
-                  data: data,
-                  onTap: () => _open(MobileArea.training),
-                ),
-                if (data.training.bodyweightMissing) ...[
-                  const SizedBox(height: GainerSpacing.m),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: GainerSpacing.xs),
-                    child: BodyweightMissingHint(),
-                  ),
-                ],
-                if (model.dashboardIsStale) ...[
-                  const SizedBox(height: GainerSpacing.m),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: GainerSpacing.xs,
-                    ),
-                    child: Text(
-                      'Gespeicherte Fortschrittsdaten · möglicherweise veraltet',
-                      style: GainerTypography.label.copyWith(
-                        color: colors.warning,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ],
-          ),
-        );
-      },
-    ),
-  );
 }
 
+/// Trainingsübersicht der letzten Tage mit Hinweisen zum Dashboard-Stand.
+/// Ohne Dashboard-Daten bleibt sie leer.
+class TodayTrainingOverview extends StatelessWidget {
+  const TodayTrainingOverview({required this.viewModel, this.onTap, super.key});
+
+  final ProgressViewModel viewModel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final data = viewModel.dashboard;
+    if (data == null) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _TrainingCard(data: data, onTap: onTap ?? _noop),
+        if (data.training.bodyweightMissing) ...[
+          const SizedBox(height: GainerSpacing.m),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: GainerSpacing.xs),
+            child: BodyweightMissingHint(),
+          ),
+        ],
+        if (viewModel.dashboardIsStale) ...[
+          const SizedBox(height: GainerSpacing.m),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.xs),
+            child: Text(
+              'Gespeicherte Fortschrittsdaten · möglicherweise veraltet',
+              style: GainerTypography.label.copyWith(color: colors.warning),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+void _noop() {}
+
+String _isoDate(DateTime day) =>
+    '${day.year.toString().padLeft(4, '0')}-'
+    '${day.month.toString().padLeft(2, '0')}-'
+    '${day.day.toString().padLeft(2, '0')}';
+
 /// Deutsche Zahl mit Komma und Tausenderpunkt, z. B. 2350 → „2.350“.
-String _formatNumber(double value, {int digits = 0}) {
+String formatGermanNumber(double value, {int digits = 0}) {
   final fixed = value.abs().toStringAsFixed(digits);
   final parts = fixed.split('.');
   final grouped = parts.first.replaceAllMapped(
@@ -188,7 +111,7 @@ String _formatNumber(double value, {int digits = 0}) {
 
 String _formatTrend(double kgPerWeek) {
   final sign = kgPerWeek > 0 ? '+' : '';
-  return '$sign${_formatNumber(kgPerWeek, digits: 1)} kg/Woche';
+  return '$sign${formatGermanNumber(kgPerWeek, digits: 1)} kg/Woche';
 }
 
 /// Antippbare Karte mit Titel und Chevron oben rechts.
@@ -287,58 +210,26 @@ class _SecondaryText extends StatelessWidget {
   );
 }
 
-class _NutritionCard extends StatelessWidget {
-  const _NutritionCard({
-    required this.data,
-    required this.todayKcal,
-    required this.todayProtein,
-    required this.onTap,
-  });
-
-  final ApiDashboardInsights data;
-
-  /// Lokale Werte von heute; `null`, wenn sie nicht gelesen werden konnten.
-  final double? todayKcal;
-  final double? todayProtein;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final kcal = todayKcal;
-    final protein = todayProtein;
-    return _OverviewCard(
-      title: 'Ernährung',
-      onTap: onTap,
-      children: [
-        if (kcal == null)
-          const _SecondaryText('Noch nichts erfasst')
-        else ...[
-          _BigFigure(value: _formatNumber(kcal), unit: 'kcal heute'),
-          if (protein != null) ...[
-            const SizedBox(height: GainerSpacing.xxs),
-            _SecondaryText('Protein ${_formatNumber(protein)} g'),
-          ],
-        ],
-      ],
-    );
-  }
-}
-
 class _WeightCard extends StatelessWidget {
   const _WeightCard({
     required this.data,
     required this.today,
     required this.onTap,
+    this.todayWeightKg,
   });
 
   final ApiDashboardInsights data;
   final DateTime today;
+  final double? todayWeightKg;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    final latest = data.latestWeight;
+    final local = todayWeightKg;
+    final latest = local == null
+        ? data.latestWeight
+        : ApiWeightPoint(date: _isoDate(today), weightKg: local);
     final trend = data.weight.trendKgPerWeek;
     final goal = data.activeGoal;
     return _OverviewCard(
@@ -353,24 +244,31 @@ class _WeightCard extends StatelessWidget {
             style: GainerTypography.body.copyWith(color: colors.accent),
           ),
         ] else ...[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Expanded(
-                child: _BigFigure(
-                  value: _formatNumber(latest.weightKg, digits: 1),
+          // Bei großer Schrift rutscht der Trend unter die Zahl, statt sie
+          // umzubrechen.
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.end,
+              spacing: GainerSpacing.xs,
+              children: [
+                _BigFigure(
+                  value: formatGermanNumber(latest.weightKg, digits: 1),
                   unit: 'kg',
                 ),
-              ),
-              if (trend != null)
-                Text(
-                  _formatTrend(trend),
-                  style: GainerTypography.label.copyWith(
-                    color: colors.secondaryText,
+                if (trend != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: GainerSpacing.xxs),
+                    child: Text(
+                      _formatTrend(trend),
+                      style: GainerTypography.label.copyWith(
+                        color: colors.secondaryText,
+                      ),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: GainerSpacing.xxs),
           _WeightAgeLabel(age: WeightAge.fromDate(latest.date, today)),
@@ -381,7 +279,7 @@ class _WeightCard extends StatelessWidget {
           if (goal != null) ...[
             const SizedBox(height: GainerSpacing.xs),
             Text(
-              'Ziel ${_formatNumber(goal.targetWeightKg, digits: 1)} kg',
+              'Ziel ${formatGermanNumber(goal.targetWeightKg, digits: 1)} kg',
               style: GainerTypography.label.copyWith(
                 color: colors.secondaryText,
               ),
@@ -427,7 +325,7 @@ class _TrainingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final count = data.workoutsLast7Days;
     return _OverviewCard(
-      title: 'Training',
+      title: 'Trainingsübersicht',
       onTap: onTap,
       children: [
         if (count == 0)
@@ -439,7 +337,7 @@ class _TrainingCard extends StatelessWidget {
           ),
           const SizedBox(height: GainerSpacing.xxs),
           _SecondaryText(
-            'Volumen ${_formatNumber(data.training.volumeKgRepetitions)} kg · 30 Tage',
+            'Volumen ${formatGermanNumber(data.training.volumeKgRepetitions)} kg · 30 Tage',
           ),
         ],
       ],

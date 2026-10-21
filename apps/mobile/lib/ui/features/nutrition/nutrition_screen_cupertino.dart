@@ -210,7 +210,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
   ) => [
     _DayCard(
       totals: snapshot.day.totals,
-      target: _targetFor(vm.localDate, snapshot.targetSchedule),
+      target: snapshot.targetSchedule?.targetOn(vm.localDate),
       onManage: _openPlanning,
     ),
     NutritionAveragesEntry(repository: vm.repository, refreshKey: snapshot),
@@ -2527,19 +2527,6 @@ class _DayCard extends StatelessWidget {
     );
   }
 }
-
-/// Zielphase, die für [date] gilt, oder `null`.
-NutritionTargetVersion? _targetFor(
-  String date,
-  NutritionTargetSchedule? schedule,
-) => schedule?.versions
-    .where(
-      (phase) =>
-          phase.effectiveFrom.compareTo(date) <= 0 &&
-          (phase.effectiveUntil == null ||
-              phase.effectiveUntil!.compareTo(date) >= 0),
-    )
-    .lastOrNull;
 
 /// „Heute“, „Gestern“, „Morgen“ oder kurzes Datum wie „Mo. 12. Okt.“.
 String _dateLabel(String value, String today) {
