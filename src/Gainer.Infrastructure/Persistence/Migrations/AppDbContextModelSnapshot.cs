@@ -18,7 +18,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("identity")
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -159,6 +159,125 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_daily_check_ins_steps", "\"Steps\" IS NULL OR \"Steps\" >= 0");
 
                             t.HasCheckConstraint("CK_daily_check_ins_weight", "\"WeightKg\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Core.Integrations.StravaConnection", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AccessTokenExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("AthleteId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("AthleteName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("CardioExportSinceUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ConnectedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("NeedsReconnect")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("PausedUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProtectedAccessToken")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("ProtectedRefreshToken")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("StrengthExportSinceUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("strava_connections", "integrations", t =>
+                        {
+                            t.HasCheckConstraint("CK_strava_connections_athlete", "\"AthleteId\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Core.Integrations.StravaExport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("ActivityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("AthleteId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UploadId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Status", "NextAttemptAtUtc");
+
+                    b.HasIndex("UserId", "Kind", "ResourceId", "AthleteId")
+                        .IsUnique();
+
+                    b.ToTable("strava_exports", "integrations", t =>
+                        {
+                            t.HasCheckConstraint("CK_strava_exports_attempts", "\"Attempts\" >= 0");
+
+                            t.HasCheckConstraint("CK_strava_exports_kind", "\"Kind\" IN ('Cardio', 'Strength')");
+
+                            t.HasCheckConstraint("CK_strava_exports_status", "\"Status\" IN ('Pending', 'Processing', 'Completed', 'Failed')");
                         });
                 });
 
@@ -4385,6 +4504,24 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Gainer.Core.BodyTracking.DailyCheckIn", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Integrations.StravaConnection", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithOne()
+                        .HasForeignKey("Gainer.Core.Integrations.StravaConnection", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Integrations.StravaExport", b =>
                 {
                     b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
                         .WithMany()
