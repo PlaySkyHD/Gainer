@@ -100,7 +100,7 @@ public sealed class StravaApiClientTests
 
     [TestMethod]
     [DataRow(HttpStatusCode.Unauthorized, StravaFailure.Unauthorized)]
-    [DataRow(HttpStatusCode.Forbidden, StravaFailure.Unauthorized)]
+    [DataRow(HttpStatusCode.Forbidden, StravaFailure.Rejected)]
     [DataRow(HttpStatusCode.TooManyRequests, StravaFailure.RateLimited)]
     [DataRow(HttpStatusCode.ServiceUnavailable, StravaFailure.Transient)]
     [DataRow(HttpStatusCode.NotFound, StravaFailure.Rejected)]

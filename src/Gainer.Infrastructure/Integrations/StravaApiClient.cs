@@ -5,6 +5,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Gainer.Core.Integrations;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Gainer.Infrastructure.Integrations;
@@ -92,9 +94,14 @@ public interface IStravaApiClient
 }
 
 /// <summary>The few Strava endpoints Gainer needs: OAuth, uploads and the activity type.</summary>
-public sealed partial class StravaApiClient(HttpClient httpClient, IOptions<StravaOptions> options) : IStravaApiClient
+public sealed partial class StravaApiClient(
+    HttpClient httpClient,
+    IOptions<StravaOptions> options,
+    ILogger<StravaApiClient>? logger = null) : IStravaApiClient
 {
+    private const int MaximumLoggedErrorLength = 500;
     private readonly StravaOptions settings = options.Value;
+    private readonly ILogger log = logger ?? NullLogger<StravaApiClient>.Instance;
 
     public Task<StravaTokens> ExchangeCodeAsync(string code, CancellationToken cancellationToken = default) =>
         TokenAsync(new Dictionary<string, string>
@@ -225,17 +232,26 @@ public sealed partial class StravaApiClient(HttpClient httpClient, IOptions<Stra
         }
     }
 
-    private static Task EnsureSuccessAsync(HttpResponseMessage response)
+    private async Task EnsureSuccessAsync(HttpResponseMessage response)
     {
-        if (response.IsSuccessStatusCode) return Task.CompletedTask;
+        if (response.IsSuccessStatusCode) return;
         int status = (int)response.StatusCode;
         StravaFailure failure = response.StatusCode switch
         {
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => StravaFailure.Unauthorized,
+            HttpStatusCode.Unauthorized => StravaFailure.Unauthorized,
             HttpStatusCode.TooManyRequests => StravaFailure.RateLimited,
             _ when status >= 500 || response.StatusCode == HttpStatusCode.RequestTimeout => StravaFailure.Transient,
             _ => StravaFailure.Rejected,
         };
+        // Strava explains refusals in a small JSON body without tokens; it is the only clue for 403s.
+        string body = await response.Content.ReadAsStringAsync();
+        string excerpt = body.Length <= MaximumLoggedErrorLength ? body : body[..MaximumLoggedErrorLength];
+        log.LogWarning(
+            "Strava answered {Status} for {Method} {Path}: {Body}",
+            status,
+            response.RequestMessage?.Method.Method,
+            response.RequestMessage?.RequestUri?.AbsolutePath,
+            excerpt);
         throw new StravaApiException(failure, $"Strava answered {status}.", status);
     }
 
