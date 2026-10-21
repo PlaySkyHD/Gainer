@@ -81,6 +81,13 @@ class MealDictationController extends ChangeNotifier {
     await done.future.timeout(timeout, onTimeout: () {});
   }
 
+  /// Bricht ein laufendes Diktat ab, ohne den Text weiter zu ändern.
+  void cancel() {
+    if (!isListening) return;
+    unawaited(platform.cancelDictation().catchError((Object _) {}));
+    _finish(DictationStatus.idle);
+  }
+
   Future<void> _read() async {
     if (_reading || !isListening) return;
     _reading = true;
