@@ -34,7 +34,7 @@ const pullCursorMetadataKey = 'pull-cursor';
 const _trainingAggregateTypes = [
   'workout',
   'workout-template',
-  'workout-rotation',
+  'training-schedule',
   'custom-exercise',
   'training-plan',
   'exercise-category',
@@ -42,7 +42,7 @@ const _trainingAggregateTypes = [
 const _trainingResourceTypes = [
   'Workout',
   'WorkoutTemplate',
-  'WorkoutRotation',
+  'TrainingSchedule',
   'CustomExercise',
   'TrainingPlan',
   'ExerciseCategory',
