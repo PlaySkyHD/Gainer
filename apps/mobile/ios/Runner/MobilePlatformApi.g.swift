@@ -1382,6 +1382,10 @@ protocol MobilePlatformApi {
   /// Meldet mit einem gespeicherten Passkey der Domain an. Null bei Abbruch
   /// oder wenn kein Passkey vorhanden ist.
   func assertPasskey(relyingPartyId: String, challenge: FlutterStandardTypedData) async throws -> PlatformPasskeyAssertion?
+  /// Öffnet [url] im Anmelde-Sheet des Systems (ASWebAuthenticationSession,
+  /// teilt die Anmeldung mit Safari) und liefert die Rückleitung auf
+  /// [callbackScheme]. Null, wenn der Nutzer abbricht.
+  func authenticateWebSession(url: String, callbackScheme: String) async throws -> String?
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -2202,6 +2206,27 @@ class MobilePlatformApiSetup {
       }
     } else {
       assertPasskeyChannel.setMessageHandler(nil)
+    }
+    /// Öffnet [url] im Anmelde-Sheet des Systems (ASWebAuthenticationSession,
+    /// teilt die Anmeldung mit Safari) und liefert die Rückleitung auf
+    /// [callbackScheme]. Null, wenn der Nutzer abbricht.
+    let authenticateWebSessionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.authenticateWebSession\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      authenticateWebSessionChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let urlArg = args[0] as! String
+        let callbackSchemeArg = args[1] as! String
+        Task { @MainActor in
+          do {
+            let result = try await api.authenticateWebSession(url: urlArg, callbackScheme: callbackSchemeArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      authenticateWebSessionChannel.setMessageHandler(nil)
     }
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/cardio/cardio_repository.dart';
 import 'package:gainer_mobile/data/repositories/health/cardio_health_exporter.dart';
+import 'package:gainer_mobile/data/repositories/strava/strava_service.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/repositories/training/training_preferences.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
@@ -154,6 +155,9 @@ class CardioHarness {
   final CardioSessionController controller;
   final _Clock _clock;
 
+  /// Strava des Kontos; null wie offline.
+  StravaService? strava;
+
   DateTime get now => _clock.value;
 
   set now(DateTime value) => _clock.value = value;
@@ -166,6 +170,7 @@ class CardioHarness {
       repository: repository,
       platform: health,
     ),
+    strava: strava,
   );
 
   static Future<CardioHarness> create({DateTime? now}) async {
