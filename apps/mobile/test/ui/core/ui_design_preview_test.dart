@@ -11,7 +11,7 @@ import '../../../integration_test/ui_design_fixture.dart';
 import '../../../integration_test/ui_design_flow.dart';
 
 const _previewNames = [
-  'tab-heute',
+  'tab-kalender',
   'tab-checkin',
   'sheet-checkin',
   'sheet-goal',
@@ -22,7 +22,7 @@ const _previewNames = [
   'training-workout',
   'training-minimized',
   'tab-mehr',
-  'tab-dark-heute',
+  'tab-dark-kalender',
   'tab-dark-checkin',
   'tab-dark-essen',
   'tab-dark-training',

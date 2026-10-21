@@ -26,7 +26,7 @@ Widget _shell(
       activeWorkout: activeWorkout,
     ),
     _ => const CupertinoPageScaffold(
-      child: Center(child: Text('Heute-Inhalt')),
+      child: Center(child: Text('Kalender-Inhalt')),
     ),
   },
 );
@@ -128,10 +128,10 @@ void main() {
     await settle(tester);
 
     expect(find.text('Beenden'), findsNothing);
-    await tester.tap(find.text('Heute'));
+    await tester.tap(find.text('Kalender'));
     await settle(tester);
 
-    expect(find.text('Heute-Inhalt'), findsOneWidget);
+    expect(find.text('Kalender-Inhalt'), findsOneWidget);
     final bar = find.byKey(const ValueKey('compact-training-bar'));
     expect(bar, findsOneWidget);
     expect(

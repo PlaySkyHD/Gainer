@@ -50,13 +50,11 @@ Future<void> runUiDesignCaptureFlow(
   await tester.pumpWidget(app(GainerTheme.light));
   await tester.pumpAndSettle();
   await _waitForDashboard(tester, fixture);
-  await capture('tab-heute');
-  // Kein Untertitel unter dem großen Titel (design.md D1.1).
-  expect(find.text('Dein Fortschritt aus deinen Einträgen'), findsNothing);
-  expect(find.text('Ernährung'), findsOneWidget);
-  expect(find.text('Gewicht'), findsOneWidget);
-  expect(find.text('Training'), findsWidgets);
-  expect(find.textContaining('kcal heute', findRichText: true), findsOneWidget);
+  await capture('tab-kalender');
+  // Monatsraster und darunter heute mit Plan-Karte und Gewichtsverlauf.
+  expect(find.byKey(const ValueKey('calendar-month-grid')), findsOneWidget);
+  expect(find.byKey(const ValueKey('training-today-card')), findsOneWidget);
+  expect(find.text('Gewicht'), findsWidgets);
 
   await _tapTab(tester, 'Check-in');
   expect(find.text('Verlauf'), findsOneWidget);
@@ -130,7 +128,7 @@ Future<void> runUiDesignCaptureFlow(
   await tester.pumpWidget(app(GainerTheme.dark));
   await tester.pumpAndSettle();
   for (final tab in const [
-    ('Heute', 'tab-dark-heute'),
+    ('Kalender', 'tab-dark-kalender'),
     ('Check-in', 'tab-dark-checkin'),
     ('Essen', 'tab-dark-essen'),
     ('Training', 'tab-dark-training'),
@@ -139,11 +137,8 @@ Future<void> runUiDesignCaptureFlow(
     await _tapTab(tester, tab.$1);
     _resetActiveTabScroll(tester);
     await tester.pumpAndSettle();
-    if (tab.$1 == 'Heute') {
-      expect(
-        find.byKey(const ValueKey('progress-overview-scroll')),
-        findsOneWidget,
-      );
+    if (tab.$1 == 'Kalender') {
+      expect(find.byKey(const ValueKey('calendar-month-grid')), findsOneWidget);
     }
     await capture(tab.$2);
   }
