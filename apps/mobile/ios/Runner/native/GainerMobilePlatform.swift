@@ -11,6 +11,7 @@ final class GainerMobilePlatform: MobilePlatformApi {
   private let timerNotifications: NativeTimerNotifications
   private let health = NativeHealthKit()
   private let passkeys = NativePasskeys()
+  private let webAuthentication = NativeWebAuthentication()
   private let heartRateMonitor: NativeHeartRateMonitor
   private let extensionSnapshots = NativeExtensionSnapshotStore()
   private let routeStore = NativeExtensionSnapshotStore()
@@ -387,6 +388,15 @@ final class GainerMobilePlatform: MobilePlatformApi {
       signature: FlutterStandardTypedData(bytes: assertion.signature),
       userHandle: FlutterStandardTypedData(bytes: assertion.userID)
     )
+  }
+
+  func authenticateWebSession(url: String, callbackScheme: String) async throws -> String? {
+    guard let target = URL(string: url), target.scheme == "https",
+          !callbackScheme.isEmpty
+    else {
+      throw PigeonError(code: "invalid_web_authentication", message: "The sign-in URL is invalid.", details: nil)
+    }
+    return try await webAuthentication.authenticate(url: target, callbackScheme: callbackScheme)?.absoluteString
   }
 
   /// Prüft die Eingaben aus Dart: Zone 40–230 mit von < bis (beide Grenzen oder keine),

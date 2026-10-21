@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 
+import '../../../data/models/api/strava_api_models.dart';
 import '../../../data/repositories/cardio/cardio_repository.dart';
 import '../../../data/repositories/health/cardio_health_exporter.dart';
 import '../../../domain/models/cardio/cardio_analysis.dart';
@@ -51,12 +54,91 @@ class _CardioDetailScreenState extends State<CardioDetailScreen> {
   String? _exportError;
   String? _error;
 
+  /// Strava-Zeile nur bei verbundener Strava und synchronisierter Einheit.
+  bool _stravaAvailable = false;
+  ApiStravaExport? _strava;
+  bool _stravaRequesting = false;
+  String? _stravaError;
+
   CardioRepository get _repository => widget.feature.repository;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadStrava();
+  }
+
+  Future<void> _loadStrava() async {
+    final strava = widget.feature.strava;
+    if (strava == null) return;
+    try {
+      final serverVersion = await _repository.serverVersionOf(widget.sessionId);
+      if (serverVersion == null || serverVersion < 1) return;
+      final status = await strava.status();
+      if (!status.connected || status.needsReconnect) return;
+      final export = await strava.export(
+        StravaExportKind.cardio,
+        widget.sessionId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _stravaAvailable = true;
+        _strava = export;
+      });
+      if (export?.isSending ?? false) unawaited(_followStrava());
+    } on Object {
+      // Ohne Strava-Stand entfällt die Zeile; der Rest der Ansicht bleibt.
+    }
+  }
+
+  Future<void> _sendToStrava() async {
+    final strava = widget.feature.strava;
+    if (strava == null || _stravaRequesting) return;
+    setState(() {
+      _stravaRequesting = true;
+      _stravaError = null;
+    });
+    try {
+      final export = await strava.requestExport(
+        StravaExportKind.cardio,
+        widget.sessionId,
+      );
+      if (!mounted) return;
+      setState(() => _strava = export);
+      if (export.isSending) unawaited(_followStrava());
+    } on Object {
+      if (mounted) {
+        setState(
+          () => _stravaError =
+              'Die Einheit konnte nicht an Strava übergeben werden. Versuche '
+              'es erneut.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _stravaRequesting = false);
+    }
+  }
+
+  /// Fragt eine Minute lang nach, bis Strava die Einheit angenommen hat.
+  Future<void> _followStrava() async {
+    final strava = widget.feature.strava;
+    if (strava == null) return;
+    for (var check = 0; check < 12; check++) {
+      await Future<void>.delayed(const Duration(seconds: 5));
+      if (!mounted) return;
+      try {
+        final export = await strava.export(
+          StravaExportKind.cardio,
+          widget.sessionId,
+        );
+        if (!mounted) return;
+        setState(() => _strava = export);
+        if (!(export?.isSending ?? false)) return;
+      } on Object {
+        return;
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -337,7 +419,48 @@ class _CardioDetailScreenState extends State<CardioDetailScreen> {
       ),
       const SizedBox(height: GainerSpacing.l),
       _health(),
+      if (_stravaAvailable) ...[
+        const SizedBox(height: GainerSpacing.l),
+        _stravaSection(),
+      ],
     ];
+  }
+
+  Widget _stravaSection() {
+    final colors = GainerDesign.colorsOf(context);
+    final export = _strava;
+    final failed = export?.status == StravaExportStatus.failed;
+    final sending = _stravaRequesting || (export?.isSending ?? false);
+    return GainerGroupedSection(
+      header: 'Strava',
+      footer:
+          _stravaError ??
+          (failed
+              ? 'Strava hat die Einheit nicht angenommen. Versuche es erneut.'
+              : null),
+      children: [
+        if (export?.status == StravaExportStatus.completed)
+          const GainerListRow(
+            key: ValueKey('cardio-strava-done'),
+            title: 'An Strava gesendet',
+            leadingIcon: CupertinoIcons.checkmark_circle_fill,
+          )
+        else if (sending)
+          GainerListRow(
+            key: const ValueKey('cardio-strava-sending'),
+            title: 'Wird an Strava gesendet',
+            leadingIcon: CupertinoIcons.arrow_up_right_circle,
+            trailing: CupertinoActivityIndicator(color: colors.secondaryText),
+          )
+        else
+          GainerListRow(
+            key: const ValueKey('cardio-strava-export'),
+            title: failed ? 'Erneut an Strava senden' : 'An Strava senden',
+            leadingIcon: CupertinoIcons.arrow_up_right_circle,
+            onTap: _sendToStrava,
+          ),
+      ],
+    );
   }
 
   Widget _metrics(CardioSession session, CardioAnalysis analysis) {

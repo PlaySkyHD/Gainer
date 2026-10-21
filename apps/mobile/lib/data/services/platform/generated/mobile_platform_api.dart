@@ -2508,6 +2508,33 @@ class MobilePlatformApi {
     );
     return pigeonVar_replyValue as PlatformPasskeyAssertion?;
   }
+
+  /// Öffnet [url] im Anmelde-Sheet des Systems (ASWebAuthenticationSession,
+  /// teilt die Anmeldung mit Safari) und liefert die Rückleitung auf
+  /// [callbackScheme]. Null, wenn der Nutzer abbricht.
+  Future<String?> authenticateWebSession(
+    String url,
+    String callbackScheme,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.authenticateWebSession$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[url, callbackScheme],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return pigeonVar_replyValue as String?;
+  }
 }
 
 abstract class MobileRouteFlutterApi {

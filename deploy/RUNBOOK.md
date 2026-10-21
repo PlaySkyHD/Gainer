@@ -129,6 +129,7 @@ For the local drill use `RESTIC_REPOSITORY=rclone::azureblob:<container>/<path>`
 
 ## Monitoring, incidents, and rollback
 
+- Strava export: create an API application at https://www.strava.com/settings/api with the Authorization Callback Domain set to the public API host. Put its client id into `STRAVA_CLIENT_ID`, the client secret into `$GAINER_SECRETS_DIR/strava_client_secret` (mode 0600) and set `STRAVA_CALLBACK_URL` to `https://<host>/api/v1/integrations/strava/callback`. The secret file must exist for Compose; leaving it empty keeps Strava off and the app says so. Tokens are encrypted with the data-protection keys, so losing the key volume asks every user to connect Strava again. The export worker runs inside the API; a Strava outage only delays exports.
 - Alert on `/health/ready`, restart loops, disk capacity, certificate renewal, backup age, and restore failures. PostgreSQL or schema failure makes readiness fail. Invalid OpenAI, meal-estimation or image-limit configuration makes readiness fail; a transient OpenAI outage degrades Coach and online meal estimation while manual nutrition tracking and reusable meals remain available.
 - `/health/ready` also validates the Open Food Facts URL, required contact identity and bounded request settings. It intentionally does not issue a product request, so a transient provider outage degrades lookup/search while manual and offline diary entry remain available.
 - Keep structured logs at `Information`. Never enable request-body logging. Configure OTLP only to an internal endpoint.

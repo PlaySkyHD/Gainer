@@ -35,9 +35,11 @@ internal sealed class PostgreSqlTestFixture : IAsyncDisposable
         return connectionString.ConnectionString;
     }
 
-    public AppDbContext CreateContext(string connectionString, Guid? userId = null)
+    public AppDbContext CreateContext(string connectionString, Guid? userId = null) =>
+        CreateContext(connectionString, new FixtureUserContext(userId));
+
+    public AppDbContext CreateContext(string connectionString, IUserContext userContext)
     {
-        var userContext = new FixtureUserContext(userId);
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(connectionString, npgsql => npgsql.MigrationsHistoryTable(
                 DatabaseSchemaVersion.MigrationHistoryTable,

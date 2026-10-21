@@ -11,7 +11,7 @@ namespace Gainer.IntegrationTests;
 [TestClass]
 public sealed class PersistenceModelTests
 {
-    private static readonly string[] ExpectedSchemaNames = ["identity", "tracking", "training", "sync", "ai"];
+    private static readonly string[] ExpectedSchemaNames = ["identity", "tracking", "training", "sync", "ai", "integrations"];
 
     [TestMethod]
     public void IdentityModelUsesDedicatedPostgresSchemaAndGuidKeys()

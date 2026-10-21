@@ -72,10 +72,15 @@ services:
       OpenFoodFacts__BarcodeRequestsPerMinute: ${OPENFOODFACTS_BARCODE_REQUESTS_PER_MINUTE:-12}
       OpenFoodFacts__SearchRequestsPerMinute: ${OPENFOODFACTS_SEARCH_REQUESTS_PER_MINUTE:-8}
       Provisioning__AccountOperatorSecretPath: /run/secrets/account_operator
+      # Strava export: empty client id or secret file switches the feature off.
+      Strava__ClientId: ${STRAVA_CLIENT_ID:-}
+      Strava__ClientSecretFile: /run/secrets/strava_client_secret
+      Strava__CallbackUrl: ${STRAVA_CALLBACK_URL:-}
     secrets:
       - postgres_password
       - openai_api_key
       - account_operator
+      - strava_client_secret
     volumes:
       - data-protection:/var/lib/gainer/data-protection
     networks: [backend, public]
@@ -138,6 +143,8 @@ secrets:
     file: ${GAINER_SECRETS_DIR:?set GAINER_SECRETS_DIR}/openai_api_key
   account_operator:
     file: ${GAINER_SECRETS_DIR:?set GAINER_SECRETS_DIR}/account_operator.json
+  strava_client_secret:
+    file: ${GAINER_SECRETS_DIR:?set GAINER_SECRETS_DIR}/strava_client_secret
   restic_password:
     file: ${GAINER_SECRETS_DIR:?set GAINER_SECRETS_DIR}/restic_password
   azure_storage_sas:
