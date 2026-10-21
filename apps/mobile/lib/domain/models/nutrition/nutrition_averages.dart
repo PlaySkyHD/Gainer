@@ -111,7 +111,7 @@ class NutritionAverages {
     return NutritionAverageDay(
       localDate: date,
       kilocalories: logged ? day.totals.kilocalories : null,
-      targetKilocalories: _targetOn(schedule, date)?.kilocalories,
+      targetKilocalories: schedule?.targetOn(date)?.kilocalories,
     );
   }
 
@@ -144,19 +144,6 @@ class NutritionAverages {
   bool get hasData => loggedDays > 0;
   bool get hasTarget => daysWithTarget > 0;
 }
-
-/// Gleiche Regel wie im Tagebuch: die zuletzt beginnende passende Phase.
-NutritionTargetVersion? _targetOn(
-  NutritionTargetSchedule? schedule,
-  String date,
-) => schedule?.versions
-    .where(
-      (phase) =>
-          phase.effectiveFrom.compareTo(date) <= 0 &&
-          (phase.effectiveUntil == null ||
-              phase.effectiveUntil!.compareTo(date) >= 0),
-    )
-    .lastOrNull;
 
 /// Verschiebt einen lokalen Kalendertag (`JJJJ-MM-TT`) um [days] Tage.
 String shiftLocalDate(String localDate, int days) {
