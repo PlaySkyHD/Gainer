@@ -106,12 +106,27 @@ public sealed class TrainingScheduleValidationTests
     }
 
     [TestMethod]
-    public void ReferencedPlansCoverSlotsAndExceptions()
+    public void ShiftsStartOnDistinctDays()
     {
-        Guid other = Guid.NewGuid();
-        TrainingScheduleValues schedule = Cycle([new(Push), new(null), new(Push)], exceptions: [new(Anchor, other, null)]);
+        AssertInvalid(Cycle([new(Push)], shifts: [new(Anchor, 1), new(Anchor, 2)]), nameof(TrainingScheduleValues.Shifts));
+        _ = TrainingScheduleValidation.Normalize(Cycle([new(Push)], shifts: [new(Anchor, 1), new(Anchor.AddDays(1), 2)]));
+    }
 
-        CollectionAssert.AreEquivalent(new[] { Push, other }, TrainingScheduleValidation.ReferencedPlanIds(schedule).ToArray());
+    [TestMethod]
+    public void MovedWorkoutsLandOnAnotherDayWithinThirtyOneDays()
+    {
+        DateOnly day = Anchor.AddDays(10);
+        AssertInvalid(Cycle([new(Push)], exceptions: [new(day, Push, day)]), nameof(TrainingScheduleValues.Exceptions));
+        AssertInvalid(Cycle([new(Push)], exceptions: [new(day, Push, day.AddDays(32))]), nameof(TrainingScheduleValues.Exceptions));
+        AssertInvalid(Cycle([new(Push)], exceptions: [new(day, Push, day.AddDays(-32))]), nameof(TrainingScheduleValues.Exceptions));
+
+        _ = TrainingScheduleValidation.Normalize(Cycle([new(Push)], exceptions:
+        [
+            new(day, Push, day.AddDays(1)),
+            new(day.AddDays(1), Push, day.AddDays(32)),
+            new(day.AddDays(2), Push, day.AddDays(-29)),
+            new(day.AddDays(3), Push, null),
+        ]));
     }
 
     [TestMethod]

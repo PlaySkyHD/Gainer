@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Gainer.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261021214154_AddTrainingSchedule")]
+    [Migration("20261021231012_AddTrainingSchedule")]
     partial class AddTrainingSchedule
     {
         /// <inheritdoc />
@@ -3940,6 +3940,9 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Mode")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -3961,7 +3964,9 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("UX_training_schedules_one_live_per_user")
+                        .HasFilter("\"DeletedAtUtc\" IS NULL");
 
                     b.ToTable("training_schedules", "training", t =>
                         {
