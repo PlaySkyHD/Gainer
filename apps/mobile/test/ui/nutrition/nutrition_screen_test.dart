@@ -7,6 +7,7 @@ import 'package:gainer_mobile/data/repositories/nutrition/api_nutrition_online_p
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
+import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/nutrition/nutrition_screen.dart';
@@ -1046,6 +1047,67 @@ void main() {
     expect(find.text('Reis'), findsOneWidget);
     expect(harness.viewModel.snapshot!.day.entries, isEmpty);
   });
+  testWidgets('dictation writes into the meal description and stops', (
+    tester,
+  ) async {
+    final dictation = _FakeDictation();
+    await _pumpDiary(tester, [], dictation: dictation);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
+    await tester.pump();
+    expect(find.text('Fertig'), findsOneWidget);
+    expect(find.textContaining('Ich höre zu.'), findsOneWidget);
+
+    dictation.transcript = 'Zwei Eier und ein Toast';
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Zwei Eier und ein Toast'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(dictation.stopped, isTrue);
+    expect(find.text('Diktieren'), findsOneWidget);
+    expect(find.text('Zwei Eier und ein Toast'), findsOneWidget);
+  });
+
+  testWidgets('dictation is hidden without a platform', (tester) async {
+    await _pumpDiary(tester, []);
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('nutrition-dictation')), findsNothing);
+  });
+}
+
+class _FakeDictation implements DictationPlatform {
+  String transcript = '';
+  bool stopped = false;
+  DictationStatus status = DictationStatus.idle;
+
+  @override
+  Future<DictationState> startDictation({required String localeId}) async {
+    status = DictationStatus.listening;
+    return _state;
+  }
+
+  @override
+  Future<DictationState> readDictation() async => _state;
+
+  @override
+  Future<void> stopDictation() async {
+    stopped = true;
+    status = DictationStatus.finished;
+  }
+
+  @override
+  Future<void> cancelDictation() async => status = DictationStatus.idle;
+
+  DictationState get _state =>
+      DictationState(status: status, transcript: transcript);
 }
 
 class _DiaryHarness {
@@ -1065,6 +1127,7 @@ Future<_DiaryHarness> _pumpDiary(
   WidgetTester tester,
   List<String> names, {
   NutritionTargetSchedule? schedule,
+  DictationPlatform? dictation,
 }) async {
   _usePhoneViewport(tester);
   final database = LocalDatabase(NativeDatabase.memory());
@@ -1100,6 +1163,7 @@ Future<_DiaryHarness> _pumpDiary(
   final viewModel = NutritionViewModel(
     repository: repository,
     localDate: '2026-10-12',
+    dictation: dictation,
   );
   await tester.pumpWidget(
     CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
