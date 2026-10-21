@@ -26,6 +26,7 @@ import '../../repositories/sync/sync_repository.dart';
 import '../../repositories/sync/sync_status.dart';
 import '../../repositories/timer/rest_timer_store.dart';
 import '../../repositories/training/api_exercise_catalog_provider.dart';
+import '../../repositories/training/muscle_suggestion_service.dart';
 import '../../repositories/training/training_log_repository.dart';
 import '../../services/api/api_client.dart';
 import '../../services/api/api_session_service.dart';
@@ -429,6 +430,7 @@ class MobileAuthController extends ChangeNotifier
     final training = TrainingLogRepository(
       store: store,
       catalog: ApiExerciseCatalogProvider(api, store: store),
+      muscleSuggestions: ApiMuscleSuggestionService(api),
     );
     final restTimerStore = RestTimerStore(store: store);
     final activeWorkout = ActiveWorkoutController(

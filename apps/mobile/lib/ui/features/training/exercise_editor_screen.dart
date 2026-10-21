@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/muscle_suggestion.dart';
 import '../../../domain/models/training/muscles.dart';
 import '../../../domain/models/training/warmup.dart';
 import '../../../domain/models/training/workout_input.dart';
@@ -12,9 +13,30 @@ import 'body_map.dart';
 import 'exercise_catalog_format.dart';
 import 'exercise_editor_view_model.dart';
 import 'exercise_merge_sheet.dart';
+import 'muscle_ai_sheet.dart';
 import 'muscle_map_widgets.dart';
 import 'muscle_picker_sheet.dart';
 import 'warmup_steps_editor.dart';
+
+/// Öffnet den Editor der Übung [exerciseId], z. B. aus dem Training oder der
+/// Muskelübersicht. Liefert true, wenn etwas gespeichert wurde. Eine
+/// unbekannte Übung öffnet nichts.
+Future<bool> openExerciseEditorById(
+  BuildContext context, {
+  required TrainingLogRepository repository,
+  required String exerciseId,
+}) async {
+  final exercises = await repository.readExercises(includeArchived: true);
+  final exercise = exercises.where((item) => item.id == exerciseId).firstOrNull;
+  if (exercise == null || !context.mounted) return false;
+  final changed = await Navigator.of(context).push<bool>(
+    CupertinoPageRoute<bool>(
+      builder: (_) =>
+          ExerciseEditorScreen(repository: repository, exercise: exercise),
+    ),
+  );
+  return changed == true;
+}
 
 /// Editor für eigene Übungen. Basis- und archivierte Übungen werden nur gelesen.
 /// Liefert true, wenn etwas gespeichert, archiviert oder zusammengeführt wurde.
@@ -66,10 +88,14 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     );
     _kind = exercise?.exerciseType ?? ExerciseKind.strength;
     _categoryIds = {...?exercise?.categoryIds};
+    _nameController.addListener(_nameChanged);
     _primaryMuscles = [...?exercise?.primaryMuscles];
     _secondaryMuscles = [...?exercise?.secondaryMuscles];
     WidgetsBinding.instance.addPostFrameCallback((_) => _viewModel.load());
   }
+
+  /// Vorschlag und KI-Button folgen dem Namen.
+  void _nameChanged() => setState(() {});
 
   @override
   void dispose() {
@@ -269,6 +295,18 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (editable) ..._suggestion(colors),
+          if (editable && widget.repository.muscleSuggestions != null) ...[
+            GainerPillButton(
+              key: const ValueKey('exercise-muscle-ai'),
+              label: 'Mit KI ermitteln',
+              icon: CupertinoIcons.sparkles,
+              variant: GainerPillVariant.tonal,
+              expand: true,
+              onPressed: _nameController.text.trim().isEmpty ? null : _askAi,
+            ),
+            const SizedBox(height: GainerSpacing.xs),
+          ],
           GainerCard(
             child: Center(
               child: SizedBox(
@@ -310,6 +348,80 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
         ],
       ),
     );
+  }
+
+  /// Vorschlag aus dem Katalog, solange noch keine Muskeln gewählt sind.
+  List<Widget> _suggestion(GainerColors colors) {
+    if (_primaryMuscles.isNotEmpty || _secondaryMuscles.isNotEmpty) {
+      return const [];
+    }
+    final source = suggestMuscleSource(
+      _nameController.text,
+      _viewModel.suggestionSources,
+    );
+    if (source == null) return const [];
+    final muscles = [
+      ...source.primaryMuscles,
+      ...source.secondaryMuscles,
+    ].map((muscle) => muscle.label).join(', ');
+    return [
+      GainerCard(
+        key: const ValueKey('exercise-muscle-suggestion'),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Vorschlag: wie „${source.name}“',
+                    style: GainerTypography.body.copyWith(
+                      color: colors.primaryText,
+                    ),
+                  ),
+                  const SizedBox(height: GainerSpacing.xxs),
+                  Text(
+                    muscles,
+                    style: GainerTypography.caption.copyWith(
+                      color: colors.secondaryText,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: GainerSpacing.xs),
+            GainerPillButton(
+              key: const ValueKey('exercise-muscle-suggestion-apply'),
+              label: 'Übernehmen',
+              variant: GainerPillVariant.tonal,
+              onPressed: () => setState(() {
+                _primaryMuscles = [...source.primaryMuscles];
+                _secondaryMuscles = [...source.secondaryMuscles];
+              }),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: GainerSpacing.xs),
+    ];
+  }
+
+  Future<void> _askAi() async {
+    final service = widget.repository.muscleSuggestions;
+    if (service == null) return;
+    final notes = _notesController.text.trim();
+    final suggestion = await showMuscleAiSheet(
+      context,
+      service: service,
+      name: _nameController.text.trim(),
+      kind: _kind,
+      notes: notes.isEmpty ? null : notes,
+    );
+    if (suggestion == null || !mounted) return;
+    setState(() {
+      _primaryMuscles = [...suggestion.primary];
+      _secondaryMuscles = [...suggestion.secondary];
+    });
   }
 
   void _cycleMuscle(Muscle muscle) {
@@ -552,6 +664,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
             title: 'Kategorien',
             value: names.isEmpty ? 'Keine' : names.join(', '),
           ),
+          if (exercise.equipment case final equipment?)
+            GainerListRow(title: 'Equipment', value: equipment),
           GainerListRow(
             title: 'Körpergewichtsfaktor',
             value: bodyweight == null
@@ -567,6 +681,17 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
         ],
       ),
       const SizedBox(height: GainerSpacing.m),
+      if (exercise.description case final description?)
+        _Section(
+          header: 'Anleitung',
+          child: GainerCard(
+            key: const ValueKey('exercise-description'),
+            child: Text(
+              description,
+              style: GainerTypography.body.copyWith(color: colors.primaryText),
+            ),
+          ),
+        ),
       _muscleSection(context, editable: false),
       ..._warmupSection(context),
     ];

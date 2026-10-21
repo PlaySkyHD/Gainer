@@ -8,10 +8,14 @@ using Gainer.Core.Sync;
 using Gainer.Core.Insights;
 using Gainer.Core.Coach;
 using Gainer.Infrastructure.Coach;
+using Gainer.Infrastructure.Integrations;
+using Gainer.Core.Integrations;
+using Gainer.Infrastructure.Training;
 using Gainer.Infrastructure.Catalog;
 using Gainer.Infrastructure.Nutrition;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 namespace Gainer.Infrastructure.Persistence;
@@ -67,9 +71,19 @@ public static class GainerPersistenceExtensions
         builder.Services.AddSingleton<IMealEstimationQuota, MealEstimationQuota>();
         builder.Services.AddScoped<IMealImageSanitizer, MealImageSanitizer>();
         builder.Services.AddScoped<IMealEstimator, OpenAiMealEstimator>();
+        builder.Services.Configure<MuscleSuggestionOptions>(builder.Configuration.GetSection(MuscleSuggestionOptions.SectionName));
+        builder.Services.AddSingleton<IMuscleSuggestionQuota, MuscleSuggestionQuota>();
+        builder.Services.AddScoped<IMuscleSuggester, OpenAiMuscleSuggester>();
         builder.Services.Configure<OpenFoodFactsOptions>(builder.Configuration.GetSection(OpenFoodFactsOptions.SectionName));
         builder.Services.AddHttpClient<IExternalFoodCatalog, OpenFoodFactsCatalog>();
         builder.Services.AddScoped<IChangeCollector, ChangeCollector>();
+        builder.Services.TryAddScoped<BackgroundUserScope>();
+        builder.Services.Configure<StravaOptions>(builder.Configuration.GetSection(StravaOptions.SectionName));
+        builder.Services.AddHttpClient<IStravaApiClient, StravaApiClient>();
+        builder.Services.TryAddSingleton<StravaExportSignal>();
+        builder.Services.AddScoped<StravaTokenVault>();
+        builder.Services.AddScoped<IStravaIntegrationService, StravaIntegrationService>();
+        builder.Services.AddScoped<StravaExportProcessor>();
         builder.Services.AddDbContext<AppDbContext>((serviceProvider, options) =>
         {
             string? connectionString = ResolveConnectionString(builder.Configuration, connectionName);

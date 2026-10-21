@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../../models/api/api_models.dart';
+import '../../models/api/strava_api_models.dart';
 import '../../models/api/sync_api_models.dart';
 
 const accountIdentityHeaderName = 'X-Gainer-Account-Id';
@@ -215,6 +216,94 @@ class ApiClient {
     }
     final response = await _request('GET', '/api/v1/foods/barcode/$barcode');
     return ApiFoodProduct.fromJson(_asObject(response.data));
+  }
+
+  /// Fragt die KI nach den Muskeln einer Übung. Die Antwort ist eine
+  /// Rückfrage (`kind: question`) oder ein Vorschlag (`kind: suggestion`).
+  Future<Map<String, dynamic>> suggestMuscles({
+    required String name,
+    required String exerciseType,
+    String? notes,
+    List<Map<String, Object?>> turns = const [],
+  }) async {
+    final response = await _mutate(
+      'POST',
+      '/api/v1/exercises/muscle-suggestions',
+      body: {
+        'name': name,
+        'exerciseType': exerciseType,
+        'notes': notes,
+        'turns': turns,
+      },
+    );
+    return _asObject(response.data);
+  }
+
+  Future<ApiStravaStatus> getStravaStatus() async {
+    final response = await _request('GET', '/api/v1/integrations/strava');
+    return ApiStravaStatus.fromJson(_asObject(response.data));
+  }
+
+  /// Strava-Zustimmungsseite mit an das Konto gebundenem `state`.
+  Future<Uri> beginStravaAuthorization() async {
+    final response = await _mutate(
+      'POST',
+      '/api/v1/integrations/strava/authorization',
+    );
+    final url = Uri.tryParse(
+      _asObject(response.data)['authorizationUrl'] as String? ?? '',
+    );
+    if (url == null || url.scheme != 'https') {
+      throw const FormatException('Ungültige Strava-Adresse.');
+    }
+    return url;
+  }
+
+  Future<ApiStravaStatus> updateStravaSettings({
+    required bool exportCardio,
+    required bool exportStrength,
+  }) async {
+    final response = await _mutate(
+      'PUT',
+      '/api/v1/integrations/strava/settings',
+      body: {'exportCardio': exportCardio, 'exportStrength': exportStrength},
+    );
+    return ApiStravaStatus.fromJson(_asObject(response.data));
+  }
+
+  Future<void> disconnectStrava() async {
+    await _mutate('DELETE', '/api/v1/integrations/strava');
+  }
+
+  /// Null, wenn die Einheit noch nicht an Strava ging.
+  Future<ApiStravaExport?> getStravaExport(
+    StravaExportKind kind,
+    String resourceId,
+  ) async {
+    _validateIdentifier(resourceId, 'resourceId');
+    try {
+      final response = await _request(
+        'GET',
+        '/api/v1/integrations/strava/exports/${kind.wireName}/$resourceId',
+      );
+      return ApiStravaExport.fromJson(_asObject(response.data));
+    } on ApiException catch (error) {
+      if (error.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// Sendet die Einheit jetzt an Strava, auch wenn die Art aus ist.
+  Future<ApiStravaExport> requestStravaExport(
+    StravaExportKind kind,
+    String resourceId,
+  ) async {
+    _validateIdentifier(resourceId, 'resourceId');
+    final response = await _mutate(
+      'POST',
+      '/api/v1/integrations/strava/exports/${kind.wireName}/$resourceId',
+    );
+    return ApiStravaExport.fromJson(_asObject(response.data));
   }
 
   /// Returns an estimate draft only. The caller must obtain explicit consent

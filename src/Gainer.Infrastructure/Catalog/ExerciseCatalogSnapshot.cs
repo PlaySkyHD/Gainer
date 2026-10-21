@@ -85,4 +85,5 @@ internal sealed record ExerciseCatalogEntry(
     IReadOnlyList<string> PrimaryMuscles,
     IReadOnlyList<string> SecondaryMuscles,
     decimal? BodyweightFactor,
-    decimal? WeightFactor);
+    decimal? WeightFactor,
+    string? Description = null);

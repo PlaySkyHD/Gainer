@@ -559,6 +559,12 @@ abstract class MobilePlatformApi {
     Uint8List challenge,
   );
 
+  /// Öffnet [url] im Anmelde-Sheet des Systems (ASWebAuthenticationSession,
+  /// teilt die Anmeldung mit Safari) und liefert die Rückleitung auf
+  /// [callbackScheme]. Null, wenn der Nutzer abbricht.
+  @async
+  String? authenticateWebSession(String url, String callbackScheme);
+
   /// Startet das Diktat mit Spracherkennung nur auf dem Gerät. Fragt beim
   /// ersten Mal Mikrofon und Spracherkennung an.
   @async

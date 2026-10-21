@@ -1,9 +1,11 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
+import '../../../domain/models/training/muscle_volume.dart';
 import '../../../domain/models/training/muscles.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import 'exercise_editor_screen.dart';
 import 'muscle_map_view_model.dart';
 import 'muscle_map_widgets.dart';
 
@@ -71,6 +73,15 @@ class _MuscleMapScreenState extends State<MuscleMapScreen> {
     );
     if (picked == null) return;
     _viewModel.selectPlan(picked == all ? null : picked);
+  }
+
+  Future<void> _openExercise(String exerciseId) async {
+    final changed = await openExerciseEditorById(
+      context,
+      repository: widget.repository,
+      exerciseId: exerciseId,
+    );
+    if (changed && mounted) await _viewModel.load();
   }
 
   void _openMuscle(Muscle muscle) =>
@@ -153,7 +164,11 @@ class _MuscleMapScreenState extends State<MuscleMapScreen> {
       ),
       if (volume.exercisesWithoutMuscles.isNotEmpty) ...[
         const SizedBox(height: GainerSpacing.m),
-        _MissingMusclesHint(names: volume.exercisesWithoutMuscles),
+        _MissingMusclesSection(
+          exercises: volume.exercisesWithoutMuscles,
+          canOpen: model.canOpenExercise,
+          onOpen: _openExercise,
+        ),
       ],
       const SizedBox(height: GainerSpacing.m),
       GainerGroupedSection(
@@ -188,37 +203,36 @@ class _MuscleMapScreenState extends State<MuscleMapScreen> {
   }
 }
 
-class _MissingMusclesHint extends StatelessWidget {
-  const _MissingMusclesHint({required this.names});
+class _MissingMusclesSection extends StatelessWidget {
+  const _MissingMusclesSection({
+    required this.exercises,
+    required this.canOpen,
+    required this.onOpen,
+  });
 
-  final List<String> names;
+  final List<ExerciseRef> exercises;
+  final bool Function(String exerciseId) canOpen;
+  final ValueChanged<String> onOpen;
 
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    final count = names.length;
-    return GainerCard(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            CupertinoIcons.exclamationmark_circle,
-            color: colors.warning,
-            size: 20,
+    return GainerGroupedSection(
+      header: 'Ohne Muskeln',
+      footer:
+          'Diese Übungen fehlen in der Karte. Tippe eine an, um ihre Muskeln '
+          'einzutragen.',
+      children: [
+        for (final exercise in exercises)
+          GainerListRow(
+            key: ValueKey('missing-muscles-${exercise.id}'),
+            title: exercise.name,
+            leadingIcon: CupertinoIcons.exclamationmark_circle,
+            leadingIconBackground: colors.warning,
+            showChevron: canOpen(exercise.id),
+            onTap: canOpen(exercise.id) ? () => onOpen(exercise.id) : null,
           ),
-          const SizedBox(width: GainerSpacing.xs),
-          Expanded(
-            child: Text(
-              '${count == 1 ? '1 Übung hat' : '$count Übungen haben'} keine '
-              'Muskeln und ${count == 1 ? 'fehlt' : 'fehlen'} in der Karte: '
-              '${names.join(', ')}. Ergänze sie im Übungseditor.',
-              style: GainerTypography.caption.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }

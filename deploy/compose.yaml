@@ -72,6 +72,10 @@ services:
       OpenFoodFacts__BarcodeRequestsPerMinute: ${OPENFOODFACTS_BARCODE_REQUESTS_PER_MINUTE:-12}
       OpenFoodFacts__SearchRequestsPerMinute: ${OPENFOODFACTS_SEARCH_REQUESTS_PER_MINUTE:-8}
       Provisioning__AccountOperatorSecretPath: /run/secrets/account_operator
+      # Strava export: an empty client id or secret switches the feature off.
+      Strava__ClientId: ${STRAVA_CLIENT_ID:-}
+      Strava__ClientSecret: ${STRAVA_CLIENT_SECRET:-}
+      Strava__CallbackUrl: ${STRAVA_CALLBACK_URL:-}
     secrets:
       - postgres_password
       - openai_api_key
