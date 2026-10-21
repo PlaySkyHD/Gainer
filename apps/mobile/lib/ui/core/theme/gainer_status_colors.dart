@@ -10,4 +10,9 @@ abstract final class GainerStatusColors {
   static Color info(Brightness brightness) => brightness == Brightness.dark
       ? const Color(0xFF64D2FF)
       : const Color(0xFF0A74D6);
+
+  /// Cardio-Markierung im Kalender, passend zum Herz-Symbol.
+  static Color cardio(Brightness brightness) => brightness == Brightness.dark
+      ? const Color(0xFFFF6B93)
+      : const Color(0xFFD62F62);
 }
