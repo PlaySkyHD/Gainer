@@ -929,7 +929,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 .HasMaxLength(16)
                 .IsRequired();
             schedule.Property(item => item.Version).IsConcurrencyToken();
-            schedule.HasIndex(item => item.UserId).IsUnique();
+            schedule.HasIndex(item => item.UserId)
+                .IsUnique()
+                .HasDatabaseName("UX_training_schedules_one_live_per_user")
+                .HasFilter("\"DeletedAtUtc\" IS NULL");
             schedule.HasOne<AppUser>()
                 .WithMany()
                 .HasForeignKey(item => item.UserId)
