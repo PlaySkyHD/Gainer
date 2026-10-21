@@ -2,7 +2,10 @@ using Gainer.Core.Security;
 
 namespace Gainer.Core.Training;
 
-/// <summary>Date-bound training rhythm of a user; at most one exists per user.</summary>
+/// <summary>
+/// Date-bound training rhythm of a user; at most one live schedule exists per user. A deleted schedule stays as a
+/// tombstone row without children so that saving the same id from its tombstone version can recreate it.
+/// </summary>
 public sealed class TrainingSchedule : UserOwnedEntity
 {
     public Guid Id { get; init; }
@@ -16,6 +19,7 @@ public sealed class TrainingSchedule : UserOwnedEntity
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; set; }
     public long Version { get; set; }
+    public DateTime? DeletedAtUtc { get; set; }
 }
 
 /// <summary>One day of the rhythm; a missing plan is a rest day. Weekly position 0 is Monday.</summary>

@@ -225,7 +225,7 @@ public sealed class TrainingScheduleApiTests
         Assert.IsNull(tombstone.Snapshot);
         await using (AppDbContext check = Fixture.CreateContext(connectionString, owner.UserId))
         {
-            Assert.AreEqual(0, await check.TrainingSchedules.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(0, await check.TrainingSchedules.CountAsync(item => item.DeletedAtUtc == null, TestContext.CancellationToken));
             Assert.AreEqual(0, await check.TrainingScheduleSlots.CountAsync(TestContext.CancellationToken));
         }
         Assert.IsTrue((await PullAsync(owner)).Batches.SelectMany(batch => batch.Changes)
@@ -238,8 +238,49 @@ public sealed class TrainingScheduleApiTests
             Assert.AreEqual("resource_not_found", await ProblemCodeAsync(missing));
         }
 
+        // The same id is recreated from its tombstone version; the version keeps counting up.
+        foreach (long staleBase in new long[] { 0, 1 })
+        {
+            using HttpResponseMessage stale = await PushAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, staleBase,
+                Cycle(scheduleId, staleBase, push));
+            Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode, await stale.Content.ReadAsStringAsync());
+            Assert.AreEqual("stale_base_version", await ProblemCodeAsync(stale));
+        }
+        PushMutationResponse recreated = await PushOkAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 2,
+            Cycle(scheduleId, 2, push, null));
+        SyncResourceResult recreatedResource = recreated.Resources.Single();
+        Assert.IsFalse(recreatedResource.IsTombstone);
+        Assert.AreEqual(3, recreatedResource.Version);
+        Assert.AreEqual(2, recreatedResource.Snapshot!.Value.GetProperty("slots").GetArrayLength());
+        await using (AppDbContext check = Fixture.CreateContext(connectionString, owner.UserId))
+        {
+            Assert.AreEqual(2, await check.TrainingScheduleSlots.CountAsync(TestContext.CancellationToken));
+        }
+        PullChangesResponse feed = await PullAsync(owner);
+        SyncChangeResponse latest = feed.Batches.SelectMany(batch => batch.Changes).Last(change => change.ResourceId == scheduleId);
+        Assert.AreEqual(3, latest.Version);
+        Assert.IsFalse(latest.IsTombstone);
+
+        // While the recreated schedule is live, a different id is still the one-per-user conflict.
         Guid nextId = Guid.NewGuid();
-        await PushOkAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", nextId, 0, Cycle(nextId, 0, push));
+        using (HttpResponseMessage second = await PushAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", nextId, 0, Cycle(nextId, 0, push)))
+        {
+            Assert.AreEqual(HttpStatusCode.Conflict, second.StatusCode);
+            Assert.AreEqual("stale_base_version", await ProblemCodeAsync(second));
+        }
+
+        // After deleting it again, a schedule with a new id can be created next to the tombstone.
+        PushMutationResponse deletedAgain = await PushOkAsync(owner, Guid.NewGuid(), "deleteTrainingSchedule", scheduleId, 3,
+            new { scheduleId, baseVersion = 3 });
+        Assert.AreEqual(4, deletedAgain.Resources.Single().Version);
+        PushMutationResponse fresh = await PushOkAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", nextId, 0, Cycle(nextId, 0, push));
+        Assert.AreEqual(1, fresh.Resources.Single().Version);
+        using (HttpResponseMessage resurrectBeside = await PushAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 4,
+                   Cycle(scheduleId, 4, push)))
+        {
+            Assert.AreEqual(HttpStatusCode.Conflict, resurrectBeside.StatusCode);
+            Assert.AreEqual("stale_base_version", await ProblemCodeAsync(resurrectBeside));
+        }
     }
 
     [TestMethod]
@@ -263,6 +304,15 @@ public sealed class TrainingScheduleApiTests
                 new { date = "2026-10-22", planId = push, movedToDate = (string?)null },
                 new { date = "2026-10-22", planId = push, movedToDate = (string?)"2026-10-23" },
             })), "Exceptions"),
+            (Mutate(Cycle(scheduleId, 0, push), node => node["exceptions"] = Nodes(new[]
+            {
+                new { date = "2026-10-22", planId = push, movedToDate = (string?)"2026-10-22" },
+            })), "Exceptions"),
+            (Mutate(Cycle(scheduleId, 0, push), node => node["shifts"] = Nodes(new[]
+            {
+                new { fromDate = "2026-10-23", days = 1 },
+                new { fromDate = "2026-10-23", days = 2 },
+            })), "Shifts"),
         ];
         foreach ((object payload, string field) in cases)
         {
@@ -274,10 +324,18 @@ public sealed class TrainingScheduleApiTests
             Assert.IsTrue(problem.RootElement.GetProperty("errors").TryGetProperty(field, out _), $"{field}: {body}");
         }
 
-        using HttpResponseMessage badDate = await PushAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 0,
-            Mutate(Cycle(scheduleId, 0, push), node => node["validFrom"] = "21.10.2026"));
-        Assert.AreEqual(HttpStatusCode.UnprocessableEntity, badDate.StatusCode);
-        Assert.AreEqual("invalid_payload", await ProblemCodeAsync(badDate));
+        System.Text.Json.Nodes.JsonObject[] invalidPayloads =
+        [
+            Mutate(Cycle(scheduleId, 0, push), node => node["validFrom"] = "21.10.2026"),
+            Mutate(Cycle(scheduleId, 0, push), node => node.Remove("validFrom")),
+            Mutate(Cycle(scheduleId, 0, push), node => node["validFrom"] = null),
+        ];
+        foreach (System.Text.Json.Nodes.JsonObject payload in invalidPayloads)
+        {
+            using HttpResponseMessage response = await PushAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 0, payload);
+            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode, await response.Content.ReadAsStringAsync());
+            Assert.AreEqual("invalid_payload", await ProblemCodeAsync(response));
+        }
 
         await using AppDbContext check = Fixture.CreateContext(connectionString, owner.UserId);
         Assert.AreEqual(0, await check.TrainingSchedules.CountAsync(TestContext.CancellationToken));

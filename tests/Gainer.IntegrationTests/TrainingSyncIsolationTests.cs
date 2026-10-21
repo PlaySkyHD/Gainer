@@ -392,6 +392,33 @@ public sealed class TrainingSyncIsolationTests
     }
 
     [TestMethod]
+    public async Task ReplayOfAReceiptWithARemovedResourceTypeIsRejectedAsUnsupported()
+    {
+        (string connectionString, Guid owner, _, Guid ownerClient, _) = await SetupAsync();
+        Guid rotationId = Guid.NewGuid();
+        ProcessSyncMutationCommand legacy = Command(Guid.NewGuid(), ownerClient, 1, "saveWorkoutRotation", "WorkoutRotation", rotationId, 0,
+            new { rotationId, baseVersion = 0, planIds = Array.Empty<Guid>() });
+        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        {
+            seed.ProcessedMutations.Add(new ProcessedMutation
+            {
+                MutationId = legacy.MutationId,
+                ClientId = ownerClient,
+                ClientSequence = 1,
+                ContentHash = CanonicalMutationHasher.Hash(legacy.Content),
+                ResultJson = $$"""{"revision":1,"changes":[{"resourceType":"WorkoutRotation","resourceId":"{{rotationId}}","version":1,"snapshot":{"version":1},"isTombstone":false}]}""",
+                Revision = 1,
+                AppliedAtUtc = DateTime.UtcNow,
+            });
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        SyncMutationValidationException replay = await Expect<SyncMutationValidationException>(() =>
+            Process(connectionString, owner, ownerClient, legacy));
+        Assert.AreEqual("unsupported_operation", replay.Code);
+    }
+
+    [TestMethod]
     public async Task OlderProtocolIsRejectedForTrainingOperationsBeforeAnyWrite()
     {
         (string connectionString, Guid owner, _, Guid ownerClient, _) = await SetupAsync();
