@@ -339,7 +339,15 @@ class _NutritionScreenState extends State<NutritionScreen> {
           ),
         ),
       ),
-    );
+    ).whenComplete(_resetEstimate);
+  }
+
+  /// Beim Schließen des Sheets beginnt die nächste Schätzung leer.
+  void _resetEstimate() {
+    if (!mounted) return;
+    _dictation?.cancel();
+    _estimateText.clear();
+    widget.viewModel.clearEstimateDraft();
   }
 
   Widget _entryHeader(

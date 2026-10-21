@@ -1142,6 +1142,38 @@ void main() {
     expect(find.text('Zwei Eier und ein Toast'), findsOneWidget);
   });
 
+  testWidgets('closing the sheet clears the description and stops dictation', (
+    tester,
+  ) async {
+    final dictation = _FakeDictation();
+    await _pumpDiary(tester, [], dictation: dictation);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-estimate-text')),
+      'Pizza',
+    );
+    await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
+    await tester.pump();
+    expect(dictation.status, DictationStatus.listening);
+
+    Navigator.of(
+      tester.element(find.byKey(const ValueKey('nutrition-estimate-text'))),
+    ).pop();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+    expect(dictation.status, DictationStatus.idle);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    expect(find.text('Pizza'), findsNothing);
+  });
+
   testWidgets('dictation is hidden without a platform', (tester) async {
     await _pumpDiary(tester, []);
     await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
