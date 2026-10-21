@@ -36,7 +36,10 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 - **Deploy sofort auslösen, nicht in einem Warte-Befehl verketten.** Hintergrundbefehle sterben, wenn die Sitzung endet. Nach dem Merge direkt `gh workflow run mobile.yml --ref main -f build_signed_ipa=false -f upload_testflight=true` ausführen und mit `gh run list` bestätigen, dass der Lauf existiert.
 - **Das Environment `ios-beta`** hat keine Freigabepflicht mehr, nur noch die Regel „nur `main`“. Kein Freigabeschritt nötig.
 - **TestFlight braucht nach dem Upload 10–30 Minuten**, bis der Build auf dem Gerät erscheint. Das ist kein Fehler.
-- **Integrationstests brauchen Docker** (Testcontainers). Ist die Shell älter als die Mitgliedschaft in der Gruppe `docker`, mit `sg docker -c '…'` ausführen. Keine Ersatzdienste wie ein lokales Postgres installieren.
+- **Datenbank immer über Docker, nie nativ.** Integrationstests starten Postgres per Testcontainers in Docker.
+  - Aufruf: `sg docker -c 'dotnet test …'`. Das gilt auch für `docker compose config` und alle anderen Docker-Befehle, weil die Shell meist älter ist als die Mitgliedschaft in der Gruppe `docker`.
+  - Schlägt `docker ps` ohne `sg` fehl, ist das kein Grund für einen Workaround. Kein lokales Postgres, kein `apt install`, kein Dienst auf dem Host.
+  - Geht es auch mit `sg docker` nicht, beim Nutzer nachfragen.
 - **EF-Migrationen nach `dotnet ef migrations add` mit `dotnet format` nachziehen.** Generierte Dateien haben BOM und Block-Namespace, die CI prüft `--verify-no-changes`. Startprojekt ist `src/Gainer.Infrastructure` (dort liegt die Design-Time-Factory).
 - **`git pull --ff-only`** auf `main` verwenden. Nie `git restore`, `git stash` oder `git reset --hard`.
 
