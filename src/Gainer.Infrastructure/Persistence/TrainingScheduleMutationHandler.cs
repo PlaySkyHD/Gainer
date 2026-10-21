@@ -7,9 +7,10 @@ using Microsoft.EntityFrameworkCore.Storage;
 namespace Gainer.Infrastructure.Persistence;
 
 /// <summary>
-/// Saves the user's single training schedule as a complete state. Like the removed rotation, creating a second
+/// Saves the user's single training schedule as a complete state. Like the removed rotation, creating a second live
 /// schedule (base version 0 while one exists, regardless of its id) is a conflict; the client must update or delete
-/// the existing one.
+/// the existing one. Deleting keeps a tombstone row without children, so the same id can be saved again with the
+/// tombstone version as base version; the version keeps counting up.
 /// </summary>
 public sealed class TrainingScheduleMutationHandler(
     AppDbContext context,
@@ -29,13 +30,17 @@ public sealed class TrainingScheduleMutationHandler(
             ? await context.Database.BeginTransactionAsync(cancellationToken)
             : null;
 
-        TrainingSchedule schedule;
-        if (mutation.BaseVersion == 0)
+        // Also finds the tombstone of a deleted schedule; foreign schedules are hidden by the user filter.
+        TrainingSchedule? schedule = await context.TrainingSchedules.SingleOrDefaultAsync(
+            item => item.Id == values.ScheduleId,
+            cancellationToken);
+        if (schedule is null)
         {
-            if (await context.TrainingSchedules.AnyAsync(cancellationToken))
+            if (mutation.BaseVersion != 0)
             {
-                throw new TrainingScheduleConflictException("The user already has a training schedule.");
+                throw new TrainingScheduleNotFoundException();
             }
+            await EnsureNoOtherLiveScheduleAsync(values.ScheduleId, cancellationToken);
             await EnsurePlansOwnedAsync(userId, values, cancellationToken);
             schedule = new TrainingSchedule
             {
@@ -49,23 +54,21 @@ public sealed class TrainingScheduleMutationHandler(
         }
         else
         {
-            schedule = await context.TrainingSchedules.SingleOrDefaultAsync(
-                item => item.Id == values.ScheduleId,
-                cancellationToken) ?? throw new TrainingScheduleNotFoundException();
+            // Stored versions start at 1, so a create (base version 0) over an existing id or tombstone is a conflict.
             if (schedule.Version != mutation.BaseVersion)
             {
                 throw new TrainingScheduleConflictException("The schedule changed since the supplied base version.");
             }
+            if (schedule.DeletedAtUtc is not null)
+            {
+                await EnsureNoOtherLiveScheduleAsync(schedule.Id, cancellationToken);
+            }
             await EnsurePlansOwnedAsync(userId, values, cancellationToken);
             // Children are replaced completely; removals are flushed before rows with the same unique keys are inserted.
-            context.TrainingScheduleSlots.RemoveRange(
-                await context.TrainingScheduleSlots.Where(item => item.ScheduleId == schedule.Id).ToListAsync(cancellationToken));
-            context.TrainingScheduleShifts.RemoveRange(
-                await context.TrainingScheduleShifts.Where(item => item.ScheduleId == schedule.Id).ToListAsync(cancellationToken));
-            context.TrainingScheduleExceptions.RemoveRange(
-                await context.TrainingScheduleExceptions.Where(item => item.ScheduleId == schedule.Id).ToListAsync(cancellationToken));
+            await RemoveChildrenAsync(schedule.Id, cancellationToken);
             await SaveOrConflictAsync(cancellationToken);
             Apply(schedule, values);
+            schedule.DeletedAtUtc = null;
             schedule.UpdatedAtUtc = now;
             schedule.Version++;
         }
@@ -95,19 +98,46 @@ public sealed class TrainingScheduleMutationHandler(
         ArgumentNullException.ThrowIfNull(mutation);
         _ = CurrentUserId();
         TrainingSchedule schedule = await context.TrainingSchedules
-            .SingleOrDefaultAsync(item => item.Id == mutation.ScheduleId, cancellationToken)
+            .SingleOrDefaultAsync(item => item.Id == mutation.ScheduleId && item.DeletedAtUtc == null, cancellationToken)
             ?? throw new TrainingScheduleNotFoundException();
         if (schedule.Version != mutation.BaseVersion)
         {
             throw new TrainingScheduleConflictException("The schedule changed since the supplied base version.");
         }
 
-        long deletedVersion = schedule.Version + 1;
-        // Children are removed by the database cascade.
-        context.TrainingSchedules.Remove(schedule);
+        await using IDbContextTransaction? transaction = context.Database.CurrentTransaction is null
+            ? await context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        // The row stays as a tombstone that remembers the version.
+        await RemoveChildrenAsync(schedule.Id, cancellationToken);
+        DateTime now = timeProvider.GetUtcNow().UtcDateTime;
+        schedule.DeletedAtUtc = now;
+        schedule.UpdatedAtUtc = now;
+        schedule.Version++;
         await SaveOrConflictAsync(cancellationToken);
-        changeCollector?.CaptureDeletion(ResourceKey.Create(ResourceKind.TrainingSchedule, schedule.Id), deletedVersion);
-        return deletedVersion;
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        changeCollector?.CaptureDeletion(ResourceKey.Create(ResourceKind.TrainingSchedule, schedule.Id), schedule.Version);
+        return schedule.Version;
+    }
+
+    private async Task EnsureNoOtherLiveScheduleAsync(Guid scheduleId, CancellationToken cancellationToken)
+    {
+        if (await context.TrainingSchedules.AnyAsync(
+                item => item.Id != scheduleId && item.DeletedAtUtc == null,
+                cancellationToken))
+        {
+            throw new TrainingScheduleConflictException("The user already has a training schedule.");
+        }
+    }
+
+    private async Task RemoveChildrenAsync(Guid scheduleId, CancellationToken cancellationToken)
+    {
+        context.TrainingScheduleSlots.RemoveRange(
+            await context.TrainingScheduleSlots.Where(item => item.ScheduleId == scheduleId).ToListAsync(cancellationToken));
+        context.TrainingScheduleShifts.RemoveRange(
+            await context.TrainingScheduleShifts.Where(item => item.ScheduleId == scheduleId).ToListAsync(cancellationToken));
+        context.TrainingScheduleExceptions.RemoveRange(
+            await context.TrainingScheduleExceptions.Where(item => item.ScheduleId == scheduleId).ToListAsync(cancellationToken));
     }
 
     /// <summary>Every referenced plan must exist and belong to the user; archived plans are allowed.</summary>
@@ -115,7 +145,7 @@ public sealed class TrainingScheduleMutationHandler(
     {
         Guid[] slotPlans = values.Slots.Where(item => item.PlanId is not null).Select(item => item.PlanId!.Value).Distinct().ToArray();
         Guid[] exceptionPlans = values.Exceptions.Select(item => item.PlanId).Distinct().ToArray();
-        Guid[] referenced = TrainingScheduleValidation.ReferencedPlanIds(values).ToArray();
+        Guid[] referenced = slotPlans.Union(exceptionPlans).ToArray();
         HashSet<Guid> owned = (await context.TrainingPlans.AsNoTracking()
             .Where(item => referenced.Contains(item.Id) && item.UserId == userId)
             .Select(item => item.Id)

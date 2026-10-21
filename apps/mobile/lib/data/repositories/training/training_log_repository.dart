@@ -2,6 +2,7 @@ import '../../../domain/models/body/body_tracking.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
 import '../../../domain/models/training/previous_values.dart' as previous;
 import '../../../domain/models/training/training_plan_model.dart';
+import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_rules.dart' as rules;
 import '../../../domain/models/training/workout_validation.dart';
@@ -60,7 +61,7 @@ class TrainingLogRepository {
     ids: _ids,
     clock: _clock,
     readAllPlans: () => readPlans(includeArchived: true),
-    readWorkouts: readDiary,
+    readWorkouts: _workoutsStartedBetween,
   );
   final IdFactory _ids;
   final DateTime Function() _clock;
@@ -91,6 +92,34 @@ class TrainingLogRepository {
         .toList();
     workouts.sort((a, b) => b.startedAtUtc.compareTo(a.startedAtUtc));
     return workouts;
+  }
+
+  /// Nicht gelöschte Trainings, die zwischen den lokalen Tagen [from] und
+  /// [to] (jeweils einschließlich) begonnen haben; ohne Grenzen alle. Andere
+  /// Tage werden nur anhand des Startzeitpunkts übersprungen, ohne das
+  /// Training vollständig zu lesen.
+  Future<List<Workout>> _workoutsStartedBetween({
+    LocalDay? from,
+    LocalDay? to,
+  }) async {
+    final result = <Workout>[];
+    for (final row in await store.readAggregates(_workoutType)) {
+      final json = _asMap(row.workingCopy);
+      if (json['deletedAtUtc'] != null) continue;
+      if (from != null || to != null) {
+        final started = DateTime.tryParse(
+          json['startedAtUtc'] as String? ?? '',
+        );
+        if (started == null) continue;
+        final day = localDayOfUtc(started);
+        if ((from != null && day.isBefore(from)) ||
+            (to != null && day.isAfter(to))) {
+          continue;
+        }
+      }
+      result.add(Workout.fromJson(json));
+    }
+    return result;
   }
 
   Future<Workout?> readWorkout(String workoutId) async {

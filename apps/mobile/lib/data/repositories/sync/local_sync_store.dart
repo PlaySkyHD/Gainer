@@ -39,6 +39,11 @@ const _trainingAggregateTypes = [
   'training-plan',
   'exercise-category',
 ];
+
+/// Ressourcen, die nach dem Löschen unter derselben ID neu gespeichert
+/// werden (höchstens eine je Nutzer, z. B. der Trainingsrhythmus).
+const _recreatableAggregateTypes = {'training-schedule'};
+
 const _trainingResourceTypes = [
   'Workout',
   'WorkoutTemplate',
@@ -526,6 +531,8 @@ class LocalSyncStore {
   /// | create  | delete | beide entfallen, Ressource wird entfernt  |
   /// | update  | update | update mit neuem Body                     |
   /// | update  | delete | delete mit Basisversion des Wartenden     |
+  /// | delete  | update | update mit Basisversion des Wartenden,    |
+  /// |         |        | nur für [_recreatableAggregateTypes]      |
   Future<_CoalescingTail?> _coalescingTail(
     String aggregateType,
     String aggregateId,
@@ -568,6 +575,13 @@ class LocalSyncStore {
     }
     if (waiting == LocalMutationOperation.update.name) {
       return _CoalescingTail(tail, operation, false);
+    }
+    // Eine ungesendete Löschung, nach der der Nutzer neu speichert, ersetzt
+    // der neue Stand: Der Server erfährt nie von der Löschung.
+    if (waiting == LocalMutationOperation.delete.name &&
+        operation == LocalMutationOperation.update &&
+        _recreatableAggregateTypes.contains(aggregateType)) {
+      return _CoalescingTail(tail, LocalMutationOperation.update, false);
     }
     return null;
   }
