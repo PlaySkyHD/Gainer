@@ -151,6 +151,7 @@ NutritionOnlineException mapNutritionApiException(
     (_, 'product_incomplete') => 'Für dieses Produkt fehlen verwertbare Nährwerte. Wähle ein anderes Produkt oder trage die Werte manuell ein.',
     (_, 'daily_budget_exhausted') => 'Das Tageslimit für KI-Schätzungen ist erreicht. Versuche es morgen erneut.',
     (_, 'invalid_input') => 'Bitte ergänze eine Beschreibung der Mahlzeit.',
+    (_, 'no_nutrition_label') => 'Auf dem Foto wurde keine Nährwerttabelle erkannt. Fotografiere die Tabelle gerade und gut lesbar.',
     (_, 'image_consent_required') =>
       'Für die Bildanalyse ist eine ausdrückliche Zustimmung erforderlich.',
     (_, 'invalid_image_size') => 'Das Bild ist leer oder größer als 8 MB.',

@@ -117,3 +117,22 @@ public sealed record MealEstimateResponse(
     string Provider,
     string SchemaVersion,
     DateTime EstimatedAtUtc);
+
+public sealed record NutritionLabelFieldResponse(
+    decimal? OriginalValue,
+    decimal? Per100Grams,
+    string Status,
+    string? Evidence);
+
+public sealed record NutritionLabelScanResponse(
+    string Basis,
+    decimal? ServingMassGrams,
+    NutritionLabelFieldResponse Kilocalories,
+    NutritionLabelFieldResponse ProteinGrams,
+    NutritionLabelFieldResponse CarbohydrateGrams,
+    NutritionLabelFieldResponse FatGrams,
+    bool CanConfirm,
+    string Provider,
+    string ProviderModelVersion,
+    string ParserVersion,
+    DateTime ScannedAtUtc);
