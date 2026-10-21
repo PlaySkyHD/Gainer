@@ -16,7 +16,8 @@ class PigeonNativeFeaturesPlatform
         ExtensionSnapshotPlatform,
         LiveActivityPlatform,
         HeartRatePlatform,
-        CardioHealthPlatform {
+        CardioHealthPlatform,
+        DictationPlatform {
   PigeonNativeFeaturesPlatform({MobilePlatformApi? api})
     : _api = api ?? MobilePlatformApi();
 
@@ -44,6 +45,29 @@ class PigeonNativeFeaturesPlatform
     if (image == null) return null;
     return CapturedImage(bytes: image.bytes, mimeType: image.mimeType);
   }
+
+  @override
+  Future<DictationState> startDictation({required String localeId}) async =>
+      _dictation(await _api.startDictation(localeId));
+
+  @override
+  Future<DictationState> readDictation() async =>
+      _dictation(await _api.readDictation());
+
+  @override
+  Future<void> stopDictation() => _api.stopDictation();
+
+  @override
+  Future<void> cancelDictation() => _api.cancelDictation();
+
+  static DictationState _dictation(PlatformDictationState state) =>
+      DictationState(
+        status: DictationStatus.values.firstWhere(
+          (value) => value.name == state.status,
+          orElse: () => DictationStatus.failed,
+        ),
+        transcript: state.transcript,
+      );
 
   @override
   Future<void> perform(HapticIntent intent) =>
