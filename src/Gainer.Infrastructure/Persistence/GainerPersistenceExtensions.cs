@@ -51,8 +51,7 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<IExerciseResolver, ExerciseCatalogQueries>();
         builder.Services.AddScoped<ICustomExerciseMutationHandler, CustomExerciseMutationHandler>();
         builder.Services.AddScoped<ITrainingPlanMutationHandler, TrainingPlanMutationHandler>();
-        builder.Services.AddScoped<IWorkoutRotationQueries, WorkoutRotationQueries>();
-        builder.Services.AddScoped<IWorkoutRotationHandler, WorkoutRotationHandler>();
+        builder.Services.AddScoped<ITrainingScheduleMutationHandler, TrainingScheduleMutationHandler>();
         builder.Services.AddScoped<IWorkoutMutationHandler, WorkoutMutationHandler>();
         builder.Services.AddScoped<ICardioSessionMutationHandler, CardioSessionMutationHandler>();
         builder.Services.AddScoped<IWorkoutHistoryQueries, WorkoutHistoryQueries>();

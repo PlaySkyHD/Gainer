@@ -28,7 +28,7 @@ public sealed class SyncMutationProcessor(
     {
         "createWorkout", "saveWorkout", "deleteWorkout", "startWorkout", "editWorkout", "completeWorkout", "discardWorkout",
         "createTrainingPlan", "updateTrainingPlan", "archiveTrainingPlan", "reorderTrainingPlans",
-        "saveWorkoutTemplate", "archiveWorkoutTemplate", "saveWorkoutRotation",
+        "saveWorkoutTemplate", "archiveWorkoutTemplate", "saveTrainingSchedule", "deleteTrainingSchedule",
         "createCustomExercise", "updateCustomExercise", "archiveCustomExercise",
         "createExerciseCategory", "updateExerciseCategory", "archiveExerciseCategory",
         "mergeExercises",
@@ -112,7 +112,7 @@ public sealed class SyncMutationProcessor(
         }
         catch (Exception exception) when (exception is DailyCheckInConflictException or CustomExerciseConflictException or
             ExerciseCategoryConflictException or
-            BodyGoalConflictException or TrainingPlanConflictException or WorkoutRotationConflictException or WorkoutConflictException or
+            BodyGoalConflictException or TrainingPlanConflictException or TrainingScheduleConflictException or WorkoutConflictException or
             NutritionDayConflictException or ReusableMealConflictException or NutritionTargetScheduleConflictException or
             CardioSessionConflictException)
         {
@@ -120,7 +120,7 @@ public sealed class SyncMutationProcessor(
         }
         catch (Exception exception) when (exception is DailyCheckInNotFoundException or CustomExerciseNotFoundException or
             ExerciseCategoryNotFoundException or
-            TrainingPlanNotFoundException or WorkoutRotationNotFoundException or WorkoutNotFoundException or NutritionDayNotFoundException or
+            TrainingPlanNotFoundException or TrainingScheduleNotFoundException or WorkoutNotFoundException or NutritionDayNotFoundException or
             ReusableMealNotFoundException or NutritionTargetScheduleNotFoundException or CardioSessionNotFoundException)
         {
             throw new SyncMutationConflictException("resource_not_found", "The resource is no longer available.");

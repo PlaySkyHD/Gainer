@@ -86,7 +86,7 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         {
             return SyncValidationProblem(exception.Message, exception.Errors);
         }
-        catch (WorkoutRotationValidationException exception)
+        catch (TrainingScheduleValidationException exception)
         {
             return SyncValidationProblem(exception.Message, exception.Errors);
         }
@@ -107,8 +107,8 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
                                           or BodyGoalConflictException
                                           or TrainingPlanConflictException
                                           or TrainingPlanNotFoundException
-                                          or WorkoutRotationConflictException
-                                          or WorkoutRotationNotFoundException
+                                          or TrainingScheduleConflictException
+                                          or TrainingScheduleNotFoundException
                                           or WorkoutConflictException
                                           or WorkoutNotFoundException
                                           or CardioSessionConflictException

@@ -33,11 +33,13 @@ public enum ResourceKind
     DailyCheckIn = 2,
     CustomExercise = 3,
     TrainingPlan = 4,
-    WorkoutRotation = 5,
     Workout = 6,
     NutritionDay = 7,
     ReusableMeal = 8,
     NutritionTargetSchedule = 9,
     ExerciseCategory = 10,
     CardioSession = 11,
+
+    /// <summary>Replaces the removed workout rotation (formerly 5, which stays unused).</summary>
+    TrainingSchedule = 12,
 }
