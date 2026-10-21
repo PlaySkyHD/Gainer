@@ -1,8 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 
 import '../../../domain/models/training/training_schedule.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import '../training/training_schedule_format.dart';
 import 'calendar_format.dart';
 import 'calendar_view_model.dart';
 
@@ -89,17 +92,22 @@ class CalendarMonthGrid extends StatelessWidget {
                 builder: (context, constraints) {
                   final width = constraints.maxWidth / 7;
                   final scale = MediaQuery.textScalerOf(context).scale(1);
-                  final diameter = (32 * scale).clamp(28.0, width - 2);
+                  // Wunschgröße mit Untergrenze 28, aber nie breiter als die
+                  // Spalte, auch wenn sie schmaler als 30 pt ist.
+                  final diameter = math.min(
+                    math.max(32 * scale, 28.0),
+                    math.max(width - 2, 0.0),
+                  );
                   return Column(
                     children: [
                       ExcludeSemantics(
                         child: Row(
                           children: [
-                            for (final name in calendarWeekdayShort)
+                            for (final day in days.take(7))
                               SizedBox(
                                 width: width,
                                 child: Text(
-                                  name,
+                                  scheduleWeekdayShort(day),
                                   textAlign: TextAlign.center,
                                   maxLines: 1,
                                   overflow: TextOverflow.clip,

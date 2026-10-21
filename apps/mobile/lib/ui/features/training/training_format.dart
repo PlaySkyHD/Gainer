@@ -41,7 +41,10 @@ String formatShortDate(DateTime local) =>
 String formatWeekdayShort(DateTime local) => _weekdays[local.weekday - 1];
 
 String formatMonthTitle(DateTime local) =>
-    '${_months[local.month - 1]} ${local.year}';
+    '${formatMonthName(local.month)} ${local.year}';
+
+/// Ausgeschriebener Monat: 10 → „Oktober“.
+String formatMonthName(int month) => _months[month - 1];
 
 String formatClockTime(DateTime local) =>
     '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';

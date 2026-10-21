@@ -1,5 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
+import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
+import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
 
@@ -344,4 +347,119 @@ void main() {
 
     expect(dayLabel(tester, _oct(20)), contains('Check-in'));
   });
+
+  testWidgets('failing nutrition keeps grid, plan and "Starten"', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    final harness = await createCalendarHarness(tester);
+    await tester.runAsync(() async {
+      final push = await harness.plan('Push');
+      await harness.cycle([push.planId, null]);
+    });
+
+    await pumpCalendar(
+      tester,
+      harness,
+      nutrition: _FailingNutrition(harness.training.store),
+    );
+
+    expect(find.byKey(const ValueKey('calendar-month-grid')), findsOneWidget);
+    expect(find.text('Heute: Push'), findsOneWidget);
+    expect(find.text('Starten'), findsOneWidget);
+    expect(find.text('Nicht geladen: Ernährung.'), findsOneWidget);
+  });
+
+  testWidgets('today shows the local weight even if the dashboard is older', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final harness = await createCalendarHarness(tester);
+    await tester.runAsync(
+      () => harness.checkIn(calendarToday, weightKg: 81.2, steps: 7000),
+    );
+
+    await pumpCalendar(tester, harness, overview: fakeOverview());
+
+    expect(find.text('81,2 kg', findRichText: true), findsOneWidget);
+    expect(find.text('82,4 kg', findRichText: true), findsNothing);
+    final checkIn = find.byKey(const ValueKey('calendar-checkin-card'));
+    expect(
+      find.descendant(of: checkIn, matching: find.text('Gewicht')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('showing the tab again also reloads the dashboard', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    final harness = await createCalendarHarness(tester);
+    final api = FakeDashboardApi();
+    final tab = ValueNotifier<int>(0);
+    addTearDown(tab.dispose);
+    await pumpCalendar(
+      tester,
+      harness,
+      overview: fakeOverview(api),
+      visibility: tab,
+      isVisible: () => tab.value == 0,
+    );
+    expect(api.calls, 1);
+
+    tab.value = 1;
+    await settle(tester);
+    tab.value = 0;
+    await settle(tester);
+
+    expect(api.calls, 2);
+  });
+
+  testWidgets('resuming the app on a new day moves today', (tester) async {
+    usePhoneSize(tester);
+    final harness = await createCalendarHarness(tester);
+    await pumpCalendar(tester, harness);
+    expect(find.text('Donnerstag, 22. Oktober'), findsOneWidget);
+
+    harness.training.now = DateTime.utc(2026, 10, 23, 10);
+    for (final state in const [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    await settle(tester);
+
+    expect(find.text('Freitag, 23. Oktober'), findsOneWidget);
+    expect(dayLabel(tester, _oct(23)), startsWith('Heute'));
+  });
+
+  testWidgets('a very narrow grid does not throw', (tester) async {
+    tester.view.physicalSize = const Size(200, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final harness = await createCalendarHarness(tester);
+
+    await pumpCalendar(tester, harness);
+
+    final exception = tester.takeException();
+    expect(exception, isNot(isA<ArgumentError>()));
+    expect(find.byKey(const ValueKey('calendar-month-grid')), findsOneWidget);
+  });
+}
+
+class _FailingNutrition extends NutritionRepository {
+  _FailingNutrition(LocalSyncStore store) : super(store: store);
+
+  @override
+  Future<({List<NutritionDay> days, NutritionTargetSchedule? targets})>
+  readDays(String from, String to) async => throw StateError('kaputt');
 }

@@ -14,12 +14,17 @@ class TodayWeightOverview extends StatelessWidget {
   const TodayWeightOverview({
     required this.viewModel,
     required this.today,
+    this.todayWeightKg,
     this.onTap,
     super.key,
   });
 
   final ProgressViewModel viewModel;
   final DateTime today;
+
+  /// Lokal erfasstes Gewicht von heute. Es ersetzt den Dashboard-Wert, der
+  /// erst nach dem nächsten Abruf aktuell wäre.
+  final double? todayWeightKg;
   final VoidCallback? onTap;
 
   @override
@@ -35,7 +40,12 @@ class TodayWeightOverview extends StatelessWidget {
           if (data != null) const SizedBox(height: GainerSpacing.m),
         ],
         if (data != null)
-          _WeightCard(data: data, today: today, onTap: onTap ?? _noop),
+          _WeightCard(
+            data: data,
+            today: today,
+            todayWeightKg: todayWeightKg,
+            onTap: onTap ?? _noop,
+          ),
       ],
     );
   }
@@ -81,6 +91,11 @@ class TodayTrainingOverview extends StatelessWidget {
 }
 
 void _noop() {}
+
+String _isoDate(DateTime day) =>
+    '${day.year.toString().padLeft(4, '0')}-'
+    '${day.month.toString().padLeft(2, '0')}-'
+    '${day.day.toString().padLeft(2, '0')}';
 
 /// Deutsche Zahl mit Komma und Tausenderpunkt, z. B. 2350 → „2.350“.
 String formatGermanNumber(double value, {int digits = 0}) {
@@ -200,16 +215,21 @@ class _WeightCard extends StatelessWidget {
     required this.data,
     required this.today,
     required this.onTap,
+    this.todayWeightKg,
   });
 
   final ApiDashboardInsights data;
   final DateTime today;
+  final double? todayWeightKg;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    final latest = data.latestWeight;
+    final local = todayWeightKg;
+    final latest = local == null
+        ? data.latestWeight
+        : ApiWeightPoint(date: _isoDate(today), weightKg: local);
     final trend = data.weight.trendKgPerWeek;
     final goal = data.activeGoal;
     return _OverviewCard(

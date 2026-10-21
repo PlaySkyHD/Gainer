@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/cardio/cardio_repository.dart';
@@ -77,6 +79,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     cardio: widget.cardioSessions ?? widget.cardio?.repository,
     nutrition: widget.nutrition,
   );
+  late final AppLifecycleListener _lifecycle;
+  Timer? _midnight;
   bool _wasVisible = true;
 
   bool get _visible => widget.isVisible?.call() ?? true;
@@ -86,11 +90,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     super.initState();
     widget.visibility?.addListener(_onVisibility);
     widget.refresh?.addListener(_onRefresh);
+    _lifecycle = AppLifecycleListener(onResume: _onResume);
     _wasVisible = _visible;
+    _scheduleMidnight();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _viewModel.load();
-      widget.overview?.load();
+      _reloadAll();
     });
   }
 
@@ -111,29 +116,55 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void dispose() {
     widget.visibility?.removeListener(_onVisibility);
     widget.refresh?.removeListener(_onRefresh);
+    _lifecycle.dispose();
+    _midnight?.cancel();
     _viewModel.dispose();
     super.dispose();
   }
 
+  /// Lädt Kalender und Dashboard neu.
+  Future<void> _reloadAll() => Future.wait([
+    _viewModel.load(),
+    if (widget.overview case final overview?) overview.load(),
+  ]);
+
   void _onVisibility() {
     final visible = _visible;
-    if (visible && !_wasVisible) _viewModel.load();
+    if (visible && !_wasVisible) _reloadAll();
     _wasVisible = visible;
   }
 
   void _onRefresh() {
     // Ein verdeckter Kalender lädt beim nächsten Anzeigen ohnehin neu.
-    if (_visible) _viewModel.load();
+    if (_visible) _reloadAll();
+  }
+
+  void _onResume() {
+    // Nach der Rückkehr in die App kann ein neuer Tag begonnen haben.
+    if (_visible) {
+      _reloadAll();
+    } else {
+      _viewModel.checkToday();
+    }
+    _scheduleMidnight();
+  }
+
+  /// Weckt kurz nach Mitternacht, damit „heute“ mitwandert, auch wenn die App
+  /// über Nacht geöffnet bleibt.
+  void _scheduleMidnight() {
+    _midnight?.cancel();
+    final now = DateTime.now();
+    final next = DateTime(now.year, now.month, now.day + 1, 0, 0, 5);
+    _midnight = Timer(next.difference(now), () {
+      if (!mounted) return;
+      _viewModel.checkToday();
+      _scheduleMidnight();
+    });
   }
 
   Future<void> _reload() async {
     if (mounted) await _viewModel.load();
   }
-
-  Future<void> _refreshAll() => Future.wait([
-    _viewModel.load(),
-    if (widget.overview case final overview?) overview.load(),
-  ]);
 
   Future<void> _start(String planId) async {
     await startPlanWorkout(
@@ -193,7 +224,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         final day = model.selectedDay;
         return GainerScaffold(
           title: 'Kalender',
-          onRefresh: _refreshAll,
+          onRefresh: _reloadAll,
           trailing: [
             GainerPillButton(
               key: const ValueKey('calendar-today'),
