@@ -13,8 +13,8 @@ public sealed class OpenAiProviderOptions
     public string ApiKey { get; set; } = string.Empty;
     public string? ApiKeyFile { get; set; }
     public string Model { get; set; } = "gpt-5.4-mini";
-    public int TimeoutSeconds { get; set; } = 30;
-    public int MaxOutputTokens { get; set; } = 1200;
+    public int TimeoutSeconds { get; set; } = 75;
+    public int MaxOutputTokens { get; set; } = 2000;
 }
 
 public sealed class OpenAiResponsesProvider(

@@ -643,7 +643,14 @@ void main() {
       [],
       online: _EstimateOnline([
         component('Pizza Margherita', 350, 890, 3.5),
-        component('Reis', 200, 260, null),
+        NutritionEstimateComponent(
+          name: 'Reis',
+          amountGrams: 200,
+          totals: const NutritionTotals(kilocalories: 260),
+          confidence: 'medium',
+          dataGaps: const [],
+          sourceUrl: 'https://www.fddb.info/db/de/lebensmittel/reis/index.html',
+        ),
       ]),
     );
 
@@ -666,14 +673,14 @@ void main() {
       find.text('350 g · 890 kcal · ~3,5 g Salz · mittel'),
       findsOneWidget,
     );
-    expect(find.text('200 g · 260 kcal · mittel'), findsOneWidget);
+    expect(find.text('200 g · 260 kcal · mittel · fddb.info'), findsOneWidget);
     final addSalt = find.byKey(const ValueKey('nutrition-estimate-add-salt'));
     expect(addSalt, findsOneWidget);
     await tester.tap(find.text('Pizza Margherita'));
     await tester.pumpAndSettle();
     expect(harness.viewModel.snapshot!.day.totals.saltGrams, 3.5);
     // Die übrigen Bestandteile und der Salz-Hinweis bleiben stehen.
-    expect(find.text('200 g · 260 kcal · mittel'), findsOneWidget);
+    expect(find.text('200 g · 260 kcal · mittel · fddb.info'), findsOneWidget);
     expect(harness.viewModel.mealEstimateDraft!.components.single.name, 'Reis');
 
     await tester.ensureVisible(addSalt);

@@ -3881,6 +3881,12 @@
               "string"
             ],
             "format": "double"
+          },
+          "sourceUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
