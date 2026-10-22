@@ -4,6 +4,9 @@ import 'package:gainer_mobile/data/models/local/local_mutation.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/training_home_screen.dart';
+import 'package:gainer_mobile/ui/features/training/workout_screen.dart';
+
+import 'training_plans_test_support.dart';
 
 import 'training_test_support.dart';
 
@@ -311,5 +314,61 @@ void main() {
 
     final plans = await tester.runAsync(harness.repository.readPlans);
     expect(plans?.map((plan) => plan.name), ['Legs 2']);
+  });
+
+  group('Start aus den Plänen', () {
+    Future<void> seedRotation(WidgetTester tester) async {
+      await tester.runAsync(() async {
+        final exercise = await seedExercise(harness, name: 'Bankdrücken');
+        final push = await seedPlan(
+          harness,
+          name: 'Push',
+          entries: [planEntry(harness, exerciseId: exercise.id)],
+        );
+        await harness.repository.saveRotation([push.planId]);
+      });
+    }
+
+    Future<void> openPlans(WidgetTester tester) async {
+      usePhoneSize(tester);
+      await seedRotation(tester);
+      await pumpHome(tester);
+      await tester.tap(find.text('Pläne'));
+      await settle(tester);
+    }
+
+    testWidgets('öffnet das Training und zeigt es danach im Tagebuch', (
+      tester,
+    ) async {
+      await openPlans(tester);
+
+      await tester.tap(find.byKey(const ValueKey('training-plans-next-start')));
+      await settle(tester);
+      expect(find.byType(WorkoutScreen), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel('Minimieren'));
+      await settle(tester);
+      await tester.tap(find.text('Tagebuch'));
+      await settle(tester);
+
+      expect(find.byType(WorkoutScreen), findsNothing);
+      expect(find.text('Push'), findsOneWidget);
+    });
+
+    testWidgets('Doppeltipp öffnet ein Training ohne Rückfrage', (
+      tester,
+    ) async {
+      await openPlans(tester);
+
+      final start = find.byKey(const ValueKey('training-plans-next-start'));
+      await tester.tap(start);
+      await tester.tap(start);
+      await settle(tester);
+
+      expect(find.byType(WorkoutScreen), findsOneWidget);
+      expect(find.text('Aktives Training fortsetzen'), findsNothing);
+      final diary = await tester.runAsync(harness.repository.readDiary);
+      expect(diary, hasLength(1));
+    });
   });
 }
