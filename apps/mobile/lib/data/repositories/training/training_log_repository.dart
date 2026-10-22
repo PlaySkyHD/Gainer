@@ -357,6 +357,35 @@ class TrainingLogRepository {
     return plan;
   }
 
+  /// Legt eine Kopie des Plans als „`Name` Kopie“ am Ende der Liste an.
+  /// Plan, Einträge und Supersets bekommen neue IDs.
+  Future<TrainingPlanModel> duplicatePlan(String planId) async {
+    final source = await readPlan(planId);
+    if (source == null) throw StateError('Der Plan ist nicht verfügbar.');
+    const suffix = ' Kopie';
+    final baseName = source.name.length + suffix.length > maxPlanNameLength
+        ? source.name
+              .substring(0, maxPlanNameLength - suffix.length)
+              .trimRight()
+        : source.name;
+    final supersetIds = <String, String>{};
+    return createPlan(
+      source.copyWith(
+        planId: newId(),
+        name: '$baseName$suffix',
+        entries: [
+          for (final entry in source.entries)
+            entry.copyWith(
+              entryId: newId(),
+              supersetId: () => entry.supersetId == null
+                  ? null
+                  : supersetIds.putIfAbsent(entry.supersetId!, newId),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<TrainingPlanModel> updatePlan(TrainingPlanModel plan) async {
     final old = await _requireEnvelope(_planType, plan.planId);
     final current = _planOf(old);

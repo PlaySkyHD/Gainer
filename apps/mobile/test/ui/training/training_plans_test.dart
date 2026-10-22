@@ -99,6 +99,71 @@ void main() {
     expect(plans!.map((plan) => plan.name), ['Pull']);
   });
 
+  testWidgets('Duplizieren legt eine Kopie an und öffnet sie im Editor', (
+    tester,
+  ) async {
+    final source = await tester.runAsync(() async {
+      final pulldown = await seedExercise(harness, name: 'Latzug');
+      final row = await seedExercise(harness, name: 'Rudern');
+      await seedPlan(harness, name: 'Push');
+      return seedPlan(
+        harness,
+        name: 'Pull',
+        entries: [
+          planEntry(
+            harness,
+            exerciseId: pulldown.id,
+            warmupSets: 1,
+            supersetId: 'ss',
+          ),
+          planEntry(harness, exerciseId: row.id, supersetId: 'ss'),
+        ],
+      );
+    });
+    await pumpSection(tester);
+
+    await tester.longPress(find.text('Pull'));
+    await settle(tester);
+    await tester.tap(find.text('Duplizieren'));
+    await settle(tester);
+
+    expect(
+      find.byKey(const ValueKey('plan-name-field')),
+      findsOneWidget,
+      reason: 'Die Kopie öffnet sich im Planeditor.',
+    );
+    expect(find.text('Pull Kopie'), findsWidgets);
+
+    final plans = (await tester.runAsync(harness.repository.readPlans))!;
+    expect(plans.map((plan) => plan.name), ['Push', 'Pull', 'Pull Kopie']);
+    final copy = plans.last;
+    expect(copy.planId, isNot(source!.planId));
+    expect(
+      copy.entries.map((entry) => entry.exerciseId),
+      source.entries.map((entry) => entry.exerciseId),
+    );
+    expect(copy.entries.first.warmupSets, 1);
+    expect(
+      copy.entries
+          .map((entry) => entry.entryId)
+          .toSet()
+          .intersection(source.entries.map((entry) => entry.entryId).toSet()),
+      isEmpty,
+    );
+    expect(copy.entries.first.supersetId, isNotNull);
+    expect(copy.entries.first.supersetId, isNot('ss'));
+    expect(copy.entries.last.supersetId, copy.entries.first.supersetId);
+  });
+
+  test('Kopie eines Plans mit sehr langem Namen bleibt gültig', () async {
+    final source = await seedPlan(harness, name: 'P' * 160);
+
+    final copy = await harness.repository.duplicatePlan(source.planId);
+
+    expect(copy.name, hasLength(160));
+    expect(copy.name, endsWith(' Kopie'));
+  });
+
   testWidgets('Umordnen per Ziehgriff speichert die Reihenfolge', (
     tester,
   ) async {
