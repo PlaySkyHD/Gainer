@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../../../data/repositories/nutrition/nutrition_repository.dart';
 import '../../../data/services/platform/platform_ports.dart';
@@ -576,10 +577,25 @@ class NutritionViewModel extends ChangeNotifier {
     super.dispose();
   }
 
-  String _messageFor(Object error) =>
-      error is StateError && error.message.contains('Onlineverbindung')
-      ? '${error.message} Bitte später erneut versuchen.'
-      : error.toString();
+  String _messageFor(Object error) => switch (error) {
+    StateError(:final message) when message.contains('Onlineverbindung') =>
+      '$message Bitte später erneut versuchen.',
+    PlatformException() => _captureMessage(error),
+    _ => error.toString(),
+  };
+
+  /// Fehler von Kamera, Barcode-Scanner und Fotoauswahl verständlich.
+  static String _captureMessage(PlatformException error) =>
+      switch (error.code) {
+        'capture_in_progress' =>
+          'Die Kamera ist noch geöffnet. Schließe sie und versuche es erneut.',
+        'camera_permission_denied' || 'camera_permission_unavailable' => 'Gainer darf die Kamera nicht nutzen. Erlaube den Zugriff in den iOS-Einstellungen oder gib die Werte manuell ein.',
+        'camera_unavailable' || 'capture_unavailable' =>
+          'Die Kamera ist gerade nicht verfügbar. Gib die Werte manuell ein.',
+        'unsupported_image' || 'capture_failed' => 'Das Bild konnte nicht gelesen werden. Versuche es mit einem anderen Foto.',
+        'image_too_large' => 'Das Bild ist zu groß. Wähle ein kleineres Foto.',
+        _ => 'Die Aufnahme ist fehlgeschlagen. Versuche es erneut.',
+      };
 }
 
 enum NutritionErrorOperation {
