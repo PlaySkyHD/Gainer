@@ -47,6 +47,23 @@ public sealed class NutritionCalculationTests
     }
 
     [TestMethod]
+    public void EstimatedComponentsAllowZeroCalorieSaltAndRejectInvalidSalt()
+    {
+        MealEstimateComponentDraft salt = MealEstimateComponentDraft.Create(
+            "Salz", 6m, 0m, 0m, 0m, 0m, MealEstimateConfidence.High, [], saltGrams: 6m);
+        Assert.AreEqual(0m, salt.Kilocalories);
+        Assert.AreEqual(6m, salt.SaltGrams);
+
+        foreach (decimal invalid in new[] { -1m, 101m })
+        {
+            NutritionValidationException error = Assert.Throws<NutritionValidationException>(() =>
+                MealEstimateComponentDraft.Create(
+                    "Pizza", 350m, 890m, null, null, null, MealEstimateConfidence.Medium, [], saltGrams: invalid));
+            Assert.IsTrue(error.Errors.ContainsKey("SaltGrams"));
+        }
+    }
+
+    [TestMethod]
     public void CalculateKeepsMissingMacrosMissing()
     {
         NutritionTotals result = NutritionCalculator.Calculate(

@@ -148,9 +148,11 @@ public sealed class OpenAiMealEstimator(
             : throw new JsonException("The estimate confidence is invalid.");
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const string NumberType = "number";
+    private static readonly string[] NullableNumberType = [NumberType, "null"];
     private static readonly object NullableNumberSchema = new
     {
-        type = new[] { "number", "null" },
+        type = NullableNumberType,
         minimum = 0,
         maximum = NutritionLimits.MaxDailyMacroGrams,
     };
@@ -174,12 +176,12 @@ public sealed class OpenAiMealEstimator(
                     properties = new
                     {
                         name = new { type = "string", maxLength = NutritionLimits.MaxComponentNameLength },
-                        amountGrams = new { type = "number", minimum = NutritionLimits.MinAmountGrams, maximum = NutritionLimits.MaxAmountGrams },
-                        kilocalories = new { type = "number", minimum = 0, maximum = NutritionLimits.MaxDailyKilocalories },
+                        amountGrams = new { type = NumberType, minimum = NutritionLimits.MinAmountGrams, maximum = NutritionLimits.MaxAmountGrams },
+                        kilocalories = new { type = NumberType, minimum = 0, maximum = NutritionLimits.MaxDailyKilocalories },
                         proteinGrams = NullableNumberSchema,
                         carbohydrateGrams = NullableNumberSchema,
                         fatGrams = NullableNumberSchema,
-                        saltGrams = new { type = new[] { "number", "null" }, minimum = 0, maximum = NutritionLimits.MaxSaltGramsPer100Grams },
+                        saltGrams = new { type = NullableNumberType, minimum = 0, maximum = NutritionLimits.MaxSaltGramsPer100Grams },
                         confidence = new { type = "string", @enum = new[] { "low", "medium", "high" } },
                         dataGaps = new { type = "array", maxItems = NutritionLimits.MaxDataGapsPerEstimateComponent, items = new { type = "string", maxLength = NutritionLimits.MaxDataGapLength } },
                     },
