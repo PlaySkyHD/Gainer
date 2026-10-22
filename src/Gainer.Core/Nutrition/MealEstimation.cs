@@ -15,7 +15,8 @@ public sealed record MealEstimateComponentDraft(
     decimal? CarbohydrateGrams,
     decimal? FatGrams,
     MealEstimateConfidence Confidence,
-    IReadOnlyList<string> DataGaps)
+    IReadOnlyList<string> DataGaps,
+    decimal? SaltGrams = null)
 {
     public static MealEstimateComponentDraft Create(
         string name,
@@ -25,7 +26,8 @@ public sealed record MealEstimateComponentDraft(
         decimal? carbohydrateGrams,
         decimal? fatGrams,
         MealEstimateConfidence confidence,
-        IEnumerable<string> dataGaps)
+        IEnumerable<string> dataGaps,
+        decimal? saltGrams = null)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(dataGaps);
@@ -40,11 +42,14 @@ public sealed record MealEstimateComponentDraft(
             errors[nameof(Name)] = "Name is required and must fit the component name limit.";
         if (amountGrams is < NutritionLimits.MinAmountGrams or > NutritionLimits.MaxAmountGrams)
             errors[nameof(AmountGrams)] = "AmountGrams is outside the allowed range.";
-        if (kilocalories is <= 0m or > NutritionLimits.MaxDailyKilocalories)
+        // 0 kcal is valid for a stated amount of added salt.
+        if (kilocalories is < 0m or > NutritionLimits.MaxDailyKilocalories)
             errors[nameof(Kilocalories)] = "Kilocalories is outside the allowed range.";
         ValidateOptional(proteinGrams, nameof(ProteinGrams), errors);
         ValidateOptional(carbohydrateGrams, nameof(CarbohydrateGrams), errors);
         ValidateOptional(fatGrams, nameof(FatGrams), errors);
+        if (saltGrams is < 0m or > NutritionLimits.MaxSaltGramsPer100Grams)
+            errors[nameof(SaltGrams)] = "SaltGrams is outside the allowed range.";
         if (!Enum.IsDefined(confidence)) errors[nameof(Confidence)] = "Confidence is invalid.";
         if (normalizedGaps.Length > NutritionLimits.MaxDataGapsPerEstimateComponent ||
             normalizedGaps.Any(item => item.Length > NutritionLimits.MaxDataGapLength))
@@ -52,7 +57,7 @@ public sealed record MealEstimateComponentDraft(
         if (errors.Count > 0) throw new NutritionValidationException(errors);
         return new MealEstimateComponentDraft(
             normalizedName, amountGrams, kilocalories, proteinGrams, carbohydrateGrams,
-            fatGrams, confidence, normalizedGaps);
+            fatGrams, confidence, normalizedGaps, saltGrams);
     }
 
     private static void ValidateOptional(decimal? value, string field, Dictionary<string, string> errors)
