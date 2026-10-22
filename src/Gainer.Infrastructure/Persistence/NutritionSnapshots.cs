@@ -23,7 +23,7 @@ internal static class NutritionSnapshots
             day.DayKind);
     }
 
-    public static NutritionEntrySnapshot Entry(NutritionEntry entry)
+    public static NutritionEntrySnapshot Entry(NutritionEntryValues entry)
     {
         decimal basisFactor = 100m / entry.BasisGrams;
         var per100 = new NutritionPer100Grams(

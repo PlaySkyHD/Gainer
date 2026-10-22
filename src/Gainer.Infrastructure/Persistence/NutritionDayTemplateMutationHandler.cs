@@ -95,7 +95,7 @@ public sealed class NutritionDayTemplateMutationHandler(
             .OrderBy(item => item.Meal)
             .ThenBy(item => item.Position)
             .ThenBy(item => item.Id)
-            .Select(item => NutritionSnapshots.Entry(ToNutritionEntry(item)))
+            .Select(NutritionSnapshots.Entry)
             .ToArray();
         return new NutritionDayTemplateSnapshot(
             template.Id,
@@ -124,56 +124,10 @@ public sealed class NutritionDayTemplateMutationHandler(
     private Guid CurrentUserId() =>
         userContext.UserId ?? throw new UnauthorizedAccessException("An authenticated user is required.");
 
-    private static NutritionDayTemplateEntry ToTemplateEntry(Guid templateId, NutritionEntry entry) => new()
+    private static NutritionDayTemplateEntry ToTemplateEntry(Guid templateId, NutritionEntry entry)
     {
-        Id = entry.Id,
-        NutritionDayTemplateId = templateId,
-        Meal = entry.Meal,
-        Position = entry.Position,
-        ProductName = entry.ProductName,
-        Brand = entry.Brand,
-        AmountGrams = entry.AmountGrams,
-        PieceGrams = entry.PieceGrams,
-        PieceCount = entry.PieceCount,
-        Kilocalories = entry.Kilocalories,
-        ProteinGrams = entry.ProteinGrams,
-        CarbohydrateGrams = entry.CarbohydrateGrams,
-        FatGrams = entry.FatGrams,
-        SaltGrams = entry.SaltGrams,
-        Provider = entry.Provider,
-        Barcode = entry.Barcode,
-        RetrievedAtUtc = entry.RetrievedAtUtc,
-        BasisGrams = entry.BasisGrams,
-        KilocaloriesPerBasis = entry.KilocaloriesPerBasis,
-        ProteinGramsPerBasis = entry.ProteinGramsPerBasis,
-        CarbohydrateGramsPerBasis = entry.CarbohydrateGramsPerBasis,
-        FatGramsPerBasis = entry.FatGramsPerBasis,
-        SaltGramsPerBasis = entry.SaltGramsPerBasis,
-    };
-
-    private static NutritionEntry ToNutritionEntry(NutritionDayTemplateEntry entry) => new()
-    {
-        Id = entry.Id,
-        Meal = entry.Meal,
-        Position = entry.Position,
-        ProductName = entry.ProductName,
-        Brand = entry.Brand,
-        AmountGrams = entry.AmountGrams,
-        PieceGrams = entry.PieceGrams,
-        PieceCount = entry.PieceCount,
-        Kilocalories = entry.Kilocalories,
-        ProteinGrams = entry.ProteinGrams,
-        CarbohydrateGrams = entry.CarbohydrateGrams,
-        FatGrams = entry.FatGrams,
-        SaltGrams = entry.SaltGrams,
-        Provider = entry.Provider,
-        Barcode = entry.Barcode,
-        RetrievedAtUtc = entry.RetrievedAtUtc,
-        BasisGrams = entry.BasisGrams,
-        KilocaloriesPerBasis = entry.KilocaloriesPerBasis,
-        ProteinGramsPerBasis = entry.ProteinGramsPerBasis,
-        CarbohydrateGramsPerBasis = entry.CarbohydrateGramsPerBasis,
-        FatGramsPerBasis = entry.FatGramsPerBasis,
-        SaltGramsPerBasis = entry.SaltGramsPerBasis,
-    };
+        var templateEntry = new NutritionDayTemplateEntry { Id = entry.Id, NutritionDayTemplateId = templateId };
+        templateEntry.CopyValuesFrom(entry);
+        return templateEntry;
+    }
 }

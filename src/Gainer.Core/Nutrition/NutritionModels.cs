@@ -30,17 +30,15 @@ public sealed class NutritionDay : UserOwnedEntity
     public ICollection<NutritionEntry> Entries { get; } = new List<NutritionEntry>();
 }
 
-public sealed class NutritionEntry : UserOwnedEntity
+/// <summary>Values of a logged food, shared by diary entries and day template entries.</summary>
+public abstract class NutritionEntryValues : UserOwnedEntity
 {
     public Guid Id { get; init; }
-    public Guid NutritionDayId { get; init; }
-    public NutritionDay NutritionDay { get; init; } = null!;
     public MealType Meal { get; set; }
     public int Position { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public string? Brand { get; set; }
     public decimal AmountGrams { get; set; }
-    public string AmountUnit { get; set; } = "g";
     public decimal? PieceGrams { get; set; }
     public decimal? PieceCount { get; set; }
     public decimal Kilocalories { get; set; }
@@ -57,4 +55,38 @@ public sealed class NutritionEntry : UserOwnedEntity
     public decimal? CarbohydrateGramsPerBasis { get; set; }
     public decimal? FatGramsPerBasis { get; set; }
     public decimal? SaltGramsPerBasis { get; set; }
+
+    /// <summary>Copies every value except the identifier and the owner.</summary>
+    public void CopyValuesFrom(NutritionEntryValues source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        Meal = source.Meal;
+        Position = source.Position;
+        ProductName = source.ProductName;
+        Brand = source.Brand;
+        AmountGrams = source.AmountGrams;
+        PieceGrams = source.PieceGrams;
+        PieceCount = source.PieceCount;
+        Kilocalories = source.Kilocalories;
+        ProteinGrams = source.ProteinGrams;
+        CarbohydrateGrams = source.CarbohydrateGrams;
+        FatGrams = source.FatGrams;
+        SaltGrams = source.SaltGrams;
+        Provider = source.Provider;
+        Barcode = source.Barcode;
+        RetrievedAtUtc = source.RetrievedAtUtc;
+        BasisGrams = source.BasisGrams;
+        KilocaloriesPerBasis = source.KilocaloriesPerBasis;
+        ProteinGramsPerBasis = source.ProteinGramsPerBasis;
+        CarbohydrateGramsPerBasis = source.CarbohydrateGramsPerBasis;
+        FatGramsPerBasis = source.FatGramsPerBasis;
+        SaltGramsPerBasis = source.SaltGramsPerBasis;
+    }
+}
+
+public sealed class NutritionEntry : NutritionEntryValues
+{
+    public Guid NutritionDayId { get; init; }
+    public NutritionDay NutritionDay { get; init; } = null!;
+    public string AmountUnit { get; set; } = "g";
 }

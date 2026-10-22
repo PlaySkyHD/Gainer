@@ -292,9 +292,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 onOpenNutrition: () =>
                     widget.onOpenNutritionDay?.call(model.selected.toIso()),
                 onOpenCheckIn: () => widget.onOpenArea?.call(MobileArea.body),
-                onDayKind: widget.nutrition == null
-                    ? null
-                    : () => _chooseDayKind(day),
+                onDayKind: () => _chooseDayKind(day),
                 onOpenTraining: () =>
                     widget.onOpenArea?.call(MobileArea.training),
               ),

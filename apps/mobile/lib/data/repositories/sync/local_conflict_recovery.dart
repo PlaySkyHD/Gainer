@@ -469,6 +469,9 @@ extension LocalConflictRecovery on LocalSyncStore {
           .get();
 }
 
+/// Lokaler Typ der Tagesvorlagen.
+const nutritionDayTemplateType = 'nutrition-day-template';
+
 /// Aggregattypen, deren Mutationsnutzlast der Arbeitskopie entspricht. Bei
 /// Körperzielen (erwartetes aktives Ziel), wiederverwendbaren Mahlzeiten
 /// (Archivstatus im Body) und Zielplänen fehlt diese Gleichheit.
@@ -480,7 +483,7 @@ const forceableAggregateTypes = {
   'exercise-category',
   'daily-check-in',
   'nutrition-day',
-  'nutrition-day-template',
+  nutritionDayTemplateType,
   'cardio-session',
 };
 
@@ -526,7 +529,7 @@ bool _hasServerType(String aggregateType) => switch (aggregateType) {
   'nutrition-day' ||
   'reusable-meal' ||
   'nutrition-target-schedule' ||
-  'nutrition-day-template' ||
+  nutritionDayTemplateType ||
   'cardio-session' => true,
   _ => false,
 };
@@ -580,7 +583,7 @@ String _serverType(String aggregateType) => switch (aggregateType) {
   'nutrition-day' => 'NutritionDay',
   'reusable-meal' => 'ReusableMeal',
   'nutrition-target-schedule' => 'NutritionTargetSchedule',
-  'nutrition-day-template' => 'NutritionDayTemplate',
+  nutritionDayTemplateType => 'NutritionDayTemplate',
   'cardio-session' => 'CardioSession',
   _ => throw ArgumentError.value(aggregateType, 'aggregateType'),
 };
