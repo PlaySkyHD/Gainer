@@ -317,7 +317,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               subtitle: templateSummary(template),
               leadingIcon: CupertinoIcons.doc_on_doc,
               trailing: GainerPillButton(
-                label: 'Übernehmen',
+                label: _applyLabel,
                 variant: GainerPillVariant.tonal,
                 onPressed: vm.isSaving
                     ? null
@@ -696,7 +696,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
         const SizedBox(height: GainerSpacing.l),
         GainerPillButton(
           key: const ValueKey('nutrition-entry-save'),
-          label: target is DayMealTarget ? 'Manuell speichern' : 'Übernehmen',
+          label: target is DayMealTarget ? 'Manuell speichern' : _applyLabel,
           expand: true,
           onPressed: vm.isSaving ? null : () => _addManual(target, onDraft),
         ),
@@ -1729,7 +1729,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                     horizontal: GainerSpacing.m,
                   ),
                   child: GainerPillButton(
-                    label: 'Übernehmen',
+                    label: _applyLabel,
                     expand: true,
                     onPressed: valid
                         ? () => Navigator.of(sheetContext).pop(true)
@@ -2078,6 +2078,7 @@ IconData _mealIcon(NutritionMeal meal) => switch (meal) {
 };
 
 const _decimalKeyboard = TextInputType.numberWithOptions(decimal: true);
+const _applyLabel = 'Übernehmen';
 
 Widget _notice(BuildContext context, String text, {bool isError = false}) {
   final colors = GainerDesign.colorsOf(context);
@@ -3028,7 +3029,7 @@ class _ReusableMealRow extends StatelessWidget {
         [
           if (_active)
             const GainerSheetAction(
-              label: 'Übernehmen',
+              label: _applyLabel,
               icon: CupertinoIcons.plus_square,
               value: _ReusableMealAction.add,
             ),

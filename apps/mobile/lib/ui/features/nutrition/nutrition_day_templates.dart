@@ -131,74 +131,78 @@ class _SaveTemplateSheetState extends State<SaveTemplateSheet> {
                 ),
                 const SizedBox(height: GainerSpacing.m),
               ],
-              if (_mode == _SaveMode.create) ...[
-                if (_full)
-                  Text(
-                    'Es sind höchstens ${NutritionDayTemplate.maxTemplates} Vorlagen möglich. Überschreibe eine bestehende oder lösche eine.',
-                    style: GainerTypography.body.copyWith(
-                      color: colors.secondaryText,
-                    ),
-                  )
-                else ...[
-                  GainerGroupedSection(
-                    children: [
-                      GainerTextFieldRow(
-                        label: 'Name',
-                        placeholder: 'z. B. Trainingstag',
-                        controller: _name,
-                        fieldKey: const ValueKey('template-name'),
-                        textAlign: TextAlign.left,
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: GainerSpacing.m),
-                  GainerGroupedSection(
-                    header: 'Für',
-                    footer: 'Passt die Tagesart, schlägt die App die Vorlage an leeren Tagen vor.',
-                    children: [
-                      for (final (kind, label) in const [
-                        (null, 'Jeden Tag'),
-                        (NutritionDayKind.training, 'Trainingstage'),
-                        (NutritionDayKind.rest, 'Ruhetage'),
-                      ])
-                        GainerListRow(
-                          key: ValueKey(
-                            'template-kind-${kind?.name ?? 'none'}',
-                          ),
-                          title: label,
-                          trailing: _kind == kind
-                              ? Icon(
-                                  CupertinoIcons.checkmark,
-                                  color: colors.accent,
-                                  size: 18,
-                                )
-                              : null,
-                          onTap: () => setState(() => _kind = kind),
-                        ),
-                    ],
-                  ),
-                ],
-              ] else
-                GainerGroupedSection(
-                  footer: 'Name und Tagesart der Vorlage bleiben erhalten.',
-                  children: [
-                    for (final template in widget.templates)
-                      GainerListRow(
-                        key: ValueKey('template-overwrite-${template.name}'),
-                        title: template.name,
-                        subtitle: templateSummary(template),
-                        showChevron: true,
-                        onTap: () => _overwrite(template),
-                      ),
-                  ],
-                ),
+              ...(_mode == _SaveMode.create
+                  ? _createFields(colors)
+                  : [_overwriteList()]),
             ],
           ),
         ),
       ],
     );
   }
+
+  List<Widget> _createFields(GainerColors colors) {
+    if (_full) {
+      return [
+        Text(
+          'Es sind höchstens ${NutritionDayTemplate.maxTemplates} Vorlagen möglich. Überschreibe eine bestehende oder lösche eine.',
+          style: GainerTypography.body.copyWith(color: colors.secondaryText),
+        ),
+      ];
+    }
+    return [
+      GainerGroupedSection(
+        children: [
+          GainerTextFieldRow(
+            label: 'Name',
+            placeholder: 'z. B. Trainingstag',
+            controller: _name,
+            fieldKey: const ValueKey('template-name'),
+            textAlign: TextAlign.left,
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      const SizedBox(height: GainerSpacing.m),
+      GainerGroupedSection(
+        header: 'Für',
+        footer: 'Passt die Tagesart, schlägt die App die Vorlage an leeren Tagen vor.',
+        children: [
+          for (final (kind, label) in const [
+            (null, 'Jeden Tag'),
+            (NutritionDayKind.training, 'Trainingstage'),
+            (NutritionDayKind.rest, 'Ruhetage'),
+          ])
+            GainerListRow(
+              key: ValueKey('template-kind-${kind?.name ?? 'none'}'),
+              title: label,
+              trailing: _kind == kind
+                  ? Icon(
+                      CupertinoIcons.checkmark,
+                      color: colors.accent,
+                      size: 18,
+                    )
+                  : null,
+              onTap: () => setState(() => _kind = kind),
+            ),
+        ],
+      ),
+    ];
+  }
+
+  Widget _overwriteList() => GainerGroupedSection(
+    footer: 'Name und Tagesart der Vorlage bleiben erhalten.',
+    children: [
+      for (final template in widget.templates)
+        GainerListRow(
+          key: ValueKey('template-overwrite-${template.name}'),
+          title: template.name,
+          subtitle: templateSummary(template),
+          showChevron: true,
+          onTap: () => _overwrite(template),
+        ),
+    ],
+  );
 }
 
 /// Sheet „Aus Vorlage befüllen“. Liefert die gewählte Vorlage.

@@ -10,6 +10,7 @@ using Gainer.Infrastructure.Catalog;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -93,6 +94,33 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     public DbSet<ChangeItem> ChangeItems => Set<ChangeItem>();
 
     private Guid CurrentUserId => userContext.UserId ?? Guid.Empty;
+
+    /// <summary>Columns shared by diary entries and day template entries.</summary>
+    private static void ConfigureEntryValues<TEntry>(
+        EntityTypeBuilder<TEntry> entry)
+        where TEntry : NutritionEntryValues
+    {
+        entry.HasKey(item => item.Id);
+        entry.Property(item => item.Meal).HasConversion<string>().HasMaxLength(16);
+        entry.Property(item => item.ProductName).HasMaxLength(200).IsRequired();
+        entry.Property(item => item.Brand).HasMaxLength(160);
+        entry.Property(item => item.Provider).HasMaxLength(64);
+        entry.Property(item => item.Barcode).HasMaxLength(64);
+        foreach (Expression<Func<TEntry, decimal?>> column in new Expression<Func<TEntry, decimal?>>[]
+                 {
+                     item => item.ProteinGrams, item => item.CarbohydrateGrams, item => item.FatGrams, item => item.SaltGrams,
+                     item => item.ProteinGramsPerBasis, item => item.CarbohydrateGramsPerBasis, item => item.FatGramsPerBasis,
+                     item => item.SaltGramsPerBasis, item => item.PieceGrams,
+                 })
+        {
+            entry.Property(column).HasPrecision(9, 2);
+        }
+        entry.Property(item => item.AmountGrams).HasPrecision(9, 2);
+        entry.Property(item => item.Kilocalories).HasPrecision(9, 2);
+        entry.Property(item => item.BasisGrams).HasPrecision(9, 2);
+        entry.Property(item => item.KilocaloriesPerBasis).HasPrecision(9, 2);
+        entry.Property(item => item.PieceCount).HasPrecision(7, 2);
+    }
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder builder)
@@ -723,27 +751,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_nutrition_entries_salt", "(\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"SaltGramsPerBasis\" IS NULL OR \"SaltGramsPerBasis\" >= 0)");
                 table.HasCheckConstraint("CK_nutrition_entries_pieces", "(\"PieceGrams\" IS NULL OR \"PieceGrams\" > 0) AND (\"PieceCount\" IS NULL OR (\"PieceCount\" > 0 AND \"PieceGrams\" IS NOT NULL))");
             });
-            entry.HasKey(item => item.Id);
-            entry.Property(item => item.Meal).HasConversion<string>().HasMaxLength(16);
-            entry.Property(item => item.ProductName).HasMaxLength(200).IsRequired();
-            entry.Property(item => item.Brand).HasMaxLength(160);
+            ConfigureEntryValues(entry);
             entry.Property(item => item.AmountUnit).HasMaxLength(16).IsRequired();
-            entry.Property(item => item.Provider).HasMaxLength(64);
-            entry.Property(item => item.Barcode).HasMaxLength(64);
-            entry.Property(item => item.AmountGrams).HasPrecision(9, 2);
-            entry.Property(item => item.Kilocalories).HasPrecision(9, 2);
-            entry.Property(item => item.ProteinGrams).HasPrecision(9, 2);
-            entry.Property(item => item.CarbohydrateGrams).HasPrecision(9, 2);
-            entry.Property(item => item.FatGrams).HasPrecision(9, 2);
-            entry.Property(item => item.BasisGrams).HasPrecision(9, 2);
-            entry.Property(item => item.KilocaloriesPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.ProteinGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.CarbohydrateGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.FatGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.SaltGrams).HasPrecision(9, 2);
-            entry.Property(item => item.SaltGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.PieceGrams).HasPrecision(9, 2);
-            entry.Property(item => item.PieceCount).HasPrecision(7, 2);
             entry.HasIndex(item => new { item.UserId, item.NutritionDayId, item.Meal, item.Position }).IsUnique();
             entry.HasIndex(item => new { item.UserId, item.Barcode });
             entry.HasOne(item => item.NutritionDay)
@@ -844,26 +853,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_nutrition_day_template_entries_amount", "\"AmountGrams\" > 0");
                 table.HasCheckConstraint("CK_nutrition_day_template_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" >= 0");
             });
-            entry.HasKey(item => item.Id);
-            entry.Property(item => item.Meal).HasConversion<string>().HasMaxLength(16);
-            entry.Property(item => item.ProductName).HasMaxLength(200).IsRequired();
-            entry.Property(item => item.Brand).HasMaxLength(160);
-            entry.Property(item => item.Provider).HasMaxLength(64);
-            entry.Property(item => item.Barcode).HasMaxLength(64);
-            entry.Property(item => item.AmountGrams).HasPrecision(9, 2);
-            entry.Property(item => item.Kilocalories).HasPrecision(9, 2);
-            entry.Property(item => item.ProteinGrams).HasPrecision(9, 2);
-            entry.Property(item => item.CarbohydrateGrams).HasPrecision(9, 2);
-            entry.Property(item => item.FatGrams).HasPrecision(9, 2);
-            entry.Property(item => item.SaltGrams).HasPrecision(9, 2);
-            entry.Property(item => item.BasisGrams).HasPrecision(9, 2);
-            entry.Property(item => item.KilocaloriesPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.ProteinGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.CarbohydrateGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.FatGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.SaltGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.PieceGrams).HasPrecision(9, 2);
-            entry.Property(item => item.PieceCount).HasPrecision(7, 2);
+            ConfigureEntryValues(entry);
             entry.HasIndex(item => new { item.UserId, item.NutritionDayTemplateId, item.Meal, item.Position }).IsUnique();
             entry.HasOne(item => item.NutritionDayTemplate)
                 .WithMany(template => template.Entries)
