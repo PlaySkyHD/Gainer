@@ -240,6 +240,17 @@ private final class BarcodeScannerViewController: UIViewController, AVCaptureMet
     stopScanning()
   }
 
+  /// Wegwischen des Sheets ruft weder Abbrechen noch einen Treffer auf. Ohne
+  /// Rückmeldung bliebe der Scan in NativeCapture als laufend markiert, und jeder
+  /// weitere Versuch endete mit capture_in_progress.
+  override func viewDidDisappear(_ animated: Bool) {
+    super.viewDidDisappear(animated)
+    guard isBeingDismissed, !hasFinished else { return }
+    hasFinished = true
+    onFinish?(nil)
+    onFinish = nil
+  }
+
   func startScanning() {
     sessionQueue.async { [session] in
       if !session.isRunning { session.startRunning() }
