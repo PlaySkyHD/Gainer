@@ -816,6 +816,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       '${_fmtKcal(item.totals.kilocalories)} kcal',
       if (salt != null && item.name != _saltName) '~${_fmtGrams(salt)} g Salz',
       _confidenceNames[item.confidence.toLowerCase()] ?? item.confidence,
+      ?item.sourceHost,
     ].join(' · ');
   }
 

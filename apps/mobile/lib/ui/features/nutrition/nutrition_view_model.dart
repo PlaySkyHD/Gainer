@@ -386,7 +386,11 @@ class NutritionViewModel extends ChangeNotifier {
           amountGrams: item.amountGrams,
           per100Grams: per100,
           source: NutritionSource(
-            provider: draft.provider,
+            // Mit Websuche steht die Fundstelle dabei, z. B. „OpenAI · fddb.info“.
+            provider: switch (item.sourceHost) {
+              final host? => '${draft.provider} · $host',
+              null => draft.provider,
+            },
             retrievedAtUtc: draft.estimatedAtUtc,
             basisGrams: item.amountGrams,
           ),

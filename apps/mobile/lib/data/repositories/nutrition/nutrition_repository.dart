@@ -61,12 +61,21 @@ class NutritionEstimateComponent {
     required this.totals,
     required this.confidence,
     required this.dataGaps,
+    this.sourceUrl,
   });
   final String name;
   final double amountGrams;
   final NutritionTotals totals;
   final String confidence;
   final List<String> dataGaps;
+  final String? sourceUrl;
+
+  /// „fddb.info“ aus der Quelle, ohne „www.“; null ohne Quelle.
+  String? get sourceHost {
+    final host = Uri.tryParse(sourceUrl ?? '')?.host;
+    if (host == null || host.isEmpty) return null;
+    return host.startsWith('www.') ? host.substring(4) : host;
+  }
 }
 
 class NutritionLabelFieldDraft {

@@ -115,7 +115,8 @@ public sealed record MealEstimateComponentResponse(
     decimal? FatGrams,
     string Confidence,
     IReadOnlyList<string> DataGaps,
-    decimal? SaltGrams = null);
+    decimal? SaltGrams = null,
+    string? SourceUrl = null);
 
 public sealed record MealEstimateResponse(
     IReadOnlyList<MealEstimateComponentResponse> Components,
