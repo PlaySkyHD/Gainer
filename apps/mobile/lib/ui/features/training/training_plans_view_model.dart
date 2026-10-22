@@ -66,6 +66,23 @@ class TrainingPlansViewModel extends ChangeNotifier {
     return null;
   }
 
+  /// Kopiert einen Plan. Liefert die Kopie oder eine Fehlermeldung.
+  Future<({TrainingPlanModel? plan, String? error})> duplicate(
+    String planId,
+  ) async {
+    try {
+      final copy = await repository.duplicatePlan(planId);
+      await load();
+      return (plan: copy, error: null);
+    } catch (error) {
+      await load();
+      return (
+        plan: null,
+        error: planErrorMessage(error, 'Der Plan konnte nicht kopiert werden.'),
+      );
+    }
+  }
+
   /// Archiviert einen Plan. Liefert eine Fehlermeldung oder null bei Erfolg.
   Future<String?> archive(String planId) async {
     try {
