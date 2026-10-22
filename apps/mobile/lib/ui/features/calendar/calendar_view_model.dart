@@ -62,6 +62,7 @@ class CalendarNutritionTarget {
     required this.proteinGrams,
     required this.carbohydrateGrams,
     required this.fatGrams,
+    this.saltGrams = NutritionTargetVersion.defaultSaltGrams,
   });
 
   CalendarNutritionTarget.of(NutritionTargetVersion version)
@@ -70,12 +71,16 @@ class CalendarNutritionTarget {
         proteinGrams: version.proteinGrams,
         carbohydrateGrams: version.carbohydrateGrams,
         fatGrams: version.fatGrams,
+        saltGrams: version.effectiveSaltGrams,
       );
 
   final double kilocalories;
   final double proteinGrams;
   final double carbohydrateGrams;
   final double fatGrams;
+
+  /// Salzobergrenze des Tages.
+  final double saltGrams;
 }
 
 /// Ernährung eines Tages mit Ziel, sofern eine Zielphase gilt.
@@ -85,6 +90,7 @@ class CalendarNutrition {
     this.proteinGrams,
     this.carbohydrateGrams,
     this.fatGrams,
+    this.saltGrams,
     this.target,
   });
 
@@ -95,6 +101,7 @@ class CalendarNutrition {
         proteinGrams: 0,
         carbohydrateGrams: 0,
         fatGrams: 0,
+        saltGrams: 0,
         target: target,
       );
 
@@ -102,12 +109,14 @@ class CalendarNutrition {
   final double? proteinGrams;
   final double? carbohydrateGrams;
   final double? fatGrams;
+  final double? saltGrams;
   final CalendarNutritionTarget? target;
 
   double? get targetKilocalories => target?.kilocalories;
   double? get targetProteinGrams => target?.proteinGrams;
   double? get targetCarbohydrateGrams => target?.carbohydrateGrams;
   double? get targetFatGrams => target?.fatGrams;
+  double? get targetSaltGrams => target?.saltGrams;
 }
 
 /// Alles, was an einem Tag passiert ist oder geplant war.
@@ -485,6 +494,7 @@ class CalendarViewModel extends ChangeNotifier {
         proteinGrams: totals.proteinGrams,
         carbohydrateGrams: totals.carbohydrateGrams,
         fatGrams: totals.fatGrams,
+        saltGrams: totals.saltGrams,
         target: targetOn(day),
       );
     }

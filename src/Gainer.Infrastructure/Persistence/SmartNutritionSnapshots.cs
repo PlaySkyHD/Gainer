@@ -44,7 +44,8 @@ internal static class SmartNutritionSnapshots
                 component.KilocaloriesPer100Grams,
                 component.ProteinGramsPer100Grams,
                 component.CarbohydrateGramsPer100Grams,
-                component.FatGramsPer100Grams),
+                component.FatGramsPer100Grams,
+                component.SaltGramsPer100Grams),
             component.Brand,
             source);
     }
@@ -83,5 +84,6 @@ internal static class SmartNutritionSnapshots
             version.FatPercent,
             version.Origin,
             version.AlgorithmVersion,
-            version.Reason);
+            version.Reason,
+            version.SaltGrams);
 }

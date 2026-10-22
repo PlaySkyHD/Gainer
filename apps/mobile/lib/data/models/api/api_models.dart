@@ -182,6 +182,7 @@ class ApiFoodProduct {
     this.proteinGramsPer100Grams,
     this.carbohydrateGramsPer100Grams,
     this.fatGramsPer100Grams,
+    this.saltGramsPer100Grams,
   });
 
   final String barcode;
@@ -192,6 +193,7 @@ class ApiFoodProduct {
   final double? proteinGramsPer100Grams;
   final double? carbohydrateGramsPer100Grams;
   final double? fatGramsPer100Grams;
+  final double? saltGramsPer100Grams;
   final List<String> qualityIndicators;
   final DateTime retrievedAtUtc;
   final bool isStale;
@@ -214,6 +216,7 @@ class ApiFoodProduct {
         'carbohydrateGramsPer100Grams',
       ),
       fatGramsPer100Grams: _nullableDouble(json, 'fatGramsPer100Grams'),
+      saltGramsPer100Grams: _nullableDouble(json, 'saltGramsPer100Grams'),
       qualityIndicators: indicators.cast<String>(),
       retrievedAtUtc: DateTime.parse(_requiredString(json, 'retrievedAtUtc'))
           .toUtc(),
@@ -356,6 +359,7 @@ class ApiNutritionLabelScanResponse {
     required this.proteinGrams,
     required this.carbohydrateGrams,
     required this.fatGrams,
+    this.saltGrams,
     this.servingMassGrams,
   });
 
@@ -365,6 +369,9 @@ class ApiNutritionLabelScanResponse {
   final ApiNutritionLabelField proteinGrams;
   final ApiNutritionLabelField carbohydrateGrams;
   final ApiNutritionLabelField fatGrams;
+
+  /// Fehlt bei älteren Servern.
+  final ApiNutritionLabelField? saltGrams;
   final bool canConfirm;
   final String provider;
   final String providerModelVersion;
@@ -387,6 +394,11 @@ class ApiNutritionLabelScanResponse {
         fatGrams: ApiNutritionLabelField.fromJson(
           _requiredObject(json, 'fatGrams'),
         ),
+        saltGrams: json['saltGrams'] is Map<String, dynamic>
+            ? ApiNutritionLabelField.fromJson(
+                json['saltGrams'] as Map<String, dynamic>,
+              )
+            : null,
         canConfirm: _requiredBool(json, 'canConfirm'),
         provider: _requiredString(json, 'provider'),
         providerModelVersion: _requiredString(json, 'providerModelVersion'),

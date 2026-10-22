@@ -35,10 +35,12 @@ public sealed class ReusableMealComponent : UserOwnedEntity
     public decimal? ProteinGrams { get; set; }
     public decimal? CarbohydrateGrams { get; set; }
     public decimal? FatGrams { get; set; }
+    public decimal? SaltGrams { get; set; }
     public decimal KilocaloriesPer100Grams { get; set; }
     public decimal? ProteinGramsPer100Grams { get; set; }
     public decimal? CarbohydrateGramsPer100Grams { get; set; }
     public decimal? FatGramsPer100Grams { get; set; }
+    public decimal? SaltGramsPer100Grams { get; set; }
     public decimal BasisGrams { get; set; } = 100m;
     public string? Provider { get; set; }
     public string? Barcode { get; set; }
@@ -103,6 +105,8 @@ public sealed record ReusableMealComponentDraft(
         ValidateOptional(values.ProteinGrams, "ProteinGramsPer100Grams", errors);
         ValidateOptional(values.CarbohydrateGrams, "CarbohydrateGramsPer100Grams", errors);
         ValidateOptional(values.FatGrams, "FatGramsPer100Grams", errors);
+        if (values.SaltGrams is < 0m or > NutritionLimits.MaxSaltGramsPer100Grams)
+            errors["SaltGramsPer100Grams"] = "SaltGramsPer100Grams is outside the allowed range.";
     }
 
     private static void ValidateOptional(decimal? value, string field, Dictionary<string, string> errors)

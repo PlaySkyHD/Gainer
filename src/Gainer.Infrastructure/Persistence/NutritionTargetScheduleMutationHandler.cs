@@ -141,6 +141,7 @@ public sealed class NutritionTargetScheduleMutationHandler(
         stored.ProteinPercent == candidate.ProteinPercent &&
         stored.CarbohydratePercent == candidate.CarbohydratePercent &&
         stored.FatPercent == candidate.FatPercent &&
+        stored.SaltGrams == candidate.SaltGrams &&
         stored.Origin == candidate.Origin &&
         string.Equals(stored.AlgorithmVersion, candidate.AlgorithmVersion, StringComparison.Ordinal) &&
         string.Equals(stored.Reason, candidate.Reason, StringComparison.Ordinal);
@@ -174,6 +175,7 @@ public sealed class NutritionTargetScheduleMutationHandler(
         target.ProteinPercent = input.ProteinPercent;
         target.CarbohydratePercent = input.CarbohydratePercent;
         target.FatPercent = input.FatPercent;
+        target.SaltGrams = input.SaltGrams;
         target.Origin = input.Origin;
         target.AlgorithmVersion = input.AlgorithmVersion;
         target.Reason = input.Reason;
@@ -198,6 +200,7 @@ public sealed class NutritionTargetScheduleMutationHandler(
         ProteinPercent = input.ProteinPercent,
         CarbohydratePercent = input.CarbohydratePercent,
         FatPercent = input.FatPercent,
+        SaltGrams = input.SaltGrams,
         Origin = input.Origin,
         AlgorithmVersion = input.AlgorithmVersion,
         Reason = input.Reason,

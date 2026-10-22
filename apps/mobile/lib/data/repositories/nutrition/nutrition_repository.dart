@@ -90,6 +90,12 @@ class NutritionLabelScanDraft {
     required this.proteinGrams,
     required this.carbohydrateGrams,
     required this.fatGrams,
+    this.saltGrams = const NutritionLabelFieldDraft(
+      originalValue: null,
+      per100Grams: null,
+      status: 'Missing',
+      evidence: null,
+    ),
     required this.canConfirm,
     required this.provider,
     required this.providerModelVersion,
@@ -102,6 +108,7 @@ class NutritionLabelScanDraft {
   final NutritionLabelFieldDraft proteinGrams;
   final NutritionLabelFieldDraft carbohydrateGrams;
   final NutritionLabelFieldDraft fatGrams;
+  final NutritionLabelFieldDraft saltGrams;
   final bool canConfirm;
   final String provider;
   final String providerModelVersion;
@@ -116,6 +123,7 @@ class NutritionLabelScanDraft {
       proteinGrams: proteinGrams.per100Grams,
       carbohydrateGrams: carbohydrateGrams.per100Grams,
       fatGrams: fatGrams.per100Grams,
+      saltGrams: saltGrams.per100Grams,
     );
   }
 }
@@ -800,6 +808,7 @@ NutritionTargetVersion _targetFromJson(Map<String, dynamic> json) =>
       origin: json['origin'] as String? ?? 'Manual',
       algorithmVersion: json['algorithmVersion'] as String?,
       reason: json['reason'] as String?,
+      saltGrams: (json['saltGrams'] as num?)?.toDouble(),
     );
 
 String _dateString(DateTime value) =>
@@ -828,6 +837,7 @@ NutritionTargetVersion _withEndDate(NutritionTargetVersion value, String end) =>
       origin: value.origin,
       algorithmVersion: value.algorithmVersion,
       reason: value.reason,
+      saltGrams: value.saltGrams,
     );
 
 String _newUuidV4() {

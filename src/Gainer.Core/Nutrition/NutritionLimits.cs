@@ -19,6 +19,9 @@ public static class NutritionLimits
     public const decimal MaxMacroGramsPer100Grams = 1_000m;
     public const decimal MaxDailyKilocalories = 20_000m;
     public const decimal MaxDailyMacroGrams = 2_000m;
+    public const decimal MaxSaltGramsPer100Grams = 100m;
+    public const decimal MaxDailySaltTargetGrams = 100m;
+    public const decimal DefaultDailySaltTargetGrams = 6m;
     public const decimal MacroEnergyMismatchThreshold = 0.10m;
     public const decimal MacroDistributionTotalPercent = 100m;
 }

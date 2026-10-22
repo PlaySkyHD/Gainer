@@ -45,6 +45,7 @@ class NutritionAverages {
     required this.averageProteinGrams,
     required this.averageCarbohydrateGrams,
     required this.averageFatGrams,
+    required this.averageSaltGrams,
     required this.averageTargetKilocalories,
     required this.daysWithinTarget,
     required this.daysWithTarget,
@@ -81,6 +82,7 @@ class NutritionAverages {
         (totals) => totals.carbohydrateGrams,
       ),
       averageFatGrams: _mean(logged, (totals) => totals.fatGrams),
+      averageSaltGrams: _mean(logged, (totals) => totals.saltGrams),
       averageTargetKilocalories: _average([
         for (final item in withTarget) item.targetKilocalories!,
       ]),
@@ -132,6 +134,9 @@ class NutritionAverages {
   final double? averageProteinGrams;
   final double? averageCarbohydrateGrams;
   final double? averageFatGrams;
+
+  /// Ø über die erfassten Tage, an denen mindestens ein Eintrag Salz hatte.
+  final double? averageSaltGrams;
 
   /// Ø Kalorienziel über die erfassten Tage mit Ziel.
   final double? averageTargetKilocalories;

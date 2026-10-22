@@ -238,7 +238,8 @@ public sealed class SyncMutationExecutor(
                             item.KilocaloriesPer100Grams,
                             item.ProteinGramsPer100Grams,
                             item.CarbohydrateGramsPer100Grams,
-                            item.FatGramsPer100Grams),
+                            item.FatGramsPer100Grams,
+                            item.SaltGramsPer100Grams),
                         item.Brand,
                         item.Source)).ToArray();
                     NutritionDaySnapshot snapshot = await new NutritionDayMutationHandler(context, userContext, timeProvider, collector)
@@ -290,7 +291,8 @@ public sealed class SyncMutationExecutor(
                                 item.KilocaloriesPer100Grams,
                                 item.ProteinGramsPer100Grams,
                                 item.CarbohydrateGramsPer100Grams,
-                                item.FatGramsPer100Grams),
+                                item.FatGramsPer100Grams,
+                                item.SaltGramsPer100Grams),
                             item.Brand,
                             item.Source)).ToArray();
                     ReusableMealDraft values = ReusableMealDraft.Create(
@@ -363,7 +365,8 @@ public sealed class SyncMutationExecutor(
                 item.FatPercent,
                 ParseTargetOrigin(item.Origin),
                 item.AlgorithmVersion,
-                item.Reason);
+                item.Reason,
+                item.SaltGrams);
         }).ToArray();
 
     private static T Deserialize<T>(JsonElement payload)
@@ -555,7 +558,8 @@ public sealed class SyncMutationExecutor(
         decimal? ProteinGramsPer100Grams,
         decimal? CarbohydrateGramsPer100Grams,
         decimal? FatGramsPer100Grams,
-        NutritionSourceSnapshot? Source);
+        NutritionSourceSnapshot? Source,
+        decimal? SaltGramsPer100Grams = null);
     private sealed record SaveNutritionTargetSchedulePayload(
         Guid NutritionTargetScheduleId,
         long BaseVersion,
@@ -576,7 +580,8 @@ public sealed class SyncMutationExecutor(
         decimal? FatPercent,
         string Origin,
         string? AlgorithmVersion,
-        string? Reason);
+        string? Reason,
+        decimal? SaltGrams = null);
     private sealed record NutritionEntryPayload(
         Guid EntryId,
         string Meal,
@@ -588,5 +593,6 @@ public sealed class SyncMutationExecutor(
         decimal? ProteinGramsPer100Grams,
         decimal? CarbohydrateGramsPer100Grams,
         decimal? FatGramsPer100Grams,
-        NutritionSourceSnapshot? Source);
+        NutritionSourceSnapshot? Source,
+        decimal? SaltGramsPer100Grams = null);
 }
