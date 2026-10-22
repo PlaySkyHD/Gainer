@@ -1,8 +1,10 @@
 # Gainer Mobile
 
-This is the iOS-first Flutter app. Its training, nutrition, check-in and progress
-tabs use the account's persisted data and native Cupertino navigation; remaining
-PWA parity work is tracked in the OpenSpec change.
+This is the iOS Flutter app and Gainer's only client. Its calendar, check-in,
+nutrition, training and "Mehr" tabs work offline-first on a local Drift database
+and sync with the backend; native features (HealthKit, camera, Bluetooth heart
+rate, Live Activities, speech recognition, passkeys) are bridged via Pigeon.
+See the repository [README](../../README.md) for the feature overview.
 
 ## Pinned toolchain
 
