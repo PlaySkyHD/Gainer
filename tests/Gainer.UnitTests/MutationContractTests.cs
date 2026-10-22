@@ -9,8 +9,8 @@ public sealed class MutationContractTests
     public void MutationScopeSupportsAtomicMultiAggregateOperations()
     {
         ResourceVersionExpectation workout = Expect(ResourceKind.Workout, baseVersion: 4);
-        ResourceVersionExpectation rotation = Expect(ResourceKind.WorkoutRotation, baseVersion: 2);
-        AtomicMutationScope scope = AtomicMutationScope.Create(workout, rotation);
+        ResourceVersionExpectation schedule = Expect(ResourceKind.TrainingSchedule, baseVersion: 2);
+        AtomicMutationScope scope = AtomicMutationScope.Create(workout, schedule);
 
         Assert.HasCount(2, scope.Resources);
         Assert.AreEqual(4, scope.Resources[0].BaseVersion);

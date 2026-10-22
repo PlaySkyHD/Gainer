@@ -103,17 +103,17 @@ public sealed class TrainingSyncIsolationTests
     }
 
     [TestMethod]
-    public async Task ForeignPlanRotationAndReorderOperationsAreRejected()
+    public async Task ForeignPlanScheduleAndReorderOperationsAreRejected()
     {
         (string connectionString, Guid owner, Guid intruder, Guid ownerClient, Guid intruderClient) = await SetupAsync();
         Guid[] baseExercises = await BaseExerciseIdsAsync(connectionString, owner, 1);
         Guid planId = Guid.NewGuid();
-        Guid rotationId = Guid.NewGuid();
-        Guid foreignRotationId = Guid.NewGuid();
+        Guid scheduleId = Guid.NewGuid();
+        Guid foreignScheduleId = Guid.NewGuid();
         await Run(connectionString, owner, ownerClient, Command(Guid.NewGuid(), ownerClient, 1, "createTrainingPlan", "TrainingPlan", planId, 0,
             new { plan = Plan(planId, Guid.NewGuid(), baseExercises[0]) }));
-        await Run(connectionString, owner, ownerClient, Command(Guid.NewGuid(), ownerClient, 2, "saveWorkoutRotation", "WorkoutRotation", rotationId, 0,
-            new { rotationId, baseVersion = 0, planIds = new[] { planId } }));
+        await Run(connectionString, owner, ownerClient, Command(Guid.NewGuid(), ownerClient, 2, "saveTrainingSchedule", "TrainingSchedule", scheduleId, 0,
+            Schedule(scheduleId, 0, planId)));
 
         SyncMutationConflictException foreignUpdate = await Expect<SyncMutationConflictException>(() => Run(connectionString, intruder, intruderClient,
             Command(Guid.NewGuid(), intruderClient, 1, "updateTrainingPlan", "TrainingPlan", planId, 1,
@@ -134,18 +134,28 @@ public sealed class TrainingSyncIsolationTests
                 new { plans = new[] { new { planId, baseVersion = 1 } } })));
         Assert.AreEqual("resource_not_found", foreignReorder.Code);
 
-        SyncMutationConflictException foreignRotation = await Expect<SyncMutationConflictException>(() => Run(connectionString, intruder, intruderClient,
-            Command(Guid.NewGuid(), intruderClient, 5, "saveWorkoutRotation", "WorkoutRotation", rotationId, 1,
-                new { rotationId, baseVersion = 1, planIds = Array.Empty<Guid>() })));
-        Assert.AreEqual("resource_not_found", foreignRotation.Code);
+        Guid intruderPlanId = Guid.NewGuid();
+        await Run(connectionString, intruder, intruderClient, Command(Guid.NewGuid(), intruderClient, 5, "createTrainingPlan", "TrainingPlan", intruderPlanId, 0,
+            new { plan = Plan(intruderPlanId, Guid.NewGuid(), baseExercises[0]) }));
+        SyncMutationConflictException foreignSchedule = await Expect<SyncMutationConflictException>(() => Run(connectionString, intruder, intruderClient,
+            Command(Guid.NewGuid(), intruderClient, 6, "saveTrainingSchedule", "TrainingSchedule", scheduleId, 1,
+                Schedule(scheduleId, 1, intruderPlanId))));
+        Assert.AreEqual("resource_not_found", foreignSchedule.Code);
+        SyncMutationConflictException foreignScheduleDelete = await Expect<SyncMutationConflictException>(() => Run(connectionString, intruder, intruderClient,
+            Command(Guid.NewGuid(), intruderClient, 7, "deleteTrainingSchedule", "TrainingSchedule", scheduleId, 1,
+                new { scheduleId, baseVersion = 1 })));
+        Assert.AreEqual("resource_not_found", foreignScheduleDelete.Code);
 
-        WorkoutRotationValidationException intruderRotation = await Expect<WorkoutRotationValidationException>(() => Run(connectionString, intruder, intruderClient,
-            Command(Guid.NewGuid(), intruderClient, 6, "saveWorkoutRotation", "WorkoutRotation", foreignRotationId, 0,
-                new { rotationId = foreignRotationId, baseVersion = 0, planIds = new[] { planId } })));
-        Assert.IsTrue(intruderRotation.Errors.ContainsKey("PlanIds"));
+        TrainingScheduleValidationException intruderSchedule = await Expect<TrainingScheduleValidationException>(() => Run(connectionString, intruder, intruderClient,
+            Command(Guid.NewGuid(), intruderClient, 8, "saveTrainingSchedule", "TrainingSchedule", foreignScheduleId, 0,
+                Schedule(foreignScheduleId, 0, planId))));
+        Assert.IsTrue(intruderSchedule.Errors.ContainsKey("Slots"));
 
         await using AppDbContext check = Fixture.CreateContext(connectionString, owner);
         Assert.AreEqual("Push", (await check.TrainingPlans.SingleAsync(TestContext.CancellationToken)).Name);
+        Assert.AreEqual(1, (await check.TrainingSchedules.SingleAsync(TestContext.CancellationToken)).Version);
+        await using AppDbContext intruderCheck = Fixture.CreateContext(connectionString, intruder);
+        Assert.AreEqual(0, await intruderCheck.TrainingSchedules.CountAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -329,7 +339,7 @@ public sealed class TrainingSyncIsolationTests
         Guid workoutId = Guid.NewGuid();
         Guid deletedWorkoutId = Guid.NewGuid();
         Guid planId = Guid.NewGuid();
-        Guid rotationId = Guid.NewGuid();
+        Guid scheduleId = Guid.NewGuid();
         Guid superset = Guid.NewGuid();
         DateTime started = new(2026, 8, 18, 17, 0, 0, DateTimeKind.Utc);
         await Run(connectionString, intruder, intruderClient, CreateExerciseCommand(intruderClient, 1, Guid.NewGuid(), "Intruder only"));
@@ -343,8 +353,8 @@ public sealed class TrainingSyncIsolationTests
             new { workout = Workout(deletedWorkoutId, started.AddDays(1), started.AddDays(1).AddHours(1), baseExercises[0], Guid.NewGuid(), Guid.NewGuid()) }));
         await Run(connectionString, owner, ownerClient, Command(Guid.NewGuid(), ownerClient, 5, "createTrainingPlan", "TrainingPlan", planId, 0,
             new { plan = Plan(planId, Guid.NewGuid(), baseExercises[1]) }));
-        await Run(connectionString, owner, ownerClient, Command(Guid.NewGuid(), ownerClient, 6, "saveWorkoutRotation", "WorkoutRotation", rotationId, 0,
-            new { rotationId, baseVersion = 0, planIds = new[] { planId } }));
+        await Run(connectionString, owner, ownerClient, Command(Guid.NewGuid(), ownerClient, 6, "saveTrainingSchedule", "TrainingSchedule", scheduleId, 0,
+            Schedule(scheduleId, 0, planId)));
         await Run(connectionString, owner, ownerClient, Command(Guid.NewGuid(), ownerClient, 7, "deleteWorkout", "Workout", deletedWorkoutId, 1,
             new { workoutId = deletedWorkoutId, baseVersion = 1 }));
 
@@ -361,7 +371,9 @@ public sealed class TrainingSyncIsolationTests
         Assert.IsTrue(tombstone.IsTombstone);
         Assert.AreEqual(2, tombstone.Version);
         Assert.IsTrue(ownerChanges.Any(change => change.ResourceType == "TrainingPlan" && change.ResourceId == planId));
-        Assert.IsTrue(ownerChanges.Any(change => change.ResourceType == "WorkoutRotation" && change.ResourceId == rotationId));
+        SyncFeedChange schedule = ownerChanges.Single(change => change.ResourceType == "TrainingSchedule" && change.ResourceId == scheduleId);
+        Assert.AreEqual("cycle", schedule.Snapshot!.Value.GetProperty("mode").GetString());
+        Assert.AreEqual(planId, schedule.Snapshot.Value.GetProperty("slots")[0].GetProperty("planId").GetGuid());
         Assert.IsTrue(ownerChanges.Any(change => change.ResourceType == "CustomExercise" && change.ResourceId == ownCustom));
         Assert.IsTrue(ownerChanges.Any(change => change.ResourceType == "ExerciseCategory" && change.ResourceId == categoryId));
 
@@ -377,6 +389,33 @@ public sealed class TrainingSyncIsolationTests
         Assert.HasCount(1, entries);
         Assert.AreEqual(workoutId, entries[0].WorkoutId);
         Assert.IsNull(await history.GetAsync(deletedWorkoutId, TestContext.CancellationToken));
+    }
+
+    [TestMethod]
+    public async Task ReplayOfAReceiptWithARemovedResourceTypeIsRejectedAsUnsupported()
+    {
+        (string connectionString, Guid owner, _, Guid ownerClient, _) = await SetupAsync();
+        Guid rotationId = Guid.NewGuid();
+        ProcessSyncMutationCommand legacy = Command(Guid.NewGuid(), ownerClient, 1, "saveWorkoutRotation", "WorkoutRotation", rotationId, 0,
+            new { rotationId, baseVersion = 0, planIds = Array.Empty<Guid>() });
+        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        {
+            seed.ProcessedMutations.Add(new ProcessedMutation
+            {
+                MutationId = legacy.MutationId,
+                ClientId = ownerClient,
+                ClientSequence = 1,
+                ContentHash = CanonicalMutationHasher.Hash(legacy.Content),
+                ResultJson = $$"""{"revision":1,"changes":[{"resourceType":"WorkoutRotation","resourceId":"{{rotationId}}","version":1,"snapshot":{"version":1},"isTombstone":false}]}""",
+                Revision = 1,
+                AppliedAtUtc = DateTime.UtcNow,
+            });
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        SyncMutationValidationException replay = await Expect<SyncMutationValidationException>(() =>
+            Process(connectionString, owner, ownerClient, legacy));
+        Assert.AreEqual("unsupported_operation", replay.Code);
     }
 
     [TestMethod]
@@ -533,6 +572,18 @@ public sealed class TrainingSyncIsolationTests
                 [new CanonicalResourceVersion(resourceType, resourceId, baseVersion)],
                 null,
                 JsonSerializer.SerializeToElement(payload, JsonOptions)));
+
+    private static object Schedule(Guid scheduleId, long baseVersion, Guid planId) => new
+    {
+        scheduleId,
+        baseVersion,
+        mode = "cycle",
+        anchorDate = "2026-10-20",
+        validFrom = "2026-10-21",
+        slots = new object[] { new { planId = (Guid?)planId }, new { planId = (Guid?)null } },
+        shifts = Array.Empty<object>(),
+        exceptions = Array.Empty<object>(),
+    };
 
     private static object Plan(Guid planId, Guid entryId, Guid exerciseId) => new
     {

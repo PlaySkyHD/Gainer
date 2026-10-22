@@ -88,7 +88,7 @@ void main() {
       );
     });
 
-    test('training plan round-trips with entries and rotation', () {
+    test('training plan round-trips with entries', () {
       final plan = TrainingPlanModel.fromJson({
         'planId': 'plan-1',
         'name': 'Push',
@@ -119,16 +119,6 @@ void main() {
         },
       ]);
       expect(plan.sortOrder, 2);
-      expect(
-        RotationModel.fromJson({
-          'rotationId': 'rot-1',
-          'planIds': ['plan-1', 'plan-2'],
-        }).toJson(),
-        {
-          'rotationId': 'rot-1',
-          'planIds': ['plan-1', 'plan-2'],
-        },
-      );
     });
   });
 

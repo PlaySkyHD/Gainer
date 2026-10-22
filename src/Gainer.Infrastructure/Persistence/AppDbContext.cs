@@ -56,9 +56,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 
     public DbSet<TrainingPlanEntry> TrainingPlanEntries => Set<TrainingPlanEntry>();
 
-    public DbSet<WorkoutRotation> WorkoutRotations => Set<WorkoutRotation>();
+    public DbSet<TrainingSchedule> TrainingSchedules => Set<TrainingSchedule>();
 
-    public DbSet<WorkoutRotationItem> WorkoutRotationItems => Set<WorkoutRotationItem>();
+    public DbSet<TrainingScheduleSlot> TrainingScheduleSlots => Set<TrainingScheduleSlot>();
+
+    public DbSet<TrainingScheduleShift> TrainingScheduleShifts => Set<TrainingScheduleShift>();
+
+    public DbSet<TrainingScheduleException> TrainingScheduleExceptions => Set<TrainingScheduleException>();
 
     public DbSet<Workout> Workouts => Set<Workout>();
 
@@ -450,40 +454,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<WorkoutRotation>(rotation =>
-        {
-            rotation.ToTable("workout_rotations", DatabaseSchemas.Training);
-            rotation.HasKey(item => item.Id);
-            rotation.Property(item => item.Version).IsConcurrencyToken();
-            rotation.HasIndex(item => item.UserId).IsUnique();
-            rotation.HasOne<AppUser>()
-                .WithMany()
-                .HasForeignKey(item => item.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<WorkoutRotationItem>(item =>
-        {
-            item.ToTable("workout_rotation_items", DatabaseSchemas.Training, table =>
-                table.HasCheckConstraint("CK_workout_rotation_items_position", PositionNonNegativeCheck));
-            item.HasKey(value => value.Id);
-            item.HasIndex(value => new { value.RotationId, value.Position }).IsUnique();
-            item.HasIndex(value => new { value.RotationId, value.PlanId }).IsUnique();
-            item.HasIndex(value => new { value.UserId, value.RotationId });
-            item.HasOne<WorkoutRotation>()
-                .WithMany()
-                .HasForeignKey(value => value.RotationId)
-                .OnDelete(DeleteBehavior.Cascade);
-            item.HasOne<TrainingPlan>()
-                .WithMany()
-                .HasForeignKey(value => new { value.UserId, value.PlanId })
-                .HasPrincipalKey(value => new { value.UserId, value.Id })
-                .OnDelete(DeleteBehavior.Restrict);
-            item.HasOne<AppUser>()
-                .WithMany()
-                .HasForeignKey(value => value.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
+        ConfigureTrainingSchedule(modelBuilder);
 
         modelBuilder.Entity<Workout>(workout =>
         {
@@ -932,6 +903,105 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             session.HasIndex(item => item.DiscardedRefreshTokenHash).IsUnique();
             session.HasIndex(item => item.UserId);
             session.HasOne(item => item.User)
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureTrainingSchedule(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<TrainingSchedule>(schedule =>
+        {
+            schedule.ToTable("training_schedules", DatabaseSchemas.Training, table =>
+            {
+                table.HasCheckConstraint("CK_training_schedules_mode", "\"Mode\" IN ('cycle', 'weekly')");
+                table.HasCheckConstraint(
+                    "CK_training_schedules_anchor",
+                    "(\"Mode\" = 'cycle') = (\"AnchorDate\" IS NOT NULL)");
+            });
+            schedule.HasKey(item => item.Id);
+            schedule.Property(item => item.UserId).ValueGeneratedNever();
+            schedule.Property(item => item.Mode)
+                .HasConversion(new ValueConverter<TrainingScheduleMode, string>(
+                    value => TrainingScheduleModes.ToWireValue(value),
+                    value => TrainingScheduleModes.Parse(value)))
+                .HasMaxLength(16)
+                .IsRequired();
+            schedule.Property(item => item.Version).IsConcurrencyToken();
+            schedule.HasIndex(item => item.UserId)
+                .IsUnique()
+                .HasDatabaseName("UX_training_schedules_one_live_per_user")
+                .HasFilter("\"DeletedAtUtc\" IS NULL");
+            schedule.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TrainingScheduleSlot>(slot =>
+        {
+            slot.ToTable("training_schedule_slots", DatabaseSchemas.Training, table =>
+                table.HasCheckConstraint("CK_training_schedule_slots_position", PositionNonNegativeCheck));
+            slot.HasKey(item => item.Id);
+            slot.Property(item => item.UserId).ValueGeneratedNever();
+            slot.HasIndex(item => new { item.ScheduleId, item.Position }).IsUnique();
+            slot.HasIndex(item => new { item.UserId, item.ScheduleId });
+            slot.HasOne<TrainingSchedule>()
+                .WithMany()
+                .HasForeignKey(item => item.ScheduleId)
+                .OnDelete(DeleteBehavior.Cascade);
+            slot.HasOne<TrainingPlan>()
+                .WithMany()
+                .HasForeignKey(item => new { item.UserId, item.PlanId })
+                .HasPrincipalKey(item => new { item.UserId, item.Id })
+                .OnDelete(DeleteBehavior.Restrict);
+            slot.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TrainingScheduleShift>(shift =>
+        {
+            shift.ToTable("training_schedule_shifts", DatabaseSchemas.Training, table =>
+            {
+                table.HasCheckConstraint("CK_training_schedule_shifts_position", PositionNonNegativeCheck);
+                table.HasCheckConstraint("CK_training_schedule_shifts_days", "\"Days\" BETWEEN 1 AND 31");
+            });
+            shift.HasKey(item => item.Id);
+            shift.Property(item => item.UserId).ValueGeneratedNever();
+            shift.HasIndex(item => new { item.ScheduleId, item.Position }).IsUnique();
+            shift.HasIndex(item => new { item.UserId, item.ScheduleId });
+            shift.HasOne<TrainingSchedule>()
+                .WithMany()
+                .HasForeignKey(item => item.ScheduleId)
+                .OnDelete(DeleteBehavior.Cascade);
+            shift.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TrainingScheduleException>(exception =>
+        {
+            exception.ToTable("training_schedule_exceptions", DatabaseSchemas.Training, table =>
+                table.HasCheckConstraint("CK_training_schedule_exceptions_position", PositionNonNegativeCheck));
+            exception.HasKey(item => item.Id);
+            exception.Property(item => item.UserId).ValueGeneratedNever();
+            exception.HasIndex(item => new { item.ScheduleId, item.Position }).IsUnique();
+            exception.HasIndex(item => new { item.ScheduleId, item.Date, item.PlanId }).IsUnique();
+            exception.HasIndex(item => new { item.UserId, item.ScheduleId });
+            exception.HasOne<TrainingSchedule>()
+                .WithMany()
+                .HasForeignKey(item => item.ScheduleId)
+                .OnDelete(DeleteBehavior.Cascade);
+            exception.HasOne<TrainingPlan>()
+                .WithMany()
+                .HasForeignKey(item => new { item.UserId, item.PlanId })
+                .HasPrincipalKey(item => new { item.UserId, item.Id })
+                .OnDelete(DeleteBehavior.Restrict);
+            exception.HasOne<AppUser>()
                 .WithMany()
                 .HasForeignKey(item => item.UserId)
                 .OnDelete(DeleteBehavior.Cascade);

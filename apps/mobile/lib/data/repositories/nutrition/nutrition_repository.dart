@@ -213,6 +213,22 @@ class NutritionRepository {
     );
   }
 
+  /// Alle lokalen Tage von [from] bis [to] (einschließlich) in einem
+  /// Durchlauf, dazu die Zielphasen. Für den Kalender; braucht keine
+  /// Verbindung. Tage ohne Eintrag fehlen.
+  Future<({List<NutritionDay> days, NutritionTargetSchedule? targets})>
+  readDays(String from, String to) async {
+    if (!isValidLocalDate(from) || !isValidLocalDate(to)) {
+      throw const NutritionValidationException({
+        'localDate': 'Ungültiger Kalendertag.',
+      });
+    }
+    return (
+      days: await _readDaysBetween(from, to),
+      targets: await _readTargetSchedule(),
+    );
+  }
+
   /// Durchschnitte der letzten 7 und 30 Tage aus den lokalen Tagen (offline).
   Future<NutritionAveragesOverview> readAverages(String today) async {
     if (!isValidLocalDate(today)) {
@@ -220,19 +236,27 @@ class NutritionRepository {
         'localDate': 'Ungültiger Kalendertag.',
       });
     }
-    final from = shiftLocalDate(today, -30);
-    final rows = await store.readAggregates(_nutritionDayType);
-    final days = <NutritionDay>[
-      for (final row in rows)
-        if (_map(row.workingCopy)['localDate'] case final String date
-            when date.compareTo(from) >= 0 && date.compareTo(today) <= 0)
-          NutritionDay.fromJson(_map(row.workingCopy)),
-    ];
     return NutritionAveragesOverview(
-      days: days,
+      days: await _readDaysBetween(shiftLocalDate(today, -30), today),
       schedule: await _readTargetSchedule(),
       today: today,
     );
+  }
+
+  /// Lokale Tage von [from] bis [to] einschließlich; jede Zeile wird nur
+  /// einmal dekodiert.
+  Future<List<NutritionDay>> _readDaysBetween(String from, String to) async {
+    final days = <NutritionDay>[];
+    for (final row in await store.readAggregates(_nutritionDayType)) {
+      final body = _map(row.workingCopy);
+      final date = body['localDate'];
+      if (date is String &&
+          date.compareTo(from) >= 0 &&
+          date.compareTo(to) <= 0) {
+        days.add(NutritionDay.fromJson(body));
+      }
+    }
+    return days;
   }
 
   Future<List<NutritionFood>> recentFoods({int limit = 20}) async {
