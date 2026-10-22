@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/training_plans_section.dart';
 import 'package:gainer_mobile/ui/features/training/training_plans_view_model.dart';
+import 'package:gainer_mobile/ui/features/training/workout_screen.dart';
 
 import 'training_plans_test_support.dart';
 import 'training_test_support.dart';
@@ -88,6 +91,49 @@ void main() {
         harness.repository.readActiveWorkout,
       );
       expect(active?.title, 'Pull');
+    },
+  );
+
+  testWidgets(
+    'Start öffnet das Training, auch wenn der Bereich währenddessen verschwindet',
+    (tester) async {
+      final gated = _GatedActiveWorkout(harness);
+      addTearDown(gated.dispose);
+      await tester.runAsync(() async {
+        final exercise = await seedExercise(harness, name: 'Bankdrücken');
+        final push = await seedPlan(
+          harness,
+          name: 'Push',
+          entries: [planEntry(harness, exerciseId: exercise.id)],
+        );
+        await harness.repository.saveRotation([push.planId]);
+      });
+      usePhoneSize(tester);
+      await tester.pumpWidget(
+        trainingTestApp(
+          home: GainerScaffold(
+            title: 'Training',
+            children: [
+              TrainingPlansSection(
+                repository: harness.repository,
+                activeWorkout: gated,
+              ),
+            ],
+          ),
+        ),
+      );
+      await settle(tester);
+
+      gated.hold();
+      await tester.tap(find.byKey(const ValueKey('training-plans-next-start')));
+      await settle(tester);
+      // Neuaufbau mitten im Start, etwa durch Sync oder Segmentwechsel.
+      await tester.pumpWidget(trainingTestApp(home: const SizedBox.shrink()));
+      expect(find.byType(TrainingPlansSection), findsNothing);
+      gated.release();
+      await settle(tester);
+
+      expect(find.byType(WorkoutScreen), findsOneWidget);
     },
   );
 
@@ -193,4 +239,21 @@ void main() {
       },
     );
   });
+}
+
+/// Hält das Laden des aktiven Trainings an, bis der Test es freigibt.
+class _GatedActiveWorkout extends ActiveWorkoutController {
+  _GatedActiveWorkout(TrainingHarness harness) : super(harness.repository);
+
+  Completer<void>? _gate;
+
+  void hold() => _gate = Completer<void>();
+
+  void release() => _gate?.complete();
+
+  @override
+  Future<void> load() async {
+    await _gate?.future;
+    await super.load();
+  }
 }
