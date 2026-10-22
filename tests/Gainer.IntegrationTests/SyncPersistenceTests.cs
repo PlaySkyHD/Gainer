@@ -83,7 +83,7 @@ public sealed class SyncPersistenceTests
                 Id = Guid.NewGuid(),
                 BatchId = batchId,
                 Position = 1,
-                ResourceType = "WorkoutRotation",
+                ResourceType = "TrainingSchedule",
                 ResourceId = Guid.NewGuid(),
                 ResourceVersion = 2,
                 SnapshotJson = "{\"version\":2}",
@@ -313,7 +313,7 @@ public sealed class SyncPersistenceTests
         Guid tombstonedResource = Guid.NewGuid();
         await InsertFeedBatchAsync(connectionString, firstUser, 1,
             ("Workout", firstResource, 1, false, "{\"version\":1}"),
-            ("WorkoutRotation", Guid.NewGuid(), 1, false, "{\"version\":1}"));
+            ("TrainingSchedule", Guid.NewGuid(), 1, false, "{\"version\":1}"));
         await InsertFeedBatchAsync(connectionString, firstUser, 2,
             ("CustomExercise", tombstonedResource, 3, true, null));
         await InsertFeedBatchAsync(connectionString, secondUser, 1,

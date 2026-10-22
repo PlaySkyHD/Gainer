@@ -129,7 +129,7 @@ class LocalDatabase extends _$LocalDatabase {
   }
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -159,10 +159,41 @@ class LocalDatabase extends _$LocalDatabase {
           'UPDATE local_outbox SET sent_at_utc = created_at_utc',
         );
       }
+      // Version 4 replaces the plan rotation with the training schedule
+      // (add-training-calendar D4). Rotation data is discarded without
+      // migration; every other row stays untouched.
+      if (from < 4) await discardWorkoutRotation();
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
       await customStatement('PRAGMA journal_mode = WAL');
     },
   );
+
+  /// Removes local rotation resources and their outbox, conflict, tombstone
+  /// and auto-heal entries. Entries that waited for a removed mutation are
+  /// released so they are sent normally.
+  Future<void> discardWorkoutRotation() async {
+    const type = "'workout-rotation'";
+    await customStatement(
+      'UPDATE local_outbox SET depends_on_mutation_id = NULL '
+      'WHERE depends_on_mutation_id IN '
+      '(SELECT mutation_id FROM local_outbox WHERE aggregate_type = $type)',
+    );
+    await customStatement(
+      'DELETE FROM local_outbox WHERE aggregate_type = $type',
+    );
+    await customStatement(
+      'DELETE FROM local_resources WHERE aggregate_type = $type',
+    );
+    await customStatement(
+      'DELETE FROM local_conflicts WHERE aggregate_type = $type',
+    );
+    await customStatement(
+      "DELETE FROM local_tombstones WHERE resource_type = 'WorkoutRotation'",
+    );
+    await customStatement(
+      "DELETE FROM local_sync_metadata WHERE key LIKE 'auto-heal:workout-rotation:%'",
+    );
+  }
 }

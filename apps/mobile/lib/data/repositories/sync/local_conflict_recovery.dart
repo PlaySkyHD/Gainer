@@ -475,7 +475,7 @@ extension LocalConflictRecovery on LocalSyncStore {
 const forceableAggregateTypes = {
   'workout',
   'training-plan',
-  'workout-rotation',
+  'training-schedule',
   'custom-exercise',
   'exercise-category',
   'daily-check-in',
@@ -520,7 +520,7 @@ bool _hasServerType(String aggregateType) => switch (aggregateType) {
   'custom-exercise' ||
   'exercise-category' ||
   'training-plan' ||
-  'workout-rotation' ||
+  'training-schedule' ||
   'workout' ||
   'nutrition-day' ||
   'reusable-meal' ||
@@ -560,8 +560,8 @@ String? _resourceTitle(String aggregateType, Object? workingCopy) {
                 '${started.month.toString().padLeft(2, '0')}.${started.year}';
       final parts = [?label, ?date];
       return parts.isEmpty ? null : parts.join(' · ');
-    case 'workout-rotation':
-      return 'Rotation';
+    case 'training-schedule':
+      return 'Rhythmus';
     default:
       return text('name') ?? text('title');
   }
@@ -573,7 +573,7 @@ String _serverType(String aggregateType) => switch (aggregateType) {
   'custom-exercise' => 'CustomExercise',
   'exercise-category' => 'ExerciseCategory',
   'training-plan' => 'TrainingPlan',
-  'workout-rotation' => 'WorkoutRotation',
+  'training-schedule' => 'TrainingSchedule',
   'workout' => 'Workout',
   'nutrition-day' => 'NutritionDay',
   'reusable-meal' => 'ReusableMeal',

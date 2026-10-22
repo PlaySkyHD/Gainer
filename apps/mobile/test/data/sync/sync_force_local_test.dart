@@ -462,14 +462,20 @@ void main() {
         body: {'localDate': '2026-10-12'},
       );
       await commit(
-        type: 'workout-rotation',
+        type: 'training-schedule',
         id: _workoutId,
         operation: LocalMutationOperation.create,
         baseVersion: 0,
-        body: {'rotationId': _workoutId, 'planIds': <Object?>[]},
+        body: {
+          'scheduleId': _workoutId,
+          'mode': 'cycle',
+          'anchorDate': '2026-10-12',
+          'validFrom': '2026-10-12',
+          'slots': <Object?>[],
+        },
       );
       final checkIn = await conflict('daily-check-in', _exerciseId, 'x');
-      final rotation = await conflict('workout-rotation', _workoutId, 'x');
+      final schedule = await conflict('training-schedule', _workoutId, 'x');
       await database.delete(database.localResources).go();
       await store.upsertConflict(
         LocalConflictRecord(
@@ -485,13 +491,13 @@ void main() {
       final infos = await store.readConflictResourceInfos();
 
       expect(infos[checkIn]!.title, isNull);
-      expect(infos[rotation]!.canForceLocal, isFalse);
+      expect(infos[schedule]!.canForceLocal, isFalse);
       expect(infos['orphan']!.canForceLocal, isFalse);
       expect(infos['orphan']!.hasServerState, isFalse);
     },
   );
 
-  test('check-in and rotation titles come from the working copy', () async {
+  test('check-in and schedule titles come from the working copy', () async {
     await commit(
       type: 'daily-check-in',
       id: _exerciseId,
@@ -500,18 +506,24 @@ void main() {
       body: {'localDate': '2026-10-12'},
     );
     await commit(
-      type: 'workout-rotation',
+      type: 'training-schedule',
       id: _workoutId,
       operation: LocalMutationOperation.create,
       baseVersion: 0,
-      body: {'rotationId': _workoutId, 'planIds': <Object?>[]},
+      body: {
+        'scheduleId': _workoutId,
+        'mode': 'cycle',
+        'anchorDate': '2026-10-12',
+        'validFrom': '2026-10-12',
+        'slots': <Object?>[],
+      },
     );
     final checkIn = await conflict('daily-check-in', _exerciseId, 'x');
-    final rotation = await conflict('workout-rotation', _workoutId, 'x');
+    final schedule = await conflict('training-schedule', _workoutId, 'x');
 
     final infos = await store.readConflictResourceInfos();
 
     expect(infos[checkIn]!.title, '2026-10-12');
-    expect(infos[rotation]!.title, 'Rotation');
+    expect(infos[schedule]!.title, 'Rhythmus');
   });
 }

@@ -3925,6 +3925,165 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Gainer.Core.Training.TrainingSchedule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("AnchorDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ValidFrom")
+                        .HasColumnType("date");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_training_schedules_one_live_per_user")
+                        .HasFilter("\"DeletedAtUtc\" IS NULL");
+
+                    b.ToTable("training_schedules", "training", t =>
+                        {
+                            t.HasCheckConstraint("CK_training_schedules_anchor", "(\"Mode\" = 'cycle') = (\"AnchorDate\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_training_schedules_mode", "\"Mode\" IN ('cycle', 'weekly')");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Core.Training.TrainingScheduleException", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("MovedToDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ScheduleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScheduleId", "Position")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "PlanId");
+
+                    b.HasIndex("UserId", "ScheduleId");
+
+                    b.HasIndex("ScheduleId", "Date", "PlanId")
+                        .IsUnique();
+
+                    b.ToTable("training_schedule_exceptions", "training", t =>
+                        {
+                            t.HasCheckConstraint("CK_training_schedule_exceptions_position", "\"Position\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Core.Training.TrainingScheduleShift", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Days")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("FromDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ScheduleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScheduleId", "Position")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "ScheduleId");
+
+                    b.ToTable("training_schedule_shifts", "training", t =>
+                        {
+                            t.HasCheckConstraint("CK_training_schedule_shifts_days", "\"Days\" BETWEEN 1 AND 31");
+
+                            t.HasCheckConstraint("CK_training_schedule_shifts_position", "\"Position\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Core.Training.TrainingScheduleSlot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ScheduleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScheduleId", "Position")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "PlanId");
+
+                    b.HasIndex("UserId", "ScheduleId");
+
+                    b.ToTable("training_schedule_slots", "training", t =>
+                        {
+                            t.HasCheckConstraint("CK_training_schedule_slots_position", "\"Position\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Gainer.Core.Training.Workout", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4048,69 +4207,6 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_workout_exercises_name", "length(trim(\"ExerciseNameSnapshot\")) > 0");
 
                             t.HasCheckConstraint("CK_workout_exercises_position", "\"Position\" >= 0");
-                        });
-                });
-
-            modelBuilder.Entity("Gainer.Core.Training.WorkoutRotation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId")
-                        .IsUnique();
-
-                    b.ToTable("workout_rotations", "training");
-                });
-
-            modelBuilder.Entity("Gainer.Core.Training.WorkoutRotationItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PlanId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Position")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("RotationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RotationId", "PlanId")
-                        .IsUnique();
-
-                    b.HasIndex("RotationId", "Position")
-                        .IsUnique();
-
-                    b.HasIndex("UserId", "PlanId");
-
-                    b.HasIndex("UserId", "RotationId");
-
-                    b.ToTable("workout_rotation_items", "training", t =>
-                        {
-                            t.HasCheckConstraint("CK_workout_rotation_items_position", "\"Position\" >= 0");
                         });
                 });
 
@@ -4770,6 +4866,73 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Gainer.Core.Training.TrainingSchedule", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Training.TrainingScheduleException", b =>
+                {
+                    b.HasOne("Gainer.Core.Training.TrainingSchedule", null)
+                        .WithMany()
+                        .HasForeignKey("ScheduleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Core.Training.TrainingPlan", null)
+                        .WithMany()
+                        .HasForeignKey("UserId", "PlanId")
+                        .HasPrincipalKey("UserId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Training.TrainingScheduleShift", b =>
+                {
+                    b.HasOne("Gainer.Core.Training.TrainingSchedule", null)
+                        .WithMany()
+                        .HasForeignKey("ScheduleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Training.TrainingScheduleSlot", b =>
+                {
+                    b.HasOne("Gainer.Core.Training.TrainingSchedule", null)
+                        .WithMany()
+                        .HasForeignKey("ScheduleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Core.Training.TrainingPlan", null)
+                        .WithMany()
+                        .HasForeignKey("UserId", "PlanId")
+                        .HasPrincipalKey("UserId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("Gainer.Core.Training.Workout", b =>
                 {
                     b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
@@ -4810,37 +4973,6 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId", "WorkoutId")
                         .HasPrincipalKey("UserId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Gainer.Core.Training.WorkoutRotation", b =>
-                {
-                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Gainer.Core.Training.WorkoutRotationItem", b =>
-                {
-                    b.HasOne("Gainer.Core.Training.WorkoutRotation", null)
-                        .WithMany()
-                        .HasForeignKey("RotationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Gainer.Core.Training.TrainingPlan", null)
-                        .WithMany()
-                        .HasForeignKey("UserId", "PlanId")
-                        .HasPrincipalKey("UserId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
