@@ -503,6 +503,9 @@ class SyncPayloadCodec {
           'carbohydrateGramsPer100Grams': per100['carbohydrateGrams'],
           'fatGramsPer100Grams': per100['fatGrams'],
           'source': entry['source'],
+          // Nur senden, wenn gesetzt; ältere Server kennen Salz nicht.
+          if (per100['saltGrams'] != null)
+            'saltGramsPer100Grams': per100['saltGrams'],
         };
       }),
     };
@@ -536,6 +539,8 @@ class SyncPayloadCodec {
           'carbohydrateGramsPer100Grams': per100['carbohydrateGrams'],
           'fatGramsPer100Grams': per100['fatGrams'],
           'source': component['source'],
+          if (per100['saltGrams'] != null)
+            'saltGramsPer100Grams': per100['saltGrams'],
         };
       }),
     };
@@ -568,6 +573,7 @@ class SyncPayloadCodec {
           'origin': version['origin'],
           'algorithmVersion': version['algorithmVersion'],
           'reason': version['reason'],
+          if (version['saltGrams'] != null) 'saltGrams': version['saltGrams'],
         },
       ),
     };

@@ -88,6 +88,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _protein = TextEditingController();
   final _carbs = TextEditingController();
   final _fat = TextEditingController();
+  final _salt = TextEditingController();
   final _search = TextEditingController();
   final _estimateText = TextEditingController();
   MealDictationController? _dictation;
@@ -115,6 +116,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _protein,
       _carbs,
       _fat,
+      _salt,
       _search,
       _estimateText,
     ]) {
@@ -460,6 +462,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           protein: _protein,
           carbs: _carbs,
           fat: _fat,
+          salt: _salt,
           nameKey: const ValueKey('nutrition-entry-name'),
           brandKey: const ValueKey('nutrition-entry-brand'),
           amountKey: const ValueKey('nutrition-entry-amount'),
@@ -895,6 +898,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
         proteinGrams: _nullable(c.protein.text),
         carbohydrateGrams: _nullable(c.carbs.text),
         fatGrams: _nullable(c.fat.text),
+        saltGrams: _nullable(c.salt.text),
       ),
     );
     if (widget.viewModel.errorMessage == null &&
@@ -928,6 +932,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       protein: c.protein,
       carbs: c.carbs,
       fat: c.fat,
+      salt: c.salt,
       nameKey: const ValueKey('nutrition-edit-name'),
       amountKey: const ValueKey('nutrition-edit-amount'),
       kcalKey: const ValueKey('nutrition-edit-kcal'),
@@ -1237,6 +1242,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       protein: c.protein,
                       carbs: c.carbs,
                       fat: c.fat,
+                      salt: c.salt,
                       nameKey: const ValueKey('meal-component-name'),
                       amountKey: const ValueKey('meal-component-amount'),
                       kcalKey: const ValueKey('meal-component-kcal'),
@@ -1392,6 +1398,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
           ? '25'
           : _targetPart(existing, NutritionTargetInputMode.percent, 2),
     );
+    final salt = TextEditingController(
+      text: _grams(
+        existing?.effectiveSaltGrams ?? NutritionTargetVersion.defaultSaltGrams,
+      ),
+    );
     final draft = _TargetPhaseDraft(
       category: existing?.category ?? NutritionTargetCategory.custom,
       mode: existing?.inputMode ?? NutritionTargetInputMode.percent,
@@ -1404,6 +1415,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       protein: protein,
       carbs: carbs,
       fat: fat,
+      salt: salt,
     );
     try {
       final fields = await Navigator.of(context)
@@ -1468,6 +1480,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
         origin: existing?.origin ?? 'Manual',
         algorithmVersion: existing?.algorithmVersion,
         reason: existing?.reason,
+        saltGrams: _saltTarget(salt.text, existing),
       );
       await widget.viewModel.saveTargetPhase(
         phase,
@@ -1498,15 +1511,16 @@ class _NutritionScreenState extends State<NutritionScreen> {
       closeKey: const ValueKey('nutrition-target-close'),
       onSave:
           _validTargetInput(
-            c.name,
-            c.from,
-            c.until,
-            c.kcal,
-            c.protein,
-            c.carbs,
-            c.fat,
-            draft.mode,
-          )
+                c.name,
+                c.from,
+                c.until,
+                c.kcal,
+                c.protein,
+                c.carbs,
+                c.fat,
+                draft.mode,
+              ) &&
+              _validSaltTarget(c.salt)
           ? () => Navigator.pop(context, (
               category: draft.category,
               mode: draft.mode,
@@ -1596,8 +1610,41 @@ class _NutritionScreenState extends State<NutritionScreen> {
             ),
           ],
         ),
+        const SizedBox(height: GainerSpacing.m),
+        GainerGroupedSection(
+          footer: 'Obergrenze pro Tag. Die DGE empfiehlt höchstens 6 g Salz am Tag.',
+          children: [
+            GainerTextFieldRow(
+              label: 'Salz höchstens',
+              unit: 'g',
+              controller: c.salt,
+              keyboardType: _decimalKeyboard,
+              fieldKey: const ValueKey('nutrition-target-salt'),
+              onChanged: (_) => refresh(),
+            ),
+          ],
+        ),
       ],
     );
+  }
+
+  /// Leer heißt Standardwert; sonst größer als 0 und höchstens 100 g.
+  bool _validSaltTarget(TextEditingController salt) {
+    if (salt.text.trim().isEmpty) return true;
+    final value = _parse(salt.text);
+    return value != null && value > 0 && value <= 100;
+  }
+
+  /// Bleibt beim Standardwert offen (null), solange die Phase keinen eigenen
+  /// hatte; so ändert ein unveränderter Standard keine bestehende Phase.
+  double? _saltTarget(String text, NutritionTargetVersion? existing) {
+    final value = _parse(text);
+    if (value == null) return null;
+    if (existing?.saltGrams == null &&
+        value == NutritionTargetVersion.defaultSaltGrams) {
+      return null;
+    }
+    return value;
   }
 
   bool _validTargetInput(
@@ -1692,6 +1739,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           proteinGramsPer100: _nullable(_protein.text),
           carbohydrateGramsPer100: _nullable(_carbs.text),
           fatGramsPer100: _nullable(_fat.text),
+          saltGramsPer100: _nullable(_salt.text),
         );
         if (widget.viewModel.errorMessage == null) {
           _name.clear();
@@ -1708,6 +1756,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               proteinGrams: _nullable(_protein.text),
               carbohydrateGrams: _nullable(_carbs.text),
               fatGrams: _nullable(_fat.text),
+              saltGrams: _nullable(_salt.text),
             ),
             source: null,
           ),
@@ -1721,6 +1770,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
             _protein,
             _carbs,
             _fat,
+            _salt,
           ]) {
             controller.clear();
           }
@@ -1842,6 +1892,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
             GainerListRow(
               title: 'Fett',
               value: _labelValue(draft.fatGrams, _fmtGrams, 'g'),
+            ),
+            GainerListRow(
+              title: 'Salz',
+              value: _labelValue(draft.saltGrams, _fmtGrams, 'g'),
             ),
           ],
         ),
@@ -1998,6 +2052,7 @@ List<Widget> _foodFormGroups({
   required TextEditingController protein,
   required TextEditingController carbs,
   required TextEditingController fat,
+  required TextEditingController salt,
   Key? nameKey,
   Key? brandKey,
   Key? amountKey,
@@ -2063,6 +2118,14 @@ List<Widget> _foodFormGroups({
         keyboardType: _decimalKeyboard,
         onChanged: onChanged,
       ),
+      GainerTextFieldRow(
+        label: 'Salz',
+        unit: 'g',
+        controller: salt,
+        keyboardType: _decimalKeyboard,
+        fieldKey: const ValueKey('nutrition-entry-salt'),
+        onChanged: onChanged,
+      ),
     ],
   ),
 ];
@@ -2080,6 +2143,7 @@ FoodComponentDraft _draftFrom(
     proteinGrams: _nullable(c.protein.text),
     carbohydrateGrams: _nullable(c.carbs.text),
     fatGrams: _nullable(c.fat.text),
+    saltGrams: _nullable(c.salt.text),
   ),
   source: source,
 );
@@ -2211,6 +2275,9 @@ class _EntryEditControllers {
       ),
       fat = TextEditingController(
         text: _optionalGrams(entry.per100Grams.fatGrams),
+      ),
+      salt = TextEditingController(
+        text: _optionalGrams(entry.per100Grams.saltGrams),
       );
 
   final TextEditingController name;
@@ -2220,9 +2287,19 @@ class _EntryEditControllers {
   final TextEditingController protein;
   final TextEditingController carbs;
   final TextEditingController fat;
+  final TextEditingController salt;
 
   void dispose() {
-    for (final controller in [name, brand, amount, kcal, protein, carbs, fat]) {
+    for (final controller in [
+      name,
+      brand,
+      amount,
+      kcal,
+      protein,
+      carbs,
+      fat,
+      salt,
+    ]) {
       controller.dispose();
     }
   }
@@ -2244,6 +2321,7 @@ class _TargetPhaseControllers {
     required this.protein,
     required this.carbs,
     required this.fat,
+    required this.salt,
   });
 
   final TextEditingController name;
@@ -2253,9 +2331,19 @@ class _TargetPhaseControllers {
   final TextEditingController protein;
   final TextEditingController carbs;
   final TextEditingController fat;
+  final TextEditingController salt;
 
   void dispose() {
-    for (final controller in [name, from, until, kcal, protein, carbs, fat]) {
+    for (final controller in [
+      name,
+      from,
+      until,
+      kcal,
+      protein,
+      carbs,
+      fat,
+      salt,
+    ]) {
       controller.dispose();
     }
   }
@@ -2417,6 +2505,23 @@ class _DayCard extends StatelessWidget {
                   ),
                   const SizedBox(width: GainerSpacing.s),
                   _macro(colors, 'Fett', totals.fatGrams, goal?.fatGrams),
+                ],
+              ),
+              const SizedBox(height: GainerSpacing.s),
+              // Salz ist eine Obergrenze; eigene Zeile, gleiche Spaltenbreite.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _macro(
+                    colors,
+                    'Salz',
+                    totals.saltGrams,
+                    goal?.effectiveSaltGrams,
+                  ),
+                  const SizedBox(width: GainerSpacing.s),
+                  const Spacer(),
+                  const SizedBox(width: GainerSpacing.s),
+                  const Spacer(),
                 ],
               ),
               if (goal == null) ...[
@@ -2842,7 +2947,7 @@ class _TargetPhaseRow extends StatelessWidget {
     final row = GainerListRow(
       title: phase.name,
       subtitle:
-          '${phase.effectiveFrom} – ${phase.effectiveUntil ?? 'offen'} · ${_fmtKcal(phase.kilocalories)} kcal · P ${_fmtGrams(phase.proteinGrams)} g · KH ${_fmtGrams(phase.carbohydrateGrams)} g · F ${_fmtGrams(phase.fatGrams)} g',
+          '${phase.effectiveFrom} – ${phase.effectiveUntil ?? 'offen'} · ${_fmtKcal(phase.kilocalories)} kcal · P ${_fmtGrams(phase.proteinGrams)} g · KH ${_fmtGrams(phase.carbohydrateGrams)} g · F ${_fmtGrams(phase.fatGrams)} g · Salz ≤ ${_fmtGrams(phase.effectiveSaltGrams)} g',
       showChevron: onEdit != null,
       onTap: onEdit,
     );
@@ -2869,7 +2974,8 @@ class _IngredientControllers {
       kcal = TextEditingController(),
       protein = TextEditingController(),
       carbs = TextEditingController(),
-      fat = TextEditingController();
+      fat = TextEditingController(),
+      salt = TextEditingController();
 
   _IngredientControllers.fromComponent(ReusableMealComponent component)
     : componentId = component.componentId,
@@ -2888,6 +2994,9 @@ class _IngredientControllers {
       ),
       fat = TextEditingController(
         text: _optionalGrams(component.per100Grams.fatGrams),
+      ),
+      salt = TextEditingController(
+        text: _optionalGrams(component.per100Grams.saltGrams),
       );
 
   final String? componentId;
@@ -2899,6 +3008,7 @@ class _IngredientControllers {
   final TextEditingController protein;
   final TextEditingController carbs;
   final TextEditingController fat;
+  final TextEditingController salt;
 
   void dispose() {
     name.dispose();
@@ -2908,6 +3018,7 @@ class _IngredientControllers {
     protein.dispose();
     carbs.dispose();
     fat.dispose();
+    salt.dispose();
   }
 }
 

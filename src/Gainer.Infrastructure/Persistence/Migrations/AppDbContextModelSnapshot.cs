@@ -393,6 +393,14 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("RetrievedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal?>("SaltGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal?>("SaltGramsPerBasis")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
@@ -420,6 +428,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_nutrition_entries_name", "length(trim(\"ProductName\")) > 0");
 
                             t.HasCheckConstraint("CK_nutrition_entries_position", "\"Position\" >= 0");
+
+                            t.HasCheckConstraint("CK_nutrition_entries_salt", "(\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"SaltGramsPerBasis\" IS NULL OR \"SaltGramsPerBasis\" >= 0)");
                         });
                 });
 
@@ -527,6 +537,10 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<decimal?>("SaltGrams")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
@@ -550,6 +564,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_nutrition_target_versions_name", "length(trim(\"Name\")) > 0");
 
                             t.HasCheckConstraint("CK_nutrition_target_versions_origin", "\"Origin\" = 'Manual'");
+
+                            t.HasCheckConstraint("CK_nutrition_target_versions_salt", "\"SaltGrams\" IS NULL OR (\"SaltGrams\" > 0 AND \"SaltGrams\" <= 100)");
                         });
                 });
 
@@ -676,6 +692,14 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ReusableMealId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal?>("SaltGrams")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("SaltGramsPer100Grams")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
@@ -699,6 +723,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_reusable_meal_components_per100_macros", "(\"ProteinGramsPer100Grams\" IS NULL OR \"ProteinGramsPer100Grams\" >= 0) AND (\"CarbohydrateGramsPer100Grams\" IS NULL OR \"CarbohydrateGramsPer100Grams\" >= 0) AND (\"FatGramsPer100Grams\" IS NULL OR \"FatGramsPer100Grams\" >= 0)");
 
                             t.HasCheckConstraint("CK_reusable_meal_components_position", "\"Position\" >= 0");
+
+                            t.HasCheckConstraint("CK_reusable_meal_components_salt", "(\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"SaltGramsPer100Grams\" IS NULL OR (\"SaltGramsPer100Grams\" >= 0 AND \"SaltGramsPer100Grams\" <= 100))");
                         });
                 });
 

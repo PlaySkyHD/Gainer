@@ -41,6 +41,22 @@ public sealed class OpenFoodFactsCatalogTests
     }
 
     [TestMethod]
+    public async Task SaltIsReadDirectlyOrDerivedFromSodium()
+    {
+        OpenFoodFactsCatalog direct = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(salt: 1.2m, sodium: 0.48m))));
+        Assert.AreEqual(1.2m, (await direct.GetByBarcodeAsync("12345678")).NutrientsPer100Grams.SaltGrams);
+
+        OpenFoodFactsCatalog sodiumOnly = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(sodium: 0.4m))));
+        Assert.AreEqual(1m, (await sodiumOnly.GetByBarcodeAsync("12345678")).NutrientsPer100Grams.SaltGrams);
+
+        OpenFoodFactsCatalog none = Create(new QueueHandler(Response(HttpStatusCode.OK, Product())));
+        Assert.IsNull((await none.GetByBarcodeAsync("12345678")).NutrientsPer100Grams.SaltGrams);
+
+        OpenFoodFactsCatalog implausible = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(salt: 250m))));
+        Assert.IsNull((await implausible.GetByBarcodeAsync("12345678")).NutrientsPer100Grams.SaltGrams);
+    }
+
+    [TestMethod]
     public async Task FreshCacheAndConcurrentDeduplicationAvoidDuplicateProviderRequests()
     {
         var handler = new QueueHandler(Response(HttpStatusCode.OK, Product()), delay: TimeSpan.FromMilliseconds(50));
@@ -146,7 +162,9 @@ public sealed class OpenFoodFactsCatalogTests
         decimal? energyKj = null,
         decimal? protein = 20m,
         decimal? carbohydrates = 30m,
-        decimal? fat = 5m)
+        decimal? fat = 5m,
+        decimal? salt = null,
+        decimal? sodium = null)
     {
         var nutrientParts = new List<string>();
         if (kcal is not null) nutrientParts.Add($"\"energy-kcal_100g\":{kcal.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
@@ -154,6 +172,8 @@ public sealed class OpenFoodFactsCatalogTests
         if (protein is not null) nutrientParts.Add($"\"proteins_100g\":{protein.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         if (carbohydrates is not null) nutrientParts.Add($"\"carbohydrates_100g\":{carbohydrates.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         if (fat is not null) nutrientParts.Add($"\"fat_100g\":{fat.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (salt is not null) nutrientParts.Add($"\"salt_100g\":{salt.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (sodium is not null) nutrientParts.Add($"\"sodium_100g\":{sodium.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         return "{\"product\":{\"code\":\"" + barcode +
             "\",\"product_name\":\"Test product\",\"brands\":\"Test brand\",\"nutrition_data_per\":\"100g\",\"nutriments\":{" +
             string.Join(',', nutrientParts) + "}}}";

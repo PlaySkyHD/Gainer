@@ -71,6 +71,29 @@ public sealed class SmartNutritionDomainTests
     }
 
     [TestMethod]
+    public void SaltTargetDefaultsToSixGramsAndIsValidated()
+    {
+        NutritionTargetVersionDraft standard = NutritionTargetVersionDraft.CreateInGrams(
+            Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null, 2500m, 180m, 260m, 80m);
+        Assert.IsNull(standard.SaltGrams);
+        Assert.AreEqual(6m, standard.EffectiveSaltGrams);
+
+        NutritionTargetVersionDraft custom = NutritionTargetVersionDraft.CreateInPercent(
+            Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null, 2000m, 30m, 40m, 30m,
+            saltGrams: 5m);
+        Assert.AreEqual(5m, custom.EffectiveSaltGrams);
+
+        foreach (decimal invalid in new[] { 0m, -1m, 101m })
+        {
+            NutritionValidationException error = Assert.Throws<NutritionValidationException>(() =>
+                NutritionTargetVersionDraft.CreateInGrams(
+                    Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null,
+                    2500m, 180m, 260m, 80m, saltGrams: invalid));
+            Assert.IsTrue(error.Errors.ContainsKey("SaltGrams"));
+        }
+    }
+
+    [TestMethod]
     public void TargetScheduleSortsVersionsAndFindsEffectiveVersion()
     {
         NutritionTargetVersionDraft later = NutritionTargetVersionDraft.CreateInGrams(

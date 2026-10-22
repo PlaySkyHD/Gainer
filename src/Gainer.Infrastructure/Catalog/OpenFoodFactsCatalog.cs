@@ -189,6 +189,7 @@ public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
         decimal? protein = NonNegative(Decimal(nutrients, "proteins_100g"));
         decimal? carbohydrates = NonNegative(Decimal(nutrients, "carbohydrates_100g"));
         decimal? fat = NonNegative(Decimal(nutrients, "fat_100g"));
+        decimal? salt = Salt(nutrients);
         var quality = new List<string>();
         if (protein is null) quality.Add("protein_missing");
         if (carbohydrates is null) quality.Add("carbohydrates_missing");
@@ -200,11 +201,22 @@ public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
             name.Trim(),
             String(product, "brands")?.Trim(),
             100m,
-            new NutritionPer100Grams(kcal.Value, protein, carbohydrates, fat),
+            new NutritionPer100Grams(kcal.Value, protein, carbohydrates, fat, salt),
             quality,
             retrievedAtUtc,
             false);
     }
+
+    /// <summary>Salt per 100 g; derived from sodium (× 2.5) when only sodium is listed.</summary>
+    private static decimal? Salt(JsonElement nutrients)
+    {
+        decimal? salt = NonNegative(Decimal(nutrients, "salt_100g"));
+        if (salt is null && NonNegative(Decimal(nutrients, "sodium_100g")) is { } sodium)
+            salt = decimal.Round(sodium * SaltPerSodium, 2, MidpointRounding.AwayFromZero);
+        return salt <= NutritionLimits.MaxSaltGramsPer100Grams ? salt : null;
+    }
+
+    private const decimal SaltPerSodium = 2.5m;
 
     private async Task<T> DeduplicateAsync<T>(string key, Func<Task<T>> factory) where T : class
     {

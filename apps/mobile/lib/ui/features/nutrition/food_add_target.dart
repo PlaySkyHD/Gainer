@@ -50,9 +50,13 @@ class FoodComponentDraft {
       per100Grams.proteinGrams,
       per100Grams.carbohydrateGrams,
       per100Grams.fatGrams,
+      per100Grams.saltGrams,
     ];
     if (macros.any((value) => value != null && value < 0)) {
       return 'Nährwerte dürfen nicht negativ sein.';
+    }
+    if ((per100Grams.saltGrams ?? 0) > 100) {
+      return 'Salz kann höchstens 100 g pro 100 g betragen.';
     }
     return null;
   }
