@@ -1,12 +1,18 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/nutrition/nutrition_repository.dart';
+import '../../../data/repositories/training/training_log_repository.dart';
+import '../../../domain/models/nutrition/day_target.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import '../training/training_schedule_sheet.dart';
 import 'food_add_target.dart';
 import 'meal_dictation_controller.dart';
 import 'nutrition_averages_view.dart';
+import 'nutrition_day_kind.dart';
+import 'nutrition_day_templates.dart';
+import 'nutrition_targets_editor.dart';
 import 'nutrition_view_model.dart';
 
 const _notRecognizedLabel = 'nicht erkannt';
@@ -100,8 +106,26 @@ List<_NutritionEntryMode> _modesFor(FoodAddTarget target) => [
 ];
 
 class NutritionScreen extends StatefulWidget {
-  const NutritionScreen({super.key, required this.viewModel});
+  const NutritionScreen({
+    super.key,
+    required this.viewModel,
+    this.training,
+    this.visibility,
+    this.isVisible,
+    this.refresh,
+  });
   final NutritionViewModel viewModel;
+
+  /// Für „Rhythmus einrichten“ im Ziel-Editor; ohne fehlt der Link.
+  final TrainingLogRepository? training;
+
+  /// Meldet Tab-Wechsel; zusammen mit [isVisible] lädt der Tag neu, wenn der
+  /// Tab sichtbar wird (Training beendet, Rhythmus geändert).
+  final Listenable? visibility;
+  final bool Function()? isVisible;
+
+  /// Löst Neuladen aus, solange der Tab sichtbar ist (z. B. Sync-Ende).
+  final Listenable? refresh;
 
   @override
   State<NutritionScreen> createState() => _NutritionScreenState();
@@ -123,10 +147,39 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _estimateText = TextEditingController();
   final _saltAmount = TextEditingController();
   MealDictationController? _dictation;
+  bool _wasVisible = true;
+
+  bool get _visible => widget.isVisible?.call() ?? true;
+
+  void _onVisibility() {
+    final visible = _visible;
+    if (visible && !_wasVisible) widget.viewModel.load();
+    _wasVisible = visible;
+  }
+
+  void _onRefresh() {
+    if (_visible) widget.viewModel.load();
+  }
+
+  @override
+  void didUpdateWidget(NutritionScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.visibility, widget.visibility)) {
+      oldWidget.visibility?.removeListener(_onVisibility);
+      widget.visibility?.addListener(_onVisibility);
+    }
+    if (!identical(oldWidget.refresh, widget.refresh)) {
+      oldWidget.refresh?.removeListener(_onRefresh);
+      widget.refresh?.addListener(_onRefresh);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    widget.visibility?.addListener(_onVisibility);
+    widget.refresh?.addListener(_onRefresh);
+    _wasVisible = _visible;
     widget.viewModel.load();
     if (widget.viewModel.dictation case final platform?) {
       _dictation = MealDictationController(
@@ -138,6 +191,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   @override
   void dispose() {
+    widget.visibility?.removeListener(_onVisibility);
+    widget.refresh?.removeListener(_onRefresh);
     _dictation?.dispose();
     for (final controller in [
       _name,
@@ -247,9 +302,31 @@ class _NutritionScreenState extends State<NutritionScreen> {
   ) => [
     _DayCard(
       totals: snapshot.day.totals,
-      target: snapshot.targetSchedule?.targetOn(vm.localDate),
-      onManage: _openPlanning,
+      target: snapshot.dayTarget,
+      onManage: _editTargets,
+      onDayKind: () => _chooseDayKind(snapshot),
     ),
+    if (snapshot.suggestedTemplate case final template?)
+      Padding(
+        padding: const EdgeInsets.only(top: GainerSpacing.s),
+        child: GainerGroupedSection(
+          children: [
+            GainerListRow(
+              key: const ValueKey('nutrition-template-suggestion'),
+              title: 'Vorlage „${template.name}“ übernehmen',
+              subtitle: templateSummary(template),
+              leadingIcon: CupertinoIcons.doc_on_doc,
+              trailing: GainerPillButton(
+                label: 'Übernehmen',
+                variant: GainerPillVariant.tonal,
+                onPressed: vm.isSaving
+                    ? null
+                    : () => vm.applyTemplate(template.templateId),
+              ),
+            ),
+          ],
+        ),
+      ),
     NutritionAveragesEntry(repository: vm.repository, refreshKey: snapshot),
     if (vm.statusMessage != null)
       Semantics(liveRegion: true, child: _notice(context, vm.statusMessage!)),
@@ -299,24 +376,123 @@ class _NutritionScreenState extends State<NutritionScreen> {
     }
   }
 
-  /// Menü der Seitenaktionen (…): Gerichte und Ziele.
+  /// Menü der Seitenaktionen (…): Vorlagen, Ziele und Gerichte.
   Future<void> _showMenu() async {
+    final snapshot = widget.viewModel.snapshot;
+    final hasEntries = snapshot?.day.entries.isNotEmpty ?? false;
+    final hasTemplates = snapshot?.templates.isNotEmpty ?? false;
     final choice = await showGainerActionSheet<_NutritionMenuAction>(
       context: context,
       title: 'Ernährung',
-      groups: const [
+      groups: [
         [
           GainerSheetAction(
-            label: 'Gerichte und Ziele verwalten',
+            label: 'Tag als Vorlage speichern',
+            icon: CupertinoIcons.square_arrow_down,
+            hint: hasEntries ? null : 'Der Tag hat noch keine Einträge.',
+            enabled: hasEntries,
+            value: _NutritionMenuAction.saveTemplate,
+          ),
+          GainerSheetAction(
+            label: 'Aus Vorlage befüllen',
+            icon: CupertinoIcons.doc_on_doc,
+            hint: hasTemplates ? null : 'Noch keine Vorlage gespeichert.',
+            enabled: hasTemplates,
+            value: _NutritionMenuAction.applyTemplate,
+          ),
+        ],
+        const [
+          GainerSheetAction(
+            label: 'Ziele',
+            icon: CupertinoIcons.scope,
+            value: _NutritionMenuAction.targets,
+          ),
+          GainerSheetAction(
+            label: 'Gerichte und Vorlagen verwalten',
             icon: CupertinoIcons.slider_horizontal_3,
             value: _NutritionMenuAction.planning,
           ),
         ],
       ],
     );
-    if (choice == _NutritionMenuAction.planning && mounted) {
-      await _openPlanning();
+    if (!mounted) return;
+    switch (choice) {
+      case _NutritionMenuAction.saveTemplate:
+        await _saveDayAsTemplate();
+      case _NutritionMenuAction.applyTemplate:
+        await _applyTemplate();
+      case _NutritionMenuAction.targets:
+        await _editTargets();
+      case _NutritionMenuAction.planning:
+        await _openPlanning();
+      case null:
     }
+  }
+
+  /// Öffnet den Ziel-Editor; gespeichert wird mit Wirkung ab heute.
+  Future<void> _editTargets() async {
+    final vm = widget.viewModel;
+    vm.dismissActionError();
+    final current = await vm.repository.currentTargets();
+    final projection = await vm.repository.readProjection();
+    if (!mounted) return;
+    final training = widget.training;
+    final input = await showNutritionTargetsEditor(
+      context,
+      current: current,
+      hasSchedule: projection.schedule != null,
+      onSetUpSchedule: training == null
+          ? null
+          : () => showTrainingScheduleSheet(context, repository: training),
+    );
+    if (input == null || !mounted) return;
+    await vm.saveTargets(
+      training: input.training,
+      restDay: input.restDay,
+      saltGrams: input.saltGrams,
+    );
+  }
+
+  Future<void> _chooseDayKind(NutritionSnapshot snapshot) async {
+    final result = await showDayKindSheet(
+      context,
+      automatic: snapshot.automaticDayKind,
+      current: snapshot.day.dayKind,
+    );
+    if (!result.changed || !mounted) return;
+    await widget.viewModel.setDayKind(result.kind);
+  }
+
+  Future<void> _saveDayAsTemplate() async {
+    final vm = widget.viewModel;
+    final templates = vm.snapshot?.templates ?? const <NutritionDayTemplate>[];
+    final choice = await showSaveTemplateSheet(context, templates: templates);
+    if (!mounted) return;
+    switch (choice) {
+      case SaveAsNewTemplate(:final name, :final dayKind):
+        await vm.saveDayAsTemplate(name: name, dayKind: dayKind);
+      case OverwriteTemplate(:final templateId):
+        await vm.saveDayAsTemplate(overwriteId: templateId);
+      case null:
+    }
+  }
+
+  Future<void> _applyTemplate() async {
+    final vm = widget.viewModel;
+    final snapshot = vm.snapshot;
+    if (snapshot == null || snapshot.templates.isEmpty) return;
+    final template = await showChooseTemplateSheet(
+      context,
+      templates: snapshot.templates,
+    );
+    if (template == null || !mounted) return;
+    var mode = TemplateApplyMode.append;
+    if (snapshot.day.entries.isNotEmpty) {
+      final chosen = await askTemplateApplyMode(context);
+      if (chosen == null || !mounted) return;
+      mode = chosen;
+    }
+    await vm.applyTemplate(template.templateId, mode: mode);
   }
 
   /// Öffnet den gemeinsamen Hinzufügen-Dialog als Sheet. Für [DayMealTarget]
@@ -929,7 +1105,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
         builder: (_) => AnimatedBuilder(
           animation: vm,
           builder: (context, _) => GainerScaffold(
-            title: 'Gerichte und Ziele',
+            title: 'Gerichte und Vorlagen',
             leading: GainerToolbarButton(
               key: const ValueKey('nutrition-planning-back'),
               icon: CupertinoIcons.chevron_left,
@@ -954,18 +1130,34 @@ class _NutritionScreenState extends State<NutritionScreen> {
                 ],
               ),
               const SizedBox(height: GainerSpacing.l),
-              const GainerSectionHeader(title: 'Zielphasen'),
+              const GainerSectionHeader(title: 'Tagesvorlagen'),
               const SizedBox(height: GainerSpacing.xs),
               GainerGroupedSection(
+                footer: vm.snapshot?.templates.isEmpty ?? true
+                    ? 'Speichere einen Tag über „…“ → „Tag als Vorlage speichern“.'
+                    : null,
                 children: [
-                  GainerListRow(
-                    title: 'Zielphase hinzufügen',
-                    leadingIcon: CupertinoIcons.add,
-                    showChevron: true,
-                    onTap: () => _editTargetPhase(),
-                  ),
-                  ..._targetPhaseRows(vm),
+                  for (final template
+                      in vm.snapshot?.templates ??
+                          const <NutritionDayTemplate>[])
+                    NutritionDayTemplateRow(
+                      key: ValueKey('day-template-row-${template.templateId}'),
+                      template: template,
+                      onOpen: () => _openTemplate(template),
+                      onDelete: () => vm.deleteTemplate(template.templateId),
+                    ),
+                  if (vm.snapshot?.templates.isEmpty ?? true)
+                    const GainerListRow(title: 'Noch keine Vorlagen'),
                 ],
+              ),
+              const SizedBox(height: GainerSpacing.l),
+              const GainerSectionHeader(title: 'Ziele'),
+              const SizedBox(height: GainerSpacing.xs),
+              _TargetsSummary(
+                target: vm.snapshot?.targetSchedule?.targetOn(
+                  _dateString(vm.repository.clock()),
+                ),
+                onEdit: _editTargets,
               ),
             ],
           ),
@@ -988,25 +1180,19 @@ class _NutritionScreenState extends State<NutritionScreen> {
       ),
   ];
 
-  List<Widget> _targetPhaseRows(NutritionViewModel vm) => [
-    for (final phase in vm.snapshot?.targetSchedule?.versions ?? const [])
-      _TargetPhaseRow(
-        key: ValueKey('target-phase-${phase.targetVersionId}'),
-        phase: phase,
-        onEdit: _isUpcomingPhase(vm, phase)
-            ? () => _editTargetPhase(existing: phase)
-            : null,
-        onDelete: _isUpcomingPhase(vm, phase)
-            ? () => vm.removeTargetPhase(phase.targetVersionId)
-            : null,
-        onConfirmDelete: _isUpcomingPhase(vm, phase)
-            ? () => _confirmRemoveTargetPhase(phase)
-            : null,
-      ),
-  ];
-
-  bool _isUpcomingPhase(NutritionViewModel vm, NutritionTargetVersion phase) =>
-      phase.effectiveFrom.compareTo(_dateString(vm.repository.clock())) > 0;
+  Future<void> _openTemplate(NutritionDayTemplate template) =>
+      Navigator.of(context).push<void>(
+        CupertinoPageRoute<void>(
+          builder: (_) => NutritionDayTemplatePage(
+            template: template,
+            onSaveMeta: (name, dayKind) => widget.viewModel.updateTemplateMeta(
+              template.templateId,
+              name: name,
+              dayKind: dayKind,
+            ),
+          ),
+        ),
+      );
 
   Future<void> _shiftDay(int days) {
     final date = DateTime.parse(widget.viewModel.localDate)
@@ -1568,307 +1754,6 @@ class _NutritionScreenState extends State<NutritionScreen> {
     }
   }
 
-  Future<void> _editTargetPhase({NutritionTargetVersion? existing}) async {
-    final name = TextEditingController(text: existing?.name ?? '');
-    final from = TextEditingController(
-      text: existing?.effectiveFrom ?? widget.viewModel.localDate,
-    );
-    final until = TextEditingController(text: existing?.effectiveUntil ?? '');
-    final kcal = TextEditingController(
-      text: existing == null ? '2000' : _grams(existing.kilocalories),
-    );
-    final protein = TextEditingController(
-      text: existing == null
-          ? '25'
-          : _targetPart(existing, NutritionTargetInputMode.percent, 0),
-    );
-    final carbs = TextEditingController(
-      text: existing == null
-          ? '50'
-          : _targetPart(existing, NutritionTargetInputMode.percent, 1),
-    );
-    final fat = TextEditingController(
-      text: existing == null
-          ? '25'
-          : _targetPart(existing, NutritionTargetInputMode.percent, 2),
-    );
-    final salt = TextEditingController(
-      text: _grams(
-        existing?.effectiveSaltGrams ?? NutritionTargetVersion.defaultSaltGrams,
-      ),
-    );
-    final draft = _TargetPhaseDraft(
-      category: existing?.category ?? NutritionTargetCategory.custom,
-      mode: existing?.inputMode ?? NutritionTargetInputMode.percent,
-    );
-    final c = _TargetPhaseControllers(
-      name: name,
-      from: from,
-      until: until,
-      kcal: kcal,
-      protein: protein,
-      carbs: carbs,
-      fat: fat,
-      salt: salt,
-    );
-    try {
-      final fields = await Navigator.of(context)
-          .push<
-            ({NutritionTargetCategory category, NutritionTargetInputMode mode})
-          >(
-            CupertinoPageRoute<
-              ({
-                NutritionTargetCategory category,
-                NutritionTargetInputMode mode,
-              })
-            >(
-              builder: (context) => StatefulBuilder(
-                builder: (context, setDialogState) => _targetPhasePage(
-                  context,
-                  setDialogState,
-                  existing,
-                  c,
-                  draft,
-                ),
-              ),
-            ),
-          );
-      if (fields == null || !mounted) return;
-      NutritionTotals totals;
-      if (fields.mode == NutritionTargetInputMode.percent) {
-        totals = macroGramsFromPercent(
-          kilocalories: _parse(kcal.text)!,
-          proteinPercent: _parse(protein.text)!,
-          carbohydratePercent: _parse(carbs.text)!,
-          fatPercent: _parse(fat.text)!,
-        );
-      } else {
-        totals = NutritionTotals(
-          kilocalories: _parse(kcal.text)!,
-          proteinGrams: _parse(protein.text)!,
-          carbohydrateGrams: _parse(carbs.text)!,
-          fatGrams: _parse(fat.text)!,
-        );
-      }
-      final phase = NutritionTargetVersion(
-        targetVersionId:
-            existing?.targetVersionId ?? widget.viewModel.repository.ids(),
-        name: name.text,
-        category: fields.category,
-        effectiveFrom: from.text.trim(),
-        effectiveUntil: until.text.trim().isEmpty ? null : until.text.trim(),
-        inputMode: fields.mode,
-        kilocalories: _parse(kcal.text)!,
-        proteinGrams: totals.proteinGrams!,
-        carbohydrateGrams: totals.carbohydrateGrams!,
-        fatGrams: totals.fatGrams!,
-        proteinPercent: fields.mode == NutritionTargetInputMode.percent
-            ? _parse(protein.text)
-            : null,
-        carbohydratePercent: fields.mode == NutritionTargetInputMode.percent
-            ? _parse(carbs.text)
-            : null,
-        fatPercent: fields.mode == NutritionTargetInputMode.percent
-            ? _parse(fat.text)
-            : null,
-        origin: existing?.origin ?? 'Manual',
-        algorithmVersion: existing?.algorithmVersion,
-        reason: existing?.reason,
-        saltGrams: _saltTarget(salt.text, existing),
-      );
-      await widget.viewModel.saveTargetPhase(
-        phase,
-        closeOpenPreviousPhase: true,
-        update: existing != null,
-      );
-    } catch (error) {
-      widget.viewModel.reportInputError(
-        error.toString(),
-        operation: NutritionErrorOperation.planning,
-      );
-    } finally {
-      c.dispose();
-    }
-  }
-
-  Widget _targetPhasePage(
-    BuildContext context,
-    StateSetter setDialogState,
-    NutritionTargetVersion? existing,
-    _TargetPhaseControllers c,
-    _TargetPhaseDraft draft,
-  ) {
-    void refresh() => setDialogState(() {});
-    final percent = draft.mode == NutritionTargetInputMode.percent;
-    return _FormPage(
-      title: existing == null ? 'Zielphase hinzufügen' : 'Zielphase bearbeiten',
-      closeKey: const ValueKey('nutrition-target-close'),
-      onSave:
-          _validTargetInput(
-                c.name,
-                c.from,
-                c.until,
-                c.kcal,
-                c.protein,
-                c.carbs,
-                c.fat,
-                draft.mode,
-              ) &&
-              _validSaltTarget(c.salt)
-          ? () => Navigator.pop(context, (
-              category: draft.category,
-              mode: draft.mode,
-            ))
-          : null,
-      children: [
-        GainerGroupedSection(
-          children: [
-            GainerTextFieldRow(
-              label: 'Name',
-              controller: c.name,
-              onChanged: (_) => refresh(),
-            ),
-            GainerTextFieldRow(
-              label: 'Gültig ab',
-              placeholder: 'JJJJ-MM-TT',
-              controller: c.from,
-              onChanged: (_) => refresh(),
-            ),
-            GainerTextFieldRow(
-              label: 'Gültig bis',
-              placeholder: 'Optional',
-              controller: c.until,
-              onChanged: (_) => refresh(),
-            ),
-            GainerTextFieldRow(
-              label: 'Kalorien pro Tag',
-              unit: 'kcal',
-              controller: c.kcal,
-              keyboardType: _decimalKeyboard,
-              onChanged: (_) => refresh(),
-            ),
-          ],
-        ),
-        const SizedBox(height: GainerSpacing.m),
-        GainerGroupedSection(
-          children: [
-            GainerListRow(
-              title: 'Kategorie',
-              value: _categoryName(draft.category),
-              showChevron: true,
-              onTap: () async {
-                final selected = await _chooseCategory();
-                if (selected != null) {
-                  setDialogState(() => draft.category = selected);
-                }
-              },
-            ),
-            GainerListRow(
-              title: 'Makroeingabe',
-              value: percent ? 'Prozent (4/4/9)' : 'Gramm',
-              showChevron: true,
-              onTap: () => setDialogState(
-                () => draft.mode = percent
-                    ? NutritionTargetInputMode.grams
-                    : NutritionTargetInputMode.percent,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: GainerSpacing.m),
-        GainerGroupedSection(
-          footer: percent
-              ? 'Prozentanteile müssen zusammen 100 % ergeben; Gramm werden mit 4/4/9 kcal berechnet.'
-              : null,
-          children: [
-            GainerTextFieldRow(
-              label: 'Protein',
-              unit: percent ? '%' : 'g',
-              controller: c.protein,
-              keyboardType: _decimalKeyboard,
-              onChanged: (_) => refresh(),
-            ),
-            GainerTextFieldRow(
-              label: 'Kohlenhydrate',
-              unit: percent ? '%' : 'g',
-              controller: c.carbs,
-              keyboardType: _decimalKeyboard,
-              onChanged: (_) => refresh(),
-            ),
-            GainerTextFieldRow(
-              label: 'Fett',
-              unit: percent ? '%' : 'g',
-              controller: c.fat,
-              keyboardType: _decimalKeyboard,
-              onChanged: (_) => refresh(),
-            ),
-          ],
-        ),
-        const SizedBox(height: GainerSpacing.m),
-        GainerGroupedSection(
-          footer: 'Obergrenze pro Tag. Die DGE empfiehlt höchstens 6 g Salz am Tag.',
-          children: [
-            GainerTextFieldRow(
-              label: 'Salz höchstens',
-              unit: 'g',
-              controller: c.salt,
-              keyboardType: _decimalKeyboard,
-              fieldKey: const ValueKey('nutrition-target-salt'),
-              onChanged: (_) => refresh(),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  /// Leer heißt Standardwert; sonst größer als 0 und höchstens 100 g.
-  bool _validSaltTarget(TextEditingController salt) {
-    if (salt.text.trim().isEmpty) return true;
-    final value = _parse(salt.text);
-    return value != null && value > 0 && value <= 100;
-  }
-
-  /// Bleibt beim Standardwert offen (null), solange die Phase keinen eigenen
-  /// hatte; so ändert ein unveränderter Standard keine bestehende Phase.
-  double? _saltTarget(String text, NutritionTargetVersion? existing) {
-    final value = _parse(text);
-    if (value == null) return null;
-    if (existing?.saltGrams == null &&
-        value == NutritionTargetVersion.defaultSaltGrams) {
-      return null;
-    }
-    return value;
-  }
-
-  bool _validTargetInput(
-    TextEditingController name,
-    TextEditingController from,
-    TextEditingController until,
-    TextEditingController kcal,
-    TextEditingController protein,
-    TextEditingController carbs,
-    TextEditingController fat,
-    NutritionTargetInputMode mode,
-  ) {
-    final numbers = [
-      _parse(kcal.text),
-      _parse(protein.text),
-      _parse(carbs.text),
-      _parse(fat.text),
-    ];
-    final percentagesValid =
-        mode != NutritionTargetInputMode.percent ||
-        (numbers.skip(1).every((value) => value != null) &&
-            (numbers[1]! + numbers[2]! + numbers[3]! - 100).abs() <= .01);
-    return name.text.trim().isNotEmpty &&
-        isValidLocalDate(from.text.trim()) &&
-        (until.text.trim().isEmpty || isValidLocalDate(until.text.trim())) &&
-        numbers.every((value) => value != null && value >= 0) &&
-        (numbers.first ?? 0) > 0 &&
-        percentagesValid;
-  }
-
   Future<T?> _chooseFromSheet<T>({
     required String title,
     required List<({String label, IconData icon, T value})> options,
@@ -1885,29 +1770,6 @@ class _NutritionScreenState extends State<NutritionScreen> {
           ),
       ],
     ],
-  );
-
-  Future<NutritionTargetCategory?> _chooseCategory() =>
-      _chooseFromSheet<NutritionTargetCategory>(
-        title: 'Zielkategorie',
-        options: [
-          for (final category in NutritionTargetCategory.values)
-            (
-              label: _categoryName(category),
-              icon: _categoryIcon(category),
-              value: category,
-            ),
-        ],
-      );
-
-  Future<bool> _confirmRemoveTargetPhase(
-    NutritionTargetVersion phase,
-  ) => confirmGainerDelete(
-    context,
-    title: 'Zielphase entfernen?',
-    message:
-        'Die Phase „${phase.name}“ wird aus dem lokalen Plan entfernt. Bereits abgeschlossene Tage bleiben unverändert.',
-    deleteLabel: 'Entfernen',
   );
 
   Future<void> _addManual(
@@ -2213,13 +2075,6 @@ IconData _mealIcon(NutritionMeal meal) => switch (meal) {
   NutritionMeal.lunch => CupertinoIcons.sun_max,
   NutritionMeal.dinner => CupertinoIcons.moon,
   NutritionMeal.snacks => CupertinoIcons.square_grid_2x2,
-};
-
-IconData _categoryIcon(NutritionTargetCategory category) => switch (category) {
-  NutritionTargetCategory.custom => CupertinoIcons.slider_horizontal_3,
-  NutritionTargetCategory.cut => CupertinoIcons.minus_circle,
-  NutritionTargetCategory.maintenance => CupertinoIcons.equal_circle,
-  NutritionTargetCategory.bulk => CupertinoIcons.plus_circle,
 };
 
 const _decimalKeyboard = TextInputType.numberWithOptions(decimal: true);
@@ -2563,50 +2418,6 @@ class _EntryEditControllers {
   }
 }
 
-class _TargetPhaseDraft {
-  _TargetPhaseDraft({required this.category, required this.mode});
-
-  NutritionTargetCategory category;
-  NutritionTargetInputMode mode;
-}
-
-class _TargetPhaseControllers {
-  const _TargetPhaseControllers({
-    required this.name,
-    required this.from,
-    required this.until,
-    required this.kcal,
-    required this.protein,
-    required this.carbs,
-    required this.fat,
-    required this.salt,
-  });
-
-  final TextEditingController name;
-  final TextEditingController from;
-  final TextEditingController until;
-  final TextEditingController kcal;
-  final TextEditingController protein;
-  final TextEditingController carbs;
-  final TextEditingController fat;
-  final TextEditingController salt;
-
-  void dispose() {
-    for (final controller in [
-      name,
-      from,
-      until,
-      kcal,
-      protein,
-      carbs,
-      fat,
-      salt,
-    ]) {
-      controller.dispose();
-    }
-  }
-}
-
 class _LabelTargetDraft {
   String value = 'diary';
 }
@@ -2677,21 +2488,77 @@ class _DayNavigator extends StatelessWidget {
 
 /// Eine Tageskarte: Kalorien groß mit Fortschritt, darunter drei kompakte
 /// Makro-Spalten. Ohne Ziele nur die Ist-Werte und der Weg zu den Zielen.
+/// Aktuelle Ziele im Bereich „Ziele“; Antippen öffnet den Editor.
+class _TargetsSummary extends StatelessWidget {
+  const _TargetsSummary({required this.target, required this.onEdit});
+
+  final NutritionTargetVersion? target;
+  final VoidCallback onEdit;
+
+  String _line(NutritionDayTarget value) =>
+      '${_fmtKcal(value.kilocalories)} kcal · P ${_fmtGrams(value.proteinGrams)} g · KH ${_fmtGrams(value.carbohydrateGrams)} g · F ${_fmtGrams(value.fatGrams)} g';
+
+  @override
+  Widget build(BuildContext context) {
+    final current = target;
+    return GainerGroupedSection(
+      footer: current == null
+          ? null
+          : 'Änderungen gelten ab heute. Vergangene Tage behalten ihr Ziel.',
+      children: current == null
+          ? [
+              GainerListRow(
+                key: const ValueKey('nutrition-targets-set'),
+                title: 'Ziele festlegen',
+                leadingIcon: CupertinoIcons.add,
+                showChevron: true,
+                onTap: onEdit,
+              ),
+            ]
+          : [
+              GainerListRow(
+                key: const ValueKey('nutrition-targets-training'),
+                title: current.restDay == null ? 'Pro Tag' : 'Trainingstag',
+                subtitle: _line(current.trainingDay),
+                showChevron: true,
+                onTap: onEdit,
+              ),
+              if (current.restDay case final rest?)
+                GainerListRow(
+                  key: const ValueKey('nutrition-targets-rest'),
+                  title: 'Ruhetag',
+                  subtitle: _line(rest),
+                  showChevron: true,
+                  onTap: onEdit,
+                ),
+              GainerListRow(
+                title: 'Salz',
+                value: '≤ ${_fmtGrams(current.effectiveSaltGrams)} g',
+                onTap: onEdit,
+              ),
+            ],
+    );
+  }
+}
+
 class _DayCard extends StatelessWidget {
   const _DayCard({
     required this.totals,
     required this.target,
     required this.onManage,
+    required this.onDayKind,
   });
 
   final NutritionTotals totals;
-  final NutritionTargetVersion? target;
+  final NutritionDayTargetResult? target;
   final VoidCallback onManage;
+  final VoidCallback onDayKind;
 
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    final goal = target;
+    final goal = target?.target;
+    final kind = target?.kind;
     final kcal = totals.kilocalories;
     final remaining = goal == null ? null : goal.kilocalories - kcal;
     return Semantics(
@@ -2705,6 +2572,18 @@ class _DayCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Tagesart nur, wenn es ein Ruhetag-Ziel gibt.
+              if (kind != null) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: NutritionDayKindChip(
+                    kind: kind,
+                    manual: target!.manual,
+                    onTap: onDayKind,
+                  ),
+                ),
+                const SizedBox(height: GainerSpacing.xs),
+              ],
               Semantics(
                 label: 'Tageskalorien ${_fmtKcal(kcal)} Kilokalorien',
                 child: Text.rich(
@@ -2774,7 +2653,7 @@ class _DayCard extends StatelessWidget {
                     colors,
                     'Salz',
                     totals.saltGrams,
-                    goal?.effectiveSaltGrams,
+                    target?.effectiveSaltGrams,
                   ),
                   const SizedBox(width: GainerSpacing.s),
                   const Spacer(),
@@ -2878,7 +2757,7 @@ String _dateLabel(String value, String today) {
 
 enum _EntryAction { move, remove }
 
-enum _NutritionMenuAction { planning }
+enum _NutritionMenuAction { saveTemplate, applyTemplate, targets, planning }
 
 /// Mahlzeit: Abschnittsüberschrift mit kcal rechts, darunter eine gruppierte
 /// Karte mit einer Zeile je Eintrag. Wischen nach links löscht nach
@@ -3184,44 +3063,6 @@ class _ReusableMealRow extends StatelessWidget {
   }
 }
 
-/// Zielphase als Listenzeile. Bearbeiten per Antippen, künftige Phasen lassen
-/// sich nach links wischen und nach Bestätigung entfernen.
-class _TargetPhaseRow extends StatelessWidget {
-  const _TargetPhaseRow({
-    super.key,
-    required this.phase,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onConfirmDelete,
-  });
-
-  final NutritionTargetVersion phase;
-  final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
-  final Future<bool> Function()? onConfirmDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final row = GainerListRow(
-      title: phase.name,
-      subtitle:
-          '${phase.effectiveFrom} – ${phase.effectiveUntil ?? 'offen'} · ${_fmtKcal(phase.kilocalories)} kcal · P ${_fmtGrams(phase.proteinGrams)} g · KH ${_fmtGrams(phase.carbohydrateGrams)} g · F ${_fmtGrams(phase.fatGrams)} g · Salz ≤ ${_fmtGrams(phase.effectiveSaltGrams)} g',
-      showChevron: onEdit != null,
-      onTap: onEdit,
-    );
-    final delete = onDelete;
-    final confirm = onConfirmDelete;
-    if (delete == null || confirm == null) return row;
-    return GainerSwipeToDelete(
-      dismissKey: ValueKey('target-phase-swipe-${phase.targetVersionId}'),
-      label: 'Entfernen',
-      confirm: confirm,
-      onDeleted: delete,
-      child: row,
-    );
-  }
-}
-
 class _IngredientControllers {
   _IngredientControllers()
     : componentId = null,
@@ -3347,31 +3188,6 @@ String _mealShortName(NutritionMeal meal) => switch (meal) {
 String _optionalGrams(double? value) => value == null ? '' : _grams(value);
 String _dateString(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-String _categoryName(NutritionTargetCategory category) => switch (category) {
-  NutritionTargetCategory.custom => 'Benutzerdefiniert',
-  NutritionTargetCategory.cut => 'Abnehmen',
-  NutritionTargetCategory.maintenance => 'Erhalten',
-  NutritionTargetCategory.bulk => 'Aufbauen',
-};
-String _targetPart(
-  NutritionTargetVersion value,
-  NutritionTargetInputMode mode,
-  int index,
-) {
-  final percent = switch (index) {
-    0 => value.proteinPercent,
-    1 => value.carbohydratePercent,
-    _ => value.fatPercent,
-  };
-  final grams = switch (index) {
-    0 => value.proteinGrams,
-    1 => value.carbohydrateGrams,
-    _ => value.fatGrams,
-  };
-  return _grams(
-    mode == NutritionTargetInputMode.percent ? (percent ?? 0) : grams,
-  );
-}
 
 /// Beschreibung der Mahlzeit mit Foto- und Diktat-Button im selben Feld.
 class _MealDescriptionInput extends StatelessWidget {

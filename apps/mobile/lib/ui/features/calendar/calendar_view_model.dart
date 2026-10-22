@@ -5,6 +5,7 @@ import '../../../data/repositories/nutrition/nutrition_repository.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/body/body_tracking.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
+import '../../../domain/models/nutrition/day_target.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
 import '../../../domain/models/training/training_plan_model.dart';
@@ -63,16 +64,25 @@ class CalendarNutritionTarget {
     required this.carbohydrateGrams,
     required this.fatGrams,
     this.saltGrams = NutritionTargetVersion.defaultSaltGrams,
+    this.kind,
+    this.manual = false,
+    this.automaticKind = NutritionDayKind.rest,
   });
 
-  CalendarNutritionTarget.of(NutritionTargetVersion version)
-    : this(
-        kilocalories: version.kilocalories,
-        proteinGrams: version.proteinGrams,
-        carbohydrateGrams: version.carbohydrateGrams,
-        fatGrams: version.fatGrams,
-        saltGrams: version.effectiveSaltGrams,
-      );
+  /// Ziel nach Tagesart; [automatic] ist die Tagesart ohne Festlegung.
+  CalendarNutritionTarget.of(
+    NutritionDayTargetResult result, {
+    required NutritionDayKind automatic,
+  }) : this(
+         kilocalories: result.target.kilocalories,
+         proteinGrams: result.target.proteinGrams,
+         carbohydrateGrams: result.target.carbohydrateGrams,
+         fatGrams: result.target.fatGrams,
+         saltGrams: result.effectiveSaltGrams,
+         kind: result.kind,
+         manual: result.manual,
+         automaticKind: automatic,
+       );
 
   final double kilocalories;
   final double proteinGrams;
@@ -81,6 +91,15 @@ class CalendarNutritionTarget {
 
   /// Salzobergrenze des Tages.
   final double saltGrams;
+
+  /// Tagesart; null ohne Ruhetag-Ziel (dann ohne Bedeutung).
+  final NutritionDayKind? kind;
+
+  /// Hat der Nutzer die Tagesart festgelegt?
+  final bool manual;
+
+  /// Tagesart ohne Festlegung, für „Automatisch (…)“.
+  final NutritionDayKind automaticKind;
 }
 
 /// Ernährung eines Tages mit Ziel, sofern eine Zielphase gilt.
@@ -477,11 +496,24 @@ class CalendarViewModel extends ChangeNotifier {
     };
 
     final targets = food?.targets;
-    CalendarNutritionTarget? targetOn(LocalDay day) =>
-        switch (targets?.targetOn(day.toIso())) {
-          final version? => CalendarNutritionTarget.of(version),
-          null => null,
-        };
+    final manualKinds = <String, NutritionDayKind?>{
+      for (final entry in food?.days ?? const <NutritionDay>[])
+        entry.localDate: entry.dayKind,
+    };
+    CalendarNutritionTarget? targetOn(LocalDay day) {
+      final result = dayTarget(
+        localDate: day.toIso(),
+        targets: targets,
+        manualKind: manualKinds[day.toIso()],
+        projection: projection,
+      );
+      return result == null
+          ? null
+          : CalendarNutritionTarget.of(
+              result,
+              automatic: automaticDayKind(day, projection),
+            );
+    }
 
     final nutritionByDay = <LocalDay, CalendarNutrition>{};
     for (final entry in food?.days ?? const <NutritionDay>[]) {

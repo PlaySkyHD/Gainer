@@ -480,6 +480,7 @@ const forceableAggregateTypes = {
   'exercise-category',
   'daily-check-in',
   'nutrition-day',
+  'nutrition-day-template',
   'cardio-session',
 };
 
@@ -525,6 +526,7 @@ bool _hasServerType(String aggregateType) => switch (aggregateType) {
   'nutrition-day' ||
   'reusable-meal' ||
   'nutrition-target-schedule' ||
+  'nutrition-day-template' ||
   'cardio-session' => true,
   _ => false,
 };
@@ -578,6 +580,7 @@ String _serverType(String aggregateType) => switch (aggregateType) {
   'nutrition-day' => 'NutritionDay',
   'reusable-meal' => 'ReusableMeal',
   'nutrition-target-schedule' => 'NutritionTargetSchedule',
+  'nutrition-day-template' => 'NutritionDayTemplate',
   'cardio-session' => 'CardioSession',
   _ => throw ArgumentError.value(aggregateType, 'aggregateType'),
 };

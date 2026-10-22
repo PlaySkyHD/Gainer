@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import '../nutrition/nutrition_day_kind.dart';
 import 'calendar_format.dart';
 import 'calendar_view_model.dart';
 
@@ -15,11 +16,15 @@ class CalendarNutritionOverview extends StatelessWidget {
   const CalendarNutritionOverview({
     required this.nutrition,
     required this.onTap,
+    this.onDayKind,
     super.key,
   });
 
   final CalendarNutrition nutrition;
   final VoidCallback onTap;
+
+  /// Öffnet „Zählt als“; der Chip erscheint nur mit Ruhetag-Ziel.
+  final VoidCallback? onDayKind;
 
   /// Ab dieser Textgröße werden Ring und Makros gestapelt.
   static const _stackScale = 1.4;
@@ -29,6 +34,14 @@ class CalendarNutritionOverview extends StatelessWidget {
     final colors = GainerDesign.colorsOf(context);
     final stacked = MediaQuery.textScalerOf(context).scale(1) > _stackScale;
     final summary = _Summary.of(nutrition);
+    final chip = switch (nutrition.target?.kind) {
+      final kind? => NutritionDayKindChip(
+        kind: kind,
+        manual: nutrition.target!.manual,
+        onTap: onDayKind,
+      ),
+      null => null,
+    };
     return Semantics(
       container: true,
       button: true,
@@ -57,6 +70,10 @@ class CalendarNutritionOverview extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (chip != null && !stacked) ...[
+                      Flexible(child: chip),
+                      const SizedBox(width: GainerSpacing.xs),
+                    ],
                     Icon(
                       CupertinoIcons.chevron_forward,
                       size: 16,
@@ -64,6 +81,11 @@ class CalendarNutritionOverview extends StatelessWidget {
                     ),
                   ],
                 ),
+                // Bei großer Schrift steht die Tagesart in eigener Zeile.
+                if (chip != null && stacked) ...[
+                  const SizedBox(height: GainerSpacing.xs),
+                  Align(alignment: Alignment.centerLeft, child: chip),
+                ],
                 const SizedBox(height: GainerSpacing.s),
                 _energy(summary, stacked),
                 const SizedBox(height: GainerSpacing.l),

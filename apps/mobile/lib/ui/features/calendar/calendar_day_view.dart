@@ -31,6 +31,7 @@ class CalendarDayView extends StatelessWidget {
     required this.onOpenWorkout,
     required this.onOpenNutrition,
     required this.onOpenCheckIn,
+    this.onDayKind,
     this.onOpenCardio,
     this.onOpenTraining,
     this.overview,
@@ -53,6 +54,9 @@ class CalendarDayView extends StatelessWidget {
   final ValueChanged<CardioSession>? onOpenCardio;
   final VoidCallback onOpenNutrition;
   final VoidCallback onOpenCheckIn;
+
+  /// Öffnet „Zählt als“ für die Tagesart des Tages.
+  final VoidCallback? onDayKind;
 
   /// Öffnet den Trainings-Tab aus der Trainingsübersicht.
   final VoidCallback? onOpenTraining;
@@ -247,6 +251,7 @@ class CalendarDayView extends StatelessWidget {
     return CalendarNutritionOverview(
       nutrition: nutrition,
       onTap: onOpenNutrition,
+      onDayKind: onDayKind,
     );
   }
 

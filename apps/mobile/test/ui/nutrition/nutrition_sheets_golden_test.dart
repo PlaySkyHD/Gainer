@@ -72,7 +72,7 @@ void main() {
       await harness.viewModel.load();
       await tester.tap(find.byKey(const ValueKey('nutrition-more-menu')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Gerichte und Ziele verwalten'));
+      await tester.tap(find.text('Gerichte und Vorlagen verwalten'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('reusable-meal-Reisbowl')));
       await tester.pumpAndSettle();
