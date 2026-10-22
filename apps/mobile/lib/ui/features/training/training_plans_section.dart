@@ -42,14 +42,36 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
   /// Reihenfolge während eines Umordnens, bis das Speichern abgeschlossen ist.
   List<String>? _pendingOrder;
 
+  /// Zuletzt gesehenes aktives Training. Endet ein Plan-Training, rückt die
+  /// Rotation weiter; der Vorschlag soll das ohne Neustart zeigen.
+  late String? _activeWorkoutId = widget.activeWorkout.active?.workoutId;
+
   @override
   void initState() {
     super.initState();
+    widget.activeWorkout.addListener(_onActiveWorkoutChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _viewModel.load());
   }
 
   @override
+  void didUpdateWidget(TrainingPlansSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.activeWorkout, widget.activeWorkout)) return;
+    oldWidget.activeWorkout.removeListener(_onActiveWorkoutChanged);
+    widget.activeWorkout.addListener(_onActiveWorkoutChanged);
+    _activeWorkoutId = widget.activeWorkout.active?.workoutId;
+  }
+
+  void _onActiveWorkoutChanged() {
+    final workoutId = widget.activeWorkout.active?.workoutId;
+    if (workoutId == _activeWorkoutId) return;
+    _activeWorkoutId = workoutId;
+    _viewModel.load();
+  }
+
+  @override
   void dispose() {
+    widget.activeWorkout.removeListener(_onActiveWorkoutChanged);
     _viewModel.dispose();
     super.dispose();
   }

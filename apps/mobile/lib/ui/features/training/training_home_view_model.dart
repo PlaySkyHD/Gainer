@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/cardio/cardio_repository.dart';
@@ -13,7 +15,9 @@ class TrainingHomeViewModel extends ChangeNotifier {
     required this.repository,
     required this.activeWorkout,
     this.cardio,
-  });
+  }) : _activeWorkoutId = activeWorkout.active?.workoutId {
+    activeWorkout.addListener(_onActiveWorkoutChanged);
+  }
 
   final TrainingLogRepository repository;
   final ActiveWorkoutController activeWorkout;
@@ -32,6 +36,18 @@ class TrainingHomeViewModel extends ChangeNotifier {
   bool isLoading = false;
   String? errorMessage;
   bool _disposed = false;
+
+  /// Zuletzt gesehenes aktives Training. Wechselt es, etwa durch einen Start
+  /// aus den Plänen oder ein Beenden über die Trainingsleiste, fehlt das
+  /// Training sonst bis zum nächsten Neuladen im Tagebuch.
+  String? _activeWorkoutId;
+
+  void _onActiveWorkoutChanged() {
+    final workoutId = activeWorkout.active?.workoutId;
+    if (workoutId == _activeWorkoutId) return;
+    _activeWorkoutId = workoutId;
+    unawaited(loadDiary());
+  }
 
   Future<void> loadDiary() async {
     if (_disposed) return;
@@ -119,6 +135,7 @@ class TrainingHomeViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    activeWorkout.removeListener(_onActiveWorkoutChanged);
     super.dispose();
   }
 }
