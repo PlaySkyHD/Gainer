@@ -264,6 +264,7 @@ class ApiMealEstimateComponent {
     this.proteinGrams,
     this.carbohydrateGrams,
     this.fatGrams,
+    this.saltGrams,
   });
 
   final String name;
@@ -272,6 +273,9 @@ class ApiMealEstimateComponent {
   final double? proteinGrams;
   final double? carbohydrateGrams;
   final double? fatGrams;
+
+  /// Nur bei Salz, das im Essen selbst steckt; fehlt bei älteren Servern.
+  final double? saltGrams;
   final String confidence;
   final List<String> dataGaps;
 
@@ -287,6 +291,7 @@ class ApiMealEstimateComponent {
       proteinGrams: _nullableDouble(json, 'proteinGrams'),
       carbohydrateGrams: _nullableDouble(json, 'carbohydrateGrams'),
       fatGrams: _nullableDouble(json, 'fatGrams'),
+      saltGrams: _nullableDouble(json, 'saltGrams'),
       confidence: _requiredString(json, 'confidence'),
       dataGaps: gaps.cast<String>(),
     );

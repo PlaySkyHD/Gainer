@@ -354,7 +354,8 @@ class NutritionViewModel extends ChangeNotifier {
       throw StateError('Die Schätzung ist nicht verfügbar.');
     }
     final item = draft.components[componentIndex];
-    if (item.amountGrams <= 0 || item.totals.kilocalories <= 0) {
+    // 0 kcal ist gültig, z. B. für den Bestandteil „Salz“.
+    if (item.amountGrams <= 0 || item.totals.kilocalories < 0) {
       throw StateError(
         'Der Schätzwert ist nicht gültig und muss manuell ergänzt werden.',
       );
@@ -391,7 +392,20 @@ class NutritionViewModel extends ChangeNotifier {
         ),
       );
       snapshot = await repository.read(localDate);
-      mealEstimateDraft = null;
+      // Nur den übernommenen Bestandteil entfernen; die übrigen bleiben
+      // zum Prüfen stehen.
+      final remaining = [
+        for (var i = 0; i < draft.components.length; i++)
+          if (i != componentIndex) draft.components[i],
+      ];
+      mealEstimateDraft = remaining.isEmpty
+          ? null
+          : MealEstimateDraft(
+              components: List.unmodifiable(remaining),
+              provider: draft.provider,
+              schemaVersion: draft.schemaVersion,
+              estimatedAtUtc: draft.estimatedAtUtc,
+            );
       statusMessage = 'Geprüfte Schätzung als Eintrag gespeichert.';
       _notify();
     }, saving: true);

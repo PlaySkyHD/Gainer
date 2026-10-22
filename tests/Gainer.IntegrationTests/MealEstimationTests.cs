@@ -102,6 +102,35 @@ public sealed class MealEstimationTests
         Assert.IsTrue(sanitized.All(value => value == 0));
     }
 
+    [TestMethod]
+    public async Task SaltIsEstimatedOnlyWhenInherentAndStatedSaltBecomesZeroCalorieComponent()
+    {
+        var provider = new FakeProvider(Response(new
+        {
+            components = new object[]
+            {
+                new { name = "Pizza Margherita", amountGrams = 350m, kilocalories = 890m, proteinGrams = (decimal?)35m, carbohydrateGrams = (decimal?)110m, fatGrams = (decimal?)30m, saltGrams = (decimal?)3.5m, confidence = "medium", dataGaps = Array.Empty<string>() },
+                new { name = "Reis", amountGrams = 200m, kilocalories = 260m, proteinGrams = (decimal?)6m, carbohydrateGrams = (decimal?)56m, fatGrams = (decimal?)0.6m, saltGrams = (decimal?)null, confidence = "medium", dataGaps = Array.Empty<string>() },
+                new { name = "Salz", amountGrams = 6m, kilocalories = 0m, proteinGrams = (decimal?)0m, carbohydrateGrams = (decimal?)0m, fatGrams = (decimal?)0m, saltGrams = (decimal?)6m, confidence = "high", dataGaps = Array.Empty<string>() },
+            },
+        }));
+        var service = new OpenAiMealEstimator(
+            provider, new RejectingSanitizer(), new PassQuota(),
+            new UserContext(Guid.NewGuid()), new FixedTimeProvider());
+
+        MealEstimateDraft result = await service.EstimateAsync(MealEstimationInput.Create(
+            "Pizza Margherita, Reis mit einem Teelöffel Salz", null, false));
+
+        Assert.AreEqual(3.5m, result.Components[0].SaltGrams);
+        Assert.IsNull(result.Components[1].SaltGrams);
+        Assert.AreEqual(0m, result.Components[2].Kilocalories);
+        Assert.AreEqual(6m, result.Components[2].SaltGrams);
+        Assert.AreEqual("meal-estimate-v2", result.SchemaVersion);
+        string request = provider.LastRequest.GetRawText();
+        Assert.Contains("never guess salt added while cooking", request);
+        Assert.Contains("saltGrams", request);
+    }
+
     private static JsonElement Response(object payload) => JsonSerializer.SerializeToElement(new
     {
         output = new[]
