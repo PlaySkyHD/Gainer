@@ -43,8 +43,8 @@ class FoodComponentDraft {
     if (!amountGrams.isFinite || amountGrams <= 0 || amountGrams > 100000) {
       return 'Die Menge muss zwischen 0 und 100.000 g liegen.';
     }
-    if (!per100Grams.kilocalories.isFinite || per100Grams.kilocalories <= 0) {
-      return 'Die Kalorien müssen größer als 0 sein.';
+    if (!per100Grams.kilocalories.isFinite || per100Grams.kilocalories < 0) {
+      return 'Die Kalorien dürfen nicht negativ sein.';
     }
     final macros = [
       per100Grams.proteinGrams,

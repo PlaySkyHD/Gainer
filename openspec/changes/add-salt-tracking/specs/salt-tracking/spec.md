@@ -16,6 +16,15 @@ Einträge und Gerichtsbestandteile SHALL optional Salz in Gramm pro 100 g speich
 - **WHEN** die Tagessumme berechnet wird
 - **THEN** beträgt sie 0,63 g Salz
 
+### Requirement: Selbst gesalzen
+
+Der Nutzer SHALL Salz, das er selbst ans Essen gibt, als eigenen Eintrag einer Mahlzeit oder als Bestandteil eines Gerichts hinzufügen können: per Schnellwahl (Prise 0,5 g, halber Teelöffel 3 g, Teelöffel 6 g) oder mit eigener Menge. Dieser Eintrag MUST 0 kcal haben und nur zum Salz des Tages zählen. Einträge mit 0 kcal SHALL dafür allgemein gültig sein.
+
+#### Scenario: Hähnchen mit Reis und Gemüse, selbst gewürzt
+- **GIVEN** das Mittagessen enthält Hähnchen, Reis und Gemüse
+- **WHEN** der Nutzer unter „Hinzufügen“ für Mittag „Salz hinzufügen“ wählt und „Teelöffel“ übernimmt
+- **THEN** enthält das Mittagessen einen Eintrag „Salz 6 g · 0 kcal“, und das Salz des Tages steigt um 6 g
+
 ### Requirement: Salzobergrenze in der Zielphase
 
 Zielphasen SHALL eine Salzobergrenze pro Tag haben. Ohne eigenen Wert SHALL 6 g gelten. Die Tageskarte SHALL „Salz x / y g“ zeigen und den Balken ab der Grenze in Warnfarbe darstellen.

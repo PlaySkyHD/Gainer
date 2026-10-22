@@ -10,6 +10,7 @@
 ## 2. App
 
 - [x] 2.1 `NutritionTotals.saltGrams`, Sync-Codec, API-Modelle, Zielphase.
+- [x] 2.3 „Salz hinzufügen“ mit Schnellwahl und eigener Menge, für Mahlzeiten und Gerichte; 0 kcal zulassen (D5); Tests, Vorschau.
 - [x] 2.2 Formularfeld, Tageskarte, Zielformular, Etiketten-Prüfung, Durchschnitte, Kalender (D4); Tests, Goldens, Vorschau bei Textgröße 1 und 2.
 
 ## 3. Abschluss

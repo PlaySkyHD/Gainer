@@ -100,7 +100,7 @@ public sealed record ReusableMealComponentDraft(
         NutritionPer100Grams values,
         Dictionary<string, string> errors)
     {
-        if (values.Kilocalories is <= 0m or > NutritionLimits.MaxKilocaloriesPer100Grams)
+        if (values.Kilocalories is < 0m or > NutritionLimits.MaxKilocaloriesPer100Grams)
             errors["KilocaloriesPer100Grams"] = "KilocaloriesPer100Grams is outside the allowed range.";
         ValidateOptional(values.ProteinGrams, "ProteinGramsPer100Grams", errors);
         ValidateOptional(values.CarbohydrateGrams, "CarbohydrateGramsPer100Grams", errors);

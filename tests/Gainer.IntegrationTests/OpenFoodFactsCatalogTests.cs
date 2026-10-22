@@ -52,6 +52,11 @@ public sealed class OpenFoodFactsCatalogTests
         OpenFoodFactsCatalog none = Create(new QueueHandler(Response(HttpStatusCode.OK, Product())));
         Assert.IsNull((await none.GetByBarcodeAsync("12345678")).NutrientsPer100Grams.SaltGrams);
 
+        OpenFoodFactsCatalog tableSalt = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(kcal: 0m, protein: 0m, carbohydrates: 0m, fat: 0m, salt: 99.8m))));
+        FoodCatalogProduct saltProduct = await tableSalt.GetByBarcodeAsync("12345678");
+        Assert.AreEqual(0m, saltProduct.NutrientsPer100Grams.Kilocalories);
+        Assert.AreEqual(99.8m, saltProduct.NutrientsPer100Grams.SaltGrams);
+
         OpenFoodFactsCatalog implausible = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(salt: 250m))));
         Assert.IsNull((await implausible.GetByBarcodeAsync("12345678")).NutrientsPer100Grams.SaltGrams);
     }

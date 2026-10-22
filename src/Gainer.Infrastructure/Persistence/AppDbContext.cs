@@ -710,9 +710,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_nutrition_entries_position", PositionNonNegativeCheck);
                 table.HasCheckConstraint("CK_nutrition_entries_name", "length(trim(\"ProductName\")) > 0");
                 table.HasCheckConstraint("CK_nutrition_entries_amount", "\"AmountGrams\" > 0");
-                table.HasCheckConstraint("CK_nutrition_entries_kcal", "\"Kilocalories\" > 0");
+                table.HasCheckConstraint("CK_nutrition_entries_kcal", "\"Kilocalories\" >= 0");
                 table.HasCheckConstraint("CK_nutrition_entries_macros", "(\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND (\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND (\"FatGrams\" IS NULL OR \"FatGrams\" >= 0)");
-                table.HasCheckConstraint("CK_nutrition_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" > 0");
+                table.HasCheckConstraint("CK_nutrition_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" >= 0");
                 table.HasCheckConstraint("CK_nutrition_entries_basis_macros", "(\"ProteinGramsPerBasis\" IS NULL OR \"ProteinGramsPerBasis\" >= 0) AND (\"CarbohydrateGramsPerBasis\" IS NULL OR \"CarbohydrateGramsPerBasis\" >= 0) AND (\"FatGramsPerBasis\" IS NULL OR \"FatGramsPerBasis\" >= 0)");
                 table.HasCheckConstraint("CK_nutrition_entries_salt", "(\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"SaltGramsPerBasis\" IS NULL OR \"SaltGramsPerBasis\" >= 0)");
             });
@@ -774,7 +774,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_reusable_meal_components_position", PositionNonNegativeCheck);
                 table.HasCheckConstraint("CK_reusable_meal_components_name", NameNotBlankCheck);
                 table.HasCheckConstraint("CK_reusable_meal_components_amount", "\"AmountGrams\" >= 0.01 AND \"AmountGrams\" <= 100000");
-                table.HasCheckConstraint("CK_reusable_meal_components_kcal", "\"Kilocalories\" > 0 AND \"KilocaloriesPer100Grams\" > 0");
+                table.HasCheckConstraint("CK_reusable_meal_components_kcal", "\"Kilocalories\" >= 0 AND \"KilocaloriesPer100Grams\" >= 0");
                 table.HasCheckConstraint("CK_reusable_meal_components_basis", "\"BasisGrams\" > 0");
                 table.HasCheckConstraint("CK_reusable_meal_components_macros", "(\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND (\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND (\"FatGrams\" IS NULL OR \"FatGrams\" >= 0)");
                 table.HasCheckConstraint("CK_reusable_meal_components_per100_macros", "(\"ProteinGramsPer100Grams\" IS NULL OR \"ProteinGramsPer100Grams\" >= 0) AND (\"CarbohydrateGramsPer100Grams\" IS NULL OR \"CarbohydrateGramsPer100Grams\" >= 0) AND (\"FatGramsPer100Grams\" IS NULL OR \"FatGramsPer100Grams\" >= 0)");

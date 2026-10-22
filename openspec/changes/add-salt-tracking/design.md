@@ -30,6 +30,15 @@
 - **Durchschnitte:** „Salz“ als vierte Zeile in „Ø pro erfasstem Tag“, gemittelt über Tage mit Salzangabe.
 - **Zielphase:** eigene Gruppe „Salz höchstens“ mit DGE-Hinweis; die Zusammenfassung zeigt „Salz ≤ 6 g“.
 
-## D5 Migration
+## D5 Selbst gesalzen
+
+Eigenes Salz ist ein normaler Eintrag:
+- Name „Salz“, 0 kcal, 0 g Makros, 100 g Salz pro 100 g. Die Menge in Gramm ist damit gleich der Salzmenge.
+- So läuft es ohne neues Datenmodell durch Tagessumme, Sync, Gerichte, „Zuletzt verwendet“ und Bearbeiten.
+- Damit das geht, erlauben Server, Datenbank und App für Einträge und Bestandteile jetzt 0 kcal (vorher > 0). Negative Werte bleiben ungültig. Zielphasen, Schätzungen und Etiketten verlangen weiterhin mehr als 0 kcal.
+- Open Food Facts akzeptiert ausdrücklich 0 kcal (z. B. Speisesalz); fehlende Energie bleibt `product_incomplete`.
+- Schnellwahl: Prise 0,5 g, halber Teelöffel 3 g, Teelöffel 6 g, dazu eine eigene Menge von über 0 bis 100 g.
+
+## D6 Migration
 
 Die Migration fügt nur Spalten hinzu, die leer sein dürfen, dazu eigene Check-Constraints. Bestehende Daten bleiben unverändert. Der Test `AdditiveMigrationPreservesExistingNutritionDaySnapshot` schreibt seine Altdaten jetzt per SQL ins ursprüngliche Schema, weil das aktuelle Modell die neuen Spalten erwartet.

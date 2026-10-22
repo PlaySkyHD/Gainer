@@ -308,7 +308,7 @@ class ReusableMealComponent {
         'components': 'Gerichtseintrag ist ungültig.',
       });
     }
-    _validateTotals(per100Grams, requirePositiveCalories: true);
+    _validateTotals(per100Grams);
   }
 
   final String componentId;
@@ -600,7 +600,7 @@ void validateNutritionEntry(NutritionEntry entry) {
   if (entry.brand != null && entry.brand!.length > 120) {
     throw const NutritionValidationException({'brand': 'Marke ist zu lang.'});
   }
-  _validateTotals(entry.per100Grams, requirePositiveCalories: true);
+  _validateTotals(entry.per100Grams);
   if (entry.source case final source?) {
     if (!source.basisGrams.isFinite || source.basisGrams <= 0) {
       throw const NutritionValidationException({
@@ -610,16 +610,11 @@ void validateNutritionEntry(NutritionEntry entry) {
   }
 }
 
-void _validateTotals(
-  NutritionTotals totals, {
-  required bool requirePositiveCalories,
-}) {
-  if (!totals.kilocalories.isFinite ||
-      (requirePositiveCalories
-          ? totals.kilocalories <= 0
-          : totals.kilocalories < 0)) {
+/// 0 kcal ist gültig, z. B. für Salz, Wasser oder Zero-Getränke.
+void _validateTotals(NutritionTotals totals) {
+  if (!totals.kilocalories.isFinite || totals.kilocalories < 0) {
     throw const NutritionValidationException({
-      'kilocalories': 'Kalorien müssen positiv sein.',
+      'kilocalories': 'Kalorien dürfen nicht negativ sein.',
     });
   }
   for (final (key, value) in [
