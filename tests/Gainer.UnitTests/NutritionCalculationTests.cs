@@ -39,6 +39,14 @@ public sealed class NutritionCalculationTests
     }
 
     [TestMethod]
+    public void ZeroCalorieFoodsLikeSaltAreAllowed()
+    {
+        NutritionTotals salt = NutritionCalculator.Calculate(3m, new NutritionPer100Grams(0m, 0m, 0m, 0m, 100m));
+        Assert.AreEqual(0m, salt.Kilocalories);
+        Assert.AreEqual(3m, salt.SaltGrams);
+    }
+
+    [TestMethod]
     public void CalculateKeepsMissingMacrosMissing()
     {
         NutritionTotals result = NutritionCalculator.Calculate(
@@ -54,7 +62,6 @@ public sealed class NutritionCalculationTests
     [TestMethod]
     [DataRow("amount", "0", "100")]
     [DataRow("amount", "-1", "100")]
-    [DataRow("energy", "100", "0")]
     [DataRow("energy", "100", "-1")]
     [DataRow("protein", "100", "100")]
     public void CalculateRejectsInvalidValues(string invalidField, string amountText, string energyText)

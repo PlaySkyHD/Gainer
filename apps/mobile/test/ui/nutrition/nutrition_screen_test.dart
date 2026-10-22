@@ -582,6 +582,47 @@ void main() {
     expect(phase.effectiveSaltGrams, 6);
   });
 
+  testWidgets('own salt is added to a meal as a zero-calorie entry', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(tester, []);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mittag'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('nutrition-mode-salt')),
+    );
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-salt')));
+    await tester.pumpAndSettle();
+    final add = find.byKey(const ValueKey('nutrition-salt-add'));
+    expect(tester.widget<GainerPillButton>(add).onPressed, isNull);
+
+    await tester.tap(find.text('Teelöffel'));
+    await tester.pump();
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+
+    final entry = harness.viewModel.snapshot!.day.entries.single;
+    expect(entry.productName, 'Salz');
+    expect(entry.meal, NutritionMeal.lunch);
+    expect(entry.totals.kilocalories, 0);
+    expect(entry.totals.saltGrams, 6);
+    expect(harness.viewModel.snapshot!.day.totals.saltGrams, 6);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-salt-amount')),
+      '0,8',
+    );
+    await tester.pump();
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    expect(harness.viewModel.snapshot!.day.totals.saltGrams, 6.8);
+  });
+
   testWidgets('target phase stores a custom salt limit', (tester) async {
     _usePhoneViewport(tester);
     final database = LocalDatabase(NativeDatabase.memory());
@@ -1025,13 +1066,17 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const ValueKey('nutrition-entry-kcal')),
-      '0',
+      '-5',
     );
     tester.testTextInput.hide();
     await tester.pumpAndSettle();
     await tester.tap(find.text('Übernehmen'));
     await tester.pumpAndSettle();
-    expect(find.text('Die Kalorien müssen größer als 0 sein.'), findsOneWidget);
+    // 0 kcal ist erlaubt (z. B. Salz), negative Werte nicht.
+    expect(
+      find.text('Die Kalorien dürfen nicht negativ sein.'),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey('nutrition-entry-options')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('nutrition-entry-close')));

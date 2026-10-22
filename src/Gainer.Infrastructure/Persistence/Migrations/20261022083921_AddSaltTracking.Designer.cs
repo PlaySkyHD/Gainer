@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Gainer.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261022075052_AddSaltTracking")]
+    [Migration("20261022083921_AddSaltTracking")]
     partial class AddSaltTracking
     {
         /// <inheritdoc />
@@ -418,11 +418,11 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_nutrition_entries_amount", "\"AmountGrams\" > 0");
 
-                            t.HasCheckConstraint("CK_nutrition_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" > 0");
+                            t.HasCheckConstraint("CK_nutrition_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" >= 0");
 
                             t.HasCheckConstraint("CK_nutrition_entries_basis_macros", "(\"ProteinGramsPerBasis\" IS NULL OR \"ProteinGramsPerBasis\" >= 0) AND (\"CarbohydrateGramsPerBasis\" IS NULL OR \"CarbohydrateGramsPerBasis\" >= 0) AND (\"FatGramsPerBasis\" IS NULL OR \"FatGramsPerBasis\" >= 0)");
 
-                            t.HasCheckConstraint("CK_nutrition_entries_kcal", "\"Kilocalories\" > 0");
+                            t.HasCheckConstraint("CK_nutrition_entries_kcal", "\"Kilocalories\" >= 0");
 
                             t.HasCheckConstraint("CK_nutrition_entries_macros", "(\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND (\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND (\"FatGrams\" IS NULL OR \"FatGrams\" >= 0)");
 
@@ -717,7 +717,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_reusable_meal_components_basis", "\"BasisGrams\" > 0");
 
-                            t.HasCheckConstraint("CK_reusable_meal_components_kcal", "\"Kilocalories\" > 0 AND \"KilocaloriesPer100Grams\" > 0");
+                            t.HasCheckConstraint("CK_reusable_meal_components_kcal", "\"Kilocalories\" >= 0 AND \"KilocaloriesPer100Grams\" >= 0");
 
                             t.HasCheckConstraint("CK_reusable_meal_components_macros", "(\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND (\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND (\"FatGrams\" IS NULL OR \"FatGrams\" >= 0)");
 

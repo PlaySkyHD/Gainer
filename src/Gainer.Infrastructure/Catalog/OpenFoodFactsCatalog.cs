@@ -184,7 +184,8 @@ public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
             decimal? kj = Decimal(nutrients, "energy-kj_100g");
             if (kj is not null) kcal = decimal.Round(kj.Value / 4.184m, 2, MidpointRounding.AwayFromZero);
         }
-        if (kcal is null or <= 0m)
+        // Explicit 0 kcal is valid (salt, water); a missing value is not.
+        if (kcal is null or < 0m)
             throw new FoodCatalogException(ProductIncompleteCode, "The product has no usable energy value.", false);
         decimal? protein = NonNegative(Decimal(nutrients, "proteins_100g"));
         decimal? carbohydrates = NonNegative(Decimal(nutrients, "carbohydrates_100g"));

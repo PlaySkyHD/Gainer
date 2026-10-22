@@ -265,6 +265,49 @@ public sealed class NutritionSyncPersistenceTests
     }
 
     [TestMethod]
+    public async Task OwnSaltIsStoredAsZeroCalorieEntry()
+    {
+        (string connectionString, Guid user, _) = await CreateDatabaseAsync();
+        Guid client = Guid.NewGuid();
+        await RegisterAsync(connectionString, user, client);
+        Guid dayId = Guid.NewGuid();
+        ProcessSyncMutationCommand save = Command(
+            Guid.NewGuid(), client, 1, "saveNutritionDay", dayId, 0,
+            new
+            {
+                nutritionDayId = dayId,
+                localDate = new DateOnly(2026, 10, 22),
+                baseVersion = 0,
+                entries = new[]
+                {
+                    new
+                    {
+                        entryId = Guid.NewGuid(),
+                        meal = "Lunch",
+                        position = 0,
+                        productName = "Salz",
+                        amountGrams = 6m,
+                        kilocaloriesPer100Grams = 0m,
+                        proteinGramsPer100Grams = 0m,
+                        carbohydrateGramsPer100Grams = 0m,
+                        fatGramsPer100Grams = 0m,
+                        saltGramsPer100Grams = 100m,
+                    },
+                },
+            });
+
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        {
+            _ = await Processor(context, user).ProcessAsync(save);
+        }
+        await using AppDbContext reader = Fixture.CreateContext(connectionString, user);
+        NutritionDaySnapshot day = await new NutritionQueries(reader).GetDayAsync(new DateOnly(2026, 10, 22))
+            ?? throw new AssertFailedException();
+        Assert.AreEqual(0m, day.Totals.Kilocalories);
+        Assert.AreEqual(6m, day.Totals.SaltGrams);
+    }
+
+    [TestMethod]
     public async Task TargetSaltLimitIsStoredAndOlderPayloadsKeepTheDefault()
     {
         (string connectionString, Guid user, _) = await CreateDatabaseAsync();

@@ -10,6 +10,21 @@ public partial class AddSaltTracking : Migration
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.DropCheckConstraint(
+            name: "CK_reusable_meal_components_kcal",
+            schema: "tracking",
+            table: "reusable_meal_components");
+
+        migrationBuilder.DropCheckConstraint(
+            name: "CK_nutrition_entries_basis",
+            schema: "tracking",
+            table: "nutrition_entries");
+
+        migrationBuilder.DropCheckConstraint(
+            name: "CK_nutrition_entries_kcal",
+            schema: "tracking",
+            table: "nutrition_entries");
+
         migrationBuilder.AddColumn<decimal>(
             name: "SaltGrams",
             schema: "tracking",
@@ -54,6 +69,12 @@ public partial class AddSaltTracking : Migration
             precision: 9,
             scale: 2,
             nullable: true);
+
+        migrationBuilder.AddCheckConstraint(
+            name: "CK_reusable_meal_components_kcal",
+            schema: "tracking",
+            table: "reusable_meal_components",
+            sql: "\"Kilocalories\" >= 0 AND \"KilocaloriesPer100Grams\" >= 0");
 
         migrationBuilder.AddCheckConstraint(
             name: "CK_reusable_meal_components_salt",
@@ -68,6 +89,18 @@ public partial class AddSaltTracking : Migration
             sql: "\"SaltGrams\" IS NULL OR (\"SaltGrams\" > 0 AND \"SaltGrams\" <= 100)");
 
         migrationBuilder.AddCheckConstraint(
+            name: "CK_nutrition_entries_basis",
+            schema: "tracking",
+            table: "nutrition_entries",
+            sql: "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" >= 0");
+
+        migrationBuilder.AddCheckConstraint(
+            name: "CK_nutrition_entries_kcal",
+            schema: "tracking",
+            table: "nutrition_entries",
+            sql: "\"Kilocalories\" >= 0");
+
+        migrationBuilder.AddCheckConstraint(
             name: "CK_nutrition_entries_salt",
             schema: "tracking",
             table: "nutrition_entries",
@@ -78,6 +111,11 @@ public partial class AddSaltTracking : Migration
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.DropCheckConstraint(
+            name: "CK_reusable_meal_components_kcal",
+            schema: "tracking",
+            table: "reusable_meal_components");
+
+        migrationBuilder.DropCheckConstraint(
             name: "CK_reusable_meal_components_salt",
             schema: "tracking",
             table: "reusable_meal_components");
@@ -86,6 +124,16 @@ public partial class AddSaltTracking : Migration
             name: "CK_nutrition_target_versions_salt",
             schema: "tracking",
             table: "nutrition_target_versions");
+
+        migrationBuilder.DropCheckConstraint(
+            name: "CK_nutrition_entries_basis",
+            schema: "tracking",
+            table: "nutrition_entries");
+
+        migrationBuilder.DropCheckConstraint(
+            name: "CK_nutrition_entries_kcal",
+            schema: "tracking",
+            table: "nutrition_entries");
 
         migrationBuilder.DropCheckConstraint(
             name: "CK_nutrition_entries_salt",
@@ -116,5 +164,23 @@ public partial class AddSaltTracking : Migration
             name: "SaltGramsPerBasis",
             schema: "tracking",
             table: "nutrition_entries");
+
+        migrationBuilder.AddCheckConstraint(
+            name: "CK_reusable_meal_components_kcal",
+            schema: "tracking",
+            table: "reusable_meal_components",
+            sql: "\"Kilocalories\" > 0 AND \"KilocaloriesPer100Grams\" > 0");
+
+        migrationBuilder.AddCheckConstraint(
+            name: "CK_nutrition_entries_basis",
+            schema: "tracking",
+            table: "nutrition_entries",
+            sql: "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" > 0");
+
+        migrationBuilder.AddCheckConstraint(
+            name: "CK_nutrition_entries_kcal",
+            schema: "tracking",
+            table: "nutrition_entries",
+            sql: "\"Kilocalories\" > 0");
     }
 }

@@ -11,11 +11,28 @@ import 'nutrition_view_model.dart';
 
 const _notRecognizedLabel = 'nicht erkannt';
 
+const _saltName = 'Salz';
+const _saltPer100 = NutritionTotals(
+  kilocalories: 0,
+  proteinGrams: 0,
+  carbohydrateGrams: 0,
+  fatGrams: 0,
+  saltGrams: 100,
+);
+
+/// Übliche Mengen beim Selbstsalzen; 1 Teelöffel Salz wiegt etwa 6 g.
+const _saltPresets = [
+  (label: 'Prise', grams: 0.5),
+  (label: 'Halber Teelöffel', grams: 3.0),
+  (label: 'Teelöffel', grams: 6.0),
+];
+
 enum _NutritionEntryMode {
   choices,
   recent,
   meals,
   manual,
+  salt,
   search,
   barcode,
   estimate,
@@ -28,6 +45,7 @@ extension on _NutritionEntryMode {
     _NutritionEntryMode.recent => 'Zuletzt verwendet',
     _NutritionEntryMode.meals => 'Gespeicherte Gerichte',
     _NutritionEntryMode.manual => 'Manuell erfassen',
+    _NutritionEntryMode.salt => 'Salz hinzufügen',
     _NutritionEntryMode.search => 'Lebensmittel suchen',
     _NutritionEntryMode.barcode => 'Barcode',
     _NutritionEntryMode.estimate => 'Mahlzeit schätzen',
@@ -39,6 +57,7 @@ extension on _NutritionEntryMode {
     _NutritionEntryMode.recent => 'Lebensmittel von früheren Einträgen',
     _NutritionEntryMode.meals => 'Ein gespeichertes Gericht übernehmen',
     _NutritionEntryMode.manual => 'Nährwerte selbst eingeben',
+    _NutritionEntryMode.salt => 'Selbst gesalzen, z. B. eine Prise',
     _NutritionEntryMode.search => 'Online nach Produkt oder Marke suchen',
     _NutritionEntryMode.barcode => 'Produkt über den Barcode finden',
     _NutritionEntryMode.estimate => 'Text oder Foto als Vorschlag prüfen',
@@ -50,6 +69,7 @@ extension on _NutritionEntryMode {
     _NutritionEntryMode.recent => CupertinoIcons.clock,
     _NutritionEntryMode.meals => CupertinoIcons.book,
     _NutritionEntryMode.manual => CupertinoIcons.pencil,
+    _NutritionEntryMode.salt => CupertinoIcons.circle_grid_hex,
     _NutritionEntryMode.search => CupertinoIcons.search,
     _NutritionEntryMode.barcode => CupertinoIcons.barcode_viewfinder,
     _NutritionEntryMode.estimate => CupertinoIcons.sparkles,
@@ -66,6 +86,7 @@ List<_NutritionEntryMode> _modesFor(FoodAddTarget target) => [
             const {
               _NutritionEntryMode.recent,
               _NutritionEntryMode.manual,
+              _NutritionEntryMode.salt,
               _NutritionEntryMode.search,
               _NutritionEntryMode.barcode,
             }.contains(mode)))
@@ -91,6 +112,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _salt = TextEditingController();
   final _search = TextEditingController();
   final _estimateText = TextEditingController();
+  final _saltAmount = TextEditingController();
   MealDictationController? _dictation;
 
   @override
@@ -119,6 +141,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _salt,
       _search,
       _estimateText,
+      _saltAmount,
     ]) {
       controller.dispose();
     }
@@ -349,6 +372,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     if (!mounted) return;
     _dictation?.cancel();
     _estimateText.clear();
+    _saltAmount.clear();
     widget.viewModel.clearEstimateDraft();
   }
 
@@ -481,6 +505,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _NutritionEntryMode.search => _searchTools(vm, submit),
       _NutritionEntryMode.barcode => _barcodeTools(vm, submit),
       _NutritionEntryMode.estimate => _estimateTools(vm),
+      _NutritionEntryMode.salt => _saltTools(target, onDraft),
       _NutritionEntryMode.label => [
         GainerGroupedSection(
           footer: 'Du prüfst alle Werte, bevor etwas gespeichert wird.',
@@ -596,6 +621,92 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _foodResults([food], 'Barcode', onSelect),
     ],
   ];
+
+  /// Selbst gesalzen: Schnellwahl oder eigene Menge. Salz ist ein Eintrag mit
+  /// 0 kcal und 100 g Salz pro 100 g, zählt also nur zum Tagessalz.
+  List<Widget> _saltTools(
+    FoodAddTarget target,
+    ValueChanged<FoodComponentDraft> onDraft,
+  ) => [
+    ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _saltAmount,
+      builder: (context, value, _) {
+        final colors = GainerDesign.colorsOf(context);
+        final grams = _parse(value.text);
+        final valid = grams != null && grams > 0 && grams <= 100;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GainerGroupedSection(
+              footer: 'Zählt zum Salz des Tages, nicht zu den Kalorien.',
+              children: [
+                for (final preset in _saltPresets)
+                  GainerListRow(
+                    key: ValueKey('nutrition-salt-${preset.grams}'),
+                    title: preset.label,
+                    subtitle: '${_fmtGrams(preset.grams)} g',
+                    trailing: grams == preset.grams
+                        ? Icon(
+                            CupertinoIcons.checkmark,
+                            size: 18,
+                            color: colors.accent,
+                          )
+                        : null,
+                    onTap: () => _saltAmount.text = _grams(preset.grams),
+                  ),
+                GainerTextFieldRow(
+                  label: 'Eigene Menge',
+                  unit: 'g',
+                  controller: _saltAmount,
+                  keyboardType: _decimalKeyboard,
+                  fieldKey: const ValueKey('nutrition-salt-amount'),
+                ),
+              ],
+            ),
+            const SizedBox(height: GainerSpacing.m),
+            GainerPillButton(
+              key: const ValueKey('nutrition-salt-add'),
+              label: 'Salz hinzufügen',
+              expand: true,
+              onPressed: valid ? () => _addSalt(grams, target, onDraft) : null,
+            ),
+          ],
+        );
+      },
+    ),
+  ];
+
+  Future<void> _addSalt(
+    double grams,
+    FoodAddTarget target,
+    ValueChanged<FoodComponentDraft> onDraft,
+  ) async {
+    switch (target) {
+      case DayMealTarget():
+        await widget.viewModel.addManualEntry(
+          productName: _saltName,
+          amountGrams: grams,
+          kilocaloriesPer100Grams: _saltPer100.kilocalories,
+          proteinGramsPer100: _saltPer100.proteinGrams,
+          carbohydrateGramsPer100: _saltPer100.carbohydrateGrams,
+          fatGramsPer100: _saltPer100.fatGrams,
+          saltGramsPer100: _saltPer100.saltGrams,
+        );
+        if (widget.viewModel.errorMessage == null) _saltAmount.clear();
+      case MealDraftTarget():
+        final accepted = _commitDraft(
+          FoodComponentDraft(
+            name: _saltName,
+            brand: null,
+            amountGrams: grams,
+            per100Grams: _saltPer100,
+            source: null,
+          ),
+          onDraft,
+        );
+        if (accepted) _saltAmount.clear();
+    }
+  }
 
   /// Baut neu, sobald sich das Diktat ändert; ohne Diktat einmal mit null.
   Widget _withDictation(

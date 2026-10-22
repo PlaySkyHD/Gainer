@@ -25,7 +25,8 @@ public static class NutritionCalculator
         ArgumentNullException.ThrowIfNull(values);
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
         ValidatePositive(amountGrams, nameof(amountGrams), "AmountGrams", errors);
-        ValidatePositive(values.Kilocalories, nameof(values.Kilocalories), "KilocaloriesPer100Grams", errors);
+        // 0 kcal is valid, e.g. for salt, water or zero drinks.
+        ValidateNonNegative(values.Kilocalories, "KilocaloriesPer100Grams", errors);
         ValidateOptional(values.ProteinGrams, "ProteinGramsPer100Grams", errors);
         ValidateOptional(values.CarbohydrateGrams, "CarbohydrateGramsPer100Grams", errors);
         ValidateOptional(values.FatGrams, "FatGramsPer100Grams", errors);
