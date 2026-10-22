@@ -15,8 +15,10 @@ import 'training_plans_view_model.dart';
 import 'training_schedule_sheet.dart';
 import 'training_today_card.dart';
 
-/// Pläne-Segment: Karte „Heute“ aus dem Rhythmus, Planliste mit Umordnen
-/// und Archivieren sowie der Rhythmus-Editor.
+/// Pläne-Segment: Karte „Heute“ aus dem Rhythmus, Planliste mit Umordnen,
+/// Duplizieren und Archivieren sowie der Rhythmus-Editor.
+enum _PlanAction { start, duplicate, archive }
+
 class TrainingPlansSection extends StatefulWidget {
   const TrainingPlansSection({
     required this.repository,
@@ -151,6 +153,53 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
     if (confirmed != true || !mounted) return;
     final error = await _viewModel.archive(plan.planId);
     if (error != null) await _showError(error);
+  }
+
+  Future<void> _duplicate(TrainingPlanModel plan) async {
+    final result = await _viewModel.duplicate(plan.planId);
+    if (!mounted) return;
+    if (result.error != null) return _showError(result.error!);
+    await _openEditor(result.plan!.planId);
+  }
+
+  /// Kontext-Sheet eines Plans per langem Drücken.
+  Future<void> _showPlanActions(TrainingPlanModel plan) async {
+    final action = await showGainerActionSheet<_PlanAction>(
+      context: context,
+      title: plan.name,
+      groups: const [
+        [
+          GainerSheetAction(
+            label: 'Training beginnen',
+            icon: CupertinoIcons.play_fill,
+            value: _PlanAction.start,
+          ),
+          GainerSheetAction(
+            label: 'Duplizieren',
+            icon: CupertinoIcons.doc_on_doc,
+            value: _PlanAction.duplicate,
+          ),
+        ],
+        [
+          GainerSheetAction(
+            label: 'Archivieren',
+            icon: CupertinoIcons.archivebox,
+            value: _PlanAction.archive,
+            destructive: true,
+          ),
+        ],
+      ],
+    );
+    if (!mounted) return;
+    switch (action) {
+      case _PlanAction.start:
+        await _start(plan.planId);
+      case _PlanAction.duplicate:
+        await _duplicate(plan);
+      case _PlanAction.archive:
+        await _archive(plan);
+      case null:
+    }
   }
 
   Future<void> _reorder(
@@ -290,11 +339,16 @@ class _TrainingPlansSectionState extends State<TrainingPlansSection> {
       header: 'Pläne',
       children: [
         for (final plan in plans)
-          GainerListRow(
-            title: plan.name,
-            subtitle: _subtitle(plan),
-            showChevron: true,
-            onTap: () => _openEditor(plan.planId),
+          GestureDetector(
+            key: ValueKey('training-plan-${plan.planId}'),
+            behavior: HitTestBehavior.opaque,
+            onLongPress: () => _showPlanActions(plan),
+            child: GainerListRow(
+              title: plan.name,
+              subtitle: _subtitle(plan),
+              showChevron: true,
+              onTap: () => _openEditor(plan.planId),
+            ),
           ),
       ],
     );
