@@ -131,28 +131,37 @@ class CalendarHarness {
     );
   }
 
-  Future<void> food(LocalDay date, {required double kcal, double? protein}) =>
-      nutrition.saveEntry(
-        date.toIso(),
-        NutritionEntry(
-          entryId: testId(_ids++),
-          meal: NutritionMeal.lunch,
-          position: 0,
-          productName: 'Mittagessen',
-          brand: null,
-          amountGrams: 100,
-          per100Grams: NutritionTotals(
-            kilocalories: kcal,
-            proteinGrams: protein,
-          ),
-          source: null,
-        ),
-      );
+  Future<void> food(
+    LocalDay date, {
+    required double kcal,
+    double? protein,
+    double? carbs,
+    double? fat,
+  }) => nutrition.saveEntry(
+    date.toIso(),
+    NutritionEntry(
+      entryId: testId(_ids++),
+      meal: NutritionMeal.lunch,
+      position: 0,
+      productName: 'Mittagessen',
+      brand: null,
+      amountGrams: 100,
+      per100Grams: NutritionTotals(
+        kilocalories: kcal,
+        proteinGrams: protein,
+        carbohydrateGrams: carbs,
+        fatGrams: fat,
+      ),
+      source: null,
+    ),
+  );
 
   Future<void> target({
     required String from,
     double kcal = 2600,
     double protein = 180,
+    double carbs = 300,
+    double fat = 80,
   }) => nutrition.addTargetPhase(
     NutritionTargetVersion(
       targetVersionId: testId(_ids++),
@@ -163,8 +172,8 @@ class CalendarHarness {
       inputMode: NutritionTargetInputMode.grams,
       kilocalories: kcal,
       proteinGrams: protein,
-      carbohydrateGrams: 300,
-      fatGrams: 80,
+      carbohydrateGrams: carbs,
+      fatGrams: fat,
       proteinPercent: null,
       carbohydratePercent: null,
       fatPercent: null,

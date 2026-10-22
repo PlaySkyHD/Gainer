@@ -2329,51 +2329,6 @@ class _DayNavigator extends StatelessWidget {
   }
 }
 
-/// Schmaler Fortschrittsbalken; wärmere Farbe, sobald das Ziel überschritten
-/// ist.
-class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({
-    required this.consumed,
-    required this.target,
-    this.height = 6,
-  });
-
-  final double? consumed;
-  final double target;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    final value = consumed ?? 0;
-    final ratio = target <= 0 ? 0.0 : (value / target).clamp(0.0, 1.0);
-    final exceeded = target > 0 && value > target;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(height),
-      child: SizedBox(
-        height: height,
-        child: LayoutBuilder(
-          builder: (context, constraints) => Stack(
-            children: [
-              Positioned.fill(child: ColoredBox(color: colors.elevatedSurface)),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: SizedBox(
-                  width: constraints.maxWidth * ratio,
-                  height: height,
-                  child: ColoredBox(
-                    color: exceeded ? colors.warning : colors.accent,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Eine Tageskarte: Kalorien groß mit Fortschritt, darunter drei kompakte
 /// Makro-Spalten. Ohne Ziele nur die Ist-Werte und der Weg zu den Zielen.
 class _DayCard extends StatelessWidget {
@@ -2430,7 +2385,7 @@ class _DayCard extends StatelessWidget {
               ),
               if (goal != null && remaining != null) ...[
                 const SizedBox(height: GainerSpacing.xs),
-                _ProgressBar(consumed: kcal, target: goal.kilocalories),
+                GainerProgressBar(consumed: kcal, target: goal.kilocalories),
                 const SizedBox(height: GainerSpacing.xs),
                 Text(
                   remaining >= 0
@@ -2519,7 +2474,7 @@ class _DayCard extends StatelessWidget {
             ),
             if (goal != null) ...[
               const SizedBox(height: GainerSpacing.xxs),
-              _ProgressBar(consumed: consumed, target: goal, height: 4),
+              GainerProgressBar(consumed: consumed, target: goal, height: 4),
             ],
           ],
         ),
