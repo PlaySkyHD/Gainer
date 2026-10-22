@@ -623,6 +623,108 @@ void main() {
     expect(harness.viewModel.snapshot!.day.totals.saltGrams, 6.8);
   });
 
+  testWidgets('estimate shows inherent salt and offers own salt', (
+    tester,
+  ) async {
+    NutritionEstimateComponent component(
+      String name,
+      double grams,
+      double kcal,
+      double? salt,
+    ) => NutritionEstimateComponent(
+      name: name,
+      amountGrams: grams,
+      totals: NutritionTotals(kilocalories: kcal, saltGrams: salt),
+      confidence: 'medium',
+      dataGaps: const [],
+    );
+    final harness = await _pumpDiary(
+      tester,
+      [],
+      online: _EstimateOnline([
+        component('Pizza Margherita', 350, 890, 3.5),
+        component('Reis', 200, 260, null),
+      ]),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-estimate-text')),
+      'Pizza und Reis',
+    );
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(GainerPillButton, 'Mahlzeit schätzen'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('350 g · 890 kcal · ~3,5 g Salz · mittel'),
+      findsOneWidget,
+    );
+    expect(find.text('200 g · 260 kcal · mittel'), findsOneWidget);
+    final addSalt = find.byKey(const ValueKey('nutrition-estimate-add-salt'));
+    expect(addSalt, findsOneWidget);
+    await tester.tap(find.text('Pizza Margherita'));
+    await tester.pumpAndSettle();
+    expect(harness.viewModel.snapshot!.day.totals.saltGrams, 3.5);
+    // Die übrigen Bestandteile und der Salz-Hinweis bleiben stehen.
+    expect(find.text('200 g · 260 kcal · mittel'), findsOneWidget);
+    expect(harness.viewModel.mealEstimateDraft!.components.single.name, 'Reis');
+
+    await tester.ensureVisible(addSalt);
+    await tester.tap(addSalt);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('nutrition-salt-add')), findsOneWidget);
+  });
+
+  testWidgets('a stated salt amount is confirmed as zero-calorie salt', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(
+      tester,
+      [],
+      online: _EstimateOnline(const [
+        NutritionEstimateComponent(
+          name: 'Salz',
+          amountGrams: 6,
+          totals: NutritionTotals(kilocalories: 0, saltGrams: 6),
+          confidence: 'high',
+          dataGaps: [],
+        ),
+      ]),
+    );
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-estimate-text')),
+      'Ein Teelöffel Salz',
+    );
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(GainerPillButton, 'Mahlzeit schätzen'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('6 g · 0 kcal · sicher'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('nutrition-estimate-add-salt')),
+      findsNothing,
+    );
+    await tester.tap(find.text('6 g · 0 kcal · sicher'));
+    await tester.pumpAndSettle();
+    final entry = harness.viewModel.snapshot!.day.entries.single;
+    expect(entry.totals.kilocalories, 0);
+    expect(entry.totals.saltGrams, 6);
+  });
+
   testWidgets('target phase stores a custom salt limit', (tester) async {
     _usePhoneViewport(tester);
     final database = LocalDatabase(NativeDatabase.memory());
@@ -1312,6 +1414,25 @@ class _FakeCapture implements CapturePlatform {
 
   @override
   Future<String?> scanBarcode() async => null;
+}
+
+class _EstimateOnline implements NutritionOnlineProvider {
+  _EstimateOnline(this.components);
+
+  final List<NutritionEstimateComponent> components;
+
+  @override
+  Future<MealEstimateDraft> estimateMeal(String description) async =>
+      MealEstimateDraft(
+        components: components,
+        provider: 'OpenAI',
+        schemaVersion: 'meal-estimate-v2',
+        estimatedAtUtc: DateTime.utc(2026, 10, 12, 10),
+      );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError(invocation.memberName.toString());
 }
 
 class _LabelOnline implements NutritionOnlineProvider {

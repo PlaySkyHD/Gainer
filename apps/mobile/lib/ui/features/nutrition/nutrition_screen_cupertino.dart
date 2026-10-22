@@ -11,6 +11,12 @@ import 'nutrition_view_model.dart';
 
 const _notRecognizedLabel = 'nicht erkannt';
 
+const _confidenceNames = {
+  'low': 'unsicher',
+  'medium': 'mittel',
+  'high': 'sicher',
+};
+
 const _saltName = 'Salz';
 const _saltPer100 = NutritionTotals(
   kilocalories: 0,
@@ -357,6 +363,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                           mode,
                           target,
                           (draft) => Navigator.of(sheetContext).pop(draft),
+                          (option) => setSheetState(() => mode = option),
                         ),
                 ),
               ),
@@ -441,6 +448,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     _NutritionEntryMode mode,
     FoodAddTarget target,
     ValueChanged<FoodComponentDraft> onDraft,
+    ValueChanged<_NutritionEntryMode> onSelectMode,
   ) => [
     if (vm.errorMessage != null &&
         vm.errorOperation != null &&
@@ -448,7 +456,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _notice(context, vm.errorMessage!, isError: true),
     if (vm.statusMessage != null && target is DayMealTarget)
       Semantics(liveRegion: true, child: _notice(context, vm.statusMessage!)),
-    ..._entryTools(context, vm, mode, target, onDraft),
+    ..._entryTools(context, vm, mode, target, onDraft, onSelectMode),
     if (vm.isSaving || vm.isOnlineOperation)
       const Padding(
         padding: EdgeInsets.all(12),
@@ -474,6 +482,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     _NutritionEntryMode mode,
     FoodAddTarget target,
     ValueChanged<FoodComponentDraft> onDraft,
+    ValueChanged<_NutritionEntryMode> onSelectMode,
   ) {
     void submit(NutritionFood food) => _submitFood(food, target, onDraft);
     return switch (mode) {
@@ -504,7 +513,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _NutritionEntryMode.meals => _mealTools(vm),
       _NutritionEntryMode.search => _searchTools(vm, submit),
       _NutritionEntryMode.barcode => _barcodeTools(vm, submit),
-      _NutritionEntryMode.estimate => _estimateTools(vm),
+      _NutritionEntryMode.estimate => _estimateTools(vm, onSelectMode),
       _NutritionEntryMode.salt => _saltTools(target, onDraft),
       _NutritionEntryMode.label => [
         GainerGroupedSection(
@@ -720,7 +729,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
     );
   }
 
-  List<Widget> _estimateTools(NutritionViewModel vm) => [
+  List<Widget> _estimateTools(
+    NutritionViewModel vm,
+    ValueChanged<_NutritionEntryMode> onSelectMode,
+  ) => [
     _withDictation(
       (dictation) => GainerGroupedSection(
         footer: switch (dictation) {
@@ -763,13 +775,29 @@ class _NutritionScreenState extends State<NutritionScreen> {
           for (var index = 0; index < estimate.components.length; index++)
             GainerListRow(
               title: estimate.components[index].name,
-              subtitle:
-                  '${_fmtGrams(estimate.components[index].amountGrams)} g · ${_fmtKcal(estimate.components[index].totals.kilocalories)} kcal · ${estimate.components[index].confidence}',
+              subtitle: _estimateSubtitle(estimate.components[index]),
               trailing: const _AddGlyph(),
               onTap: () => vm.confirmEstimatedComponent(index),
             ),
         ],
       ),
+      // Selbst gesalzenes Essen schätzt die KI nicht; hier geht es direkt
+      // zur Salz-Schnellwahl.
+      if (!estimate.components.any((item) => item.name == _saltName)) ...[
+        const SizedBox(height: GainerSpacing.m),
+        GainerGroupedSection(
+          children: [
+            GainerListRow(
+              key: const ValueKey('nutrition-estimate-add-salt'),
+              leadingIcon: _NutritionEntryMode.salt.icon,
+              title: 'Selbst gesalzen?',
+              subtitle: 'Salz hinzufügen',
+              showChevron: true,
+              onTap: () => onSelectMode(_NutritionEntryMode.salt),
+            ),
+          ],
+        ),
+      ],
       const SizedBox(height: GainerSpacing.m),
       GainerPillButton(
         label: 'Schätzung verwerfen',
@@ -779,6 +807,17 @@ class _NutritionScreenState extends State<NutritionScreen> {
       ),
     ],
   ];
+
+  /// „350 g · 890 kcal · ~3,5 g Salz · mittel“; Salz nur, wenn geschätzt.
+  String _estimateSubtitle(NutritionEstimateComponent item) {
+    final salt = item.totals.saltGrams;
+    return [
+      '${_fmtGrams(item.amountGrams)} g',
+      '${_fmtKcal(item.totals.kilocalories)} kcal',
+      if (salt != null && item.name != _saltName) '~${_fmtGrams(salt)} g Salz',
+      _confidenceNames[item.confidence.toLowerCase()] ?? item.confidence,
+    ].join(' · ');
+  }
 
   Widget _hint(String text) => Padding(
     padding: const EdgeInsets.symmetric(vertical: GainerSpacing.s),

@@ -73,6 +73,7 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
                 proteinGrams: item.proteinGrams,
                 carbohydrateGrams: item.carbohydrateGrams,
                 fatGrams: item.fatGrams,
+                saltGrams: item.saltGrams,
               ),
               confidence: item.confidence,
               dataGaps: List.unmodifiable(item.dataGaps),
