@@ -32,38 +32,38 @@ Ein PR auf einem Feature-Branch. Commits nach Conventional Commits. Nach jedem A
 
 ## 2. Flutter-Domäne und Daten
 
-- [ ] 2.1 `NutritionDayTarget`, `NutritionTargetVersion.restDay` und `NutritionDay.dayKind` mit JSON und Validierung. Unit-Tests.
-- [ ] 2.2 `NutritionRepository.saveTargets` (D3) ersetzt `addTargetPhase`, `updateTargetPhase` und `removeTargetPhase`. Unit-Tests:
+- [x] 2.1 `NutritionDayTarget`, `NutritionTargetVersion.restDay` und `NutritionDay.dayKind` mit JSON und Validierung. Unit-Tests.
+- [x] 2.2 `NutritionRepository.saveTargets` (D3) ersetzt `addTargetPhase`, `updateTargetPhase` und `removeTargetPhase`. Unit-Tests:
   - erste Ziele
   - Änderung an einem späteren Tag kürzt die Vorversion
   - zweite Änderung am selben Tag ersetzt die Version
   - alte Daten mit geschlossener laufender und geplanter Folgephase
   - Ruhetag-Ziel ausschalten
   - Spec-Szenario „Ruhetag-Ziel nachträglich einführen“
-- [ ] 2.3 `TrainingScheduleProjection.hasFinishedOn` sowie `automaticDayKind` und `dayTarget` in `domain/models/nutrition/day_target.dart` (D6). Unit-Tests decken alle Szenarien aus „Tagesart automatisch bestimmen“ und „Ziel eines Tages“ ab, außerdem Versionswechsel, Cardio ohne Einfluss und gelöschte Trainings.
-- [ ] 2.4 Codec: `restDay` und `dayKind` nur senden, wenn gesetzt, und aus Snapshots lesen. Codec-Tests für mit und ohne Felder.
-- [ ] 2.5 `NutritionRepository.setDayKind` mit zusammengefasster Outbox. Gemeinsames Lese-Interface für die Projektionseingaben (D7). Tests:
+- [x] 2.3 `TrainingScheduleProjection.hasFinishedOn` sowie `automaticDayKind` und `dayTarget` in `domain/models/nutrition/day_target.dart` (D6). Unit-Tests decken alle Szenarien aus „Tagesart automatisch bestimmen“ und „Ziel eines Tages“ ab, außerdem Versionswechsel, Cardio ohne Einfluss und gelöschte Trainings.
+- [x] 2.4 Codec: `restDay` und `dayKind` nur senden, wenn gesetzt, und aus Snapshots lesen. Codec-Tests für mit und ohne Felder.
+- [x] 2.5 `NutritionRepository.setDayKind` mit zusammengefasster Outbox. Gemeinsames Lese-Interface für die Projektionseingaben (D7). Tests:
   - offline festlegen und Mahlzeit erfassen ergibt einen wartenden Stand
   - Aufheben setzt `dayKind` auf null, ohne den Tag zu löschen
-- [ ] 2.6 Durchschnitte nutzen `dayTarget`. Unit-Test mit dem Spec-Beispiel: Ø 2.466,67 kcal, angezeigt „2.467 kcal“, 2 von 3 Tagen im Zielbereich.
+- [x] 2.6 Durchschnitte nutzen `dayTarget`. Unit-Test mit dem Spec-Beispiel: Ø 2.466,67 kcal, angezeigt „2.467 kcal“, 2 von 3 Tagen im Zielbereich.
 
 ## 3. Flutter-UI
 
-- [ ] 3.1 Bereich „Ziele“ und Ziel-Editor (D9) ersetzen die Phasen-UI. Phasenzeile, Phasen-Editor, Kategorie-Auswahl und Entfernen-Dialog werden entfernt. Widget-Tests:
+- [x] 3.1 Bereich „Ziele“ und Ziel-Editor (D9) ersetzen die Phasen-UI. Phasenzeile, Phasen-Editor, Kategorie-Auswahl und Entfernen-Dialog werden entfernt. Widget-Tests:
   - Ziele anlegen
   - Ruhetag-Ziel ausschalten
   - deaktiviertes Speichern bei ungültigem Ruhetag-Ziel
   - Hinweis „Rhythmus einrichten“ ohne Rhythmus
 
   Goldens hell und dunkel, auch bei Textgröße 2.
-- [ ] 3.2 Tageskarte im Tab „Essen“: Chip für die Tagesart statt Phasenname und Kategorie, Sheet „Zählt als“, neu laden bei Tab-Wechsel und Sync-Ende. Widget-Tests:
+- [x] 3.2 Tageskarte im Tab „Essen“: Chip für die Tagesart statt Phasenname und Kategorie, Sheet „Zählt als“, neu laden bei Tab-Wechsel und Sync-Ende. Widget-Tests:
   - Ruhetag-Ziel wird angezeigt
   - manuelle Festlegung und „Automatisch“
   - ohne Ruhetag-Ziel kein Chip
   - ohne Ziele „Ziele festlegen“
   - Überspringen im Kalender, dann wechselt der Tab „Essen“ auf das Ruhetag-Ziel
-- [ ] 3.3 Ernährungskarte im Kalender mit Chip und Sheet, „Ruhetag · manuell“. Goldens aktualisieren, Widget-Test für einen vergangenen Tag mit Festlegung.
-- [ ] 3.4 VoiceOver-Beschriftung des Chips, Test über Semantics.
+- [x] 3.3 Ernährungskarte im Kalender mit Chip und Sheet, „Ruhetag · manuell“. Goldens aktualisieren, Widget-Test für einen vergangenen Tag mit Festlegung.
+- [x] 3.4 VoiceOver-Beschriftung des Chips, Test über Semantics.
 
 ## 4. Tagesvorlagen
 
@@ -78,13 +78,13 @@ Ein PR auf einem Feature-Branch. Commits nach Conventional Commits. Nach jedem A
   - Validierung: Name, 201 Einträge, doppelte IDs, Tagesart
   - Obergrenze von 50
   - fremde Vorlage löschen ergibt „nicht gefunden“
-- [ ] 4.3 Flutter-Modell, Codec und Konflikt-Abbildung für `nutrition-day-template`. Codec-Tests.
-- [ ] 4.4 Repository (D11): `saveDayAsTemplate`, `applyTemplate` (Ersetzen und Hinzufügen), `deleteTemplate`, `updateTemplateMeta`, `suggestedTemplate`. Unit-Tests für alle Szenarien aus `nutrition-day-templates`:
+- [x] 4.3 Flutter-Modell, Codec und Konflikt-Abbildung für `nutrition-day-template`. Codec-Tests.
+- [x] 4.4 Repository (D11): `saveDayAsTemplate`, `applyTemplate` (Ersetzen und Hinzufügen), `deleteTemplate`, `updateTemplateMeta`, `suggestedTemplate`. Unit-Tests für alle Szenarien aus `nutrition-day-templates`:
   - Kopien mit neuen IDs
   - manuelle Tagesart bleibt erhalten
   - Grenze von 200 Einträgen
   - offline speichern und anwenden
-- [ ] 4.5 UI (D12): Tagesmenü, Sheets „Als Vorlage speichern“ und „Aus Vorlage befüllen“, Ersetzen/Hinzufügen-Abfrage, Vorschlag in der leeren Tageskarte, Bereich „Tagesvorlagen“ mit Detailansicht und Wischen zum Löschen. Widget-Tests und Goldens hell, dunkel und bei Textgröße 2.
+- [x] 4.5 UI (D12): Tagesmenü, Sheets „Als Vorlage speichern“ und „Aus Vorlage befüllen“, Ersetzen/Hinzufügen-Abfrage, Vorschlag in der leeren Tageskarte, Bereich „Tagesvorlagen“ mit Detailansicht und Wischen zum Löschen. Widget-Tests und Goldens hell, dunkel und bei Textgröße 2.
 
 ## 5. Abschluss
 

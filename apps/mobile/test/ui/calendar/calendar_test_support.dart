@@ -47,7 +47,11 @@ class CalendarHarness {
         ids: () => testId(cardioIds++),
         clock: () => training.now,
       ),
-      NutritionRepository(store: training.store, clock: () => training.now),
+      NutritionRepository(
+        store: training.store,
+        clock: () => training.now,
+        scheduleProjection: training.repository.readScheduleProjection,
+      ),
       BodyRepository(store: training.store, clock: () => training.now),
     );
   }
@@ -162,23 +166,28 @@ class CalendarHarness {
     double protein = 180,
     double carbs = 300,
     double fat = 80,
-  }) => nutrition.addTargetPhase(
-    NutritionTargetVersion(
-      targetVersionId: testId(_ids++),
-      name: 'Aufbau',
-      category: NutritionTargetCategory.custom,
-      effectiveFrom: from,
-      effectiveUntil: null,
-      inputMode: NutritionTargetInputMode.grams,
-      kilocalories: kcal,
-      proteinGrams: protein,
-      carbohydrateGrams: carbs,
-      fatGrams: fat,
-      proteinPercent: null,
-      carbohydratePercent: null,
-      fatPercent: null,
+    NutritionDayTarget? rest,
+  }) => nutrition.saveTargetSchedule(
+    NutritionTargetSchedule(
+      versions: [
+        NutritionTargetVersion(
+          targetVersionId: testId(_ids++),
+          name: 'Aufbau',
+          category: NutritionTargetCategory.custom,
+          effectiveFrom: from,
+          effectiveUntil: null,
+          inputMode: NutritionTargetInputMode.grams,
+          kilocalories: kcal,
+          proteinGrams: protein,
+          carbohydrateGrams: carbs,
+          fatGrams: fat,
+          proteinPercent: null,
+          carbohydratePercent: null,
+          fatPercent: null,
+          restDay: rest,
+        ),
+      ],
     ),
-    closeOpenPreviousPhase: true,
   );
 
   Future<void> cardioOn(LocalDay date) async {

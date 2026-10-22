@@ -129,6 +129,22 @@ class TrainingLogRepository {
     return workout.deletedAtUtc == null ? workout : null;
   }
 
+  /// Rhythmus-Vorschau aus den lokalen Daten (Trainings, alle Pläne,
+  /// Rhythmus), z. B. für die Tagesart der Ernährung.
+  Future<TrainingScheduleProjection> readScheduleProjection() async {
+    final results = await Future.wait<Object?>([
+      readDiary(),
+      readPlans(includeArchived: true),
+      schedule.read(),
+    ]);
+    return TrainingScheduleProjection(
+      schedule: results[2] as TrainingSchedule?,
+      plans: results[1]! as List<TrainingPlanModel>,
+      workouts: results[0]! as List<Workout>,
+      today: schedule.today(),
+    );
+  }
+
   /// Pläne nach Reihenfolge. Archivierte Pläne nur mit [includeArchived].
   Future<List<TrainingPlanModel>> readPlans({
     bool includeArchived = false,

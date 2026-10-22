@@ -271,7 +271,7 @@ void main() {
     expect(find.text('Heute'), findsOneWidget);
     expect(find.text('Montag, 12. Oktober'), findsNothing);
     expect(find.byKey(const ValueKey('nutrition-add-food')), findsOneWidget);
-    expect(find.text('Gerichte und Ziele verwalten'), findsNothing);
+    expect(find.text('Gerichte und Vorlagen verwalten'), findsNothing);
     expect(find.text('Noch nichts eingetragen'), findsNothing);
     expect(find.text('Hinzufügen'), findsNWidgets(4));
     expect(find.byType(CupertinoTextField), findsNothing);
@@ -526,62 +526,6 @@ void main() {
     },
   );
 
-  testWidgets('target phase form uses 4/4/9 and cancellation writes nothing', (
-    tester,
-  ) async {
-    _usePhoneViewport(tester);
-    final database = LocalDatabase(NativeDatabase.memory());
-    addTearDown(database.close);
-    final store = LocalSyncStore(database: database, accountId: accountId);
-    final repository = NutritionRepository(
-      store: store,
-      ids: () => '00000000-0000-4000-8000-000000000035',
-      clock: () => DateTime.utc(2026, 10, 12, 10),
-    );
-    final viewModel = NutritionViewModel(
-      repository: repository,
-      localDate: '2026-10-12',
-    );
-    await tester.pumpWidget(
-      CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
-    );
-    await tester.pumpAndSettle();
-
-    await _openPlanning(tester);
-
-    await tester.scrollUntilVisible(
-      find.text('Zielphase hinzufügen'),
-      260,
-      scrollable: _verticalScrollable(),
-    );
-    await tester.ensureVisible(find.text('Zielphase hinzufügen'));
-    await tester.tap(find.text('Zielphase hinzufügen'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('nutrition-target-close')));
-    await tester.pumpAndSettle();
-    expect(
-      await store.readOutbox(aggregateType: 'nutrition-target-schedule'),
-      isEmpty,
-    );
-
-    await tester.tap(find.text('Zielphase hinzufügen'));
-    await tester.pumpAndSettle();
-    expect(find.byType(CupertinoAlertDialog), findsNothing);
-    final fields = find.byType(CupertinoTextField);
-    await tester.enterText(fields.at(0), 'Aufbau');
-    await tester.enterText(fields.at(1), '2026-10-13');
-    await tester.ensureVisible(find.text('Sichern'));
-    await tester.tap(find.text('Sichern'));
-    await tester.pumpAndSettle();
-    final phase = viewModel.snapshot!.targetSchedule!.versions.single;
-    expect(phase.proteinGrams, 125);
-    expect(phase.carbohydrateGrams, 250);
-    expect(phase.fatGrams, closeTo(55.56, .01));
-    // Der Standard von 6 g bleibt offen, statt fest gespeichert zu werden.
-    expect(phase.saltGrams, isNull);
-    expect(phase.effectiveSaltGrams, 6);
-  });
-
   testWidgets('own salt is added to a meal as a zero-calorie entry', (
     tester,
   ) async {
@@ -828,133 +772,6 @@ void main() {
     expect(added.amountGrams, 100);
   });
 
-  testWidgets('target phase stores a custom salt limit', (tester) async {
-    _usePhoneViewport(tester);
-    final database = LocalDatabase(NativeDatabase.memory());
-    addTearDown(database.close);
-    final repository = NutritionRepository(
-      store: LocalSyncStore(database: database, accountId: accountId),
-      ids: () => '00000000-0000-4000-8000-000000000036',
-      clock: () => DateTime.utc(2026, 10, 12, 10),
-    );
-    final viewModel = NutritionViewModel(
-      repository: repository,
-      localDate: '2026-10-12',
-    );
-    await tester.pumpWidget(
-      CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
-    );
-    await tester.pumpAndSettle();
-    await _openPlanning(tester);
-    await tester.scrollUntilVisible(
-      find.text('Zielphase hinzufügen'),
-      260,
-      scrollable: _verticalScrollable(),
-    );
-    await tester.tap(find.text('Zielphase hinzufügen'));
-    await tester.pumpAndSettle();
-    final fields = find.byType(CupertinoTextField);
-    await tester.enterText(fields.at(0), 'Weniger Salz');
-    await tester.enterText(fields.at(1), '2026-10-13');
-    final salt = find.byKey(const ValueKey('nutrition-target-salt'));
-    await tester.ensureVisible(salt);
-    expect(tester.widget<CupertinoTextField>(salt).controller!.text, '6');
-    await tester.enterText(salt, '0');
-    await tester.pump();
-    expect(find.text('Sichern').hitTestable(), findsOneWidget);
-    expect(
-      tester
-          .widget<GainerPillButton>(
-            find.ancestor(
-              of: find.text('Sichern'),
-              matching: find.byType(GainerPillButton),
-            ),
-          )
-          .onPressed,
-      isNull,
-    );
-    await tester.enterText(salt, '5');
-    await tester.pump();
-    await tester.ensureVisible(find.text('Sichern'));
-    await tester.tap(find.text('Sichern'));
-    await tester.pumpAndSettle();
-    final phase = viewModel.snapshot!.targetSchedule!.versions.single;
-    expect(phase.saltGrams, 5);
-  });
-
-  testWidgets(
-    'current target phase is read-only while future phase is editable',
-    (tester) async {
-      _usePhoneViewport(tester);
-      final database = LocalDatabase(NativeDatabase.memory());
-      addTearDown(database.close);
-      final store = LocalSyncStore(database: database, accountId: accountId);
-      var nextId = 45;
-      final repository = NutritionRepository(
-        store: store,
-        ids: () =>
-            '00000000-0000-4000-8000-${(nextId++).toString().padLeft(12, '0')}',
-        clock: () => DateTime.utc(2026, 10, 12, 10),
-      );
-      final current = _targetPhase(
-        id: '00000000-0000-4000-8000-000000000046',
-        name: 'Aktuelles Ziel',
-        from: '2026-10-01',
-        until: '2026-10-19',
-      );
-      final future = _targetPhase(
-        id: '00000000-0000-4000-8000-000000000047',
-        name: 'Künftiges Ziel',
-        from: '2026-10-20',
-      );
-      await repository.saveTargetSchedule(
-        NutritionTargetSchedule(versions: [current, future]),
-      );
-      final viewModel = NutritionViewModel(
-        repository: repository,
-        localDate: '2026-10-12',
-      );
-      await tester.pumpWidget(
-        CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('0 von 2.000 kcal'), findsOneWidget);
-      await _openPlanning(tester);
-      await tester.scrollUntilVisible(
-        find.text('Aktuelles Ziel'),
-        240,
-        scrollable: _verticalScrollable(),
-      );
-
-      final currentRow = find.byKey(
-        const ValueKey('target-phase-00000000-0000-4000-8000-000000000046'),
-      );
-      expect(
-        find.descendant(of: currentRow, matching: find.byType(Dismissible)),
-        findsNothing,
-      );
-      await tester.scrollUntilVisible(
-        find.text('Künftiges Ziel'),
-        180,
-        scrollable: _verticalScrollable(),
-      );
-      final futureRow = find.byKey(
-        const ValueKey('target-phase-00000000-0000-4000-8000-000000000047'),
-      );
-      expect(
-        find.descendant(of: futureRow, matching: find.byType(Dismissible)),
-        findsOneWidget,
-      );
-      final outboxBefore = await store.readOutbox(
-        aggregateType: 'nutrition-target-schedule',
-      );
-      expect(outboxBefore, hasLength(1));
-      expect(
-        await store.readOutbox(aggregateType: 'nutrition-target-schedule'),
-        hasLength(1),
-      );
-    },
-  );
   testWidgets('swiping an entry left deletes only after confirmation', (
     tester,
   ) async {
@@ -1029,72 +846,6 @@ void main() {
     expect(ordered.map((e) => e.productName), ['Haferflocken', 'Joghurt']);
   });
 
-  testWidgets('future target phase is removed by swipe after confirmation', (
-    tester,
-  ) async {
-    _usePhoneViewport(tester);
-    final database = LocalDatabase(NativeDatabase.memory());
-    addTearDown(database.close);
-    final store = LocalSyncStore(database: database, accountId: accountId);
-    final repository = NutritionRepository(
-      store: store,
-      clock: () => DateTime.utc(2026, 10, 12, 10),
-    );
-    const futureId = '00000000-0000-4000-8000-000000000047';
-    await repository.saveTargetSchedule(
-      NutritionTargetSchedule(
-        versions: [
-          _targetPhase(
-            id: '00000000-0000-4000-8000-000000000046',
-            name: 'Aktuelles Ziel',
-            from: '2026-10-01',
-            until: '2026-10-19',
-          ),
-          _targetPhase(
-            id: futureId,
-            name: 'Künftiges Ziel',
-            from: '2026-10-20',
-          ),
-        ],
-      ),
-    );
-    final viewModel = NutritionViewModel(
-      repository: repository,
-      localDate: '2026-10-12',
-    );
-    await tester.pumpWidget(
-      CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
-    );
-    await tester.pumpAndSettle();
-    await _openPlanning(tester);
-
-    final row = find.byKey(const ValueKey('target-phase-$futureId'));
-    await tester.scrollUntilVisible(
-      row,
-      180,
-      scrollable: _verticalScrollable(),
-    );
-    await tester.drag(row, const Offset(-500, 0));
-    await tester.pumpAndSettle();
-    expect(find.text('Zielphase entfernen?'), findsOneWidget);
-    await tester.tap(find.text('Abbrechen'));
-    await tester.pumpAndSettle();
-    expect(
-      (await store.readOutbox(aggregateType: 'nutrition-target-schedule')),
-      hasLength(1),
-    );
-
-    await tester.drag(row, const Offset(-500, 0));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Entfernen').last);
-    await tester.pumpAndSettle();
-    expect(viewModel.snapshot!.targetSchedule!.versions, hasLength(1));
-    expect(
-      viewModel.snapshot!.targetSchedule!.versions.single.name,
-      'Aktuelles Ziel',
-    );
-    viewModel.dispose();
-  });
   testWidgets('date pill shows relative labels and opens the date picker', (
     tester,
   ) async {
@@ -1738,7 +1489,7 @@ class _FailingNutritionOnlineProvider implements NutritionOnlineProvider {
 Future<void> _openPlanning(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('nutrition-more-menu')));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('Gerichte und Ziele verwalten'));
+  await tester.tap(find.text('Gerichte und Vorlagen verwalten'));
   await tester.pumpAndSettle();
 }
 
