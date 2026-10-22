@@ -164,6 +164,7 @@ void main() {
               'proteinGrams': 13,
               'carbohydrateGrams': 68,
               'fatGrams': 7,
+              'saltGrams': 0.9,
             },
             'source': {
               'provider': 'OpenFoodFacts',
@@ -191,7 +192,35 @@ void main() {
       final entry = (payload['entries'] as List).single as Map;
       expect(entry['entryId'], 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
       expect(entry['kilocaloriesPer100Grams'], 380);
+      expect(entry['saltGramsPer100Grams'], 0.9);
       expect(entry['source'], (source['entries'] as List).single['source']);
+
+      // Ohne Salz wird das Feld weggelassen, damit ältere Server nichts sehen.
+      final withoutSalt = Map<String, dynamic>.from(working);
+      final plainEntry = Map<String, dynamic>.from(
+        (working['entries'] as List).single as Map,
+      );
+      plainEntry['per100Grams'] = Map<String, dynamic>.from(
+        plainEntry['per100Grams'] as Map,
+      )..remove('saltGrams');
+      withoutSalt['entries'] = [plainEntry];
+      final plainPayload =
+          SyncPayloadCodec.serverPayload(
+                _mutation(
+                  'nutrition-day',
+                  LocalMutationOperation.update,
+                  withoutSalt,
+                ),
+                withoutSalt,
+                2,
+              )!
+              as Map<String, dynamic>;
+      expect(
+        ((plainPayload['entries'] as List).single as Map).containsKey(
+          'saltGramsPer100Grams',
+        ),
+        isFalse,
+      );
     },
   );
 

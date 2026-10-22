@@ -35,6 +35,7 @@ public sealed class NutritionEntry : UserOwnedEntity
     public decimal? ProteinGrams { get; set; }
     public decimal? CarbohydrateGrams { get; set; }
     public decimal? FatGrams { get; set; }
+    public decimal? SaltGrams { get; set; }
     public string? Provider { get; set; }
     public string? Barcode { get; set; }
     public DateTime? RetrievedAtUtc { get; set; }
@@ -43,4 +44,5 @@ public sealed class NutritionEntry : UserOwnedEntity
     public decimal? ProteinGramsPerBasis { get; set; }
     public decimal? CarbohydrateGramsPerBasis { get; set; }
     public decimal? FatGramsPerBasis { get; set; }
+    public decimal? SaltGramsPerBasis { get; set; }
 }

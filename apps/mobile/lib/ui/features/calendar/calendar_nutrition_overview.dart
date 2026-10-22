@@ -146,24 +146,49 @@ class CalendarNutritionOverview extends StatelessWidget {
         stacked: stacked,
       ),
     ];
+    final salt = _Macro(
+      key: const ValueKey('calendar-nutrition-salt'),
+      name: 'Salz',
+      value: nutrition.saltGrams,
+      target: nutrition.targetSaltGrams,
+      stacked: stacked,
+      decimals: 1,
+    );
     if (stacked) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (var i = 0; i < macros.length; i++) ...[
-            if (i > 0) const SizedBox(height: GainerSpacing.m),
-            macros[i],
+          for (final macro in [...macros, salt]) ...[
+            if (macro != macros.first) const SizedBox(height: GainerSpacing.m),
+            macro,
           ],
         ],
       );
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    // Salz ist eine Obergrenze und steht in eigener Zeile unter den Makros.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < macros.length; i++) ...[
-          if (i > 0) const SizedBox(width: GainerSpacing.m),
-          Expanded(child: macros[i]),
-        ],
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < macros.length; i++) ...[
+              if (i > 0) const SizedBox(width: GainerSpacing.m),
+              Expanded(child: macros[i]),
+            ],
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.m),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: salt),
+            const SizedBox(width: GainerSpacing.m),
+            const Spacer(),
+            const SizedBox(width: GainerSpacing.m),
+            const Spacer(),
+          ],
+        ),
       ],
     );
   }
@@ -206,9 +231,14 @@ class _Summary {
 
   String semanticsLabel(CalendarNutrition nutrition) {
     final target = nutrition.targetKilocalories;
-    String macro(String name, double? value, double? goal) => value == null
+    String macro(
+      String name,
+      double? value,
+      double? goal, {
+      int decimals = 0,
+    }) => value == null
         ? '$name ohne Angabe'
-        : '$name ${calendarGrams(value, goal)}';
+        : '$name ${calendarGrams(value, goal, decimals: decimals)}';
     return [
       'Ernährung: ${calendarKcal(nutrition.kilocalories, null)} gegessen',
       if (target != null) ...[
@@ -222,6 +252,12 @@ class _Summary {
       ),
       macro('Eiweiß', nutrition.proteinGrams, nutrition.targetProteinGrams),
       macro('Fett', nutrition.fatGrams, nutrition.targetFatGrams),
+      macro(
+        'Salz',
+        nutrition.saltGrams,
+        nutrition.targetSaltGrams,
+        decimals: 1,
+      ),
     ].join(', ');
   }
 }
@@ -403,6 +439,7 @@ class _Macro extends StatelessWidget {
     required this.value,
     required this.target,
     required this.stacked,
+    this.decimals = 0,
     super.key,
   });
 
@@ -410,6 +447,7 @@ class _Macro extends StatelessWidget {
   final double? value;
   final double? target;
   final bool stacked;
+  final int decimals;
 
   @override
   Widget build(BuildContext context) {
@@ -446,7 +484,7 @@ class _Macro extends StatelessWidget {
           fit: BoxFit.scaleDown,
           alignment: textAlignment,
           child: Text(
-            calendarGramsOf(value, goal),
+            calendarGramsOf(value, goal, decimals: decimals),
             maxLines: 1,
             style: GainerTypography.label.copyWith(color: colors.secondaryText),
           ),

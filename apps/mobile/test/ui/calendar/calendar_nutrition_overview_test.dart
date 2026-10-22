@@ -22,6 +22,7 @@ const _underTarget = CalendarNutrition(
   proteinGrams: 82,
   carbohydrateGrams: 120,
   fatGrams: 41.6,
+  saltGrams: 3.44,
   target: _target,
 );
 
@@ -82,11 +83,13 @@ void main() {
     expect(find.text('0 / 332 g'), findsOneWidget);
     expect(find.text('0 / 180 g'), findsOneWidget);
     expect(find.text('0 / 80 g'), findsOneWidget);
-    expect(find.byType(GainerProgressBar), findsNWidgets(3));
+    expect(find.text('0 / 6 g'), findsOneWidget);
+    expect(find.byType(GainerProgressBar), findsNWidgets(4));
     expect(
       _label(tester),
       'Ernährung: 0 kcal gegessen, 2.724 kcal übrig, Ziel 2.724 kcal, '
-      'Kohlenhydrate 0 von 332 g, Eiweiß 0 von 180 g, Fett 0 von 80 g',
+      'Kohlenhydrate 0 von 332 g, Eiweiß 0 von 180 g, Fett 0 von 80 g, '
+      'Salz 0 von 6 g',
     );
   });
 
@@ -102,11 +105,13 @@ void main() {
     expect(find.text('120 / 332 g'), findsOneWidget);
     expect(find.text('82 / 180 g'), findsOneWidget);
     expect(find.text('42 / 80 g'), findsOneWidget);
+    expect(find.text('3,4 / 6 g'), findsOneWidget);
     expect(find.text('Verbrannt'), findsNothing);
     expect(
       _label(tester),
       'Ernährung: 1.240 kcal gegessen, 1.484 kcal übrig, Ziel 2.724 kcal, '
-      'Kohlenhydrate 120 von 332 g, Eiweiß 82 von 180 g, Fett 42 von 80 g',
+      'Kohlenhydrate 120 von 332 g, Eiweiß 82 von 180 g, Fett 42 von 80 g, '
+      'Salz 3,4 von 6 g',
     );
   });
 
@@ -153,12 +158,13 @@ void main() {
     );
     expect(find.text('120 g'), findsOneWidget);
     expect(find.text('82 g'), findsOneWidget);
-    expect(find.text('– g'), findsOneWidget);
+    // Fett und Salz ohne Angabe.
+    expect(find.text('– g'), findsNWidgets(2));
     expect(find.byType(GainerProgressBar), findsNothing);
     expect(
       _label(tester),
       'Ernährung: 1.240 kcal gegessen, Kohlenhydrate 120 g, Eiweiß 82 g, '
-      'Fett ohne Angabe',
+      'Fett ohne Angabe, Salz ohne Angabe',
     );
   });
 
@@ -250,7 +256,7 @@ void main() {
 
     for (final brightness in Brightness.values) {
       testWidgets('Ernährungsübersicht ${brightness.name}', (tester) async {
-        cardSize(tester, 340);
+        cardSize(tester, 400);
         await _pumpCard(tester, _underTarget, brightness: brightness);
         expect(tester.takeException(), isNull);
         await expectLater(
@@ -263,7 +269,7 @@ void main() {
     }
 
     testWidgets('Ernährungsübersicht über Ziel dunkel', (tester) async {
-      cardSize(tester, 340);
+      cardSize(tester, 400);
       await _pumpCard(
         tester,
         const CalendarNutrition(
@@ -282,7 +288,7 @@ void main() {
     }, tags: ['golden']);
 
     testWidgets('Ernährungsübersicht ohne Ziel', (tester) async {
-      cardSize(tester, 340);
+      cardSize(tester, 400);
       await _pumpCard(
         tester,
         const CalendarNutrition(
@@ -299,7 +305,7 @@ void main() {
     }, tags: ['golden']);
 
     testWidgets('Ernährungsübersicht Textgröße 2', (tester) async {
-      cardSize(tester, 760);
+      cardSize(tester, 840);
       await _pumpCard(tester, _underTarget, textScale: 2);
       expect(tester.takeException(), isNull);
       await expectLater(
