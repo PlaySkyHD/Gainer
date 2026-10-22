@@ -78,6 +78,8 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
               confidence: item.confidence,
               dataGaps: List.unmodifiable(item.dataGaps),
               sourceUrl: item.sourceUrl,
+              pieceCount: item.pieceCount,
+              pieceGrams: item.pieceGrams,
             ),
           ),
         ),
@@ -133,6 +135,7 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
       fatGrams: value.fatGramsPer100Grams,
       saltGrams: value.saltGramsPer100Grams,
     ),
+    pieceGrams: value.servingGrams,
     source: NutritionSource(
       provider: value.source,
       barcode: value.barcode,

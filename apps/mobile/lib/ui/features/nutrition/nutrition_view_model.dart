@@ -108,6 +108,8 @@ class NutritionViewModel extends ChangeNotifier {
     double? carbohydrateGramsPer100,
     double? fatGramsPer100,
     double? saltGramsPer100,
+    double? pieceGrams,
+    double? pieceCount,
   }) => _run(() async {
     final current = snapshot ?? await repository.read(localDate);
     final position =
@@ -135,6 +137,8 @@ class NutritionViewModel extends ChangeNotifier {
           saltGrams: saltGramsPer100,
         ),
         source: null,
+        pieceGrams: pieceGrams,
+        pieceCount: pieceCount,
       ),
     );
     snapshot = await repository.read(localDate);
@@ -158,6 +162,8 @@ class NutritionViewModel extends ChangeNotifier {
     String? brand,
     required double amountGrams,
     required NutritionTotals per100Grams,
+    double? pieceGrams,
+    double? pieceCount,
   }) => _run(
     () async {
       await repository.saveEntry(
@@ -169,6 +175,9 @@ class NutritionViewModel extends ChangeNotifier {
           clearBrand: brand == null,
           amountGrams: amountGrams,
           per100Grams: per100Grams,
+          pieceGrams: pieceGrams,
+          pieceCount: pieceCount,
+          clearPieces: true,
         ),
       );
       snapshot = await repository.read(localDate);
@@ -318,34 +327,41 @@ class NutritionViewModel extends ChangeNotifier {
     statusMessage = 'Schätzung prüfen. Es wurde noch nichts gespeichert.';
   }, operation: NutritionErrorOperation.estimate);
 
-  Future<void> addFood(NutritionFood food, {required double amountGrams}) =>
-      _run(() async {
-        final current = snapshot ?? await repository.read(localDate);
-        final position =
-            current.day.entries
-                .where((item) => item.meal == selectedMeal)
-                .fold<int>(
-                  0,
-                  (max, item) => item.position > max ? item.position : max,
-                ) +
-            1;
-        await repository.saveEntry(
-          localDate,
-          NutritionEntry(
-            entryId: repository.ids(),
-            meal: selectedMeal,
-            position: position,
-            productName: food.name,
-            brand: food.brand,
-            amountGrams: amountGrams,
-            per100Grams: food.per100Grams,
-            source: food.source,
-          ),
-        );
-        snapshot = await repository.read(localDate);
-        statusMessage =
-            'Lebensmittel-Snapshot gespeichert und für den Sync vorgemerkt.';
-      }, saving: true);
+  /// [pieceCount] gesetzt: Menge wurde in Stück eingegeben ([amountGrams] ist
+  /// dann Stückzahl × Stückgewicht des Lebensmittels).
+  Future<void> addFood(
+    NutritionFood food, {
+    required double amountGrams,
+    double? pieceCount,
+  }) => _run(() async {
+    final current = snapshot ?? await repository.read(localDate);
+    final position =
+        current.day.entries
+            .where((item) => item.meal == selectedMeal)
+            .fold<int>(
+              0,
+              (max, item) => item.position > max ? item.position : max,
+            ) +
+        1;
+    await repository.saveEntry(
+      localDate,
+      NutritionEntry(
+        entryId: repository.ids(),
+        meal: selectedMeal,
+        position: position,
+        productName: food.name,
+        brand: food.brand,
+        amountGrams: amountGrams,
+        per100Grams: food.per100Grams,
+        source: food.source,
+        pieceGrams: food.pieceGrams,
+        pieceCount: pieceCount,
+      ),
+    );
+    snapshot = await repository.read(localDate);
+    statusMessage =
+        'Lebensmittel-Snapshot gespeichert und für den Sync vorgemerkt.';
+  }, saving: true);
 
   Future<void> confirmEstimatedComponent(int componentIndex) async {
     final draft = mealEstimateDraft;
@@ -394,6 +410,8 @@ class NutritionViewModel extends ChangeNotifier {
             retrievedAtUtc: draft.estimatedAtUtc,
             basisGrams: item.amountGrams,
           ),
+          pieceGrams: item.pieceCount == null ? null : item.pieceGrams,
+          pieceCount: item.pieceGrams == null ? null : item.pieceCount,
         ),
       );
       snapshot = await repository.read(localDate);
@@ -585,6 +603,8 @@ class NutritionViewModel extends ChangeNotifier {
     StateError(:final message) when message.contains('Onlineverbindung') =>
       '$message Bitte später erneut versuchen.',
     PlatformException() => _captureMessage(error),
+    NutritionValidationException(:final fields) when fields.isNotEmpty =>
+      fields.values.first,
     _ => error.toString(),
   };
 

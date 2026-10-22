@@ -41,6 +41,22 @@ public sealed class OpenFoodFactsCatalogTests
     }
 
     [TestMethod]
+    public async Task ServingSizeInGramsBecomesThePieceWeight()
+    {
+        OpenFoodFactsCatalog egg = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(servingQuantity: "50", servingUnit: "g"))));
+        Assert.AreEqual(50m, (await egg.GetByBarcodeAsync("12345678")).ServingGrams);
+
+        OpenFoodFactsCatalog text = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(servingQuantity: "\"30\""))));
+        Assert.AreEqual(30m, (await text.GetByBarcodeAsync("12345678")).ServingGrams);
+
+        OpenFoodFactsCatalog pieces = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(servingQuantity: "2", servingUnit: "piece"))));
+        Assert.IsNull((await pieces.GetByBarcodeAsync("12345678")).ServingGrams);
+
+        OpenFoodFactsCatalog none = Create(new QueueHandler(Response(HttpStatusCode.OK, Product())));
+        Assert.IsNull((await none.GetByBarcodeAsync("12345678")).ServingGrams);
+    }
+
+    [TestMethod]
     public async Task SaltIsReadDirectlyOrDerivedFromSodium()
     {
         OpenFoodFactsCatalog direct = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(salt: 1.2m, sodium: 0.48m))));
@@ -169,7 +185,9 @@ public sealed class OpenFoodFactsCatalogTests
         decimal? carbohydrates = 30m,
         decimal? fat = 5m,
         decimal? salt = null,
-        decimal? sodium = null)
+        decimal? sodium = null,
+        string? servingQuantity = null,
+        string? servingUnit = null)
     {
         var nutrientParts = new List<string>();
         if (kcal is not null) nutrientParts.Add($"\"energy-kcal_100g\":{kcal.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
@@ -180,7 +198,10 @@ public sealed class OpenFoodFactsCatalogTests
         if (salt is not null) nutrientParts.Add($"\"salt_100g\":{salt.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         if (sodium is not null) nutrientParts.Add($"\"sodium_100g\":{sodium.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         return "{\"product\":{\"code\":\"" + barcode +
-            "\",\"product_name\":\"Test product\",\"brands\":\"Test brand\",\"nutrition_data_per\":\"100g\",\"nutriments\":{" +
+            "\",\"product_name\":\"Test product\",\"brands\":\"Test brand\",\"nutrition_data_per\":\"100g\"," +
+            (servingQuantity is null ? "" : $"\"serving_quantity\":{servingQuantity},") +
+            (servingUnit is null ? "" : $"\"serving_quantity_unit\":\"{servingUnit}\",") +
+            "\"nutriments\":{" +
             string.Join(',', nutrientParts) + "}}}";
     }
 

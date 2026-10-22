@@ -31,6 +31,8 @@ public sealed class ReusableMealComponent : UserOwnedEntity
     public string Name { get; set; } = string.Empty;
     public string? Brand { get; set; }
     public decimal AmountGrams { get; set; }
+    public decimal? PieceGrams { get; set; }
+    public decimal? PieceCount { get; set; }
     public decimal Kilocalories { get; set; }
     public decimal? ProteinGrams { get; set; }
     public decimal? CarbohydrateGrams { get; set; }
@@ -55,7 +57,8 @@ public sealed record ReusableMealComponentDraft(
     decimal AmountGrams,
     NutritionPer100Grams Per100Grams,
     NutritionTotals Totals,
-    NutritionSourceSnapshot? Source)
+    NutritionSourceSnapshot? Source,
+    NutritionPortion? Portion = null)
 {
     public static ReusableMealComponentDraft Create(
         Guid componentId,
@@ -64,7 +67,8 @@ public sealed record ReusableMealComponentDraft(
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
         string? brand = null,
-        NutritionSourceSnapshot? source = null)
+        NutritionSourceSnapshot? source = null,
+        NutritionPortion? portion = null)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(per100Grams);
@@ -79,6 +83,7 @@ public sealed record ReusableMealComponentDraft(
         if (amountGrams is < NutritionLimits.MinAmountGrams or > NutritionLimits.MaxAmountGrams)
             errors[nameof(AmountGrams)] = $"AmountGrams must be between {NutritionLimits.MinAmountGrams} and {NutritionLimits.MaxAmountGrams}.";
         ValidatePer100Grams(per100Grams, errors);
+        portion?.Validate(amountGrams, errors);
 
         NutritionTotals? totals = null;
         if (errors.Count == 0)
@@ -93,7 +98,7 @@ public sealed record ReusableMealComponentDraft(
         if (errors.Count > 0) throw new NutritionValidationException(errors);
         return new ReusableMealComponentDraft(
             componentId, position, normalizedName, normalizedBrand, amountGrams,
-            per100Grams, totals!, source);
+            per100Grams, totals!, source, portion);
     }
 
     private static void ValidatePer100Grams(
