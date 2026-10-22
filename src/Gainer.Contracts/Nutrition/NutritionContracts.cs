@@ -5,7 +5,7 @@ public sealed record NutritionTotalsResponse(
     decimal? ProteinGrams,
     decimal? CarbohydrateGrams,
     decimal? FatGrams,
-    decimal? SaltGrams);
+    decimal? SaltGrams = null);
 
 public sealed record NutritionSourceResponse(
     string? Provider,
@@ -46,7 +46,7 @@ public sealed record NutritionProgressResponse(
     NutrientProgressResponse Protein,
     NutrientProgressResponse Carbohydrates,
     NutrientProgressResponse Fat,
-    NutrientProgressResponse Salt);
+    NutrientProgressResponse? Salt = null);
 
 public sealed record RecentNutritionEntriesResponse(IReadOnlyList<NutritionEntryResponse> Entries);
 
@@ -92,8 +92,8 @@ public sealed record NutritionTargetVersionResponse(
     string? Reason,
     decimal MacroEnergyKilocalories,
     bool RequiresEnergyMismatchConfirmation,
-    decimal? SaltGrams,
-    decimal EffectiveSaltGrams);
+    decimal? SaltGrams = null,
+    decimal? EffectiveSaltGrams = null);
 
 public sealed record NutritionTargetScheduleResponse(
     Guid? NutritionTargetScheduleId,
@@ -135,9 +135,9 @@ public sealed record NutritionLabelScanResponse(
     NutritionLabelFieldResponse ProteinGrams,
     NutritionLabelFieldResponse CarbohydrateGrams,
     NutritionLabelFieldResponse FatGrams,
-    NutritionLabelFieldResponse SaltGrams,
     bool CanConfirm,
     string Provider,
     string ProviderModelVersion,
     string ParserVersion,
-    DateTime ScannedAtUtc);
+    DateTime ScannedAtUtc,
+    NutritionLabelFieldResponse? SaltGrams = null);
