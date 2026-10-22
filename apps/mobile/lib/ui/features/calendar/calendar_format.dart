@@ -17,25 +17,27 @@ String calendarWeight(double kg) => '${formatCardioNumber(kg)} kg';
 
 /// „2.350 von 2.600 kcal“ bzw. „2.350 kcal“ ohne Ziel.
 String calendarKcal(double value, double? target) =>
-    '${_withTarget(value, target)} kcal';
+    '${_withTarget(value, target, 0)} kcal';
 
 /// „142 von 180 g“ bzw. „142 g“ ohne Ziel.
-String calendarGrams(double value, double? target) =>
-    '${_withTarget(value, target)} g';
+String calendarGrams(double value, double? target, {int decimals = 0}) =>
+    '${_withTarget(value, target, decimals)} g';
 
 /// Makro-Fortschritt kompakt: „120 / 332 g“, ohne Ziel „120 g“, ohne Wert
-/// „– / 332 g“.
-String calendarGramsOf(double? value, double? target) {
-  final actual = value == null ? '–' : calendarWholeNumber(value);
-  return target == null
-      ? '$actual g'
-      : '$actual / ${calendarWholeNumber(target)} g';
+/// „– / 332 g“. Salz nutzt eine Nachkommastelle ([decimals]).
+String calendarGramsOf(double? value, double? target, {int decimals = 0}) {
+  String number(double v) => formatCardioNumber(v, maxDecimals: decimals);
+  final actual = value == null ? '–' : number(value);
+  return target == null ? '$actual g' : '$actual / ${number(target)} g';
 }
 
 /// Ganze Zahl, die Volumen-Kennzahl der Trainingszeile: „1.200“.
 String calendarWholeNumber(double value) =>
     formatCardioNumber(value, maxDecimals: 0);
 
-String _withTarget(double value, double? target) => target == null
-    ? calendarWholeNumber(value)
-    : '${calendarWholeNumber(value)} von ${calendarWholeNumber(target)}';
+String _withTarget(double value, double? target, int decimals) {
+  String number(double v) => formatCardioNumber(v, maxDecimals: decimals);
+  return target == null
+      ? number(value)
+      : '${number(value)} von ${number(target)}';
+}

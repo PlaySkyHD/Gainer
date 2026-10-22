@@ -33,6 +33,70 @@ void main() {
     );
   });
 
+  test('salt is scaled, summed only over entries with salt and validated', () {
+    NutritionEntry food(String id, double? salt) => NutritionEntry(
+      entryId: id,
+      meal: NutritionMeal.breakfast,
+      position: id.length,
+      productName: id,
+      brand: null,
+      amountGrams: 50,
+      per100Grams: NutritionTotals(kilocalories: 250, saltGrams: salt),
+      source: null,
+    );
+    final day = NutritionDay(
+      localDate: '2026-10-12',
+      entries: [food('brot', 1.25), food('apfel', null)],
+    );
+    expect(day.entries.first.totals.saltGrams, 0.63);
+    expect(day.totals.saltGrams, 0.63);
+    expect(
+      NutritionDay(
+        localDate: '2026-10-12',
+        entries: [food('apfel', null)],
+      ).totals.saltGrams,
+      isNull,
+    );
+    expect(
+      NutritionTotals.fromJson({'kilocalories': 10, 'saltGrams': 0.5})
+          .saltGrams,
+      0.5,
+    );
+    expect(
+      const NutritionTotals(kilocalories: 10).toJson().containsKey('saltGrams'),
+      isFalse,
+    );
+  });
+
+  test('target phases fall back to 6 g salt and reject invalid limits', () {
+    NutritionTargetVersion phase(double? salt) => NutritionTargetVersion(
+      targetVersionId: 'phase',
+      name: 'Ziel',
+      category: NutritionTargetCategory.custom,
+      effectiveFrom: '2026-10-01',
+      effectiveUntil: null,
+      inputMode: NutritionTargetInputMode.grams,
+      kilocalories: 2000,
+      proteinGrams: 150,
+      carbohydrateGrams: 200,
+      fatGrams: 60,
+      proteinPercent: null,
+      carbohydratePercent: null,
+      fatPercent: null,
+      saltGrams: salt,
+    );
+    expect(phase(null).effectiveSaltGrams, 6);
+    expect(phase(5).effectiveSaltGrams, 5);
+    expect(phase(5).toJson()['saltGrams'], 5);
+    expect(phase(null).toJson().containsKey('saltGrams'), isFalse);
+    for (final invalid in [0.0, -1.0, 101.0]) {
+      expect(
+        () => NutritionTargetSchedule(versions: [phase(invalid)]),
+        throwsA(isA<NutritionValidationException>()),
+      );
+    }
+  });
+
   test('day totals stay nullable when no entries contain macro values', () {
     final day = NutritionDay(
       localDate: '2026-10-12',

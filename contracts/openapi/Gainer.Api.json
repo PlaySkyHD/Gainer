@@ -3728,6 +3728,15 @@
           },
           "source": {
             "type": "string"
+          },
+          "saltGramsPer100Grams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -4355,6 +4364,16 @@
           "scannedAtUtc": {
             "type": "string",
             "format": "date-time"
+          },
+          "saltGrams": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NutritionLabelFieldResponse"
+              }
+            ]
           }
         }
       },
@@ -4378,6 +4397,16 @@
           },
           "fat": {
             "$ref": "#/components/schemas/NutrientProgressResponse"
+          },
+          "salt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NutrientProgressResponse"
+              }
+            ]
           }
         }
       },
@@ -4597,6 +4626,24 @@
           },
           "requiresEnergyMismatchConfirmation": {
             "type": "boolean"
+          },
+          "saltGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "effectiveSaltGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -4636,6 +4683,15 @@
             "format": "double"
           },
           "fatGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "saltGrams": {
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
             "type": [
               "null",

@@ -233,6 +233,10 @@ class _NutritionAveragesSheetState extends State<NutritionAveragesSheet> {
                       label: 'Fett',
                       value: _grams(averages.averageFatGrams),
                     ),
+                    _MacroRow(
+                      label: 'Salz',
+                      value: _grams(averages.averageSaltGrams),
+                    ),
                   ],
                 ),
                 const SizedBox(height: GainerSpacing.m),

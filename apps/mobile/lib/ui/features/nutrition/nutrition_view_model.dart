@@ -106,6 +106,7 @@ class NutritionViewModel extends ChangeNotifier {
     double? proteinGramsPer100,
     double? carbohydrateGramsPer100,
     double? fatGramsPer100,
+    double? saltGramsPer100,
   }) => _run(() async {
     final current = snapshot ?? await repository.read(localDate);
     final position =
@@ -130,6 +131,7 @@ class NutritionViewModel extends ChangeNotifier {
           proteinGrams: proteinGramsPer100,
           carbohydrateGrams: carbohydrateGramsPer100,
           fatGrams: fatGramsPer100,
+          saltGrams: saltGramsPer100,
         ),
         source: null,
       ),

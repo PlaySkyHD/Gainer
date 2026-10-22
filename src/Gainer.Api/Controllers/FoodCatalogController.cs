@@ -96,5 +96,6 @@ public sealed class FoodCatalogController(IExternalFoodCatalog catalog) : Contro
         product.QualityIndicators,
         product.RetrievedAtUtc,
         product.IsStale,
-        product.Source);
+        product.Source,
+        product.NutrientsPer100Grams.SaltGrams);
 }

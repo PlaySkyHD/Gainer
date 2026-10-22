@@ -20,6 +20,7 @@ class NutritionTotals {
     this.proteinGrams,
     this.carbohydrateGrams,
     this.fatGrams,
+    this.saltGrams,
   });
 
   final double kilocalories;
@@ -27,12 +28,16 @@ class NutritionTotals {
   final double? carbohydrateGrams;
   final double? fatGrams;
 
+  /// Salz in Gramm; fehlt bei Einträgen ohne Salzangabe.
+  final double? saltGrams;
+
   factory NutritionTotals.fromJson(Map<String, dynamic> json) =>
       NutritionTotals(
         kilocalories: _number(json, 'kilocalories'),
         proteinGrams: _nullableNumber(json, 'proteinGrams'),
         carbohydrateGrams: _nullableNumber(json, 'carbohydrateGrams'),
         fatGrams: _nullableNumber(json, 'fatGrams'),
+        saltGrams: _nullableNumber(json, 'saltGrams'),
       );
 
   Map<String, Object?> toJson() => {
@@ -40,6 +45,7 @@ class NutritionTotals {
     'proteinGrams': proteinGrams,
     'carbohydrateGrams': carbohydrateGrams,
     'fatGrams': fatGrams,
+    if (saltGrams != null) 'saltGrams': saltGrams,
   };
 
   NutritionTotals scaled(double factor) => NutritionTotals(
@@ -47,6 +53,7 @@ class NutritionTotals {
     proteinGrams: _scale(proteinGrams, factor),
     carbohydrateGrams: _scale(carbohydrateGrams, factor),
     fatGrams: _scale(fatGrams, factor),
+    saltGrams: _scale(saltGrams, factor),
   );
 
   static NutritionTotals get zero => const NutritionTotals(kilocalories: 0);
@@ -212,6 +219,7 @@ class NutritionDay {
       proteinGrams: sum((v) => v.proteinGrams),
       carbohydrateGrams: sum((v) => v.carbohydrateGrams),
       fatGrams: sum((v) => v.fatGrams),
+      saltGrams: sum((v) => v.saltGrams),
     );
   }
 
@@ -300,7 +308,7 @@ class ReusableMealComponent {
         'components': 'Gerichtseintrag ist ungültig.',
       });
     }
-    _validateTotals(per100Grams, requirePositiveCalories: true);
+    _validateTotals(per100Grams);
   }
 
   final String componentId;
@@ -447,7 +455,11 @@ class NutritionTargetVersion {
     this.origin = 'Manual',
     this.algorithmVersion,
     this.reason,
+    this.saltGrams,
   });
+
+  /// Standard-Salzgrenze, wenn eine Zielphase keine eigene hat (DGE-Richtwert).
+  static const defaultSaltGrams = 6.0;
 
   final String targetVersionId, name, effectiveFrom;
   final String? effectiveUntil;
@@ -457,6 +469,11 @@ class NutritionTargetVersion {
   final double? proteinPercent, carbohydratePercent, fatPercent;
   final String origin;
   final String? algorithmVersion, reason;
+
+  /// Eigene Salzgrenze in Gramm; null bedeutet [defaultSaltGrams].
+  final double? saltGrams;
+
+  double get effectiveSaltGrams => saltGrams ?? defaultSaltGrams;
 
   double get macroEnergyKilocalories =>
       proteinGrams * 4 + carbohydrateGrams * 4 + fatGrams * 9;
@@ -478,6 +495,7 @@ class NutritionTargetVersion {
     'origin': origin,
     'algorithmVersion': algorithmVersion,
     'reason': reason,
+    if (saltGrams != null) 'saltGrams': saltGrams,
   };
 }
 
@@ -520,6 +538,7 @@ NutritionTotals calculatePer100Totals({
     proteinGrams: _scale(totals.proteinGrams, 100 / amountGrams),
     carbohydrateGrams: _scale(totals.carbohydrateGrams, 100 / amountGrams),
     fatGrams: _scale(totals.fatGrams, 100 / amountGrams),
+    saltGrams: _scale(totals.saltGrams, 100 / amountGrams),
   );
 }
 
@@ -581,7 +600,7 @@ void validateNutritionEntry(NutritionEntry entry) {
   if (entry.brand != null && entry.brand!.length > 120) {
     throw const NutritionValidationException({'brand': 'Marke ist zu lang.'});
   }
-  _validateTotals(entry.per100Grams, requirePositiveCalories: true);
+  _validateTotals(entry.per100Grams);
   if (entry.source case final source?) {
     if (!source.basisGrams.isFinite || source.basisGrams <= 0) {
       throw const NutritionValidationException({
@@ -591,22 +610,18 @@ void validateNutritionEntry(NutritionEntry entry) {
   }
 }
 
-void _validateTotals(
-  NutritionTotals totals, {
-  required bool requirePositiveCalories,
-}) {
-  if (!totals.kilocalories.isFinite ||
-      (requirePositiveCalories
-          ? totals.kilocalories <= 0
-          : totals.kilocalories < 0)) {
+/// 0 kcal ist gültig, z. B. für Salz, Wasser oder Zero-Getränke.
+void _validateTotals(NutritionTotals totals) {
+  if (!totals.kilocalories.isFinite || totals.kilocalories < 0) {
     throw const NutritionValidationException({
-      'kilocalories': 'Kalorien müssen positiv sein.',
+      'kilocalories': 'Kalorien dürfen nicht negativ sein.',
     });
   }
   for (final (key, value) in [
     ('proteinGrams', totals.proteinGrams),
     ('carbohydrateGrams', totals.carbohydrateGrams),
     ('fatGrams', totals.fatGrams),
+    ('saltGrams', totals.saltGrams),
   ]) {
     if (value != null && (!value.isFinite || value < 0)) {
       throw NutritionValidationException({
@@ -656,6 +671,11 @@ void _validateTargetVersion(
       target.kilocalories <= 0) {
     errors['versions.$index.nutrients'] =
         'Zielwerte müssen gültig und Kalorien positiv sein.';
+  }
+  final salt = target.saltGrams;
+  if (salt != null && (!salt.isFinite || salt <= 0 || salt > 100)) {
+    errors['versions.$index.saltGrams'] =
+        'Die Salzgrenze muss zwischen 0 und 100 g liegen.';
   }
   if (target.inputMode == NutritionTargetInputMode.percent) {
     final p = target.proteinPercent,
