@@ -114,7 +114,8 @@ public sealed record MealEstimateComponentResponse(
     decimal? CarbohydrateGrams,
     decimal? FatGrams,
     string Confidence,
-    IReadOnlyList<string> DataGaps);
+    IReadOnlyList<string> DataGaps,
+    decimal? SaltGrams = null);
 
 public sealed record MealEstimateResponse(
     IReadOnlyList<MealEstimateComponentResponse> Components,
