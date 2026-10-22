@@ -19,7 +19,8 @@ internal static class NutritionSnapshots
             NutritionCalculator.Sum(entries.Select(item => item.Totals)),
             day.CreatedAtUtc,
             day.UpdatedAtUtc,
-            day.Version);
+            day.Version,
+            day.DayKind);
     }
 
     public static NutritionEntrySnapshot Entry(NutritionEntry entry)

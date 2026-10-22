@@ -19,6 +19,10 @@ public sealed class NutritionController(
     // The app scales meal photos to fit 8 MiB; the whole multipart request is bounded by the same size.
     private const int MealEstimateRequestBytes = 8 * 1024 * 1024;
 
+    /// <summary>
+    /// Returns a nutrition day. Progress compares with the training day target of the effective version; the app
+    /// decides rest days locally from training and schedule.
+    /// </summary>
     [HttpGet("days/{localDate}")]
     [ProducesResponseType<NutritionDayResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<NutritionDayResponse>> Day(
@@ -38,7 +42,8 @@ public sealed class NutritionController(
                 day.CreatedAtUtc,
                 day.UpdatedAtUtc,
                 day.Version,
-                Progress(day.Totals, target)));
+                Progress(day.Totals, target),
+                day.DayKind?.ToString()));
     }
 
     [HttpGet("recent")]
@@ -95,6 +100,7 @@ public sealed class NutritionController(
                 schedule.Version));
     }
 
+    /// <summary>Returns the target version effective on a day, including its optional rest day target.</summary>
     [HttpGet("targets/effective/{localDate}")]
     [ProducesResponseType<EffectiveNutritionTargetResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<EffectiveNutritionTargetResponse>> EffectiveTarget(
@@ -310,7 +316,20 @@ public sealed class NutritionController(
         target.MacroEnergyKilocalories,
         target.RequiresEnergyMismatchConfirmation,
         target.SaltGrams,
-        target.EffectiveSaltGrams);
+        target.EffectiveSaltGrams,
+        target.RestDay is not { } rest
+            ? null
+            : new NutritionRestDayTargetResponse(
+                rest.InputMode.ToString(),
+                rest.Kilocalories,
+                rest.ProteinGrams,
+                rest.CarbohydrateGrams,
+                rest.FatGrams,
+                rest.ProteinPercent,
+                rest.CarbohydratePercent,
+                rest.FatPercent,
+                rest.MacroEnergyKilocalories,
+                rest.RequiresEnergyMismatchConfirmation));
 
     private static NutritionProgressResponse? Progress(NutritionTotals totals, NutritionTargetVersionDraft? target) =>
         target is null ? null : new NutritionProgressResponse(

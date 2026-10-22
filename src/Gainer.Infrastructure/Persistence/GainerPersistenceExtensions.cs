@@ -46,6 +46,7 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<INutritionQueries, NutritionQueries>();
         builder.Services.AddScoped<ISmartNutritionQueries, SmartNutritionQueries>();
         builder.Services.AddScoped<IReusableMealMutationHandler, ReusableMealMutationHandler>();
+        builder.Services.AddScoped<INutritionDayTemplateMutationHandler, NutritionDayTemplateMutationHandler>();
         builder.Services.AddScoped<INutritionTargetScheduleMutationHandler, NutritionTargetScheduleMutationHandler>();
         builder.Services.AddScoped<IExerciseCatalogQueries, ExerciseCatalogQueries>();
         builder.Services.AddScoped<IExerciseResolver, ExerciseCatalogQueries>();
