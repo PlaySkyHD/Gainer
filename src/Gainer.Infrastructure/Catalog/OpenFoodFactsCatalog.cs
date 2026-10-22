@@ -10,7 +10,7 @@ namespace Gainer.Infrastructure.Catalog;
 
 public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
 {
-    private const string ProductFields = "code,product_name,brands,nutriments,last_modified_t,nutrition_data_per";
+    private const string ProductFields = "code,product_name,brands,nutriments,last_modified_t,nutrition_data_per,serving_quantity,serving_quantity_unit";
     private const string ProductIncompleteCode = "product_incomplete";
     private readonly HttpClient httpClient;
     private readonly OpenFoodFactsOptions settings;
@@ -205,7 +205,17 @@ public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
             new NutritionPer100Grams(kcal.Value, protein, carbohydrates, fat, salt),
             quality,
             retrievedAtUtc,
-            false);
+            false,
+            ServingGrams: ServingGrams(product));
+    }
+
+    /// <summary>Serving size in grams (or millilitres, taken as grams), e.g. one egg; null when unknown.</summary>
+    private static decimal? ServingGrams(JsonElement product)
+    {
+        string? unit = String(product, "serving_quantity_unit");
+        if (unit is not null && unit.Trim().ToLowerInvariant() is not ("g" or "ml")) return null;
+        decimal? value = Decimal(product, "serving_quantity");
+        return value is >= NutritionLimits.MinAmountGrams and <= NutritionPortion.MaxPieceGrams ? value : null;
     }
 
     /// <summary>Salt per 100 g; derived from sodium (× 2.5) when only sodium is listed.</summary>

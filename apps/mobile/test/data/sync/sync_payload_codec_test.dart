@@ -158,6 +158,7 @@ void main() {
             'productName': 'Oats',
             'brand': null,
             'amountGrams': 50,
+            'portion': {'pieceGrams': 25, 'pieceCount': 2},
             'totals': {'kilocalories': 190},
             'per100Grams': {
               'kilocalories': 380,
@@ -193,6 +194,8 @@ void main() {
       expect(entry['entryId'], 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
       expect(entry['kilocaloriesPer100Grams'], 380);
       expect(entry['saltGramsPer100Grams'], 0.9);
+      expect(entry['pieceGrams'], 25);
+      expect(entry['pieceCount'], 2);
       expect(entry['source'], (source['entries'] as List).single['source']);
 
       // Ohne Salz wird das Feld weggelassen, damit ältere Server nichts sehen.

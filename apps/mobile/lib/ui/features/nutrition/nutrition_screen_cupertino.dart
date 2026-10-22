@@ -116,6 +116,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _carbs = TextEditingController();
   final _fat = TextEditingController();
   final _salt = TextEditingController();
+  final _pieceGrams = TextEditingController();
+  final _pieceCount = TextEditingController();
+  final _addPieces = TextEditingController();
   final _search = TextEditingController();
   final _estimateText = TextEditingController();
   final _saltAmount = TextEditingController();
@@ -145,6 +148,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _carbs,
       _fat,
       _salt,
+      _pieceGrams,
+      _pieceCount,
+      _addPieces,
       _search,
       _estimateText,
       _saltAmount,
@@ -464,7 +470,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
       ),
   ];
 
+  /// Menge in Gramm oder als Anzahl. Die Anzahl gilt für Lebensmittel mit
+  /// bekanntem Stückgewicht („1 Stk = 50 g“) und hat dann Vorrang.
   Widget _amountGroup() => GainerGroupedSection(
+    footer: 'Anzahl gilt für Lebensmittel mit Stückgewicht, z. B. Eier.',
     children: [
       GainerTextFieldRow(
         label: 'Menge',
@@ -472,6 +481,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
         controller: _amount,
         keyboardType: _decimalKeyboard,
         fieldKey: const ValueKey('nutrition-entry-amount'),
+        onChanged: (_) => _addPieces.clear(),
+      ),
+      _PieceCountRow(
+        key: const ValueKey('nutrition-entry-pieces'),
+        controller: _addPieces,
       ),
     ],
   );
@@ -496,6 +510,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
           carbs: _carbs,
           fat: _fat,
           salt: _salt,
+          pieceGrams: _pieceGrams,
+          pieceCount: _pieceCount,
           nameKey: const ValueKey('nutrition-entry-name'),
           brandKey: const ValueKey('nutrition-entry-brand'),
           amountKey: const ValueKey('nutrition-entry-amount'),
@@ -550,8 +566,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
       for (final food in foods)
         GainerListRow(
           title: food.name,
-          subtitle:
-              '${food.brand ?? food.source.provider ?? fallback} · ${_fmtKcal(food.per100Grams.kilocalories)} kcal / 100 g',
+          subtitle: [
+            food.brand ?? food.source.provider ?? fallback,
+            '${_fmtKcal(food.per100Grams.kilocalories)} kcal / 100 g',
+            if (food.pieceGrams case final grams?)
+              '1 Stk = ${_fmtGrams(grams)} g',
+          ].join(' · '),
           trailing: const _AddGlyph(),
           onTap: () => onSelect(food),
         ),
@@ -812,6 +832,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
   String _estimateSubtitle(NutritionEstimateComponent item) {
     final salt = item.totals.saltGrams;
     return [
+      if (item.pieceCount case final count?)
+        '${_formatNumber(count, decimals: 2)} Stk',
       '${_fmtGrams(item.amountGrams)} g',
       '${_fmtKcal(item.totals.kilocalories)} kcal',
       if (salt != null && item.name != _saltName) '~${_fmtGrams(salt)} g Salz',
@@ -837,10 +859,21 @@ class _NutritionScreenState extends State<NutritionScreen> {
     FoodAddTarget target,
     ValueChanged<FoodComponentDraft> onDraft,
   ) {
-    final amount = _parse(_amount.text) ?? 100;
+    final pieces = _parse(_addPieces.text);
+    final pieceGrams = food.pieceGrams;
+    if (pieces != null && pieceGrams == null) {
+      widget.viewModel.reportInputError(
+        'Für „${food.name}“ ist kein Stückgewicht bekannt. Gib die Menge in g ein.',
+        operation: NutritionErrorOperation.entry,
+      );
+      return;
+    }
+    final amount = pieces != null && pieceGrams != null
+        ? gramsForPieces(pieces, pieceGrams)
+        : _parse(_amount.text) ?? 100;
     switch (target) {
       case DayMealTarget():
-        widget.viewModel.addFood(food, amountGrams: amount);
+        widget.viewModel.addFood(food, amountGrams: amount, pieceCount: pieces);
       case MealDraftTarget():
         _commitDraft(
           FoodComponentDraft(
@@ -849,6 +882,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
             amountGrams: amount,
             per100Grams: food.per100Grams,
             source: food.source,
+            pieceGrams: pieceGrams,
+            pieceCount: pieces,
           ),
           onDraft,
         );
@@ -1051,6 +1086,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
         fatGrams: _nullable(c.fat.text),
         saltGrams: _nullable(c.salt.text),
       ),
+      pieceGrams: _nullable(c.pieceGrams.text),
+      pieceCount: _nullable(c.pieceCount.text),
     );
     if (widget.viewModel.errorMessage == null &&
         routeContext.mounted &&
@@ -1084,6 +1121,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
       carbs: c.carbs,
       fat: c.fat,
       salt: c.salt,
+      pieceGrams: c.pieceGrams,
+      pieceCount: c.pieceCount,
       nameKey: const ValueKey('nutrition-edit-name'),
       amountKey: const ValueKey('nutrition-edit-amount'),
       kcalKey: const ValueKey('nutrition-edit-kcal'),
@@ -1309,7 +1348,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           key: ValueKey('meal-component-${component.componentId}'),
           title: component.name,
           value:
-              '${_fmtGrams(component.amountGrams)} g · ${_fmtKcal(component.totals.kilocalories)} kcal',
+              '${_amountLabel(component.amountGrams, component.pieceCount)} · ${_fmtKcal(component.totals.kilocalories)} kcal',
           onTap: () => _editComponent(component, components, setDialogState),
         ),
       ),
@@ -1394,6 +1433,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       carbs: c.carbs,
                       fat: c.fat,
                       salt: c.salt,
+                      pieceGrams: c.pieceGrams,
+                      pieceCount: c.pieceCount,
                       nameKey: const ValueKey('meal-component-name'),
                       amountKey: const ValueKey('meal-component-amount'),
                       kcalKey: const ValueKey('meal-component-kcal'),
@@ -1446,6 +1487,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
           amountGrams: components[index].amountGrams,
           per100Grams: components[index].per100Grams,
           source: components[index].source,
+          pieceGrams: components[index].pieceGrams,
+          pieceCount: components[index].pieceCount,
         ),
     ],
   );
@@ -1891,10 +1934,14 @@ class _NutritionScreenState extends State<NutritionScreen> {
           carbohydrateGramsPer100: _nullable(_carbs.text),
           fatGramsPer100: _nullable(_fat.text),
           saltGramsPer100: _nullable(_salt.text),
+          pieceGrams: _nullable(_pieceGrams.text),
+          pieceCount: _nullable(_pieceCount.text),
         );
         if (widget.viewModel.errorMessage == null) {
           _name.clear();
           _brand.clear();
+          _pieceGrams.clear();
+          _pieceCount.clear();
         }
       case MealDraftTarget():
         final accepted = _commitDraft(
@@ -1910,6 +1957,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
               saltGrams: _nullable(_salt.text),
             ),
             source: null,
+            pieceGrams: _nullable(_pieceGrams.text),
+            pieceCount: _nullable(_pieceCount.text),
           ),
           onDraft,
         );
@@ -1922,6 +1971,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
             _carbs,
             _fat,
             _salt,
+            _pieceGrams,
+            _pieceCount,
           ]) {
             controller.clear();
           }
@@ -2204,6 +2255,8 @@ List<Widget> _foodFormGroups({
   required TextEditingController carbs,
   required TextEditingController fat,
   required TextEditingController salt,
+  required TextEditingController pieceGrams,
+  required TextEditingController pieceCount,
   Key? nameKey,
   Key? brandKey,
   Key? amountKey,
@@ -2232,7 +2285,37 @@ List<Widget> _foodFormGroups({
         controller: amount,
         keyboardType: _decimalKeyboard,
         fieldKey: amountKey,
-        onChanged: onChanged,
+        onChanged: (value) {
+          // Wer Gramm tippt, gibt die Menge nicht mehr in Stück an.
+          pieceCount.clear();
+          onChanged?.call(value);
+        },
+      ),
+    ],
+  ),
+  const SizedBox(height: GainerSpacing.m),
+  GainerGroupedSection(
+    header: 'Stück (optional)',
+    footer: 'Mit Gewicht pro Stück und Anzahl wird die Menge berechnet.',
+    children: [
+      GainerTextFieldRow(
+        label: 'Gewicht pro Stück',
+        unit: 'g',
+        controller: pieceGrams,
+        keyboardType: _decimalKeyboard,
+        fieldKey: const ValueKey('nutrition-piece-grams'),
+        onChanged: (value) {
+          _syncPieceAmount(amount, pieceGrams, pieceCount);
+          onChanged?.call(value);
+        },
+      ),
+      _PieceCountRow(
+        key: const ValueKey('nutrition-piece-count'),
+        controller: pieceCount,
+        onChanged: (value) {
+          _syncPieceAmount(amount, pieceGrams, pieceCount);
+          onChanged?.call(value);
+        },
       ),
     ],
   ),
@@ -2281,6 +2364,18 @@ List<Widget> _foodFormGroups({
   ),
 ];
 
+/// Setzt die Menge auf Anzahl × Gewicht pro Stück, sobald beides gültig ist.
+void _syncPieceAmount(
+  TextEditingController amount,
+  TextEditingController pieceGrams,
+  TextEditingController pieceCount,
+) {
+  final grams = _parse(pieceGrams.text);
+  final count = _parse(pieceCount.text);
+  if (grams == null || count == null || grams <= 0 || count <= 0) return;
+  amount.text = _grams(gramsForPieces(count, grams));
+}
+
 /// Baut aus den Bearbeitungsfeldern einen (noch ungeprüften) Draft.
 FoodComponentDraft _draftFrom(
   _IngredientControllers c, {
@@ -2297,6 +2392,8 @@ FoodComponentDraft _draftFrom(
     saltGrams: _nullable(c.salt.text),
   ),
   source: source,
+  pieceGrams: _nullable(c.pieceGrams.text),
+  pieceCount: _nullable(c.pieceCount.text),
 );
 
 /// Formularseite im Look der Sheets: X links, Titel, „Sichern“-Pille rechts
@@ -2429,6 +2526,12 @@ class _EntryEditControllers {
       ),
       salt = TextEditingController(
         text: _optionalGrams(entry.per100Grams.saltGrams),
+      ),
+      pieceGrams = TextEditingController(
+        text: _optionalGrams(entry.pieceGrams),
+      ),
+      pieceCount = TextEditingController(
+        text: _optionalGrams(entry.pieceCount),
       );
 
   final TextEditingController name;
@@ -2439,6 +2542,8 @@ class _EntryEditControllers {
   final TextEditingController carbs;
   final TextEditingController fat;
   final TextEditingController salt;
+  final TextEditingController pieceGrams;
+  final TextEditingController pieceCount;
 
   void dispose() {
     for (final controller in [
@@ -2450,6 +2555,8 @@ class _EntryEditControllers {
       carbs,
       fat,
       salt,
+      pieceGrams,
+      pieceCount,
     ]) {
       controller.dispose();
     }
@@ -2845,7 +2952,7 @@ class _MealSection extends StatelessWidget {
         key: ValueKey('nutrition-entry-${entry.entryId}'),
         title: entry.productName,
         value:
-            '${_fmtGrams(entry.amountGrams)} g · ${_fmtKcal(entry.totals.kilocalories)} kcal',
+            '${_amountLabel(entry.amountGrams, entry.pieceCount)} · ${_fmtKcal(entry.totals.kilocalories)} kcal',
         onTap: () => onEdit(entry),
       ),
     ),
@@ -3126,7 +3233,9 @@ class _IngredientControllers {
       protein = TextEditingController(),
       carbs = TextEditingController(),
       fat = TextEditingController(),
-      salt = TextEditingController();
+      salt = TextEditingController(),
+      pieceGrams = TextEditingController(),
+      pieceCount = TextEditingController();
 
   _IngredientControllers.fromComponent(ReusableMealComponent component)
     : componentId = component.componentId,
@@ -3148,6 +3257,12 @@ class _IngredientControllers {
       ),
       salt = TextEditingController(
         text: _optionalGrams(component.per100Grams.saltGrams),
+      ),
+      pieceGrams = TextEditingController(
+        text: _optionalGrams(component.pieceGrams),
+      ),
+      pieceCount = TextEditingController(
+        text: _optionalGrams(component.pieceCount),
       );
 
   final String? componentId;
@@ -3160,6 +3275,8 @@ class _IngredientControllers {
   final TextEditingController carbs;
   final TextEditingController fat;
   final TextEditingController salt;
+  final TextEditingController pieceGrams;
+  final TextEditingController pieceCount;
 
   void dispose() {
     name.dispose();
@@ -3170,6 +3287,8 @@ class _IngredientControllers {
     carbs.dispose();
     fat.dispose();
     salt.dispose();
+    pieceGrams.dispose();
+    pieceCount.dispose();
   }
 }
 
@@ -3186,6 +3305,12 @@ String _grams(double value) =>
     value.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
 
 /// Anzeige-Format: deutsches Komma, Tausenderpunkt, keine Nullen am Ende.
+/// „4 Stk“, wenn in Stück erfasst, sonst „200 g“.
+String _amountLabel(double amountGrams, double? pieceCount) =>
+    pieceCount == null
+    ? '${_fmtGrams(amountGrams)} g'
+    : '${_formatNumber(pieceCount, decimals: 2)} Stk';
+
 String _formatNumber(double value, {int decimals = 0}) =>
     formatNutritionNumber(value, decimals: decimals);
 
@@ -3364,6 +3489,85 @@ class _RoundIconButton extends StatelessWidget {
         onPressed: onPressed,
         child: ExcludeSemantics(child: Icon(icon, size: 20, color: foreground)),
       ),
+    );
+  }
+}
+
+/// „Anzahl“ mit Minus/Plus und Eingabefeld; ganze Schritte, Eingabe auch
+/// halb („0,5“). Leer bedeutet: keine Stückangabe.
+class _PieceCountRow extends StatelessWidget {
+  const _PieceCountRow({required this.controller, this.onChanged, super.key});
+
+  final TextEditingController controller;
+  final ValueChanged<String>? onChanged;
+
+  void _step(double delta) {
+    final current = _parse(controller.text) ?? 0;
+    final next = current + delta;
+    final value = next < 1 ? (delta > 0 ? 1.0 : 0.5) : next;
+    if (delta < 0 && current <= 0.5) {
+      controller.clear();
+    } else {
+      controller.text = _formatNumber(value, decimals: 2);
+    }
+    onChanged?.call(controller.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final style = GainerTypography.body.copyWith(color: colors.primaryText);
+    // Bei sehr großer Schrift steht die Beschriftung über den Knöpfen.
+    final stacked = MediaQuery.textScalerOf(context).scale(1) > 1.5;
+    final label = Text('Anzahl', style: style);
+    final controls = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _RoundIconButton(
+          key: const ValueKey('piece-minus'),
+          icon: CupertinoIcons.minus,
+          semanticLabel: 'Ein Stück weniger',
+          onPressed: () => _step(-1),
+        ),
+        SizedBox(
+          width: stacked ? 96 : 64,
+          child: CupertinoTextField.borderless(
+            key: const ValueKey('piece-count-field'),
+            controller: controller,
+            textAlign: TextAlign.center,
+            placeholder: '–',
+            keyboardType: _decimalKeyboard,
+            onChanged: onChanged,
+            style: style,
+            placeholderStyle: style.copyWith(color: colors.placeholderText),
+          ),
+        ),
+        _RoundIconButton(
+          key: const ValueKey('piece-plus'),
+          icon: CupertinoIcons.plus,
+          semanticLabel: 'Ein Stück mehr',
+          onPressed: () => _step(1),
+        ),
+        const SizedBox(width: GainerSpacing.xs),
+        Text('Stk', style: style.copyWith(color: colors.secondaryText)),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: GainerSpacing.m,
+        vertical: GainerSpacing.xxs,
+      ),
+      child: stacked
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [label, controls],
+            )
+          : Row(
+              children: [
+                Expanded(child: label),
+                controls,
+              ],
+            ),
     );
   }
 }

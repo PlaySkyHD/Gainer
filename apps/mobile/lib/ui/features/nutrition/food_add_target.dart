@@ -28,6 +28,8 @@ class FoodComponentDraft {
     required this.amountGrams,
     required this.per100Grams,
     required this.source,
+    this.pieceGrams,
+    this.pieceCount,
   });
 
   final String name;
@@ -35,6 +37,8 @@ class FoodComponentDraft {
   final double amountGrams;
   final NutritionTotals per100Grams;
   final NutritionSource? source;
+  final double? pieceGrams;
+  final double? pieceCount;
 
   /// Prüft die Werte wie ein Gerichtsbestandteil und liefert eine kurze
   /// Fehlermeldung, oder `null`, wenn der Draft gültig ist.
@@ -58,6 +62,11 @@ class FoodComponentDraft {
     if ((per100Grams.saltGrams ?? 0) > 100) {
       return 'Salz kann höchstens 100 g pro 100 g betragen.';
     }
+    try {
+      validatePortion(amountGrams, pieceGrams, pieceCount);
+    } on NutritionValidationException catch (error) {
+      return error.fields.values.first;
+    }
     return null;
   }
 
@@ -73,5 +82,7 @@ class FoodComponentDraft {
     amountGrams: amountGrams,
     per100Grams: per100Grams,
     source: source,
+    pieceGrams: pieceGrams,
+    pieceCount: pieceCount,
   );
 }

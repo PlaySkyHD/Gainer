@@ -34,11 +34,16 @@ class NutritionFood {
     required this.brand,
     required this.per100Grams,
     required this.source,
+    this.pieceGrams,
   });
   final String name;
   final String? brand;
   final NutritionTotals per100Grams;
   final NutritionSource source;
+
+  /// Gewicht eines Stücks, z. B. aus der Portionsgröße oder einem früheren
+  /// Eintrag; null, wenn nur Gramm sinnvoll sind.
+  final double? pieceGrams;
 }
 
 class MealEstimateDraft {
@@ -62,6 +67,8 @@ class NutritionEstimateComponent {
     required this.confidence,
     required this.dataGaps,
     this.sourceUrl,
+    this.pieceCount,
+    this.pieceGrams,
   });
   final String name;
   final double amountGrams;
@@ -69,6 +76,10 @@ class NutritionEstimateComponent {
   final String confidence;
   final List<String> dataGaps;
   final String? sourceUrl;
+
+  /// Gezählte Stücke („4 Eier“) mit Gewicht je Stück; sonst null.
+  final double? pieceCount;
+  final double? pieceGrams;
 
   /// „fddb.info“ aus der Quelle, ohne „www.“; null ohne Quelle.
   String? get sourceHost {
@@ -292,6 +303,7 @@ class NutritionRepository {
             brand: entry.brand,
             per100Grams: entry.per100Grams,
             source: entry.source!,
+            pieceGrams: entry.pieceGrams,
           ),
           stamp: stamp,
         ));
@@ -432,6 +444,8 @@ class NutritionRepository {
               amountGrams: source.components[index].amountGrams,
               per100Grams: source.components[index].per100Grams,
               source: source.components[index].source,
+              pieceGrams: source.components[index].pieceGrams,
+              pieceCount: source.components[index].pieceCount,
             ),
         ],
       ),
@@ -465,6 +479,8 @@ class NutritionRepository {
               amountGrams: entries[index].amountGrams,
               per100Grams: entries[index].per100Grams,
               source: entries[index].source,
+              pieceGrams: entries[index].pieceGrams,
+              pieceCount: entries[index].pieceCount,
             ),
         ],
       ),
@@ -499,6 +515,12 @@ class NutritionRepository {
             ) +
         1;
     for (final component in reusable.components) {
+      // Stückzahl mit der Portion skalieren; Gramm daraus ableiten, damit
+      // beide zusammenpassen.
+      final pieceGrams = component.pieceGrams;
+      final pieceCount = component.pieceCount == null
+          ? null
+          : roundNutrition(component.pieceCount! * scale);
       entries.add(
         NutritionEntry(
           entryId: ids(),
@@ -506,9 +528,13 @@ class NutritionRepository {
           position: position++,
           productName: component.name,
           brand: component.brand,
-          amountGrams: roundNutrition(component.amountGrams * scale),
+          amountGrams: pieceCount != null && pieceGrams != null
+              ? gramsForPieces(pieceCount, pieceGrams)
+              : roundNutrition(component.amountGrams * scale),
           per100Grams: component.per100Grams,
           source: component.source,
+          pieceGrams: pieceGrams,
+          pieceCount: pieceCount,
         ),
       );
     }

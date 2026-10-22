@@ -370,6 +370,14 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("NutritionDayId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal?>("PieceCount")
+                        .HasPrecision(7, 2)
+                        .HasColumnType("numeric(7,2)");
+
+                    b.Property<decimal?>("PieceGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
                     b.Property<int>("Position")
                         .HasColumnType("integer");
 
@@ -426,6 +434,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_nutrition_entries_meal", "\"Meal\" IN ('Breakfast', 'Lunch', 'Dinner', 'Snacks')");
 
                             t.HasCheckConstraint("CK_nutrition_entries_name", "length(trim(\"ProductName\")) > 0");
+
+                            t.HasCheckConstraint("CK_nutrition_entries_pieces", "(\"PieceGrams\" IS NULL OR \"PieceGrams\" > 0) AND (\"PieceCount\" IS NULL OR (\"PieceCount\" > 0 AND \"PieceGrams\" IS NOT NULL))");
 
                             t.HasCheckConstraint("CK_nutrition_entries_position", "\"Position\" >= 0");
 
@@ -671,6 +681,14 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<decimal?>("PieceCount")
+                        .HasPrecision(7, 2)
+                        .HasColumnType("numeric(7,2)");
+
+                    b.Property<decimal?>("PieceGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
                     b.Property<int>("Position")
                         .HasColumnType("integer");
 
@@ -721,6 +739,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_reusable_meal_components_name", "length(trim(\"Name\")) > 0");
 
                             t.HasCheckConstraint("CK_reusable_meal_components_per100_macros", "(\"ProteinGramsPer100Grams\" IS NULL OR \"ProteinGramsPer100Grams\" >= 0) AND (\"CarbohydrateGramsPer100Grams\" IS NULL OR \"CarbohydrateGramsPer100Grams\" >= 0) AND (\"FatGramsPer100Grams\" IS NULL OR \"FatGramsPer100Grams\" >= 0)");
+
+                            t.HasCheckConstraint("CK_reusable_meal_components_pieces", "(\"PieceGrams\" IS NULL OR \"PieceGrams\" > 0) AND (\"PieceCount\" IS NULL OR (\"PieceCount\" > 0 AND \"PieceGrams\" IS NOT NULL))");
 
                             t.HasCheckConstraint("CK_reusable_meal_components_position", "\"Position\" >= 0");
 

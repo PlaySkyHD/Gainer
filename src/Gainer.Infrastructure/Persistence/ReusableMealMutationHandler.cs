@@ -107,6 +107,8 @@ public sealed class ReusableMealMutationHandler(
         Name = input.Name,
         Brand = input.Brand,
         AmountGrams = input.AmountGrams,
+        PieceGrams = input.Portion?.PieceGrams,
+        PieceCount = input.Portion?.PieceCount,
         Kilocalories = input.Totals.Kilocalories,
         ProteinGrams = input.Totals.ProteinGrams,
         CarbohydrateGrams = input.Totals.CarbohydrateGrams,

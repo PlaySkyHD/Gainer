@@ -125,7 +125,7 @@ public sealed class MealEstimationTests
         Assert.IsNull(result.Components[1].SaltGrams);
         Assert.AreEqual(0m, result.Components[2].Kilocalories);
         Assert.AreEqual(6m, result.Components[2].SaltGrams);
-        Assert.AreEqual("meal-estimate-v3", result.SchemaVersion);
+        Assert.AreEqual("meal-estimate-v4", result.SchemaVersion);
         string request = provider.LastRequest.GetRawText();
         Assert.Contains("never guess salt added while cooking", request);
         Assert.Contains("saltGrams", request);

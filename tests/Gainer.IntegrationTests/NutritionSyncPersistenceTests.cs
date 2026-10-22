@@ -308,6 +308,47 @@ public sealed class NutritionSyncPersistenceTests
     }
 
     [TestMethod]
+    public async Task PiecesAreStoredAndReturnedWithTheEntry()
+    {
+        (string connectionString, Guid user, _) = await CreateDatabaseAsync();
+        Guid client = Guid.NewGuid();
+        await RegisterAsync(connectionString, user, client);
+        Guid dayId = Guid.NewGuid();
+        ProcessSyncMutationCommand save = Command(
+            Guid.NewGuid(), client, 1, "saveNutritionDay", dayId, 0,
+            new
+            {
+                nutritionDayId = dayId,
+                localDate = new DateOnly(2026, 10, 22),
+                baseVersion = 0,
+                entries = new[]
+                {
+                    new
+                    {
+                        entryId = Guid.NewGuid(),
+                        meal = "Breakfast",
+                        position = 0,
+                        productName = "Ei",
+                        amountGrams = 200m,
+                        kilocaloriesPer100Grams = 155m,
+                        pieceGrams = 50m,
+                        pieceCount = 4m,
+                    },
+                },
+            });
+
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        {
+            _ = await Processor(context, user).ProcessAsync(save);
+        }
+        await using AppDbContext reader = Fixture.CreateContext(connectionString, user);
+        NutritionDaySnapshot day = await new NutritionQueries(reader).GetDayAsync(new DateOnly(2026, 10, 22))
+            ?? throw new AssertFailedException();
+        Assert.AreEqual(new NutritionPortion(50m, 4m), day.Entries.Single().Portion);
+        Assert.AreEqual(310m, day.Totals.Kilocalories);
+    }
+
+    [TestMethod]
     public async Task TargetSaltLimitIsStoredAndOlderPayloadsKeepTheDefault()
     {
         (string connectionString, Guid user, _) = await CreateDatabaseAsync();
