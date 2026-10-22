@@ -1,11 +1,13 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/domain/models/training/training_plan_model.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/plan_editor_screen.dart';
 
 import 'training_plans_test_support.dart';
 import 'training_test_support.dart';
+import 'workout_flow_test_support.dart';
 
 void main() {
   late TrainingHarness harness;
@@ -287,5 +289,151 @@ void main() {
     expect(find.text('Öffnen'), findsOneWidget);
     final plans = await tester.runAsync(harness.repository.readPlans);
     expect(plans, isEmpty);
+  });
+
+  Future<TrainingPlanModel> seedThreeEntryPlan(WidgetTester tester) async {
+    final plan = await tester.runAsync(() async {
+      final pulldown = await seedExercise(harness, name: 'Latzug');
+      final tbar = await seedExercise(harness, name: 'TBar');
+      final highRow = await seedExercise(harness, name: 'HighRow');
+      await seedExercise(harness, name: 'Klimmzug');
+      return seedPlan(
+        harness,
+        name: 'Pull',
+        entries: [
+          planEntry(harness, exerciseId: pulldown.id),
+          planEntry(harness, exerciseId: tbar.id, supersetId: 'ss'),
+          planEntry(harness, exerciseId: highRow.id, supersetId: 'ss'),
+        ],
+      );
+    });
+    return plan!;
+  }
+
+  Future<void> openEntryMenu(WidgetTester tester, int index) async {
+    final button = find.descendant(
+      of: find.byKey(ValueKey('plan-entry-$index')),
+      matching: labelled('Übungsmenü'),
+    );
+    await tester.ensureVisible(button);
+    await settle(tester);
+    await tester.tap(button);
+    await settle(tester);
+  }
+
+  Future<List<String>> storedNames(WidgetTester tester, String planId) async {
+    final names = await tester.runAsync(() async {
+      final plan = await harness.repository.readPlan(planId);
+      final exercises = {
+        for (final exercise in await harness.repository.readExercises())
+          exercise.id: exercise.name,
+      };
+      return [for (final entry in plan!.entries) exercises[entry.exerciseId]!];
+    });
+    return names!;
+  }
+
+  testWidgets('Verschieben ordnet die Einträge nach dem Speichern neu', (
+    tester,
+  ) async {
+    final plan = await seedThreeEntryPlan(tester);
+    await pumpEditor(tester, planId: plan.planId);
+
+    await openEntryMenu(tester, 2);
+    await tester.tap(find.text('Verschieben'));
+    await settle(tester);
+    await tester.drag(
+      labelled('Ziehen zum Umordnen').last,
+      const Offset(0, -400),
+    );
+    await settle(tester);
+    await tester.tap(find.text('Fertig'));
+    await settle(tester);
+
+    expect(await storedNames(tester, plan.planId), [
+      'Latzug',
+      'TBar',
+      'HighRow',
+    ]);
+    await save(tester);
+
+    final stored = await tester.runAsync(
+      () => harness.repository.readPlan(plan.planId),
+    );
+    expect(await storedNames(tester, plan.planId), [
+      'HighRow',
+      'Latzug',
+      'TBar',
+    ]);
+    expect(
+      stored!.entries.map((entry) => entry.supersetId),
+      everyElement(isNull),
+    );
+  });
+
+  testWidgets('Ersetzen tauscht die Übung und behält die Sätze', (
+    tester,
+  ) async {
+    final plan = await seedThreeEntryPlan(tester);
+    await pumpEditor(tester, planId: plan.planId);
+
+    await openEntryMenu(tester, 0);
+    await tester.tap(find.text('Ersetzen'));
+    await settle(tester);
+    expect(find.text('Übung ersetzen'), findsOneWidget);
+    await searchPicker(tester, 'klimm');
+    await tester.tap(pickerRow('Klimmzug'));
+    await settle(tester);
+
+    expect(find.text('Klimmzug'), findsOneWidget);
+    expect(find.text('Latzug'), findsNothing);
+    await save(tester);
+
+    final stored = await tester.runAsync(
+      () => harness.repository.readPlan(plan.planId),
+    );
+    expect(await storedNames(tester, plan.planId), [
+      'Klimmzug',
+      'TBar',
+      'HighRow',
+    ]);
+    expect(stored!.entries.first.entryId, plan.entries.first.entryId);
+    expect(stored.entries.first.workingSets, 3);
+  });
+
+  testWidgets('Löschen entfernt den Eintrag und löst das Superset', (
+    tester,
+  ) async {
+    final plan = await seedThreeEntryPlan(tester);
+    await pumpEditor(tester, planId: plan.planId);
+
+    await openEntryMenu(tester, 1);
+    await tester.tap(find.text('Löschen'));
+    await settle(tester);
+    expect(find.text('TBar'), findsNothing);
+    await save(tester);
+
+    final stored = await tester.runAsync(
+      () => harness.repository.readPlan(plan.planId),
+    );
+    expect(await storedNames(tester, plan.planId), ['Latzug', 'HighRow']);
+    expect(stored!.entries.last.supersetId, isNull);
+  });
+
+  testWidgets('Verschieben fehlt bei nur einem Eintrag', (tester) async {
+    final plan = await tester.runAsync(() async {
+      final exercise = await seedExercise(harness, name: 'Latzug');
+      return seedPlan(
+        harness,
+        name: 'Pull',
+        entries: [planEntry(harness, exerciseId: exercise.id)],
+      );
+    });
+    await pumpEditor(tester, planId: plan!.planId);
+
+    await openEntryMenu(tester, 0);
+
+    expect(find.text('Verschieben'), findsNothing);
+    expect(find.text('Ersetzen'), findsOneWidget);
   });
 }

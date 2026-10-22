@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
@@ -13,6 +14,7 @@ import 'exercise_picker_sheet.dart';
 import 'muscle_map_widgets.dart';
 import 'plan_entry_editor_sheet.dart';
 import 'plan_start.dart';
+import 'reorder_blocks_sheet.dart';
 import 'training_plans_view_model.dart';
 
 /// Planeditor. Ohne [planId] entsteht ein neuer Plan; die ID ist ab dem Öffnen stabil.
@@ -33,6 +35,8 @@ class PlanEditorScreen extends StatefulWidget {
 }
 
 enum _LeaveChoice { save, discard, cancel }
+
+enum _EntryAction { move, replace, delete, edit }
 
 class _PlanEditorScreenState extends State<PlanEditorScreen> {
   final _nameController = TextEditingController();
@@ -206,7 +210,10 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
     _changed(() {
       final updated = edit.entry;
       if (updated == null) {
-        _entries = [..._entries]..removeAt(index);
+        _entries = _arranged([
+          for (final other in _entries)
+            if (other.entryId != entry.entryId) other.entryId,
+        ]);
         return;
       }
       _entries = _entriesWithEdit(
@@ -233,6 +240,118 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
           _entries[i].copyWith(supersetId: () => null)
         else
           _entries[i],
+    ];
+  }
+
+  /// Eintragsmenü wie im Training: Verschieben, Ersetzen und Löschen oben,
+  /// darunter die Sätze des Eintrags.
+  Future<void> _showEntryMenu(int index) async {
+    final entry = _entries[index];
+    final action = await showGainerActionSheet<_EntryAction>(
+      context: context,
+      title: _nameOf(entry.exerciseId),
+      quickActions: [
+        if (_entries.length > 1)
+          const GainerSheetAction(
+            label: 'Verschieben',
+            icon: CupertinoIcons.arrow_up_arrow_down,
+            value: _EntryAction.move,
+          ),
+        const GainerSheetAction(
+          label: 'Ersetzen',
+          icon: CupertinoIcons.arrow_2_circlepath,
+          value: _EntryAction.replace,
+        ),
+        const GainerSheetAction(
+          label: 'Löschen',
+          icon: CupertinoIcons.trash,
+          value: _EntryAction.delete,
+          destructive: true,
+        ),
+      ],
+      groups: const [
+        [
+          GainerSheetAction(
+            label: 'Sätze bearbeiten',
+            icon: CupertinoIcons.pencil,
+            value: _EntryAction.edit,
+          ),
+        ],
+      ],
+    );
+    if (!mounted) return;
+    switch (action) {
+      case _EntryAction.move:
+        await _reorderEntries();
+      case _EntryAction.replace:
+        await _replaceEntry(entry.entryId);
+      case _EntryAction.delete:
+        _changed(() {
+          _entries = _arranged([
+            for (final other in _entries)
+              if (other.entryId != entry.entryId) other.entryId,
+          ]);
+        });
+      case _EntryAction.edit:
+        await _editEntry(index);
+      case null:
+    }
+  }
+
+  Future<void> _reorderEntries() async {
+    final ids = await showReorderItemsSheet(
+      context,
+      items: [
+        for (final entry in _entries)
+          (id: entry.entryId, name: _nameOf(entry.exerciseId)),
+      ],
+      removalNote: 'wird aus dem Plan entfernt, sobald du fertig bist.',
+      emptyNote: 'Keine Übungen mehr. Mit „Fertig“ wird der Plan leer.',
+    );
+    if (ids == null || !mounted) return;
+    final arranged = _arranged(ids);
+    if (listEquals(arranged, _entries)) return;
+    _changed(() => _entries = arranged);
+  }
+
+  /// Ersetzt die Übung des Eintrags; Sätze, Notiz und Superset bleiben.
+  Future<void> _replaceEntry(String entryId) async {
+    final result = await showExercisePicker(
+      context,
+      repository: widget.repository,
+      allowSuperset: false,
+      title: 'Übung ersetzen',
+    );
+    if (result == null || result.exercises.isEmpty || !mounted) return;
+    final exercise = result.exercises.first;
+    _changed(() {
+      _exercises[exercise.id] = exercise;
+      _entries = [
+        for (final entry in _entries)
+          entry.entryId == entryId
+              ? entry.copyWith(exerciseId: exercise.id)
+              : entry,
+      ];
+    });
+  }
+
+  /// Einträge in der Reihenfolge von [orderedEntryIds]; fehlende entfallen.
+  /// Ein Superset, das danach nicht mehr zusammenhängt, wird aufgelöst.
+  List<PlanEntry> _arranged(List<String> orderedEntryIds) {
+    final byId = {for (final entry in _entries) entry.entryId: entry};
+    final kept = [
+      for (final id in orderedEntryIds)
+        if (byId[id] != null) byId[id]!,
+    ];
+    bool connected(int i, String supersetId) =>
+        (i > 0 && kept[i - 1].supersetId == supersetId) ||
+        (i + 1 < kept.length && kept[i + 1].supersetId == supersetId);
+    return [
+      for (var i = 0; i < kept.length; i++)
+        if (kept[i].supersetId != null && !connected(i, kept[i].supersetId!))
+          kept[i].copyWith(supersetId: () => null)
+        else
+          kept[i],
     ];
   }
 
@@ -523,6 +642,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
         key: ValueKey('plan-entry-$index'),
         behavior: HitTestBehavior.opaque,
         onTap: () => _editEntry(index),
+        onLongPress: () => _showEntryMenu(index),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -540,10 +660,18 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                   _SupersetBadge(letter: letter),
                   const SizedBox(width: GainerSpacing.xs),
                 ],
-                Icon(
-                  CupertinoIcons.chevron_forward,
-                  size: 18,
-                  color: colors.secondaryText,
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size.square(36),
+                  onPressed: () => _showEntryMenu(index),
+                  child: Semantics(
+                    label: 'Übungsmenü',
+                    child: Icon(
+                      CupertinoIcons.ellipsis,
+                      size: 20,
+                      color: colors.secondaryText,
+                    ),
+                  ),
                 ),
               ],
             ),
