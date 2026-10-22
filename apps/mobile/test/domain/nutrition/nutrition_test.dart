@@ -97,6 +97,40 @@ void main() {
     }
   });
 
+  test('pieces must match the amount and survive local and server JSON', () {
+    NutritionEntry eggs({double amount = 200, double? count = 4}) =>
+        NutritionEntry(
+          entryId: 'egg',
+          meal: NutritionMeal.breakfast,
+          position: 0,
+          productName: 'Ei',
+          brand: null,
+          amountGrams: amount,
+          per100Grams: const NutritionTotals(kilocalories: 155),
+          source: null,
+          pieceGrams: 50,
+          pieceCount: count,
+        );
+    expect(eggs().totals.kilocalories, 310);
+    expect(gramsForPieces(2.5, 50), 125);
+    expect(
+      () => eggs(amount: 180),
+      throwsA(isA<NutritionValidationException>()),
+    );
+    expect(eggs(amount: 130, count: null).pieceGrams, 50);
+
+    final local = NutritionEntry.fromJson(eggs().toJson());
+    expect(local.pieceCount, 4);
+    final server = NutritionEntry.fromJson({
+      ...eggs().toJson()
+        ..remove('pieceGrams')
+        ..remove('pieceCount'),
+      'portion': {'pieceGrams': 50, 'pieceCount': 4},
+    });
+    expect(server.pieceGrams, 50);
+    expect(server.pieceCount, 4);
+  });
+
   test('day totals stay nullable when no entries contain macro values', () {
     final day = NutritionDay(
       localDate: '2026-10-12',

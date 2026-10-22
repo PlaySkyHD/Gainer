@@ -44,7 +44,8 @@ internal static class NutritionSnapshots
             entry.AmountGrams,
             new NutritionTotals(entry.Kilocalories, entry.ProteinGrams, entry.CarbohydrateGrams, entry.FatGrams, entry.SaltGrams),
             per100,
-            source);
+            source,
+            NutritionPortion.From(entry.PieceGrams, entry.PieceCount));
     }
 
     private static decimal? Scale(decimal? value, decimal factor) =>

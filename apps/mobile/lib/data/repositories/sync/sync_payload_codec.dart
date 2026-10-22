@@ -506,6 +506,7 @@ class SyncPayloadCodec {
           // Nur senden, wenn gesetzt; ältere Server kennen Salz nicht.
           if (per100['saltGrams'] != null)
             'saltGramsPer100Grams': per100['saltGrams'],
+          ..._portionPayload(entry),
         };
       }),
     };
@@ -541,6 +542,7 @@ class SyncPayloadCodec {
           'source': component['source'],
           if (per100['saltGrams'] != null)
             'saltGramsPer100Grams': per100['saltGrams'],
+          ..._portionPayload(component),
         };
       }),
     };
@@ -617,6 +619,17 @@ class SyncPayloadCodec {
 
   /// Snapshots der Trainingstypen behalten ihre Modell-IDs, weil die lokalen
   /// Modelle sie unverändert lesen. Nur Server-Metadaten wie `version` fallen weg.
+  /// Stückgewicht und -zahl, lokal flach oder vom Server als `portion`;
+  /// nur senden, wenn gesetzt (ältere Server kennen die Felder nicht).
+  static Map<String, Object?> _portionPayload(Map<String, dynamic> item) {
+    final portion = item['portion'];
+    final source = portion is Map ? portion : item;
+    return {
+      if (source['pieceGrams'] != null) 'pieceGrams': source['pieceGrams'],
+      if (source['pieceCount'] != null) 'pieceCount': source['pieceCount'],
+    };
+  }
+
   static Object? normalizeSnapshot(String resourceType, Object? snapshotValue) {
     if (snapshotValue is! Map<String, dynamic>) return snapshotValue;
     final snapshot = Map<String, dynamic>.from(snapshotValue);

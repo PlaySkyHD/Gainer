@@ -22,7 +22,9 @@ public sealed record NutritionEntryResponse(
     decimal AmountGrams,
     NutritionTotalsResponse Totals,
     NutritionTotalsResponse Per100Grams,
-    NutritionSourceResponse? Source);
+    NutritionSourceResponse? Source,
+    decimal? PieceGrams = null,
+    decimal? PieceCount = null);
 
 public sealed record NutritionDayResponse(
     Guid? NutritionDayId,
@@ -58,7 +60,9 @@ public sealed record ReusableMealComponentResponse(
     decimal AmountGrams,
     NutritionTotalsResponse Totals,
     NutritionTotalsResponse Per100Grams,
-    NutritionSourceResponse? Source);
+    NutritionSourceResponse? Source,
+    decimal? PieceGrams = null,
+    decimal? PieceCount = null);
 
 public sealed record ReusableMealResponse(
     Guid ReusableMealId,
@@ -116,7 +120,9 @@ public sealed record MealEstimateComponentResponse(
     string Confidence,
     IReadOnlyList<string> DataGaps,
     decimal? SaltGrams = null,
-    string? SourceUrl = null);
+    string? SourceUrl = null,
+    decimal? PieceCount = null,
+    decimal? PieceGrams = null);
 
 public sealed record MealEstimateResponse(
     IReadOnlyList<MealEstimateComponentResponse> Components,

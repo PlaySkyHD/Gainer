@@ -64,6 +64,43 @@ public sealed class NutritionCalculationTests
     }
 
     [TestMethod]
+    public void PiecesMustMatchTheAmountAndNeedAPieceWeight()
+    {
+        NutritionEntryInput eggs = NutritionEntryInput.Create(
+            Guid.NewGuid(), MealType.Breakfast, 0, "Ei", 200m, new NutritionPer100Grams(155m, 13m, 1m, 11m),
+            portion: new NutritionPortion(50m, 4m));
+        Assert.AreEqual(4m, eggs.Portion!.PieceCount);
+        Assert.AreEqual(200m, eggs.Portion.AmountGrams);
+
+        NutritionEntryInput remembered = NutritionEntryInput.Create(
+            Guid.NewGuid(), MealType.Breakfast, 0, "Ei", 130m, new NutritionPer100Grams(155m, 13m, 1m, 11m),
+            portion: new NutritionPortion(50m, null));
+        Assert.IsNull(remembered.Portion!.PieceCount, "A piece weight alone is kept for later.");
+
+        NutritionValidationException mismatch = Assert.Throws<NutritionValidationException>(() =>
+            NutritionEntryInput.Create(
+                Guid.NewGuid(), MealType.Breakfast, 0, "Ei", 180m, new NutritionPer100Grams(155m, null, null, null),
+                portion: new NutritionPortion(50m, 4m)));
+        Assert.IsTrue(mismatch.Errors.ContainsKey("AmountGrams"));
+        Assert.Throws<NutritionValidationException>(() => NutritionPortion.From(null, 2m));
+        Assert.IsNull(NutritionPortion.From(null, null));
+    }
+
+    [TestMethod]
+    public void EstimatedPiecesAreKeptOnlyWhenConsistent()
+    {
+        MealEstimateComponentDraft eggs = MealEstimateComponentDraft.Create(
+            "Ei", 220m, 341m, 28m, 2m, 24m, MealEstimateConfidence.Medium, [], pieceCount: 4m, pieceGrams: 55m);
+        Assert.AreEqual(4m, eggs.PieceCount);
+        Assert.AreEqual(55m, eggs.PieceGrams);
+
+        MealEstimateComponentDraft mismatch = MealEstimateComponentDraft.Create(
+            "Ei", 200m, 310m, 26m, 2m, 22m, MealEstimateConfidence.Medium, [], pieceCount: 4m, pieceGrams: 55m);
+        Assert.IsNull(mismatch.PieceCount);
+        Assert.IsNull(mismatch.PieceGrams);
+    }
+
+    [TestMethod]
     public void CalculateKeepsMissingMacrosMissing()
     {
         NutritionTotals result = NutritionCalculator.Calculate(

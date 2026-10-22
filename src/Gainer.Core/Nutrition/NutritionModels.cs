@@ -31,6 +31,8 @@ public sealed class NutritionEntry : UserOwnedEntity
     public string? Brand { get; set; }
     public decimal AmountGrams { get; set; }
     public string AmountUnit { get; set; } = "g";
+    public decimal? PieceGrams { get; set; }
+    public decimal? PieceCount { get; set; }
     public decimal Kilocalories { get; set; }
     public decimal? ProteinGrams { get; set; }
     public decimal? CarbohydrateGrams { get; set; }

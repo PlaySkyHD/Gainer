@@ -47,7 +47,8 @@ internal static class SmartNutritionSnapshots
                 component.FatGramsPer100Grams,
                 component.SaltGramsPer100Grams),
             component.Brand,
-            source);
+            source,
+            NutritionPortion.From(component.PieceGrams, component.PieceCount));
     }
 
     public static NutritionTargetScheduleSnapshot TargetSchedule(

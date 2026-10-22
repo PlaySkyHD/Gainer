@@ -127,6 +127,8 @@ public sealed class NutritionDayMutationHandler(
             ProductName = input.ProductName,
             Brand = input.Brand,
             AmountGrams = input.AmountGrams,
+            PieceGrams = input.Portion?.PieceGrams,
+            PieceCount = input.Portion?.PieceCount,
             Kilocalories = totals.Kilocalories,
             ProteinGrams = totals.ProteinGrams,
             CarbohydrateGrams = totals.CarbohydrateGrams,

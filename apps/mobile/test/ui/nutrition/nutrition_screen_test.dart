@@ -732,6 +732,102 @@ void main() {
     expect(entry.totals.saltGrams, 6);
   });
 
+  testWidgets('manual entry in pieces computes the grams and shows pieces', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(tester, []);
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manuell erfassen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-entry-name')),
+      'Ei, gekocht',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-entry-kcal')),
+      '155',
+    );
+    final pieceGrams = find.byKey(const ValueKey('nutrition-piece-grams'));
+    await tester.ensureVisible(pieceGrams);
+    await tester.enterText(pieceGrams, '50');
+    final plus = find.descendant(
+      of: find.byKey(const ValueKey('nutrition-piece-count')),
+      matching: find.byKey(const ValueKey('piece-plus')),
+    );
+    await tester.ensureVisible(plus);
+    for (var i = 0; i < 4; i++) {
+      await tester.tap(plus);
+      await tester.pump();
+    }
+    expect(
+      tester
+          .widget<CupertinoTextField>(
+            find.byKey(const ValueKey('nutrition-entry-amount')),
+          )
+          .controller!
+          .text,
+      '200',
+    );
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Manuell speichern').hitTestable(),
+      240,
+      scrollable: _sheetScrollable(),
+    );
+    await tester.tap(find.text('Manuell speichern'));
+    await tester.pumpAndSettle();
+
+    final entry = harness.viewModel.snapshot!.day.entries.single;
+    expect(entry.amountGrams, 200);
+    expect(entry.pieceGrams, 50);
+    expect(entry.pieceCount, 4);
+    expect(entry.totals.kilocalories, 310);
+    expect(find.text('4 Stk · 310 kcal'), findsOneWidget);
+  });
+
+  testWidgets('recent food with a piece weight is added by count', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(tester, []);
+    await harness.viewModel.addFood(
+      NutritionFood(
+        name: 'Ei, Größe M',
+        brand: null,
+        per100Grams: const NutritionTotals(kilocalories: 155),
+        source: const NutritionSource(
+          provider: 'Open Food Facts',
+          basisGrams: 100,
+        ),
+        pieceGrams: 50,
+      ),
+      amountGrams: 50,
+      pieceCount: 1,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Zuletzt verwendet'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1 Stk = 50 g'), findsOneWidget);
+    final plus = find.descendant(
+      of: find.byKey(const ValueKey('nutrition-entry-pieces')),
+      matching: find.byKey(const ValueKey('piece-plus')),
+    );
+    await tester.tap(plus);
+    await tester.pump();
+    await tester.tap(plus);
+    await tester.pump();
+    await tester.tap(find.textContaining('1 Stk = 50 g'));
+    await tester.pumpAndSettle();
+
+    final added = harness.viewModel.snapshot!.day.entries.last;
+    expect(added.pieceCount, 2);
+    expect(added.amountGrams, 100);
+  });
+
   testWidgets('target phase stores a custom salt limit', (tester) async {
     _usePhoneViewport(tester);
     final database = LocalDatabase(NativeDatabase.memory());
