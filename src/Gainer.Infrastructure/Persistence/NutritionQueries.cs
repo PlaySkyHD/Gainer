@@ -39,6 +39,7 @@ public sealed class NutritionQueries(AppDbContext context) : INutritionQueries
                 item.CarbohydrateGramsPerBasis,
                 item.FatGramsPerBasis,
                 item.SaltGramsPerBasis,
+                item.PieceGrams,
             })
             .Take(limit)
             .Select(NutritionSnapshots.Entry)

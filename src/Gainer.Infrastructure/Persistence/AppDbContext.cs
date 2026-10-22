@@ -715,6 +715,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_nutrition_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" >= 0");
                 table.HasCheckConstraint("CK_nutrition_entries_basis_macros", "(\"ProteinGramsPerBasis\" IS NULL OR \"ProteinGramsPerBasis\" >= 0) AND (\"CarbohydrateGramsPerBasis\" IS NULL OR \"CarbohydrateGramsPerBasis\" >= 0) AND (\"FatGramsPerBasis\" IS NULL OR \"FatGramsPerBasis\" >= 0)");
                 table.HasCheckConstraint("CK_nutrition_entries_salt", "(\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"SaltGramsPerBasis\" IS NULL OR \"SaltGramsPerBasis\" >= 0)");
+                table.HasCheckConstraint("CK_nutrition_entries_pieces", "(\"PieceGrams\" IS NULL OR \"PieceGrams\" > 0) AND (\"PieceCount\" IS NULL OR (\"PieceCount\" > 0 AND \"PieceGrams\" IS NOT NULL))");
             });
             entry.HasKey(item => item.Id);
             entry.Property(item => item.Meal).HasConversion<string>().HasMaxLength(16);
@@ -735,6 +736,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             entry.Property(item => item.FatGramsPerBasis).HasPrecision(9, 2);
             entry.Property(item => item.SaltGrams).HasPrecision(9, 2);
             entry.Property(item => item.SaltGramsPerBasis).HasPrecision(9, 2);
+            entry.Property(item => item.PieceGrams).HasPrecision(9, 2);
+            entry.Property(item => item.PieceCount).HasPrecision(7, 2);
             entry.HasIndex(item => new { item.UserId, item.NutritionDayId, item.Meal, item.Position }).IsUnique();
             entry.HasIndex(item => new { item.UserId, item.Barcode });
             entry.HasOne(item => item.NutritionDay)
@@ -779,6 +782,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_reusable_meal_components_macros", "(\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND (\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND (\"FatGrams\" IS NULL OR \"FatGrams\" >= 0)");
                 table.HasCheckConstraint("CK_reusable_meal_components_per100_macros", "(\"ProteinGramsPer100Grams\" IS NULL OR \"ProteinGramsPer100Grams\" >= 0) AND (\"CarbohydrateGramsPer100Grams\" IS NULL OR \"CarbohydrateGramsPer100Grams\" >= 0) AND (\"FatGramsPer100Grams\" IS NULL OR \"FatGramsPer100Grams\" >= 0)");
                 table.HasCheckConstraint("CK_reusable_meal_components_salt", "(\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"SaltGramsPer100Grams\" IS NULL OR (\"SaltGramsPer100Grams\" >= 0 AND \"SaltGramsPer100Grams\" <= 100))");
+                table.HasCheckConstraint("CK_reusable_meal_components_pieces", "(\"PieceGrams\" IS NULL OR \"PieceGrams\" > 0) AND (\"PieceCount\" IS NULL OR (\"PieceCount\" > 0 AND \"PieceGrams\" IS NOT NULL))");
             });
             component.HasKey(item => item.Id);
             component.Property(item => item.Name).HasMaxLength(NutritionLimits.MaxComponentNameLength).IsRequired();
@@ -796,6 +800,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             component.Property(item => item.FatGramsPer100Grams).HasPrecision(10, 2);
             component.Property(item => item.SaltGrams).HasPrecision(10, 2);
             component.Property(item => item.SaltGramsPer100Grams).HasPrecision(10, 2);
+            component.Property(item => item.PieceGrams).HasPrecision(9, 2);
+            component.Property(item => item.PieceCount).HasPrecision(7, 2);
             component.Property(item => item.BasisGrams).HasPrecision(10, 2);
             component.HasIndex(item => new { item.UserId, item.ReusableMealId, item.Position }).IsUnique();
             component.HasOne(item => item.ReusableMeal)

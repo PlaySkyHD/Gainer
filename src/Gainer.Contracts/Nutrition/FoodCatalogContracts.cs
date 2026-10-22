@@ -13,7 +13,8 @@ public sealed record FoodCatalogProductResponse(
     DateTime RetrievedAtUtc,
     bool IsStale,
     string Source,
-    decimal? SaltGramsPer100Grams = null);
+    decimal? SaltGramsPer100Grams = null,
+    decimal? ServingGrams = null);
 
 public sealed record FoodCatalogSearchResponse(
     IReadOnlyList<FoodCatalogProductResponse> Products,

@@ -241,7 +241,8 @@ public sealed class SyncMutationExecutor(
                             item.FatGramsPer100Grams,
                             item.SaltGramsPer100Grams),
                         item.Brand,
-                        item.Source)).ToArray();
+                        item.Source,
+                        NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
                     NutritionDaySnapshot snapshot = await new NutritionDayMutationHandler(context, userContext, timeProvider, collector)
                         .SaveAsync(SaveNutritionDayMutation.Create(
                             Metadata(mutationId, content), payload.NutritionDayId, payload.LocalDate,
@@ -294,7 +295,8 @@ public sealed class SyncMutationExecutor(
                                 item.FatGramsPer100Grams,
                                 item.SaltGramsPer100Grams),
                             item.Brand,
-                            item.Source)).ToArray();
+                            item.Source,
+                            NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
                     ReusableMealDraft values = ReusableMealDraft.Create(
                         payload.Name, payload.Description, payload.StandardPortion, components);
                     ReusableMealSnapshot snapshot = await new ReusableMealMutationHandler(context, userContext, timeProvider, collector)
@@ -559,7 +561,9 @@ public sealed class SyncMutationExecutor(
         decimal? CarbohydrateGramsPer100Grams,
         decimal? FatGramsPer100Grams,
         NutritionSourceSnapshot? Source,
-        decimal? SaltGramsPer100Grams = null);
+        decimal? SaltGramsPer100Grams = null,
+        decimal? PieceGrams = null,
+        decimal? PieceCount = null);
     private sealed record SaveNutritionTargetSchedulePayload(
         Guid NutritionTargetScheduleId,
         long BaseVersion,
@@ -594,5 +598,7 @@ public sealed class SyncMutationExecutor(
         decimal? CarbohydrateGramsPer100Grams,
         decimal? FatGramsPer100Grams,
         NutritionSourceSnapshot? Source,
-        decimal? SaltGramsPer100Grams = null);
+        decimal? SaltGramsPer100Grams = null,
+        decimal? PieceGrams = null,
+        decimal? PieceCount = null);
 }

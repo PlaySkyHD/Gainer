@@ -139,7 +139,9 @@ public sealed class NutritionController(
                     item.Confidence.ToString(),
                     item.DataGaps,
                     item.SaltGrams,
-                    item.SourceUrl)).ToArray(),
+                    item.SourceUrl,
+                    item.PieceCount,
+                    item.PieceGrams)).ToArray(),
                 draft.Provider,
                 draft.SchemaVersion,
                 draft.EstimatedAtUtc));
@@ -247,7 +249,9 @@ public sealed class NutritionController(
             entry.Source.Provider,
             entry.Source.Barcode,
             entry.Source.RetrievedAtUtc,
-            entry.Source.BasisGrams));
+            entry.Source.BasisGrams),
+        entry.Portion?.PieceGrams,
+        entry.Portion?.PieceCount);
 
     private static NutritionTotalsResponse Totals(NutritionTotals totals) => new(
         totals.Kilocalories,
@@ -279,7 +283,9 @@ public sealed class NutritionController(
                 item.Source.Provider,
                 item.Source.Barcode,
                 item.Source.RetrievedAtUtc,
-                item.Source.BasisGrams))).ToArray(),
+                item.Source.BasisGrams),
+            item.Portion?.PieceGrams,
+            item.Portion?.PieceCount)).ToArray(),
         meal.CreatedAtUtc,
         meal.UpdatedAtUtc,
         meal.Version);

@@ -72,7 +72,7 @@ public sealed class OpenAiMealEstimator(
     IOptions<MealEstimationOptions>? options = null,
     ILogger<OpenAiMealEstimator>? logger = null) : IMealEstimator
 {
-    public const string SchemaVersion = "meal-estimate-v3";
+    public const string SchemaVersion = "meal-estimate-v4";
     private const int MaxSourceUrlLength = 300;
     private readonly MealEstimationOptions settings = options?.Value ?? new MealEstimationOptions { WebSearchEnabled = false };
 
@@ -181,6 +181,7 @@ public sealed class OpenAiMealEstimator(
         "Nutrients: use reference values per 100 g from nutrition databases for each component and scale them to the amount. " +
         "Assume plain ingredients are raw or unprepared unless a preparation is stated; for example, raw chicken breast fillet has about 1 to 2 g fat per 100 g. " +
         "Add cooking fat or oil only as a separate component when it is stated. " +
+        "Pieces: when the evidence counts items (for example 4 eggs, 2 slices of bread, 3 rolls), set pieceCount to that count and pieceGrams to the typical edible weight of one piece, and make amountGrams exactly pieceCount times pieceGrams; otherwise set both to null. " +
         (webSearch
             ? "Look up the per-100 g values of each main component with web search on the allowed nutrition sites and set sourceUrl to the page you used; use null when you did not use a page. "
             : "No tools or external data are available; set sourceUrl to null. ") +
@@ -210,7 +211,9 @@ public sealed class OpenAiMealEstimator(
                 ParseConfidence(item.Confidence),
                 item.DataGaps,
                 item.SaltGrams,
-                TrustedSource(item.SourceUrl, allowedDomains))).ToArray();
+                TrustedSource(item.SourceUrl, allowedDomains),
+                item.PieceCount,
+                item.PieceGrams)).ToArray();
         return MealEstimateDraft.Create(components, "OpenAI", SchemaVersion, estimatedAtUtc);
     }
 
@@ -257,7 +260,7 @@ public sealed class OpenAiMealEstimator(
                 {
                     type = "object",
                     additionalProperties = false,
-                    required = new[] { "name", "amountGrams", "kilocalories", "proteinGrams", "carbohydrateGrams", "fatGrams", "saltGrams", "sourceUrl", "confidence", "dataGaps" },
+                    required = new[] { "name", "amountGrams", "kilocalories", "proteinGrams", "carbohydrateGrams", "fatGrams", "saltGrams", "sourceUrl", "pieceCount", "pieceGrams", "confidence", "dataGaps" },
                     properties = new
                     {
                         name = new { type = "string", maxLength = NutritionLimits.MaxComponentNameLength },
@@ -268,6 +271,8 @@ public sealed class OpenAiMealEstimator(
                         fatGrams = NullableNumberSchema,
                         saltGrams = new { type = NullableNumberType, minimum = 0, maximum = NutritionLimits.MaxSaltGramsPer100Grams },
                         sourceUrl = new { type = new[] { "string", "null" }, maxLength = MaxSourceUrlLength },
+                        pieceCount = new { type = NullableNumberType, minimum = 0, maximum = NutritionPortion.MaxPieceCount },
+                        pieceGrams = new { type = NullableNumberType, minimum = 0, maximum = NutritionPortion.MaxPieceGrams },
                         confidence = new { type = "string", @enum = new[] { "low", "medium", "high" } },
                         dataGaps = new { type = "array", maxItems = NutritionLimits.MaxDataGapsPerEstimateComponent, items = new { type = "string", maxLength = NutritionLimits.MaxDataGapLength } },
                     },
@@ -286,5 +291,7 @@ public sealed class OpenAiMealEstimator(
         string Confidence,
         IReadOnlyList<string> DataGaps,
         decimal? SaltGrams = null,
-        string? SourceUrl = null);
+        string? SourceUrl = null,
+        decimal? PieceCount = null,
+        decimal? PieceGrams = null);
 }
