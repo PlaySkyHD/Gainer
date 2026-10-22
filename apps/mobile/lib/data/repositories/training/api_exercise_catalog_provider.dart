@@ -21,7 +21,15 @@ abstract interface class ExerciseCatalogProvider {
   Future<BaseCatalog> loadBaseCatalog();
 }
 
-class ApiExerciseCatalogProvider implements ExerciseCatalogProvider {
+/// Ein Katalog, der seinen zuletzt geladenen Stand ohne Netz liefern kann.
+abstract interface class CachedExerciseCatalogProvider {
+  /// Zuletzt geladener oder gespeicherter Basiskatalog; null, wenn es noch
+  /// keinen gibt. Fragt nie das Netz an.
+  Future<BaseCatalog?> readCachedBaseCatalog();
+}
+
+class ApiExerciseCatalogProvider
+    implements ExerciseCatalogProvider, CachedExerciseCatalogProvider {
   ApiExerciseCatalogProvider(this.api, {this.store});
 
   static const _cacheKey = 'local-cache:exercise-catalog:v2';
@@ -31,6 +39,11 @@ class ApiExerciseCatalogProvider implements ExerciseCatalogProvider {
   @override
   bool lastLoadWasStale = false;
   DateTime? lastLoadedAtUtc;
+  BaseCatalog? _lastLoaded;
+
+  @override
+  Future<BaseCatalog?> readCachedBaseCatalog() async =>
+      _lastLoaded ?? (await _readCache())?.$2;
 
   @override
   Future<BaseCatalog> loadBaseCatalog() async {
@@ -38,6 +51,7 @@ class ApiExerciseCatalogProvider implements ExerciseCatalogProvider {
       final page = await _fetchBase();
       lastLoadWasStale = false;
       lastLoadedAtUtc = DateTime.now().toUtc();
+      _lastLoaded = page;
       final accountStore = store;
       if (accountStore != null) {
         try {
@@ -57,6 +71,7 @@ class ApiExerciseCatalogProvider implements ExerciseCatalogProvider {
       if (cached == null) rethrow;
       lastLoadWasStale = true;
       lastLoadedAtUtc = cached.$1;
+      _lastLoaded = cached.$2;
       return cached.$2;
     }
   }

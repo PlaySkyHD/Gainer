@@ -147,7 +147,7 @@ public sealed class TrainingPlanPersistenceTests
     }
 
     [TestMethod]
-    public async Task RotationRejectsForeignArchivedAndDuplicatePlansAndAllowsOneRotationPerUser()
+    public async Task ScheduleRejectsForeignAndUnknownPlansAllowsArchivedPlansAndAllowsOneSchedulePerUser()
     {
         (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, firstUser, 1);
@@ -155,92 +155,42 @@ public sealed class TrainingPlanPersistenceTests
         Guid archivedPlan = Guid.NewGuid();
         Guid foreignPlan = await CreatePlanAsync(connectionString, secondUser, exerciseIds[0], "Foreign");
         await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
-        var handler = new WorkoutRotationHandler(context, new CurrentUser(firstUser), TimeProvider.System);
+        var handler = new TrainingScheduleMutationHandler(context, new CurrentUser(firstUser), TimeProvider.System);
         await Handler(context, firstUser).CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(push, "Push", [Entry(exerciseIds[0], 0, 3)])), TestContext.CancellationToken);
         await Handler(context, firstUser).CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(archivedPlan, "Old", [Entry(exerciseIds[0], 0, 3)])), TestContext.CancellationToken);
         await Handler(context, firstUser).ArchiveAsync(ArchiveTrainingPlanMutation.Create(Metadata(), archivedPlan, 1), TestContext.CancellationToken);
 
-        Guid rotationId = Guid.NewGuid();
-        WorkoutRotationValidationException foreign = await Assert.ThrowsAsync<WorkoutRotationValidationException>(() =>
-            handler.SaveAsync(SaveWorkoutRotationMutation.Create(Metadata(), rotationId, 0, [push, foreignPlan]), TestContext.CancellationToken));
-        Assert.IsTrue(foreign.Errors.ContainsKey("PlanIds"));
-        await Assert.ThrowsAsync<WorkoutRotationValidationException>(() =>
-            handler.SaveAsync(SaveWorkoutRotationMutation.Create(Metadata(), rotationId, 0, [push, archivedPlan]), TestContext.CancellationToken));
-        await Assert.ThrowsAsync<WorkoutRotationValidationException>(() =>
-            handler.SaveAsync(SaveWorkoutRotationMutation.Create(Metadata(), rotationId, 0, [push, push]), TestContext.CancellationToken));
+        Guid scheduleId = Guid.NewGuid();
+        TrainingScheduleValidationException foreign = await Assert.ThrowsAsync<TrainingScheduleValidationException>(() =>
+            handler.SaveAsync(SaveTrainingScheduleMutation.Create(Metadata(), 0, Schedule(scheduleId, push, foreignPlan)), TestContext.CancellationToken));
+        Assert.IsTrue(foreign.Errors.ContainsKey("Slots"));
+        TrainingScheduleValidationException unknown = await Assert.ThrowsAsync<TrainingScheduleValidationException>(() =>
+            handler.SaveAsync(SaveTrainingScheduleMutation.Create(Metadata(), 0, Schedule(scheduleId, push, Guid.NewGuid())), TestContext.CancellationToken));
+        Assert.AreEqual(unknown.Errors["Slots"], foreign.Errors["Slots"]);
+        TrainingScheduleValidationException foreignException = await Assert.ThrowsAsync<TrainingScheduleValidationException>(() =>
+            handler.SaveAsync(SaveTrainingScheduleMutation.Create(Metadata(), 0, Schedule(scheduleId, push) with
+            {
+                Exceptions = [new TrainingScheduleExceptionValues(new DateOnly(2026, 10, 22), foreignPlan, null)],
+            }), TestContext.CancellationToken));
+        Assert.IsTrue(foreignException.Errors.ContainsKey("Exceptions"));
+        Assert.AreEqual(0, await context.TrainingSchedules.CountAsync(TestContext.CancellationToken));
 
-        WorkoutRotationSnapshot saved = await handler.SaveAsync(SaveWorkoutRotationMutation.Create(Metadata(), rotationId, 0, [push]), TestContext.CancellationToken);
+        TrainingScheduleSnapshot saved = await handler.SaveAsync(
+            SaveTrainingScheduleMutation.Create(Metadata(), 0, Schedule(scheduleId, push, archivedPlan)), TestContext.CancellationToken);
         Assert.AreEqual(1, saved.Version);
-        Assert.HasCount(1, saved.PlanIds);
-        await Assert.ThrowsAsync<WorkoutRotationConflictException>(() =>
-            handler.SaveAsync(SaveWorkoutRotationMutation.Create(Metadata(), Guid.NewGuid(), 0, [push]), TestContext.CancellationToken));
+        Assert.HasCount(3, saved.Slots);
+        await Assert.ThrowsAsync<TrainingScheduleConflictException>(() =>
+            handler.SaveAsync(SaveTrainingScheduleMutation.Create(Metadata(), 0, Schedule(Guid.NewGuid(), push)), TestContext.CancellationToken));
     }
 
-    [TestMethod]
-    public async Task NextPlanFollowsLastFinishedRotationWorkoutAndWrapsAround()
-    {
-        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
-        Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
-        Guid push = await CreatePlanAsync(connectionString, userId, exerciseIds[0], "Push");
-        Guid pull = await CreatePlanAsync(connectionString, userId, exerciseIds[0], "Pull");
-        Guid legs = await CreatePlanAsync(connectionString, userId, exerciseIds[0], "Legs");
-        await SaveRotationAsync(connectionString, userId, [push, pull, legs]);
-        DateTime day = new(2026, 8, 18, 17, 0, 0, DateTimeKind.Utc);
-        await FinishWorkoutAsync(connectionString, userId, push, day, Guid.NewGuid());
-
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
-        Assert.AreEqual(pull, await new WorkoutRotationQueries(context).NextPlanIdAsync(TestContext.CancellationToken));
-        await FinishWorkoutAsync(connectionString, userId, legs, day.AddDays(1), Guid.NewGuid());
-        Assert.AreEqual(push, await new WorkoutRotationQueries(context).NextPlanIdAsync(TestContext.CancellationToken));
-    }
-
-    [TestMethod]
-    public async Task NextPlanReturnsPreviousPlanAgainWhenLastFinishedRotationWorkoutWasDeleted()
-    {
-        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
-        Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
-        Guid push = await CreatePlanAsync(connectionString, userId, exerciseIds[0], "Push");
-        Guid pull = await CreatePlanAsync(connectionString, userId, exerciseIds[0], "Pull");
-        await SaveRotationAsync(connectionString, userId, [push, pull]);
-        DateTime day = new(2026, 8, 18, 17, 0, 0, DateTimeKind.Utc);
-        await FinishWorkoutAsync(connectionString, userId, push, day, Guid.NewGuid());
-        Guid pullWorkoutId = Guid.NewGuid();
-        await FinishWorkoutAsync(connectionString, userId, pull, day.AddDays(1), pullWorkoutId);
-
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
-        Assert.AreEqual(push, await new WorkoutRotationQueries(context).NextPlanIdAsync(TestContext.CancellationToken));
-        await new WorkoutMutationHandler(context, new CurrentUser(userId), TimeProvider.System)
-            .DeleteAsync(DeleteWorkoutMutation.Create(Metadata(), pullWorkoutId, 1), TestContext.CancellationToken);
-        Assert.AreEqual(pull, await new WorkoutRotationQueries(context).NextPlanIdAsync(TestContext.CancellationToken));
-    }
-
-    [TestMethod]
-    public async Task EmptyOrMissingRotationSuggestsNothing()
-    {
-        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
-        {
-            Assert.IsNull(await new WorkoutRotationQueries(context).NextPlanIdAsync(TestContext.CancellationToken));
-        }
-        await SaveRotationAsync(connectionString, userId, []);
-        await using AppDbContext emptyContext = Fixture.CreateContext(connectionString, userId);
-        Assert.IsNull(await new WorkoutRotationQueries(emptyContext).NextPlanIdAsync(TestContext.CancellationToken));
-    }
-
-    private static async Task FinishWorkoutAsync(string connectionString, Guid userId, Guid planId, DateTime started, Guid workoutId)
-    {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
-        await new WorkoutMutationHandler(context, new CurrentUser(userId), TimeProvider.System).CreateAsync(
-            CreateWorkoutMutation.Create(Metadata(), new WorkoutValues(
-                workoutId, "Training", null, started, started.AddHours(1), "plan", planId, null, [])));
-    }
-
-    private static async Task SaveRotationAsync(string connectionString, Guid userId, Guid[] planIds)
-    {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
-        await new WorkoutRotationHandler(context, new CurrentUser(userId), TimeProvider.System).SaveAsync(
-            SaveWorkoutRotationMutation.Create(Metadata(), Guid.NewGuid(), 0, planIds));
-    }
+    private static TrainingScheduleValues Schedule(Guid scheduleId, params Guid[] planIds) => new(
+        scheduleId,
+        TrainingScheduleModes.Cycle,
+        new DateOnly(2026, 10, 20),
+        new DateOnly(2026, 10, 21),
+        [.. planIds.Select(id => new TrainingScheduleSlotValues(id)), new TrainingScheduleSlotValues(null)],
+        [],
+        []);
 
     private static async Task<Guid> CreatePlanAsync(string connectionString, Guid userId, Guid exerciseId, string name)
     {

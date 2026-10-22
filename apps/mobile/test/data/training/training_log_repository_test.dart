@@ -408,34 +408,6 @@ void main() {
     expect(await repository.readPlans(), hasLength(2));
   });
 
-  test(
-    'rotation proposes the plan after the last finished rotation workout',
-    () async {
-      final first = await repository.createPlan(
-        TrainingPlanModel(
-          planId: nextId(),
-          name: 'A',
-          previousValueSource: PreviousValueSource.exercise,
-        ),
-      );
-      final second = await repository.createPlan(
-        TrainingPlanModel(
-          planId: nextId(),
-          name: 'B',
-          previousValueSource: PreviousValueSource.exercise,
-        ),
-      );
-      await repository.saveRotation([first.planId, second.planId]);
-      expect(await repository.nextRotationPlanId(), first.planId);
-
-      final workout = await repository.startFromPlan(first.planId);
-      advance(const Duration(minutes: 20));
-      await repository.finishWorkout(workout.workoutId);
-
-      expect(await repository.nextRotationPlanId(), second.planId);
-    },
-  );
-
   test('merging a custom exercise rewrites local references and archives the source', () async {
     final custom = CatalogExercise(
       id: nextId(),

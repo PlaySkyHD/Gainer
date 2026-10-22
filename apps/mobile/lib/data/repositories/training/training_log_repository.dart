@@ -2,6 +2,7 @@ import '../../../domain/models/body/body_tracking.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
 import '../../../domain/models/training/previous_values.dart' as previous;
 import '../../../domain/models/training/training_plan_model.dart';
+import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../../domain/models/training/workout_rules.dart' as rules;
 import '../../../domain/models/training/workout_validation.dart';
@@ -11,10 +12,10 @@ import '../sync/local_sync_store.dart';
 import 'api_exercise_catalog_provider.dart';
 import 'muscle_suggestion_service.dart';
 import 'training_preferences.dart';
+import 'training_schedule_repository.dart';
 
 const _workoutType = 'workout';
 const _planType = 'training-plan';
-const _rotationType = 'workout-rotation';
 const _customExerciseType = 'custom-exercise';
 const _categoryType = 'exercise-category';
 const _checkInType = 'daily-check-in';
@@ -30,7 +31,7 @@ class ActiveWorkoutExistsException implements Exception {
   String toString() => 'ActiveWorkoutExistsException($workoutId)';
 }
 
-/// Schreibt und liest Training, Pläne, Rotation und Übungskatalog des
+/// Schreibt und liest Training, Pläne, Rhythmus und Übungskatalog des
 /// angemeldeten Kontos. Jede bestätigte Änderung landet atomar im lokalen Store
 /// zusammen mit ihrer Outbox-Mutation; schlägt das fehl, wirft die Methode.
 class TrainingLogRepository {
@@ -52,6 +53,15 @@ class TrainingLogRepository {
   /// Trainingseinstellungen des Kontos; ein gemeinsamer Stand für alle Beobachter.
   late final TrainingPreferences preferences = TrainingPreferences(
     store: store,
+  );
+
+  /// Trainingsrhythmus mit Vorschau und Tagesaktionen.
+  late final TrainingScheduleRepository schedule = TrainingScheduleRepository(
+    store: store,
+    ids: _ids,
+    clock: _clock,
+    readAllPlans: () => readPlans(includeArchived: true),
+    readWorkouts: _workoutsStartedBetween,
   );
   final IdFactory _ids;
   final DateTime Function() _clock;
@@ -84,6 +94,34 @@ class TrainingLogRepository {
     return workouts;
   }
 
+  /// Nicht gelöschte Trainings, die zwischen den lokalen Tagen [from] und
+  /// [to] (jeweils einschließlich) begonnen haben; ohne Grenzen alle. Andere
+  /// Tage werden nur anhand des Startzeitpunkts übersprungen, ohne das
+  /// Training vollständig zu lesen.
+  Future<List<Workout>> _workoutsStartedBetween({
+    LocalDay? from,
+    LocalDay? to,
+  }) async {
+    final result = <Workout>[];
+    for (final row in await store.readAggregates(_workoutType)) {
+      final json = _asMap(row.workingCopy);
+      if (json['deletedAtUtc'] != null) continue;
+      if (from != null || to != null) {
+        final started = DateTime.tryParse(
+          json['startedAtUtc'] as String? ?? '',
+        );
+        if (started == null) continue;
+        final day = localDayOfUtc(started);
+        if ((from != null && day.isBefore(from)) ||
+            (to != null && day.isAfter(to))) {
+          continue;
+        }
+      }
+      result.add(Workout.fromJson(json));
+    }
+    return result;
+  }
+
   Future<Workout?> readWorkout(String workoutId) async {
     final row = await store.readAggregate(_workoutType, workoutId);
     if (row == null) return null;
@@ -108,23 +146,6 @@ class TrainingLogRepository {
     return row == null ? null : _planOf(row);
   }
 
-  Future<RotationModel?> readRotation() async {
-    final rows = await store.readAggregates(_rotationType);
-    if (rows.isEmpty) return null;
-    return RotationModel.fromJson(_asMap(rows.first.workingCopy));
-  }
-
-  /// Nächster Plan der Rotation nach dem jüngsten beendeten Training.
-  Future<String?> nextRotationPlanId() async {
-    final rotation = await readRotation();
-    if (rotation == null) return null;
-    return rules.nextRotationPlanId(
-      rotation,
-      await _allPlans(),
-      await _allWorkouts(),
-    );
-  }
-
   /// Übungen für Auswahl und Anzeige: Basiskatalog und eigene Übungen.
   Future<List<CatalogExercise>> readExercises({
     bool includeArchived = false,
@@ -140,6 +161,23 @@ class TrainingLogRepository {
     ].where((exercise) => includeArchived || !exercise.isArchived).toList();
     all.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return all;
+  }
+
+  /// Wie [readExercises] mit Archivierten, aber ohne Netz: der Basiskatalog
+  /// kommt aus dem zuletzt geladenen Stand bzw. dem lokalen Cache. So gelten
+  /// dieselben Faktoren wie in Zusammenfassung und Statistik, auch offline.
+  /// Kataloge ohne Cache (lokal, Tests) werden direkt geladen.
+  Future<List<CatalogExercise>> readExercisesOffline() async {
+    final source = catalog;
+    final base = source is CachedExerciseCatalogProvider
+        ? await (source as CachedExerciseCatalogProvider)
+              .readCachedBaseCatalog()
+        : await source.loadBaseCatalog();
+    return [
+      ...?base?.exercises,
+      for (final row in await store.readAggregates(_customExerciseType))
+        CatalogExercise.fromJson(_asMap(row.workingCopy)),
+    ];
   }
 
   /// Kategorien: Basiskategorien und eigene Kategorien.
@@ -319,6 +357,35 @@ class TrainingLogRepository {
     return plan;
   }
 
+  /// Legt eine Kopie des Plans als „`Name` Kopie“ am Ende der Liste an.
+  /// Plan, Einträge und Supersets bekommen neue IDs.
+  Future<TrainingPlanModel> duplicatePlan(String planId) async {
+    final source = await readPlan(planId);
+    if (source == null) throw StateError('Der Plan ist nicht verfügbar.');
+    const suffix = ' Kopie';
+    final baseName = source.name.length + suffix.length > maxPlanNameLength
+        ? source.name
+              .substring(0, maxPlanNameLength - suffix.length)
+              .trimRight()
+        : source.name;
+    final supersetIds = <String, String>{};
+    return createPlan(
+      source.copyWith(
+        planId: newId(),
+        name: '$baseName$suffix',
+        entries: [
+          for (final entry in source.entries)
+            entry.copyWith(
+              entryId: newId(),
+              supersetId: () => entry.supersetId == null
+                  ? null
+                  : supersetIds.putIfAbsent(entry.supersetId!, newId),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<TrainingPlanModel> updatePlan(TrainingPlanModel plan) async {
     final old = await _requireEnvelope(_planType, plan.planId);
     final current = _planOf(old);
@@ -422,38 +489,6 @@ class TrainingLogRepository {
       return updatePlan(preview.plan.copyWith(planId: existing.planId));
     }
     return createPlan(preview.plan);
-  }
-
-  /// Speichert die Rotation mit der geordneten Plan-Liste.
-  Future<RotationModel> saveRotation(List<String> planIds) async {
-    final rows = await store.readAggregates(_rotationType);
-    final old = rows.isEmpty ? null : rows.first;
-    final rotationId = old?.aggregateId ?? _ids();
-    final plans = await readPlans();
-    final activeIds = {for (final plan in plans) plan.planId};
-    final fields = <String, String>{};
-    if (planIds.toSet().length != planIds.length) {
-      fields['planIds'] = 'Jeder Plan darf nur einmal vorkommen.';
-    } else if (!planIds.every(activeIds.contains)) {
-      fields['planIds'] = 'Die Rotation enthält einen nicht verfügbaren Plan.';
-    }
-    if (fields.isNotEmpty) throw WorkoutValidationException(fields);
-
-    final rotation = RotationModel(rotationId: rotationId, planIds: planIds);
-    final body = rotation.toJson();
-    await _commit(
-      aggregateType: _rotationType,
-      aggregateId: rotationId,
-      operation: old == null
-          ? LocalMutationOperation.create
-          : LocalMutationOperation.update,
-      baseVersion: old?.serverVersion ?? 0,
-      body: body,
-      envelope: old == null
-          ? localEnvelope(aggregateId: rotationId, workingCopy: body)
-          : _pending(rotationId, old, body),
-    );
-    return rotation;
   }
 
   // Katalog

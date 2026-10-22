@@ -4,7 +4,8 @@ public sealed record NutritionTotalsResponse(
     decimal Kilocalories,
     decimal? ProteinGrams,
     decimal? CarbohydrateGrams,
-    decimal? FatGrams);
+    decimal? FatGrams,
+    decimal? SaltGrams = null);
 
 public sealed record NutritionSourceResponse(
     string? Provider,
@@ -21,7 +22,9 @@ public sealed record NutritionEntryResponse(
     decimal AmountGrams,
     NutritionTotalsResponse Totals,
     NutritionTotalsResponse Per100Grams,
-    NutritionSourceResponse? Source);
+    NutritionSourceResponse? Source,
+    decimal? PieceGrams = null,
+    decimal? PieceCount = null);
 
 public sealed record NutritionDayResponse(
     Guid? NutritionDayId,
@@ -44,7 +47,8 @@ public sealed record NutritionProgressResponse(
     NutrientProgressResponse Kilocalories,
     NutrientProgressResponse Protein,
     NutrientProgressResponse Carbohydrates,
-    NutrientProgressResponse Fat);
+    NutrientProgressResponse Fat,
+    NutrientProgressResponse? Salt = null);
 
 public sealed record RecentNutritionEntriesResponse(IReadOnlyList<NutritionEntryResponse> Entries);
 
@@ -56,7 +60,9 @@ public sealed record ReusableMealComponentResponse(
     decimal AmountGrams,
     NutritionTotalsResponse Totals,
     NutritionTotalsResponse Per100Grams,
-    NutritionSourceResponse? Source);
+    NutritionSourceResponse? Source,
+    decimal? PieceGrams = null,
+    decimal? PieceCount = null);
 
 public sealed record ReusableMealResponse(
     Guid ReusableMealId,
@@ -89,7 +95,9 @@ public sealed record NutritionTargetVersionResponse(
     string? AlgorithmVersion,
     string? Reason,
     decimal MacroEnergyKilocalories,
-    bool RequiresEnergyMismatchConfirmation);
+    bool RequiresEnergyMismatchConfirmation,
+    decimal? SaltGrams = null,
+    decimal? EffectiveSaltGrams = null);
 
 public sealed record NutritionTargetScheduleResponse(
     Guid? NutritionTargetScheduleId,
@@ -110,7 +118,11 @@ public sealed record MealEstimateComponentResponse(
     decimal? CarbohydrateGrams,
     decimal? FatGrams,
     string Confidence,
-    IReadOnlyList<string> DataGaps);
+    IReadOnlyList<string> DataGaps,
+    decimal? SaltGrams = null,
+    string? SourceUrl = null,
+    decimal? PieceCount = null,
+    decimal? PieceGrams = null);
 
 public sealed record MealEstimateResponse(
     IReadOnlyList<MealEstimateComponentResponse> Components,
@@ -135,4 +147,5 @@ public sealed record NutritionLabelScanResponse(
     string Provider,
     string ProviderModelVersion,
     string ParserVersion,
-    DateTime ScannedAtUtc);
+    DateTime ScannedAtUtc,
+    NutritionLabelFieldResponse? SaltGrams = null);

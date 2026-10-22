@@ -184,15 +184,31 @@ public sealed class SyncMutationExecutor(
                     _ = snapshots;
                     return Result(collector);
                 }
-            case "saveWorkoutRotation":
+            case "saveTrainingSchedule":
                 {
-                    SaveWorkoutRotationPayload payload = Deserialize<SaveWorkoutRotationPayload>(content.Payload);
-                    ValidateExpectation(content, ResourceKind.WorkoutRotation, payload.RotationId, payload.BaseVersion);
-                    WorkoutRotationSnapshot snapshot = await new WorkoutRotationHandler(context, userContext, timeProvider, collector)
-                        .SaveAsync(SaveWorkoutRotationMutation.Create(
-                            Metadata(mutationId, content), payload.RotationId, payload.BaseVersion,
-                            payload.PlanIds ?? []), cancellationToken);
+                    SaveTrainingSchedulePayload payload = Deserialize<SaveTrainingSchedulePayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.TrainingSchedule, payload.ScheduleId, payload.BaseVersion);
+                    if (payload.ValidFrom is null)
+                    {
+                        throw new SyncMutationValidationException(InvalidPayloadCode, "The valid-from date is missing.");
+                    }
+                    TrainingScheduleSnapshot snapshot = await new TrainingScheduleMutationHandler(context, userContext, timeProvider, collector)
+                        .SaveAsync(SaveTrainingScheduleMutation.Create(
+                            Metadata(mutationId, content), payload.BaseVersion, payload.ToValues()), cancellationToken);
                     return Result(collector, snapshot);
+                }
+            case "deleteTrainingSchedule":
+                {
+                    DeleteTrainingSchedulePayload payload = Deserialize<DeleteTrainingSchedulePayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.TrainingSchedule, payload.ScheduleId, payload.BaseVersion);
+                    if (payload.BaseVersion < 1)
+                    {
+                        throw new SyncMutationValidationException(InvalidPayloadCode, "A schedule can only be deleted from a stored version.");
+                    }
+                    _ = await new TrainingScheduleMutationHandler(context, userContext, timeProvider, collector)
+                        .DeleteAsync(DeleteTrainingScheduleMutation.Create(
+                            Metadata(mutationId, content), payload.ScheduleId, payload.BaseVersion), cancellationToken);
+                    return Result(collector);
                 }
             case "mergeExercises":
                 {
@@ -222,9 +238,11 @@ public sealed class SyncMutationExecutor(
                             item.KilocaloriesPer100Grams,
                             item.ProteinGramsPer100Grams,
                             item.CarbohydrateGramsPer100Grams,
-                            item.FatGramsPer100Grams),
+                            item.FatGramsPer100Grams,
+                            item.SaltGramsPer100Grams),
                         item.Brand,
-                        item.Source)).ToArray();
+                        item.Source,
+                        NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
                     NutritionDaySnapshot snapshot = await new NutritionDayMutationHandler(context, userContext, timeProvider, collector)
                         .SaveAsync(SaveNutritionDayMutation.Create(
                             Metadata(mutationId, content), payload.NutritionDayId, payload.LocalDate,
@@ -274,9 +292,11 @@ public sealed class SyncMutationExecutor(
                                 item.KilocaloriesPer100Grams,
                                 item.ProteinGramsPer100Grams,
                                 item.CarbohydrateGramsPer100Grams,
-                                item.FatGramsPer100Grams),
+                                item.FatGramsPer100Grams,
+                                item.SaltGramsPer100Grams),
                             item.Brand,
-                            item.Source)).ToArray();
+                            item.Source,
+                            NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
                     ReusableMealDraft values = ReusableMealDraft.Create(
                         payload.Name, payload.Description, payload.StandardPortion, components);
                     ReusableMealSnapshot snapshot = await new ReusableMealMutationHandler(context, userContext, timeProvider, collector)
@@ -347,7 +367,8 @@ public sealed class SyncMutationExecutor(
                 item.FatPercent,
                 ParseTargetOrigin(item.Origin),
                 item.AlgorithmVersion,
-                item.Reason);
+                item.Reason,
+                item.SaltGrams);
         }).ToArray();
 
     private static T Deserialize<T>(JsonElement payload)
@@ -501,10 +522,20 @@ public sealed class SyncMutationExecutor(
     private sealed record ArchiveTrainingPlanPayload(Guid PlanId, long BaseVersion);
     private sealed record ReorderTrainingPlansPayload(IReadOnlyList<ReorderTrainingPlanItemPayload>? Plans);
     private sealed record ReorderTrainingPlanItemPayload(Guid PlanId, long BaseVersion);
-    private sealed record SaveWorkoutRotationPayload(
-        Guid RotationId,
+    private sealed record SaveTrainingSchedulePayload(
+        Guid ScheduleId,
         long BaseVersion,
-        IReadOnlyList<Guid>? PlanIds);
+        string? Mode,
+        DateOnly? AnchorDate,
+        DateOnly? ValidFrom,
+        IReadOnlyList<TrainingScheduleSlotValues>? Slots,
+        IReadOnlyList<TrainingScheduleShiftValues>? Shifts,
+        IReadOnlyList<TrainingScheduleExceptionValues>? Exceptions)
+    {
+        public TrainingScheduleValues ToValues() =>
+            new(ScheduleId, Mode ?? string.Empty, AnchorDate, ValidFrom!.Value, Slots!, Shifts!, Exceptions!);
+    }
+    private sealed record DeleteTrainingSchedulePayload(Guid ScheduleId, long BaseVersion);
     private sealed record SaveNutritionDayPayload(
         Guid NutritionDayId,
         DateOnly LocalDate,
@@ -529,7 +560,10 @@ public sealed class SyncMutationExecutor(
         decimal? ProteinGramsPer100Grams,
         decimal? CarbohydrateGramsPer100Grams,
         decimal? FatGramsPer100Grams,
-        NutritionSourceSnapshot? Source);
+        NutritionSourceSnapshot? Source,
+        decimal? SaltGramsPer100Grams = null,
+        decimal? PieceGrams = null,
+        decimal? PieceCount = null);
     private sealed record SaveNutritionTargetSchedulePayload(
         Guid NutritionTargetScheduleId,
         long BaseVersion,
@@ -550,7 +584,8 @@ public sealed class SyncMutationExecutor(
         decimal? FatPercent,
         string Origin,
         string? AlgorithmVersion,
-        string? Reason);
+        string? Reason,
+        decimal? SaltGrams = null);
     private sealed record NutritionEntryPayload(
         Guid EntryId,
         string Meal,
@@ -562,5 +597,8 @@ public sealed class SyncMutationExecutor(
         decimal? ProteinGramsPer100Grams,
         decimal? CarbohydrateGramsPer100Grams,
         decimal? FatGramsPer100Grams,
-        NutritionSourceSnapshot? Source);
+        NutritionSourceSnapshot? Source,
+        decimal? SaltGramsPer100Grams = null,
+        decimal? PieceGrams = null,
+        decimal? PieceCount = null);
 }

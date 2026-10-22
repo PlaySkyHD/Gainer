@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../../../data/repositories/nutrition/nutrition_repository.dart';
 import '../../../data/services/platform/platform_ports.dart';
@@ -106,6 +107,9 @@ class NutritionViewModel extends ChangeNotifier {
     double? proteinGramsPer100,
     double? carbohydrateGramsPer100,
     double? fatGramsPer100,
+    double? saltGramsPer100,
+    double? pieceGrams,
+    double? pieceCount,
   }) => _run(() async {
     final current = snapshot ?? await repository.read(localDate);
     final position =
@@ -130,8 +134,11 @@ class NutritionViewModel extends ChangeNotifier {
           proteinGrams: proteinGramsPer100,
           carbohydrateGrams: carbohydrateGramsPer100,
           fatGrams: fatGramsPer100,
+          saltGrams: saltGramsPer100,
         ),
         source: null,
+        pieceGrams: pieceGrams,
+        pieceCount: pieceCount,
       ),
     );
     snapshot = await repository.read(localDate);
@@ -155,6 +162,8 @@ class NutritionViewModel extends ChangeNotifier {
     String? brand,
     required double amountGrams,
     required NutritionTotals per100Grams,
+    double? pieceGrams,
+    double? pieceCount,
   }) => _run(
     () async {
       await repository.saveEntry(
@@ -166,6 +175,9 @@ class NutritionViewModel extends ChangeNotifier {
           clearBrand: brand == null,
           amountGrams: amountGrams,
           per100Grams: per100Grams,
+          pieceGrams: pieceGrams,
+          pieceCount: pieceCount,
+          clearPieces: true,
         ),
       );
       snapshot = await repository.read(localDate);
@@ -315,34 +327,41 @@ class NutritionViewModel extends ChangeNotifier {
     statusMessage = 'Schätzung prüfen. Es wurde noch nichts gespeichert.';
   }, operation: NutritionErrorOperation.estimate);
 
-  Future<void> addFood(NutritionFood food, {required double amountGrams}) =>
-      _run(() async {
-        final current = snapshot ?? await repository.read(localDate);
-        final position =
-            current.day.entries
-                .where((item) => item.meal == selectedMeal)
-                .fold<int>(
-                  0,
-                  (max, item) => item.position > max ? item.position : max,
-                ) +
-            1;
-        await repository.saveEntry(
-          localDate,
-          NutritionEntry(
-            entryId: repository.ids(),
-            meal: selectedMeal,
-            position: position,
-            productName: food.name,
-            brand: food.brand,
-            amountGrams: amountGrams,
-            per100Grams: food.per100Grams,
-            source: food.source,
-          ),
-        );
-        snapshot = await repository.read(localDate);
-        statusMessage =
-            'Lebensmittel-Snapshot gespeichert und für den Sync vorgemerkt.';
-      }, saving: true);
+  /// [pieceCount] gesetzt: Menge wurde in Stück eingegeben ([amountGrams] ist
+  /// dann Stückzahl × Stückgewicht des Lebensmittels).
+  Future<void> addFood(
+    NutritionFood food, {
+    required double amountGrams,
+    double? pieceCount,
+  }) => _run(() async {
+    final current = snapshot ?? await repository.read(localDate);
+    final position =
+        current.day.entries
+            .where((item) => item.meal == selectedMeal)
+            .fold<int>(
+              0,
+              (max, item) => item.position > max ? item.position : max,
+            ) +
+        1;
+    await repository.saveEntry(
+      localDate,
+      NutritionEntry(
+        entryId: repository.ids(),
+        meal: selectedMeal,
+        position: position,
+        productName: food.name,
+        brand: food.brand,
+        amountGrams: amountGrams,
+        per100Grams: food.per100Grams,
+        source: food.source,
+        pieceGrams: food.pieceGrams,
+        pieceCount: pieceCount,
+      ),
+    );
+    snapshot = await repository.read(localDate);
+    statusMessage =
+        'Lebensmittel-Snapshot gespeichert und für den Sync vorgemerkt.';
+  }, saving: true);
 
   Future<void> confirmEstimatedComponent(int componentIndex) async {
     final draft = mealEstimateDraft;
@@ -352,7 +371,8 @@ class NutritionViewModel extends ChangeNotifier {
       throw StateError('Die Schätzung ist nicht verfügbar.');
     }
     final item = draft.components[componentIndex];
-    if (item.amountGrams <= 0 || item.totals.kilocalories <= 0) {
+    // 0 kcal ist gültig, z. B. für den Bestandteil „Salz“.
+    if (item.amountGrams <= 0 || item.totals.kilocalories < 0) {
       throw StateError(
         'Der Schätzwert ist nicht gültig und muss manuell ergänzt werden.',
       );
@@ -382,17 +402,43 @@ class NutritionViewModel extends ChangeNotifier {
           amountGrams: item.amountGrams,
           per100Grams: per100,
           source: NutritionSource(
-            provider: draft.provider,
+            // Mit Websuche steht die Fundstelle dabei, z. B. „OpenAI · fddb.info“.
+            provider: switch (item.sourceHost) {
+              final host? => '${draft.provider} · $host',
+              null => draft.provider,
+            },
             retrievedAtUtc: draft.estimatedAtUtc,
             basisGrams: item.amountGrams,
           ),
+          pieceGrams: item.pieceCount == null ? null : item.pieceGrams,
+          pieceCount: item.pieceGrams == null ? null : item.pieceCount,
         ),
       );
       snapshot = await repository.read(localDate);
-      mealEstimateDraft = null;
+      // Nur den übernommenen Bestandteil entfernen; die übrigen bleiben
+      // zum Prüfen stehen.
+      final remaining = [
+        for (var i = 0; i < draft.components.length; i++)
+          if (i != componentIndex) draft.components[i],
+      ];
+      mealEstimateDraft = remaining.isEmpty
+          ? null
+          : MealEstimateDraft(
+              components: List.unmodifiable(remaining),
+              provider: draft.provider,
+              schemaVersion: draft.schemaVersion,
+              estimatedAtUtc: draft.estimatedAtUtc,
+            );
       statusMessage = 'Geprüfte Schätzung als Eintrag gespeichert.';
       _notify();
     }, saving: true);
+  }
+
+  /// Verwirft einen offenen Vorschlag ohne Statusmeldung, z. B. beim Schließen.
+  void clearEstimateDraft() {
+    if (mealEstimateDraft == null) return;
+    mealEstimateDraft = null;
+    _notify();
   }
 
   void discardEstimate() {
@@ -553,10 +599,27 @@ class NutritionViewModel extends ChangeNotifier {
     super.dispose();
   }
 
-  String _messageFor(Object error) =>
-      error is StateError && error.message.contains('Onlineverbindung')
-      ? '${error.message} Bitte später erneut versuchen.'
-      : error.toString();
+  String _messageFor(Object error) => switch (error) {
+    StateError(:final message) when message.contains('Onlineverbindung') =>
+      '$message Bitte später erneut versuchen.',
+    PlatformException() => _captureMessage(error),
+    NutritionValidationException(:final fields) when fields.isNotEmpty =>
+      fields.values.first,
+    _ => error.toString(),
+  };
+
+  /// Fehler von Kamera, Barcode-Scanner und Fotoauswahl verständlich.
+  static String _captureMessage(PlatformException error) =>
+      switch (error.code) {
+        'capture_in_progress' =>
+          'Die Kamera ist noch geöffnet. Schließe sie und versuche es erneut.',
+        'camera_permission_denied' || 'camera_permission_unavailable' => 'Gainer darf die Kamera nicht nutzen. Erlaube den Zugriff in den iOS-Einstellungen oder gib die Werte manuell ein.',
+        'camera_unavailable' || 'capture_unavailable' =>
+          'Die Kamera ist gerade nicht verfügbar. Gib die Werte manuell ein.',
+        'unsupported_image' || 'capture_failed' => 'Das Bild konnte nicht gelesen werden. Versuche es mit einem anderen Foto.',
+        'image_too_large' => 'Das Bild ist zu groß. Wähle ein kleineres Foto.',
+        _ => 'Die Aufnahme ist fehlgeschlagen. Versuche es erneut.',
+      };
 }
 
 enum NutritionErrorOperation {

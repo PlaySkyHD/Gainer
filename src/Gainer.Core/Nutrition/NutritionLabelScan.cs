@@ -29,7 +29,9 @@ public sealed record NutritionLabelReadings(
     NutritionLabelReading Kilojoules,
     NutritionLabelReading ProteinGrams,
     NutritionLabelReading CarbohydrateGrams,
-    NutritionLabelReading FatGrams);
+    NutritionLabelReading FatGrams,
+    NutritionLabelReading? SaltGrams = null,
+    NutritionLabelReading? SodiumGrams = null);
 
 public sealed record NutritionLabelFieldDraft(
     decimal? OriginalValue,
@@ -44,6 +46,7 @@ public sealed record NutritionLabelScanDraft(
     NutritionLabelFieldDraft ProteinGrams,
     NutritionLabelFieldDraft CarbohydrateGrams,
     NutritionLabelFieldDraft FatGrams,
+    NutritionLabelFieldDraft SaltGrams,
     bool CanConfirm,
     string Provider,
     string ProviderModelVersion,
@@ -52,6 +55,7 @@ public sealed record NutritionLabelScanDraft(
 {
     public const int MaxEvidenceLength = 120;
     public const decimal KilojoulesPerKilocalorie = 4.184m;
+    public const decimal SaltPerSodium = 2.5m;
     // Pure fat is about 900 kcal per 100 g; anything clearly above that is a misread.
     public const decimal MaxPlausibleKilocaloriesPer100Grams = 950m;
     public const decimal MaxPlausibleMacroGramsPer100Grams = 100m;
@@ -72,7 +76,8 @@ public sealed record NutritionLabelScanDraft(
         ArgumentNullException.ThrowIfNull(readings);
         (NutritionLabelBasis basis, decimal? servingMassGrams, NutritionLabelReading kilocalories,
             NutritionLabelReading kilojoules, NutritionLabelReading proteinGrams,
-            NutritionLabelReading carbohydrateGrams, NutritionLabelReading fatGrams) = readings;
+            NutritionLabelReading carbohydrateGrams, NutritionLabelReading fatGrams,
+            NutritionLabelReading? saltGrams, NutritionLabelReading? sodiumGrams) = readings;
         ArgumentNullException.ThrowIfNull(kilocalories);
         ArgumentNullException.ThrowIfNull(kilojoules);
         ArgumentNullException.ThrowIfNull(proteinGrams);
@@ -109,6 +114,15 @@ public sealed record NutritionLabelScanDraft(
         NutritionLabelFieldDraft protein = Field(proteinGrams, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
         NutritionLabelFieldDraft carbohydrate = Field(carbohydrateGrams, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
         NutritionLabelFieldDraft fat = Field(fatGrams, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
+        // Salt is optional for confirmation; labels listing only sodium are converted.
+        NutritionLabelReading salt = saltGrams ?? NutritionLabelReading.Empty;
+        bool saltConverted = converted;
+        if (salt.Value is null && sodiumGrams?.Value is { } sodium)
+        {
+            salt = new NutritionLabelReading(sodium * SaltPerSodium, sodiumGrams.Evidence);
+            saltConverted = true;
+        }
+        NutritionLabelFieldDraft saltField = Field(salt, factor, saltConverted, 2, NutritionLimits.MaxSaltGramsPer100Grams);
         decimal macroSum = (protein.Per100Grams ?? 0m) + (carbohydrate.Per100Grams ?? 0m) + (fat.Per100Grams ?? 0m);
         bool canConfirm = kcal.Per100Grams is not null && macroSum <= MaxPlausibleMacroSumPer100Grams;
 
@@ -119,6 +133,7 @@ public sealed record NutritionLabelScanDraft(
             protein,
             carbohydrate,
             fat,
+            saltField,
             canConfirm,
             normalizedProvider,
             normalizedModel,

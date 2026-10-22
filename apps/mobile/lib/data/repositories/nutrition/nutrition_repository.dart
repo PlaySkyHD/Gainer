@@ -34,11 +34,16 @@ class NutritionFood {
     required this.brand,
     required this.per100Grams,
     required this.source,
+    this.pieceGrams,
   });
   final String name;
   final String? brand;
   final NutritionTotals per100Grams;
   final NutritionSource source;
+
+  /// Gewicht eines Stücks, z. B. aus der Portionsgröße oder einem früheren
+  /// Eintrag; null, wenn nur Gramm sinnvoll sind.
+  final double? pieceGrams;
 }
 
 class MealEstimateDraft {
@@ -61,12 +66,27 @@ class NutritionEstimateComponent {
     required this.totals,
     required this.confidence,
     required this.dataGaps,
+    this.sourceUrl,
+    this.pieceCount,
+    this.pieceGrams,
   });
   final String name;
   final double amountGrams;
   final NutritionTotals totals;
   final String confidence;
   final List<String> dataGaps;
+  final String? sourceUrl;
+
+  /// Gezählte Stücke („4 Eier“) mit Gewicht je Stück; sonst null.
+  final double? pieceCount;
+  final double? pieceGrams;
+
+  /// „fddb.info“ aus der Quelle, ohne „www.“; null ohne Quelle.
+  String? get sourceHost {
+    final host = Uri.tryParse(sourceUrl ?? '')?.host;
+    if (host == null || host.isEmpty) return null;
+    return host.startsWith('www.') ? host.substring(4) : host;
+  }
 }
 
 class NutritionLabelFieldDraft {
@@ -90,6 +110,12 @@ class NutritionLabelScanDraft {
     required this.proteinGrams,
     required this.carbohydrateGrams,
     required this.fatGrams,
+    this.saltGrams = const NutritionLabelFieldDraft(
+      originalValue: null,
+      per100Grams: null,
+      status: 'Missing',
+      evidence: null,
+    ),
     required this.canConfirm,
     required this.provider,
     required this.providerModelVersion,
@@ -102,6 +128,7 @@ class NutritionLabelScanDraft {
   final NutritionLabelFieldDraft proteinGrams;
   final NutritionLabelFieldDraft carbohydrateGrams;
   final NutritionLabelFieldDraft fatGrams;
+  final NutritionLabelFieldDraft saltGrams;
   final bool canConfirm;
   final String provider;
   final String providerModelVersion;
@@ -116,6 +143,7 @@ class NutritionLabelScanDraft {
       proteinGrams: proteinGrams.per100Grams,
       carbohydrateGrams: carbohydrateGrams.per100Grams,
       fatGrams: fatGrams.per100Grams,
+      saltGrams: saltGrams.per100Grams,
     );
   }
 }
@@ -213,6 +241,22 @@ class NutritionRepository {
     );
   }
 
+  /// Alle lokalen Tage von [from] bis [to] (einschließlich) in einem
+  /// Durchlauf, dazu die Zielphasen. Für den Kalender; braucht keine
+  /// Verbindung. Tage ohne Eintrag fehlen.
+  Future<({List<NutritionDay> days, NutritionTargetSchedule? targets})>
+  readDays(String from, String to) async {
+    if (!isValidLocalDate(from) || !isValidLocalDate(to)) {
+      throw const NutritionValidationException({
+        'localDate': 'Ungültiger Kalendertag.',
+      });
+    }
+    return (
+      days: await _readDaysBetween(from, to),
+      targets: await _readTargetSchedule(),
+    );
+  }
+
   /// Durchschnitte der letzten 7 und 30 Tage aus den lokalen Tagen (offline).
   Future<NutritionAveragesOverview> readAverages(String today) async {
     if (!isValidLocalDate(today)) {
@@ -220,19 +264,27 @@ class NutritionRepository {
         'localDate': 'Ungültiger Kalendertag.',
       });
     }
-    final from = shiftLocalDate(today, -30);
-    final rows = await store.readAggregates(_nutritionDayType);
-    final days = <NutritionDay>[
-      for (final row in rows)
-        if (_map(row.workingCopy)['localDate'] case final String date
-            when date.compareTo(from) >= 0 && date.compareTo(today) <= 0)
-          NutritionDay.fromJson(_map(row.workingCopy)),
-    ];
     return NutritionAveragesOverview(
-      days: days,
+      days: await _readDaysBetween(shiftLocalDate(today, -30), today),
       schedule: await _readTargetSchedule(),
       today: today,
     );
+  }
+
+  /// Lokale Tage von [from] bis [to] einschließlich; jede Zeile wird nur
+  /// einmal dekodiert.
+  Future<List<NutritionDay>> _readDaysBetween(String from, String to) async {
+    final days = <NutritionDay>[];
+    for (final row in await store.readAggregates(_nutritionDayType)) {
+      final body = _map(row.workingCopy);
+      final date = body['localDate'];
+      if (date is String &&
+          date.compareTo(from) >= 0 &&
+          date.compareTo(to) <= 0) {
+        days.add(NutritionDay.fromJson(body));
+      }
+    }
+    return days;
   }
 
   Future<List<NutritionFood>> recentFoods({int limit = 20}) async {
@@ -251,6 +303,7 @@ class NutritionRepository {
             brand: entry.brand,
             per100Grams: entry.per100Grams,
             source: entry.source!,
+            pieceGrams: entry.pieceGrams,
           ),
           stamp: stamp,
         ));
@@ -391,6 +444,8 @@ class NutritionRepository {
               amountGrams: source.components[index].amountGrams,
               per100Grams: source.components[index].per100Grams,
               source: source.components[index].source,
+              pieceGrams: source.components[index].pieceGrams,
+              pieceCount: source.components[index].pieceCount,
             ),
         ],
       ),
@@ -424,6 +479,8 @@ class NutritionRepository {
               amountGrams: entries[index].amountGrams,
               per100Grams: entries[index].per100Grams,
               source: entries[index].source,
+              pieceGrams: entries[index].pieceGrams,
+              pieceCount: entries[index].pieceCount,
             ),
         ],
       ),
@@ -458,6 +515,12 @@ class NutritionRepository {
             ) +
         1;
     for (final component in reusable.components) {
+      // Stückzahl mit der Portion skalieren; Gramm daraus ableiten, damit
+      // beide zusammenpassen.
+      final pieceGrams = component.pieceGrams;
+      final pieceCount = component.pieceCount == null
+          ? null
+          : roundNutrition(component.pieceCount! * scale);
       entries.add(
         NutritionEntry(
           entryId: ids(),
@@ -465,9 +528,13 @@ class NutritionRepository {
           position: position++,
           productName: component.name,
           brand: component.brand,
-          amountGrams: roundNutrition(component.amountGrams * scale),
+          amountGrams: pieceCount != null && pieceGrams != null
+              ? gramsForPieces(pieceCount, pieceGrams)
+              : roundNutrition(component.amountGrams * scale),
           per100Grams: component.per100Grams,
           source: component.source,
+          pieceGrams: pieceGrams,
+          pieceCount: pieceCount,
         ),
       );
     }
@@ -776,6 +843,7 @@ NutritionTargetVersion _targetFromJson(Map<String, dynamic> json) =>
       origin: json['origin'] as String? ?? 'Manual',
       algorithmVersion: json['algorithmVersion'] as String?,
       reason: json['reason'] as String?,
+      saltGrams: (json['saltGrams'] as num?)?.toDouble(),
     );
 
 String _dateString(DateTime value) =>
@@ -804,6 +872,7 @@ NutritionTargetVersion _withEndDate(NutritionTargetVersion value, String end) =>
       origin: value.origin,
       algorithmVersion: value.algorithmVersion,
       reason: value.reason,
+      saltGrams: value.saltGrams,
     );
 
 String _newUuidV4() {

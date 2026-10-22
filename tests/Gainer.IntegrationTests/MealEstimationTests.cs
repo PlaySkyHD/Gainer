@@ -102,6 +102,89 @@ public sealed class MealEstimationTests
         Assert.IsTrue(sanitized.All(value => value == 0));
     }
 
+    [TestMethod]
+    public async Task SaltIsEstimatedOnlyWhenInherentAndStatedSaltBecomesZeroCalorieComponent()
+    {
+        var provider = new FakeProvider(Response(new
+        {
+            components = new object[]
+            {
+                new { name = "Pizza Margherita", amountGrams = 350m, kilocalories = 890m, proteinGrams = (decimal?)35m, carbohydrateGrams = (decimal?)110m, fatGrams = (decimal?)30m, saltGrams = (decimal?)3.5m, confidence = "medium", dataGaps = Array.Empty<string>() },
+                new { name = "Reis", amountGrams = 200m, kilocalories = 260m, proteinGrams = (decimal?)6m, carbohydrateGrams = (decimal?)56m, fatGrams = (decimal?)0.6m, saltGrams = (decimal?)null, confidence = "medium", dataGaps = Array.Empty<string>() },
+                new { name = "Salz", amountGrams = 6m, kilocalories = 0m, proteinGrams = (decimal?)0m, carbohydrateGrams = (decimal?)0m, fatGrams = (decimal?)0m, saltGrams = (decimal?)6m, confidence = "high", dataGaps = Array.Empty<string>() },
+            },
+        }));
+        var service = new OpenAiMealEstimator(
+            provider, new RejectingSanitizer(), new PassQuota(),
+            new UserContext(Guid.NewGuid()), new FixedTimeProvider());
+
+        MealEstimateDraft result = await service.EstimateAsync(MealEstimationInput.Create(
+            "Pizza Margherita, Reis mit einem Teelöffel Salz", null, false));
+
+        Assert.AreEqual(3.5m, result.Components[0].SaltGrams);
+        Assert.IsNull(result.Components[1].SaltGrams);
+        Assert.AreEqual(0m, result.Components[2].Kilocalories);
+        Assert.AreEqual(6m, result.Components[2].SaltGrams);
+        Assert.AreEqual("meal-estimate-v4", result.SchemaVersion);
+        string request = provider.LastRequest.GetRawText();
+        Assert.Contains("never guess salt added while cooking", request);
+        Assert.Contains("saltGrams", request);
+    }
+
+    [TestMethod]
+    public async Task WebSearchIsLimitedToNutritionSitesAndOnlyTrustedSourcesAreKept()
+    {
+        var provider = new FakeProvider(Response(new
+        {
+            components = new object[]
+            {
+                new { name = "Hähnchenbrustfilet", amountGrams = 200m, kilocalories = 220m, proteinGrams = (decimal?)46m, carbohydrateGrams = (decimal?)0m, fatGrams = (decimal?)2.4m, saltGrams = (decimal?)null, sourceUrl = (string?)"https://fddb.info/db/de/lebensmittel/huhn_brustfilet/index.html", confidence = "high", dataGaps = Array.Empty<string>() },
+                new { name = "Reis", amountGrams = 200m, kilocalories = 260m, proteinGrams = (decimal?)6m, carbohydrateGrams = (decimal?)56m, fatGrams = (decimal?)0.6m, saltGrams = (decimal?)null, sourceUrl = (string?)"https://example.com/reis", confidence = "medium", dataGaps = Array.Empty<string>() },
+                new { name = "Brokkoli", amountGrams = 150m, kilocalories = 51m, proteinGrams = (decimal?)4m, carbohydrateGrams = (decimal?)4m, fatGrams = (decimal?)0.5m, saltGrams = (decimal?)null, sourceUrl = (string?)"http://fddb.info/brokkoli", confidence = "medium", dataGaps = Array.Empty<string>() },
+            },
+        }));
+        OpenAiMealEstimator service = WithSearch(provider);
+
+        MealEstimateDraft result = await service.EstimateAsync(MealEstimationInput.Create("Hähnchen mit Reis und Brokkoli", null, false));
+
+        Assert.AreEqual("https://fddb.info/db/de/lebensmittel/huhn_brustfilet/index.html", result.Components[0].SourceUrl);
+        Assert.IsNull(result.Components[1].SourceUrl, "Sites outside the allow list are dropped.");
+        Assert.IsNull(result.Components[2].SourceUrl, "Only https links are kept.");
+        JsonElement tool = provider.LastRequest.GetProperty("tools").EnumerateArray().Single();
+        Assert.AreEqual("web_search", tool.GetProperty("type").GetString());
+        string[] domains = tool.GetProperty("filters").GetProperty("allowed_domains").EnumerateArray().Select(item => item.GetString()!).ToArray();
+        CollectionAssert.Contains(domains, "fddb.info");
+        Assert.Contains("raw chicken breast fillet has about 1 to 2 g fat", provider.LastRequest.GetRawText());
+    }
+
+    [TestMethod]
+    public async Task RejectedWebSearchFallsBackToEstimateWithoutTools()
+    {
+        var provider = new FakeProvider(Response(new
+        {
+            components = new object[]
+            {
+                new { name = "Reis", amountGrams = 200m, kilocalories = 260m, proteinGrams = (decimal?)6m, carbohydrateGrams = (decimal?)56m, fatGrams = (decimal?)0.6m, saltGrams = (decimal?)null, sourceUrl = (string?)null, confidence = "medium", dataGaps = Array.Empty<string>() },
+            },
+        }))
+        {
+            FailFirstWith = new OpenAiProviderException("provider_error", "bad request", 400),
+        };
+        OpenAiMealEstimator service = WithSearch(provider);
+
+        MealEstimateDraft result = await service.EstimateAsync(MealEstimationInput.Create("Reis", null, false));
+
+        Assert.AreEqual("Reis", result.Components.Single().Name);
+        Assert.AreEqual(2, provider.Calls);
+        Assert.IsFalse(provider.LastRequest.TryGetProperty("tools", out _));
+        Assert.Contains("No tools or external data are available", provider.LastRequest.GetRawText());
+    }
+
+    private static OpenAiMealEstimator WithSearch(IOpenAiResponsesProvider provider) => new(
+        provider, new RejectingSanitizer(), new PassQuota(),
+        new UserContext(Guid.NewGuid()), new FixedTimeProvider(),
+        Microsoft.Extensions.Options.Options.Create(new MealEstimationOptions()));
+
     private static JsonElement Response(object payload) => JsonSerializer.SerializeToElement(new
     {
         output = new[]
@@ -121,9 +204,13 @@ public sealed class MealEstimationTests
         public FakeProvider(JsonElement response) => this.response = response;
         public FakeProvider(Exception error) => this.error = error;
         public JsonElement LastRequest { get; private set; }
+        public int Calls { get; private set; }
+        public Exception? FailFirstWith { get; init; }
         public Task<JsonElement> CreateResponseAsync(JsonElement request, CancellationToken cancellationToken = default)
         {
             LastRequest = request;
+            Calls++;
+            if (Calls == 1 && FailFirstWith is not null) return Task.FromException<JsonElement>(FailFirstWith);
             return error is null ? Task.FromResult(response) : Task.FromException<JsonElement>(error);
         }
     }

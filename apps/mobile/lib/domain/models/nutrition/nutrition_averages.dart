@@ -45,6 +45,7 @@ class NutritionAverages {
     required this.averageProteinGrams,
     required this.averageCarbohydrateGrams,
     required this.averageFatGrams,
+    required this.averageSaltGrams,
     required this.averageTargetKilocalories,
     required this.daysWithinTarget,
     required this.daysWithTarget,
@@ -81,6 +82,7 @@ class NutritionAverages {
         (totals) => totals.carbohydrateGrams,
       ),
       averageFatGrams: _mean(logged, (totals) => totals.fatGrams),
+      averageSaltGrams: _mean(logged, (totals) => totals.saltGrams),
       averageTargetKilocalories: _average([
         for (final item in withTarget) item.targetKilocalories!,
       ]),
@@ -111,7 +113,7 @@ class NutritionAverages {
     return NutritionAverageDay(
       localDate: date,
       kilocalories: logged ? day.totals.kilocalories : null,
-      targetKilocalories: _targetOn(schedule, date)?.kilocalories,
+      targetKilocalories: schedule?.targetOn(date)?.kilocalories,
     );
   }
 
@@ -133,6 +135,9 @@ class NutritionAverages {
   final double? averageCarbohydrateGrams;
   final double? averageFatGrams;
 
+  /// Ø über die erfassten Tage, an denen mindestens ein Eintrag Salz hatte.
+  final double? averageSaltGrams;
+
   /// Ø Kalorienziel über die erfassten Tage mit Ziel.
   final double? averageTargetKilocalories;
   final int daysWithinTarget;
@@ -144,19 +149,6 @@ class NutritionAverages {
   bool get hasData => loggedDays > 0;
   bool get hasTarget => daysWithTarget > 0;
 }
-
-/// Gleiche Regel wie im Tagebuch: die zuletzt beginnende passende Phase.
-NutritionTargetVersion? _targetOn(
-  NutritionTargetSchedule? schedule,
-  String date,
-) => schedule?.versions
-    .where(
-      (phase) =>
-          phase.effectiveFrom.compareTo(date) <= 0 &&
-          (phase.effectiveUntil == null ||
-              phase.effectiveUntil!.compareTo(date) >= 0),
-    )
-    .lastOrNull;
 
 /// Verschiebt einen lokalen Kalendertag (`JJJJ-MM-TT`) um [days] Tage.
 String shiftLocalDate(String localDate, int days) {

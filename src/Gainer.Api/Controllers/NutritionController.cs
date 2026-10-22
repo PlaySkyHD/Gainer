@@ -137,7 +137,11 @@ public sealed class NutritionController(
                     item.CarbohydrateGrams,
                     item.FatGrams,
                     item.Confidence.ToString(),
-                    item.DataGaps)).ToArray(),
+                    item.DataGaps,
+                    item.SaltGrams,
+                    item.SourceUrl,
+                    item.PieceCount,
+                    item.PieceGrams)).ToArray(),
                 draft.Provider,
                 draft.SchemaVersion,
                 draft.EstimatedAtUtc));
@@ -184,7 +188,8 @@ public sealed class NutritionController(
                 draft.Provider,
                 draft.ProviderModelVersion,
                 draft.ParserVersion,
-                draft.ScannedAtUtc));
+                draft.ScannedAtUtc,
+                LabelField(draft.SaltGrams)));
         }
         catch (MealEstimationException exception)
         {
@@ -238,18 +243,22 @@ public sealed class NutritionController(
             entry.Per100Grams.Kilocalories,
             entry.Per100Grams.ProteinGrams,
             entry.Per100Grams.CarbohydrateGrams,
-            entry.Per100Grams.FatGrams),
+            entry.Per100Grams.FatGrams,
+            entry.Per100Grams.SaltGrams),
         entry.Source is null ? null : new NutritionSourceResponse(
             entry.Source.Provider,
             entry.Source.Barcode,
             entry.Source.RetrievedAtUtc,
-            entry.Source.BasisGrams));
+            entry.Source.BasisGrams),
+        entry.Portion?.PieceGrams,
+        entry.Portion?.PieceCount);
 
     private static NutritionTotalsResponse Totals(NutritionTotals totals) => new(
         totals.Kilocalories,
         totals.ProteinGrams,
         totals.CarbohydrateGrams,
-        totals.FatGrams);
+        totals.FatGrams,
+        totals.SaltGrams);
 
     private static ReusableMealResponse ReusableMeal(ReusableMealSnapshot meal) => new(
         meal.ReusableMealId,
@@ -268,12 +277,15 @@ public sealed class NutritionController(
                 item.Per100Grams.Kilocalories,
                 item.Per100Grams.ProteinGrams,
                 item.Per100Grams.CarbohydrateGrams,
-                item.Per100Grams.FatGrams),
+                item.Per100Grams.FatGrams,
+                item.Per100Grams.SaltGrams),
             item.Source is null ? null : new NutritionSourceResponse(
                 item.Source.Provider,
                 item.Source.Barcode,
                 item.Source.RetrievedAtUtc,
-                item.Source.BasisGrams))).ToArray(),
+                item.Source.BasisGrams),
+            item.Portion?.PieceGrams,
+            item.Portion?.PieceCount)).ToArray(),
         meal.CreatedAtUtc,
         meal.UpdatedAtUtc,
         meal.Version);
@@ -296,14 +308,17 @@ public sealed class NutritionController(
         target.AlgorithmVersion,
         target.Reason,
         target.MacroEnergyKilocalories,
-        target.RequiresEnergyMismatchConfirmation);
+        target.RequiresEnergyMismatchConfirmation,
+        target.SaltGrams,
+        target.EffectiveSaltGrams);
 
     private static NutritionProgressResponse? Progress(NutritionTotals totals, NutritionTargetVersionDraft? target) =>
         target is null ? null : new NutritionProgressResponse(
             Nutrient(totals.Kilocalories, target.Kilocalories, true),
             Nutrient(totals.ProteinGrams, target.ProteinGrams),
             Nutrient(totals.CarbohydrateGrams, target.CarbohydrateGrams),
-            Nutrient(totals.FatGrams, target.FatGrams));
+            Nutrient(totals.FatGrams, target.FatGrams),
+            Nutrient(totals.SaltGrams, target.EffectiveSaltGrams));
 
     private static NutrientProgressResponse Nutrient(decimal? consumed, decimal target, bool complete = false)
     {

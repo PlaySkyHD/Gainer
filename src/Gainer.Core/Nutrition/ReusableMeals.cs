@@ -31,14 +31,18 @@ public sealed class ReusableMealComponent : UserOwnedEntity
     public string Name { get; set; } = string.Empty;
     public string? Brand { get; set; }
     public decimal AmountGrams { get; set; }
+    public decimal? PieceGrams { get; set; }
+    public decimal? PieceCount { get; set; }
     public decimal Kilocalories { get; set; }
     public decimal? ProteinGrams { get; set; }
     public decimal? CarbohydrateGrams { get; set; }
     public decimal? FatGrams { get; set; }
+    public decimal? SaltGrams { get; set; }
     public decimal KilocaloriesPer100Grams { get; set; }
     public decimal? ProteinGramsPer100Grams { get; set; }
     public decimal? CarbohydrateGramsPer100Grams { get; set; }
     public decimal? FatGramsPer100Grams { get; set; }
+    public decimal? SaltGramsPer100Grams { get; set; }
     public decimal BasisGrams { get; set; } = 100m;
     public string? Provider { get; set; }
     public string? Barcode { get; set; }
@@ -53,7 +57,8 @@ public sealed record ReusableMealComponentDraft(
     decimal AmountGrams,
     NutritionPer100Grams Per100Grams,
     NutritionTotals Totals,
-    NutritionSourceSnapshot? Source)
+    NutritionSourceSnapshot? Source,
+    NutritionPortion? Portion = null)
 {
     public static ReusableMealComponentDraft Create(
         Guid componentId,
@@ -62,7 +67,8 @@ public sealed record ReusableMealComponentDraft(
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
         string? brand = null,
-        NutritionSourceSnapshot? source = null)
+        NutritionSourceSnapshot? source = null,
+        NutritionPortion? portion = null)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(per100Grams);
@@ -77,6 +83,7 @@ public sealed record ReusableMealComponentDraft(
         if (amountGrams is < NutritionLimits.MinAmountGrams or > NutritionLimits.MaxAmountGrams)
             errors[nameof(AmountGrams)] = $"AmountGrams must be between {NutritionLimits.MinAmountGrams} and {NutritionLimits.MaxAmountGrams}.";
         ValidatePer100Grams(per100Grams, errors);
+        portion?.Validate(amountGrams, errors);
 
         NutritionTotals? totals = null;
         if (errors.Count == 0)
@@ -91,18 +98,20 @@ public sealed record ReusableMealComponentDraft(
         if (errors.Count > 0) throw new NutritionValidationException(errors);
         return new ReusableMealComponentDraft(
             componentId, position, normalizedName, normalizedBrand, amountGrams,
-            per100Grams, totals!, source);
+            per100Grams, totals!, source, portion);
     }
 
     private static void ValidatePer100Grams(
         NutritionPer100Grams values,
         Dictionary<string, string> errors)
     {
-        if (values.Kilocalories is <= 0m or > NutritionLimits.MaxKilocaloriesPer100Grams)
+        if (values.Kilocalories is < 0m or > NutritionLimits.MaxKilocaloriesPer100Grams)
             errors["KilocaloriesPer100Grams"] = "KilocaloriesPer100Grams is outside the allowed range.";
         ValidateOptional(values.ProteinGrams, "ProteinGramsPer100Grams", errors);
         ValidateOptional(values.CarbohydrateGrams, "CarbohydrateGramsPer100Grams", errors);
         ValidateOptional(values.FatGrams, "FatGramsPer100Grams", errors);
+        if (values.SaltGrams is < 0m or > NutritionLimits.MaxSaltGramsPer100Grams)
+            errors["SaltGramsPer100Grams"] = "SaltGramsPer100Grams is outside the allowed range.";
     }
 
     private static void ValidateOptional(decimal? value, string field, Dictionary<string, string> errors)

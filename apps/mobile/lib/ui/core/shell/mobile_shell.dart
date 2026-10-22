@@ -8,12 +8,12 @@ import '../../features/access/logout_everywhere.dart';
 import '../../features/access/passkeys_screen.dart';
 import '../../features/body/body_screen.dart';
 import '../../features/body/health/health_review_screen.dart';
+import '../../features/calendar/calendar_screen.dart';
 import '../../features/cardio/cardio_feature.dart';
 import '../../features/cardio/cardio_live_screen.dart';
 import '../../features/cardio/cardio_settings_screen.dart';
 import '../../features/coach/coach_screen.dart';
 import '../../features/nutrition/nutrition_screen.dart';
-import '../../features/progress/progress_screen.dart';
 import '../../features/strava/strava_screen.dart';
 import '../../features/sync/sync_screen.dart';
 import '../../features/training/compact_training_bar.dart';
@@ -69,11 +69,24 @@ class MobileShell extends StatelessWidget {
                   viewModel: account.bodyViewModel,
                   cardio: _cardioOf(account),
                 ),
-                MobileArea.progress => ProgressScreen(
-                  viewModel: account.progressViewModel,
+                MobileArea.calendar => CalendarScreen(
+                  training: account.training,
+                  activeWorkout: account.activeWorkout,
+                  cardioSessions: account.cardio,
+                  cardio: _cardioOf(account),
+                  nutrition: account.nutritionViewModel.repository,
+                  overview: account.progressViewModel,
                   onOpenArea: (area) => model.selectTab(area.index),
+                  onOpenNutritionDay: (localDate) {
+                    account.nutritionViewModel.selectDate(localDate);
+                    model.selectTab(MobileArea.nutrition.index);
+                  },
                   visibility: model,
                   isVisible: () => model.selectedIndex == area.index,
+                  refresh: Listenable.merge([
+                    account.syncStatus,
+                    account.activeWorkout,
+                  ]),
                 ),
                 MobileArea.more => _MoreScreen(
                   controller: controller,

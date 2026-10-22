@@ -1,5 +1,6 @@
 import '../../../domain/models/training/exercise_catalog_model.dart';
 import '../../../domain/models/training/training_plan_model.dart';
+import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../models/local/local_mutation.dart';
 
@@ -9,7 +10,7 @@ const _customExerciseType = 'custom-exercise';
 const _exerciseCategoryType = 'exercise-category';
 const _trainingPlanType = 'training-plan';
 const _workoutType = 'workout';
-const _workoutRotationType = 'workout-rotation';
+const _trainingScheduleType = 'training-schedule';
 const _nutritionDayType = 'nutrition-day';
 const _reusableMealType = 'reusable-meal';
 const _nutritionTargetScheduleType = 'nutrition-target-schedule';
@@ -25,7 +26,7 @@ class SyncPayloadCodec {
         'CustomExercise' => _customExerciseType,
         'ExerciseCategory' => _exerciseCategoryType,
         'TrainingPlan' => _trainingPlanType,
-        'WorkoutRotation' => _workoutRotationType,
+        'TrainingSchedule' => _trainingScheduleType,
         'Workout' => _workoutType,
         'NutritionDay' => _nutritionDayType,
         'ReusableMeal' => _reusableMealType,
@@ -49,8 +50,10 @@ class SyncPayloadCodec {
         return _exerciseCategoryOperation(mutation, body);
       case _trainingPlanType:
         return _trainingPlanOperation(mutation, body);
-      case _workoutRotationType:
-        return 'saveWorkoutRotation';
+      case _trainingScheduleType:
+        return mutation.operation == LocalMutationOperation.delete
+            ? 'deleteTrainingSchedule'
+            : 'saveTrainingSchedule';
       case _workoutType:
         return _workoutOperation(mutation);
       case _nutritionDayType:
@@ -149,8 +152,8 @@ class SyncPayloadCodec {
         return _exerciseCategoryPayload(mutation, body, baseVersion);
       case _trainingPlanType:
         return _trainingPlanPayload(mutation, body, baseVersion);
-      case _workoutRotationType:
-        return _workoutRotationPayload(mutation, body, baseVersion);
+      case _trainingScheduleType:
+        return _trainingSchedulePayload(mutation, body, baseVersion);
       case _workoutType:
         return _workoutPayload(mutation, body, baseVersion);
       case _nutritionDayType:
@@ -309,15 +312,37 @@ class SyncPayloadCodec {
         ),
       });
 
-  static Object? _workoutRotationPayload(
+  /// Vollständiger Stand des Rhythmus (D3a). Kinder werden bei jeder
+  /// Mutation ersetzt; Datumsfelder sind lokale Tage als „YYYY-MM-DD“.
+  static Object? _trainingSchedulePayload(
     LocalMutation mutation,
     Map<String, dynamic> body,
     int baseVersion,
   ) {
+    final id = mutation.aggregateId;
+    if (mutation.operation == LocalMutationOperation.delete) {
+      return {'scheduleId': id, 'baseVersion': baseVersion};
+    }
+    final mode = body['mode'];
     return {
-      'rotationId': mutation.aggregateId,
+      'scheduleId': id,
       'baseVersion': baseVersion,
-      'planIds': body['planIds'],
+      'mode': mode,
+      'anchorDate': mode == 'cycle' ? body['anchorDate'] : null,
+      'validFrom': body['validFrom'],
+      'slots': _mappedList(body['slots'], (slot) => {'planId': slot['planId']}),
+      'shifts': _mappedList(
+        body['shifts'] ?? const <Object?>[],
+        (shift) => {'fromDate': shift['fromDate'], 'days': shift['days']},
+      ),
+      'exceptions': _mappedList(
+        body['exceptions'] ?? const <Object?>[],
+        (exception) => {
+          'date': exception['date'],
+          'planId': exception['planId'],
+          'movedToDate': exception['movedToDate'],
+        },
+      ),
     };
   }
 
@@ -372,7 +397,7 @@ class SyncPayloadCodec {
 
   /// IDs lokaler Ressourcen, auf die der Body einer Mutation verweist: Übungen
   /// in Trainings und Plänen, Kategorien in Übungen, Quellplan und
-  /// Quelltraining, Pläne in Rotation und Umsortierung, Ziel einer
+  /// Quelltraining, Pläne im Rhythmus und in der Umsortierung, Ziel einer
   /// Zusammenführung. Die Ressource selbst zählt nicht.
   static Set<String> referencedAggregateIds(LocalMutation mutation) {
     final body = mutation.body;
@@ -401,9 +426,9 @@ class SyncPayloadCodec {
         final categories = body['categoryIds'];
         if (categories is List) categories.forEach(add);
         add(body['targetExerciseId']);
-      case _workoutRotationType:
-        final plans = body['planIds'];
-        if (plans is List) plans.forEach(add);
+      case _trainingScheduleType:
+        addAll(body['slots'], (slot) => slot['planId']);
+        addAll(body['exceptions'], (exception) => exception['planId']);
     }
     ids.remove(mutation.aggregateId);
     return ids;
@@ -478,6 +503,10 @@ class SyncPayloadCodec {
           'carbohydrateGramsPer100Grams': per100['carbohydrateGrams'],
           'fatGramsPer100Grams': per100['fatGrams'],
           'source': entry['source'],
+          // Nur senden, wenn gesetzt; ältere Server kennen Salz nicht.
+          if (per100['saltGrams'] != null)
+            'saltGramsPer100Grams': per100['saltGrams'],
+          ..._portionPayload(entry),
         };
       }),
     };
@@ -511,6 +540,9 @@ class SyncPayloadCodec {
           'carbohydrateGramsPer100Grams': per100['carbohydrateGrams'],
           'fatGramsPer100Grams': per100['fatGrams'],
           'source': component['source'],
+          if (per100['saltGrams'] != null)
+            'saltGramsPer100Grams': per100['saltGrams'],
+          ..._portionPayload(component),
         };
       }),
     };
@@ -543,6 +575,7 @@ class SyncPayloadCodec {
           'origin': version['origin'],
           'algorithmVersion': version['algorithmVersion'],
           'reason': version['reason'],
+          if (version['saltGrams'] != null) 'saltGrams': version['saltGrams'],
         },
       ),
     };
@@ -575,8 +608,8 @@ class SyncPayloadCodec {
         Workout.fromJson(_mapValue(snapshot));
       case 'TrainingPlan':
         TrainingPlanModel.fromJson(_mapValue(snapshot));
-      case 'WorkoutRotation':
-        RotationModel.fromJson(_mapValue(snapshot));
+      case 'TrainingSchedule':
+        TrainingSchedule.fromJson(_mapValue(snapshot));
       case 'CustomExercise':
         CatalogExercise.fromJson(_mapValue(snapshot));
       case 'ExerciseCategory':
@@ -586,6 +619,17 @@ class SyncPayloadCodec {
 
   /// Snapshots der Trainingstypen behalten ihre Modell-IDs, weil die lokalen
   /// Modelle sie unverändert lesen. Nur Server-Metadaten wie `version` fallen weg.
+  /// Stückgewicht und -zahl, lokal flach oder vom Server als `portion`;
+  /// nur senden, wenn gesetzt (ältere Server kennen die Felder nicht).
+  static Map<String, Object?> _portionPayload(Map<String, dynamic> item) {
+    final portion = item['portion'];
+    final source = portion is Map ? portion : item;
+    return {
+      if (source['pieceGrams'] != null) 'pieceGrams': source['pieceGrams'],
+      if (source['pieceCount'] != null) 'pieceCount': source['pieceCount'],
+    };
+  }
+
   static Object? normalizeSnapshot(String resourceType, Object? snapshotValue) {
     if (snapshotValue is! Map<String, dynamic>) return snapshotValue;
     final snapshot = Map<String, dynamic>.from(snapshotValue);

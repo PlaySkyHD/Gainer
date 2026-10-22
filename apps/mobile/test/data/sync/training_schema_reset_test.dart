@@ -14,7 +14,7 @@ String _uuid(int value) =>
 const _legacyTrainingTypes = [
   'workout',
   'workout-template',
-  'workout-rotation',
+  'training-schedule',
   'custom-exercise',
   'training-plan',
   'exercise-category',

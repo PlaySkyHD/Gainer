@@ -20,6 +20,7 @@ class NutritionTotals {
     this.proteinGrams,
     this.carbohydrateGrams,
     this.fatGrams,
+    this.saltGrams,
   });
 
   final double kilocalories;
@@ -27,12 +28,16 @@ class NutritionTotals {
   final double? carbohydrateGrams;
   final double? fatGrams;
 
+  /// Salz in Gramm; fehlt bei Einträgen ohne Salzangabe.
+  final double? saltGrams;
+
   factory NutritionTotals.fromJson(Map<String, dynamic> json) =>
       NutritionTotals(
         kilocalories: _number(json, 'kilocalories'),
         proteinGrams: _nullableNumber(json, 'proteinGrams'),
         carbohydrateGrams: _nullableNumber(json, 'carbohydrateGrams'),
         fatGrams: _nullableNumber(json, 'fatGrams'),
+        saltGrams: _nullableNumber(json, 'saltGrams'),
       );
 
   Map<String, Object?> toJson() => {
@@ -40,6 +45,7 @@ class NutritionTotals {
     'proteinGrams': proteinGrams,
     'carbohydrateGrams': carbohydrateGrams,
     'fatGrams': fatGrams,
+    if (saltGrams != null) 'saltGrams': saltGrams,
   };
 
   NutritionTotals scaled(double factor) => NutritionTotals(
@@ -47,6 +53,7 @@ class NutritionTotals {
     proteinGrams: _scale(proteinGrams, factor),
     carbohydrateGrams: _scale(carbohydrateGrams, factor),
     fatGrams: _scale(fatGrams, factor),
+    saltGrams: _scale(saltGrams, factor),
   );
 
   static NutritionTotals get zero => const NutritionTotals(kilocalories: 0);
@@ -93,6 +100,8 @@ class NutritionEntry {
     required this.amountGrams,
     required this.per100Grams,
     required this.source,
+    this.pieceGrams,
+    this.pieceCount,
   }) : productName = productName.trim(),
        brand = brand?.trim().isEmpty == true ? null : brand?.trim() {
     validateNutritionEntry(this);
@@ -106,6 +115,14 @@ class NutritionEntry {
   final double amountGrams;
   final NutritionTotals per100Grams;
   final NutritionSource? source;
+
+  /// Gewicht eines Stücks (Ei, Scheibe, Brötchen); bleibt gemerkt, auch wenn
+  /// die Menge in Gramm eingegeben wurde.
+  final double? pieceGrams;
+
+  /// Stückzahl, wenn die Menge in Stück eingegeben wurde; dann gilt
+  /// [amountGrams] = [pieceCount] × [pieceGrams].
+  final double? pieceCount;
 
   NutritionTotals get totals => per100Grams.scaled(amountGrams / 100);
 
@@ -122,6 +139,8 @@ class NutritionEntry {
     source: json['source'] == null
         ? null
         : NutritionSource.fromJson(_object(json['source'], 'source')),
+    pieceGrams: _portionValue(json, 'pieceGrams'),
+    pieceCount: _portionValue(json, 'pieceCount'),
   );
 
   Map<String, Object?> toJson() => {
@@ -134,6 +153,8 @@ class NutritionEntry {
     'totals': totals.toJson(),
     'per100Grams': per100Grams.toJson(),
     'source': source?.toJson(),
+    if (pieceGrams != null) 'pieceGrams': pieceGrams,
+    if (pieceCount != null) 'pieceCount': pieceCount,
   };
 
   NutritionEntry copyWith({
@@ -146,6 +167,9 @@ class NutritionEntry {
     NutritionTotals? per100Grams,
     NutritionSource? source,
     bool clearSource = false,
+    double? pieceGrams,
+    double? pieceCount,
+    bool clearPieces = false,
   }) => NutritionEntry(
     entryId: entryId,
     meal: meal ?? this.meal,
@@ -155,6 +179,8 @@ class NutritionEntry {
     amountGrams: amountGrams ?? this.amountGrams,
     per100Grams: per100Grams ?? this.per100Grams,
     source: clearSource ? null : source ?? this.source,
+    pieceGrams: clearPieces ? pieceGrams : pieceGrams ?? this.pieceGrams,
+    pieceCount: clearPieces ? pieceCount : pieceCount ?? this.pieceCount,
   );
 }
 
@@ -212,6 +238,7 @@ class NutritionDay {
       proteinGrams: sum((v) => v.proteinGrams),
       carbohydrateGrams: sum((v) => v.carbohydrateGrams),
       fatGrams: sum((v) => v.fatGrams),
+      saltGrams: sum((v) => v.saltGrams),
     );
   }
 
@@ -288,6 +315,8 @@ class ReusableMealComponent {
     required this.amountGrams,
     required this.per100Grams,
     required this.source,
+    this.pieceGrams,
+    this.pieceCount,
   }) : name = name.trim(),
        brand = brand?.trim().isEmpty == true ? null : brand?.trim() {
     if (componentId.isEmpty ||
@@ -300,7 +329,8 @@ class ReusableMealComponent {
         'components': 'Gerichtseintrag ist ungültig.',
       });
     }
-    _validateTotals(per100Grams, requirePositiveCalories: true);
+    _validateTotals(per100Grams);
+    validatePortion(amountGrams, pieceGrams, pieceCount);
   }
 
   final String componentId;
@@ -310,6 +340,8 @@ class ReusableMealComponent {
   final double amountGrams;
   final NutritionTotals per100Grams;
   final NutritionSource? source;
+  final double? pieceGrams;
+  final double? pieceCount;
   NutritionTotals get totals => per100Grams.scaled(amountGrams / 100);
 
   factory ReusableMealComponent.fromJson(Map<String, dynamic> json) =>
@@ -325,6 +357,8 @@ class ReusableMealComponent {
         source: json['source'] == null
             ? null
             : NutritionSource.fromJson(_object(json['source'], 'source')),
+        pieceGrams: _portionValue(json, 'pieceGrams'),
+        pieceCount: _portionValue(json, 'pieceCount'),
       );
 
   Map<String, Object?> toJson() => {
@@ -336,6 +370,8 @@ class ReusableMealComponent {
     'totals': totals.toJson(),
     'per100Grams': per100Grams.toJson(),
     'source': source?.toJson(),
+    if (pieceGrams != null) 'pieceGrams': pieceGrams,
+    if (pieceCount != null) 'pieceCount': pieceCount,
   };
 }
 
@@ -447,7 +483,11 @@ class NutritionTargetVersion {
     this.origin = 'Manual',
     this.algorithmVersion,
     this.reason,
+    this.saltGrams,
   });
+
+  /// Standard-Salzgrenze, wenn eine Zielphase keine eigene hat (DGE-Richtwert).
+  static const defaultSaltGrams = 6.0;
 
   final String targetVersionId, name, effectiveFrom;
   final String? effectiveUntil;
@@ -457,6 +497,11 @@ class NutritionTargetVersion {
   final double? proteinPercent, carbohydratePercent, fatPercent;
   final String origin;
   final String? algorithmVersion, reason;
+
+  /// Eigene Salzgrenze in Gramm; null bedeutet [defaultSaltGrams].
+  final double? saltGrams;
+
+  double get effectiveSaltGrams => saltGrams ?? defaultSaltGrams;
 
   double get macroEnergyKilocalories =>
       proteinGrams * 4 + carbohydrateGrams * 4 + fatGrams * 9;
@@ -478,6 +523,7 @@ class NutritionTargetVersion {
     'origin': origin,
     'algorithmVersion': algorithmVersion,
     'reason': reason,
+    if (saltGrams != null) 'saltGrams': saltGrams,
   };
 }
 
@@ -490,6 +536,17 @@ class NutritionTargetSchedule {
     validateTargetSchedule(this.versions);
   }
   final List<NutritionTargetVersion> versions;
+
+  /// Zielphase, die an [localDate] gilt: die zuletzt beginnende passende.
+  NutritionTargetVersion? targetOn(String localDate) => versions
+      .where(
+        (phase) =>
+            phase.effectiveFrom.compareTo(localDate) <= 0 &&
+            (phase.effectiveUntil == null ||
+                phase.effectiveUntil!.compareTo(localDate) >= 0),
+      )
+      .lastOrNull;
+
   Map<String, Object?> toJson() => {
     'versions': [for (final item in versions) item.toJson()],
   };
@@ -509,6 +566,7 @@ NutritionTotals calculatePer100Totals({
     proteinGrams: _scale(totals.proteinGrams, 100 / amountGrams),
     carbohydrateGrams: _scale(totals.carbohydrateGrams, 100 / amountGrams),
     fatGrams: _scale(totals.fatGrams, 100 / amountGrams),
+    saltGrams: _scale(totals.saltGrams, 100 / amountGrams),
   );
 }
 
@@ -551,6 +609,44 @@ NutritionTotals macroGramsFromPercent({
   );
 }
 
+/// Stückwerte lokal flach, vom Server als `portion`-Objekt.
+double? _portionValue(Map<String, dynamic> json, String key) {
+  final portion = json['portion'];
+  final value = portion is Map ? portion[key] : json[key];
+  return value is num ? value.toDouble() : null;
+}
+
+/// Gramm für [count] Stück zu je [pieceGrams], auf zwei Stellen gerundet.
+double gramsForPieces(double count, double pieceGrams) =>
+    roundNutrition(count * pieceGrams);
+
+void validatePortion(
+  double amountGrams,
+  double? pieceGrams,
+  double? pieceCount,
+) {
+  if (pieceGrams == null && pieceCount == null) return;
+  if (pieceGrams == null ||
+      !pieceGrams.isFinite ||
+      pieceGrams <= 0 ||
+      pieceGrams > 5000) {
+    throw const NutritionValidationException({
+      'pieceGrams': 'Das Gewicht pro Stück muss zwischen 0 und 5.000 g liegen.',
+    });
+  }
+  if (pieceCount == null) return;
+  if (!pieceCount.isFinite || pieceCount <= 0 || pieceCount > 1000) {
+    throw const NutritionValidationException({
+      'pieceCount': 'Die Stückzahl muss zwischen 0 und 1.000 liegen.',
+    });
+  }
+  if ((gramsForPieces(pieceCount, pieceGrams) - amountGrams).abs() > 0.01) {
+    throw const NutritionValidationException({
+      'amountGrams': 'Die Menge passt nicht zur Stückzahl.',
+    });
+  }
+}
+
 void validateNutritionEntry(NutritionEntry entry) {
   if (entry.entryId.isEmpty ||
       entry.position < 0 ||
@@ -570,7 +666,8 @@ void validateNutritionEntry(NutritionEntry entry) {
   if (entry.brand != null && entry.brand!.length > 120) {
     throw const NutritionValidationException({'brand': 'Marke ist zu lang.'});
   }
-  _validateTotals(entry.per100Grams, requirePositiveCalories: true);
+  _validateTotals(entry.per100Grams);
+  validatePortion(entry.amountGrams, entry.pieceGrams, entry.pieceCount);
   if (entry.source case final source?) {
     if (!source.basisGrams.isFinite || source.basisGrams <= 0) {
       throw const NutritionValidationException({
@@ -580,22 +677,18 @@ void validateNutritionEntry(NutritionEntry entry) {
   }
 }
 
-void _validateTotals(
-  NutritionTotals totals, {
-  required bool requirePositiveCalories,
-}) {
-  if (!totals.kilocalories.isFinite ||
-      (requirePositiveCalories
-          ? totals.kilocalories <= 0
-          : totals.kilocalories < 0)) {
+/// 0 kcal ist gültig, z. B. für Salz, Wasser oder Zero-Getränke.
+void _validateTotals(NutritionTotals totals) {
+  if (!totals.kilocalories.isFinite || totals.kilocalories < 0) {
     throw const NutritionValidationException({
-      'kilocalories': 'Kalorien müssen positiv sein.',
+      'kilocalories': 'Kalorien dürfen nicht negativ sein.',
     });
   }
   for (final (key, value) in [
     ('proteinGrams', totals.proteinGrams),
     ('carbohydrateGrams', totals.carbohydrateGrams),
     ('fatGrams', totals.fatGrams),
+    ('saltGrams', totals.saltGrams),
   ]) {
     if (value != null && (!value.isFinite || value < 0)) {
       throw NutritionValidationException({
@@ -645,6 +738,11 @@ void _validateTargetVersion(
       target.kilocalories <= 0) {
     errors['versions.$index.nutrients'] =
         'Zielwerte müssen gültig und Kalorien positiv sein.';
+  }
+  final salt = target.saltGrams;
+  if (salt != null && (!salt.isFinite || salt <= 0 || salt > 100)) {
+    errors['versions.$index.saltGrams'] =
+        'Die Salzgrenze muss zwischen 0 und 100 g liegen.';
   }
   if (target.inputMode == NutritionTargetInputMode.percent) {
     final p = target.proteinPercent,

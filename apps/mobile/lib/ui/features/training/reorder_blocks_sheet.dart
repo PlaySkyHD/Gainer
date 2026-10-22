@@ -4,6 +4,9 @@ import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 
+/// Eintrag im Neuordnen-Sheet: stabile ID und angezeigter Übungsname.
+typedef ReorderItem = ({String id, String name});
+
 /// Sheet zum Umordnen und Entfernen der Übungsblöcke. Änderungen gelten erst
 /// mit „Fertig“. Liefert die Block-IDs in neuer Reihenfolge ohne entfernte
 /// Blöcke, bei Abbrechen oder Schließen `null`.
@@ -11,41 +14,70 @@ Future<List<String>?> showReorderBlocksSheet(
   BuildContext context, {
   required List<WorkoutBlock> blocks,
 }) {
-  return showCupertinoModalPopup<List<String>>(
-    context: context,
-    builder: (_) => _ReorderBlocksSheet(blocks: blocks),
+  return showReorderItemsSheet(
+    context,
+    items: [
+      for (final block in blocks)
+        (id: block.workoutExerciseId, name: block.exerciseNameSnapshot),
+    ],
+    removalNote: 'und seine Sätze werden aus dem Training entfernt, sobald du fertig bist.',
+    emptyNote: 'Keine Übungen mehr. Mit „Fertig“ wird das Training leer.',
   );
 }
 
-class _ReorderBlocksSheet extends StatefulWidget {
-  const _ReorderBlocksSheet({required this.blocks});
-
-  final List<WorkoutBlock> blocks;
-
-  @override
-  State<_ReorderBlocksSheet> createState() => _ReorderBlocksSheetState();
+/// Allgemeine Form von [showReorderBlocksSheet]. [removalNote] folgt im
+/// Bestätigungsdialog auf den Übungsnamen, [emptyNote] steht in der leeren
+/// Liste.
+Future<List<String>?> showReorderItemsSheet(
+  BuildContext context, {
+  required List<ReorderItem> items,
+  required String removalNote,
+  required String emptyNote,
+}) {
+  return showCupertinoModalPopup<List<String>>(
+    context: context,
+    builder: (_) => _ReorderItemsSheet(
+      items: items,
+      removalNote: removalNote,
+      emptyNote: emptyNote,
+    ),
+  );
 }
 
-class _ReorderBlocksSheetState extends State<_ReorderBlocksSheet> {
-  late final List<WorkoutBlock> _blocks = [...widget.blocks];
+class _ReorderItemsSheet extends StatefulWidget {
+  const _ReorderItemsSheet({
+    required this.items,
+    required this.removalNote,
+    required this.emptyNote,
+  });
 
-  Future<void> _confirmRemove(WorkoutBlock block) async {
+  final List<ReorderItem> items;
+  final String removalNote;
+  final String emptyNote;
+
+  @override
+  State<_ReorderItemsSheet> createState() => _ReorderItemsSheetState();
+}
+
+class _ReorderItemsSheetState extends State<_ReorderItemsSheet> {
+  late final List<ReorderItem> _items = [...widget.items];
+
+  Future<void> _confirmRemove(ReorderItem item) async {
     final confirmed = await showGainerStackedDialog<bool>(
       context: context,
       title: 'Übung entfernen?',
-      message:
-          '„${block.exerciseNameSnapshot}“ und seine Sätze werden aus dem Training entfernt, sobald du fertig bist.',
+      message: '„${item.name}“ ${widget.removalNote}',
       actions: const [
         GainerDialogAction(label: 'Entfernen', value: true, destructive: true),
         GainerDialogAction(label: 'Abbrechen', value: false),
       ],
     );
     if (confirmed != true || !mounted) return;
-    setState(() => _blocks.remove(block));
+    setState(() => _items.remove(item));
   }
 
   void _move(int oldIndex, int newIndex) {
-    setState(() => _blocks.insert(newIndex, _blocks.removeAt(oldIndex)));
+    setState(() => _items.insert(newIndex, _items.removeAt(oldIndex)));
   }
 
   @override
@@ -95,9 +127,9 @@ class _ReorderBlocksSheetState extends State<_ReorderBlocksSheet> {
                 CupertinoButton(
                   padding: EdgeInsets.zero,
                   minimumSize: const Size(72, 44),
-                  onPressed: () => Navigator.of(
-                    context,
-                  ).pop([for (final block in _blocks) block.workoutExerciseId]),
+                  onPressed: () =>
+                      Navigator.of(context)
+                          .pop([for (final item in _items) item.id]),
                   child: Text(
                     'Fertig',
                     textAlign: TextAlign.end,
@@ -110,11 +142,11 @@ class _ReorderBlocksSheetState extends State<_ReorderBlocksSheet> {
               ],
             ),
             const SizedBox(height: GainerSpacing.s),
-            if (_blocks.isEmpty)
+            if (_items.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: GainerSpacing.m),
                 child: Text(
-                  'Keine Übungen mehr. Mit „Fertig“ wird das Training leer.',
+                  widget.emptyNote,
                   textAlign: TextAlign.center,
                   style: GainerTypography.label.copyWith(
                     color: colors.secondaryText,
@@ -128,10 +160,10 @@ class _ReorderBlocksSheetState extends State<_ReorderBlocksSheet> {
                   shrinkWrap: true,
                   slivers: [
                     SliverReorderableList(
-                      itemCount: _blocks.length,
+                      itemCount: _items.length,
                       onReorderItem: _move,
                       itemBuilder: (context, index) =>
-                          _row(context, _blocks[index], index),
+                          _row(context, _items[index], index),
                     ),
                   ],
                 ),
@@ -142,21 +174,21 @@ class _ReorderBlocksSheetState extends State<_ReorderBlocksSheet> {
     );
   }
 
-  Widget _row(BuildContext context, WorkoutBlock block, int index) {
+  Widget _row(BuildContext context, ReorderItem item, int index) {
     final colors = GainerDesign.colorsOf(context);
     return Padding(
-      key: ValueKey(block.workoutExerciseId),
+      key: ValueKey(item.id),
       padding: const EdgeInsets.only(bottom: GainerSpacing.xs),
       child: GainerCard(
         child: Row(
           children: [
             Semantics(
               button: true,
-              label: 'Entfernen ${block.exerciseNameSnapshot}',
+              label: 'Entfernen ${item.name}',
               child: CupertinoButton(
                 padding: EdgeInsets.zero,
                 minimumSize: const Size.square(36),
-                onPressed: () => _confirmRemove(block),
+                onPressed: () => _confirmRemove(item),
                 child: Icon(
                   CupertinoIcons.minus_circle_fill,
                   size: 24,
@@ -167,7 +199,7 @@ class _ReorderBlocksSheetState extends State<_ReorderBlocksSheet> {
             const SizedBox(width: GainerSpacing.xs),
             Expanded(
               child: Text(
-                block.exerciseNameSnapshot,
+                item.name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: GainerTypography.cardTitle.copyWith(

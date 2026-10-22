@@ -18,7 +18,8 @@ public sealed record NutritionEntryInput
         string? brand,
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
-        NutritionSourceSnapshot? source)
+        NutritionSourceSnapshot? source,
+        NutritionPortion? portion)
     {
         EntryId = entryId;
         Meal = meal;
@@ -28,6 +29,7 @@ public sealed record NutritionEntryInput
         AmountGrams = amountGrams;
         Per100Grams = per100Grams;
         Source = source;
+        Portion = portion;
     }
 
     public Guid EntryId { get; }
@@ -38,6 +40,7 @@ public sealed record NutritionEntryInput
     public decimal AmountGrams { get; }
     public NutritionPer100Grams Per100Grams { get; }
     public NutritionSourceSnapshot? Source { get; }
+    public NutritionPortion? Portion { get; }
 
     public static NutritionEntryInput Create(
         Guid entryId,
@@ -47,7 +50,8 @@ public sealed record NutritionEntryInput
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
         string? brand = null,
-        NutritionSourceSnapshot? source = null)
+        NutritionSourceSnapshot? source = null,
+        NutritionPortion? portion = null)
     {
         ArgumentNullException.ThrowIfNull(productName);
         ArgumentNullException.ThrowIfNull(per100Grams);
@@ -66,8 +70,9 @@ public sealed record NutritionEntryInput
         {
             foreach ((string field, string error) in exception.Errors) errors[field] = error;
         }
+        portion?.Validate(amountGrams, errors);
         if (errors.Count > 0) throw new NutritionValidationException(errors);
-        return new NutritionEntryInput(entryId, meal, position, productName, brand, amountGrams, per100Grams, source);
+        return new NutritionEntryInput(entryId, meal, position, productName, brand, amountGrams, per100Grams, source, portion);
     }
 }
 
@@ -132,7 +137,8 @@ public sealed record NutritionEntrySnapshot(
     decimal AmountGrams,
     NutritionTotals Totals,
     NutritionPer100Grams Per100Grams,
-    NutritionSourceSnapshot? Source);
+    NutritionSourceSnapshot? Source,
+    NutritionPortion? Portion = null);
 
 public sealed record NutritionDaySnapshot(
     Guid NutritionDayId,
