@@ -55,19 +55,59 @@ class CalendarWorkout {
   Duration get duration => workout.endedAtUtc!.difference(workout.startedAtUtc);
 }
 
+/// Tagesziel der Ernährung aus der Zielphase, die an einem Tag gilt.
+class CalendarNutritionTarget {
+  const CalendarNutritionTarget({
+    required this.kilocalories,
+    required this.proteinGrams,
+    required this.carbohydrateGrams,
+    required this.fatGrams,
+  });
+
+  CalendarNutritionTarget.of(NutritionTargetVersion version)
+    : this(
+        kilocalories: version.kilocalories,
+        proteinGrams: version.proteinGrams,
+        carbohydrateGrams: version.carbohydrateGrams,
+        fatGrams: version.fatGrams,
+      );
+
+  final double kilocalories;
+  final double proteinGrams;
+  final double carbohydrateGrams;
+  final double fatGrams;
+}
+
 /// Ernährung eines Tages mit Ziel, sofern eine Zielphase gilt.
 class CalendarNutrition {
   const CalendarNutrition({
     required this.kilocalories,
     this.proteinGrams,
-    this.targetKilocalories,
-    this.targetProteinGrams,
+    this.carbohydrateGrams,
+    this.fatGrams,
+    this.target,
   });
+
+  /// Noch nichts erfasst: alles 0, Ziel wie an dem Tag gültig.
+  const CalendarNutrition.empty(CalendarNutritionTarget? target)
+    : this(
+        kilocalories: 0,
+        proteinGrams: 0,
+        carbohydrateGrams: 0,
+        fatGrams: 0,
+        target: target,
+      );
 
   final double kilocalories;
   final double? proteinGrams;
-  final double? targetKilocalories;
-  final double? targetProteinGrams;
+  final double? carbohydrateGrams;
+  final double? fatGrams;
+  final CalendarNutritionTarget? target;
+
+  double? get targetKilocalories => target?.kilocalories;
+  double? get targetProteinGrams => target?.proteinGrams;
+  double? get targetCarbohydrateGrams => target?.carbohydrateGrams;
+  double? get targetFatGrams => target?.fatGrams;
 }
 
 /// Alles, was an einem Tag passiert ist oder geplant war.
@@ -78,6 +118,7 @@ class CalendarDay {
     this.workouts = const [],
     this.cardio = const [],
     this.nutrition,
+    this.nutritionTarget,
     this.checkIn,
   });
 
@@ -88,6 +129,9 @@ class CalendarDay {
 
   /// Null, wenn an dem Tag nichts gegessen erfasst wurde.
   final CalendarNutrition? nutrition;
+
+  /// Ernährungsziel des Tages, auch ohne erfasste Mahlzeiten.
+  final CalendarNutritionTarget? nutritionTarget;
   final DailyCheckIn? checkIn;
 
   /// Gibt es erfasste Einträge (Training, Cardio, Ernährung, Check-in)?
@@ -423,17 +467,25 @@ class CalendarViewModel extends ChangeNotifier {
           day: checkIn,
     };
 
+    final targets = food?.targets;
+    CalendarNutritionTarget? targetOn(LocalDay day) =>
+        switch (targets?.targetOn(day.toIso())) {
+          final version? => CalendarNutritionTarget.of(version),
+          null => null,
+        };
+
     final nutritionByDay = <LocalDay, CalendarNutrition>{};
     for (final entry in food?.days ?? const <NutritionDay>[]) {
       if (entry.entries.isEmpty) continue;
       final day = _tryParseDay(entry.localDate);
       if (day == null) continue;
-      final target = food?.targets?.targetOn(entry.localDate);
+      final totals = entry.totals;
       nutritionByDay[day] = CalendarNutrition(
-        kilocalories: entry.totals.kilocalories,
-        proteinGrams: entry.totals.proteinGrams,
-        targetKilocalories: target?.kilocalories,
-        targetProteinGrams: target?.proteinGrams,
+        kilocalories: totals.kilocalories,
+        proteinGrams: totals.proteinGrams,
+        carbohydrateGrams: totals.carbohydrateGrams,
+        fatGrams: totals.fatGrams,
+        target: targetOn(day),
       );
     }
 
@@ -445,6 +497,7 @@ class CalendarViewModel extends ChangeNotifier {
           workouts: workoutsByDay[day.date] ?? const [],
           cardio: cardioByDay[day.date] ?? const [],
           nutrition: nutritionByDay[day.date],
+          nutritionTarget: targetOn(day.date),
           checkIn: checkInByDay[day.date],
         ),
     };

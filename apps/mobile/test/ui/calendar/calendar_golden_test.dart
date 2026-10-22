@@ -52,7 +52,13 @@ Future<void> _seedMonth(WidgetTester tester, CalendarHarness harness) =>
         );
       }
       for (final day in [12, 13, 14, 21, 22]) {
-        await harness.food(_oct(day), kcal: 2100 + day * 10, protein: 140);
+        await harness.food(
+          _oct(day),
+          kcal: 2100 + day * 10,
+          protein: 140,
+          carbs: 240,
+          fat: 70,
+        );
       }
     });
 
