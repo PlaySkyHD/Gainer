@@ -88,7 +88,7 @@ Ein PR auf einem Feature-Branch. Commits nach Conventional Commits. Nach jedem A
 
 ## 5. Abschluss
 
-- [ ] 5.1 Lokal prüfen:
+- [x] 5.1 Lokal prüfen:
   - `openspec validate add-training-rest-day-nutrition --strict`
   - `flutter analyze`, `flutter test`, Format-Check
   - `dotnet build`, `dotnet test` (über `sg docker`)
