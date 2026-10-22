@@ -23,6 +23,15 @@ String calendarKcal(double value, double? target) =>
 String calendarGrams(double value, double? target) =>
     '${_withTarget(value, target)} g';
 
+/// Makro-Fortschritt kompakt: „120 / 332 g“, ohne Ziel „120 g“, ohne Wert
+/// „– / 332 g“.
+String calendarGramsOf(double? value, double? target) {
+  final actual = value == null ? '–' : calendarWholeNumber(value);
+  return target == null
+      ? '$actual g'
+      : '$actual / ${calendarWholeNumber(target)} g';
+}
+
 /// Ganze Zahl, die Volumen-Kennzahl der Trainingszeile: „1.200“.
 String calendarWholeNumber(double value) =>
     formatCardioNumber(value, maxDecimals: 0);

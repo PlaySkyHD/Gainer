@@ -198,14 +198,15 @@ void main() {
     expect(find.text('Erledigt'), findsOneWidget);
     expect(find.text('Pull'), findsNWidgets(2));
     expect(find.text('58 min · Volumen 1.200 kg'), findsOneWidget);
-    expect(find.text('2.350 von 2.600 kcal'), findsOneWidget);
-    expect(find.text('142 von 180 g'), findsOneWidget);
+    expect(find.text('2.350'), findsOneWidget);
+    expect(find.text('Übrig'), findsOneWidget);
+    expect(find.text('142 / 180 g'), findsOneWidget);
     expect(find.text('82,4 kg'), findsOneWidget);
     expect(find.text('8.432'), findsOneWidget);
     expect(find.text('7 h 35 min'), findsOneWidget);
     expect(find.text('Keine Einträge'), findsNothing);
 
-    await tester.tap(find.text('2.350 von 2.600 kcal'));
+    await tester.tap(find.text('2.350'));
     await settle(tester);
     expect(days, ['2026-10-14']);
 
@@ -271,7 +272,8 @@ void main() {
     expect(find.text('82,4 kg', findRichText: true), findsOneWidget);
     expect(find.text('−0,4 kg/Woche'), findsOneWidget);
     expect(find.text('Trainingsübersicht'), findsOneWidget);
-    expect(find.text('1.280 kcal'), findsOneWidget);
+    expect(find.text('1.280'), findsOneWidget);
+    expect(find.text('42 g'), findsOneWidget);
     expect(find.text('9.000'), findsOneWidget);
     // Das Gewicht steht nur in der Gewichtskarte.
     final checkIn = find.byKey(const ValueKey('calendar-checkin-card'));
@@ -302,8 +304,10 @@ void main() {
     final days = <String>[];
     await pumpCalendar(tester, harness, onOpenNutritionDay: days.add);
 
-    await scrollIntoView(tester, find.text('Noch nichts erfasst'));
-    await tester.tap(find.text('Noch nichts erfasst'));
+    final card = find.byKey(const ValueKey('calendar-nutrition-card'));
+    await scrollIntoView(tester, card);
+    expect(find.text('Gegessen'), findsOneWidget);
+    await tester.tap(card);
     await settle(tester);
 
     expect(days, ['2026-10-22']);

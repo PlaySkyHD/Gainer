@@ -138,7 +138,7 @@ void main() {
     final pull = await harness.plan('Pull');
     await harness.target(from: '2026-10-01');
     await harness.finishedFromPlan(pull, oct(14));
-    await harness.food(oct(14), kcal: 2350, protein: 142);
+    await harness.food(oct(14), kcal: 2350, protein: 142, carbs: 250, fat: 70);
 
     await model.load();
 
@@ -152,6 +152,26 @@ void main() {
     expect(day.nutrition!.targetKilocalories, 2600);
     expect(day.nutrition!.proteinGrams, 142);
     expect(day.nutrition!.targetProteinGrams, 180);
+    expect(day.nutrition!.carbohydrateGrams, 250);
+    expect(day.nutrition!.targetCarbohydrateGrams, 300);
+    expect(day.nutrition!.fatGrams, 70);
+    expect(day.nutrition!.targetFatGrams, 80);
+  });
+
+  test('today has its nutrition target without logged food', () async {
+    await harness.target(from: '2026-10-01', kcal: 2724, carbs: 332);
+
+    await model.load();
+
+    final today = model.day(oct(22))!;
+    expect(today.nutrition, isNull);
+    expect(today.hasEntries, isFalse);
+    expect(today.nutritionTarget!.kilocalories, 2724);
+    expect(today.nutritionTarget!.carbohydrateGrams, 332);
+    expect(today.nutritionTarget!.proteinGrams, 180);
+    expect(today.nutritionTarget!.fatGrams, 80);
+    expect(model.day(oct(1))!.nutritionTarget, isNotNull);
+    expect(model.day(LocalDay(2026, 9, 30))!.nutritionTarget, isNull);
   });
 
   test('without a schedule no day is planned', () async {

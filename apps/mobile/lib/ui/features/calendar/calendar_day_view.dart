@@ -14,6 +14,7 @@ import '../training/training_format.dart';
 import '../training/training_schedule_format.dart';
 import '../training/training_today_card.dart';
 import 'calendar_format.dart';
+import 'calendar_nutrition_overview.dart';
 import 'calendar_view_model.dart';
 
 /// Tagesansicht unter dem Monatsraster: gruppierte Karten für Plan,
@@ -235,37 +236,17 @@ class CalendarDayView extends StatelessWidget {
     ].join(' · ');
   }
 
+  /// Heute immer (auch ohne Einträge), vergangene Tage nur mit erfasster
+  /// Ernährung, künftige Tage nie.
   Widget? _nutritionSection() {
-    final nutrition = day.nutrition;
-    if (nutrition == null && !_isToday) return null;
-    final protein = nutrition?.proteinGrams;
-    return GainerGroupedSection(
-      key: const ValueKey('calendar-nutrition-card'),
-      header: 'Ernährung',
-      children: [
-        if (nutrition == null)
-          GainerListRow(
-            title: 'Noch nichts erfasst',
-            showChevron: true,
-            onTap: onOpenNutrition,
-          )
-        else ...[
-          _ValueRow(
-            label: 'Kalorien',
-            value: calendarKcal(
-              nutrition.kilocalories,
-              nutrition.targetKilocalories,
-            ),
-            onTap: onOpenNutrition,
-          ),
-          if (protein != null)
-            _ValueRow(
-              label: 'Protein',
-              value: calendarGrams(protein, nutrition.targetProteinGrams),
-              onTap: onOpenNutrition,
-            ),
-        ],
-      ],
+    if (day.date.isAfter(today)) return null;
+    final nutrition =
+        day.nutrition ??
+        (_isToday ? CalendarNutrition.empty(day.nutritionTarget) : null);
+    if (nutrition == null) return null;
+    return CalendarNutritionOverview(
+      nutrition: nutrition,
+      onTap: onOpenNutrition,
     );
   }
 
