@@ -9,6 +9,7 @@ export 'gainer_grouped_section.dart';
 export 'gainer_list_row.dart';
 export 'gainer_numeric_accessory_bar.dart';
 export 'gainer_pill_button.dart';
+export 'gainer_progress_bar.dart';
 export 'gainer_scaffold.dart';
 export 'gainer_search_field.dart';
 export 'gainer_section_header.dart';

@@ -67,6 +67,7 @@ public sealed class NutritionSyncPersistenceTests
                         carbohydrateGramsPer100Grams = (decimal?)60m,
                         fatGramsPer100Grams = (decimal?)7m,
                         source = new NutritionSourceSnapshot("Open Food Facts", "12345678", DateTime.UtcNow, 100m),
+                        saltGramsPer100Grams = (decimal?)0.1m,
                     },
                 },
             });
@@ -85,6 +86,7 @@ public sealed class NutritionSyncPersistenceTests
             Assert.AreEqual(1, replayed.Revision);
             Assert.AreEqual(1, await context.NutritionDays.CountAsync());
             Assert.AreEqual(1, await context.NutritionEntries.CountAsync());
+            Assert.AreEqual(0.15m, (await context.NutritionEntries.SingleAsync()).SaltGrams);
         }
 
         ProcessSyncMutationCommand staleSave = Command(
@@ -166,6 +168,7 @@ public sealed class NutritionSyncPersistenceTests
                         carbohydrateGramsPer100Grams = (decimal?)28m,
                         fatGramsPer100Grams = (decimal?)0.3m,
                         source = (NutritionSourceSnapshot?)null,
+                        saltGramsPer100Grams = (decimal?)0.5m,
                     },
                 },
             });
@@ -181,6 +184,7 @@ public sealed class NutritionSyncPersistenceTests
             Assert.IsTrue(replay.Replayed);
             Assert.AreEqual(1, await owner.ReusableMeals.CountAsync());
             Assert.AreEqual(1, await owner.ReusableMealComponents.CountAsync());
+            Assert.AreEqual(1m, (await owner.ReusableMealComponents.SingleAsync()).SaltGrams);
         }
         await using (AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser))
         {
@@ -258,6 +262,122 @@ public sealed class NutritionSyncPersistenceTests
                 Processor(foreign, secondUser).ProcessAsync(denied));
             Assert.AreEqual("resource_not_found", conflict.Code);
         }
+    }
+
+    [TestMethod]
+    public async Task OwnSaltIsStoredAsZeroCalorieEntry()
+    {
+        (string connectionString, Guid user, _) = await CreateDatabaseAsync();
+        Guid client = Guid.NewGuid();
+        await RegisterAsync(connectionString, user, client);
+        Guid dayId = Guid.NewGuid();
+        ProcessSyncMutationCommand save = Command(
+            Guid.NewGuid(), client, 1, "saveNutritionDay", dayId, 0,
+            new
+            {
+                nutritionDayId = dayId,
+                localDate = new DateOnly(2026, 10, 22),
+                baseVersion = 0,
+                entries = new[]
+                {
+                    new
+                    {
+                        entryId = Guid.NewGuid(),
+                        meal = "Lunch",
+                        position = 0,
+                        productName = "Salz",
+                        amountGrams = 6m,
+                        kilocaloriesPer100Grams = 0m,
+                        proteinGramsPer100Grams = 0m,
+                        carbohydrateGramsPer100Grams = 0m,
+                        fatGramsPer100Grams = 0m,
+                        saltGramsPer100Grams = 100m,
+                    },
+                },
+            });
+
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        {
+            _ = await Processor(context, user).ProcessAsync(save);
+        }
+        await using AppDbContext reader = Fixture.CreateContext(connectionString, user);
+        NutritionDaySnapshot day = await new NutritionQueries(reader).GetDayAsync(new DateOnly(2026, 10, 22))
+            ?? throw new AssertFailedException();
+        Assert.AreEqual(0m, day.Totals.Kilocalories);
+        Assert.AreEqual(6m, day.Totals.SaltGrams);
+    }
+
+    [TestMethod]
+    public async Task PiecesAreStoredAndReturnedWithTheEntry()
+    {
+        (string connectionString, Guid user, _) = await CreateDatabaseAsync();
+        Guid client = Guid.NewGuid();
+        await RegisterAsync(connectionString, user, client);
+        Guid dayId = Guid.NewGuid();
+        ProcessSyncMutationCommand save = Command(
+            Guid.NewGuid(), client, 1, "saveNutritionDay", dayId, 0,
+            new
+            {
+                nutritionDayId = dayId,
+                localDate = new DateOnly(2026, 10, 22),
+                baseVersion = 0,
+                entries = new[]
+                {
+                    new
+                    {
+                        entryId = Guid.NewGuid(),
+                        meal = "Breakfast",
+                        position = 0,
+                        productName = "Ei",
+                        amountGrams = 200m,
+                        kilocaloriesPer100Grams = 155m,
+                        pieceGrams = 50m,
+                        pieceCount = 4m,
+                    },
+                },
+            });
+
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        {
+            _ = await Processor(context, user).ProcessAsync(save);
+        }
+        await using AppDbContext reader = Fixture.CreateContext(connectionString, user);
+        NutritionDaySnapshot day = await new NutritionQueries(reader).GetDayAsync(new DateOnly(2026, 10, 22))
+            ?? throw new AssertFailedException();
+        Assert.AreEqual(new NutritionPortion(50m, 4m), day.Entries.Single().Portion);
+        Assert.AreEqual(310m, day.Totals.Kilocalories);
+    }
+
+    [TestMethod]
+    public async Task TargetSaltLimitIsStoredAndOlderPayloadsKeepTheDefault()
+    {
+        (string connectionString, Guid user, _) = await CreateDatabaseAsync();
+        Guid client = Guid.NewGuid();
+        await RegisterAsync(connectionString, user, client);
+        Guid scheduleId = Guid.NewGuid();
+        ProcessSyncMutationCommand save = SmartCommand(
+            Guid.NewGuid(), client, 1, "saveNutritionTargetSchedule", "NutritionTargetSchedule", scheduleId, 0,
+            new
+            {
+                nutritionTargetScheduleId = scheduleId,
+                baseVersion = 0,
+                versions = new object[]
+                {
+                    new { targetVersionId = Guid.NewGuid(), name = "Alt", category = "Custom", inputMode = "Grams", effectiveFrom = new DateOnly(2026, 8, 1), effectiveUntil = new DateOnly(2026, 8, 31), kilocalories = 2500m, proteinGrams = 180m, carbohydrateGrams = 260m, fatGrams = 80m, origin = "Manual" },
+                    new { targetVersionId = Guid.NewGuid(), name = "Neu", category = "Custom", inputMode = "Grams", effectiveFrom = new DateOnly(2026, 9, 1), kilocalories = 2700m, proteinGrams = 190m, carbohydrateGrams = 300m, fatGrams = 80m, origin = "Manual", saltGrams = 5m },
+                },
+            });
+
+        await using (AppDbContext owner = Fixture.CreateContext(connectionString, user))
+        {
+            _ = await Processor(owner, user).ProcessAsync(save);
+        }
+        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        NutritionTargetScheduleSnapshot schedule = await new SmartNutritionQueries(context)
+            .GetNutritionTargetScheduleAsync() ?? throw new AssertFailedException();
+        Assert.IsNull(schedule.Versions[0].SaltGrams);
+        Assert.AreEqual(6m, schedule.Versions[0].EffectiveSaltGrams);
+        Assert.AreEqual(5m, schedule.Versions[1].SaltGrams);
     }
 
     private static SyncMutationProcessor Processor(AppDbContext context, Guid userId)

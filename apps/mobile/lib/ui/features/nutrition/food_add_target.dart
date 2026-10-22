@@ -28,6 +28,8 @@ class FoodComponentDraft {
     required this.amountGrams,
     required this.per100Grams,
     required this.source,
+    this.pieceGrams,
+    this.pieceCount,
   });
 
   final String name;
@@ -35,6 +37,8 @@ class FoodComponentDraft {
   final double amountGrams;
   final NutritionTotals per100Grams;
   final NutritionSource? source;
+  final double? pieceGrams;
+  final double? pieceCount;
 
   /// Prüft die Werte wie ein Gerichtsbestandteil und liefert eine kurze
   /// Fehlermeldung, oder `null`, wenn der Draft gültig ist.
@@ -43,16 +47,25 @@ class FoodComponentDraft {
     if (!amountGrams.isFinite || amountGrams <= 0 || amountGrams > 100000) {
       return 'Die Menge muss zwischen 0 und 100.000 g liegen.';
     }
-    if (!per100Grams.kilocalories.isFinite || per100Grams.kilocalories <= 0) {
-      return 'Die Kalorien müssen größer als 0 sein.';
+    if (!per100Grams.kilocalories.isFinite || per100Grams.kilocalories < 0) {
+      return 'Die Kalorien dürfen nicht negativ sein.';
     }
     final macros = [
       per100Grams.proteinGrams,
       per100Grams.carbohydrateGrams,
       per100Grams.fatGrams,
+      per100Grams.saltGrams,
     ];
     if (macros.any((value) => value != null && value < 0)) {
       return 'Nährwerte dürfen nicht negativ sein.';
+    }
+    if ((per100Grams.saltGrams ?? 0) > 100) {
+      return 'Salz kann höchstens 100 g pro 100 g betragen.';
+    }
+    try {
+      validatePortion(amountGrams, pieceGrams, pieceCount);
+    } on NutritionValidationException catch (error) {
+      return error.fields.values.first;
     }
     return null;
   }
@@ -69,5 +82,7 @@ class FoodComponentDraft {
     amountGrams: amountGrams,
     per100Grams: per100Grams,
     source: source,
+    pieceGrams: pieceGrams,
+    pieceCount: pieceCount,
   );
 }

@@ -14,6 +14,9 @@ class WorkoutValidationException implements Exception {
 }
 
 const int _maxNameLength = 160;
+
+/// Höchstlänge eines Plannamens.
+const int maxPlanNameLength = _maxNameLength;
 const int _maxNotesLength = 2000;
 const int _maxBlocks = 50;
 const int _maxSets = 50;

@@ -31,7 +31,7 @@ void main() {
         'CustomExercise',
         'ExerciseCategory',
         'TrainingPlan',
-        'WorkoutRotation',
+        'TrainingSchedule',
         'Workout',
         'NutritionDay',
         'ReusableMeal',
@@ -43,12 +43,16 @@ void main() {
         'custom-exercise',
         'exercise-category',
         'training-plan',
-        'workout-rotation',
+        'training-schedule',
         'workout',
         'nutrition-day',
         'reusable-meal',
         'nutrition-target-schedule',
       ],
+    );
+    expect(
+      SyncPayloadCodec.aggregateTypeForResource('WorkoutRotation'),
+      isNull,
     );
     expect(
       SyncPayloadCodec.aggregateTypeForResource('WorkoutTemplate'),
@@ -154,12 +158,14 @@ void main() {
             'productName': 'Oats',
             'brand': null,
             'amountGrams': 50,
+            'portion': {'pieceGrams': 25, 'pieceCount': 2},
             'totals': {'kilocalories': 190},
             'per100Grams': {
               'kilocalories': 380,
               'proteinGrams': 13,
               'carbohydrateGrams': 68,
               'fatGrams': 7,
+              'saltGrams': 0.9,
             },
             'source': {
               'provider': 'OpenFoodFacts',
@@ -187,7 +193,37 @@ void main() {
       final entry = (payload['entries'] as List).single as Map;
       expect(entry['entryId'], 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
       expect(entry['kilocaloriesPer100Grams'], 380);
+      expect(entry['saltGramsPer100Grams'], 0.9);
+      expect(entry['pieceGrams'], 25);
+      expect(entry['pieceCount'], 2);
       expect(entry['source'], (source['entries'] as List).single['source']);
+
+      // Ohne Salz wird das Feld weggelassen, damit ältere Server nichts sehen.
+      final withoutSalt = Map<String, dynamic>.from(working);
+      final plainEntry = Map<String, dynamic>.from(
+        (working['entries'] as List).single as Map,
+      );
+      plainEntry['per100Grams'] = Map<String, dynamic>.from(
+        plainEntry['per100Grams'] as Map,
+      )..remove('saltGrams');
+      withoutSalt['entries'] = [plainEntry];
+      final plainPayload =
+          SyncPayloadCodec.serverPayload(
+                _mutation(
+                  'nutrition-day',
+                  LocalMutationOperation.update,
+                  withoutSalt,
+                ),
+                withoutSalt,
+                2,
+              )!
+              as Map<String, dynamic>;
+      expect(
+        ((plainPayload['entries'] as List).single as Map).containsKey(
+          'saltGramsPer100Grams',
+        ),
+        isFalse,
+      );
     },
   );
 

@@ -375,7 +375,7 @@ void main() {
     test('update + update stays one update for every listed type', () async {
       for (final type in [
         'training-plan',
-        'workout-rotation',
+        'training-schedule',
         'custom-exercise',
         'exercise-category',
         'daily-check-in',

@@ -335,9 +335,15 @@ class ApiClient {
       'POST',
       '/api/v1/nutrition/meal-estimates',
       body: FormData.fromMap(fields),
+      // Mit Websuche braucht die Schätzung deutlich länger als andere Aufrufe.
+      receiveTimeout: mealEstimateTimeout,
     );
     return ApiMealEstimateResponse.fromJson(_asObject(response.data));
   }
+
+  /// Länger als das Server-Zeitlimit für OpenAI (75 s), damit der Server
+  /// selbst mit einem verständlichen Fehler antworten kann.
+  static const mealEstimateTimeout = Duration(seconds: 90);
 
   Future<ApiNutritionLabelScanResponse> scanNutritionLabel({
     required Uint8List imageBytes,
@@ -683,6 +689,7 @@ class ApiClient {
     String path, {
     Object? body,
     String? expectedAccountId,
+    Duration? receiveTimeout,
   }) {
     if (expectedAccountId != null) {
       _validateIdentifier(expectedAccountId, 'expectedAccountId');
@@ -692,6 +699,7 @@ class ApiClient {
       path,
       body: body,
       headers: {accountIdentityHeaderName: ?expectedAccountId},
+      receiveTimeout: receiveTimeout,
     );
   }
 
@@ -753,6 +761,7 @@ class ApiClient {
     Map<String, String>? headers,
     bool allow401 = false,
     bool authenticate = true,
+    Duration? receiveTimeout,
   }) async {
     if (!authenticate) {
       final response = await _send(
@@ -761,6 +770,7 @@ class ApiClient {
         body: body,
         queryParameters: queryParameters,
         headers: headers,
+        receiveTimeout: receiveTimeout,
       );
       _throwForStatus(response, allow401: allow401);
       return response;
@@ -775,6 +785,7 @@ class ApiClient {
       queryParameters: queryParameters,
       headers: headers,
       accessToken: _accessToken,
+      receiveTimeout: receiveTimeout,
     );
     // The token may have been revoked or expired early; retry once with a
     // fresh one. Multipart bodies cannot be resent and surface the 401.
@@ -789,6 +800,7 @@ class ApiClient {
         queryParameters: queryParameters,
         headers: headers,
         accessToken: _accessToken,
+        receiveTimeout: receiveTimeout,
       );
     }
     _throwForStatus(response, allow401: allow401);
@@ -802,6 +814,7 @@ class ApiClient {
     Map<String, Object?>? queryParameters,
     Map<String, String>? headers,
     String? accessToken,
+    Duration? receiveTimeout,
   }) async {
     if (_closed) throw StateError('ApiClient is closed.');
     final isMultipart = body is FormData;
@@ -822,6 +835,7 @@ class ApiClient {
         queryParameters: queryParameters,
         options: Options(
           method: method,
+          receiveTimeout: receiveTimeout,
           headers: {
             'Cache-Control': 'no-store',
             if (accessToken != null) 'Authorization': 'Bearer $accessToken',

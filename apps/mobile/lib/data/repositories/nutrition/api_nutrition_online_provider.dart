@@ -73,9 +73,13 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
                 proteinGrams: item.proteinGrams,
                 carbohydrateGrams: item.carbohydrateGrams,
                 fatGrams: item.fatGrams,
+                saltGrams: item.saltGrams,
               ),
               confidence: item.confidence,
               dataGaps: List.unmodifiable(item.dataGaps),
+              sourceUrl: item.sourceUrl,
+              pieceCount: item.pieceCount,
+              pieceGrams: item.pieceGrams,
             ),
           ),
         ),
@@ -105,6 +109,14 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
       proteinGrams: _field(result.proteinGrams),
       carbohydrateGrams: _field(result.carbohydrateGrams),
       fatGrams: _field(result.fatGrams),
+      saltGrams: result.saltGrams == null
+          ? const NutritionLabelFieldDraft(
+              originalValue: null,
+              per100Grams: null,
+              status: 'Missing',
+              evidence: null,
+            )
+          : _field(result.saltGrams!),
       canConfirm: result.canConfirm,
       provider: result.provider,
       providerModelVersion: result.providerModelVersion,
@@ -121,7 +133,9 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
       proteinGrams: value.proteinGramsPer100Grams,
       carbohydrateGrams: value.carbohydrateGramsPer100Grams,
       fatGrams: value.fatGramsPer100Grams,
+      saltGrams: value.saltGramsPer100Grams,
     ),
+    pieceGrams: value.servingGrams,
     source: NutritionSource(
       provider: value.source,
       barcode: value.barcode,

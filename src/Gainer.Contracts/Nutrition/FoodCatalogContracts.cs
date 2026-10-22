@@ -12,7 +12,9 @@ public sealed record FoodCatalogProductResponse(
     IReadOnlyList<string> QualityIndicators,
     DateTime RetrievedAtUtc,
     bool IsStale,
-    string Source);
+    string Source,
+    decimal? SaltGramsPer100Grams = null,
+    decimal? ServingGrams = null);
 
 public sealed record FoodCatalogSearchResponse(
     IReadOnlyList<FoodCatalogProductResponse> Products,

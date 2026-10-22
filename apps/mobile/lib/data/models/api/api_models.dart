@@ -182,6 +182,8 @@ class ApiFoodProduct {
     this.proteinGramsPer100Grams,
     this.carbohydrateGramsPer100Grams,
     this.fatGramsPer100Grams,
+    this.saltGramsPer100Grams,
+    this.servingGrams,
   });
 
   final String barcode;
@@ -192,6 +194,10 @@ class ApiFoodProduct {
   final double? proteinGramsPer100Grams;
   final double? carbohydrateGramsPer100Grams;
   final double? fatGramsPer100Grams;
+  final double? saltGramsPer100Grams;
+
+  /// Portionsgröße in Gramm (z. B. ein Ei); dient als Stückgewicht.
+  final double? servingGrams;
   final List<String> qualityIndicators;
   final DateTime retrievedAtUtc;
   final bool isStale;
@@ -214,6 +220,8 @@ class ApiFoodProduct {
         'carbohydrateGramsPer100Grams',
       ),
       fatGramsPer100Grams: _nullableDouble(json, 'fatGramsPer100Grams'),
+      saltGramsPer100Grams: _nullableDouble(json, 'saltGramsPer100Grams'),
+      servingGrams: _nullableDouble(json, 'servingGrams'),
       qualityIndicators: indicators.cast<String>(),
       retrievedAtUtc: DateTime.parse(_requiredString(json, 'retrievedAtUtc'))
           .toUtc(),
@@ -261,6 +269,10 @@ class ApiMealEstimateComponent {
     this.proteinGrams,
     this.carbohydrateGrams,
     this.fatGrams,
+    this.saltGrams,
+    this.sourceUrl,
+    this.pieceCount,
+    this.pieceGrams,
   });
 
   final String name;
@@ -269,6 +281,14 @@ class ApiMealEstimateComponent {
   final double? proteinGrams;
   final double? carbohydrateGrams;
   final double? fatGrams;
+
+  /// Nur bei Salz, das im Essen selbst steckt; fehlt bei älteren Servern.
+  final double? saltGrams;
+
+  /// Seite, auf der die KI die Werte nachgeschlagen hat; nur geprüfte Quellen.
+  final String? sourceUrl;
+  final double? pieceCount;
+  final double? pieceGrams;
   final String confidence;
   final List<String> dataGaps;
 
@@ -284,6 +304,10 @@ class ApiMealEstimateComponent {
       proteinGrams: _nullableDouble(json, 'proteinGrams'),
       carbohydrateGrams: _nullableDouble(json, 'carbohydrateGrams'),
       fatGrams: _nullableDouble(json, 'fatGrams'),
+      saltGrams: _nullableDouble(json, 'saltGrams'),
+      sourceUrl: json['sourceUrl'] as String?,
+      pieceCount: _nullableDouble(json, 'pieceCount'),
+      pieceGrams: _nullableDouble(json, 'pieceGrams'),
       confidence: _requiredString(json, 'confidence'),
       dataGaps: gaps.cast<String>(),
     );
@@ -356,6 +380,7 @@ class ApiNutritionLabelScanResponse {
     required this.proteinGrams,
     required this.carbohydrateGrams,
     required this.fatGrams,
+    this.saltGrams,
     this.servingMassGrams,
   });
 
@@ -365,6 +390,9 @@ class ApiNutritionLabelScanResponse {
   final ApiNutritionLabelField proteinGrams;
   final ApiNutritionLabelField carbohydrateGrams;
   final ApiNutritionLabelField fatGrams;
+
+  /// Fehlt bei älteren Servern.
+  final ApiNutritionLabelField? saltGrams;
   final bool canConfirm;
   final String provider;
   final String providerModelVersion;
@@ -387,6 +415,11 @@ class ApiNutritionLabelScanResponse {
         fatGrams: ApiNutritionLabelField.fromJson(
           _requiredObject(json, 'fatGrams'),
         ),
+        saltGrams: json['saltGrams'] is Map<String, dynamic>
+            ? ApiNutritionLabelField.fromJson(
+                json['saltGrams'] as Map<String, dynamic>,
+              )
+            : null,
         canConfirm: _requiredBool(json, 'canConfirm'),
         provider: _requiredString(json, 'provider'),
         providerModelVersion: _requiredString(json, 'providerModelVersion'),

@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/local/local_mutation.dart';
+import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/training_home_screen.dart';
@@ -325,7 +326,10 @@ void main() {
           name: 'Push',
           entries: [planEntry(harness, exerciseId: exercise.id)],
         );
-        await harness.repository.saveRotation([push.planId]);
+        await harness.repository.schedule.saveRhythm(
+          mode: TrainingScheduleMode.cycle,
+          slots: [TrainingScheduleSlot(planId: push.planId)],
+        );
       });
     }
 
@@ -342,7 +346,7 @@ void main() {
     ) async {
       await openPlans(tester);
 
-      await tester.tap(find.byKey(const ValueKey('training-plans-next-start')));
+      await tester.tap(find.byKey(const ValueKey('training-today-start')));
       await settle(tester);
       expect(find.byType(WorkoutScreen), findsOneWidget);
 
@@ -360,7 +364,7 @@ void main() {
     ) async {
       await openPlans(tester);
 
-      final start = find.byKey(const ValueKey('training-plans-next-start'));
+      final start = find.byKey(const ValueKey('training-today-start'));
       await tester.tap(start);
       await tester.tap(start);
       await settle(tester);

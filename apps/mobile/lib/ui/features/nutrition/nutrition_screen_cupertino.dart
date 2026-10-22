@@ -11,11 +11,34 @@ import 'nutrition_view_model.dart';
 
 const _notRecognizedLabel = 'nicht erkannt';
 
+const _confidenceNames = {
+  'low': 'unsicher',
+  'medium': 'mittel',
+  'high': 'sicher',
+};
+
+const _saltName = 'Salz';
+const _saltPer100 = NutritionTotals(
+  kilocalories: 0,
+  proteinGrams: 0,
+  carbohydrateGrams: 0,
+  fatGrams: 0,
+  saltGrams: 100,
+);
+
+/// Übliche Mengen beim Selbstsalzen; 1 Teelöffel Salz wiegt etwa 6 g.
+const _saltPresets = [
+  (label: 'Prise', grams: 0.5),
+  (label: 'Halber Teelöffel', grams: 3.0),
+  (label: 'Teelöffel', grams: 6.0),
+];
+
 enum _NutritionEntryMode {
   choices,
   recent,
   meals,
   manual,
+  salt,
   search,
   barcode,
   estimate,
@@ -28,6 +51,7 @@ extension on _NutritionEntryMode {
     _NutritionEntryMode.recent => 'Zuletzt verwendet',
     _NutritionEntryMode.meals => 'Gespeicherte Gerichte',
     _NutritionEntryMode.manual => 'Manuell erfassen',
+    _NutritionEntryMode.salt => 'Salz hinzufügen',
     _NutritionEntryMode.search => 'Lebensmittel suchen',
     _NutritionEntryMode.barcode => 'Barcode',
     _NutritionEntryMode.estimate => 'Mahlzeit schätzen',
@@ -39,6 +63,7 @@ extension on _NutritionEntryMode {
     _NutritionEntryMode.recent => 'Lebensmittel von früheren Einträgen',
     _NutritionEntryMode.meals => 'Ein gespeichertes Gericht übernehmen',
     _NutritionEntryMode.manual => 'Nährwerte selbst eingeben',
+    _NutritionEntryMode.salt => 'Selbst gesalzen, z. B. eine Prise',
     _NutritionEntryMode.search => 'Online nach Produkt oder Marke suchen',
     _NutritionEntryMode.barcode => 'Produkt über den Barcode finden',
     _NutritionEntryMode.estimate => 'Text oder Foto als Vorschlag prüfen',
@@ -50,6 +75,7 @@ extension on _NutritionEntryMode {
     _NutritionEntryMode.recent => CupertinoIcons.clock,
     _NutritionEntryMode.meals => CupertinoIcons.book,
     _NutritionEntryMode.manual => CupertinoIcons.pencil,
+    _NutritionEntryMode.salt => CupertinoIcons.circle_grid_hex,
     _NutritionEntryMode.search => CupertinoIcons.search,
     _NutritionEntryMode.barcode => CupertinoIcons.barcode_viewfinder,
     _NutritionEntryMode.estimate => CupertinoIcons.sparkles,
@@ -66,6 +92,7 @@ List<_NutritionEntryMode> _modesFor(FoodAddTarget target) => [
             const {
               _NutritionEntryMode.recent,
               _NutritionEntryMode.manual,
+              _NutritionEntryMode.salt,
               _NutritionEntryMode.search,
               _NutritionEntryMode.barcode,
             }.contains(mode)))
@@ -88,8 +115,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _protein = TextEditingController();
   final _carbs = TextEditingController();
   final _fat = TextEditingController();
+  final _salt = TextEditingController();
+  final _pieceGrams = TextEditingController();
+  final _pieceCount = TextEditingController();
+  final _addPieces = TextEditingController();
   final _search = TextEditingController();
   final _estimateText = TextEditingController();
+  final _saltAmount = TextEditingController();
   MealDictationController? _dictation;
 
   @override
@@ -115,8 +147,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _protein,
       _carbs,
       _fat,
+      _salt,
+      _pieceGrams,
+      _pieceCount,
+      _addPieces,
       _search,
       _estimateText,
+      _saltAmount,
     ]) {
       controller.dispose();
     }
@@ -210,7 +247,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
   ) => [
     _DayCard(
       totals: snapshot.day.totals,
-      target: _targetFor(vm.localDate, snapshot.targetSchedule),
+      target: snapshot.targetSchedule?.targetOn(vm.localDate),
       onManage: _openPlanning,
     ),
     NutritionAveragesEntry(repository: vm.repository, refreshKey: snapshot),
@@ -332,6 +369,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                           mode,
                           target,
                           (draft) => Navigator.of(sheetContext).pop(draft),
+                          (option) => setSheetState(() => mode = option),
                         ),
                 ),
               ),
@@ -339,7 +377,16 @@ class _NutritionScreenState extends State<NutritionScreen> {
           ),
         ),
       ),
-    );
+    ).whenComplete(_resetEstimate);
+  }
+
+  /// Beim Schließen des Sheets beginnt die nächste Schätzung leer.
+  void _resetEstimate() {
+    if (!mounted) return;
+    _dictation?.cancel();
+    _estimateText.clear();
+    _saltAmount.clear();
+    widget.viewModel.clearEstimateDraft();
   }
 
   Widget _entryHeader(
@@ -407,6 +454,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     _NutritionEntryMode mode,
     FoodAddTarget target,
     ValueChanged<FoodComponentDraft> onDraft,
+    ValueChanged<_NutritionEntryMode> onSelectMode,
   ) => [
     if (vm.errorMessage != null &&
         vm.errorOperation != null &&
@@ -414,7 +462,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _notice(context, vm.errorMessage!, isError: true),
     if (vm.statusMessage != null && target is DayMealTarget)
       Semantics(liveRegion: true, child: _notice(context, vm.statusMessage!)),
-    ..._entryTools(context, vm, mode, target, onDraft),
+    ..._entryTools(context, vm, mode, target, onDraft, onSelectMode),
     if (vm.isSaving || vm.isOnlineOperation)
       const Padding(
         padding: EdgeInsets.all(12),
@@ -422,7 +470,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
       ),
   ];
 
+  /// Menge in Gramm oder als Anzahl. Die Anzahl gilt für Lebensmittel mit
+  /// bekanntem Stückgewicht („1 Stk = 50 g“) und hat dann Vorrang.
   Widget _amountGroup() => GainerGroupedSection(
+    footer: 'Anzahl gilt für Lebensmittel mit Stückgewicht, z. B. Eier.',
     children: [
       GainerTextFieldRow(
         label: 'Menge',
@@ -430,6 +481,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
         controller: _amount,
         keyboardType: _decimalKeyboard,
         fieldKey: const ValueKey('nutrition-entry-amount'),
+        onChanged: (_) => _addPieces.clear(),
+      ),
+      _PieceCountRow(
+        key: const ValueKey('nutrition-entry-pieces'),
+        controller: _addPieces,
       ),
     ],
   );
@@ -440,6 +496,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     _NutritionEntryMode mode,
     FoodAddTarget target,
     ValueChanged<FoodComponentDraft> onDraft,
+    ValueChanged<_NutritionEntryMode> onSelectMode,
   ) {
     void submit(NutritionFood food) => _submitFood(food, target, onDraft);
     return switch (mode) {
@@ -452,6 +509,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
           protein: _protein,
           carbs: _carbs,
           fat: _fat,
+          salt: _salt,
+          pieceGrams: _pieceGrams,
+          pieceCount: _pieceCount,
           nameKey: const ValueKey('nutrition-entry-name'),
           brandKey: const ValueKey('nutrition-entry-brand'),
           amountKey: const ValueKey('nutrition-entry-amount'),
@@ -469,13 +529,25 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _NutritionEntryMode.meals => _mealTools(vm),
       _NutritionEntryMode.search => _searchTools(vm, submit),
       _NutritionEntryMode.barcode => _barcodeTools(vm, submit),
-      _NutritionEntryMode.estimate => _estimateTools(vm),
+      _NutritionEntryMode.estimate => _estimateTools(vm, onSelectMode),
+      _NutritionEntryMode.salt => _saltTools(target, onDraft),
       _NutritionEntryMode.label => [
+        GainerGroupedSection(
+          footer: 'Du prüfst alle Werte, bevor etwas gespeichert wird.',
+          children: [
+            GainerListRow(
+              leadingIcon: CupertinoIcons.doc_text_viewfinder,
+              title: 'Nährwerttabelle fotografieren',
+              subtitle: 'Gerade und gut lesbar, mit Kalorien und Makros.',
+            ),
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.m),
         GainerPillButton(
-          label: 'Nährwertetikett erfassen',
-          icon: CupertinoIcons.doc_text_viewfinder,
-          variant: GainerPillVariant.tonal,
+          label: 'Etikett fotografieren',
+          icon: CupertinoIcons.camera,
           expand: true,
+          isLoading: vm.isOnlineOperation,
           onPressed: vm.isOnlineOperation ? null : _scanLabel,
         ),
       ],
@@ -494,8 +566,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
       for (final food in foods)
         GainerListRow(
           title: food.name,
-          subtitle:
-              '${food.brand ?? food.source.provider ?? fallback} · ${_fmtKcal(food.per100Grams.kilocalories)} kcal / 100 g',
+          subtitle: [
+            food.brand ?? food.source.provider ?? fallback,
+            '${_fmtKcal(food.per100Grams.kilocalories)} kcal / 100 g',
+            if (food.pieceGrams case final grams?)
+              '1 Stk = ${_fmtGrams(grams)} g',
+          ].join(' · '),
           trailing: const _AddGlyph(),
           onTap: () => onSelect(food),
         ),
@@ -575,6 +651,92 @@ class _NutritionScreenState extends State<NutritionScreen> {
     ],
   ];
 
+  /// Selbst gesalzen: Schnellwahl oder eigene Menge. Salz ist ein Eintrag mit
+  /// 0 kcal und 100 g Salz pro 100 g, zählt also nur zum Tagessalz.
+  List<Widget> _saltTools(
+    FoodAddTarget target,
+    ValueChanged<FoodComponentDraft> onDraft,
+  ) => [
+    ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _saltAmount,
+      builder: (context, value, _) {
+        final colors = GainerDesign.colorsOf(context);
+        final grams = _parse(value.text);
+        final valid = grams != null && grams > 0 && grams <= 100;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GainerGroupedSection(
+              footer: 'Zählt zum Salz des Tages, nicht zu den Kalorien.',
+              children: [
+                for (final preset in _saltPresets)
+                  GainerListRow(
+                    key: ValueKey('nutrition-salt-${preset.grams}'),
+                    title: preset.label,
+                    subtitle: '${_fmtGrams(preset.grams)} g',
+                    trailing: grams == preset.grams
+                        ? Icon(
+                            CupertinoIcons.checkmark,
+                            size: 18,
+                            color: colors.accent,
+                          )
+                        : null,
+                    onTap: () => _saltAmount.text = _grams(preset.grams),
+                  ),
+                GainerTextFieldRow(
+                  label: 'Eigene Menge',
+                  unit: 'g',
+                  controller: _saltAmount,
+                  keyboardType: _decimalKeyboard,
+                  fieldKey: const ValueKey('nutrition-salt-amount'),
+                ),
+              ],
+            ),
+            const SizedBox(height: GainerSpacing.m),
+            GainerPillButton(
+              key: const ValueKey('nutrition-salt-add'),
+              label: 'Salz hinzufügen',
+              expand: true,
+              onPressed: valid ? () => _addSalt(grams, target, onDraft) : null,
+            ),
+          ],
+        );
+      },
+    ),
+  ];
+
+  Future<void> _addSalt(
+    double grams,
+    FoodAddTarget target,
+    ValueChanged<FoodComponentDraft> onDraft,
+  ) async {
+    switch (target) {
+      case DayMealTarget():
+        await widget.viewModel.addManualEntry(
+          productName: _saltName,
+          amountGrams: grams,
+          kilocaloriesPer100Grams: _saltPer100.kilocalories,
+          proteinGramsPer100: _saltPer100.proteinGrams,
+          carbohydrateGramsPer100: _saltPer100.carbohydrateGrams,
+          fatGramsPer100: _saltPer100.fatGrams,
+          saltGramsPer100: _saltPer100.saltGrams,
+        );
+        if (widget.viewModel.errorMessage == null) _saltAmount.clear();
+      case MealDraftTarget():
+        final accepted = _commitDraft(
+          FoodComponentDraft(
+            name: _saltName,
+            brand: null,
+            amountGrams: grams,
+            per100Grams: _saltPer100,
+            source: null,
+          ),
+          onDraft,
+        );
+        if (accepted) _saltAmount.clear();
+    }
+  }
+
   /// Baut neu, sobald sich das Diktat ändert; ohne Diktat einmal mit null.
   Widget _withDictation(
     Widget Function(MealDictationController? dictation) builder,
@@ -587,49 +749,35 @@ class _NutritionScreenState extends State<NutritionScreen> {
     );
   }
 
-  List<Widget> _estimateTools(NutritionViewModel vm) => [
+  List<Widget> _estimateTools(
+    NutritionViewModel vm,
+    ValueChanged<_NutritionEntryMode> onSelectMode,
+  ) => [
     _withDictation(
       (dictation) => GainerGroupedSection(
         footer: switch (dictation) {
-          MealDictationController(isListening: true) => 'Ich höre zu. Nenne Lebensmittel und Mengen und tippe dann „Fertig“.',
+          MealDictationController(isListening: true) => 'Ich höre zu. Nenne Lebensmittel und Mengen und tippe dann auf Stopp.',
           MealDictationController(:final message?) => message,
           _ => 'Vorschläge werden erst nach deiner Bestätigung gespeichert.',
         },
         children: [
-          GainerTextFieldRow(
-            label: 'Beschreibung',
-            placeholder: 'z. B. Haferflocken mit Banane',
+          _MealDescriptionInput(
             controller: _estimateText,
-            maxLines: 5,
+            dictation: dictation,
+            dictationEnabled: !vm.isOnlineOperation,
+            onPhoto: vm.isOnlineOperation ? null : _captureMealEstimate,
           ),
         ],
       ),
     ),
-    if (_dictation != null) ...[
-      const SizedBox(height: GainerSpacing.m),
-      _withDictation(
-        (dictation) => GainerPillButton(
-          key: const ValueKey('nutrition-dictation'),
-          label: dictation!.isListening ? 'Fertig' : 'Diktieren',
-          icon: dictation.isListening
-              ? CupertinoIcons.stop_fill
-              : CupertinoIcons.mic,
-          variant: GainerPillVariant.tonal,
-          expand: true,
-          onPressed: dictation.isStarting || vm.isOnlineOperation
-              ? null
-              : dictation.toggle,
-        ),
-      ),
-    ],
     const SizedBox(height: GainerSpacing.m),
     ValueListenableBuilder<TextEditingValue>(
       valueListenable: _estimateText,
       builder: (context, value, _) => GainerPillButton(
         label: 'Mahlzeit schätzen',
         icon: CupertinoIcons.sparkles,
-        variant: GainerPillVariant.tonal,
         expand: true,
+        isLoading: vm.isOnlineOperation,
         onPressed: vm.isOnlineOperation || value.text.trim().isEmpty
             ? null
             : () async {
@@ -637,14 +785,6 @@ class _NutritionScreenState extends State<NutritionScreen> {
                 await vm.estimateMeal(_estimateText.text);
               },
       ),
-    ),
-    const SizedBox(height: GainerSpacing.xs),
-    GainerPillButton(
-      label: 'Foto aufnehmen',
-      icon: CupertinoIcons.camera,
-      variant: GainerPillVariant.tonal,
-      expand: true,
-      onPressed: vm.isOnlineOperation ? null : _captureMealEstimate,
     ),
     if (vm.mealEstimateDraft case final estimate?) ...[
       const SizedBox(height: GainerSpacing.l),
@@ -655,13 +795,29 @@ class _NutritionScreenState extends State<NutritionScreen> {
           for (var index = 0; index < estimate.components.length; index++)
             GainerListRow(
               title: estimate.components[index].name,
-              subtitle:
-                  '${_fmtGrams(estimate.components[index].amountGrams)} g · ${_fmtKcal(estimate.components[index].totals.kilocalories)} kcal · ${estimate.components[index].confidence}',
+              subtitle: _estimateSubtitle(estimate.components[index]),
               trailing: const _AddGlyph(),
               onTap: () => vm.confirmEstimatedComponent(index),
             ),
         ],
       ),
+      // Selbst gesalzenes Essen schätzt die KI nicht; hier geht es direkt
+      // zur Salz-Schnellwahl.
+      if (!estimate.components.any((item) => item.name == _saltName)) ...[
+        const SizedBox(height: GainerSpacing.m),
+        GainerGroupedSection(
+          children: [
+            GainerListRow(
+              key: const ValueKey('nutrition-estimate-add-salt'),
+              leadingIcon: _NutritionEntryMode.salt.icon,
+              title: 'Selbst gesalzen?',
+              subtitle: 'Salz hinzufügen',
+              showChevron: true,
+              onTap: () => onSelectMode(_NutritionEntryMode.salt),
+            ),
+          ],
+        ),
+      ],
       const SizedBox(height: GainerSpacing.m),
       GainerPillButton(
         label: 'Schätzung verwerfen',
@@ -671,6 +827,20 @@ class _NutritionScreenState extends State<NutritionScreen> {
       ),
     ],
   ];
+
+  /// „350 g · 890 kcal · ~3,5 g Salz · mittel“; Salz nur, wenn geschätzt.
+  String _estimateSubtitle(NutritionEstimateComponent item) {
+    final salt = item.totals.saltGrams;
+    return [
+      if (item.pieceCount case final count?)
+        '${_formatNumber(count, decimals: 2)} Stk',
+      '${_fmtGrams(item.amountGrams)} g',
+      '${_fmtKcal(item.totals.kilocalories)} kcal',
+      if (salt != null && item.name != _saltName) '~${_fmtGrams(salt)} g Salz',
+      _confidenceNames[item.confidence.toLowerCase()] ?? item.confidence,
+      ?item.sourceHost,
+    ].join(' · ');
+  }
 
   Widget _hint(String text) => Padding(
     padding: const EdgeInsets.symmetric(vertical: GainerSpacing.s),
@@ -689,10 +859,21 @@ class _NutritionScreenState extends State<NutritionScreen> {
     FoodAddTarget target,
     ValueChanged<FoodComponentDraft> onDraft,
   ) {
-    final amount = _parse(_amount.text) ?? 100;
+    final pieces = _parse(_addPieces.text);
+    final pieceGrams = food.pieceGrams;
+    if (pieces != null && pieceGrams == null) {
+      widget.viewModel.reportInputError(
+        'Für „${food.name}“ ist kein Stückgewicht bekannt. Gib die Menge in g ein.',
+        operation: NutritionErrorOperation.entry,
+      );
+      return;
+    }
+    final amount = pieces != null && pieceGrams != null
+        ? gramsForPieces(pieces, pieceGrams)
+        : _parse(_amount.text) ?? 100;
     switch (target) {
       case DayMealTarget():
-        widget.viewModel.addFood(food, amountGrams: amount);
+        widget.viewModel.addFood(food, amountGrams: amount, pieceCount: pieces);
       case MealDraftTarget():
         _commitDraft(
           FoodComponentDraft(
@@ -701,6 +882,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
             amountGrams: amount,
             per100Grams: food.per100Grams,
             source: food.source,
+            pieceGrams: pieceGrams,
+            pieceCount: pieces,
           ),
           onDraft,
         );
@@ -901,7 +1084,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
         proteinGrams: _nullable(c.protein.text),
         carbohydrateGrams: _nullable(c.carbs.text),
         fatGrams: _nullable(c.fat.text),
+        saltGrams: _nullable(c.salt.text),
       ),
+      pieceGrams: _nullable(c.pieceGrams.text),
+      pieceCount: _nullable(c.pieceCount.text),
     );
     if (widget.viewModel.errorMessage == null &&
         routeContext.mounted &&
@@ -934,6 +1120,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
       protein: c.protein,
       carbs: c.carbs,
       fat: c.fat,
+      salt: c.salt,
+      pieceGrams: c.pieceGrams,
+      pieceCount: c.pieceCount,
       nameKey: const ValueKey('nutrition-edit-name'),
       amountKey: const ValueKey('nutrition-edit-amount'),
       kcalKey: const ValueKey('nutrition-edit-kcal'),
@@ -1159,7 +1348,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           key: ValueKey('meal-component-${component.componentId}'),
           title: component.name,
           value:
-              '${_fmtGrams(component.amountGrams)} g · ${_fmtKcal(component.totals.kilocalories)} kcal',
+              '${_amountLabel(component.amountGrams, component.pieceCount)} · ${_fmtKcal(component.totals.kilocalories)} kcal',
           onTap: () => _editComponent(component, components, setDialogState),
         ),
       ),
@@ -1243,6 +1432,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       protein: c.protein,
                       carbs: c.carbs,
                       fat: c.fat,
+                      salt: c.salt,
+                      pieceGrams: c.pieceGrams,
+                      pieceCount: c.pieceCount,
                       nameKey: const ValueKey('meal-component-name'),
                       amountKey: const ValueKey('meal-component-amount'),
                       kcalKey: const ValueKey('meal-component-kcal'),
@@ -1295,6 +1487,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
           amountGrams: components[index].amountGrams,
           per100Grams: components[index].per100Grams,
           source: components[index].source,
+          pieceGrams: components[index].pieceGrams,
+          pieceCount: components[index].pieceCount,
         ),
     ],
   );
@@ -1398,6 +1592,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
           ? '25'
           : _targetPart(existing, NutritionTargetInputMode.percent, 2),
     );
+    final salt = TextEditingController(
+      text: _grams(
+        existing?.effectiveSaltGrams ?? NutritionTargetVersion.defaultSaltGrams,
+      ),
+    );
     final draft = _TargetPhaseDraft(
       category: existing?.category ?? NutritionTargetCategory.custom,
       mode: existing?.inputMode ?? NutritionTargetInputMode.percent,
@@ -1410,6 +1609,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       protein: protein,
       carbs: carbs,
       fat: fat,
+      salt: salt,
     );
     try {
       final fields = await Navigator.of(context)
@@ -1474,6 +1674,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
         origin: existing?.origin ?? 'Manual',
         algorithmVersion: existing?.algorithmVersion,
         reason: existing?.reason,
+        saltGrams: _saltTarget(salt.text, existing),
       );
       await widget.viewModel.saveTargetPhase(
         phase,
@@ -1504,15 +1705,16 @@ class _NutritionScreenState extends State<NutritionScreen> {
       closeKey: const ValueKey('nutrition-target-close'),
       onSave:
           _validTargetInput(
-            c.name,
-            c.from,
-            c.until,
-            c.kcal,
-            c.protein,
-            c.carbs,
-            c.fat,
-            draft.mode,
-          )
+                c.name,
+                c.from,
+                c.until,
+                c.kcal,
+                c.protein,
+                c.carbs,
+                c.fat,
+                draft.mode,
+              ) &&
+              _validSaltTarget(c.salt)
           ? () => Navigator.pop(context, (
               category: draft.category,
               mode: draft.mode,
@@ -1602,8 +1804,41 @@ class _NutritionScreenState extends State<NutritionScreen> {
             ),
           ],
         ),
+        const SizedBox(height: GainerSpacing.m),
+        GainerGroupedSection(
+          footer: 'Obergrenze pro Tag. Die DGE empfiehlt höchstens 6 g Salz am Tag.',
+          children: [
+            GainerTextFieldRow(
+              label: 'Salz höchstens',
+              unit: 'g',
+              controller: c.salt,
+              keyboardType: _decimalKeyboard,
+              fieldKey: const ValueKey('nutrition-target-salt'),
+              onChanged: (_) => refresh(),
+            ),
+          ],
+        ),
       ],
     );
+  }
+
+  /// Leer heißt Standardwert; sonst größer als 0 und höchstens 100 g.
+  bool _validSaltTarget(TextEditingController salt) {
+    if (salt.text.trim().isEmpty) return true;
+    final value = _parse(salt.text);
+    return value != null && value > 0 && value <= 100;
+  }
+
+  /// Bleibt beim Standardwert offen (null), solange die Phase keinen eigenen
+  /// hatte; so ändert ein unveränderter Standard keine bestehende Phase.
+  double? _saltTarget(String text, NutritionTargetVersion? existing) {
+    final value = _parse(text);
+    if (value == null) return null;
+    if (existing?.saltGrams == null &&
+        value == NutritionTargetVersion.defaultSaltGrams) {
+      return null;
+    }
+    return value;
   }
 
   bool _validTargetInput(
@@ -1698,10 +1933,15 @@ class _NutritionScreenState extends State<NutritionScreen> {
           proteinGramsPer100: _nullable(_protein.text),
           carbohydrateGramsPer100: _nullable(_carbs.text),
           fatGramsPer100: _nullable(_fat.text),
+          saltGramsPer100: _nullable(_salt.text),
+          pieceGrams: _nullable(_pieceGrams.text),
+          pieceCount: _nullable(_pieceCount.text),
         );
         if (widget.viewModel.errorMessage == null) {
           _name.clear();
           _brand.clear();
+          _pieceGrams.clear();
+          _pieceCount.clear();
         }
       case MealDraftTarget():
         final accepted = _commitDraft(
@@ -1714,8 +1954,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
               proteinGrams: _nullable(_protein.text),
               carbohydrateGrams: _nullable(_carbs.text),
               fatGrams: _nullable(_fat.text),
+              saltGrams: _nullable(_salt.text),
             ),
             source: null,
+            pieceGrams: _nullable(_pieceGrams.text),
+            pieceCount: _nullable(_pieceCount.text),
           ),
           onDraft,
         );
@@ -1727,6 +1970,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
             _protein,
             _carbs,
             _fat,
+            _salt,
+            _pieceGrams,
+            _pieceCount,
           ]) {
             controller.clear();
           }
@@ -1766,21 +2012,23 @@ class _NutritionScreenState extends State<NutritionScreen> {
     final recipeName = TextEditingController();
     final target = _LabelTargetDraft();
     try {
-      final accepted = await Navigator.of(context).push<String>(
-        CupertinoPageRoute<String>(
-          builder: (context) => StatefulBuilder(
-            builder: (context, setDialogState) => _labelDraftPage(
-              context,
-              setDialogState,
-              draft,
-              name: name,
-              amount: amount,
-              recipeName: recipeName,
-              target: target,
+      // Über dem Hinzufügen-Sheet, das auf dem Root-Navigator liegt.
+      final accepted = await Navigator.of(context, rootNavigator: true)
+          .push<String>(
+            CupertinoPageRoute<String>(
+              builder: (context) => StatefulBuilder(
+                builder: (context, setDialogState) => _labelDraftPage(
+                  context,
+                  setDialogState,
+                  draft,
+                  name: name,
+                  amount: amount,
+                  recipeName: recipeName,
+                  target: target,
+                ),
+              ),
             ),
-          ),
-        ),
-      );
+          );
       if (accepted == 'diary' && mounted) {
         await widget.viewModel.confirmLabelDraft(
           productName: name.text,
@@ -1846,6 +2094,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
             GainerListRow(
               title: 'Fett',
               value: _labelValue(draft.fatGrams, _fmtGrams, 'g'),
+            ),
+            GainerListRow(
+              title: 'Salz',
+              value: _labelValue(draft.saltGrams, _fmtGrams, 'g'),
             ),
           ],
         ),
@@ -2002,6 +2254,9 @@ List<Widget> _foodFormGroups({
   required TextEditingController protein,
   required TextEditingController carbs,
   required TextEditingController fat,
+  required TextEditingController salt,
+  required TextEditingController pieceGrams,
+  required TextEditingController pieceCount,
   Key? nameKey,
   Key? brandKey,
   Key? amountKey,
@@ -2030,7 +2285,37 @@ List<Widget> _foodFormGroups({
         controller: amount,
         keyboardType: _decimalKeyboard,
         fieldKey: amountKey,
-        onChanged: onChanged,
+        onChanged: (value) {
+          // Wer Gramm tippt, gibt die Menge nicht mehr in Stück an.
+          pieceCount.clear();
+          onChanged?.call(value);
+        },
+      ),
+    ],
+  ),
+  const SizedBox(height: GainerSpacing.m),
+  GainerGroupedSection(
+    header: 'Stück (optional)',
+    footer: 'Mit Gewicht pro Stück und Anzahl wird die Menge berechnet.',
+    children: [
+      GainerTextFieldRow(
+        label: 'Gewicht pro Stück',
+        unit: 'g',
+        controller: pieceGrams,
+        keyboardType: _decimalKeyboard,
+        fieldKey: const ValueKey('nutrition-piece-grams'),
+        onChanged: (value) {
+          _syncPieceAmount(amount, pieceGrams, pieceCount);
+          onChanged?.call(value);
+        },
+      ),
+      _PieceCountRow(
+        key: const ValueKey('nutrition-piece-count'),
+        controller: pieceCount,
+        onChanged: (value) {
+          _syncPieceAmount(amount, pieceGrams, pieceCount);
+          onChanged?.call(value);
+        },
       ),
     ],
   ),
@@ -2067,9 +2352,29 @@ List<Widget> _foodFormGroups({
         keyboardType: _decimalKeyboard,
         onChanged: onChanged,
       ),
+      GainerTextFieldRow(
+        label: 'Salz',
+        unit: 'g',
+        controller: salt,
+        keyboardType: _decimalKeyboard,
+        fieldKey: const ValueKey('nutrition-entry-salt'),
+        onChanged: onChanged,
+      ),
     ],
   ),
 ];
+
+/// Setzt die Menge auf Anzahl × Gewicht pro Stück, sobald beides gültig ist.
+void _syncPieceAmount(
+  TextEditingController amount,
+  TextEditingController pieceGrams,
+  TextEditingController pieceCount,
+) {
+  final grams = _parse(pieceGrams.text);
+  final count = _parse(pieceCount.text);
+  if (grams == null || count == null || grams <= 0 || count <= 0) return;
+  amount.text = _grams(gramsForPieces(count, grams));
+}
 
 /// Baut aus den Bearbeitungsfeldern einen (noch ungeprüften) Draft.
 FoodComponentDraft _draftFrom(
@@ -2084,8 +2389,11 @@ FoodComponentDraft _draftFrom(
     proteinGrams: _nullable(c.protein.text),
     carbohydrateGrams: _nullable(c.carbs.text),
     fatGrams: _nullable(c.fat.text),
+    saltGrams: _nullable(c.salt.text),
   ),
   source: source,
+  pieceGrams: _nullable(c.pieceGrams.text),
+  pieceCount: _nullable(c.pieceCount.text),
 );
 
 /// Formularseite im Look der Sheets: X links, Titel, „Sichern“-Pille rechts
@@ -2215,6 +2523,15 @@ class _EntryEditControllers {
       ),
       fat = TextEditingController(
         text: _optionalGrams(entry.per100Grams.fatGrams),
+      ),
+      salt = TextEditingController(
+        text: _optionalGrams(entry.per100Grams.saltGrams),
+      ),
+      pieceGrams = TextEditingController(
+        text: _optionalGrams(entry.pieceGrams),
+      ),
+      pieceCount = TextEditingController(
+        text: _optionalGrams(entry.pieceCount),
       );
 
   final TextEditingController name;
@@ -2224,9 +2541,23 @@ class _EntryEditControllers {
   final TextEditingController protein;
   final TextEditingController carbs;
   final TextEditingController fat;
+  final TextEditingController salt;
+  final TextEditingController pieceGrams;
+  final TextEditingController pieceCount;
 
   void dispose() {
-    for (final controller in [name, brand, amount, kcal, protein, carbs, fat]) {
+    for (final controller in [
+      name,
+      brand,
+      amount,
+      kcal,
+      protein,
+      carbs,
+      fat,
+      salt,
+      pieceGrams,
+      pieceCount,
+    ]) {
       controller.dispose();
     }
   }
@@ -2248,6 +2579,7 @@ class _TargetPhaseControllers {
     required this.protein,
     required this.carbs,
     required this.fat,
+    required this.salt,
   });
 
   final TextEditingController name;
@@ -2257,9 +2589,19 @@ class _TargetPhaseControllers {
   final TextEditingController protein;
   final TextEditingController carbs;
   final TextEditingController fat;
+  final TextEditingController salt;
 
   void dispose() {
-    for (final controller in [name, from, until, kcal, protein, carbs, fat]) {
+    for (final controller in [
+      name,
+      from,
+      until,
+      kcal,
+      protein,
+      carbs,
+      fat,
+      salt,
+    ]) {
       controller.dispose();
     }
   }
@@ -2333,51 +2675,6 @@ class _DayNavigator extends StatelessWidget {
   }
 }
 
-/// Schmaler Fortschrittsbalken; wärmere Farbe, sobald das Ziel überschritten
-/// ist.
-class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({
-    required this.consumed,
-    required this.target,
-    this.height = 6,
-  });
-
-  final double? consumed;
-  final double target;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    final value = consumed ?? 0;
-    final ratio = target <= 0 ? 0.0 : (value / target).clamp(0.0, 1.0);
-    final exceeded = target > 0 && value > target;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(height),
-      child: SizedBox(
-        height: height,
-        child: LayoutBuilder(
-          builder: (context, constraints) => Stack(
-            children: [
-              Positioned.fill(child: ColoredBox(color: colors.elevatedSurface)),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: SizedBox(
-                  width: constraints.maxWidth * ratio,
-                  height: height,
-                  child: ColoredBox(
-                    color: exceeded ? colors.warning : colors.accent,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Eine Tageskarte: Kalorien groß mit Fortschritt, darunter drei kompakte
 /// Makro-Spalten. Ohne Ziele nur die Ist-Werte und der Weg zu den Zielen.
 class _DayCard extends StatelessWidget {
@@ -2434,7 +2731,7 @@ class _DayCard extends StatelessWidget {
               ),
               if (goal != null && remaining != null) ...[
                 const SizedBox(height: GainerSpacing.xs),
-                _ProgressBar(consumed: kcal, target: goal.kilocalories),
+                GainerProgressBar(consumed: kcal, target: goal.kilocalories),
                 const SizedBox(height: GainerSpacing.xs),
                 Text(
                   remaining >= 0
@@ -2466,6 +2763,23 @@ class _DayCard extends StatelessWidget {
                   ),
                   const SizedBox(width: GainerSpacing.s),
                   _macro(colors, 'Fett', totals.fatGrams, goal?.fatGrams),
+                ],
+              ),
+              const SizedBox(height: GainerSpacing.s),
+              // Salz ist eine Obergrenze; eigene Zeile, gleiche Spaltenbreite.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _macro(
+                    colors,
+                    'Salz',
+                    totals.saltGrams,
+                    goal?.effectiveSaltGrams,
+                  ),
+                  const SizedBox(width: GainerSpacing.s),
+                  const Spacer(),
+                  const SizedBox(width: GainerSpacing.s),
+                  const Spacer(),
                 ],
               ),
               if (goal == null) ...[
@@ -2523,7 +2837,7 @@ class _DayCard extends StatelessWidget {
             ),
             if (goal != null) ...[
               const SizedBox(height: GainerSpacing.xxs),
-              _ProgressBar(consumed: consumed, target: goal, height: 4),
+              GainerProgressBar(consumed: consumed, target: goal, height: 4),
             ],
           ],
         ),
@@ -2531,19 +2845,6 @@ class _DayCard extends StatelessWidget {
     );
   }
 }
-
-/// Zielphase, die für [date] gilt, oder `null`.
-NutritionTargetVersion? _targetFor(
-  String date,
-  NutritionTargetSchedule? schedule,
-) => schedule?.versions
-    .where(
-      (phase) =>
-          phase.effectiveFrom.compareTo(date) <= 0 &&
-          (phase.effectiveUntil == null ||
-              phase.effectiveUntil!.compareTo(date) >= 0),
-    )
-    .lastOrNull;
 
 /// „Heute“, „Gestern“, „Morgen“ oder kurzes Datum wie „Mo. 12. Okt.“.
 String _dateLabel(String value, String today) {
@@ -2651,7 +2952,7 @@ class _MealSection extends StatelessWidget {
         key: ValueKey('nutrition-entry-${entry.entryId}'),
         title: entry.productName,
         value:
-            '${_fmtGrams(entry.amountGrams)} g · ${_fmtKcal(entry.totals.kilocalories)} kcal',
+            '${_amountLabel(entry.amountGrams, entry.pieceCount)} · ${_fmtKcal(entry.totals.kilocalories)} kcal',
         onTap: () => onEdit(entry),
       ),
     ),
@@ -2904,7 +3205,7 @@ class _TargetPhaseRow extends StatelessWidget {
     final row = GainerListRow(
       title: phase.name,
       subtitle:
-          '${phase.effectiveFrom} – ${phase.effectiveUntil ?? 'offen'} · ${_fmtKcal(phase.kilocalories)} kcal · P ${_fmtGrams(phase.proteinGrams)} g · KH ${_fmtGrams(phase.carbohydrateGrams)} g · F ${_fmtGrams(phase.fatGrams)} g',
+          '${phase.effectiveFrom} – ${phase.effectiveUntil ?? 'offen'} · ${_fmtKcal(phase.kilocalories)} kcal · P ${_fmtGrams(phase.proteinGrams)} g · KH ${_fmtGrams(phase.carbohydrateGrams)} g · F ${_fmtGrams(phase.fatGrams)} g · Salz ≤ ${_fmtGrams(phase.effectiveSaltGrams)} g',
       showChevron: onEdit != null,
       onTap: onEdit,
     );
@@ -2931,7 +3232,10 @@ class _IngredientControllers {
       kcal = TextEditingController(),
       protein = TextEditingController(),
       carbs = TextEditingController(),
-      fat = TextEditingController();
+      fat = TextEditingController(),
+      salt = TextEditingController(),
+      pieceGrams = TextEditingController(),
+      pieceCount = TextEditingController();
 
   _IngredientControllers.fromComponent(ReusableMealComponent component)
     : componentId = component.componentId,
@@ -2950,6 +3254,15 @@ class _IngredientControllers {
       ),
       fat = TextEditingController(
         text: _optionalGrams(component.per100Grams.fatGrams),
+      ),
+      salt = TextEditingController(
+        text: _optionalGrams(component.per100Grams.saltGrams),
+      ),
+      pieceGrams = TextEditingController(
+        text: _optionalGrams(component.pieceGrams),
+      ),
+      pieceCount = TextEditingController(
+        text: _optionalGrams(component.pieceCount),
       );
 
   final String? componentId;
@@ -2961,6 +3274,9 @@ class _IngredientControllers {
   final TextEditingController protein;
   final TextEditingController carbs;
   final TextEditingController fat;
+  final TextEditingController salt;
+  final TextEditingController pieceGrams;
+  final TextEditingController pieceCount;
 
   void dispose() {
     name.dispose();
@@ -2970,6 +3286,9 @@ class _IngredientControllers {
     protein.dispose();
     carbs.dispose();
     fat.dispose();
+    salt.dispose();
+    pieceGrams.dispose();
+    pieceCount.dispose();
   }
 }
 
@@ -2986,6 +3305,12 @@ String _grams(double value) =>
     value.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
 
 /// Anzeige-Format: deutsches Komma, Tausenderpunkt, keine Nullen am Ende.
+/// „4 Stk“, wenn in Stück erfasst, sonst „200 g“.
+String _amountLabel(double amountGrams, double? pieceCount) =>
+    pieceCount == null
+    ? '${_fmtGrams(amountGrams)} g'
+    : '${_formatNumber(pieceCount, decimals: 2)} Stk';
+
 String _formatNumber(double value, {int decimals = 0}) =>
     formatNutritionNumber(value, decimals: decimals);
 
@@ -3046,4 +3371,203 @@ String _targetPart(
   return _grams(
     mode == NutritionTargetInputMode.percent ? (percent ?? 0) : grams,
   );
+}
+
+/// Beschreibung der Mahlzeit mit Foto- und Diktat-Button im selben Feld.
+class _MealDescriptionInput extends StatelessWidget {
+  const _MealDescriptionInput({
+    required this.controller,
+    required this.dictation,
+    required this.dictationEnabled,
+    required this.onPhoto,
+  });
+
+  final TextEditingController controller;
+  final MealDictationController? dictation;
+  final bool dictationEnabled;
+  final VoidCallback? onPhoto;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final dictation = this.dictation;
+    final listening = dictation?.isListening ?? false;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        GainerSpacing.m,
+        GainerSpacing.xs,
+        GainerSpacing.xs,
+        GainerSpacing.xs,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CupertinoTextField.borderless(
+            key: const ValueKey('nutrition-estimate-text'),
+            controller: controller,
+            placeholder: 'Was hast du gegessen? z. B. Haferflocken mit Banane',
+            minLines: 3,
+            maxLines: 8,
+            keyboardType: TextInputType.multiline,
+            padding: const EdgeInsets.only(
+              top: GainerSpacing.xs,
+              right: GainerSpacing.xs,
+            ),
+            style: GainerTypography.body.copyWith(color: colors.primaryText),
+            placeholderStyle: GainerTypography.body.copyWith(
+              color: colors.placeholderText,
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              _RoundIconButton(
+                key: const ValueKey('nutrition-estimate-photo'),
+                icon: CupertinoIcons.camera,
+                semanticLabel: 'Foto aufnehmen',
+                onPressed: onPhoto,
+              ),
+              if (dictation != null) ...[
+                const SizedBox(width: GainerSpacing.xs),
+                _RoundIconButton(
+                  key: const ValueKey('nutrition-dictation'),
+                  icon: listening
+                      ? CupertinoIcons.stop_fill
+                      : CupertinoIcons.mic_fill,
+                  semanticLabel: listening ? 'Diktat beenden' : 'Diktieren',
+                  prominent: listening,
+                  onPressed: dictation.isStarting || !dictationEnabled
+                      ? null
+                      : dictation.toggle,
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({
+    required this.icon,
+    required this.semanticLabel,
+    required this.onPressed,
+    this.prominent = false,
+    super.key,
+  });
+
+  final IconData icon;
+  final String semanticLabel;
+  final VoidCallback? onPressed;
+
+  /// Gefüllt in Akzentfarbe, z. B. während einer laufenden Aufnahme.
+  final bool prominent;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final enabled = onPressed != null;
+    final background = prominent
+        ? colors.accent
+        : colors.accent.withValues(alpha: 0.14);
+    final foreground = !enabled
+        ? colors.placeholderText
+        : prominent
+        ? colors.onAccent
+        : colors.accent;
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: CupertinoButton(
+        minimumSize: const Size.square(GainerRadii.iconButtonDiameter),
+        padding: EdgeInsets.zero,
+        borderRadius: GainerRadii.pill,
+        color: background,
+        disabledColor: colors.accent.withValues(alpha: 0.06),
+        onPressed: onPressed,
+        child: ExcludeSemantics(child: Icon(icon, size: 20, color: foreground)),
+      ),
+    );
+  }
+}
+
+/// „Anzahl“ mit Minus/Plus und Eingabefeld; ganze Schritte, Eingabe auch
+/// halb („0,5“). Leer bedeutet: keine Stückangabe.
+class _PieceCountRow extends StatelessWidget {
+  const _PieceCountRow({required this.controller, this.onChanged, super.key});
+
+  final TextEditingController controller;
+  final ValueChanged<String>? onChanged;
+
+  void _step(double delta) {
+    final current = _parse(controller.text) ?? 0;
+    final next = current + delta;
+    final value = next < 1 ? (delta > 0 ? 1.0 : 0.5) : next;
+    if (delta < 0 && current <= 0.5) {
+      controller.clear();
+    } else {
+      controller.text = _formatNumber(value, decimals: 2);
+    }
+    onChanged?.call(controller.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final style = GainerTypography.body.copyWith(color: colors.primaryText);
+    // Bei sehr großer Schrift steht die Beschriftung über den Knöpfen.
+    final stacked = MediaQuery.textScalerOf(context).scale(1) > 1.5;
+    final label = Text('Anzahl', style: style);
+    final controls = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _RoundIconButton(
+          key: const ValueKey('piece-minus'),
+          icon: CupertinoIcons.minus,
+          semanticLabel: 'Ein Stück weniger',
+          onPressed: () => _step(-1),
+        ),
+        SizedBox(
+          width: stacked ? 96 : 64,
+          child: CupertinoTextField.borderless(
+            key: const ValueKey('piece-count-field'),
+            controller: controller,
+            textAlign: TextAlign.center,
+            placeholder: '–',
+            keyboardType: _decimalKeyboard,
+            onChanged: onChanged,
+            style: style,
+            placeholderStyle: style.copyWith(color: colors.placeholderText),
+          ),
+        ),
+        _RoundIconButton(
+          key: const ValueKey('piece-plus'),
+          icon: CupertinoIcons.plus,
+          semanticLabel: 'Ein Stück mehr',
+          onPressed: () => _step(1),
+        ),
+        const SizedBox(width: GainerSpacing.xs),
+        Text('Stk', style: style.copyWith(color: colors.secondaryText)),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: GainerSpacing.m,
+        vertical: GainerSpacing.xxs,
+      ),
+      child: stacked
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [label, controls],
+            )
+          : Row(
+              children: [
+                Expanded(child: label),
+                controls,
+              ],
+            ),
+    );
+  }
 }

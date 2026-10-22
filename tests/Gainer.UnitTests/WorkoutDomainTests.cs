@@ -5,35 +5,6 @@ namespace Gainer.UnitTests;
 [TestClass]
 public sealed class WorkoutDomainTests
 {
-    private static readonly Guid Push = Guid.Parse("00000000-0000-0000-0000-000000000001");
-    private static readonly Guid Pull = Guid.Parse("00000000-0000-0000-0000-000000000002");
-    private static readonly Guid Legs = Guid.Parse("00000000-0000-0000-0000-000000000003");
-
-    [TestMethod]
-    public void NextPlanFollowsTheLastFinishedPlanAndWrapsAround()
-    {
-        Guid[] rotation = [Push, Pull, Legs];
-
-        Assert.AreEqual(Pull, WorkoutRotationSuggestion.Next(rotation, [], Push));
-        Assert.AreEqual(Push, WorkoutRotationSuggestion.Next(rotation, [], Legs));
-    }
-
-    [TestMethod]
-    public void NextPlanSkipsArchivedPlansAndStartsAtTheFirstWhenNothingFinished()
-    {
-        Guid[] rotation = [Push, Pull, Legs];
-
-        Assert.AreEqual(Legs, WorkoutRotationSuggestion.Next(rotation, [Pull], Push));
-        Assert.AreEqual(Push, WorkoutRotationSuggestion.Next(rotation, [], null));
-    }
-
-    [TestMethod]
-    public void EmptyOrFullyArchivedRotationSuggestsNothing()
-    {
-        Assert.IsNull(WorkoutRotationSuggestion.Next([], [], Push));
-        Assert.IsNull(WorkoutRotationSuggestion.Next([Push, Pull], [Push, Pull], Push));
-    }
-
     [TestMethod]
     public void UnknownSetTypeFallsBackToNormal()
     {

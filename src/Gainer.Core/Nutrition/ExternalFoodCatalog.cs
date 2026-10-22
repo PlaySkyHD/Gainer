@@ -9,7 +9,8 @@ public sealed record FoodCatalogProduct(
     IReadOnlyList<string> QualityIndicators,
     DateTime RetrievedAtUtc,
     bool IsStale,
-    string Source = "Open Food Facts");
+    string Source = "Open Food Facts",
+    decimal? ServingGrams = null);
 
 public sealed record FoodCatalogSearchResult(
     IReadOnlyList<FoodCatalogProduct> Products,

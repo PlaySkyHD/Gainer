@@ -196,8 +196,16 @@ public sealed class SmartNutritionPersistenceTests
         }
         await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
         {
-            await new NutritionDayMutationHandler(context, new TestUserContext(userId), TimeProvider.System)
-                .SaveAsync(SaveDay(dayId));
+            // Written in the original schema, not through the current model, which has newer columns.
+            DateTime now = DateTime.UtcNow;
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO tracking.nutrition_days ("Id", "LocalDate", "CreatedAtUtc", "UpdatedAtUtc", "Version", "UserId")
+                VALUES ({dayId}, {new DateOnly(2026, 8, 19)}, {now}, {now}, 1, {userId});
+                INSERT INTO tracking.nutrition_entries
+                    ("Id", "NutritionDayId", "Meal", "Position", "ProductName", "AmountGrams", "AmountUnit", "Kilocalories",
+                     "ProteinGrams", "BasisGrams", "KilocaloriesPerBasis", "ProteinGramsPerBasis", "UserId")
+                VALUES ({Guid.NewGuid()}, {dayId}, 'Breakfast', 0, 'Existing food', 100, 'g', 100, 10, 100, 100, 10, {userId});
+                """);
         }
         await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
         {
@@ -207,6 +215,7 @@ public sealed class SmartNutritionPersistenceTests
             Assert.AreEqual(dayId, day.NutritionDayId);
             Assert.AreEqual("Existing food", day.Entries.Single().ProductName);
             Assert.AreEqual(1, day.Version);
+            Assert.IsNull(day.Entries.Single().Totals.SaltGrams);
             Assert.AreEqual(0, await context.ReusableMeals.CountAsync());
             Assert.AreEqual(0, await context.NutritionTargetSchedules.CountAsync());
         }
@@ -274,10 +283,6 @@ public sealed class SmartNutritionPersistenceTests
     private static SaveNutritionTargetScheduleMutation SaveTargets(
         Guid id, long version, params NutritionTargetVersionDraft[] targets) =>
         SaveNutritionTargetScheduleMutation.Create(Metadata(), id, version, NutritionTargetScheduleDraft.Create(targets));
-
-    private static SaveNutritionDayMutation SaveDay(Guid dayId) => SaveNutritionDayMutation.Create(
-        Metadata(), dayId, new DateOnly(2026, 8, 19), 0,
-        [NutritionEntryInput.Create(Guid.NewGuid(), MealType.Breakfast, 0, "Existing food", 100m, new NutritionPer100Grams(100m, 10m, null, null))]);
 
     private static MutationMetadata Metadata() => MutationMetadata.Create(Guid.NewGuid(), Guid.NewGuid(), 1);
 

@@ -25,6 +25,7 @@ import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/domain/models/training/exercise_catalog_model.dart';
 import 'package:gainer_mobile/domain/models/training/training_plan_model.dart';
+import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/core/shell/mobile_shell.dart';
 import 'package:gainer_mobile/ui/features/body/body_view_model.dart';
@@ -88,7 +89,13 @@ Future<UiDesignFixture> createUiDesignFixture() async {
       ],
     ),
   );
-  await trainingLog.saveRotation([plan.planId]);
+  await trainingLog.schedule.saveRhythm(
+    mode: TrainingScheduleMode.cycle,
+    slots: [
+      TrainingScheduleSlot(planId: plan.planId),
+      const TrainingScheduleSlot.rest(),
+    ],
+  );
   final nutritionRepository = NutritionRepository(store: store);
   final today = _date(DateTime.now());
   await nutritionRepository.saveEntry(
@@ -115,10 +122,7 @@ Future<UiDesignFixture> createUiDesignFixture() async {
     repository: nutritionRepository,
     localDate: today,
   );
-  final progress = ProgressViewModel(
-    InsightsRepository(api, store: store),
-    nutrition: nutritionRepository,
-  );
+  final progress = ProgressViewModel(InsightsRepository(api, store: store));
   final sync = SyncRepository(
     store: store,
     api: api,

@@ -230,12 +230,12 @@ void main() {
     await tester.enterText(kcal, '370');
     tester.testTextInput.hide();
     await tester.pumpAndSettle();
+    // Bis ganz nach unten scrollen; das Formular ist mit Salz länger.
     await tester.scrollUntilVisible(
-      find.text('Manuell speichern'),
+      find.text('Manuell speichern').hitTestable(),
       240,
       scrollable: _sheetScrollable(),
     );
-    await tester.ensureVisible(find.text('Manuell speichern'));
     await tester.tap(find.text('Manuell speichern'));
     await tester.pumpAndSettle();
 
@@ -577,6 +577,309 @@ void main() {
     expect(phase.proteinGrams, 125);
     expect(phase.carbohydrateGrams, 250);
     expect(phase.fatGrams, closeTo(55.56, .01));
+    // Der Standard von 6 g bleibt offen, statt fest gespeichert zu werden.
+    expect(phase.saltGrams, isNull);
+    expect(phase.effectiveSaltGrams, 6);
+  });
+
+  testWidgets('own salt is added to a meal as a zero-calorie entry', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(tester, []);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mittag'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('nutrition-mode-salt')),
+    );
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-salt')));
+    await tester.pumpAndSettle();
+    final add = find.byKey(const ValueKey('nutrition-salt-add'));
+    expect(tester.widget<GainerPillButton>(add).onPressed, isNull);
+
+    await tester.tap(find.text('Teelöffel'));
+    await tester.pump();
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+
+    final entry = harness.viewModel.snapshot!.day.entries.single;
+    expect(entry.productName, 'Salz');
+    expect(entry.meal, NutritionMeal.lunch);
+    expect(entry.totals.kilocalories, 0);
+    expect(entry.totals.saltGrams, 6);
+    expect(harness.viewModel.snapshot!.day.totals.saltGrams, 6);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-salt-amount')),
+      '0,8',
+    );
+    await tester.pump();
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    expect(harness.viewModel.snapshot!.day.totals.saltGrams, 6.8);
+  });
+
+  testWidgets('estimate shows inherent salt and offers own salt', (
+    tester,
+  ) async {
+    NutritionEstimateComponent component(
+      String name,
+      double grams,
+      double kcal,
+      double? salt,
+    ) => NutritionEstimateComponent(
+      name: name,
+      amountGrams: grams,
+      totals: NutritionTotals(kilocalories: kcal, saltGrams: salt),
+      confidence: 'medium',
+      dataGaps: const [],
+    );
+    final harness = await _pumpDiary(
+      tester,
+      [],
+      online: _EstimateOnline([
+        component('Pizza Margherita', 350, 890, 3.5),
+        NutritionEstimateComponent(
+          name: 'Reis',
+          amountGrams: 200,
+          totals: const NutritionTotals(kilocalories: 260),
+          confidence: 'medium',
+          dataGaps: const [],
+          sourceUrl: 'https://www.fddb.info/db/de/lebensmittel/reis/index.html',
+        ),
+      ]),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-estimate-text')),
+      'Pizza und Reis',
+    );
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(GainerPillButton, 'Mahlzeit schätzen'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('350 g · 890 kcal · ~3,5 g Salz · mittel'),
+      findsOneWidget,
+    );
+    expect(find.text('200 g · 260 kcal · mittel · fddb.info'), findsOneWidget);
+    final addSalt = find.byKey(const ValueKey('nutrition-estimate-add-salt'));
+    expect(addSalt, findsOneWidget);
+    await tester.tap(find.text('Pizza Margherita'));
+    await tester.pumpAndSettle();
+    expect(harness.viewModel.snapshot!.day.totals.saltGrams, 3.5);
+    // Die übrigen Bestandteile und der Salz-Hinweis bleiben stehen.
+    expect(find.text('200 g · 260 kcal · mittel · fddb.info'), findsOneWidget);
+    expect(harness.viewModel.mealEstimateDraft!.components.single.name, 'Reis');
+
+    await tester.ensureVisible(addSalt);
+    await tester.tap(addSalt);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('nutrition-salt-add')), findsOneWidget);
+  });
+
+  testWidgets('a stated salt amount is confirmed as zero-calorie salt', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(
+      tester,
+      [],
+      online: _EstimateOnline(const [
+        NutritionEstimateComponent(
+          name: 'Salz',
+          amountGrams: 6,
+          totals: NutritionTotals(kilocalories: 0, saltGrams: 6),
+          confidence: 'high',
+          dataGaps: [],
+        ),
+      ]),
+    );
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-estimate-text')),
+      'Ein Teelöffel Salz',
+    );
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(GainerPillButton, 'Mahlzeit schätzen'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('6 g · 0 kcal · sicher'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('nutrition-estimate-add-salt')),
+      findsNothing,
+    );
+    await tester.tap(find.text('6 g · 0 kcal · sicher'));
+    await tester.pumpAndSettle();
+    final entry = harness.viewModel.snapshot!.day.entries.single;
+    expect(entry.totals.kilocalories, 0);
+    expect(entry.totals.saltGrams, 6);
+  });
+
+  testWidgets('manual entry in pieces computes the grams and shows pieces', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(tester, []);
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manuell erfassen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-entry-name')),
+      'Ei, gekocht',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-entry-kcal')),
+      '155',
+    );
+    final pieceGrams = find.byKey(const ValueKey('nutrition-piece-grams'));
+    await tester.ensureVisible(pieceGrams);
+    await tester.enterText(pieceGrams, '50');
+    final plus = find.descendant(
+      of: find.byKey(const ValueKey('nutrition-piece-count')),
+      matching: find.byKey(const ValueKey('piece-plus')),
+    );
+    await tester.ensureVisible(plus);
+    for (var i = 0; i < 4; i++) {
+      await tester.tap(plus);
+      await tester.pump();
+    }
+    expect(
+      tester
+          .widget<CupertinoTextField>(
+            find.byKey(const ValueKey('nutrition-entry-amount')),
+          )
+          .controller!
+          .text,
+      '200',
+    );
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Manuell speichern').hitTestable(),
+      240,
+      scrollable: _sheetScrollable(),
+    );
+    await tester.tap(find.text('Manuell speichern'));
+    await tester.pumpAndSettle();
+
+    final entry = harness.viewModel.snapshot!.day.entries.single;
+    expect(entry.amountGrams, 200);
+    expect(entry.pieceGrams, 50);
+    expect(entry.pieceCount, 4);
+    expect(entry.totals.kilocalories, 310);
+    expect(find.text('4 Stk · 310 kcal'), findsOneWidget);
+  });
+
+  testWidgets('recent food with a piece weight is added by count', (
+    tester,
+  ) async {
+    final harness = await _pumpDiary(tester, []);
+    await harness.viewModel.addFood(
+      NutritionFood(
+        name: 'Ei, Größe M',
+        brand: null,
+        per100Grams: const NutritionTotals(kilocalories: 155),
+        source: const NutritionSource(
+          provider: 'Open Food Facts',
+          basisGrams: 100,
+        ),
+        pieceGrams: 50,
+      ),
+      amountGrams: 50,
+      pieceCount: 1,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Zuletzt verwendet'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1 Stk = 50 g'), findsOneWidget);
+    final plus = find.descendant(
+      of: find.byKey(const ValueKey('nutrition-entry-pieces')),
+      matching: find.byKey(const ValueKey('piece-plus')),
+    );
+    await tester.tap(plus);
+    await tester.pump();
+    await tester.tap(plus);
+    await tester.pump();
+    await tester.tap(find.textContaining('1 Stk = 50 g'));
+    await tester.pumpAndSettle();
+
+    final added = harness.viewModel.snapshot!.day.entries.last;
+    expect(added.pieceCount, 2);
+    expect(added.amountGrams, 100);
+  });
+
+  testWidgets('target phase stores a custom salt limit', (tester) async {
+    _usePhoneViewport(tester);
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final repository = NutritionRepository(
+      store: LocalSyncStore(database: database, accountId: accountId),
+      ids: () => '00000000-0000-4000-8000-000000000036',
+      clock: () => DateTime.utc(2026, 10, 12, 10),
+    );
+    final viewModel = NutritionViewModel(
+      repository: repository,
+      localDate: '2026-10-12',
+    );
+    await tester.pumpWidget(
+      CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
+    );
+    await tester.pumpAndSettle();
+    await _openPlanning(tester);
+    await tester.scrollUntilVisible(
+      find.text('Zielphase hinzufügen'),
+      260,
+      scrollable: _verticalScrollable(),
+    );
+    await tester.tap(find.text('Zielphase hinzufügen'));
+    await tester.pumpAndSettle();
+    final fields = find.byType(CupertinoTextField);
+    await tester.enterText(fields.at(0), 'Weniger Salz');
+    await tester.enterText(fields.at(1), '2026-10-13');
+    final salt = find.byKey(const ValueKey('nutrition-target-salt'));
+    await tester.ensureVisible(salt);
+    expect(tester.widget<CupertinoTextField>(salt).controller!.text, '6');
+    await tester.enterText(salt, '0');
+    await tester.pump();
+    expect(find.text('Sichern').hitTestable(), findsOneWidget);
+    expect(
+      tester
+          .widget<GainerPillButton>(
+            find.ancestor(
+              of: find.text('Sichern'),
+              matching: find.byType(GainerPillButton),
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.enterText(salt, '5');
+    await tester.pump();
+    await tester.ensureVisible(find.text('Sichern'));
+    await tester.tap(find.text('Sichern'));
+    await tester.pumpAndSettle();
+    final phase = viewModel.snapshot!.targetSchedule!.versions.single;
+    expect(phase.saltGrams, 5);
   });
 
   testWidgets(
@@ -822,7 +1125,8 @@ void main() {
     expect(find.text('Tagesziele festlegen'), findsOneWidget);
     expect(find.textContaining('trotzdem angezeigt'), findsNothing);
     expect(find.text('Protein'), findsOneWidget);
-    expect(find.text('– g'), findsNWidgets(3));
+    // Protein, Kohlenhydrate, Fett und Salz ohne Angabe.
+    expect(find.text('– g'), findsNWidgets(4));
   });
 
   testWidgets('day card with targets shows progress and remaining kcal', (
@@ -967,13 +1271,17 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const ValueKey('nutrition-entry-kcal')),
-      '0',
+      '-5',
     );
     tester.testTextInput.hide();
     await tester.pumpAndSettle();
     await tester.tap(find.text('Übernehmen'));
     await tester.pumpAndSettle();
-    expect(find.text('Die Kalorien müssen größer als 0 sein.'), findsOneWidget);
+    // 0 kcal ist erlaubt (z. B. Salz), negative Werte nicht.
+    expect(
+      find.text('Die Kalorien dürfen nicht negativ sein.'),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey('nutrition-entry-options')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('nutrition-entry-close')));
@@ -1054,6 +1362,7 @@ void main() {
     await _pumpDiary(
       tester,
       [],
+      inTab: true,
       capture: _FakeCapture(),
       online: _LabelOnline(
         NutritionLabelScanDraft(
@@ -1083,6 +1392,12 @@ void main() {
             status: 'Implausible',
             evidence: null,
           ),
+          saltGrams: const NutritionLabelFieldDraft(
+            originalValue: 0.36,
+            per100Grams: 1.2,
+            status: 'Converted',
+            evidence: 'Salz 0,36 g',
+          ),
           canConfirm: true,
           provider: 'OpenAI',
           providerModelVersion: 'model',
@@ -1099,7 +1414,7 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('nutrition-mode-label')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Nährwertetikett erfassen'));
+    await tester.tap(find.text('Etikett fotografieren'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Fortfahren'));
     await tester.pumpAndSettle();
@@ -1111,9 +1426,15 @@ void main() {
     expect(find.text('pro Portion'), findsOneWidget);
     expect(find.text('400 kcal'), findsOneWidget);
     expect(find.text('12,5 g'), findsOneWidget);
+    expect(find.text('1,2 g'), findsOneWidget);
     expect(find.text('nicht erkannt'), findsOneWidget);
     expect(find.text('unplausibel'), findsOneWidget);
     expect(find.textContaining('30 g pro Portion'), findsOneWidget);
+    // Die Prüfseite liegt über dem Hinzufügen-Sheet und ist bedienbar.
+    expect(
+      find.byKey(const ValueKey('nutrition-label-close')).hitTestable(),
+      findsOneWidget,
+    );
   });
 
   testWidgets('dictation writes into the meal description and stops', (
@@ -1128,7 +1449,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
     await tester.pump();
-    expect(find.text('Fertig'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.stop_fill), findsOneWidget);
     expect(find.textContaining('Ich höre zu.'), findsOneWidget);
 
     dictation.transcript = 'Zwei Eier und ein Toast';
@@ -1138,8 +1459,40 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
     await tester.pump(const Duration(milliseconds: 200));
     expect(dictation.stopped, isTrue);
-    expect(find.text('Diktieren'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.mic_fill), findsOneWidget);
     expect(find.text('Zwei Eier und ein Toast'), findsOneWidget);
+  });
+
+  testWidgets('closing the sheet clears the description and stops dictation', (
+    tester,
+  ) async {
+    final dictation = _FakeDictation();
+    await _pumpDiary(tester, [], dictation: dictation);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-estimate-text')),
+      'Pizza',
+    );
+    await tester.tap(find.byKey(const ValueKey('nutrition-dictation')));
+    await tester.pump();
+    expect(dictation.status, DictationStatus.listening);
+
+    Navigator.of(
+      tester.element(find.byKey(const ValueKey('nutrition-estimate-text'))),
+    ).pop();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+    expect(dictation.status, DictationStatus.idle);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-mode-estimate')));
+    await tester.pumpAndSettle();
+    expect(find.text('Pizza'), findsNothing);
   });
 
   testWidgets('dictation is hidden without a platform', (tester) async {
@@ -1164,6 +1517,25 @@ class _FakeCapture implements CapturePlatform {
 
   @override
   Future<String?> scanBarcode() async => null;
+}
+
+class _EstimateOnline implements NutritionOnlineProvider {
+  _EstimateOnline(this.components);
+
+  final List<NutritionEstimateComponent> components;
+
+  @override
+  Future<MealEstimateDraft> estimateMeal(String description) async =>
+      MealEstimateDraft(
+        components: components,
+        provider: 'OpenAI',
+        schemaVersion: 'meal-estimate-v2',
+        estimatedAtUtc: DateTime.utc(2026, 10, 12, 10),
+      );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError(invocation.memberName.toString());
 }
 
 class _LabelOnline implements NutritionOnlineProvider {
@@ -1229,6 +1601,7 @@ Future<_DiaryHarness> _pumpDiary(
   CapturePlatform? capture,
   NutritionOnlineProvider? online,
   DictationPlatform? dictation,
+  bool inTab = false,
 }) async {
   _usePhoneViewport(tester);
   final database = LocalDatabase(NativeDatabase.memory());
@@ -1269,7 +1642,14 @@ Future<_DiaryHarness> _pumpDiary(
     dictation: dictation,
   );
   await tester.pumpWidget(
-    CupertinoApp(home: NutritionScreen(viewModel: viewModel)),
+    CupertinoApp(
+      // Wie in der App: eigener Navigator je Tab, Sheets auf dem Root-Navigator.
+      home: inTab
+          ? CupertinoTabView(
+              builder: (_) => NutritionScreen(viewModel: viewModel),
+            )
+          : NutritionScreen(viewModel: viewModel),
+    ),
   );
   await tester.pumpAndSettle();
   return _DiaryHarness(viewModel: viewModel, entryIds: entryIds, store: store);
