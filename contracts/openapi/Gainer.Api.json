@@ -3651,7 +3651,6 @@
           "proteinGramsPer100Grams",
           "carbohydrateGramsPer100Grams",
           "fatGramsPer100Grams",
-          "saltGramsPer100Grams",
           "qualityIndicators",
           "retrievedAtUtc",
           "isStale",
@@ -3714,15 +3713,6 @@
             ],
             "format": "double"
           },
-          "saltGramsPer100Grams": {
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
-            "type": [
-              "null",
-              "number",
-              "string"
-            ],
-            "format": "double"
-          },
           "qualityIndicators": {
             "type": "array",
             "items": {
@@ -3738,6 +3728,15 @@
           },
           "source": {
             "type": "string"
+          },
+          "saltGramsPer100Grams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -4318,7 +4317,6 @@
           "proteinGrams",
           "carbohydrateGrams",
           "fatGrams",
-          "saltGrams",
           "canConfirm",
           "provider",
           "providerModelVersion",
@@ -4351,9 +4349,6 @@
           "fatGrams": {
             "$ref": "#/components/schemas/NutritionLabelFieldResponse"
           },
-          "saltGrams": {
-            "$ref": "#/components/schemas/NutritionLabelFieldResponse"
-          },
           "canConfirm": {
             "type": "boolean"
           },
@@ -4369,6 +4364,16 @@
           "scannedAtUtc": {
             "type": "string",
             "format": "date-time"
+          },
+          "saltGrams": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NutritionLabelFieldResponse"
+              }
+            ]
           }
         }
       },
@@ -4377,8 +4382,7 @@
           "kilocalories",
           "protein",
           "carbohydrates",
-          "fat",
-          "salt"
+          "fat"
         ],
         "type": "object",
         "properties": {
@@ -4395,7 +4399,14 @@
             "$ref": "#/components/schemas/NutrientProgressResponse"
           },
           "salt": {
-            "$ref": "#/components/schemas/NutrientProgressResponse"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NutrientProgressResponse"
+              }
+            ]
           }
         }
       },
@@ -4503,9 +4514,7 @@
           "algorithmVersion",
           "reason",
           "macroEnergyKilocalories",
-          "requiresEnergyMismatchConfirmation",
-          "saltGrams",
-          "effectiveSaltGrams"
+          "requiresEnergyMismatchConfirmation"
         ],
         "type": "object",
         "properties": {
@@ -4630,6 +4639,7 @@
           "effectiveSaltGrams": {
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
             "type": [
+              "null",
               "number",
               "string"
             ],
@@ -4642,8 +4652,7 @@
           "kilocalories",
           "proteinGrams",
           "carbohydrateGrams",
-          "fatGrams",
-          "saltGrams"
+          "fatGrams"
         ],
         "type": "object",
         "properties": {

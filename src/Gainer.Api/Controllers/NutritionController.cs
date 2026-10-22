@@ -180,12 +180,12 @@ public sealed class NutritionController(
                 LabelField(draft.ProteinGrams),
                 LabelField(draft.CarbohydrateGrams),
                 LabelField(draft.FatGrams),
-                LabelField(draft.SaltGrams),
                 draft.CanConfirm,
                 draft.Provider,
                 draft.ProviderModelVersion,
                 draft.ParserVersion,
-                draft.ScannedAtUtc));
+                draft.ScannedAtUtc,
+                LabelField(draft.SaltGrams)));
         }
         catch (MealEstimationException exception)
         {

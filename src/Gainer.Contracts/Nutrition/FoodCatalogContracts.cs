@@ -9,11 +9,11 @@ public sealed record FoodCatalogProductResponse(
     decimal? ProteinGramsPer100Grams,
     decimal? CarbohydrateGramsPer100Grams,
     decimal? FatGramsPer100Grams,
-    decimal? SaltGramsPer100Grams,
     IReadOnlyList<string> QualityIndicators,
     DateTime RetrievedAtUtc,
     bool IsStale,
-    string Source);
+    string Source,
+    decimal? SaltGramsPer100Grams = null);
 
 public sealed record FoodCatalogSearchResponse(
     IReadOnlyList<FoodCatalogProductResponse> Products,
