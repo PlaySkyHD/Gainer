@@ -138,7 +138,8 @@ public sealed class NutritionController(
                     item.FatGrams,
                     item.Confidence.ToString(),
                     item.DataGaps,
-                    item.SaltGrams)).ToArray(),
+                    item.SaltGrams,
+                    item.SourceUrl)).ToArray(),
                 draft.Provider,
                 draft.SchemaVersion,
                 draft.EstimatedAtUtc));

@@ -77,6 +77,7 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
               ),
               confidence: item.confidence,
               dataGaps: List.unmodifiable(item.dataGaps),
+              sourceUrl: item.sourceUrl,
             ),
           ),
         ),

@@ -16,7 +16,8 @@ public sealed record MealEstimateComponentDraft(
     decimal? FatGrams,
     MealEstimateConfidence Confidence,
     IReadOnlyList<string> DataGaps,
-    decimal? SaltGrams = null)
+    decimal? SaltGrams = null,
+    string? SourceUrl = null)
 {
     public static MealEstimateComponentDraft Create(
         string name,
@@ -27,7 +28,8 @@ public sealed record MealEstimateComponentDraft(
         decimal? fatGrams,
         MealEstimateConfidence confidence,
         IEnumerable<string> dataGaps,
-        decimal? saltGrams = null)
+        decimal? saltGrams = null,
+        string? sourceUrl = null)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(dataGaps);
@@ -57,7 +59,7 @@ public sealed record MealEstimateComponentDraft(
         if (errors.Count > 0) throw new NutritionValidationException(errors);
         return new MealEstimateComponentDraft(
             normalizedName, amountGrams, kilocalories, proteinGrams, carbohydrateGrams,
-            fatGrams, confidence, normalizedGaps, saltGrams);
+            fatGrams, confidence, normalizedGaps, saltGrams, sourceUrl);
     }
 
     private static void ValidateOptional(decimal? value, string field, Dictionary<string, string> errors)
