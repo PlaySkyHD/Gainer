@@ -9,7 +9,7 @@
 Eine Aufgabe ist erst abgeschlossen, wenn:
 
 - die beschriebenen Akzeptanzkriterien erfüllt sind,
-- relevante Unit-, Integrations-, Architektur-, Contract- oder Browsertests ergänzt wurden,
+- relevante Unit-, Integrations-, Architektur-, Contract- oder Widget-Tests ergänzt wurden,
 - Nutzerisolation und Fehlerpfade bei betroffenen Datenzugriffen geprüft wurden,
 - keine Secrets oder persönlichen Fitnessdaten in Quellcode, Logs oder Testartefakten stehen,
 - Dokumentation und generierte Verträge bei Bedarf aktualisiert sind,
