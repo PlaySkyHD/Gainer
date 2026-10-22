@@ -4174,6 +4174,12 @@
                 "$ref": "#/components/schemas/NutritionProgressResponse"
               }
             ]
+          },
+          "dayKind": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -4470,6 +4476,96 @@
           }
         }
       },
+      "NutritionRestDayTargetResponse": {
+        "required": [
+          "inputMode",
+          "kilocalories",
+          "proteinGrams",
+          "carbohydrateGrams",
+          "fatGrams",
+          "proteinPercent",
+          "carbohydratePercent",
+          "fatPercent",
+          "macroEnergyKilocalories",
+          "requiresEnergyMismatchConfirmation"
+        ],
+        "type": "object",
+        "properties": {
+          "inputMode": {
+            "type": "string"
+          },
+          "kilocalories": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "proteinGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "carbohydrateGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "fatGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "proteinPercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "carbohydratePercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "fatPercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "macroEnergyKilocalories": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "requiresEnergyMismatchConfirmation": {
+            "type": "boolean"
+          }
+        }
+      },
       "NutritionSourceResponse": {
         "required": [
           "provider",
@@ -4704,6 +4800,16 @@
               "string"
             ],
             "format": "double"
+          },
+          "restDay": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NutritionRestDayTargetResponse"
+              }
+            ]
           }
         }
       },

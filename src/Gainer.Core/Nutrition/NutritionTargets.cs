@@ -51,6 +51,16 @@ public sealed class NutritionTargetVersion : UserOwnedEntity
 
     /// <summary>Daily salt limit in grams; null means the default of <see cref="NutritionLimits.DefaultDailySaltTargetGrams"/>.</summary>
     public decimal? SaltGrams { get; set; }
+
+    /// <summary>Separate rest day target; present exactly when <see cref="RestKilocalories"/> is set.</summary>
+    public NutritionTargetInputMode? RestInputMode { get; set; }
+    public decimal? RestKilocalories { get; set; }
+    public decimal? RestProteinGrams { get; set; }
+    public decimal? RestCarbohydrateGrams { get; set; }
+    public decimal? RestFatGrams { get; set; }
+    public decimal? RestProteinPercent { get; set; }
+    public decimal? RestCarbohydratePercent { get; set; }
+    public decimal? RestFatPercent { get; set; }
     public NutritionTargetOrigin Origin { get; set; }
     public string? AlgorithmVersion { get; set; }
     public string? Reason { get; set; }
@@ -75,7 +85,8 @@ public sealed record NutritionTargetVersionDraft(
     string? Reason,
     decimal MacroEnergyKilocalories,
     bool RequiresEnergyMismatchConfirmation,
-    decimal? SaltGrams = null)
+    decimal? SaltGrams = null,
+    NutritionRestDayTargetDraft? RestDay = null)
 {
     /// <summary>The salt limit that applies, falling back to the default when none is set.</summary>
     public decimal EffectiveSaltGrams => SaltGrams ?? NutritionLimits.DefaultDailySaltTargetGrams;
@@ -191,11 +202,12 @@ public sealed record NutritionTargetVersionDraft(
         NutritionTargetOrigin origin,
         string? algorithmVersion,
         string? reason,
-        decimal? saltGrams = null)
+        decimal? saltGrams = null,
+        NutritionRestDayTargetDraft? restDay = null)
         => CreateCore(
             targetVersionId, name, category, effectiveFrom, effectiveUntil, kilocalories, inputMode,
             proteinGrams, carbohydrateGrams, fatGrams, proteinPercent, carbohydratePercent, fatPercent,
-            origin, algorithmVersion, reason, saltGrams);
+            origin, algorithmVersion, reason, saltGrams, restDay);
 
     private static NutritionTargetVersionDraft CreateCore(
         Guid targetVersionId,
@@ -214,7 +226,8 @@ public sealed record NutritionTargetVersionDraft(
         NutritionTargetOrigin origin,
         string? algorithmVersion,
         string? reason,
-        decimal? saltGrams)
+        decimal? saltGrams,
+        NutritionRestDayTargetDraft? restDay = null)
     {
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
         if (targetVersionId == Guid.Empty) errors[nameof(TargetVersionId)] = "TargetVersionId cannot be empty.";
@@ -244,7 +257,8 @@ public sealed record NutritionTargetVersionDraft(
             proteinGrams, carbohydrateGrams, fatGrams, proteinPercent, carbohydratePercent, fatPercent,
             origin, normalizedAlgorithmVersion, normalizedReason, macroEnergy,
             NutritionCalculator.HasMacroEnergyMismatch(kilocalories, proteinGrams, carbohydrateGrams, fatGrams),
-            saltGrams);
+            saltGrams,
+            restDay);
     }
 
     private static void ValidateAutomationMetadata(string? algorithmVersion, string? reason, Dictionary<string, string> errors)
@@ -255,7 +269,7 @@ public sealed record NutritionTargetVersionDraft(
         if (reason is not null) errors[nameof(Reason)] = "Manual targets cannot have an automated reason.";
     }
 
-    private readonly record struct MacroTargetInput(
+    internal readonly record struct MacroTargetInput(
         decimal Kilocalories,
         decimal ProteinGrams,
         decimal CarbohydrateGrams,
@@ -264,7 +278,7 @@ public sealed record NutritionTargetVersionDraft(
         decimal? CarbohydratePercent,
         decimal? FatPercent);
 
-    private static void ValidateMacroDistribution(
+    internal static void ValidateMacroDistribution(
         NutritionTargetInputMode inputMode,
         MacroTargetInput macros,
         Dictionary<string, string> errors)
@@ -300,9 +314,54 @@ public sealed record NutritionTargetVersionDraft(
         }
     }
 
-    private static void ValidateTarget(decimal value, decimal max, string field, Dictionary<string, string> errors)
+    internal static void ValidateTarget(decimal value, decimal max, string field, Dictionary<string, string> errors)
     {
         if (value is <= 0m || value > max) errors[field] = $"{field} must be positive and no greater than {max}.";
+    }
+}
+
+/// <summary>Optional rest day target of a target version. Validated like the main (training day) target.</summary>
+public sealed record NutritionRestDayTargetDraft(
+    NutritionTargetInputMode InputMode,
+    decimal Kilocalories,
+    decimal ProteinGrams,
+    decimal CarbohydrateGrams,
+    decimal FatGrams,
+    decimal? ProteinPercent,
+    decimal? CarbohydratePercent,
+    decimal? FatPercent,
+    decimal MacroEnergyKilocalories,
+    bool RequiresEnergyMismatchConfirmation)
+{
+    private const string Prefix = "RestDay.";
+
+    public static NutritionRestDayTargetDraft Create(
+        NutritionTargetInputMode inputMode,
+        decimal kilocalories,
+        decimal proteinGrams,
+        decimal carbohydrateGrams,
+        decimal fatGrams,
+        decimal? proteinPercent,
+        decimal? carbohydratePercent,
+        decimal? fatPercent)
+    {
+        var errors = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!Enum.IsDefined(inputMode)) errors[nameof(InputMode)] = "Input mode is invalid.";
+        NutritionTargetVersionDraft.ValidateTarget(kilocalories, NutritionLimits.MaxDailyKilocalories, nameof(Kilocalories), errors);
+        NutritionTargetVersionDraft.ValidateTarget(proteinGrams, NutritionLimits.MaxDailyMacroGrams, nameof(ProteinGrams), errors);
+        NutritionTargetVersionDraft.ValidateTarget(carbohydrateGrams, NutritionLimits.MaxDailyMacroGrams, nameof(CarbohydrateGrams), errors);
+        NutritionTargetVersionDraft.ValidateTarget(fatGrams, NutritionLimits.MaxDailyMacroGrams, nameof(FatGrams), errors);
+        NutritionTargetVersionDraft.ValidateMacroDistribution(
+            inputMode,
+            new NutritionTargetVersionDraft.MacroTargetInput(
+                kilocalories, proteinGrams, carbohydrateGrams, fatGrams, proteinPercent, carbohydratePercent, fatPercent),
+            errors);
+        if (errors.Count > 0)
+            throw new NutritionValidationException(errors.ToDictionary(item => Prefix + item.Key, item => item.Value, StringComparer.Ordinal));
+        return new NutritionRestDayTargetDraft(
+            inputMode, kilocalories, proteinGrams, carbohydrateGrams, fatGrams, proteinPercent, carbohydratePercent, fatPercent,
+            NutritionCalculator.CalculateMacroEnergy(proteinGrams, carbohydrateGrams, fatGrams),
+            NutritionCalculator.HasMacroEnergyMismatch(kilocalories, proteinGrams, carbohydrateGrams, fatGrams));
     }
 }
 

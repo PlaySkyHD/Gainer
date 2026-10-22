@@ -290,6 +290,10 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DayKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<DateOnly>("LocalDate")
                         .HasColumnType("date");
 
@@ -308,7 +312,165 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId", "LocalDate")
                         .IsUnique();
 
-                    b.ToTable("nutrition_days", "tracking");
+                    b.ToTable("nutrition_days", "tracking", t =>
+                        {
+                            t.HasCheckConstraint("CK_nutrition_days_day_kind", "\"DayKind\" IS NULL OR \"DayKind\" IN ('Training', 'Rest')");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Core.Nutrition.NutritionDayTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DayKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "UpdatedAtUtc");
+
+                    b.ToTable("nutrition_day_templates", "tracking", t =>
+                        {
+                            t.HasCheckConstraint("CK_nutrition_day_templates_day_kind", "\"DayKind\" IS NULL OR \"DayKind\" IN ('Training', 'Rest')");
+
+                            t.HasCheckConstraint("CK_nutrition_day_templates_name", "length(trim(\"Name\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Core.Nutrition.NutritionDayTemplateEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AmountGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<decimal>("BasisGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<string>("Brand")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<decimal?>("CarbohydrateGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal?>("CarbohydrateGramsPerBasis")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal?>("FatGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal?>("FatGramsPerBasis")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal>("Kilocalories")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal>("KilocaloriesPerBasis")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<string>("Meal")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("NutritionDayTemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("PieceCount")
+                        .HasPrecision(7, 2)
+                        .HasColumnType("numeric(7,2)");
+
+                    b.Property<decimal?>("PieceGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal?>("ProteinGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal?>("ProteinGramsPerBasis")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("RetrievedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("SaltGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal?>("SaltGramsPerBasis")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "NutritionDayTemplateId", "Meal", "Position")
+                        .IsUnique();
+
+                    b.ToTable("nutrition_day_template_entries", "tracking", t =>
+                        {
+                            t.HasCheckConstraint("CK_nutrition_day_template_entries_amount", "\"AmountGrams\" > 0");
+
+                            t.HasCheckConstraint("CK_nutrition_day_template_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" >= 0");
+
+                            t.HasCheckConstraint("CK_nutrition_day_template_entries_meal", "\"Meal\" IN ('Breakfast', 'Lunch', 'Dinner', 'Snacks')");
+
+                            t.HasCheckConstraint("CK_nutrition_day_template_entries_name", "length(trim(\"ProductName\")) > 0");
+
+                            t.HasCheckConstraint("CK_nutrition_day_template_entries_position", "\"Position\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("Gainer.Core.Nutrition.NutritionEntry", b =>
@@ -547,6 +709,38 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<decimal?>("RestCarbohydrateGrams")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("RestCarbohydratePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal?>("RestFatGrams")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("RestFatPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<string>("RestInputMode")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<decimal?>("RestKilocalories")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("RestProteinGrams")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("RestProteinPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
                     b.Property<decimal?>("SaltGrams")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)");
@@ -574,6 +768,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_nutrition_target_versions_name", "length(trim(\"Name\")) > 0");
 
                             t.HasCheckConstraint("CK_nutrition_target_versions_origin", "\"Origin\" = 'Manual'");
+
+                            t.HasCheckConstraint("CK_nutrition_target_versions_rest", "(\"RestKilocalories\" IS NULL AND \"RestInputMode\" IS NULL AND \"RestProteinGrams\" IS NULL AND \"RestCarbohydrateGrams\" IS NULL AND \"RestFatGrams\" IS NULL AND \"RestProteinPercent\" IS NULL AND \"RestCarbohydratePercent\" IS NULL AND \"RestFatPercent\" IS NULL) OR (\"RestKilocalories\" > 0 AND \"RestKilocalories\" <= 20000 AND \"RestProteinGrams\" > 0 AND \"RestProteinGrams\" <= 2000 AND \"RestCarbohydrateGrams\" > 0 AND \"RestCarbohydrateGrams\" <= 2000 AND \"RestFatGrams\" > 0 AND \"RestFatGrams\" <= 2000 AND ((\"RestInputMode\" = 'Grams' AND \"RestProteinPercent\" IS NULL AND \"RestCarbohydratePercent\" IS NULL AND \"RestFatPercent\" IS NULL) OR (\"RestInputMode\" = 'Percent' AND \"RestProteinPercent\" > 0 AND \"RestCarbohydratePercent\" > 0 AND \"RestFatPercent\" > 0 AND \"RestProteinPercent\" + \"RestCarbohydratePercent\" + \"RestFatPercent\" = 100)))");
 
                             t.HasCheckConstraint("CK_nutrition_target_versions_salt", "\"SaltGrams\" IS NULL OR (\"SaltGrams\" > 0 AND \"SaltGrams\" <= 100)");
                         });
@@ -4681,6 +4877,33 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Gainer.Core.Nutrition.NutritionDayTemplate", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Nutrition.NutritionDayTemplateEntry", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gainer.Core.Nutrition.NutritionDayTemplate", "NutritionDayTemplate")
+                        .WithMany("Entries")
+                        .HasForeignKey("UserId", "NutritionDayTemplateId")
+                        .HasPrincipalKey("UserId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NutritionDayTemplate");
+                });
+
             modelBuilder.Entity("Gainer.Core.Nutrition.NutritionEntry", b =>
                 {
                     b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
@@ -5171,6 +5394,11 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Gainer.Core.Nutrition.NutritionDay", b =>
+                {
+                    b.Navigation("Entries");
+                });
+
+            modelBuilder.Entity("Gainer.Core.Nutrition.NutritionDayTemplate", b =>
                 {
                     b.Navigation("Entries");
                 });

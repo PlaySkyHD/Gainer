@@ -34,7 +34,8 @@ public sealed record NutritionDayResponse(
     DateTime? CreatedAtUtc,
     DateTime? UpdatedAtUtc,
     long Version,
-    NutritionProgressResponse? Progress);
+    NutritionProgressResponse? Progress,
+    string? DayKind = null);
 
 public sealed record NutrientProgressResponse(
     decimal Consumed,
@@ -97,7 +98,20 @@ public sealed record NutritionTargetVersionResponse(
     decimal MacroEnergyKilocalories,
     bool RequiresEnergyMismatchConfirmation,
     decimal? SaltGrams = null,
-    decimal? EffectiveSaltGrams = null);
+    decimal? EffectiveSaltGrams = null,
+    NutritionRestDayTargetResponse? RestDay = null);
+
+public sealed record NutritionRestDayTargetResponse(
+    string InputMode,
+    decimal Kilocalories,
+    decimal ProteinGrams,
+    decimal CarbohydrateGrams,
+    decimal FatGrams,
+    decimal? ProteinPercent,
+    decimal? CarbohydratePercent,
+    decimal? FatPercent,
+    decimal MacroEnergyKilocalories,
+    bool RequiresEnergyMismatchConfirmation);
 
 public sealed record NutritionTargetScheduleResponse(
     Guid? NutritionTargetScheduleId,

@@ -66,65 +66,58 @@ public sealed class NutritionTargetScheduleMutationHandler(
         return snapshot;
     }
 
+    /// <summary>
+    /// Applies the incoming schedule. S is the start of the newest incoming version: days before S stay
+    /// unchanged except for ending the version that covers S - 1; the version starting at S may change;
+    /// later versions may only be dropped while they have not begun. The rules depend on S rather than on
+    /// the server date so that offline edits still sync days later.
+    /// </summary>
     private void ReconcileVersions(
         NutritionTargetSchedule schedule,
-        IReadOnlyCollection<NutritionTargetVersionDraft> incoming,
+        IReadOnlyList<NutritionTargetVersionDraft> incoming,
         DateOnly today,
         List<NutritionTargetVersion> materialized)
     {
-        NutritionTargetVersion[] stored = schedule.Versions.ToArray();
-        foreach (NutritionTargetVersion version in stored)
+        DateOnly changeStart = incoming[^1].EffectiveFrom;
+        DateOnly dayBefore = changeStart.AddDays(-1);
+        Dictionary<Guid, NutritionTargetVersionDraft> incomingById = incoming.ToDictionary(item => item.TargetVersionId);
+        foreach (NutritionTargetVersion version in schedule.Versions.ToArray())
         {
-            NutritionTargetVersionDraft? candidate = incoming.SingleOrDefault(item => item.TargetVersionId == version.Id);
-            if (version.EffectiveFrom <= today)
+            incomingById.Remove(version.Id, out NutritionTargetVersionDraft? candidate);
+            if (version.EffectiveFrom >= changeStart && candidate is null)
             {
-                ReconcileEffectiveVersion(version, candidate, incoming, today);
-                materialized.Add(version);
-                continue;
-            }
-
-            if (candidate is null)
-            {
+                if (version.EffectiveFrom <= today.AddDays(1))
+                    throw new NutritionTargetScheduleConflictException("Target versions that have begun cannot be removed.");
                 context.NutritionTargetVersions.Remove(version);
                 continue;
             }
-            Apply(version, candidate);
+            if (candidate is null)
+                throw new NutritionTargetScheduleConflictException("Target versions before the change cannot be removed.");
+            if (candidate.EffectiveFrom != version.EffectiveFrom)
+                throw new NutritionTargetScheduleConflictException("The start of a stored target version cannot change.");
+            if (version.EffectiveFrom == changeStart)
+            {
+                Apply(version, candidate);
+            }
+            else if (!Matches(version, candidate))
+            {
+                bool coversDayBefore = version.EffectiveUntil is null || version.EffectiveUntil >= dayBefore;
+                if (!coversDayBefore ||
+                    candidate.EffectiveUntil != dayBefore ||
+                    !Matches(version, candidate with { EffectiveUntil = version.EffectiveUntil }))
+                    throw new NutritionTargetScheduleConflictException("Target versions before the change are immutable except for ending the previous one.");
+                version.EffectiveUntil = candidate.EffectiveUntil;
+            }
             materialized.Add(version);
         }
 
-        HashSet<Guid> storedIds = stored.Select(item => item.Id).ToHashSet();
-        AddNewVersions(schedule, incoming.Where(item => !storedIds.Contains(item.TargetVersionId)), today, materialized);
-    }
-
-    private static void ReconcileEffectiveVersion(
-        NutritionTargetVersion version,
-        NutritionTargetVersionDraft? candidate,
-        IReadOnlyCollection<NutritionTargetVersionDraft> incoming,
-        DateOnly today)
-    {
-        if (candidate is null)
-            throw new NutritionTargetScheduleConflictException("Effective target phases cannot be removed.");
-        if (!Matches(version, candidate))
+        foreach (NutritionTargetVersionDraft addition in incomingById.Values)
         {
-            if (!CanCloseOpenPhase(version, candidate, incoming, today))
-                throw new NutritionTargetScheduleConflictException("Effective target phases are immutable except for ending an open phase before a future successor.");
-            version.EffectiveUntil = candidate.EffectiveUntil;
-        }
-    }
-
-    private void AddNewVersions(
-        NutritionTargetSchedule schedule,
-        IEnumerable<NutritionTargetVersionDraft> additions,
-        DateOnly today,
-        List<NutritionTargetVersion> materialized)
-    {
-        foreach (NutritionTargetVersionDraft item in additions)
-        {
-            if (item.EffectiveFrom < today)
-                throw new NutritionTargetScheduleConflictException("New target phases cannot start in the past.");
-            NutritionTargetVersion addition = CreateVersion(schedule.Id, item);
-            context.NutritionTargetVersions.Add(addition);
-            materialized.Add(addition);
+            if (addition.EffectiveFrom != changeStart)
+                throw new NutritionTargetScheduleConflictException("New target versions can only start where the change starts.");
+            NutritionTargetVersion created = CreateVersion(schedule.Id, addition);
+            context.NutritionTargetVersions.Add(created);
+            materialized.Add(created);
         }
     }
 
@@ -142,23 +135,33 @@ public sealed class NutritionTargetScheduleMutationHandler(
         stored.CarbohydratePercent == candidate.CarbohydratePercent &&
         stored.FatPercent == candidate.FatPercent &&
         stored.SaltGrams == candidate.SaltGrams &&
+        RestDayMatches(stored, candidate.RestDay) &&
         stored.Origin == candidate.Origin &&
         string.Equals(stored.AlgorithmVersion, candidate.AlgorithmVersion, StringComparison.Ordinal) &&
         string.Equals(stored.Reason, candidate.Reason, StringComparison.Ordinal);
 
-    private static bool CanCloseOpenPhase(
-        NutritionTargetVersion stored,
-        NutritionTargetVersionDraft candidate,
-        IReadOnlyCollection<NutritionTargetVersionDraft> incoming,
-        DateOnly today)
+    private static bool RestDayMatches(NutritionTargetVersion stored, NutritionRestDayTargetDraft? rest) =>
+        rest is null
+            ? stored.RestKilocalories is null
+            : stored.RestKilocalories == rest.Kilocalories &&
+              stored.RestInputMode == rest.InputMode &&
+              stored.RestProteinGrams == rest.ProteinGrams &&
+              stored.RestCarbohydrateGrams == rest.CarbohydrateGrams &&
+              stored.RestFatGrams == rest.FatGrams &&
+              stored.RestProteinPercent == rest.ProteinPercent &&
+              stored.RestCarbohydratePercent == rest.CarbohydratePercent &&
+              stored.RestFatPercent == rest.FatPercent;
+
+    private static void ApplyRestDay(NutritionTargetVersion target, NutritionRestDayTargetDraft? rest)
     {
-        if (stored.EffectiveUntil is not null || candidate.EffectiveUntil is null || candidate.EffectiveUntil < today)
-            return false;
-        NutritionTargetVersionDraft withoutChangedEnd = candidate with { EffectiveUntil = stored.EffectiveUntil };
-        if (!Matches(stored, withoutChangedEnd)) return false;
-        return incoming.Any(item =>
-            item.TargetVersionId != candidate.TargetVersionId &&
-            item.EffectiveFrom == candidate.EffectiveUntil.Value.AddDays(1));
+        target.RestInputMode = rest?.InputMode;
+        target.RestKilocalories = rest?.Kilocalories;
+        target.RestProteinGrams = rest?.ProteinGrams;
+        target.RestCarbohydrateGrams = rest?.CarbohydrateGrams;
+        target.RestFatGrams = rest?.FatGrams;
+        target.RestProteinPercent = rest?.ProteinPercent;
+        target.RestCarbohydratePercent = rest?.CarbohydratePercent;
+        target.RestFatPercent = rest?.FatPercent;
     }
 
     private static void Apply(NutritionTargetVersion target, NutritionTargetVersionDraft input)
@@ -176,6 +179,7 @@ public sealed class NutritionTargetScheduleMutationHandler(
         target.CarbohydratePercent = input.CarbohydratePercent;
         target.FatPercent = input.FatPercent;
         target.SaltGrams = input.SaltGrams;
+        ApplyRestDay(target, input.RestDay);
         target.Origin = input.Origin;
         target.AlgorithmVersion = input.AlgorithmVersion;
         target.Reason = input.Reason;
@@ -184,25 +188,30 @@ public sealed class NutritionTargetScheduleMutationHandler(
     private Guid CurrentUserId() =>
         userContext.UserId ?? throw new UnauthorizedAccessException("An authenticated user is required.");
 
-    private static NutritionTargetVersion CreateVersion(Guid scheduleId, NutritionTargetVersionDraft input) => new()
+    private static NutritionTargetVersion CreateVersion(Guid scheduleId, NutritionTargetVersionDraft input)
     {
-        Id = input.TargetVersionId,
-        NutritionTargetScheduleId = scheduleId,
-        Name = input.Name,
-        Category = input.Category,
-        EffectiveFrom = input.EffectiveFrom,
-        EffectiveUntil = input.EffectiveUntil,
-        Kilocalories = input.Kilocalories,
-        InputMode = input.InputMode,
-        ProteinGrams = input.ProteinGrams,
-        CarbohydrateGrams = input.CarbohydrateGrams,
-        FatGrams = input.FatGrams,
-        ProteinPercent = input.ProteinPercent,
-        CarbohydratePercent = input.CarbohydratePercent,
-        FatPercent = input.FatPercent,
-        SaltGrams = input.SaltGrams,
-        Origin = input.Origin,
-        AlgorithmVersion = input.AlgorithmVersion,
-        Reason = input.Reason,
-    };
+        var version = new NutritionTargetVersion
+        {
+            Id = input.TargetVersionId,
+            NutritionTargetScheduleId = scheduleId,
+            Name = input.Name,
+            Category = input.Category,
+            EffectiveFrom = input.EffectiveFrom,
+            EffectiveUntil = input.EffectiveUntil,
+            Kilocalories = input.Kilocalories,
+            InputMode = input.InputMode,
+            ProteinGrams = input.ProteinGrams,
+            CarbohydrateGrams = input.CarbohydrateGrams,
+            FatGrams = input.FatGrams,
+            ProteinPercent = input.ProteinPercent,
+            CarbohydratePercent = input.CarbohydratePercent,
+            FatPercent = input.FatPercent,
+            SaltGrams = input.SaltGrams,
+            Origin = input.Origin,
+            AlgorithmVersion = input.AlgorithmVersion,
+            Reason = input.Reason,
+        };
+        ApplyRestDay(version, input.RestDay);
+        return version;
+    }
 }

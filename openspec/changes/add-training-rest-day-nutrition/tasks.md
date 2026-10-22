@@ -4,13 +4,13 @@ Ein PR auf einem Feature-Branch. Commits nach Conventional Commits. Nach jedem A
 
 ## 1. Backend
 
-- [ ] 1.1 Ruhetag-Ziel an `NutritionTargetVersion` und `NutritionTargetVersionDraft` (D2). Die Validierung je Makro-Set wird extrahiert und für beide Sets aufgerufen. Unit-Tests:
+- [x] 1.1 Ruhetag-Ziel an `NutritionTargetVersion` und `NutritionTargetVersionDraft` (D2). Die Validierung je Makro-Set wird extrahiert und für beide Sets aufgerufen. Unit-Tests:
   - vollständiges Ruhetag-Ziel
   - unvollständiges Ruhetag-Ziel
   - Prozent-Summe ≠ 100
   - Energie-Abweichung
   - ohne Ruhetag-Ziel unverändert
-- [ ] 1.2 Neue Regeln im `NutritionTargetScheduleMutationHandler` (D4). Integrationstests für jede Regel:
+- [x] 1.2 Neue Regeln im `NutritionTargetScheduleMutationHandler` (D4). Integrationstests für jede Regel:
   - Ende der Vorversion auf `S - 1` setzen
   - zweite Änderung am selben Tag
   - offline gemachte Änderung, Tage später gesendet
@@ -18,10 +18,10 @@ Ein PR auf einem Feature-Branch. Commits nach Conventional Commits. Nach jedem A
   - neue Version vor einer begonnenen Version wird abgelehnt
   - alte geplante Phase verwerfen
   - Ablauf eines alten Clients („Ende heute, neu ab morgen“)
-- [ ] 1.3 `NutritionDayKind` und `NutritionDay.DayKind`, optionaler Parameter in `SaveNutritionDayMutation.Create` (D5). Unit-Test für eine unbekannte Tagesart.
-- [ ] 1.4 EF-Migration mit nullbaren Spalten, danach `dotnet format`. Executor, Snapshots und Queries übernehmen die neuen Felder.
-- [ ] 1.5 Contracts mit nachgestellten, optionalen Feldern (D8), OpenAPI neu erzeugen. Die Kompatibilitätsprüfung bleibt grün.
-- [ ] 1.6 Integrationstests (`sg docker -c 'dotnet test …'`) mit zwei Nutzern:
+- [x] 1.3 `NutritionDayKind` und `NutritionDay.DayKind`, optionaler Parameter in `SaveNutritionDayMutation.Create` (D5). Unit-Test für eine unbekannte Tagesart.
+- [x] 1.4 EF-Migration mit nullbaren Spalten, danach `dotnet format`. Executor, Snapshots und Queries übernehmen die neuen Felder.
+- [x] 1.5 Contracts mit nachgestellten, optionalen Feldern (D8), OpenAPI neu erzeugen. Die Kompatibilitätsprüfung bleibt grün.
+- [x] 1.6 Integrationstests (`sg docker -c 'dotnet test …'`) mit zwei Nutzern:
   - Ziele mit Ruhetag-Ziel speichern und per Pull lesen
   - Tag mit Tagesart, auch ohne Einträge
   - Versionskonflikt
@@ -67,11 +67,11 @@ Ein PR auf einem Feature-Branch. Commits nach Conventional Commits. Nach jedem A
 
 ## 4. Tagesvorlagen
 
-- [ ] 4.1 Backend:
+- [x] 4.1 Backend:
   - `NutritionDayTemplate` mit Einträgen und `ResourceKind.NutritionDayTemplate = 13`
   - Mutationen speichern und löschen, Handler, Executor, Processor, Snapshots und Pull, Contracts (D10)
   - Tabellen in der EF-Migration aus 1.4
-- [ ] 4.2 Integrationstests mit zwei Nutzern:
+- [x] 4.2 Integrationstests mit zwei Nutzern:
   - speichern, überschreiben, löschen
   - Versionskonflikt
   - idempotente Wiederholung

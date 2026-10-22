@@ -48,6 +48,7 @@ public sealed class NutritionDayMutationHandler(
             day.UpdatedAtUtc = utcNow;
             day.Version++;
         }
+        day.DayKind = mutation.DayKind;
 
         NutritionEntry[] replacementEntries = mutation.Entries
             .Select(input => CreateEntry(day.Id, input))
@@ -106,7 +107,7 @@ public sealed class NutritionDayMutationHandler(
     private Guid CurrentUserId() =>
         userContext.UserId ?? throw new UnauthorizedAccessException("An authenticated user is required.");
 
-    private static NutritionEntry CreateEntry(Guid dayId, NutritionEntryInput input)
+    internal static NutritionEntry CreateEntry(Guid dayId, NutritionEntryInput input)
     {
         NutritionTotals totals = NutritionCalculator.Calculate(input.AmountGrams, input.Per100Grams);
         decimal basis = input.Source?.BasisGrams ?? 100m;

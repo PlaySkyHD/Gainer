@@ -10,10 +10,20 @@ public enum MealType
     Snacks = 4,
 }
 
+/// <summary>Whether a day counts as a training or a rest day for its nutrition target.</summary>
+public enum NutritionDayKind
+{
+    Training = 1,
+    Rest = 2,
+}
+
 public sealed class NutritionDay : UserOwnedEntity
 {
     public Guid Id { get; init; }
     public DateOnly LocalDate { get; init; }
+
+    /// <summary>Kind chosen by the user for this day; null means it is derived from training and schedule.</summary>
+    public NutritionDayKind? DayKind { get; set; }
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; set; }
     public long Version { get; set; }
