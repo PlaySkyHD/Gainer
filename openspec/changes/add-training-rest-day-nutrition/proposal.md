@@ -26,13 +26,13 @@ Seit `add-training-calendar` weiß die App, ob an einem Tag ein Training geplant
   - **Speichern:** Ein Ernährungstag lässt sich mit allen Einträgen als benannte Vorlage speichern (z. B. „Trainingstag“), oder er überschreibt eine bestehende Vorlage.
   - **Anwenden:** Eine Vorlage lässt sich auf jeden Tag anwenden. Hat der Tag schon Einträge, fragt die App „Ersetzen“ oder „Hinzufügen“.
   - **Tagesart:** Eine Vorlage kann optional für Trainings- oder Ruhetage markiert sein. An einem leeren Tag schlägt die App dann die passende Vorlage vor.
+  - **Bearbeiten:** In der Vorlage lassen sich Einträge je Mahlzeit hinzufügen, ändern, in eine andere Mahlzeit verschieben und entfernen.
   - **Unabhängigkeit:** Angewendete Einträge sind Kopien. Spätere Änderungen an der Vorlage ändern keine Tage.
 
 ### Non-Goals
 
 - **Eigene Ziele pro Trainingsplan**, z. B. ein höheres Ziel für den Beintag (spätere Phase).
 - Mehr als zwei Tagesarten oder frei benannte Tagestypen.
-- Einzelne Einträge einer Tagesvorlage direkt bearbeiten. Stattdessen wendet man die Vorlage auf einen Tag an, ändert ihn und überschreibt die Vorlage.
 - Vorlagen automatisch anwenden, ohne dass der Nutzer es bestätigt.
 - Vorlagen mit Portionsfaktor skalieren.
 - Ziele im Voraus für ein künftiges Datum planen. Das konnten Phasen bisher, dafür gibt es aber keinen Bedarf.

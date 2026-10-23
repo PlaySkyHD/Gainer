@@ -411,6 +411,108 @@ void main() {
       expect(find.text('Vorlage „Ruhetag“ übernehmen'), findsNothing);
     });
 
+    testWidgets('the template editor edits, moves, removes and adds entries', (
+      tester,
+    ) async {
+      final harness = await _pump(
+        tester,
+        breakfast: ['Haferflocken', 'Banane'],
+      );
+      await tester.runAsync(
+        () => harness.repository.saveDayAsTemplate(
+          '2026-10-12',
+          name: 'Trainingstag',
+        ),
+      );
+      await harness.viewModel.load();
+      await tester.pumpAndSettle();
+      await _openMenu(tester, 'Gerichte und Vorlagen verwalten');
+      final row = find.byKey(const ValueKey('day-template-Trainingstag'));
+      await tester.scrollUntilVisible(
+        row,
+        200,
+        scrollable: find
+            .byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            )
+            .last,
+      );
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(find.text('Vorlage bearbeiten'), findsOneWidget);
+
+      // Menge ändern.
+      await tester.tap(find.text('Haferflocken'));
+      await tester.pumpAndSettle();
+      expect(find.text('Eintrag bearbeiten'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey('meal-component-amount')),
+        '50',
+      );
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sichern').last);
+      await tester.pumpAndSettle();
+      expect(find.text('50 g · 150 kcal'), findsOneWidget);
+
+      // Entfernen per Wischen nach Bestätigung.
+      await tester.drag(find.text('Banane'), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Entfernen').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Banane'), findsNothing);
+
+      // In eine andere Mahlzeit verschieben.
+      await tester.longPress(find.text('Haferflocken'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Andere Mahlzeit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Snacks').last);
+      await tester.pumpAndSettle();
+
+      // Über den gemeinsamen Dialog zum Mittagessen hinzufügen.
+      final addLunch = find.byKey(const ValueKey('day-template-add-lunch'));
+      await tester.ensureVisible(addLunch);
+      await tester.tap(addLunch);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Manuell erfassen'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-entry-name')),
+        'Reis',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-entry-amount')),
+        '150',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-entry-kcal')),
+        '130',
+      );
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Übernehmen').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Sichern').last);
+      await tester.pumpAndSettle();
+      final template = harness.viewModel.snapshot!.templates.single;
+      expect(
+        [
+          for (final e in template.entries)
+            (e.meal, e.productName, e.amountGrams),
+        ],
+        [
+          (NutritionMeal.lunch, 'Reis', 150.0),
+          (NutritionMeal.snacks, 'Haferflocken', 50.0),
+        ],
+      );
+      // Der Tag, aus dem die Vorlage stammt, bleibt unverändert.
+      expect(harness.viewModel.snapshot!.day.entries, hasLength(2));
+    });
+
     testWidgets('planning lists templates and deletes after confirmation', (
       tester,
     ) async {

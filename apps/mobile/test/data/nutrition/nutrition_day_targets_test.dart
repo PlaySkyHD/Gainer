@@ -424,6 +424,36 @@ void main() {
       },
     );
 
+    test('updating a template renumbers positions per meal', () async {
+      await fillToday();
+      final id = await repository.saveDayAsTemplate('2026-10-22', name: 'Alt');
+      await repository.applyTemplate(id, '2026-10-23');
+      final template = (await repository.readTemplates()).single;
+      final lunch = template.entries.where(
+        (e) => e.meal == NutritionMeal.lunch,
+      );
+      await repository.updateTemplate(
+        id,
+        name: 'Neu',
+        dayKind: NutritionDayKind.rest,
+        entries: [
+          lunch.last,
+          template.entries.first.copyWith(meal: NutritionMeal.lunch),
+        ],
+      );
+      final updated = (await repository.readTemplates()).single;
+      expect(updated.name, 'Neu');
+      expect(updated.dayKind, NutritionDayKind.rest);
+      expect(
+        [for (final e in updated.entries) (e.meal, e.position, e.productName)],
+        [
+          (NutritionMeal.lunch, 0, 'Hähnchen'),
+          (NutritionMeal.lunch, 1, 'Haferflocken'),
+        ],
+      );
+      expect((await repository.read('2026-10-23')).day.entries, hasLength(3));
+    });
+
     test('deleting an unsent template removes it without a mutation', () async {
       await fillToday();
       final id = await repository.saveDayAsTemplate('2026-10-22', name: 'Weg');

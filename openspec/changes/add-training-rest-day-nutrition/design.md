@@ -237,7 +237,7 @@ Weitere Teile:
 - **Vorschlag:** eine Zeile in der leeren Tageskarte: „Vorlage „Ruhetag“ übernehmen“ mit Pill-Button.
 - **Bereich „Tagesvorlagen“** unter „Gespeicherte Gerichte“:
   - Zeilen mit Name und „Ruhetag · 2.180 kcal · P 175 g“.
-  - Antippen zeigt die Einträge nach Mahlzeit, mit Name und Tagesart in der Toolbar bearbeitbar.
+  - Antippen öffnet den Vorlagen-Editor (wie der Gericht-Editor): Name, Tagesart, Einträge je Mahlzeit mit „Hinzufügen“ über den gemeinsamen Dialog (Ziel Entwurf), Tipp zum Ändern im bekannten Bearbeiten-Sheet, langes Drücken für „Andere Mahlzeit“, Wischen zum Entfernen. Gespeichert wird mit `updateTemplate` als vollständiger Stand.
   - Wischen löscht nach Bestätigung.
 - Alle Sheets haben einen Griff, passende Höhe und Tastaturabstand (`showGainerSheet`). Bei Textgröße 2 wird gestapelt.
 
