@@ -10,6 +10,7 @@ typedef NutritionTargetsInput = ({
   NutritionDayTarget training,
   NutritionDayTarget? restDay,
   double? saltGrams,
+  double? fiberGrams,
 });
 
 /// Öffnet den Editor für die Ziele. Liefert die Eingaben oder null bei
@@ -60,12 +61,19 @@ class _NutritionTargetsEditorState extends State<NutritionTargetsEditor> {
           NutritionTargetVersion.defaultSaltGrams,
     ),
   );
+  late final _fiber = TextEditingController(
+    text: _plain(
+      widget.current?.effectiveFiberGrams ??
+          NutritionTargetVersion.defaultFiberGrams,
+    ),
+  );
 
   @override
   void dispose() {
     _training.dispose();
     _rest.dispose();
     _salt.dispose();
+    _fiber.dispose();
     super.dispose();
   }
 
@@ -81,10 +89,23 @@ class _NutritionTargetsEditorState extends State<NutritionTargetsEditor> {
     return value != null && value > 0 && value <= 100;
   }
 
+  double? get _fiberValue {
+    final text = _fiber.text.trim();
+    if (text.isEmpty) return null;
+    return _parse(text);
+  }
+
+  bool get _fiberValid {
+    if (_fiber.text.trim().isEmpty) return true;
+    final value = _fiberValue;
+    return value != null && value > 0 && value <= 100;
+  }
+
   bool get _canSave =>
       _training.target != null &&
       (!_restEnabled || _rest.target != null) &&
-      _saltValid;
+      _saltValid &&
+      _fiberValid;
 
   void _save() {
     final training = _training.target;
@@ -95,10 +116,15 @@ class _NutritionTargetsEditorState extends State<NutritionTargetsEditor> {
     final keepDefault =
         widget.current?.saltGrams == null &&
         salt == NutritionTargetVersion.defaultSaltGrams;
+    final fiber = _fiberValue;
+    final keepFiberDefault =
+        widget.current?.fiberGrams == null &&
+        fiber == NutritionTargetVersion.defaultFiberGrams;
     Navigator.of(context).pop<NutritionTargetsInput>((
       training: training,
       restDay: _restEnabled ? _rest.target : null,
       saltGrams: keepDefault ? null : salt,
+      fiberGrams: keepFiberDefault ? null : fiber,
     ));
   }
 
@@ -190,6 +216,22 @@ class _NutritionTargetsEditorState extends State<NutritionTargetsEditor> {
                   keyPrefix: 'rest',
                 ),
               ],
+              const SizedBox(height: GainerSpacing.l),
+              GainerGroupedSection(
+                footer: _fiberValid
+                    ? 'Mindestens pro Tag, für Trainings- und Ruhetage. Die DGE empfiehlt mindestens 30 g.'
+                    : 'Das Ballaststoffziel muss zwischen 0 und 100 g liegen.',
+                children: [
+                  GainerTextFieldRow(
+                    label: 'Ballaststoffe mindestens',
+                    unit: 'g',
+                    controller: _fiber,
+                    keyboardType: _decimalKeyboard,
+                    fieldKey: const ValueKey('nutrition-target-fiber'),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ],
+              ),
               const SizedBox(height: GainerSpacing.l),
               GainerGroupedSection(
                 footer: _saltValid

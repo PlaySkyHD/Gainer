@@ -380,6 +380,88 @@ public sealed class NutritionSyncPersistenceTests
         Assert.AreEqual(5m, schedule.Versions[1].SaltGrams);
     }
 
+    [TestMethod]
+    public async Task FiberIsStoredPerEntryAndTargetWhileOlderPayloadsStayEmpty()
+    {
+        (string connectionString, Guid user, Guid otherUser) = await CreateDatabaseAsync();
+        Guid client = Guid.NewGuid();
+        await RegisterAsync(connectionString, user, client);
+        Guid dayId = Guid.NewGuid();
+        ProcessSyncMutationCommand saveDay = Command(
+            Guid.NewGuid(), client, 1, "saveNutritionDay", dayId, 0,
+            new
+            {
+                nutritionDayId = dayId,
+                localDate = new DateOnly(2026, 10, 23),
+                baseVersion = 0,
+                entries = new object[]
+                {
+                    new
+                    {
+                        entryId = Guid.NewGuid(),
+                        meal = "Breakfast",
+                        position = 0,
+                        productName = "Haferflocken",
+                        amountGrams = 80m,
+                        kilocaloriesPer100Grams = 370m,
+                        proteinGramsPer100Grams = 13m,
+                        carbohydrateGramsPer100Grams = 59m,
+                        fatGramsPer100Grams = 7m,
+                        fiberGramsPer100Grams = 10m,
+                    },
+                    new
+                    {
+                        entryId = Guid.NewGuid(),
+                        meal = "Breakfast",
+                        position = 1,
+                        productName = "Kaffee",
+                        amountGrams = 200m,
+                        kilocaloriesPer100Grams = 2m,
+                        proteinGramsPer100Grams = 0m,
+                        carbohydrateGramsPer100Grams = 0m,
+                        fatGramsPer100Grams = 0m,
+                    },
+                },
+            });
+        Guid scheduleId = Guid.NewGuid();
+        ProcessSyncMutationCommand saveTargets = SmartCommand(
+            Guid.NewGuid(), client, 2, "saveNutritionTargetSchedule", "NutritionTargetSchedule", scheduleId, 0,
+            new
+            {
+                nutritionTargetScheduleId = scheduleId,
+                baseVersion = 0,
+                versions = new object[]
+                {
+                    new { targetVersionId = Guid.NewGuid(), name = "Alt", category = "Custom", inputMode = "Grams", effectiveFrom = new DateOnly(2026, 8, 1), effectiveUntil = new DateOnly(2026, 8, 31), kilocalories = 2500m, proteinGrams = 180m, carbohydrateGrams = 260m, fatGrams = 80m, origin = "Manual" },
+                    new { targetVersionId = Guid.NewGuid(), name = "Neu", category = "Custom", inputMode = "Grams", effectiveFrom = new DateOnly(2026, 9, 1), kilocalories = 2700m, proteinGrams = 190m, carbohydrateGrams = 300m, fatGrams = 80m, origin = "Manual", fiberGrams = 25m },
+                },
+            });
+
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        {
+            _ = await Processor(context, user).ProcessAsync(saveDay);
+            _ = await Processor(context, user).ProcessAsync(saveTargets);
+        }
+        await using (AppDbContext reader = Fixture.CreateContext(connectionString, user))
+        {
+            NutritionDaySnapshot day = await new NutritionQueries(reader).GetDayAsync(new DateOnly(2026, 10, 23))
+                ?? throw new AssertFailedException();
+            Assert.AreEqual(8m, day.Totals.FiberGrams);
+            Assert.AreEqual(10m, day.Entries[0].Per100Grams.FiberGrams);
+            Assert.IsNull(day.Entries[1].Totals.FiberGrams);
+
+            NutritionTargetScheduleSnapshot schedule = await new SmartNutritionQueries(reader)
+                .GetNutritionTargetScheduleAsync() ?? throw new AssertFailedException();
+            Assert.IsNull(schedule.Versions[0].FiberGrams);
+            Assert.AreEqual(30m, schedule.Versions[0].EffectiveFiberGrams);
+            Assert.AreEqual(25m, schedule.Versions[1].EffectiveFiberGrams);
+        }
+        await using (AppDbContext foreign = Fixture.CreateContext(connectionString, otherUser))
+        {
+            Assert.IsNull(await new NutritionQueries(foreign).GetDayAsync(new DateOnly(2026, 10, 23)));
+        }
+    }
+
     private static SyncMutationProcessor Processor(AppDbContext context, Guid userId)
     {
         var user = new UserContext(userId);

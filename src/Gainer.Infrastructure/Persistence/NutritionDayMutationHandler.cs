@@ -135,6 +135,7 @@ public sealed class NutritionDayMutationHandler(
             CarbohydrateGrams = totals.CarbohydrateGrams,
             FatGrams = totals.FatGrams,
             SaltGrams = totals.SaltGrams,
+            FiberGrams = totals.FiberGrams,
             Provider = input.Source?.Provider,
             Barcode = input.Source?.Barcode,
             RetrievedAtUtc = input.Source?.RetrievedAtUtc,
@@ -144,6 +145,7 @@ public sealed class NutritionDayMutationHandler(
             CarbohydrateGramsPerBasis = Scale(input.Per100Grams.CarbohydrateGrams, factor),
             FatGramsPerBasis = Scale(input.Per100Grams.FatGrams, factor),
             SaltGramsPerBasis = Scale(input.Per100Grams.SaltGrams, factor),
+            FiberGramsPerBasis = Scale(input.Per100Grams.FiberGrams, factor),
         };
     }
 

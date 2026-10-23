@@ -90,6 +90,9 @@ public sealed class CoachServiceTests
 
         Assert.IsTrue(answer.Facts.Any(item => item.TextValue == NutritionSources.MealDiary));
         Assert.IsTrue(answer.Facts.Any(item => item.TextValue == NutritionSources.LegacyCheckIn));
+        CoachFact fiber = answer.Facts.Single(item => item.Label == "Average fiber on days with fiber data");
+        Assert.AreEqual(24m, fiber.NumericValue);
+        Assert.AreEqual("g/day", fiber.Unit);
     }
 
     private static CoachService Service(FakeProvider provider) => new(
@@ -168,7 +171,7 @@ public sealed class CoachServiceTests
             DateOnly from = through.AddDays(1 - days);
             NutritionInsights nutrition = InsightAlgorithms.Nutrition([
                 new NutritionPoint(through.AddDays(-1), 2400m, 180m, null, null, NutritionSources.LegacyCheckIn),
-                new NutritionPoint(through, 2500m, 190m, 300m, 70m, NutritionSources.MealDiary),
+                new NutritionPoint(through, 2500m, 190m, 300m, 70m, NutritionSources.MealDiary, 24m),
             ], from, through);
             return Task.FromResult(new DashboardInsightSnapshot(
                 7, from, through, null, null, [],

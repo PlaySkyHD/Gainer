@@ -45,7 +45,8 @@ internal static class SmartNutritionSnapshots
                 component.ProteinGramsPer100Grams,
                 component.CarbohydrateGramsPer100Grams,
                 component.FatGramsPer100Grams,
-                component.SaltGramsPer100Grams),
+                component.SaltGramsPer100Grams,
+                component.FiberGramsPer100Grams),
             component.Brand,
             source,
             NutritionPortion.From(component.PieceGrams, component.PieceCount));
@@ -87,7 +88,8 @@ internal static class SmartNutritionSnapshots
             version.AlgorithmVersion,
             version.Reason,
             version.SaltGrams,
-            RestDay(version));
+            RestDay(version),
+            version.FiberGrams);
 
     private static NutritionRestDayTargetDraft? RestDay(NutritionTargetVersion version) =>
         version.RestKilocalories is not { } kilocalories

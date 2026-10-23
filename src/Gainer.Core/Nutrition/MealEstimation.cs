@@ -19,7 +19,8 @@ public sealed record MealEstimateComponentDraft(
     decimal? SaltGrams = null,
     string? SourceUrl = null,
     decimal? PieceCount = null,
-    decimal? PieceGrams = null)
+    decimal? PieceGrams = null,
+    decimal? FiberGrams = null)
 {
     public static MealEstimateComponentDraft Create(
         string name,
@@ -33,7 +34,8 @@ public sealed record MealEstimateComponentDraft(
         decimal? saltGrams = null,
         string? sourceUrl = null,
         decimal? pieceCount = null,
-        decimal? pieceGrams = null)
+        decimal? pieceGrams = null,
+        decimal? fiberGrams = null)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(dataGaps);
@@ -56,6 +58,7 @@ public sealed record MealEstimateComponentDraft(
         ValidateOptional(fatGrams, nameof(FatGrams), errors);
         if (saltGrams is < 0m or > NutritionLimits.MaxSaltGramsPer100Grams)
             errors[nameof(SaltGrams)] = "SaltGrams is outside the allowed range.";
+        ValidateOptional(fiberGrams, nameof(FiberGrams), errors);
         if (!Enum.IsDefined(confidence)) errors[nameof(Confidence)] = "Confidence is invalid.";
         if (normalizedGaps.Length > NutritionLimits.MaxDataGapsPerEstimateComponent ||
             normalizedGaps.Any(item => item.Length > NutritionLimits.MaxDataGapLength))
@@ -64,7 +67,7 @@ public sealed record MealEstimateComponentDraft(
         (decimal? count, decimal? grams) = ConsistentPortion(amountGrams, pieceCount, pieceGrams);
         return new MealEstimateComponentDraft(
             normalizedName, amountGrams, kilocalories, proteinGrams, carbohydrateGrams,
-            fatGrams, confidence, normalizedGaps, saltGrams, sourceUrl, count, grams);
+            fatGrams, confidence, normalizedGaps, saltGrams, sourceUrl, count, grams, fiberGrams);
     }
 
     /// <summary>

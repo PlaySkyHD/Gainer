@@ -10,18 +10,23 @@ class GainerProgressBar extends StatelessWidget {
     required this.consumed,
     required this.target,
     this.height = 6,
+    this.warnWhenExceeded = true,
   });
 
   final double? consumed;
   final double target;
   final double height;
 
+  /// False für Mindestziele wie Ballaststoffe: Darüber bleibt der Balken voll
+  /// in der Akzentfarbe.
+  final bool warnWhenExceeded;
+
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
     final value = consumed ?? 0;
     final ratio = target <= 0 ? 0.0 : (value / target).clamp(0.0, 1.0);
-    final exceeded = target > 0 && value > target;
+    final exceeded = warnWhenExceeded && target > 0 && value > target;
     return ClipRRect(
       borderRadius: BorderRadius.circular(height),
       child: SizedBox(

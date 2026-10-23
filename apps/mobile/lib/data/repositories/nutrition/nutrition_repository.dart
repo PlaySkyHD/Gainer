@@ -126,6 +126,12 @@ class NutritionLabelScanDraft {
       status: 'Missing',
       evidence: null,
     ),
+    this.fiberGrams = const NutritionLabelFieldDraft(
+      originalValue: null,
+      per100Grams: null,
+      status: 'Missing',
+      evidence: null,
+    ),
     required this.canConfirm,
     required this.provider,
     required this.providerModelVersion,
@@ -139,6 +145,7 @@ class NutritionLabelScanDraft {
   final NutritionLabelFieldDraft carbohydrateGrams;
   final NutritionLabelFieldDraft fatGrams;
   final NutritionLabelFieldDraft saltGrams;
+  final NutritionLabelFieldDraft fiberGrams;
   final bool canConfirm;
   final String provider;
   final String providerModelVersion;
@@ -154,6 +161,7 @@ class NutritionLabelScanDraft {
       carbohydrateGrams: carbohydrateGrams.per100Grams,
       fatGrams: fatGrams.per100Grams,
       saltGrams: saltGrams.per100Grams,
+      fiberGrams: fiberGrams.per100Grams,
     );
   }
 }
@@ -831,6 +839,7 @@ class NutritionRepository {
     required NutritionDayTarget training,
     required NutritionDayTarget? restDay,
     required double? saltGrams,
+    required double? fiberGrams,
   }) async {
     final today = _dateString(clock());
     final current = await _readTargetSchedule();
@@ -852,6 +861,8 @@ class NutritionRepository {
         trainingDay: training,
         saltGrams: saltGrams,
         clearSaltGrams: saltGrams == null,
+        fiberGrams: fiberGrams,
+        clearFiberGrams: fiberGrams == null,
         restDay: restDay,
         clearRestDay: restDay == null,
       );
@@ -878,6 +889,7 @@ class NutritionRepository {
           fatPercent: training.fatPercent,
           saltGrams: saltGrams,
           restDay: restDay,
+          fiberGrams: fiberGrams,
         ),
       );
     }
@@ -1100,6 +1112,7 @@ NutritionTargetVersion _targetFromJson(Map<String, dynamic> json) =>
       algorithmVersion: json['algorithmVersion'] as String?,
       reason: json['reason'] as String?,
       saltGrams: (json['saltGrams'] as num?)?.toDouble(),
+      fiberGrams: (json['fiberGrams'] as num?)?.toDouble(),
       restDay: json['restDay'] is Map<String, dynamic>
           ? NutritionDayTarget.fromJson(json['restDay'] as Map<String, dynamic>)
           : null,

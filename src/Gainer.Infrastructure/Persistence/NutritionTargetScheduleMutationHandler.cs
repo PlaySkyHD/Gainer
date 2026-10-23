@@ -135,6 +135,7 @@ public sealed class NutritionTargetScheduleMutationHandler(
         stored.CarbohydratePercent == candidate.CarbohydratePercent &&
         stored.FatPercent == candidate.FatPercent &&
         stored.SaltGrams == candidate.SaltGrams &&
+        stored.FiberGrams == candidate.FiberGrams &&
         RestDayMatches(stored, candidate.RestDay) &&
         stored.Origin == candidate.Origin &&
         string.Equals(stored.AlgorithmVersion, candidate.AlgorithmVersion, StringComparison.Ordinal) &&
@@ -179,6 +180,7 @@ public sealed class NutritionTargetScheduleMutationHandler(
         target.CarbohydratePercent = input.CarbohydratePercent;
         target.FatPercent = input.FatPercent;
         target.SaltGrams = input.SaltGrams;
+        target.FiberGrams = input.FiberGrams;
         ApplyRestDay(target, input.RestDay);
         target.Origin = input.Origin;
         target.AlgorithmVersion = input.AlgorithmVersion;
@@ -207,6 +209,7 @@ public sealed class NutritionTargetScheduleMutationHandler(
             CarbohydratePercent = input.CarbohydratePercent,
             FatPercent = input.FatPercent,
             SaltGrams = input.SaltGrams,
+            FiberGrams = input.FiberGrams,
             Origin = input.Origin,
             AlgorithmVersion = input.AlgorithmVersion,
             Reason = input.Reason,
