@@ -81,7 +81,7 @@ Ist der geöffnete Tag heute oder künftig und hat er keine Einträge, SHALL die
 
 ### Requirement: Vorlagen verwalten
 
-Der Tab „Essen“ SHALL einen Bereich „Tagesvorlagen“ zeigen. Jede Vorlage erscheint mit Name, Tagesart sowie Summe aus kcal und Protein. Ein Tipp SHALL eine Ansicht der Einträge nach Mahlzeit öffnen, in der sich Name und Tagesart ändern lassen. Wischen nach links SHALL die Vorlage nach Bestätigung löschen. Das Löschen MUST NOT Tage ändern, auf die sie angewendet wurde. Ein Nutzer MUST höchstens 50 Vorlagen haben können.
+Der Tab „Essen“ SHALL einen Bereich „Tagesvorlagen“ zeigen. Jede Vorlage erscheint mit Name, Tagesart sowie Summe aus kcal und Protein. Ein Tipp SHALL den Vorlagen-Editor öffnen. Wischen nach links SHALL die Vorlage nach Bestätigung löschen. Das Löschen MUST NOT Tage ändern, auf die sie angewendet wurde. Ein Nutzer MUST höchstens 50 Vorlagen haben können.
 
 #### Scenario: Löschen
 - **GIVEN** die Vorlage „Ruhetag“ wurde auf 10 Tage angewendet
@@ -92,6 +92,20 @@ Der Tab „Essen“ SHALL einen Bereich „Tagesvorlagen“ zeigen. Jede Vorlage
 - **GIVEN** der Nutzer hat 50 Vorlagen
 - **WHEN** er einen Tag als neue Vorlage speichern will
 - **THEN** ist nur Überschreiben möglich, und die App erklärt die Obergrenze
+
+### Requirement: Vorlage bearbeiten
+
+Der Vorlagen-Editor SHALL Name, Tagesart und die Einträge je Mahlzeit zeigen. Der Nutzer SHALL Einträge über den gemeinsamen Hinzufügen-Dialog ergänzen, per Tipp ändern, per langem Drücken in eine andere Mahlzeit verschieben und per Wischen nach Bestätigung entfernen können. Änderungen MUST erst mit „Sichern“ gespeichert werden; eine Vorlage ohne Einträge MUST NOT gespeichert werden. Tage, auf die die Vorlage angewendet wurde, MUST unverändert bleiben.
+
+#### Scenario: Menge ändern und Eintrag entfernen
+- **GIVEN** die Vorlage „Trainingstag“ mit Haferflocken 100 g und Banane 100 g zum Frühstück
+- **WHEN** der Nutzer die Haferflocken auf 50 g ändert, die Banane entfernt und „Sichern“ wählt
+- **THEN** enthält die Vorlage nur Haferflocken 50 g, und Tage, auf die sie angewendet wurde, bleiben unverändert
+
+#### Scenario: Letzten Eintrag entfernt
+- **GIVEN** der Editor einer Vorlage mit einem Eintrag
+- **WHEN** der Nutzer diesen Eintrag entfernt
+- **THEN** ist „Sichern“ deaktiviert und der Editor erklärt, dass mindestens ein Eintrag nötig ist
 
 ### Requirement: Speichern, Offline und Synchronisation der Vorlagen
 

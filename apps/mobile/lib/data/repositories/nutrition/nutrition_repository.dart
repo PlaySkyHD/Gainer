@@ -701,19 +701,31 @@ class NutritionRepository {
     return id;
   }
 
-  /// Ändert Name und Tagesart einer Vorlage.
-  Future<void> updateTemplateMeta(
+  /// Speichert eine bearbeitete Vorlage: Name, Tagesart und Einträge. Die
+  /// Positionen werden je Mahlzeit in der übergebenen Reihenfolge neu
+  /// vergeben. Tage, auf die die Vorlage angewendet wurde, bleiben unverändert.
+  Future<void> updateTemplate(
     String templateId, {
     required String name,
     required NutritionDayKind? dayKind,
+    required List<NutritionEntry> entries,
   }) async {
     final existing = await _required(_dayTemplateType, templateId);
-    final prior = NutritionDayTemplate.fromJson(_map(existing.workingCopy));
+    final counters = <NutritionMeal, int>{};
     final value = NutritionDayTemplate(
       templateId: templateId,
       name: name,
       dayKind: dayKind,
-      entries: prior.entries,
+      entries: [
+        for (final entry in entries)
+          entry.copyWith(
+            position: counters.update(
+              entry.meal,
+              (value) => value + 1,
+              ifAbsent: () => 0,
+            ),
+          ),
+      ],
       updatedAtUtc: clock().toUtc(),
     );
     await _commitResource(

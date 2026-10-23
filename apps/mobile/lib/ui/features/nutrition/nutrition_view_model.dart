@@ -302,18 +302,21 @@ class NutritionViewModel extends ChangeNotifier {
     operation: NutritionErrorOperation.diary,
   );
 
-  Future<void> updateTemplateMeta(
+  Future<void> updateTemplate(
     String templateId, {
     required String name,
     required NutritionDayKind? dayKind,
+    required List<NutritionEntry> entries,
   }) => _run(
     () async {
-      await repository.updateTemplateMeta(
+      await repository.updateTemplate(
         templateId,
         name: name,
         dayKind: dayKind,
+        entries: entries,
       );
       snapshot = await repository.read(localDate);
+      statusMessage = 'Vorlage gespeichert.';
     },
     saving: true,
     operation: NutritionErrorOperation.planning,

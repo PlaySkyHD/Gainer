@@ -86,6 +86,11 @@ Ein PR auf einem Feature-Branch. Commits nach Conventional Commits. Nach jedem A
   - offline speichern und anwenden
 - [x] 4.5 UI (D12): Tagesmenü, Sheets „Als Vorlage speichern“ und „Aus Vorlage befüllen“, Ersetzen/Hinzufügen-Abfrage, Vorschlag in der leeren Tageskarte, Bereich „Tagesvorlagen“ mit Detailansicht und Wischen zum Löschen. Widget-Tests und Goldens hell, dunkel und bei Textgröße 2.
 
+## 6. Vorlagen bearbeiten (nach Abnahme ergänzt)
+
+- [x] 6.1 `NutritionRepository.updateTemplate` mit neuer Nummerierung je Mahlzeit, Test.
+- [x] 6.2 Vorlagen-Editor: hinzufügen, ändern, in andere Mahlzeit verschieben, entfernen; Widget-Test und Golden.
+
 ## 5. Abschluss
 
 - [x] 5.1 Lokal prüfen:
@@ -93,7 +98,7 @@ Ein PR auf einem Feature-Branch. Commits nach Conventional Commits. Nach jedem A
   - `flutter analyze`, `flutter test`, Format-Check
   - `dotnet build`, `dotnet test` (über `sg docker`)
   - lesbare Vorschau mit `tool/preview_goldens.sh`
-- [ ] 5.2 PR (Hinweis auf ältere App-Stände und entfernte Phasen-UI), CI grün, Merge, TestFlight.
+- [x] 5.2 PR (Hinweis auf ältere App-Stände und entfernte Phasen-UI), CI grün, Merge, TestFlight.
 - [ ] 5.3 Abnahme auf dem iPhone:
   - bestehende Ziele erscheinen unter „Ziele“
   - Ruhetag-Ziel ergänzen; gestrige Werte bleiben unverändert

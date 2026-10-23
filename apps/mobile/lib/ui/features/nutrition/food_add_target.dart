@@ -71,6 +71,24 @@ class FoodComponentDraft {
   }
 
   /// Erzeugt den unabhängigen Gerichtsbestandteil an [position].
+  /// Eintrag einer Mahlzeit, z. B. in einer Tagesvorlage.
+  NutritionEntry toEntry({
+    required String entryId,
+    required NutritionMeal meal,
+    required int position,
+  }) => NutritionEntry(
+    entryId: entryId,
+    meal: meal,
+    position: position,
+    productName: name,
+    brand: brand,
+    amountGrams: amountGrams,
+    per100Grams: per100Grams,
+    source: source,
+    pieceGrams: pieceGrams,
+    pieceCount: pieceCount,
+  );
+
   ReusableMealComponent toComponent({
     required String componentId,
     required int position,
