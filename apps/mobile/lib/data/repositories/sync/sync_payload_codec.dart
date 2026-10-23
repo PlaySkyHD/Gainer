@@ -521,6 +521,8 @@ class SyncPayloadCodec {
           // Nur senden, wenn gesetzt; ältere Server kennen Salz nicht.
           if (per100['saltGrams'] != null)
             'saltGramsPer100Grams': per100['saltGrams'],
+          if (per100['fiberGrams'] != null)
+            'fiberGramsPer100Grams': per100['fiberGrams'],
           ..._portionPayload(entry),
         };
       });
@@ -573,6 +575,8 @@ class SyncPayloadCodec {
           'source': component['source'],
           if (per100['saltGrams'] != null)
             'saltGramsPer100Grams': per100['saltGrams'],
+          if (per100['fiberGrams'] != null)
+            'fiberGramsPer100Grams': per100['fiberGrams'],
           ..._portionPayload(component),
         };
       }),
@@ -607,6 +611,8 @@ class SyncPayloadCodec {
           'algorithmVersion': version['algorithmVersion'],
           'reason': version['reason'],
           if (version['saltGrams'] != null) 'saltGrams': version['saltGrams'],
+          if (version['fiberGrams'] != null)
+            'fiberGrams': version['fiberGrams'],
           // Nur senden, wenn gesetzt; ältere Server kennen Ruhetag-Ziele nicht.
           if (version['restDay'] case final Map<String, dynamic> rest)
             'restDay': {

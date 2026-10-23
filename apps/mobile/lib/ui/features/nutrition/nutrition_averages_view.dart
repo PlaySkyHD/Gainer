@@ -234,6 +234,10 @@ class _NutritionAveragesSheetState extends State<NutritionAveragesSheet> {
                       value: _grams(averages.averageFatGrams),
                     ),
                     _MacroRow(
+                      label: 'Ballaststoffe',
+                      value: _grams(averages.averageFiberGrams),
+                    ),
+                    _MacroRow(
                       label: 'Salz',
                       value: _grams(averages.averageSaltGrams),
                     ),

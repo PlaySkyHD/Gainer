@@ -225,9 +225,9 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             if (diary.TryGetValue(date, out NutritionDay? day))
             {
                 NutritionTotals total = NutritionCalculator.Sum(day.Entries.Select(item => new NutritionTotals(
-                    item.Kilocalories, item.ProteinGrams, item.CarbohydrateGrams, item.FatGrams)));
+                    item.Kilocalories, item.ProteinGrams, item.CarbohydrateGrams, item.FatGrams, FiberGrams: item.FiberGrams)));
                 return new NutritionPoint(date, total.Kilocalories, total.ProteinGrams,
-                    total.CarbohydrateGrams, total.FatGrams, NutritionSources.MealDiary);
+                    total.CarbohydrateGrams, total.FatGrams, NutritionSources.MealDiary, total.FiberGrams);
             }
 
             DailyCheckIn item = legacy[date];

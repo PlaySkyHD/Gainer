@@ -74,6 +74,7 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
                 carbohydrateGrams: item.carbohydrateGrams,
                 fatGrams: item.fatGrams,
                 saltGrams: item.saltGrams,
+                fiberGrams: item.fiberGrams,
               ),
               confidence: item.confidence,
               dataGaps: List.unmodifiable(item.dataGaps),
@@ -117,6 +118,14 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
               evidence: null,
             )
           : _field(result.saltGrams!),
+      fiberGrams: result.fiberGrams == null
+          ? const NutritionLabelFieldDraft(
+              originalValue: null,
+              per100Grams: null,
+              status: 'Missing',
+              evidence: null,
+            )
+          : _field(result.fiberGrams!),
       canConfirm: result.canConfirm,
       provider: result.provider,
       providerModelVersion: result.providerModelVersion,
@@ -134,6 +143,7 @@ class ApiNutritionOnlineProvider implements NutritionOnlineProvider {
       carbohydrateGrams: value.carbohydrateGramsPer100Grams,
       fatGrams: value.fatGramsPer100Grams,
       saltGrams: value.saltGramsPer100Grams,
+      fiberGrams: value.fiberGramsPer100Grams,
     ),
     pieceGrams: value.servingGrams,
     source: NutritionSource(

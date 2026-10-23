@@ -5,7 +5,8 @@ public sealed record NutritionTotalsResponse(
     decimal? ProteinGrams,
     decimal? CarbohydrateGrams,
     decimal? FatGrams,
-    decimal? SaltGrams = null);
+    decimal? SaltGrams = null,
+    decimal? FiberGrams = null);
 
 public sealed record NutritionSourceResponse(
     string? Provider,
@@ -49,7 +50,8 @@ public sealed record NutritionProgressResponse(
     NutrientProgressResponse Protein,
     NutrientProgressResponse Carbohydrates,
     NutrientProgressResponse Fat,
-    NutrientProgressResponse? Salt = null);
+    NutrientProgressResponse? Salt = null,
+    NutrientProgressResponse? Fiber = null);
 
 public sealed record RecentNutritionEntriesResponse(IReadOnlyList<NutritionEntryResponse> Entries);
 
@@ -99,7 +101,9 @@ public sealed record NutritionTargetVersionResponse(
     bool RequiresEnergyMismatchConfirmation,
     decimal? SaltGrams = null,
     decimal? EffectiveSaltGrams = null,
-    NutritionRestDayTargetResponse? RestDay = null);
+    NutritionRestDayTargetResponse? RestDay = null,
+    decimal? FiberGrams = null,
+    decimal? EffectiveFiberGrams = null);
 
 public sealed record NutritionRestDayTargetResponse(
     string InputMode,
@@ -136,7 +140,8 @@ public sealed record MealEstimateComponentResponse(
     decimal? SaltGrams = null,
     string? SourceUrl = null,
     decimal? PieceCount = null,
-    decimal? PieceGrams = null);
+    decimal? PieceGrams = null,
+    decimal? FiberGrams = null);
 
 public sealed record MealEstimateResponse(
     IReadOnlyList<MealEstimateComponentResponse> Components,
@@ -162,4 +167,5 @@ public sealed record NutritionLabelScanResponse(
     string ProviderModelVersion,
     string ParserVersion,
     DateTime ScannedAtUtc,
-    NutritionLabelFieldResponse? SaltGrams = null);
+    NutritionLabelFieldResponse? SaltGrams = null,
+    NutritionLabelFieldResponse? FiberGrams = null);

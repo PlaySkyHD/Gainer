@@ -72,7 +72,7 @@ public sealed class OpenAiMealEstimator(
     IOptions<MealEstimationOptions>? options = null,
     ILogger<OpenAiMealEstimator>? logger = null) : IMealEstimator
 {
-    public const string SchemaVersion = "meal-estimate-v4";
+    public const string SchemaVersion = "meal-estimate-v5";
     private const int MaxSourceUrlLength = 300;
     private readonly MealEstimationOptions settings = options?.Value ?? new MealEstimationOptions { WebSearchEnabled = false };
 
@@ -187,7 +187,8 @@ public sealed class OpenAiMealEstimator(
             : "No tools or external data are available; set sourceUrl to null. ") +
         "Salt: report saltGrams only for salt that is inherent to the food as bought or served, such as bread, cheese, cured meat, sauces, ready meals, pizza, kebab or restaurant dishes. " +
         "Use null for plain or home-cooked ingredients such as rice, pasta, vegetables, fresh meat or fish, and never guess salt added while cooking. " +
-        "Only when the evidence states an amount of added salt, add a separate component named Salz with that amount in grams, 0 kilocalories, 0 macros and saltGrams equal to the amount (a pinch is 0.5 g, a teaspoon 6 g).";
+        "Only when the evidence states an amount of added salt, add a separate component named Salz with that amount in grams, 0 kilocalories, 0 macros, 0 fiber and saltGrams equal to the amount (a pinch is 0.5 g, a teaspoon 6 g). " +
+        "Fiber: report fiberGrams for the amount from the same reference values; use null when no reliable value is known instead of guessing.";
 
     private static MealEstimateDraft ParseResponse(JsonElement response, DateTime estimatedAtUtc, string[] allowedDomains)
     {
@@ -213,7 +214,8 @@ public sealed class OpenAiMealEstimator(
                 item.SaltGrams,
                 TrustedSource(item.SourceUrl, allowedDomains),
                 item.PieceCount,
-                item.PieceGrams)).ToArray();
+                item.PieceGrams,
+                item.FiberGrams)).ToArray();
         return MealEstimateDraft.Create(components, "OpenAI", SchemaVersion, estimatedAtUtc);
     }
 
@@ -260,7 +262,7 @@ public sealed class OpenAiMealEstimator(
                 {
                     type = "object",
                     additionalProperties = false,
-                    required = new[] { "name", "amountGrams", "kilocalories", "proteinGrams", "carbohydrateGrams", "fatGrams", "saltGrams", "sourceUrl", "pieceCount", "pieceGrams", "confidence", "dataGaps" },
+                    required = new[] { "name", "amountGrams", "kilocalories", "proteinGrams", "carbohydrateGrams", "fatGrams", "saltGrams", "fiberGrams", "sourceUrl", "pieceCount", "pieceGrams", "confidence", "dataGaps" },
                     properties = new
                     {
                         name = new { type = "string", maxLength = NutritionLimits.MaxComponentNameLength },
@@ -270,6 +272,7 @@ public sealed class OpenAiMealEstimator(
                         carbohydrateGrams = NullableNumberSchema,
                         fatGrams = NullableNumberSchema,
                         saltGrams = new { type = NullableNumberType, minimum = 0, maximum = NutritionLimits.MaxSaltGramsPer100Grams },
+                        fiberGrams = NullableNumberSchema,
                         sourceUrl = new { type = new[] { "string", "null" }, maxLength = MaxSourceUrlLength },
                         pieceCount = new { type = NullableNumberType, minimum = 0, maximum = NutritionPortion.MaxPieceCount },
                         pieceGrams = new { type = NullableNumberType, minimum = 0, maximum = NutritionPortion.MaxPieceGrams },
@@ -293,5 +296,6 @@ public sealed class OpenAiMealEstimator(
         decimal? SaltGrams = null,
         string? SourceUrl = null,
         decimal? PieceCount = null,
-        decimal? PieceGrams = null);
+        decimal? PieceGrams = null,
+        decimal? FiberGrams = null);
 }

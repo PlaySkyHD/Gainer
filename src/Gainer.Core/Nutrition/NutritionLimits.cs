@@ -24,6 +24,9 @@ public static class NutritionLimits
     public const decimal MaxSaltGramsPer100Grams = 100m;
     public const decimal MaxDailySaltTargetGrams = 100m;
     public const decimal DefaultDailySaltTargetGrams = 6m;
+    public const decimal MaxFiberGramsPer100Grams = 100m;
+    public const decimal MaxDailyFiberTargetGrams = 100m;
+    public const decimal DefaultDailyFiberTargetGrams = 30m;
     public const decimal MacroEnergyMismatchThreshold = 0.10m;
     public const decimal MacroDistributionTotalPercent = 100m;
 }

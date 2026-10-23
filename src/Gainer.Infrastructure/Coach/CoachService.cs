@@ -154,6 +154,7 @@ public sealed partial class CoachService(
         var result = new List<CoachFact>();
         AddMetric(result, data, $"nutrition.calories.{days}", "Average calories", data.Nutrition.CaloriesKcal.Value, "kcal/day", days, data.Nutrition.AlgorithmVersion);
         AddMetric(result, data, $"nutrition.protein.{days}", "Average protein", data.Nutrition.ProteinGrams.Value, "g/day", days, data.Nutrition.AlgorithmVersion);
+        AddMetric(result, data, $"nutrition.fiber.{days}", "Average fiber on days with fiber data", data.Nutrition.FiberGrams?.Value, "g/day", days, data.Nutrition.AlgorithmVersion);
         if (data.Nutrition.MealDiaryDays > 0)
             result.Add(Fact(data, $"nutrition.source.diary.{days}", "nutrition-source", "Days sourced from meal diary",
                 data.Nutrition.MealDiaryDays, NutritionSources.MealDiary, "days", $"last {days} days", data.Nutrition.AlgorithmVersion));

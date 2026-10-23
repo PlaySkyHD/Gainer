@@ -876,8 +876,8 @@ void main() {
     expect(find.text('Tagesziele festlegen'), findsOneWidget);
     expect(find.textContaining('trotzdem angezeigt'), findsNothing);
     expect(find.text('Protein'), findsOneWidget);
-    // Protein, Kohlenhydrate, Fett und Salz ohne Angabe.
-    expect(find.text('– g'), findsNWidgets(4));
+    // Protein, Kohlenhydrate, Fett, Ballaststoffe und Salz ohne Angabe.
+    expect(find.text('– g'), findsNWidgets(5));
   });
 
   testWidgets('day card with targets shows progress and remaining kcal', (
@@ -1149,6 +1149,12 @@ void main() {
             status: 'Converted',
             evidence: 'Salz 0,36 g',
           ),
+          fiberGrams: const NutritionLabelFieldDraft(
+            originalValue: 1.8,
+            per100Grams: 6,
+            status: 'Converted',
+            evidence: 'Ballaststoffe 1,8 g',
+          ),
           canConfirm: true,
           provider: 'OpenAI',
           providerModelVersion: 'model',
@@ -1178,6 +1184,7 @@ void main() {
     expect(find.text('400 kcal'), findsOneWidget);
     expect(find.text('12,5 g'), findsOneWidget);
     expect(find.text('1,2 g'), findsOneWidget);
+    expect(find.text('6 g'), findsOneWidget);
     expect(find.text('nicht erkannt'), findsOneWidget);
     expect(find.text('unplausibel'), findsOneWidget);
     expect(find.textContaining('30 g pro Portion'), findsOneWidget);

@@ -82,6 +82,7 @@ void main() {
         training: _training,
         restDay: _rest,
         saltGrams: null,
+        fiberGrams: null,
       );
       final saved = await versions();
       expect(saved, hasLength(1));
@@ -99,12 +100,14 @@ void main() {
           training: _training,
           restDay: null,
           saltGrams: null,
+          fiberGrams: null,
         );
         now = DateTime(2026, 10, 22, 9);
         await repository.saveTargets(
           training: _training,
           restDay: _rest,
           saltGrams: 5,
+          fiberGrams: null,
         );
         final saved = await versions();
         expect(
@@ -120,6 +123,7 @@ void main() {
         training: _training,
         restDay: _rest,
         saltGrams: null,
+        fiberGrams: null,
       );
       final first = (await versions()).single.targetVersionId;
       await repository.saveTargets(
@@ -132,6 +136,7 @@ void main() {
         ),
         restDay: null,
         saltGrams: null,
+        fiberGrams: null,
       );
       final saved = await versions();
       expect(saved, hasLength(1));
@@ -175,6 +180,7 @@ void main() {
           training: _training,
           restDay: _rest,
           saltGrams: null,
+          fiberGrams: null,
         );
         final saved = await versions();
         expect(saved, hasLength(2));
@@ -194,6 +200,7 @@ void main() {
           training: _training,
           restDay: null,
           saltGrams: null,
+          fiberGrams: null,
         );
         await repository.saveEntry(
           '2026-10-20',
@@ -204,6 +211,7 @@ void main() {
           training: _training,
           restDay: _rest,
           saltGrams: null,
+          fiberGrams: null,
         );
 
         final earlier = await repository.read('2026-10-20');
@@ -224,6 +232,7 @@ void main() {
           training: _training,
           restDay: _rest,
           saltGrams: null,
+          fiberGrams: null,
         );
         await repository.setDayKind('2026-10-23', NutritionDayKind.rest);
         await repository.saveEntry(
@@ -255,6 +264,7 @@ void main() {
         training: _training,
         restDay: _rest,
         saltGrams: null,
+        fiberGrams: null,
       );
       projection = TrainingScheduleProjection(
         schedule: TrainingSchedule.create(

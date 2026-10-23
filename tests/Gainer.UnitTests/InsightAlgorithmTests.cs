@@ -40,6 +40,21 @@ public sealed class InsightAlgorithmTests
     }
 
     [TestMethod]
+    public void FiberAverageCountsOnlyDaysWithFiber()
+    {
+        var from = new DateOnly(2026, 10, 1);
+        NutritionInsights nutrition = InsightAlgorithms.Nutrition([
+            new(from, 2200m, 150m, 250m, 70m, NutritionSources.MealDiary, 20m),
+            new(from.AddDays(1), 2300m, 150m, 250m, 70m, NutritionSources.MealDiary, 25m),
+            new(from.AddDays(2), 2100m, 150m, 250m, 70m, NutritionSources.MealDiary, 30m),
+            new(from.AddDays(3), 2000m, 150m, 250m, 70m, NutritionSources.MealDiary),
+            new(from.AddDays(4), 2000m, 150m, 250m, 70m, NutritionSources.MealDiary),
+        ], from, from.AddDays(6));
+        Assert.AreEqual(25m, nutrition.FiberGrams?.Value);
+        Assert.AreEqual(3, nutrition.FiberGrams?.ObservedDays);
+    }
+
+    [TestMethod]
     public void TrainingAggregatesRecordedSetsWithVersionedEpleyEstimate()
     {
         Guid workout = Guid.NewGuid();

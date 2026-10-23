@@ -91,6 +91,19 @@ public sealed class OpenFoodFactsCatalogTests
     }
 
     [TestMethod]
+    public async Task FiberIsReadAndImplausibleValuesAreDropped()
+    {
+        OpenFoodFactsCatalog withFiber = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(fiber: 6.5m))));
+        Assert.AreEqual(6.5m, (await withFiber.GetByBarcodeAsync("12345678")).NutrientsPer100Grams.FiberGrams);
+
+        OpenFoodFactsCatalog none = Create(new QueueHandler(Response(HttpStatusCode.OK, Product())));
+        Assert.IsNull((await none.GetByBarcodeAsync("12345678")).NutrientsPer100Grams.FiberGrams);
+
+        OpenFoodFactsCatalog implausible = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(fiber: 120m))));
+        Assert.IsNull((await implausible.GetByBarcodeAsync("12345678")).NutrientsPer100Grams.FiberGrams);
+    }
+
+    [TestMethod]
     public async Task FreshCacheAndConcurrentDeduplicationAvoidDuplicateProviderRequests()
     {
         var handler = new QueueHandler(Response(HttpStatusCode.OK, Product()), delay: TimeSpan.FromMilliseconds(50));
@@ -200,7 +213,8 @@ public sealed class OpenFoodFactsCatalogTests
         decimal? salt = null,
         decimal? sodium = null,
         string? servingQuantity = null,
-        string? servingUnit = null)
+        string? servingUnit = null,
+        decimal? fiber = null)
     {
         var nutrientParts = new List<string>();
         if (kcal is not null) nutrientParts.Add($"\"energy-kcal_100g\":{kcal.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
@@ -210,6 +224,7 @@ public sealed class OpenFoodFactsCatalogTests
         if (fat is not null) nutrientParts.Add($"\"fat_100g\":{fat.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         if (salt is not null) nutrientParts.Add($"\"salt_100g\":{salt.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         if (sodium is not null) nutrientParts.Add($"\"sodium_100g\":{sodium.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (fiber is not null) nutrientParts.Add($"\"fiber_100g\":{fiber.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         return "{\"product\":{\"code\":\"" + barcode +
             "\",\"product_name\":\"Test product\",\"brands\":\"Test brand\",\"nutrition_data_per\":\"100g\"," +
             (servingQuantity is null ? "" : $"\"serving_quantity\":{servingQuantity},") +

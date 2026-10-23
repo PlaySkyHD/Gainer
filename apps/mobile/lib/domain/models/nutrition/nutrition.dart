@@ -36,6 +36,7 @@ class NutritionTotals {
     this.carbohydrateGrams,
     this.fatGrams,
     this.saltGrams,
+    this.fiberGrams,
   });
 
   final double kilocalories;
@@ -46,6 +47,9 @@ class NutritionTotals {
   /// Salz in Gramm; fehlt bei Einträgen ohne Salzangabe.
   final double? saltGrams;
 
+  /// Ballaststoffe in Gramm; fehlt bei Einträgen ohne Angabe.
+  final double? fiberGrams;
+
   factory NutritionTotals.fromJson(Map<String, dynamic> json) =>
       NutritionTotals(
         kilocalories: _number(json, 'kilocalories'),
@@ -53,6 +57,7 @@ class NutritionTotals {
         carbohydrateGrams: _nullableNumber(json, 'carbohydrateGrams'),
         fatGrams: _nullableNumber(json, 'fatGrams'),
         saltGrams: _nullableNumber(json, 'saltGrams'),
+        fiberGrams: _nullableNumber(json, 'fiberGrams'),
       );
 
   Map<String, Object?> toJson() => {
@@ -61,6 +66,7 @@ class NutritionTotals {
     'carbohydrateGrams': carbohydrateGrams,
     'fatGrams': fatGrams,
     if (saltGrams != null) 'saltGrams': saltGrams,
+    if (fiberGrams != null) 'fiberGrams': fiberGrams,
   };
 
   NutritionTotals scaled(double factor) => NutritionTotals(
@@ -69,6 +75,7 @@ class NutritionTotals {
     carbohydrateGrams: _scale(carbohydrateGrams, factor),
     fatGrams: _scale(fatGrams, factor),
     saltGrams: _scale(saltGrams, factor),
+    fiberGrams: _scale(fiberGrams, factor),
   );
 
   static NutritionTotals get zero => const NutritionTotals(kilocalories: 0);
@@ -260,6 +267,7 @@ class NutritionDay {
       carbohydrateGrams: sum((v) => v.carbohydrateGrams),
       fatGrams: sum((v) => v.fatGrams),
       saltGrams: sum((v) => v.saltGrams),
+      fiberGrams: sum((v) => v.fiberGrams),
     );
   }
 
@@ -579,10 +587,14 @@ class NutritionTargetVersion {
     this.reason,
     this.saltGrams,
     this.restDay,
+    this.fiberGrams,
   });
 
   /// Standard-Salzgrenze, wenn eine Zielphase keine eigene hat (DGE-Richtwert).
   static const defaultSaltGrams = 6.0;
+
+  /// Standard-Ballaststoffziel als Mindestwert, wenn eine Zielphase keines hat (DGE-Richtwert).
+  static const defaultFiberGrams = 30.0;
 
   final String targetVersionId, name, effectiveFrom;
   final String? effectiveUntil;
@@ -597,6 +609,11 @@ class NutritionTargetVersion {
   final double? saltGrams;
 
   double get effectiveSaltGrams => saltGrams ?? defaultSaltGrams;
+
+  /// Eigenes Ballaststoffziel (Mindestwert) in Gramm; null bedeutet [defaultFiberGrams].
+  final double? fiberGrams;
+
+  double get effectiveFiberGrams => fiberGrams ?? defaultFiberGrams;
 
   /// Eigenes Ziel für Ruhetage; ohne gilt das Ziel der Version an allen Tagen.
   final NutritionDayTarget? restDay;
@@ -623,6 +640,8 @@ class NutritionTargetVersion {
     NutritionDayTarget? trainingDay,
     double? saltGrams,
     bool clearSaltGrams = false,
+    double? fiberGrams,
+    bool clearFiberGrams = false,
     NutritionDayTarget? restDay,
     bool clearRestDay = false,
   }) {
@@ -648,6 +667,7 @@ class NutritionTargetVersion {
       reason: reason,
       saltGrams: clearSaltGrams ? null : saltGrams ?? this.saltGrams,
       restDay: clearRestDay ? null : restDay ?? this.restDay,
+      fiberGrams: clearFiberGrams ? null : fiberGrams ?? this.fiberGrams,
     );
   }
 
@@ -673,6 +693,7 @@ class NutritionTargetVersion {
     'reason': reason,
     if (saltGrams != null) 'saltGrams': saltGrams,
     if (restDay case final rest?) 'restDay': rest.toJson(),
+    if (fiberGrams != null) 'fiberGrams': fiberGrams,
   };
 }
 
@@ -764,6 +785,7 @@ NutritionTotals calculatePer100Totals({
     carbohydrateGrams: _scale(totals.carbohydrateGrams, 100 / amountGrams),
     fatGrams: _scale(totals.fatGrams, 100 / amountGrams),
     saltGrams: _scale(totals.saltGrams, 100 / amountGrams),
+    fiberGrams: _scale(totals.fiberGrams, 100 / amountGrams),
   );
 }
 
@@ -886,6 +908,7 @@ void _validateTotals(NutritionTotals totals) {
     ('carbohydrateGrams', totals.carbohydrateGrams),
     ('fatGrams', totals.fatGrams),
     ('saltGrams', totals.saltGrams),
+    ('fiberGrams', totals.fiberGrams),
   ]) {
     if (value != null && (!value.isFinite || value < 0)) {
       throw NutritionValidationException({
@@ -934,6 +957,11 @@ void _validateTargetVersion(
   if (salt != null && (!salt.isFinite || salt <= 0 || salt > 100)) {
     errors['versions.$index.saltGrams'] =
         'Die Salzgrenze muss zwischen 0 und 100 g liegen.';
+  }
+  final fiber = target.fiberGrams;
+  if (fiber != null && (!fiber.isFinite || fiber <= 0 || fiber > 100)) {
+    errors['versions.$index.fiberGrams'] =
+        'Das Ballaststoffziel muss zwischen 0 und 100 g liegen.';
   }
 }
 

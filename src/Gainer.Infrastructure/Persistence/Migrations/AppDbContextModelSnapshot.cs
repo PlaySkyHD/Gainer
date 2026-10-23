@@ -396,6 +396,14 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasPrecision(9, 2)
                         .HasColumnType("numeric(9,2)");
 
+                    b.Property<decimal?>("FiberGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal?>("FiberGramsPerBasis")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
                     b.Property<decimal>("Kilocalories")
                         .HasPrecision(9, 2)
                         .HasColumnType("numeric(9,2)");
@@ -516,6 +524,14 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasPrecision(9, 2)
                         .HasColumnType("numeric(9,2)");
 
+                    b.Property<decimal?>("FiberGrams")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal?>("FiberGramsPerBasis")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
                     b.Property<decimal>("Kilocalories")
                         .HasPrecision(9, 2)
                         .HasColumnType("numeric(9,2)");
@@ -588,6 +604,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_nutrition_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" >= 0");
 
                             t.HasCheckConstraint("CK_nutrition_entries_basis_macros", "(\"ProteinGramsPerBasis\" IS NULL OR \"ProteinGramsPerBasis\" >= 0) AND (\"CarbohydrateGramsPerBasis\" IS NULL OR \"CarbohydrateGramsPerBasis\" >= 0) AND (\"FatGramsPerBasis\" IS NULL OR \"FatGramsPerBasis\" >= 0)");
+
+                            t.HasCheckConstraint("CK_nutrition_entries_fiber", "(\"FiberGrams\" IS NULL OR \"FiberGrams\" >= 0) AND (\"FiberGramsPerBasis\" IS NULL OR \"FiberGramsPerBasis\" >= 0)");
 
                             t.HasCheckConstraint("CK_nutrition_entries_kcal", "\"Kilocalories\" >= 0");
 
@@ -670,6 +688,10 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("FatPercent")
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal?>("FiberGrams")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
 
                     b.Property<string>("InputMode")
                         .IsRequired()
@@ -758,6 +780,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_nutrition_target_versions_category", "\"Category\" IN ('Custom', 'Cut', 'Maintenance', 'Bulk')");
 
                             t.HasCheckConstraint("CK_nutrition_target_versions_dates", "\"EffectiveUntil\" IS NULL OR \"EffectiveUntil\" >= \"EffectiveFrom\"");
+
+                            t.HasCheckConstraint("CK_nutrition_target_versions_fiber", "\"FiberGrams\" IS NULL OR (\"FiberGrams\" > 0 AND \"FiberGrams\" <= 100)");
 
                             t.HasCheckConstraint("CK_nutrition_target_versions_input", "(\"InputMode\" = 'Grams' AND \"ProteinPercent\" IS NULL AND \"CarbohydratePercent\" IS NULL AND \"FatPercent\" IS NULL) OR (\"InputMode\" = 'Percent' AND \"ProteinPercent\" > 0 AND \"CarbohydratePercent\" > 0 AND \"FatPercent\" > 0 AND \"ProteinPercent\" + \"CarbohydratePercent\" + \"FatPercent\" = 100)");
 
@@ -864,6 +888,14 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)");
 
+                    b.Property<decimal?>("FiberGrams")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("FiberGramsPer100Grams")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
                     b.Property<decimal>("Kilocalories")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)");
@@ -927,6 +959,8 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_reusable_meal_components_amount", "\"AmountGrams\" >= 0.01 AND \"AmountGrams\" <= 100000");
 
                             t.HasCheckConstraint("CK_reusable_meal_components_basis", "\"BasisGrams\" > 0");
+
+                            t.HasCheckConstraint("CK_reusable_meal_components_fiber", "(\"FiberGrams\" IS NULL OR \"FiberGrams\" >= 0) AND (\"FiberGramsPer100Grams\" IS NULL OR (\"FiberGramsPer100Grams\" >= 0 AND \"FiberGramsPer100Grams\" <= 100))");
 
                             t.HasCheckConstraint("CK_reusable_meal_components_kcal", "\"Kilocalories\" >= 0 AND \"KilocaloriesPer100Grams\" >= 0");
 

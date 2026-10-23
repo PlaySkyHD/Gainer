@@ -52,6 +52,9 @@ public sealed class NutritionTargetVersion : UserOwnedEntity
     /// <summary>Daily salt limit in grams; null means the default of <see cref="NutritionLimits.DefaultDailySaltTargetGrams"/>.</summary>
     public decimal? SaltGrams { get; set; }
 
+    /// <summary>Daily fiber minimum in grams; null means the default of <see cref="NutritionLimits.DefaultDailyFiberTargetGrams"/>.</summary>
+    public decimal? FiberGrams { get; set; }
+
     /// <summary>Separate rest day target; present exactly when <see cref="RestKilocalories"/> is set.</summary>
     public NutritionTargetInputMode? RestInputMode { get; set; }
     public decimal? RestKilocalories { get; set; }
@@ -86,10 +89,14 @@ public sealed record NutritionTargetVersionDraft(
     decimal MacroEnergyKilocalories,
     bool RequiresEnergyMismatchConfirmation,
     decimal? SaltGrams = null,
-    NutritionRestDayTargetDraft? RestDay = null)
+    NutritionRestDayTargetDraft? RestDay = null,
+    decimal? FiberGrams = null)
 {
     /// <summary>The salt limit that applies, falling back to the default when none is set.</summary>
     public decimal EffectiveSaltGrams => SaltGrams ?? NutritionLimits.DefaultDailySaltTargetGrams;
+
+    /// <summary>The fiber minimum that applies, falling back to the default when none is set.</summary>
+    public decimal EffectiveFiberGrams => FiberGrams ?? NutritionLimits.DefaultDailyFiberTargetGrams;
 
     public static NutritionTargetVersionDraft Create(
         Guid targetVersionId,
@@ -128,7 +135,8 @@ public sealed record NutritionTargetVersionDraft(
         NutritionTargetOrigin origin = NutritionTargetOrigin.Manual,
         string? algorithmVersion = null,
         string? reason = null,
-        decimal? saltGrams = null)
+        decimal? saltGrams = null,
+        decimal? fiberGrams = null)
         => CreateCore(
             targetVersionId,
             name,
@@ -146,7 +154,8 @@ public sealed record NutritionTargetVersionDraft(
             origin,
             algorithmVersion,
             reason,
-            saltGrams);
+            saltGrams,
+            fiberGrams: fiberGrams);
 
     public static NutritionTargetVersionDraft CreateInPercent(
         Guid targetVersionId,
@@ -161,7 +170,8 @@ public sealed record NutritionTargetVersionDraft(
         NutritionTargetOrigin origin = NutritionTargetOrigin.Manual,
         string? algorithmVersion = null,
         string? reason = null,
-        decimal? saltGrams = null)
+        decimal? saltGrams = null,
+        decimal? fiberGrams = null)
     {
         NutritionTotals derived = NutritionCalculator.CalculateMacroTargetsFromPercent(
             kilocalories, proteinPercent, carbohydratePercent, fatPercent);
@@ -182,7 +192,8 @@ public sealed record NutritionTargetVersionDraft(
             origin,
             algorithmVersion,
             reason,
-            saltGrams);
+            saltGrams,
+            fiberGrams: fiberGrams);
     }
 
     public static NutritionTargetVersionDraft Restore(
@@ -203,11 +214,12 @@ public sealed record NutritionTargetVersionDraft(
         string? algorithmVersion,
         string? reason,
         decimal? saltGrams = null,
-        NutritionRestDayTargetDraft? restDay = null)
+        NutritionRestDayTargetDraft? restDay = null,
+        decimal? fiberGrams = null)
         => CreateCore(
             targetVersionId, name, category, effectiveFrom, effectiveUntil, kilocalories, inputMode,
             proteinGrams, carbohydrateGrams, fatGrams, proteinPercent, carbohydratePercent, fatPercent,
-            origin, algorithmVersion, reason, saltGrams, restDay);
+            origin, algorithmVersion, reason, saltGrams, restDay, fiberGrams);
 
     private static NutritionTargetVersionDraft CreateCore(
         Guid targetVersionId,
@@ -227,7 +239,8 @@ public sealed record NutritionTargetVersionDraft(
         string? algorithmVersion,
         string? reason,
         decimal? saltGrams,
-        NutritionRestDayTargetDraft? restDay = null)
+        NutritionRestDayTargetDraft? restDay = null,
+        decimal? fiberGrams = null)
     {
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
         if (targetVersionId == Guid.Empty) errors[nameof(TargetVersionId)] = "TargetVersionId cannot be empty.";
@@ -242,6 +255,7 @@ public sealed record NutritionTargetVersionDraft(
         ValidateTarget(carbohydrateGrams, NutritionLimits.MaxDailyMacroGrams, nameof(CarbohydrateGrams), errors);
         ValidateTarget(fatGrams, NutritionLimits.MaxDailyMacroGrams, nameof(FatGrams), errors);
         if (saltGrams is not null) ValidateTarget(saltGrams.Value, NutritionLimits.MaxDailySaltTargetGrams, nameof(SaltGrams), errors);
+        if (fiberGrams is not null) ValidateTarget(fiberGrams.Value, NutritionLimits.MaxDailyFiberTargetGrams, nameof(FiberGrams), errors);
         if (origin != NutritionTargetOrigin.Manual) errors[nameof(Origin)] = "Only manually entered nutrition targets are supported.";
         string? normalizedAlgorithmVersion = string.IsNullOrWhiteSpace(algorithmVersion) ? null : algorithmVersion.Trim();
         string? normalizedReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
@@ -258,7 +272,8 @@ public sealed record NutritionTargetVersionDraft(
             origin, normalizedAlgorithmVersion, normalizedReason, macroEnergy,
             NutritionCalculator.HasMacroEnergyMismatch(kilocalories, proteinGrams, carbohydrateGrams, fatGrams),
             saltGrams,
-            restDay);
+            restDay,
+            fiberGrams);
     }
 
     private static void ValidateAutomationMetadata(string? algorithmVersion, string? reason, Dictionary<string, string> errors)
