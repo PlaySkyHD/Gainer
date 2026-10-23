@@ -1180,19 +1180,227 @@ class _NutritionScreenState extends State<NutritionScreen> {
       ),
   ];
 
-  Future<void> _openTemplate(NutritionDayTemplate template) =>
-      Navigator.of(context).push<void>(
-        CupertinoPageRoute<void>(
-          builder: (_) => NutritionDayTemplatePage(
-            template: template,
-            onSaveMeta: (name, dayKind) => widget.viewModel.updateTemplateMeta(
-              template.templateId,
-              name: name,
-              dayKind: dayKind,
-            ),
+  /// Bearbeitet eine Vorlage: Name, Tagesart und Einträge je Mahlzeit. Der
+  /// Entwurf bleibt lokal, bis „Sichern“ ihn speichert.
+  Future<void> _openTemplate(NutritionDayTemplate template) async {
+    final draft = _TemplateDraft(template);
+    try {
+      final save = await Navigator.of(context).push<bool>(
+        CupertinoPageRoute<bool>(
+          builder: (context) => StatefulBuilder(
+            builder: (context, setPageState) =>
+                _templateEditorPage(context, setPageState, draft),
           ),
         ),
       );
+      if (save != true || !mounted) return;
+      await widget.viewModel.updateTemplate(
+        template.templateId,
+        name: draft.name.text.trim(),
+        dayKind: draft.dayKind,
+        entries: draft.entries,
+      );
+    } finally {
+      draft.dispose();
+    }
+  }
+
+  Widget _templateEditorPage(
+    BuildContext context,
+    StateSetter setPageState,
+    _TemplateDraft draft,
+  ) => _FormPage(
+    title: 'Vorlage bearbeiten',
+    closeKey: const ValueKey('day-template-close'),
+    onSave: draft.canSave ? () => Navigator.pop(context, true) : null,
+    children: [
+      GainerGroupedSection(
+        children: [
+          GainerTextFieldRow(
+            label: 'Name',
+            controller: draft.name,
+            fieldKey: const ValueKey('day-template-name'),
+            onChanged: (_) => setPageState(() {}),
+          ),
+        ],
+      ),
+      const SizedBox(height: GainerSpacing.m),
+      GainerSegmentedControl<String>(
+        key: const ValueKey('day-template-kind'),
+        options: const {
+          'none': 'Jeder Tag',
+          'training': 'Training',
+          'rest': 'Ruhe',
+        },
+        value: draft.dayKind?.name ?? 'none',
+        onChanged: (value) => setPageState(
+          () => draft.dayKind = switch (value) {
+            'training' => NutritionDayKind.training,
+            'rest' => NutritionDayKind.rest,
+            _ => null,
+          },
+        ),
+      ),
+      for (final meal in NutritionMeal.values) ...[
+        const SizedBox(height: GainerSpacing.l),
+        GainerSectionHeader(
+          title: _mealName(meal),
+          trailing: '${_fmtKcal(draft.kilocaloriesOf(meal))} kcal',
+        ),
+        const SizedBox(height: GainerSpacing.xs),
+        GainerGroupedSection(
+          children: [
+            for (final entry in draft.entriesOf(meal))
+              _templateEntryRow(context, setPageState, draft, entry),
+            _AddRow(
+              key: ValueKey('day-template-add-${meal.name}'),
+              label: 'Hinzufügen',
+              onPressed: draft.entries.length >= maxEntriesPerDay
+                  ? null
+                  : () => _addTemplateEntry(draft, meal, setPageState),
+            ),
+          ],
+        ),
+      ],
+      const SizedBox(height: GainerSpacing.m),
+      Text(
+        draft.entries.isEmpty
+            ? 'Eine Vorlage braucht mindestens einen Eintrag.'
+            : 'Änderungen ändern keine Tage, auf die die Vorlage schon angewendet wurde.',
+        textAlign: TextAlign.center,
+        style: GainerTypography.caption.copyWith(
+          color: GainerDesign.colorsOf(context).secondaryText,
+        ),
+      ),
+    ],
+  );
+
+  Widget _templateEntryRow(
+    BuildContext context,
+    StateSetter setPageState,
+    _TemplateDraft draft,
+    NutritionEntry entry,
+  ) {
+    void remove() => setPageState(() => draft.remove(entry.entryId));
+    Future<bool> confirmRemove() => confirmGainerDelete(
+      context,
+      title: 'Eintrag entfernen?',
+      message: '„${entry.productName}“ wird aus der Vorlage entfernt.',
+      deleteLabel: 'Entfernen',
+    );
+    return GainerSwipeToDelete(
+      dismissKey: ValueKey('day-template-entry-swipe-${entry.entryId}'),
+      label: 'Entfernen',
+      confirm: confirmRemove,
+      onDeleted: remove,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () async {
+          final action = await showGainerActionSheet<_EntryAction>(
+            context: context,
+            title: entry.productName,
+            groups: const [
+              [
+                GainerSheetAction(
+                  label: 'Andere Mahlzeit',
+                  icon: CupertinoIcons.arrow_up_arrow_down,
+                  value: _EntryAction.move,
+                ),
+              ],
+              [
+                GainerSheetAction(
+                  label: 'Entfernen',
+                  icon: CupertinoIcons.trash,
+                  value: _EntryAction.remove,
+                  destructive: true,
+                ),
+              ],
+            ],
+          );
+          if (!context.mounted) return;
+          switch (action) {
+            case _EntryAction.move:
+              final meal = await _chooseMealValue();
+              if (meal != null) {
+                setPageState(() => draft.moveTo(entry.entryId, meal));
+              }
+            case _EntryAction.remove:
+              if (await confirmRemove()) remove();
+            case null:
+          }
+        },
+        child: GainerListRow(
+          key: ValueKey('day-template-entry-${entry.entryId}'),
+          title: entry.productName,
+          subtitle: entry.brand,
+          value:
+              '${_amountLabel(entry.amountGrams, entry.pieceCount)} · ${_fmtKcal(entry.totals.kilocalories)} kcal',
+          onTap: () => _editTemplateEntry(draft, entry, setPageState),
+        ),
+      ),
+    );
+  }
+
+  /// Gleicher Dialog wie bei Mahlzeiten, Ergebnis landet nur im Entwurf.
+  Future<void> _addTemplateEntry(
+    _TemplateDraft draft,
+    NutritionMeal meal,
+    StateSetter setPageState,
+  ) async {
+    final food = await _openEntry(target: const MealDraftTarget());
+    if (food == null || !mounted) return;
+    try {
+      final entry = food.toEntry(
+        entryId: widget.viewModel.repository.ids(),
+        meal: meal,
+        position: draft.entriesOf(meal).length,
+      );
+      setPageState(() => draft.add(entry));
+    } catch (error) {
+      widget.viewModel.reportInputError(
+        error.toString(),
+        operation: NutritionErrorOperation.planning,
+      );
+    }
+  }
+
+  Future<void> _editTemplateEntry(
+    _TemplateDraft draft,
+    NutritionEntry entry,
+    StateSetter setPageState,
+  ) async {
+    try {
+      final updated = await _editFoodSheet(
+        ReusableMealComponent(
+          componentId: entry.entryId,
+          position: entry.position,
+          name: entry.productName,
+          brand: entry.brand,
+          amountGrams: entry.amountGrams,
+          per100Grams: entry.per100Grams,
+          source: entry.source,
+          pieceGrams: entry.pieceGrams,
+          pieceCount: entry.pieceCount,
+        ),
+        'Eintrag bearbeiten',
+      );
+      if (updated == null || !mounted) return;
+      setPageState(
+        () => draft.replace(
+          updated.toEntry(
+            entryId: entry.entryId,
+            meal: entry.meal,
+            position: entry.position,
+          ),
+        ),
+      );
+    } catch (error) {
+      widget.viewModel.reportInputError(
+        error.toString(),
+        operation: NutritionErrorOperation.planning,
+      );
+    }
+  }
 
   Future<void> _shiftDay(int days) {
     final date = DateTime.parse(widget.viewModel.localDate)
@@ -1580,9 +1788,36 @@ class _NutritionScreenState extends State<NutritionScreen> {
     List<ReusableMealComponent> components,
     StateSetter setDialogState,
   ) async {
+    try {
+      final updated = await _editFoodSheet(component, 'Bestandteil bearbeiten');
+      if (updated == null || !mounted) return;
+      final index = components.indexWhere(
+        (item) => item.componentId == component.componentId,
+      );
+      if (index < 0) return;
+      setDialogState(
+        () => components[index] = updated.toComponent(
+          componentId: component.componentId,
+          position: index,
+        ),
+      );
+    } catch (error) {
+      widget.viewModel.reportInputError(
+        error.toString(),
+        operation: NutritionErrorOperation.planning,
+      );
+    }
+  }
+
+  /// Sheet mit denselben Feldern wie die manuelle Erfassung; liefert die
+  /// geänderten Werte oder null bei Abbruch.
+  Future<FoodComponentDraft?> _editFoodSheet(
+    ReusableMealComponent component,
+    String title,
+  ) async {
     final c = _IngredientControllers.fromComponent(component);
     try {
-      final updated = await showGainerSheet<FoodComponentDraft>(
+      return await showGainerSheet<FoodComponentDraft>(
         context: context,
         heightFactor: 0.9,
         builder: (sheetContext) => StatefulBuilder(
@@ -1592,7 +1827,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 GainerSheetHeader(
-                  title: 'Bestandteil bearbeiten',
+                  title: title,
                   trailing: GainerPillButton(
                     label: 'Sichern',
                     onPressed: draft.validate() == null
@@ -1632,22 +1867,6 @@ class _NutritionScreenState extends State<NutritionScreen> {
             );
           },
         ),
-      );
-      if (updated == null || !mounted) return;
-      final index = components.indexWhere(
-        (item) => item.componentId == component.componentId,
-      );
-      if (index < 0) return;
-      setDialogState(
-        () => components[index] = updated.toComponent(
-          componentId: component.componentId,
-          position: index,
-        ),
-      );
-    } catch (error) {
-      widget.viewModel.reportInputError(
-        error.toString(),
-        operation: NutritionErrorOperation.planning,
       );
     } finally {
       c.dispose();
@@ -2417,6 +2636,71 @@ class _EntryEditControllers {
       controller.dispose();
     }
   }
+}
+
+/// Lokaler Entwurf einer Tagesvorlage im Editor.
+class _TemplateDraft {
+  _TemplateDraft(NutritionDayTemplate template)
+    : name = TextEditingController(text: template.name),
+      dayKind = template.dayKind,
+      entries = [...template.entries],
+      _original = template;
+
+  final NutritionDayTemplate _original;
+  final TextEditingController name;
+  NutritionDayKind? dayKind;
+  final List<NutritionEntry> entries;
+  bool _entriesChanged = false;
+
+  List<NutritionEntry> entriesOf(NutritionMeal meal) => [
+    for (final entry in entries)
+      if (entry.meal == meal) entry,
+  ];
+
+  double kilocaloriesOf(NutritionMeal meal) =>
+      entriesOf(meal)
+          .fold<double>(0, (sum, entry) => sum + entry.totals.kilocalories);
+
+  bool get canSave {
+    final trimmed = name.text.trim();
+    final changed =
+        _entriesChanged ||
+        trimmed != _original.name ||
+        dayKind != _original.dayKind;
+    return changed &&
+        trimmed.isNotEmpty &&
+        trimmed.length <= NutritionDayTemplate.maxNameLength &&
+        entries.isNotEmpty &&
+        entries.length <= maxEntriesPerDay;
+  }
+
+  void add(NutritionEntry entry) {
+    entries.add(entry);
+    _entriesChanged = true;
+  }
+
+  void replace(NutritionEntry entry) {
+    final index = entries.indexWhere((item) => item.entryId == entry.entryId);
+    if (index < 0) return;
+    entries[index] = entry;
+    _entriesChanged = true;
+  }
+
+  void remove(String entryId) {
+    entries.removeWhere((item) => item.entryId == entryId);
+    _entriesChanged = true;
+  }
+
+  /// Verschiebt den Eintrag ans Ende der Mahlzeit [meal].
+  void moveTo(String entryId, NutritionMeal meal) {
+    final index = entries.indexWhere((item) => item.entryId == entryId);
+    if (index < 0 || entries[index].meal == meal) return;
+    final moved = entries.removeAt(index);
+    entries.add(moved.copyWith(meal: meal, position: entriesOf(meal).length));
+    _entriesChanged = true;
+  }
+
+  void dispose() => name.dispose();
 }
 
 class _LabelTargetDraft {

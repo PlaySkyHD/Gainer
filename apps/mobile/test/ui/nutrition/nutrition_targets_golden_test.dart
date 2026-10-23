@@ -146,6 +146,63 @@ void main() {
     }, tags: ['golden']);
   }
 
+  testWidgets('template editor light', (tester) async {
+    _size(tester, 1400);
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    var nextId = 500;
+    final repository = NutritionRepository(
+      store: LocalSyncStore(database: database, accountId: accountId),
+      ids: () =>
+          '00000000-0000-4000-8000-${(nextId++).toString().padLeft(12, '0')}',
+      clock: () => DateTime.utc(2026, 10, 12, 10),
+    );
+    await tester.runAsync(() async {
+      for (final (index, meal, name, grams) in const [
+        (0, NutritionMeal.breakfast, 'Haferflocken', 80.0),
+        (1, NutritionMeal.lunch, 'Reis', 150.0),
+        (2, NutritionMeal.snacks, 'Whey', 30.0),
+      ]) {
+        await repository.saveEntry(
+          '2026-10-12',
+          NutritionEntry(
+            entryId: '00000000-0000-4000-8000-00000000040$index',
+            meal: meal,
+            position: 0,
+            productName: name,
+            brand: null,
+            amountGrams: grams,
+            per100Grams: const NutritionTotals(kilocalories: 370),
+            source: null,
+          ),
+        );
+      }
+      await repository.saveDayAsTemplate(
+        '2026-10-12',
+        name: 'Trainingstag',
+        dayKind: NutritionDayKind.training,
+      );
+    });
+    final viewModel = NutritionViewModel(
+      repository: repository,
+      localDate: '2026-10-12',
+    );
+    await tester.pumpWidget(
+      trainingTestApp(home: NutritionScreen(viewModel: viewModel)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nutrition-more-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gerichte und Vorlagen verwalten'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('day-template-Trainingstag')));
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(CupertinoApp),
+      matchesGoldenFile('goldens/nutrition_template_editor_light.png'),
+    );
+  }, tags: ['golden']);
+
   testWidgets('save template sheet light', (tester) async {
     _size(tester, 700);
     await tester.pumpWidget(
