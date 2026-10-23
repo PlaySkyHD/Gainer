@@ -166,6 +166,7 @@ void main() {
               'carbohydrateGrams': 68,
               'fatGrams': 7,
               'saltGrams': 0.9,
+              'fiberGrams': 10,
             },
             'source': {
               'provider': 'OpenFoodFacts',
@@ -194,6 +195,7 @@ void main() {
       expect(entry['entryId'], 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
       expect(entry['kilocaloriesPer100Grams'], 380);
       expect(entry['saltGramsPer100Grams'], 0.9);
+      expect(entry['fiberGramsPer100Grams'], 10);
       expect(entry['pieceGrams'], 25);
       expect(entry['pieceCount'], 2);
       expect(entry['source'], (source['entries'] as List).single['source']);
@@ -203,9 +205,10 @@ void main() {
       final plainEntry = Map<String, dynamic>.from(
         (working['entries'] as List).single as Map,
       );
-      plainEntry['per100Grams'] = Map<String, dynamic>.from(
-        plainEntry['per100Grams'] as Map,
-      )..remove('saltGrams');
+      plainEntry['per100Grams'] =
+          Map<String, dynamic>.from(plainEntry['per100Grams'] as Map)
+            ..remove('saltGrams')
+            ..remove('fiberGrams');
       withoutSalt['entries'] = [plainEntry];
       final plainPayload =
           SyncPayloadCodec.serverPayload(
@@ -221,6 +224,12 @@ void main() {
       expect(
         ((plainPayload['entries'] as List).single as Map).containsKey(
           'saltGramsPer100Grams',
+        ),
+        isFalse,
+      );
+      expect(
+        ((plainPayload['entries'] as List).single as Map).containsKey(
+          'fiberGramsPer100Grams',
         ),
         isFalse,
       );
@@ -250,6 +259,7 @@ void main() {
                       'proteinGrams': 13,
                       'carbohydrateGrams': 68,
                       'fatGrams': 7,
+                      'fiberGrams': 10,
                     },
                     'source': {
                       'provider': 'OpenFoodFacts',
@@ -271,6 +281,7 @@ void main() {
       final component = (mealPayload['components'] as List).single as Map;
       expect(component['componentId'], 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
       expect(component['source']['barcode'], '4001234567890');
+      expect(component['fiberGramsPer100Grams'], 10);
 
       final schedule =
           SyncPayloadCodec.normalizeSnapshot('NutritionTargetSchedule', {
@@ -294,6 +305,7 @@ void main() {
                     'origin': 'manual',
                     'algorithmVersion': null,
                     'reason': null,
+                    'fiberGrams': 25,
                   },
                 ],
               })!
@@ -313,6 +325,7 @@ void main() {
         (targetPayload['versions'] as List).single['targetVersionId'],
         'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       );
+      expect((targetPayload['versions'] as List).single['fiberGrams'], 25);
     },
   );
 }

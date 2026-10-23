@@ -97,6 +97,79 @@ void main() {
     }
   });
 
+  test(
+    'fiber is scaled, summed only over entries with fiber and validated',
+    () {
+      NutritionEntry food(String id, double? fiber) => NutritionEntry(
+        entryId: id,
+        meal: NutritionMeal.breakfast,
+        position: id.length,
+        productName: id,
+        brand: null,
+        amountGrams: 80,
+        per100Grams: NutritionTotals(kilocalories: 370, fiberGrams: fiber),
+        source: null,
+      );
+      final day = NutritionDay(
+        localDate: '2026-10-23',
+        entries: [food('hafer', 10), food('kaffee', null)],
+      );
+      expect(day.entries.first.totals.fiberGrams, 8);
+      expect(day.totals.fiberGrams, 8);
+      expect(
+        NutritionDay(
+          localDate: '2026-10-23',
+          entries: [food('kaffee', null)],
+        ).totals.fiberGrams,
+        isNull,
+      );
+      expect(
+        NutritionTotals.fromJson({'kilocalories': 10, 'fiberGrams': 2.5})
+            .fiberGrams,
+        2.5,
+      );
+      expect(
+        const NutritionTotals(kilocalories: 10)
+            .toJson()
+            .containsKey('fiberGrams'),
+        isFalse,
+      );
+      expect(
+        () => validateNutritionEntry(food('x', -1)),
+        throwsA(isA<NutritionValidationException>()),
+      );
+    },
+  );
+
+  test('target phases fall back to 30 g fiber and reject invalid goals', () {
+    NutritionTargetVersion phase(double? fiber) => NutritionTargetVersion(
+      targetVersionId: 'phase',
+      name: 'Ziel',
+      category: NutritionTargetCategory.custom,
+      effectiveFrom: '2026-10-01',
+      effectiveUntil: null,
+      inputMode: NutritionTargetInputMode.grams,
+      kilocalories: 2000,
+      proteinGrams: 150,
+      carbohydrateGrams: 200,
+      fatGrams: 60,
+      proteinPercent: null,
+      carbohydratePercent: null,
+      fatPercent: null,
+      fiberGrams: fiber,
+    );
+    expect(phase(null).effectiveFiberGrams, 30);
+    expect(phase(25).effectiveFiberGrams, 25);
+    expect(phase(25).toJson()['fiberGrams'], 25);
+    expect(phase(null).toJson().containsKey('fiberGrams'), isFalse);
+    for (final invalid in [0.0, -1.0, 101.0]) {
+      expect(
+        () => NutritionTargetSchedule(versions: [phase(invalid)]),
+        throwsA(isA<NutritionValidationException>()),
+      );
+    }
+  });
+
   test('pieces must match the amount and survive local and server JSON', () {
     NutritionEntry eggs({double amount = 200, double? count = 4}) =>
         NutritionEntry(

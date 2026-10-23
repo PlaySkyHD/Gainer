@@ -94,6 +94,42 @@ public sealed class SmartNutritionDomainTests
     }
 
     [TestMethod]
+    public void FiberTargetDefaultsToThirtyGramsAndIsValidated()
+    {
+        NutritionTargetVersionDraft standard = NutritionTargetVersionDraft.CreateInGrams(
+            Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null, 2500m, 180m, 260m, 80m);
+        Assert.IsNull(standard.FiberGrams);
+        Assert.AreEqual(30m, standard.EffectiveFiberGrams);
+
+        NutritionTargetVersionDraft custom = NutritionTargetVersionDraft.CreateInPercent(
+            Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null, 2000m, 30m, 40m, 30m,
+            fiberGrams: 25m);
+        Assert.AreEqual(25m, custom.EffectiveFiberGrams);
+
+        foreach (decimal invalid in new[] { 0m, -1m, 101m })
+        {
+            NutritionValidationException error = Assert.Throws<NutritionValidationException>(() =>
+                NutritionTargetVersionDraft.CreateInGrams(
+                    Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null,
+                    2500m, 180m, 260m, 80m, fiberGrams: invalid));
+            Assert.IsTrue(error.Errors.ContainsKey("FiberGrams"));
+        }
+    }
+
+    [TestMethod]
+    public void ReusableMealComponentsScaleFiberAndRejectInvalidFiber()
+    {
+        ReusableMealComponentDraft beans = ReusableMealComponentDraft.Create(
+            Guid.NewGuid(), 0, "Kidneybohnen", 200m, new NutritionPer100Grams(110m, 7m, 15m, 1m, FiberGrams: 6m));
+        Assert.AreEqual(12m, beans.Totals.FiberGrams);
+
+        NutritionValidationException error = Assert.Throws<NutritionValidationException>(() =>
+            ReusableMealComponentDraft.Create(
+                Guid.NewGuid(), 0, "Kidneybohnen", 200m, new NutritionPer100Grams(110m, 7m, 15m, 1m, FiberGrams: 101m)));
+        Assert.IsTrue(error.Errors.ContainsKey("FiberGramsPer100Grams"));
+    }
+
+    [TestMethod]
     public void TargetScheduleSortsVersionsAndFindsEffectiveVersion()
     {
         NutritionTargetVersionDraft later = NutritionTargetVersionDraft.CreateInGrams(

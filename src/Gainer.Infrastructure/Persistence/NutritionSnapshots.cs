@@ -31,7 +31,8 @@ internal static class NutritionSnapshots
             Scale(entry.ProteinGramsPerBasis, basisFactor),
             Scale(entry.CarbohydrateGramsPerBasis, basisFactor),
             Scale(entry.FatGramsPerBasis, basisFactor),
-            Scale(entry.SaltGramsPerBasis, basisFactor));
+            Scale(entry.SaltGramsPerBasis, basisFactor),
+            Scale(entry.FiberGramsPerBasis, basisFactor));
         NutritionSourceSnapshot? source = string.IsNullOrWhiteSpace(entry.Provider) &&
             string.IsNullOrWhiteSpace(entry.Barcode) && entry.RetrievedAtUtc is null
                 ? null
@@ -43,7 +44,8 @@ internal static class NutritionSnapshots
             entry.ProductName,
             entry.Brand,
             entry.AmountGrams,
-            new NutritionTotals(entry.Kilocalories, entry.ProteinGrams, entry.CarbohydrateGrams, entry.FatGrams, entry.SaltGrams),
+            new NutritionTotals(
+                entry.Kilocalories, entry.ProteinGrams, entry.CarbohydrateGrams, entry.FatGrams, entry.SaltGrams, entry.FiberGrams),
             per100,
             source,
             NutritionPortion.From(entry.PieceGrams, entry.PieceCount));

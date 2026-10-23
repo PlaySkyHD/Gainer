@@ -5,15 +5,17 @@ public sealed record NutritionPer100Grams(
     decimal? ProteinGrams,
     decimal? CarbohydrateGrams,
     decimal? FatGrams,
-    decimal? SaltGrams = null);
+    decimal? SaltGrams = null,
+    decimal? FiberGrams = null);
 
-/// <summary>Salt is optional: entries without a salt value leave it null and do not count towards the salt total.</summary>
+/// <summary>Salt and fiber are optional: entries without a value leave it null and do not count towards that total.</summary>
 public sealed record NutritionTotals(
     decimal Kilocalories,
     decimal? ProteinGrams,
     decimal? CarbohydrateGrams,
     decimal? FatGrams,
-    decimal? SaltGrams = null)
+    decimal? SaltGrams = null,
+    decimal? FiberGrams = null)
 {
     public static NutritionTotals Empty { get; } = new(0m, 0m, 0m, 0m);
 }
@@ -33,6 +35,9 @@ public static class NutritionCalculator
         ValidateOptional(values.SaltGrams, "SaltGramsPer100Grams", errors);
         if (values.SaltGrams > NutritionLimits.MaxSaltGramsPer100Grams)
             errors["SaltGramsPer100Grams"] = "SaltGramsPer100Grams cannot exceed 100.";
+        ValidateOptional(values.FiberGrams, "FiberGramsPer100Grams", errors);
+        if (values.FiberGrams > NutritionLimits.MaxFiberGramsPer100Grams)
+            errors["FiberGramsPer100Grams"] = "FiberGramsPer100Grams cannot exceed 100.";
         if (errors.Count > 0)
         {
             throw new NutritionValidationException(errors);
@@ -44,7 +49,8 @@ public static class NutritionCalculator
             Scale(values.ProteinGrams, factor),
             Scale(values.CarbohydrateGrams, factor),
             Scale(values.FatGrams, factor),
-            Scale(values.SaltGrams, factor));
+            Scale(values.SaltGrams, factor),
+            Scale(values.FiberGrams, factor));
     }
 
     public static NutritionTotals Sum(IEnumerable<NutritionTotals> values)
@@ -56,7 +62,8 @@ public static class NutritionCalculator
             SumOptional(items.Select(item => item.ProteinGrams)),
             SumOptional(items.Select(item => item.CarbohydrateGrams)),
             SumOptional(items.Select(item => item.FatGrams)),
-            SumOptional(items.Select(item => item.SaltGrams)));
+            SumOptional(items.Select(item => item.SaltGrams)),
+            SumOptional(items.Select(item => item.FiberGrams)));
     }
 
     public static NutritionTotals Scale(NutritionTotals values, decimal factor)
@@ -75,7 +82,8 @@ public static class NutritionCalculator
             Scale(values.ProteinGrams, factor),
             Scale(values.CarbohydrateGrams, factor),
             Scale(values.FatGrams, factor),
-            Scale(values.SaltGrams, factor));
+            Scale(values.SaltGrams, factor),
+            Scale(values.FiberGrams, factor));
     }
 
     public static decimal CalculateMacroEnergy(

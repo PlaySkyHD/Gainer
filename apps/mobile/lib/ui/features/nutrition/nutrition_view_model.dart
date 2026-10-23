@@ -108,6 +108,7 @@ class NutritionViewModel extends ChangeNotifier {
     double? carbohydrateGramsPer100,
     double? fatGramsPer100,
     double? saltGramsPer100,
+    double? fiberGramsPer100,
     double? pieceGrams,
     double? pieceCount,
   }) => _run(() async {
@@ -135,6 +136,7 @@ class NutritionViewModel extends ChangeNotifier {
           carbohydrateGrams: carbohydrateGramsPer100,
           fatGrams: fatGramsPer100,
           saltGrams: saltGramsPer100,
+          fiberGrams: fiberGramsPer100,
         ),
         source: null,
         pieceGrams: pieceGrams,
@@ -242,12 +244,14 @@ class NutritionViewModel extends ChangeNotifier {
     required NutritionDayTarget training,
     required NutritionDayTarget? restDay,
     required double? saltGrams,
+    required double? fiberGrams,
   }) => _run(
     () async {
       await repository.saveTargets(
         training: training,
         restDay: restDay,
         saltGrams: saltGrams,
+        fiberGrams: fiberGrams,
       );
       snapshot = await repository.read(localDate);
       statusMessage = 'Ziele gespeichert. Sie gelten ab heute.';

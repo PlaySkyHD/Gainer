@@ -39,6 +39,40 @@ public sealed class NutritionCalculationTests
     }
 
     [TestMethod]
+    public void FiberIsScaledSummedAndStaysMissingWithoutValues()
+    {
+        NutritionTotals oats = NutritionCalculator.Calculate(80m, new NutritionPer100Grams(370m, 13m, 59m, 7m, FiberGrams: 10m));
+        NutritionTotals apple = NutritionCalculator.Calculate(150m, new NutritionPer100Grams(52m, null, 14m, null));
+        Assert.AreEqual(8m, oats.FiberGrams);
+        Assert.IsNull(apple.FiberGrams);
+
+        NutritionTotals day = NutritionCalculator.Sum([oats, apple]);
+        Assert.AreEqual(8m, day.FiberGrams);
+        Assert.IsNull(NutritionCalculator.Sum([apple]).FiberGrams);
+        Assert.AreEqual(16m, NutritionCalculator.Scale(oats, 2m).FiberGrams);
+
+        foreach (decimal invalid in new[] { -1m, 101m })
+        {
+            NutritionValidationException error = Assert.Throws<NutritionValidationException>(() =>
+                NutritionCalculator.Calculate(100m, new NutritionPer100Grams(100m, null, null, null, FiberGrams: invalid)));
+            Assert.IsTrue(error.Errors.ContainsKey("FiberGramsPer100Grams"));
+        }
+    }
+
+    [TestMethod]
+    public void EstimatedComponentsCarryFiberAndRejectInvalidFiber()
+    {
+        MealEstimateComponentDraft soup = MealEstimateComponentDraft.Create(
+            "Linsensuppe", 400m, 360m, 22m, 48m, 6m, MealEstimateConfidence.Medium, [], fiberGrams: 12m);
+        Assert.AreEqual(12m, soup.FiberGrams);
+
+        NutritionValidationException error = Assert.Throws<NutritionValidationException>(() =>
+            MealEstimateComponentDraft.Create(
+                "Linsensuppe", 400m, 360m, null, null, null, MealEstimateConfidence.Medium, [], fiberGrams: -1m));
+        Assert.IsTrue(error.Errors.ContainsKey("FiberGrams"));
+    }
+
+    [TestMethod]
     public void ZeroCalorieFoodsLikeSaltAreAllowed()
     {
         NutritionTotals salt = NutritionCalculator.Calculate(3m, new NutritionPer100Grams(0m, 0m, 0m, 0m, 100m));

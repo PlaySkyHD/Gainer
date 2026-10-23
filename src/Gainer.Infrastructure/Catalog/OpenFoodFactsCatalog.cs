@@ -191,6 +191,8 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
         decimal? carbohydrates = NonNegative(Decimal(nutrients, "carbohydrates_100g"));
         decimal? fat = NonNegative(Decimal(nutrients, "fat_100g"));
         decimal? salt = Salt(nutrients);
+        decimal? fiber = NonNegative(Decimal(nutrients, "fiber_100g"));
+        if (fiber > NutritionLimits.MaxFiberGramsPer100Grams) fiber = null;
         var quality = new List<string>();
         if (protein is null) quality.Add("protein_missing");
         if (carbohydrates is null) quality.Add("carbohydrates_missing");
@@ -202,7 +204,7 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
             name,
             CleanText(String(product, "brands")),
             100m,
-            new NutritionPer100Grams(kcal.Value, protein, carbohydrates, fat, salt),
+            new NutritionPer100Grams(kcal.Value, protein, carbohydrates, fat, salt, fiber),
             quality,
             retrievedAtUtc,
             false,

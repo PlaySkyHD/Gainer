@@ -64,6 +64,7 @@ class CalendarNutritionTarget {
     required this.carbohydrateGrams,
     required this.fatGrams,
     this.saltGrams = NutritionTargetVersion.defaultSaltGrams,
+    this.fiberGrams = NutritionTargetVersion.defaultFiberGrams,
     this.kind,
     this.manual = false,
     this.automaticKind = NutritionDayKind.rest,
@@ -79,6 +80,7 @@ class CalendarNutritionTarget {
          carbohydrateGrams: result.target.carbohydrateGrams,
          fatGrams: result.target.fatGrams,
          saltGrams: result.effectiveSaltGrams,
+         fiberGrams: result.effectiveFiberGrams,
          kind: result.kind,
          manual: result.manual,
          automaticKind: automatic,
@@ -91,6 +93,9 @@ class CalendarNutritionTarget {
 
   /// Salzobergrenze des Tages.
   final double saltGrams;
+
+  /// Ballaststoffziel (Mindestwert) des Tages.
+  final double fiberGrams;
 
   /// Tagesart; null ohne Ruhetag-Ziel (dann ohne Bedeutung).
   final NutritionDayKind? kind;
@@ -110,6 +115,7 @@ class CalendarNutrition {
     this.carbohydrateGrams,
     this.fatGrams,
     this.saltGrams,
+    this.fiberGrams,
     this.target,
   });
 
@@ -121,6 +127,7 @@ class CalendarNutrition {
         carbohydrateGrams: 0,
         fatGrams: 0,
         saltGrams: 0,
+        fiberGrams: 0,
         target: target,
       );
 
@@ -129,6 +136,7 @@ class CalendarNutrition {
   final double? carbohydrateGrams;
   final double? fatGrams;
   final double? saltGrams;
+  final double? fiberGrams;
   final CalendarNutritionTarget? target;
 
   double? get targetKilocalories => target?.kilocalories;
@@ -136,6 +144,7 @@ class CalendarNutrition {
   double? get targetCarbohydrateGrams => target?.carbohydrateGrams;
   double? get targetFatGrams => target?.fatGrams;
   double? get targetSaltGrams => target?.saltGrams;
+  double? get targetFiberGrams => target?.fiberGrams;
 }
 
 /// Alles, was an einem Tag passiert ist oder geplant war.
@@ -527,6 +536,7 @@ class CalendarViewModel extends ChangeNotifier {
         carbohydrateGrams: totals.carbohydrateGrams,
         fatGrams: totals.fatGrams,
         saltGrams: totals.saltGrams,
+        fiberGrams: totals.fiberGrams,
         target: targetOn(day),
       );
     }

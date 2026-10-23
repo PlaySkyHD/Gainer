@@ -8,6 +8,7 @@ NutritionDay day(
   double protein = 100,
   double carbs = 200,
   double fat = 60,
+  double? fiber,
 }) => NutritionDay(
   localDate: date,
   entries: [
@@ -24,6 +25,7 @@ NutritionDay day(
         proteinGrams: protein,
         carbohydrateGrams: carbs,
         fatGrams: fat,
+        fiberGrams: fiber,
       ),
       source: null,
     ),
@@ -86,6 +88,25 @@ void main() {
     // 2300 exakt, 2530 (+10 %) und 2070 (-10 %) liegen im Bereich.
     expect(result.daysWithinTarget, 3);
     expect(result.daysWithTarget, 5);
+  });
+
+  test('fiber is averaged only over logged days with fiber', () {
+    final result = NutritionAverages.compute(
+      days: [
+        day('2026-10-13', 2000, fiber: 20),
+        day('2026-10-14', 2000, fiber: 25),
+        day('2026-10-15', 2000, fiber: 30),
+        day('2026-10-16', 2000),
+        day('2026-10-17', 2000),
+        day('2026-10-18', 2000),
+        day('2026-10-19', 2000),
+      ],
+      schedule: schedule,
+      today: today,
+      windowDays: 7,
+    );
+    expect(result.loggedDays, 7);
+    expect(result.averageFiberGrams, 25);
   });
 
   test('unlogged days are null, not zero', () {

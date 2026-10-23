@@ -24,6 +24,7 @@ class NutritionDayTargetResult {
   final bool manual;
 
   double get effectiveSaltGrams => version.effectiveSaltGrams;
+  double get effectiveFiberGrams => version.effectiveFiberGrams;
 }
 
 /// Tagesart ohne Festlegung: Trainingstag, wenn ein Krafttraining beendet

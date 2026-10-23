@@ -30,6 +30,7 @@ const _saltPer100 = NutritionTotals(
   carbohydrateGrams: 0,
   fatGrams: 0,
   saltGrams: 100,
+  fiberGrams: 0,
 );
 
 /// Übliche Mengen beim Selbstsalzen; 1 Teelöffel Salz wiegt etwa 6 g.
@@ -140,6 +141,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _carbs = TextEditingController();
   final _fat = TextEditingController();
   final _salt = TextEditingController();
+  final _fiber = TextEditingController();
   final _pieceGrams = TextEditingController();
   final _pieceCount = TextEditingController();
   final _addPieces = TextEditingController();
@@ -203,6 +205,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _carbs,
       _fat,
       _salt,
+      _fiber,
       _pieceGrams,
       _pieceCount,
       _addPieces,
@@ -450,6 +453,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       training: input.training,
       restDay: input.restDay,
       saltGrams: input.saltGrams,
+      fiberGrams: input.fiberGrams,
     );
   }
 
@@ -686,6 +690,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           carbs: _carbs,
           fat: _fat,
           salt: _salt,
+          fiber: _fiber,
           pieceGrams: _pieceGrams,
           pieceCount: _pieceCount,
           nameKey: const ValueKey('nutrition-entry-name'),
@@ -1004,14 +1009,18 @@ class _NutritionScreenState extends State<NutritionScreen> {
     ],
   ];
 
-  /// „350 g · 890 kcal · ~3,5 g Salz · mittel“; Salz nur, wenn geschätzt.
+  /// „350 g · 890 kcal · ~12 g Ballaststoffe · ~3,5 g Salz · mittel“;
+  /// Ballaststoffe und Salz nur, wenn geschätzt.
   String _estimateSubtitle(NutritionEstimateComponent item) {
     final salt = item.totals.saltGrams;
+    final fiber = item.totals.fiberGrams;
     return [
       if (item.pieceCount case final count?)
         '${_formatNumber(count, decimals: 2)} Stk',
       '${_fmtGrams(item.amountGrams)} g',
       '${_fmtKcal(item.totals.kilocalories)} kcal',
+      if (fiber != null && item.name != _saltName)
+        '~${_fmtGrams(fiber)} g Ballaststoffe',
       if (salt != null && item.name != _saltName) '~${_fmtGrams(salt)} g Salz',
       _confidenceNames[item.confidence.toLowerCase()] ?? item.confidence,
       ?item.sourceHost,
@@ -1479,6 +1488,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
         carbohydrateGrams: _nullable(c.carbs.text),
         fatGrams: _nullable(c.fat.text),
         saltGrams: _nullable(c.salt.text),
+        fiberGrams: _nullable(c.fiber.text),
       ),
       pieceGrams: _nullable(c.pieceGrams.text),
       pieceCount: _nullable(c.pieceCount.text),
@@ -1515,6 +1525,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       carbs: c.carbs,
       fat: c.fat,
       salt: c.salt,
+      fiber: c.fiber,
       pieceGrams: c.pieceGrams,
       pieceCount: c.pieceCount,
       nameKey: const ValueKey('nutrition-edit-name'),
@@ -1854,6 +1865,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       carbs: c.carbs,
                       fat: c.fat,
                       salt: c.salt,
+                      fiber: c.fiber,
                       pieceGrams: c.pieceGrams,
                       pieceCount: c.pieceCount,
                       nameKey: const ValueKey('meal-component-name'),
@@ -2015,6 +2027,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           carbohydrateGramsPer100: _nullable(_carbs.text),
           fatGramsPer100: _nullable(_fat.text),
           saltGramsPer100: _nullable(_salt.text),
+          fiberGramsPer100: _nullable(_fiber.text),
           pieceGrams: _nullable(_pieceGrams.text),
           pieceCount: _nullable(_pieceCount.text),
         );
@@ -2036,6 +2049,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               carbohydrateGrams: _nullable(_carbs.text),
               fatGrams: _nullable(_fat.text),
               saltGrams: _nullable(_salt.text),
+              fiberGrams: _nullable(_fiber.text),
             ),
             source: null,
             pieceGrams: _nullable(_pieceGrams.text),
@@ -2052,6 +2066,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
             _carbs,
             _fat,
             _salt,
+            _fiber,
             _pieceGrams,
             _pieceCount,
           ]) {
@@ -2175,6 +2190,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
             GainerListRow(
               title: 'Fett',
               value: _labelValue(draft.fatGrams, _fmtGrams, 'g'),
+            ),
+            GainerListRow(
+              title: 'Ballaststoffe',
+              value: _labelValue(draft.fiberGrams, _fmtGrams, 'g'),
             ),
             GainerListRow(
               title: 'Salz',
@@ -2330,6 +2349,7 @@ List<Widget> _foodFormGroups({
   required TextEditingController carbs,
   required TextEditingController fat,
   required TextEditingController salt,
+  required TextEditingController fiber,
   required TextEditingController pieceGrams,
   required TextEditingController pieceCount,
   Key? nameKey,
@@ -2421,6 +2441,14 @@ List<Widget> _foodFormGroups({
         onChanged: onChanged,
       ),
       GainerTextFieldRow(
+        label: 'Ballaststoffe',
+        unit: 'g',
+        controller: fiber,
+        keyboardType: _decimalKeyboard,
+        fieldKey: const ValueKey('nutrition-entry-fiber'),
+        onChanged: onChanged,
+      ),
+      GainerTextFieldRow(
         label: 'Fett',
         unit: 'g',
         controller: fat,
@@ -2465,6 +2493,7 @@ FoodComponentDraft _draftFrom(
     carbohydrateGrams: _nullable(c.carbs.text),
     fatGrams: _nullable(c.fat.text),
     saltGrams: _nullable(c.salt.text),
+    fiberGrams: _nullable(c.fiber.text),
   ),
   source: source,
   pieceGrams: _nullable(c.pieceGrams.text),
@@ -2602,6 +2631,9 @@ class _EntryEditControllers {
       salt = TextEditingController(
         text: _optionalGrams(entry.per100Grams.saltGrams),
       ),
+      fiber = TextEditingController(
+        text: _optionalGrams(entry.per100Grams.fiberGrams),
+      ),
       pieceGrams = TextEditingController(
         text: _optionalGrams(entry.pieceGrams),
       ),
@@ -2617,6 +2649,7 @@ class _EntryEditControllers {
   final TextEditingController carbs;
   final TextEditingController fat;
   final TextEditingController salt;
+  final TextEditingController fiber;
   final TextEditingController pieceGrams;
   final TextEditingController pieceCount;
 
@@ -2630,6 +2663,7 @@ class _EntryEditControllers {
       carbs,
       fat,
       salt,
+      fiber,
       pieceGrams,
       pieceCount,
     ]) {
@@ -2817,6 +2851,11 @@ class _TargetsSummary extends StatelessWidget {
                   onTap: onEdit,
                 ),
               GainerListRow(
+                title: 'Ballaststoffe',
+                value: '≥ ${_fmtGrams(current.effectiveFiberGrams)} g',
+                onTap: onEdit,
+              ),
+              GainerListRow(
                 title: 'Salz',
                 value: '≤ ${_fmtGrams(current.effectiveSaltGrams)} g',
                 onTap: onEdit,
@@ -2930,18 +2969,25 @@ class _DayCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: GainerSpacing.s),
-              // Salz ist eine Obergrenze; eigene Zeile, gleiche Spaltenbreite.
+              // Ballaststoffe (Mindestziel) und Salz (Obergrenze) in eigener
+              // Zeile mit gleicher Spaltenbreite wie die Makros.
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _macro(
+                    colors,
+                    'Ballaststoffe',
+                    totals.fiberGrams,
+                    target?.effectiveFiberGrams,
+                    minimum: true,
+                  ),
+                  const SizedBox(width: GainerSpacing.s),
                   _macro(
                     colors,
                     'Salz',
                     totals.saltGrams,
                     target?.effectiveSaltGrams,
                   ),
-                  const SizedBox(width: GainerSpacing.s),
-                  const Spacer(),
                   const SizedBox(width: GainerSpacing.s),
                   const Spacer(),
                 ],
@@ -2963,12 +3009,14 @@ class _DayCard extends StatelessWidget {
     );
   }
 
+  /// [minimum] markiert Mindestziele: Über dem Ziel gibt es keine Warnfarbe.
   Widget _macro(
     GainerColors colors,
     String name,
     double? consumed,
-    double? goal,
-  ) {
+    double? goal, {
+    bool minimum = false,
+  }) {
     final actual = consumed == null ? '–' : _fmtGrams(consumed);
     return Expanded(
       child: Semantics(
@@ -3001,7 +3049,12 @@ class _DayCard extends StatelessWidget {
             ),
             if (goal != null) ...[
               const SizedBox(height: GainerSpacing.xxs),
-              GainerProgressBar(consumed: consumed, target: goal, height: 4),
+              GainerProgressBar(
+                consumed: consumed,
+                target: goal,
+                height: 4,
+                warnWhenExceeded: !minimum,
+              ),
             ],
           ],
         ),
@@ -3360,6 +3413,7 @@ class _IngredientControllers {
       carbs = TextEditingController(),
       fat = TextEditingController(),
       salt = TextEditingController(),
+      fiber = TextEditingController(),
       pieceGrams = TextEditingController(),
       pieceCount = TextEditingController();
 
@@ -3384,6 +3438,9 @@ class _IngredientControllers {
       salt = TextEditingController(
         text: _optionalGrams(component.per100Grams.saltGrams),
       ),
+      fiber = TextEditingController(
+        text: _optionalGrams(component.per100Grams.fiberGrams),
+      ),
       pieceGrams = TextEditingController(
         text: _optionalGrams(component.pieceGrams),
       ),
@@ -3401,6 +3458,7 @@ class _IngredientControllers {
   final TextEditingController carbs;
   final TextEditingController fat;
   final TextEditingController salt;
+  final TextEditingController fiber;
   final TextEditingController pieceGrams;
   final TextEditingController pieceCount;
 
@@ -3413,6 +3471,7 @@ class _IngredientControllers {
     carbs.dispose();
     fat.dispose();
     salt.dispose();
+    fiber.dispose();
     pieceGrams.dispose();
     pieceCount.dispose();
   }
