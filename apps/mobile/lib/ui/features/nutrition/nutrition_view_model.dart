@@ -26,6 +26,11 @@ class NutritionViewModel extends ChangeNotifier {
   NutritionLabelScanDraft? labelDraft;
   MealEstimateDraft? mealEstimateDraft;
   List<NutritionFood> searchResults = const [];
+
+  /// Treffer aus dem lokalen Katalog (BLS), schon beim Tippen.
+  List<NutritionFood> localResults = const [];
+  bool localResultsPartial = false;
+  int _localSearchGeneration = 0;
   NutritionFood? barcodeFood;
   bool isLoading = false;
   bool isSaving = false;
@@ -335,6 +340,29 @@ class NutritionViewModel extends ChangeNotifier {
     saving: true,
     operation: NutritionErrorOperation.planning,
   );
+
+  /// Gibt es eine Produktsuche online (Open Food Facts)?
+  bool get canSearchOnline => repository.canSearchOnline;
+
+  /// Sucht beim Tippen im lokalen Katalog. Ältere Online-Treffer passen nicht
+  /// mehr zur Eingabe und entfallen; spätere Antworten überholen frühere nicht.
+  Future<void> searchLocalFoods(String query) async {
+    final generation = ++_localSearchGeneration;
+    if (searchResults.isNotEmpty) {
+      searchResults = const [];
+      _notify();
+    }
+    LocalFoodSearch result;
+    try {
+      result = await repository.searchLocalFoods(query);
+    } catch (_) {
+      result = LocalFoodSearch.empty;
+    }
+    if (_disposed || generation != _localSearchGeneration) return;
+    localResults = result.foods;
+    localResultsPartial = result.partial;
+    _notify();
+  }
 
   Future<void> searchFoods(String query) => _run(
     () async {

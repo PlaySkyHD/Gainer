@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/nutrition/nutrition_repository.dart';
@@ -71,7 +73,7 @@ extension on _NutritionEntryMode {
     _NutritionEntryMode.meals => 'Ein gespeichertes Gericht übernehmen',
     _NutritionEntryMode.manual => 'Nährwerte selbst eingeben',
     _NutritionEntryMode.salt => 'Selbst gesalzen, z. B. eine Prise',
-    _NutritionEntryMode.search => 'Online nach Produkt oder Marke suchen',
+    _NutritionEntryMode.search => 'Lebensmittel (auch offline) und Produkte',
     _NutritionEntryMode.barcode => 'Produkt über den Barcode finden',
     _NutritionEntryMode.estimate => 'Text oder Foto als Vorschlag prüfen',
     _NutritionEntryMode.label => 'Nährwertetikett fotografieren und prüfen',
@@ -149,6 +151,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _estimateText = TextEditingController();
   final _saltAmount = TextEditingController();
   MealDictationController? _dictation;
+  Timer? _localSearch;
   bool _wasVisible = true;
 
   bool get _visible => widget.isVisible?.call() ?? true;
@@ -196,6 +199,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     widget.visibility?.removeListener(_onVisibility);
     widget.refresh?.removeListener(_onRefresh);
     _dictation?.dispose();
+    _localSearch?.cancel();
     for (final controller in [
       _name,
       _brand,
@@ -741,8 +745,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
   Widget _foodResults(
     List<NutritionFood> foods,
     String fallback,
-    ValueChanged<NutritionFood> onSelect,
-  ) => GainerGroupedSection(
+    ValueChanged<NutritionFood> onSelect, {
+    String? header,
+  }) => GainerGroupedSection(
+    header: header,
     children: [
       for (final food in foods)
         GainerListRow(
@@ -802,16 +808,46 @@ class _NutritionScreenState extends State<NutritionScreen> {
     GainerSearchField(
       key: const ValueKey('nutrition-entry-search'),
       controller: _search,
-      placeholder: 'Produkt oder Marke',
+      placeholder: 'Lebensmittel, Produkt oder Marke',
+      onChanged: (query) => _scheduleLocalSearch(vm, query),
       onSubmitted: (query) => _searchFoods(vm, query),
     ),
     const SizedBox(height: GainerSpacing.m),
     _amountGroup(),
-    if (vm.searchResults.isNotEmpty) ...[
+    if (vm.localResults.isNotEmpty) ...[
       const SizedBox(height: GainerSpacing.m),
-      _foodResults(vm.searchResults, 'Lebensmittel', onSelect),
+      _foodResults(
+        vm.localResults,
+        'BLS',
+        onSelect,
+        header: vm.localResultsPartial
+            ? 'Lebensmittel (BLS) · Teiltreffer'
+            : 'Lebensmittel (BLS)',
+      ),
+    ],
+    if (!vm.canSearchOnline) ...[
+      const SizedBox(height: GainerSpacing.m),
+      _hint('Produktsuche braucht Internet.'),
+    ] else if (vm.searchResults.isNotEmpty) ...[
+      const SizedBox(height: GainerSpacing.m),
+      _foodResults(
+        vm.searchResults,
+        'Lebensmittel',
+        onSelect,
+        header: 'Produkte (Open Food Facts)',
+      ),
     ],
   ];
+
+  /// Lokale Treffer folgen der Eingabe mit kurzer Pause, damit nicht jeder
+  /// Tastendruck eine Suche startet.
+  void _scheduleLocalSearch(NutritionViewModel vm, String query) {
+    _localSearch?.cancel();
+    _localSearch = Timer(
+      const Duration(milliseconds: 150),
+      () => vm.searchLocalFoods(query),
+    );
+  }
 
   List<Widget> _barcodeTools(
     NutritionViewModel vm,
@@ -1096,6 +1132,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   void _searchFoods(NutritionViewModel vm, String query) {
     final value = query.trim();
+    // Absenden zeigt die lokalen Treffer sofort, ohne auf die Pause zu warten.
+    _localSearch?.cancel();
+    vm.searchLocalFoods(value);
+    if (!vm.canSearchOnline) return;
     if (value.length < 2) {
       vm.reportInputError(
         'Bitte mindestens zwei Zeichen eingeben.',
