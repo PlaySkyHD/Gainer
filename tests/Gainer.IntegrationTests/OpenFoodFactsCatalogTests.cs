@@ -57,6 +57,19 @@ public sealed class OpenFoodFactsCatalogTests
     }
 
     [TestMethod]
+    public async Task HtmlEntitiesInNamesAreDecoded()
+    {
+        const string json = "{\"product\":{\"code\":\"12345678\"," +
+            "\"product_name\":\"Ironmaxx Maltodextrin Neutral, 1er Pack &#40;1 x 2 KG&#41\"," +
+            "\"brands\":\"Ben &amp; Jerry&#39;s\",\"nutrition_data_per\":\"100g\"," +
+            "\"nutriments\":{\"energy-kcal_100g\":385}}}";
+        OpenFoodFactsCatalog catalog = Create(new QueueHandler(Response(HttpStatusCode.OK, json)));
+        FoodCatalogProduct product = await catalog.GetByBarcodeAsync("12345678");
+        Assert.AreEqual("Ironmaxx Maltodextrin Neutral, 1er Pack (1 x 2 KG)", product.ProductName);
+        Assert.AreEqual("Ben & Jerry's", product.Brand);
+    }
+
+    [TestMethod]
     public async Task SaltIsReadDirectlyOrDerivedFromSodium()
     {
         OpenFoodFactsCatalog direct = Create(new QueueHandler(Response(HttpStatusCode.OK, Product(salt: 1.2m, sodium: 0.48m))));
