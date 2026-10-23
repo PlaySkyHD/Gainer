@@ -3746,6 +3746,15 @@
               "string"
             ],
             "format": "double"
+          },
+          "fiberGramsPer100Grams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -3907,6 +3916,15 @@
             "format": "double"
           },
           "pieceGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "fiberGrams": {
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
             "type": [
               "null",
@@ -4440,6 +4458,16 @@
                 "$ref": "#/components/schemas/NutritionLabelFieldResponse"
               }
             ]
+          },
+          "fiberGrams": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NutritionLabelFieldResponse"
+              }
+            ]
           }
         }
       },
@@ -4465,6 +4493,16 @@
             "$ref": "#/components/schemas/NutrientProgressResponse"
           },
           "salt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NutrientProgressResponse"
+              }
+            ]
+          },
+          "fiber": {
             "oneOf": [
               {
                 "type": "null"
@@ -4810,6 +4848,24 @@
                 "$ref": "#/components/schemas/NutritionRestDayTargetResponse"
               }
             ]
+          },
+          "fiberGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "effectiveFiberGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -4858,6 +4914,15 @@
             "format": "double"
           },
           "saltGrams": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "fiberGrams": {
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
             "type": [
               "null",

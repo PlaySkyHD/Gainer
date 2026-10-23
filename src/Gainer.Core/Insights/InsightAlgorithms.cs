@@ -17,7 +17,8 @@ public sealed record NutritionPoint(
     decimal? ProteinGrams,
     decimal? CarbohydrateGrams,
     decimal? FatGrams,
-    string Source = NutritionSources.LegacyCheckIn);
+    string Source = NutritionSources.LegacyCheckIn,
+    decimal? FiberGrams = null);
 
 public static class NutritionSources
 {
@@ -51,7 +52,8 @@ public sealed record NutritionInsights(
     MetricAverage CaloriesKcal,
     MetricAverage ProteinGrams,
     MetricAverage CarbohydrateGrams,
-    MetricAverage FatGrams);
+    MetricAverage FatGrams,
+    MetricAverage? FiberGrams = null);
 
 public sealed record TrainingInsights(
     string VolumeAlgorithmVersion,
@@ -121,7 +123,8 @@ public static class InsightAlgorithms
             Average(points.Select(item => item.CaloriesKcal)),
             Average(points.Select(item => item.ProteinGrams)),
             Average(points.Select(item => item.CarbohydrateGrams)),
-            Average(points.Select(item => item.FatGrams)));
+            Average(points.Select(item => item.FatGrams)),
+            Average(points.Select(item => item.FiberGrams)));
     }
 
     /// <summary>Aggregiert die Blöcke beendeter Trainings im Zeitraum; <paramref name="workoutCount"/> zählt die Trainings.</summary>

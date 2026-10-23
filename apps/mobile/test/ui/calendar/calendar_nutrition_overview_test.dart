@@ -42,10 +42,13 @@ const _underTarget = CalendarNutrition(
   carbohydrateGrams: 120,
   fatGrams: 41.6,
   saltGrams: 3.44,
+  fiberGrams: 18,
   target: _target,
 );
 
 /// Einzelne Karte auf Seitenhintergrund, wie in der Tagesansicht eingerückt.
+/// Die Tagesansicht scrollt; bei Textgröße 2 darf die Karte höher als der
+/// Bildschirm sein.
 Future<int> _pumpCard(
   WidgetTester tester,
   CalendarNutrition nutrition, {
@@ -60,7 +63,7 @@ Future<int> _pumpCard(
       home: Builder(
         builder: (context) => ColoredBox(
           color: GainerDesign.colorsOf(context).background,
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(GainerSpacing.m),
             child: Column(
               children: [
@@ -103,12 +106,13 @@ void main() {
     expect(find.text('0 / 180 g'), findsOneWidget);
     expect(find.text('0 / 80 g'), findsOneWidget);
     expect(find.text('0 / 6 g'), findsOneWidget);
-    expect(find.byType(GainerProgressBar), findsNWidgets(4));
+    expect(find.text('0 / 30 g'), findsOneWidget);
+    expect(find.byType(GainerProgressBar), findsNWidgets(5));
     expect(
       _label(tester),
       'Ernährung: 0 kcal gegessen, 2.724 kcal übrig, Ziel 2.724 kcal, '
       'Kohlenhydrate 0 von 332 g, Eiweiß 0 von 180 g, Fett 0 von 80 g, '
-      'Salz 0 von 6 g',
+      'Ballaststoffe 0 von 30 g, Salz 0 von 6 g',
     );
   });
 
@@ -125,12 +129,13 @@ void main() {
     expect(find.text('82 / 180 g'), findsOneWidget);
     expect(find.text('42 / 80 g'), findsOneWidget);
     expect(find.text('3,4 / 6 g'), findsOneWidget);
+    expect(find.text('18 / 30 g'), findsOneWidget);
     expect(find.text('Verbrannt'), findsNothing);
     expect(
       _label(tester),
       'Ernährung: 1.240 kcal gegessen, 1.484 kcal übrig, Ziel 2.724 kcal, '
       'Kohlenhydrate 120 von 332 g, Eiweiß 82 von 180 g, Fett 42 von 80 g, '
-      'Salz 3,4 von 6 g',
+      'Ballaststoffe 18 von 30 g, Salz 3,4 von 6 g',
     );
   });
 
@@ -177,13 +182,13 @@ void main() {
     );
     expect(find.text('120 g'), findsOneWidget);
     expect(find.text('82 g'), findsOneWidget);
-    // Fett und Salz ohne Angabe.
-    expect(find.text('– g'), findsNWidgets(2));
+    // Fett, Ballaststoffe und Salz ohne Angabe.
+    expect(find.text('– g'), findsNWidgets(3));
     expect(find.byType(GainerProgressBar), findsNothing);
     expect(
       _label(tester),
       'Ernährung: 1.240 kcal gegessen, Kohlenhydrate 120 g, Eiweiß 82 g, '
-      'Fett ohne Angabe, Salz ohne Angabe',
+      'Fett ohne Angabe, Ballaststoffe ohne Angabe, Salz ohne Angabe',
     );
   });
 

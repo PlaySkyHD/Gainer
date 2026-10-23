@@ -298,7 +298,8 @@ public sealed class SyncMutationExecutor(
                                 item.ProteinGramsPer100Grams,
                                 item.CarbohydrateGramsPer100Grams,
                                 item.FatGramsPer100Grams,
-                                item.SaltGramsPer100Grams),
+                                item.SaltGramsPer100Grams,
+                                item.FiberGramsPer100Grams),
                             item.Brand,
                             item.Source,
                             NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
@@ -374,7 +375,8 @@ public sealed class SyncMutationExecutor(
                 item.AlgorithmVersion,
                 item.Reason,
                 item.SaltGrams,
-                ToRestDayDraft(item.RestDay));
+                ToRestDayDraft(item.RestDay),
+                item.FiberGrams);
         }).ToArray();
 
     private static NutritionRestDayTargetDraft? ToRestDayDraft(NutritionRestDayPayload? payload) =>
@@ -505,7 +507,8 @@ public sealed class SyncMutationExecutor(
                 item.ProteinGramsPer100Grams,
                 item.CarbohydrateGramsPer100Grams,
                 item.FatGramsPer100Grams,
-                item.SaltGramsPer100Grams),
+                item.SaltGramsPer100Grams,
+                item.FiberGramsPer100Grams),
             item.Brand,
             item.Source,
             NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
@@ -616,7 +619,8 @@ public sealed class SyncMutationExecutor(
         NutritionSourceSnapshot? Source,
         decimal? SaltGramsPer100Grams = null,
         decimal? PieceGrams = null,
-        decimal? PieceCount = null);
+        decimal? PieceCount = null,
+        decimal? FiberGramsPer100Grams = null);
     private sealed record SaveNutritionTargetSchedulePayload(
         Guid NutritionTargetScheduleId,
         long BaseVersion,
@@ -639,7 +643,8 @@ public sealed class SyncMutationExecutor(
         string? AlgorithmVersion,
         string? Reason,
         decimal? SaltGrams = null,
-        NutritionRestDayPayload? RestDay = null);
+        NutritionRestDayPayload? RestDay = null,
+        decimal? FiberGrams = null);
     private sealed record NutritionRestDayPayload(
         string? InputMode,
         decimal Kilocalories,
@@ -663,5 +668,6 @@ public sealed class SyncMutationExecutor(
         NutritionSourceSnapshot? Source,
         decimal? SaltGramsPer100Grams = null,
         decimal? PieceGrams = null,
-        decimal? PieceCount = null);
+        decimal? PieceCount = null,
+        decimal? FiberGramsPer100Grams = null);
 }

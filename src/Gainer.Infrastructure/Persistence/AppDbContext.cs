@@ -110,7 +110,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                  {
                      item => item.ProteinGrams, item => item.CarbohydrateGrams, item => item.FatGrams, item => item.SaltGrams,
                      item => item.ProteinGramsPerBasis, item => item.CarbohydrateGramsPerBasis, item => item.FatGramsPerBasis,
-                     item => item.SaltGramsPerBasis, item => item.PieceGrams,
+                     item => item.SaltGramsPerBasis, item => item.FiberGrams, item => item.FiberGramsPerBasis, item => item.PieceGrams,
                  })
         {
             entry.Property(column).HasPrecision(9, 2);
@@ -749,6 +749,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_nutrition_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" >= 0");
                 table.HasCheckConstraint("CK_nutrition_entries_basis_macros", "(\"ProteinGramsPerBasis\" IS NULL OR \"ProteinGramsPerBasis\" >= 0) AND (\"CarbohydrateGramsPerBasis\" IS NULL OR \"CarbohydrateGramsPerBasis\" >= 0) AND (\"FatGramsPerBasis\" IS NULL OR \"FatGramsPerBasis\" >= 0)");
                 table.HasCheckConstraint("CK_nutrition_entries_salt", "(\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"SaltGramsPerBasis\" IS NULL OR \"SaltGramsPerBasis\" >= 0)");
+                table.HasCheckConstraint("CK_nutrition_entries_fiber", "(\"FiberGrams\" IS NULL OR \"FiberGrams\" >= 0) AND (\"FiberGramsPerBasis\" IS NULL OR \"FiberGramsPerBasis\" >= 0)");
                 table.HasCheckConstraint("CK_nutrition_entries_pieces", "(\"PieceGrams\" IS NULL OR \"PieceGrams\" > 0) AND (\"PieceCount\" IS NULL OR (\"PieceCount\" > 0 AND \"PieceGrams\" IS NOT NULL))");
             });
             ConfigureEntryValues(entry);
@@ -797,6 +798,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_reusable_meal_components_macros", "(\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND (\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND (\"FatGrams\" IS NULL OR \"FatGrams\" >= 0)");
                 table.HasCheckConstraint("CK_reusable_meal_components_per100_macros", "(\"ProteinGramsPer100Grams\" IS NULL OR \"ProteinGramsPer100Grams\" >= 0) AND (\"CarbohydrateGramsPer100Grams\" IS NULL OR \"CarbohydrateGramsPer100Grams\" >= 0) AND (\"FatGramsPer100Grams\" IS NULL OR \"FatGramsPer100Grams\" >= 0)");
                 table.HasCheckConstraint("CK_reusable_meal_components_salt", "(\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"SaltGramsPer100Grams\" IS NULL OR (\"SaltGramsPer100Grams\" >= 0 AND \"SaltGramsPer100Grams\" <= 100))");
+                table.HasCheckConstraint("CK_reusable_meal_components_fiber", "(\"FiberGrams\" IS NULL OR \"FiberGrams\" >= 0) AND (\"FiberGramsPer100Grams\" IS NULL OR (\"FiberGramsPer100Grams\" >= 0 AND \"FiberGramsPer100Grams\" <= 100))");
                 table.HasCheckConstraint("CK_reusable_meal_components_pieces", "(\"PieceGrams\" IS NULL OR \"PieceGrams\" > 0) AND (\"PieceCount\" IS NULL OR (\"PieceCount\" > 0 AND \"PieceGrams\" IS NOT NULL))");
             });
             component.HasKey(item => item.Id);
@@ -815,6 +817,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             component.Property(item => item.FatGramsPer100Grams).HasPrecision(10, 2);
             component.Property(item => item.SaltGrams).HasPrecision(10, 2);
             component.Property(item => item.SaltGramsPer100Grams).HasPrecision(10, 2);
+            component.Property(item => item.FiberGrams).HasPrecision(10, 2);
+            component.Property(item => item.FiberGramsPer100Grams).HasPrecision(10, 2);
             component.Property(item => item.PieceGrams).HasPrecision(9, 2);
             component.Property(item => item.PieceCount).HasPrecision(7, 2);
             component.Property(item => item.BasisGrams).HasPrecision(10, 2);
@@ -880,6 +884,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_nutrition_target_versions_kcal", "\"Kilocalories\" > 0 AND \"Kilocalories\" <= 20000");
                 table.HasCheckConstraint("CK_nutrition_target_versions_macros", "\"ProteinGrams\" > 0 AND \"ProteinGrams\" <= 2000 AND \"CarbohydrateGrams\" > 0 AND \"CarbohydrateGrams\" <= 2000 AND \"FatGrams\" > 0 AND \"FatGrams\" <= 2000");
                 table.HasCheckConstraint("CK_nutrition_target_versions_salt", "\"SaltGrams\" IS NULL OR (\"SaltGrams\" > 0 AND \"SaltGrams\" <= 100)");
+                table.HasCheckConstraint("CK_nutrition_target_versions_fiber", "\"FiberGrams\" IS NULL OR (\"FiberGrams\" > 0 AND \"FiberGrams\" <= 100)");
                 table.HasCheckConstraint("CK_nutrition_target_versions_origin", "\"Origin\" = 'Manual'");
                 table.HasCheckConstraint("CK_nutrition_target_versions_name", NameNotBlankCheck);
                 table.HasCheckConstraint("CK_nutrition_target_versions_category", "\"Category\" IN ('Custom', 'Cut', 'Maintenance', 'Bulk')");
@@ -896,6 +901,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             version.Property(item => item.CarbohydrateGrams).HasPrecision(10, 2);
             version.Property(item => item.FatGrams).HasPrecision(10, 2);
             version.Property(item => item.SaltGrams).HasPrecision(10, 2);
+            version.Property(item => item.FiberGrams).HasPrecision(10, 2);
             version.Property(item => item.ProteinPercent).HasPrecision(5, 2);
             version.Property(item => item.CarbohydratePercent).HasPrecision(5, 2);
             version.Property(item => item.FatPercent).HasPrecision(5, 2);

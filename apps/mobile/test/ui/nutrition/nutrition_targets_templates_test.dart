@@ -68,6 +68,7 @@ Future<_Harness> _pump(
         ),
         restDay: rest,
         saltGrams: null,
+        fiberGrams: null,
       ),
     );
   }
@@ -159,6 +160,31 @@ void main() {
       expect(version.fatGrams, closeTo(55.56, .01));
       expect(version.restDay, isNull);
       // Der Standard von 6 g bleibt offen, statt fest gespeichert zu werden.
+      expect(version.saltGrams, isNull);
+      // Ebenso das Ballaststoffziel von 30 g.
+      expect(version.fiberGrams, isNull);
+    });
+
+    testWidgets('stores a custom fiber goal and rejects 0 g', (tester) async {
+      final harness = await _pump(tester);
+      await _openMenu(tester, 'Ziele');
+      final fiber = find.byKey(const ValueKey('nutrition-target-fiber'));
+      await _scrollTo(tester, fiber);
+      expect(tester.widget<CupertinoTextField>(fiber).controller!.text, '30');
+      await tester.enterText(fiber, '0');
+      await tester.pump();
+      expect(_save(tester).onPressed, isNull);
+      expect(
+        find.text('Das Ballaststoffziel muss zwischen 0 und 100 g liegen.'),
+        findsOneWidget,
+      );
+      await tester.enterText(fiber, '25');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('nutrition-targets-save')));
+      await tester.pumpAndSettle();
+      final version =
+          harness.viewModel.snapshot!.targetSchedule!.versions.single;
+      expect(version.fiberGrams, 25);
       expect(version.saltGrams, isNull);
     });
 

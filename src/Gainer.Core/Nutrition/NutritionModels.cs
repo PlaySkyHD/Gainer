@@ -46,6 +46,7 @@ public abstract class NutritionEntryValues : UserOwnedEntity
     public decimal? CarbohydrateGrams { get; set; }
     public decimal? FatGrams { get; set; }
     public decimal? SaltGrams { get; set; }
+    public decimal? FiberGrams { get; set; }
     public string? Provider { get; set; }
     public string? Barcode { get; set; }
     public DateTime? RetrievedAtUtc { get; set; }
@@ -55,6 +56,7 @@ public abstract class NutritionEntryValues : UserOwnedEntity
     public decimal? CarbohydrateGramsPerBasis { get; set; }
     public decimal? FatGramsPerBasis { get; set; }
     public decimal? SaltGramsPerBasis { get; set; }
+    public decimal? FiberGramsPerBasis { get; set; }
 
     /// <summary>Copies every value except the identifier and the owner.</summary>
     public void CopyValuesFrom(NutritionEntryValues source)
@@ -72,6 +74,7 @@ public abstract class NutritionEntryValues : UserOwnedEntity
         CarbohydrateGrams = source.CarbohydrateGrams;
         FatGrams = source.FatGrams;
         SaltGrams = source.SaltGrams;
+        FiberGrams = source.FiberGrams;
         Provider = source.Provider;
         Barcode = source.Barcode;
         RetrievedAtUtc = source.RetrievedAtUtc;
@@ -81,6 +84,7 @@ public abstract class NutritionEntryValues : UserOwnedEntity
         CarbohydrateGramsPerBasis = source.CarbohydrateGramsPerBasis;
         FatGramsPerBasis = source.FatGramsPerBasis;
         SaltGramsPerBasis = source.SaltGramsPerBasis;
+        FiberGramsPerBasis = source.FiberGramsPerBasis;
     }
 }
 

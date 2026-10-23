@@ -168,6 +168,14 @@ class CalendarNutritionOverview extends StatelessWidget {
         stacked: stacked,
       ),
     ];
+    final fiber = _Macro(
+      key: const ValueKey('calendar-nutrition-fiber'),
+      name: 'Ballaststoffe',
+      value: nutrition.fiberGrams,
+      target: nutrition.targetFiberGrams,
+      stacked: stacked,
+      minimum: true,
+    );
     final salt = _Macro(
       key: const ValueKey('calendar-nutrition-salt'),
       name: 'Salz',
@@ -180,14 +188,15 @@ class CalendarNutritionOverview extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final macro in [...macros, salt]) ...[
+          for (final macro in [...macros, fiber, salt]) ...[
             if (macro != macros.first) const SizedBox(height: GainerSpacing.m),
             macro,
           ],
         ],
       );
     }
-    // Salz ist eine Obergrenze und steht in eigener Zeile unter den Makros.
+    // Ballaststoffe (Mindestziel) und Salz (Obergrenze) stehen in eigener
+    // Zeile unter den Makros.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -204,9 +213,9 @@ class CalendarNutritionOverview extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: salt),
+            Expanded(child: fiber),
             const SizedBox(width: GainerSpacing.m),
-            const Spacer(),
+            Expanded(child: salt),
             const SizedBox(width: GainerSpacing.m),
             const Spacer(),
           ],
@@ -274,6 +283,7 @@ class _Summary {
       ),
       macro('Eiweiß', nutrition.proteinGrams, nutrition.targetProteinGrams),
       macro('Fett', nutrition.fatGrams, nutrition.targetFatGrams),
+      macro('Ballaststoffe', nutrition.fiberGrams, nutrition.targetFiberGrams),
       macro(
         'Salz',
         nutrition.saltGrams,
@@ -462,6 +472,7 @@ class _Macro extends StatelessWidget {
     required this.target,
     required this.stacked,
     this.decimals = 0,
+    this.minimum = false,
     super.key,
   });
 
@@ -470,6 +481,9 @@ class _Macro extends StatelessWidget {
   final double? target;
   final bool stacked;
   final int decimals;
+
+  /// Mindestziel: Über dem Ziel gibt es keine Warnfarbe.
+  final bool minimum;
 
   @override
   Widget build(BuildContext context) {
@@ -498,7 +512,12 @@ class _Macro extends StatelessWidget {
           const SizedBox(height: GainerSpacing.xxs),
           SizedBox(
             width: double.infinity,
-            child: GainerProgressBar(consumed: value, target: goal, height: 4),
+            child: GainerProgressBar(
+              consumed: value,
+              target: goal,
+              height: 4,
+              warnWhenExceeded: !minimum,
+            ),
           ),
         ],
         const SizedBox(height: GainerSpacing.xxs),

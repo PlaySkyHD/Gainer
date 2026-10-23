@@ -55,12 +55,16 @@ class FoodComponentDraft {
       per100Grams.carbohydrateGrams,
       per100Grams.fatGrams,
       per100Grams.saltGrams,
+      per100Grams.fiberGrams,
     ];
     if (macros.any((value) => value != null && value < 0)) {
       return 'Nährwerte dürfen nicht negativ sein.';
     }
     if ((per100Grams.saltGrams ?? 0) > 100) {
       return 'Salz kann höchstens 100 g pro 100 g betragen.';
+    }
+    if ((per100Grams.fiberGrams ?? 0) > 100) {
+      return 'Ballaststoffe können höchstens 100 g pro 100 g betragen.';
     }
     try {
       validatePortion(amountGrams, pieceGrams, pieceCount);

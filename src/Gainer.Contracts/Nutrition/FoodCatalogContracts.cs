@@ -14,7 +14,8 @@ public sealed record FoodCatalogProductResponse(
     bool IsStale,
     string Source,
     decimal? SaltGramsPer100Grams = null,
-    decimal? ServingGrams = null);
+    decimal? ServingGrams = null,
+    decimal? FiberGramsPer100Grams = null);
 
 public sealed record FoodCatalogSearchResponse(
     IReadOnlyList<FoodCatalogProductResponse> Products,

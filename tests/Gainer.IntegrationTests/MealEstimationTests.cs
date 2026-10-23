@@ -103,6 +103,31 @@ public sealed class MealEstimationTests
     }
 
     [TestMethod]
+    public async Task FiberIsEstimatedPerComponentAndMayStayUnknown()
+    {
+        var provider = new FakeProvider(Response(new
+        {
+            components = new object[]
+            {
+                new { name = "Linsensuppe", amountGrams = 400m, kilocalories = 360m, proteinGrams = (decimal?)22m, carbohydrateGrams = (decimal?)48m, fatGrams = (decimal?)6m, fiberGrams = (decimal?)12m, confidence = "medium", dataGaps = Array.Empty<string>() },
+                new { name = "Brot", amountGrams = 50m, kilocalories = 120m, proteinGrams = (decimal?)4m, carbohydrateGrams = (decimal?)24m, fatGrams = (decimal?)1m, fiberGrams = (decimal?)null, confidence = "low", dataGaps = Array.Empty<string>() },
+            },
+        }));
+        var service = new OpenAiMealEstimator(
+            provider, new RejectingSanitizer(), new PassQuota(),
+            new UserContext(Guid.NewGuid()), new FixedTimeProvider());
+
+        MealEstimateDraft result = await service.EstimateAsync(MealEstimationInput.Create(
+            "Ein Teller Linsensuppe mit Brot", null, false));
+
+        Assert.AreEqual(12m, result.Components[0].FiberGrams);
+        Assert.IsNull(result.Components[1].FiberGrams);
+        string request = provider.LastRequest.GetRawText();
+        Assert.Contains("fiberGrams", request);
+        Assert.Contains("instead of guessing", request);
+    }
+
+    [TestMethod]
     public async Task SaltIsEstimatedOnlyWhenInherentAndStatedSaltBecomesZeroCalorieComponent()
     {
         var provider = new FakeProvider(Response(new
@@ -125,7 +150,7 @@ public sealed class MealEstimationTests
         Assert.IsNull(result.Components[1].SaltGrams);
         Assert.AreEqual(0m, result.Components[2].Kilocalories);
         Assert.AreEqual(6m, result.Components[2].SaltGrams);
-        Assert.AreEqual("meal-estimate-v4", result.SchemaVersion);
+        Assert.AreEqual("meal-estimate-v5", result.SchemaVersion);
         string request = provider.LastRequest.GetRawText();
         Assert.Contains("never guess salt added while cooking", request);
         Assert.Contains("saltGrams", request);

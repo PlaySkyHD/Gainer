@@ -31,7 +31,8 @@ public sealed record NutritionLabelReadings(
     NutritionLabelReading CarbohydrateGrams,
     NutritionLabelReading FatGrams,
     NutritionLabelReading? SaltGrams = null,
-    NutritionLabelReading? SodiumGrams = null);
+    NutritionLabelReading? SodiumGrams = null,
+    NutritionLabelReading? FiberGrams = null);
 
 public sealed record NutritionLabelFieldDraft(
     decimal? OriginalValue,
@@ -47,6 +48,7 @@ public sealed record NutritionLabelScanDraft(
     NutritionLabelFieldDraft CarbohydrateGrams,
     NutritionLabelFieldDraft FatGrams,
     NutritionLabelFieldDraft SaltGrams,
+    NutritionLabelFieldDraft FiberGrams,
     bool CanConfirm,
     string Provider,
     string ProviderModelVersion,
@@ -77,7 +79,8 @@ public sealed record NutritionLabelScanDraft(
         (NutritionLabelBasis basis, decimal? servingMassGrams, NutritionLabelReading kilocalories,
             NutritionLabelReading kilojoules, NutritionLabelReading proteinGrams,
             NutritionLabelReading carbohydrateGrams, NutritionLabelReading fatGrams,
-            NutritionLabelReading? saltGrams, NutritionLabelReading? sodiumGrams) = readings;
+            NutritionLabelReading? saltGrams, NutritionLabelReading? sodiumGrams,
+            NutritionLabelReading? fiberGrams) = readings;
         ArgumentNullException.ThrowIfNull(kilocalories);
         ArgumentNullException.ThrowIfNull(kilojoules);
         ArgumentNullException.ThrowIfNull(proteinGrams);
@@ -123,6 +126,9 @@ public sealed record NutritionLabelScanDraft(
             saltConverted = true;
         }
         NutritionLabelFieldDraft saltField = Field(salt, factor, saltConverted, 2, NutritionLimits.MaxSaltGramsPer100Grams);
+        // Fiber is optional for confirmation and scaled like the macros.
+        NutritionLabelFieldDraft fiberField = Field(
+            fiberGrams ?? NutritionLabelReading.Empty, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
         decimal macroSum = (protein.Per100Grams ?? 0m) + (carbohydrate.Per100Grams ?? 0m) + (fat.Per100Grams ?? 0m);
         bool canConfirm = kcal.Per100Grams is not null && macroSum <= MaxPlausibleMacroSumPer100Grams;
 
@@ -134,6 +140,7 @@ public sealed record NutritionLabelScanDraft(
             carbohydrate,
             fat,
             saltField,
+            fiberField,
             canConfirm,
             normalizedProvider,
             normalizedModel,
