@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/nutrition/bls_food_catalog.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
@@ -23,6 +26,32 @@ void main() {
       await expectLater(
         find.byType(CupertinoApp),
         matchesGoldenFile('goldens/nutrition_add_sheet_${variant.name}.png'),
+      );
+      harness.dispose();
+    }, tags: ['golden']);
+
+    testWidgets('food search ${variant.name}', (tester) async {
+      final harness = await _pump(
+        tester,
+        variant.brightness,
+        localFoods: BlsFoodCatalog.fromIndex(
+          parseBlsCatalog(File(BlsFoodCatalog.asset).readAsStringSync()),
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Lebensmittel suchen'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-entry-search')),
+        'Haferflocken',
+      );
+      tester.testTextInput.hide();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      await expectLater(
+        find.byType(CupertinoApp),
+        matchesGoldenFile('goldens/nutrition_food_search_${variant.name}.png'),
       );
       harness.dispose();
     }, tags: ['golden']);
@@ -94,7 +123,11 @@ class _Harness {
   void dispose() => viewModel.dispose();
 }
 
-Future<_Harness> _pump(WidgetTester tester, Brightness brightness) async {
+Future<_Harness> _pump(
+  WidgetTester tester,
+  Brightness brightness, {
+  LocalFoodCatalog? localFoods,
+}) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -104,6 +137,7 @@ Future<_Harness> _pump(WidgetTester tester, Brightness brightness) async {
   final repository = NutritionRepository(
     store: LocalSyncStore(database: database, accountId: accountId),
     clock: () => DateTime.utc(2026, 10, 12, 10),
+    localFoods: localFoods,
   );
   final viewModel = NutritionViewModel(
     repository: repository,

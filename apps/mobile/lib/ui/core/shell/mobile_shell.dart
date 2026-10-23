@@ -13,6 +13,7 @@ import '../../features/cardio/cardio_feature.dart';
 import '../../features/cardio/cardio_live_screen.dart';
 import '../../features/cardio/cardio_settings_screen.dart';
 import '../../features/coach/coach_screen.dart';
+import '../../features/licenses/licenses_screen.dart';
 import '../../features/nutrition/nutrition_screen.dart';
 import '../../features/strava/strava_screen.dart';
 import '../../features/sync/sync_screen.dart';
@@ -323,6 +324,17 @@ class _MoreScreen extends StatelessWidget {
                 context,
                 preferences: account.cardio.preferences,
                 feature: _cardioOf(account),
+              ),
+            ),
+            GainerListRow(
+              key: const ValueKey('account-licenses'),
+              title: 'Lizenzen',
+              leadingIcon: CupertinoIcons.doc_text,
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                CupertinoPageRoute<void>(
+                  builder: (_) => const LicensesScreen(),
+                ),
               ),
             ),
             if (account.session.isAccountOperator)

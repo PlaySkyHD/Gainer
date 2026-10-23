@@ -20,6 +20,7 @@ import '../../repositories/health/check_in_health_coordinator.dart';
 import '../../repositories/health/health_review_coordinator.dart';
 import '../../repositories/insights/insights_repository.dart';
 import '../../repositories/nutrition/api_nutrition_online_provider.dart';
+import '../../repositories/nutrition/bls_food_catalog.dart';
 import '../../repositories/nutrition/nutrition_repository.dart';
 import '../../repositories/sync/local_sync_store.dart';
 import '../../repositories/sync/sync_repository.dart';
@@ -461,6 +462,7 @@ class MobileAuthController extends ChangeNotifier
       online: online ? ApiNutritionOnlineProvider(api) : null,
       capture: capture,
       scheduleProjection: training.readScheduleProjection,
+      localFoods: BlsFoodCatalog(),
     );
     final bodyViewModel = BodyViewModel(
       body,
