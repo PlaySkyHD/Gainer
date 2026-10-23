@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace Gainer.Infrastructure.Catalog;
 
-public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
+public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
 {
     private const string ProductFields = "code,product_name,brands,nutriments,last_modified_t,nutrition_data_per,serving_quantity,serving_quantity_unit";
     private const string ProductIncompleteCode = "product_incomplete";
@@ -173,7 +173,7 @@ public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
     private static FoodCatalogProduct ParseProduct(JsonElement product, string fallbackBarcode, DateTime retrievedAtUtc)
     {
         string barcode = String(product, "code") ?? fallbackBarcode;
-        string? name = String(product, "product_name");
+        string? name = CleanText(String(product, "product_name"));
         if (string.IsNullOrWhiteSpace(barcode) || string.IsNullOrWhiteSpace(name))
             throw new FoodCatalogException(ProductIncompleteCode, "The product has no usable name or barcode.", false);
         if (!product.TryGetProperty("nutriments", out JsonElement nutrients) || nutrients.ValueKind != JsonValueKind.Object)
@@ -199,8 +199,8 @@ public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
             quality.Add("basis_unconfirmed");
         return new FoodCatalogProduct(
             barcode,
-            name.Trim(),
-            String(product, "brands")?.Trim(),
+            name,
+            CleanText(String(product, "brands")),
             100m,
             new NutritionPer100Grams(kcal.Value, protein, carbohydrates, fat, salt),
             quality,
@@ -286,6 +286,25 @@ public sealed class OpenFoodFactsCatalog : IExternalFoodCatalog
             throw new InvalidOperationException("OpenFoodFacts request budgets must stay below provider limits.");
         return value;
     }
+
+    /// <summary>
+    /// Decodes HTML entities that Open Food Facts sometimes keeps in names, including numeric ones without the
+    /// closing semicolon (&amp;#40 for "("), and collapses whitespace.
+    /// </summary>
+    internal static string? CleanText(string? value)
+    {
+        if (value is null) return null;
+        string withSemicolons = NumericEntityWithoutSemicolon().Replace(value, match => match.Value + ";");
+        string decoded = WebUtility.HtmlDecode(withSemicolons);
+        string collapsed = Whitespace().Replace(decoded, " ").Trim();
+        return collapsed.Length == 0 ? null : collapsed;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"&#(?:\d{1,7}|[xX][0-9a-fA-F]{1,6})(?![0-9a-fA-F;])")]
+    private static partial System.Text.RegularExpressions.Regex NumericEntityWithoutSemicolon();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\s+")]
+    private static partial System.Text.RegularExpressions.Regex Whitespace();
 
     private static string? String(JsonElement element, string name) =>
         element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
