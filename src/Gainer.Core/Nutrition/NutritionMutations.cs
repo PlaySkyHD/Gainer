@@ -83,13 +83,15 @@ public sealed record SaveNutritionDayMutation : ITypedMutation<NutritionDaySnaps
         Guid nutritionDayId,
         DateOnly localDate,
         long baseVersion,
-        IReadOnlyList<NutritionEntryInput> entries)
+        IReadOnlyList<NutritionEntryInput> entries,
+        NutritionDayKind? dayKind)
     {
         Metadata = metadata;
         NutritionDayId = nutritionDayId;
         LocalDate = localDate;
         BaseVersion = baseVersion;
         Entries = entries;
+        DayKind = dayKind;
         Scope = AtomicMutationScope.Create(ResourceVersionExpectation.Create(
             ResourceKey.Create(ResourceKind.NutritionDay, nutritionDayId),
             baseVersion));
@@ -101,13 +103,15 @@ public sealed record SaveNutritionDayMutation : ITypedMutation<NutritionDaySnaps
     public DateOnly LocalDate { get; }
     public long BaseVersion { get; }
     public IReadOnlyList<NutritionEntryInput> Entries { get; }
+    public NutritionDayKind? DayKind { get; }
 
     public static SaveNutritionDayMutation Create(
         MutationMetadata metadata,
         Guid nutritionDayId,
         DateOnly localDate,
         long baseVersion,
-        IEnumerable<NutritionEntryInput> entries)
+        IEnumerable<NutritionEntryInput> entries,
+        NutritionDayKind? dayKind = null)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         ArgumentNullException.ThrowIfNull(entries);
@@ -115,10 +119,12 @@ public sealed record SaveNutritionDayMutation : ITypedMutation<NutritionDaySnaps
         ArgumentOutOfRangeException.ThrowIfNegative(baseVersion);
         NutritionEntryInput[] entryArray = entries.ToArray();
         ValidateEntries(entryArray);
-        return new SaveNutritionDayMutation(metadata, nutritionDayId, localDate, baseVersion, entryArray);
+        if (dayKind is { } kind && !Enum.IsDefined(kind))
+            throw new NutritionValidationException(new Dictionary<string, string> { [nameof(DayKind)] = "Day kind is invalid." });
+        return new SaveNutritionDayMutation(metadata, nutritionDayId, localDate, baseVersion, entryArray, dayKind);
     }
 
-    private static void ValidateEntries(NutritionEntryInput[] entries)
+    internal static void ValidateEntries(NutritionEntryInput[] entries)
     {
         if (entries.Length > 200) throw new NutritionValidationException(new Dictionary<string, string> { [nameof(Entries)] = "A day can contain at most 200 entries." });
         if (entries.Select(item => item.EntryId).Distinct().Count() != entries.Length)
@@ -147,7 +153,8 @@ public sealed record NutritionDaySnapshot(
     NutritionTotals Totals,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    long Version) : IResourceSnapshot
+    long Version,
+    NutritionDayKind? DayKind = null) : IResourceSnapshot
 {
     public ResourceKey Resource => ResourceKey.Create(ResourceKind.NutritionDay, NutritionDayId);
 }

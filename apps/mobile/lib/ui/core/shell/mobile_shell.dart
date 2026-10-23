@@ -64,6 +64,10 @@ class MobileShell extends StatelessWidget {
                 ),
                 MobileArea.nutrition => NutritionScreen(
                   viewModel: account.nutritionViewModel,
+                  training: account.training,
+                  visibility: model,
+                  isVisible: () => model.selectedIndex == area.index,
+                  refresh: account.syncStatus,
                 ),
                 MobileArea.body => BodyScreen(
                   viewModel: account.bodyViewModel,

@@ -228,26 +228,31 @@ public sealed class SyncMutationExecutor(
                 {
                     SaveNutritionDayPayload payload = Deserialize<SaveNutritionDayPayload>(content.Payload);
                     ValidateExpectation(content, ResourceKind.NutritionDay, payload.NutritionDayId, payload.BaseVersion);
-                    NutritionEntryInput[] entries = payload.Entries.Select(item => NutritionEntryInput.Create(
-                        item.EntryId,
-                        ParseMeal(item.Meal),
-                        item.Position,
-                        item.ProductName,
-                        item.AmountGrams,
-                        new NutritionPer100Grams(
-                            item.KilocaloriesPer100Grams,
-                            item.ProteinGramsPer100Grams,
-                            item.CarbohydrateGramsPer100Grams,
-                            item.FatGramsPer100Grams,
-                            item.SaltGramsPer100Grams),
-                        item.Brand,
-                        item.Source,
-                        NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
+                    NutritionEntryInput[] entries = ToEntryInputs(payload.Entries);
                     NutritionDaySnapshot snapshot = await new NutritionDayMutationHandler(context, userContext, timeProvider, collector)
                         .SaveAsync(SaveNutritionDayMutation.Create(
                             Metadata(mutationId, content), payload.NutritionDayId, payload.LocalDate,
-                            payload.BaseVersion, entries), cancellationToken);
+                            payload.BaseVersion, entries, ParseDayKind(payload.DayKind)), cancellationToken);
                     return Result(collector, snapshot);
+                }
+            case "saveNutritionDayTemplate":
+                {
+                    SaveNutritionDayTemplatePayload payload = Deserialize<SaveNutritionDayTemplatePayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.NutritionDayTemplate, payload.TemplateId, payload.BaseVersion);
+                    NutritionDayTemplateSnapshot snapshot = await new NutritionDayTemplateMutationHandler(context, userContext, timeProvider, collector)
+                        .SaveAsync(SaveNutritionDayTemplateMutation.Create(
+                            Metadata(mutationId, content), payload.TemplateId, payload.BaseVersion, payload.Name,
+                            ParseDayKind(payload.DayKind), ToEntryInputs(payload.Entries ?? [])), cancellationToken);
+                    return Result(collector, snapshot);
+                }
+            case "deleteNutritionDayTemplate":
+                {
+                    DeleteNutritionDayTemplatePayload payload = Deserialize<DeleteNutritionDayTemplatePayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.NutritionDayTemplate, payload.TemplateId, payload.BaseVersion);
+                    _ = await new NutritionDayTemplateMutationHandler(context, userContext, timeProvider, collector)
+                        .DeleteAsync(DeleteNutritionDayTemplateMutation.Create(
+                            Metadata(mutationId, content), payload.TemplateId, payload.BaseVersion), cancellationToken);
+                    return Result(collector);
                 }
             case "deleteNutritionDay":
                 {
@@ -368,8 +373,24 @@ public sealed class SyncMutationExecutor(
                 ParseTargetOrigin(item.Origin),
                 item.AlgorithmVersion,
                 item.Reason,
-                item.SaltGrams);
+                item.SaltGrams,
+                ToRestDayDraft(item.RestDay));
         }).ToArray();
+
+    private static NutritionRestDayTargetDraft? ToRestDayDraft(NutritionRestDayPayload? payload) =>
+        payload is null
+            ? null
+            : NutritionRestDayTargetDraft.Create(
+                string.IsNullOrWhiteSpace(payload.InputMode)
+                    ? NutritionTargetInputMode.Grams
+                    : ParseTargetInputMode(payload.InputMode),
+                payload.Kilocalories,
+                payload.ProteinGrams,
+                payload.CarbohydrateGrams,
+                payload.FatGrams,
+                payload.ProteinPercent,
+                payload.CarbohydratePercent,
+                payload.FatPercent);
 
     private static T Deserialize<T>(JsonElement payload)
     {
@@ -472,6 +493,30 @@ public sealed class SyncMutationExecutor(
             _ => throw new InvalidOperationException("Unknown captured change."),
         }).ToList());
 
+    private static NutritionEntryInput[] ToEntryInputs(IEnumerable<NutritionEntryPayload> entries) =>
+        entries.Select(item => NutritionEntryInput.Create(
+            item.EntryId,
+            ParseMeal(item.Meal),
+            item.Position,
+            item.ProductName,
+            item.AmountGrams,
+            new NutritionPer100Grams(
+                item.KilocaloriesPer100Grams,
+                item.ProteinGramsPer100Grams,
+                item.CarbohydrateGramsPer100Grams,
+                item.FatGramsPer100Grams,
+                item.SaltGramsPer100Grams),
+            item.Brand,
+            item.Source,
+            NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
+
+    private static NutritionDayKind? ParseDayKind(string? value) =>
+        value is null
+            ? null
+            : Enum.TryParse(value, ignoreCase: true, out NutritionDayKind kind) && Enum.IsDefined(kind)
+                ? kind
+                : throw new SyncMutationValidationException(InvalidPayloadCode, "The day kind is invalid.");
+
     private static MealType ParseMeal(string value) =>
         Enum.TryParse(value, ignoreCase: true, out MealType meal) && Enum.IsDefined(meal)
             ? meal
@@ -540,8 +585,16 @@ public sealed class SyncMutationExecutor(
         Guid NutritionDayId,
         DateOnly LocalDate,
         long BaseVersion,
-        IReadOnlyList<NutritionEntryPayload> Entries);
+        IReadOnlyList<NutritionEntryPayload> Entries,
+        string? DayKind = null);
     private sealed record DeleteNutritionDayPayload(Guid NutritionDayId, long BaseVersion);
+    private sealed record SaveNutritionDayTemplatePayload(
+        Guid TemplateId,
+        long BaseVersion,
+        string Name,
+        IReadOnlyList<NutritionEntryPayload>? Entries,
+        string? DayKind = null);
+    private sealed record DeleteNutritionDayTemplatePayload(Guid TemplateId, long BaseVersion);
     private sealed record SaveReusableMealPayload(
         Guid ReusableMealId,
         long BaseVersion,
@@ -585,7 +638,17 @@ public sealed class SyncMutationExecutor(
         string Origin,
         string? AlgorithmVersion,
         string? Reason,
-        decimal? SaltGrams = null);
+        decimal? SaltGrams = null,
+        NutritionRestDayPayload? RestDay = null);
+    private sealed record NutritionRestDayPayload(
+        string? InputMode,
+        decimal Kilocalories,
+        decimal ProteinGrams,
+        decimal CarbohydrateGrams,
+        decimal FatGrams,
+        decimal? ProteinPercent,
+        decimal? CarbohydratePercent,
+        decimal? FatPercent);
     private sealed record NutritionEntryPayload(
         Guid EntryId,
         string Meal,

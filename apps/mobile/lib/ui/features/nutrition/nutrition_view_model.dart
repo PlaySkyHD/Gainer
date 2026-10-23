@@ -237,32 +237,93 @@ class NutritionViewModel extends ChangeNotifier {
     operation: NutritionErrorOperation.planning,
   );
 
-  Future<void> saveTargetPhase(
-    NutritionTargetVersion phase, {
-    required bool closeOpenPreviousPhase,
-    bool update = false,
+  /// Speichert die Ziele mit Wirkung ab heute.
+  Future<void> saveTargets({
+    required NutritionDayTarget training,
+    required NutritionDayTarget? restDay,
+    required double? saltGrams,
   }) => _run(
     () async {
-      if (update) {
-        await repository.updateTargetPhase(phase);
-      } else {
-        await repository.addTargetPhase(
-          phase,
-          closeOpenPreviousPhase: closeOpenPreviousPhase,
-        );
-      }
+      await repository.saveTargets(
+        training: training,
+        restDay: restDay,
+        saltGrams: saltGrams,
+      );
       snapshot = await repository.read(localDate);
-      statusMessage = 'Zielphase lokal gespeichert.';
+      statusMessage = 'Ziele gespeichert. Sie gelten ab heute.';
     },
     saving: true,
     operation: NutritionErrorOperation.planning,
   );
 
-  Future<void> removeTargetPhase(String id) => _run(
+  /// Legt die Tagesart des geöffneten Tages fest; null heißt automatisch.
+  Future<void> setDayKind(NutritionDayKind? kind) => _run(
     () async {
-      await repository.removeTargetPhase(id);
+      await repository.setDayKind(localDate, kind);
       snapshot = await repository.read(localDate);
-      statusMessage = 'Zielphase entfernt.';
+    },
+    saving: true,
+    operation: NutritionErrorOperation.diary,
+  );
+
+  /// Speichert den geöffneten Tag als neue Vorlage oder überschreibt eine.
+  Future<void> saveDayAsTemplate({
+    String? overwriteId,
+    String? name,
+    NutritionDayKind? dayKind,
+  }) => _run(
+    () async {
+      await repository.saveDayAsTemplate(
+        localDate,
+        overwriteId: overwriteId,
+        name: name,
+        dayKind: dayKind,
+      );
+      snapshot = await repository.read(localDate);
+      statusMessage = overwriteId == null
+          ? 'Tag als Vorlage gespeichert.'
+          : 'Vorlage überschrieben.';
+    },
+    saving: true,
+    operation: NutritionErrorOperation.planning,
+  );
+
+  /// Übernimmt die Einträge der Vorlage in den geöffneten Tag.
+  Future<void> applyTemplate(
+    String templateId, {
+    TemplateApplyMode mode = TemplateApplyMode.append,
+  }) => _run(
+    () async {
+      await repository.applyTemplate(templateId, localDate, mode: mode);
+      snapshot = await repository.read(localDate);
+      statusMessage = 'Vorlage übernommen.';
+    },
+    saving: true,
+    operation: NutritionErrorOperation.diary,
+  );
+
+  Future<void> updateTemplateMeta(
+    String templateId, {
+    required String name,
+    required NutritionDayKind? dayKind,
+  }) => _run(
+    () async {
+      await repository.updateTemplateMeta(
+        templateId,
+        name: name,
+        dayKind: dayKind,
+      );
+      snapshot = await repository.read(localDate);
+    },
+    saving: true,
+    operation: NutritionErrorOperation.planning,
+  );
+
+  Future<void> deleteTemplate(String templateId) => _run(
+    () async {
+      await repository.deleteTemplate(templateId);
+      snapshot = await repository.read(localDate);
+      statusMessage = 'Vorlage gelöscht. Befüllte Tage bleiben unverändert.';
     },
     saving: true,
     operation: NutritionErrorOperation.planning,

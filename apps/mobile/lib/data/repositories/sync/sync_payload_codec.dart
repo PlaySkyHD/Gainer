@@ -14,6 +14,7 @@ const _trainingScheduleType = 'training-schedule';
 const _nutritionDayType = 'nutrition-day';
 const _reusableMealType = 'reusable-meal';
 const _nutritionTargetScheduleType = 'nutrition-target-schedule';
+const _nutritionDayTemplateType = 'nutrition-day-template';
 const _cardioSessionType = 'cardio-session';
 
 /// Pure translation between PWA-shaped local aggregates and the Sync v2
@@ -31,6 +32,7 @@ class SyncPayloadCodec {
         'NutritionDay' => _nutritionDayType,
         'ReusableMeal' => _reusableMealType,
         'NutritionTargetSchedule' => _nutritionTargetScheduleType,
+        'NutritionDayTemplate' => _nutritionDayTemplateType,
         'CardioSession' => _cardioSessionType,
         _ => null,
       };
@@ -62,6 +64,10 @@ class SyncPayloadCodec {
         return _reusableMealOperation(body);
       case _nutritionTargetScheduleType:
         return 'saveNutritionTargetSchedule';
+      case _nutritionDayTemplateType:
+        return mutation.operation == LocalMutationOperation.delete
+            ? 'deleteNutritionDayTemplate'
+            : 'saveNutritionDayTemplate';
       case _cardioSessionType:
         return _cardioSessionOperation(mutation);
       default:
@@ -162,6 +168,8 @@ class SyncPayloadCodec {
         return _reusableMealPayload(mutation, body, baseVersion);
       case _nutritionTargetScheduleType:
         return _nutritionTargetSchedulePayload(mutation, body, baseVersion);
+      case _nutritionDayTemplateType:
+        return _nutritionDayTemplatePayload(mutation, body, baseVersion);
       case _cardioSessionType:
         return _cardioSessionPayload(mutation, body, baseVersion);
       default:
@@ -489,7 +497,14 @@ class SyncPayloadCodec {
       'nutritionDayId': id,
       'localDate': body['localDate'],
       'baseVersion': baseVersion,
-      'entries': _mappedList(body['entries'], (entry) {
+      'entries': _nutritionEntriesPayload(body['entries']),
+      // Nur senden, wenn festgelegt; ältere Server kennen die Tagesart nicht.
+      if (body['dayKind'] != null) 'dayKind': body['dayKind'],
+    };
+  }
+
+  static List<Map<String, Object?>> _nutritionEntriesPayload(Object? entries) =>
+      _mappedList(entries, (entry) {
         final per100 = _mapValue(entry['per100Grams']);
         return {
           'entryId': entry['entryId'],
@@ -508,7 +523,23 @@ class SyncPayloadCodec {
             'saltGramsPer100Grams': per100['saltGrams'],
           ..._portionPayload(entry),
         };
-      }),
+      });
+
+  static Object? _nutritionDayTemplatePayload(
+    LocalMutation mutation,
+    Map<String, dynamic> body,
+    int baseVersion,
+  ) {
+    final id = mutation.aggregateId;
+    if (mutation.operation == LocalMutationOperation.delete) {
+      return {'templateId': id, 'baseVersion': baseVersion};
+    }
+    return {
+      'templateId': id,
+      'baseVersion': baseVersion,
+      'name': body['name'],
+      'dayKind': body['dayKind'],
+      'entries': _nutritionEntriesPayload(body['entries']),
     };
   }
 
@@ -576,6 +607,18 @@ class SyncPayloadCodec {
           'algorithmVersion': version['algorithmVersion'],
           'reason': version['reason'],
           if (version['saltGrams'] != null) 'saltGrams': version['saltGrams'],
+          // Nur senden, wenn gesetzt; ältere Server kennen Ruhetag-Ziele nicht.
+          if (version['restDay'] case final Map<String, dynamic> rest)
+            'restDay': {
+              'inputMode': rest['inputMode'],
+              'kilocalories': rest['kilocalories'],
+              'proteinGrams': rest['proteinGrams'],
+              'carbohydrateGrams': rest['carbohydrateGrams'],
+              'fatGrams': rest['fatGrams'],
+              'proteinPercent': rest['proteinPercent'],
+              'carbohydratePercent': rest['carbohydratePercent'],
+              'fatPercent': rest['fatPercent'],
+            },
         },
       ),
     };

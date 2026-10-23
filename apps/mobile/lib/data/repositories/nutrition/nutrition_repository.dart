@@ -1,8 +1,10 @@
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../../../domain/models/nutrition/day_target.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
 import '../../../domain/models/nutrition/nutrition_averages.dart';
+import '../../../domain/models/training/training_schedule.dart';
 import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
 import '../../services/platform/platform_ports.dart';
@@ -13,6 +15,14 @@ typedef NutritionIdFactory = String Function();
 const _nutritionDayType = 'nutrition-day';
 const _reusableMealType = 'reusable-meal';
 const _nutritionTargetScheduleType = 'nutrition-target-schedule';
+const _dayTemplateType = 'nutrition-day-template';
+
+/// Liest die Rhythmus-Vorschau aus den lokalen Trainingsdaten.
+typedef ScheduleProjectionReader =
+    Future<TrainingScheduleProjection> Function();
+
+/// Wie eine Vorlage auf einen Tag mit Einträgen angewendet wird.
+enum TemplateApplyMode { replace, append }
 
 abstract interface class NutritionOnlineProvider {
   Future<List<NutritionFood>> searchFoods(String query);
@@ -175,11 +185,27 @@ class NutritionSnapshot {
     required this.meals,
     required this.targetSchedule,
     required this.recentFoods,
+    this.dayTarget,
+    this.automaticDayKind = NutritionDayKind.rest,
+    this.templates = const [],
+    this.suggestedTemplate,
   });
   final NutritionDay day;
   final List<({String id, ReusableMeal value})> meals;
   final NutritionTargetSchedule? targetSchedule;
   final List<NutritionFood> recentFoods;
+
+  /// Ziel des Tages nach Tagesart; null ohne Ziele.
+  final NutritionDayTargetResult? dayTarget;
+
+  /// Tagesart ohne Festlegung, für „Automatisch (…)“.
+  final NutritionDayKind automaticDayKind;
+
+  /// Tagesvorlagen, zuletzt geänderte zuerst.
+  final List<NutritionDayTemplate> templates;
+
+  /// Vorlage, die zur Tagesart des leeren Tages passt (nur heute und künftig).
+  final NutritionDayTemplate? suggestedTemplate;
 }
 
 /// Local-first diary, reusable meals and target phases over the account-bound SQLite outbox.
@@ -190,10 +216,15 @@ class NutritionRepository {
     this.capture,
     NutritionIdFactory? ids,
     DateTime Function()? clock,
+    this.scheduleProjection,
   }) : ids = ids ?? _newUuidV4,
        clock = clock ?? DateTime.now;
 
   final LocalSyncStore store;
+
+  /// Rhythmus und Trainings für die Tagesart; ohne zählt jeder Tag ohne
+  /// Festlegung als Ruhetag.
+  final ScheduleProjectionReader? scheduleProjection;
   final NutritionOnlineProvider? online;
   final CapturePlatform? capture;
   final NutritionIdFactory ids;
@@ -223,21 +254,48 @@ class NutritionRepository {
           (a, b) =>
               a.value.name.toLowerCase().compareTo(b.value.name.toLowerCase()),
         );
-    final scheduleRows = await store.readAggregates(
-      _nutritionTargetScheduleType,
-    );
-    final schedule = scheduleRows.isEmpty
-        ? null
-        : NutritionTargetSchedule(
-            versions: _list(_map(scheduleRows.first.workingCopy)['versions'])
-                .map(_targetFromJson)
-                .toList(),
-          );
+    final schedule = await _readTargetSchedule();
+    final projection = await readProjection();
+    final templates = await readTemplates();
+    final automatic = automaticDayKind(LocalDay.parse(localDate), projection);
+    final kind = day.dayKind ?? automatic;
     return NutritionSnapshot(
       day: day,
       meals: List.unmodifiable(meals),
       targetSchedule: schedule,
       recentFoods: await recentFoods(),
+      dayTarget: dayTarget(
+        localDate: localDate,
+        targets: schedule,
+        manualKind: day.dayKind,
+        projection: projection,
+      ),
+      automaticDayKind: automatic,
+      templates: templates,
+      suggestedTemplate:
+          day.entries.isNotEmpty ||
+              localDate.compareTo(_dateString(clock())) < 0
+          ? null
+          : templates.where((item) => item.dayKind == kind).firstOrNull,
+    );
+  }
+
+  /// Rhythmus-Vorschau für die Tagesart. Fehlen Trainingsdaten, zählt jeder
+  /// Tag ohne Festlegung als Ruhetag, statt das Essen-Tab zu blockieren.
+  Future<TrainingScheduleProjection> readProjection() async {
+    final reader = scheduleProjection;
+    if (reader != null) {
+      try {
+        return await reader();
+      } on Object {
+        // Fällt unten auf eine leere Vorschau zurück.
+      }
+    }
+    return TrainingScheduleProjection(
+      schedule: null,
+      plans: const [],
+      workouts: const [],
+      today: LocalDay.of(clock()),
     );
   }
 
@@ -268,6 +326,7 @@ class NutritionRepository {
       days: await _readDaysBetween(shiftLocalDate(today, -30), today),
       schedule: await _readTargetSchedule(),
       today: today,
+      projection: await readProjection(),
     );
   }
 
@@ -538,7 +597,198 @@ class NutritionRepository {
         ),
       );
     }
-    await saveDay(NutritionDay(localDate: localDate, entries: entries));
+    await saveDay(snapshot.day.withEntries(entries));
+  }
+
+  /// Legt fest, ob der Tag als Trainings- oder Ruhetag zählt; null hebt die
+  /// Festlegung auf. Ein Tag ohne Einträge bleibt mit leerer Liste erhalten.
+  Future<void> setDayKind(String localDate, NutritionDayKind? kind) async {
+    final current = await read(localDate);
+    if (current.day.dayKind == kind) return;
+    await saveDay(current.day.withDayKind(kind));
+  }
+
+  /// Tagesvorlagen ohne gelöschte, zuletzt geänderte zuerst.
+  Future<List<NutritionDayTemplate>> readTemplates() async {
+    final templates = <NutritionDayTemplate>[];
+    for (final row in await store.readAggregates(_dayTemplateType)) {
+      final working = row.workingCopy;
+      if (working is! Map<String, dynamic> || working['deletedAtUtc'] != null) {
+        continue;
+      }
+      templates.add(NutritionDayTemplate.fromJson(working));
+    }
+    templates.sort((a, b) {
+      final stamp = (b.updatedAtUtc ?? DateTime(0)).compareTo(
+        a.updatedAtUtc ?? DateTime(0),
+      );
+      return stamp != 0
+          ? stamp
+          : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return List.unmodifiable(templates);
+  }
+
+  /// Speichert die Einträge des Tages als neue Vorlage oder überschreibt die
+  /// Vorlage [overwriteId]; beim Überschreiben bleiben Name und Tagesart.
+  Future<String> saveDayAsTemplate(
+    String localDate, {
+    String? overwriteId,
+    String? name,
+    NutritionDayKind? dayKind,
+  }) async {
+    final day = (await read(localDate)).day;
+    if (day.entries.isEmpty) {
+      throw const NutritionValidationException({
+        'entries': 'Ein leerer Tag kann keine Vorlage werden.',
+      });
+    }
+    final entries = [
+      for (final entry in day.entries)
+        NutritionEntry(
+          entryId: ids(),
+          meal: entry.meal,
+          position: entry.position,
+          productName: entry.productName,
+          brand: entry.brand,
+          amountGrams: entry.amountGrams,
+          per100Grams: entry.per100Grams,
+          source: entry.source,
+          pieceGrams: entry.pieceGrams,
+          pieceCount: entry.pieceCount,
+        ),
+    ];
+    final now = clock().toUtc();
+    if (overwriteId != null) {
+      final existing = await _required(_dayTemplateType, overwriteId);
+      final prior = NutritionDayTemplate.fromJson(_map(existing.workingCopy));
+      final value = NutritionDayTemplate(
+        templateId: overwriteId,
+        name: prior.name,
+        dayKind: prior.dayKind,
+        entries: entries,
+        updatedAtUtc: now,
+      );
+      await _commitResource(
+        type: _dayTemplateType,
+        id: overwriteId,
+        value: value.toJson(),
+        existing: existing,
+        operation: LocalMutationOperation.update,
+      );
+      return overwriteId;
+    }
+    if ((await readTemplates()).length >= NutritionDayTemplate.maxTemplates) {
+      throw const NutritionValidationException({
+        'templates': 'Es sind höchstens 50 Vorlagen möglich.',
+      });
+    }
+    final id = ids();
+    final value = NutritionDayTemplate(
+      templateId: id,
+      name: name ?? '',
+      dayKind: dayKind,
+      entries: entries,
+      updatedAtUtc: now,
+    );
+    await _commitResource(
+      type: _dayTemplateType,
+      id: id,
+      value: value.toJson(),
+      existing: null,
+      operation: LocalMutationOperation.create,
+    );
+    return id;
+  }
+
+  /// Ändert Name und Tagesart einer Vorlage.
+  Future<void> updateTemplateMeta(
+    String templateId, {
+    required String name,
+    required NutritionDayKind? dayKind,
+  }) async {
+    final existing = await _required(_dayTemplateType, templateId);
+    final prior = NutritionDayTemplate.fromJson(_map(existing.workingCopy));
+    final value = NutritionDayTemplate(
+      templateId: templateId,
+      name: name,
+      dayKind: dayKind,
+      entries: prior.entries,
+      updatedAtUtc: clock().toUtc(),
+    );
+    await _commitResource(
+      type: _dayTemplateType,
+      id: templateId,
+      value: value.toJson(),
+      existing: existing,
+      operation: LocalMutationOperation.update,
+    );
+  }
+
+  /// Löscht die Vorlage lokal sofort; der Server folgt über Sync. Tage, auf
+  /// die sie angewendet wurde, behalten ihre Einträge.
+  Future<void> deleteTemplate(String templateId) async {
+    final existing = await store.readAggregate(_dayTemplateType, templateId);
+    final working = existing?.workingCopy;
+    if (existing == null ||
+        working is! Map<String, dynamic> ||
+        working['deletedAtUtc'] != null) {
+      return;
+    }
+    await _commitResource(
+      type: _dayTemplateType,
+      id: templateId,
+      value: {...working, 'deletedAtUtc': clock().toUtc().toIso8601String()},
+      existing: existing,
+      operation: LocalMutationOperation.delete,
+    );
+  }
+
+  /// Übernimmt die Einträge der Vorlage als Kopien mit neuen IDs. [mode] ist
+  /// nur relevant, wenn der Tag schon Einträge hat. Die Tagesart des Tages
+  /// bleibt unverändert.
+  Future<void> applyTemplate(
+    String templateId,
+    String localDate, {
+    TemplateApplyMode mode = TemplateApplyMode.append,
+  }) async {
+    final row = await _required(_dayTemplateType, templateId);
+    final template = NutritionDayTemplate.fromJson(_map(row.workingCopy));
+    final day = (await read(localDate)).day;
+    final kept = mode == TemplateApplyMode.replace
+        ? const <NutritionEntry>[]
+        : day.entries;
+    if (kept.length + template.entries.length > maxEntriesPerDay) {
+      throw const NutritionValidationException({
+        'entries': 'Ein Tag kann höchstens 200 Einträge haben.',
+      });
+    }
+    final next = <NutritionEntry>[...kept];
+    for (final meal in NutritionMeal.values) {
+      var position = kept
+          .where((item) => item.meal == meal)
+          .fold<int>(
+            0,
+            (max, item) => item.position >= max ? item.position + 1 : max,
+          );
+      for (final entry in template.entries.where((item) => item.meal == meal)) {
+        next.add(
+          NutritionEntry(
+            entryId: ids(),
+            meal: meal,
+            position: position++,
+            productName: entry.productName,
+            brand: entry.brand,
+            amountGrams: entry.amountGrams,
+            per100Grams: entry.per100Grams,
+            source: entry.source,
+            pieceGrams: entry.pieceGrams,
+            pieceCount: entry.pieceCount,
+          ),
+        );
+      }
+    }
+    await saveDay(day.withEntries(next));
   }
 
   Future<void> saveTargetSchedule(NutritionTargetSchedule schedule) async {
@@ -562,75 +812,69 @@ class NutritionRepository {
     );
   }
 
-  Future<void> addTargetPhase(
-    NutritionTargetVersion phase, {
-    required bool closeOpenPreviousPhase,
+  /// Speichert die Ziele mit Wirkung ab heute (lokaler Tag). Vergangene Tage
+  /// behalten ihr Ziel; eine zweite Änderung am selben Tag ersetzt die
+  /// Version von heute. Alte, noch nicht begonnene Planungen entfallen.
+  Future<void> saveTargets({
+    required NutritionDayTarget training,
+    required NutritionDayTarget? restDay,
+    required double? saltGrams,
   }) async {
+    final today = _dateString(clock());
     final current = await _readTargetSchedule();
-    final versions = [...?current?.versions];
-    final open = versions.where((item) => item.effectiveUntil == null).toList();
-    if (open.isNotEmpty) {
-      final prior = open.single;
-      if (!closeOpenPreviousPhase) {
-        throw StateError(
-          'Die offene Zielphase muss vor der neuen Phase beendet werden.',
+    final versions = [
+      for (final version
+          in current?.versions ?? const <NutritionTargetVersion>[])
+        if (version.effectiveFrom.compareTo(today) <= 0) version,
+    ];
+    final active = versions
+        .where(
+          (item) =>
+              item.effectiveUntil == null ||
+              item.effectiveUntil!.compareTo(today) >= 0,
+        )
+        .lastOrNull;
+    if (active != null && active.effectiveFrom == today) {
+      versions[versions.indexOf(active)] = active.copyWith(
+        clearEffectiveUntil: true,
+        trainingDay: training,
+        saltGrams: saltGrams,
+        clearSaltGrams: saltGrams == null,
+        restDay: restDay,
+        clearRestDay: restDay == null,
+      );
+    } else {
+      if (active != null) {
+        versions[versions.indexOf(active)] = active.copyWith(
+          effectiveUntil: shiftLocalDate(today, -1),
         );
       }
-      final previousDay = _dateBefore(phase.effectiveFrom);
-      if (previousDay.compareTo(prior.effectiveFrom) < 0) {
-        throw const NutritionValidationException({
-          'effectiveFrom':
-              'Neue Phase muss nach Beginn der offenen Phase liegen.',
-        });
-      }
-      versions[versions.indexOf(prior)] = _withEndDate(prior, previousDay);
+      versions.add(
+        NutritionTargetVersion(
+          targetVersionId: ids(),
+          name: 'Ziele',
+          category: NutritionTargetCategory.custom,
+          effectiveFrom: today,
+          effectiveUntil: null,
+          inputMode: training.inputMode,
+          kilocalories: training.kilocalories,
+          proteinGrams: training.proteinGrams,
+          carbohydrateGrams: training.carbohydrateGrams,
+          fatGrams: training.fatGrams,
+          proteinPercent: training.proteinPercent,
+          carbohydratePercent: training.carbohydratePercent,
+          fatPercent: training.fatPercent,
+          saltGrams: saltGrams,
+          restDay: restDay,
+        ),
+      );
     }
-    versions.add(phase);
     await saveTargetSchedule(NutritionTargetSchedule(versions: versions));
   }
 
-  Future<void> updateTargetPhase(NutritionTargetVersion updated) async {
-    final current = await _readTargetSchedule();
-    if (current == null) throw StateError('Es gibt keinen Zielplan.');
-    final index = current.versions.indexWhere(
-      (item) => item.targetVersionId == updated.targetVersionId,
-    );
-    if (index < 0) throw StateError('Die Zielphase ist nicht verfügbar.');
-    if (current.versions[index].effectiveFrom.compareTo(_dateString(clock())) <=
-        0) {
-      throw StateError(
-        'Eine bereits begonnene Zielphase ist schreibgeschützt.',
-      );
-    }
-    final versions = [...current.versions]..[index] = updated;
-    await saveTargetSchedule(NutritionTargetSchedule(versions: versions));
-  }
-
-  Future<void> removeTargetPhase(String targetVersionId) async {
-    final current = await _readTargetSchedule();
-    if (current == null) return;
-    final target = current.versions
-        .where((item) => item.targetVersionId == targetVersionId)
-        .firstOrNull;
-    if (target == null) return;
-    if (target.effectiveFrom.compareTo(_dateString(clock())) <= 0) {
-      throw StateError(
-        'Eine bereits begonnene Zielphase ist schreibgeschützt.',
-      );
-    }
-    if (current.versions.length == 1) {
-      throw StateError(
-        'Der letzte Zielplan kann nicht ohne Server-Löschvertrag entfernt werden.',
-      );
-    }
-    await saveTargetSchedule(
-      NutritionTargetSchedule(
-        versions: current.versions
-            .where((item) => item.targetVersionId != targetVersionId)
-            .toList(),
-      ),
-    );
-  }
+  /// Ziele, die heute gelten; null ohne Ziele.
+  Future<NutritionTargetVersion?> currentTargets() async =>
+      (await _readTargetSchedule())?.targetOn(_dateString(clock()));
 
   Future<NutritionTargetSchedule?> _readTargetSchedule() async {
     final rows = await store.readAggregates(_nutritionTargetScheduleType);
@@ -844,36 +1088,13 @@ NutritionTargetVersion _targetFromJson(Map<String, dynamic> json) =>
       algorithmVersion: json['algorithmVersion'] as String?,
       reason: json['reason'] as String?,
       saltGrams: (json['saltGrams'] as num?)?.toDouble(),
+      restDay: json['restDay'] is Map<String, dynamic>
+          ? NutritionDayTarget.fromJson(json['restDay'] as Map<String, dynamic>)
+          : null,
     );
 
 String _dateString(DateTime value) =>
     '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-
-String _dateBefore(String localDate) {
-  final date = DateTime.parse(localDate).subtract(const Duration(days: 1));
-  return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-}
-
-NutritionTargetVersion _withEndDate(NutritionTargetVersion value, String end) =>
-    NutritionTargetVersion(
-      targetVersionId: value.targetVersionId,
-      name: value.name,
-      category: value.category,
-      effectiveFrom: value.effectiveFrom,
-      effectiveUntil: end,
-      inputMode: value.inputMode,
-      kilocalories: value.kilocalories,
-      proteinGrams: value.proteinGrams,
-      carbohydrateGrams: value.carbohydrateGrams,
-      fatGrams: value.fatGrams,
-      proteinPercent: value.proteinPercent,
-      carbohydratePercent: value.carbohydratePercent,
-      fatPercent: value.fatPercent,
-      origin: value.origin,
-      algorithmVersion: value.algorithmVersion,
-      reason: value.reason,
-      saltGrams: value.saltGrams,
-    );
 
 String _newUuidV4() {
   final random = Random.secure();

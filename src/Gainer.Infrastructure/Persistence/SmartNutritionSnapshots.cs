@@ -86,5 +86,23 @@ internal static class SmartNutritionSnapshots
             version.Origin,
             version.AlgorithmVersion,
             version.Reason,
-            version.SaltGrams);
+            version.SaltGrams,
+            RestDay(version));
+
+    private static NutritionRestDayTargetDraft? RestDay(NutritionTargetVersion version) =>
+        version.RestKilocalories is not { } kilocalories
+            ? null
+            : new NutritionRestDayTargetDraft(
+                version.RestInputMode ?? NutritionTargetInputMode.Grams,
+                kilocalories,
+                version.RestProteinGrams!.Value,
+                version.RestCarbohydrateGrams!.Value,
+                version.RestFatGrams!.Value,
+                version.RestProteinPercent,
+                version.RestCarbohydratePercent,
+                version.RestFatPercent,
+                NutritionCalculator.CalculateMacroEnergy(
+                    version.RestProteinGrams.Value, version.RestCarbohydrateGrams.Value, version.RestFatGrams.Value),
+                NutritionCalculator.HasMacroEnergyMismatch(
+                    kilocalories, version.RestProteinGrams.Value, version.RestCarbohydrateGrams.Value, version.RestFatGrams.Value));
 }

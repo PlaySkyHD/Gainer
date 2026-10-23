@@ -13,6 +13,7 @@ import '../../core/theme.dart';
 import '../../core/view_models/mobile_shell_view_model.dart';
 import '../cardio/cardio_detail_screen.dart';
 import '../cardio/cardio_feature.dart';
+import '../nutrition/nutrition_day_kind.dart';
 import '../progress/progress_view_model.dart';
 import '../training/active_workout_controller.dart';
 import '../training/plan_start.dart';
@@ -176,6 +177,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
     await _reload();
   }
 
+  /// „Zählt als“ für einen Tag; ändert nur das Ernährungsziel.
+  Future<void> _chooseDayKind(CalendarDay day) async {
+    final nutrition = widget.nutrition;
+    final target = day.nutritionTarget;
+    if (nutrition == null || target == null || target.kind == null) return;
+    final result = await showDayKindSheet(
+      context,
+      automatic: target.automaticKind,
+      current: target.manual ? target.kind : null,
+    );
+    if (!result.changed || !mounted) return;
+    await nutrition.setDayKind(day.date.toIso(), result.kind);
+    if (mounted) await _viewModel.load();
+  }
+
   Future<void> _openSchedule() async {
     final changed = await showTrainingScheduleSheet(
       context,
@@ -276,6 +292,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 onOpenNutrition: () =>
                     widget.onOpenNutritionDay?.call(model.selected.toIso()),
                 onOpenCheckIn: () => widget.onOpenArea?.call(MobileArea.body),
+                onDayKind: () => _chooseDayKind(day),
                 onOpenTraining: () =>
                     widget.onOpenArea?.call(MobileArea.training),
               ),

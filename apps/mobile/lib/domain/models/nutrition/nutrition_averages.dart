@@ -1,3 +1,5 @@
+import '../training/training_schedule.dart';
+import 'day_target.dart';
 import 'nutrition.dart';
 
 /// Toleranz für „im Zielbereich“: ±10 % des Kalorienziels des jeweiligen Tages.
@@ -57,12 +59,25 @@ class NutritionAverages {
     required NutritionTargetSchedule? schedule,
     required String today,
     required int windowDays,
+    TrainingScheduleProjection? projection,
   }) {
     if (windowDays < 1) throw RangeError.value(windowDays, 'windowDays');
     final byDate = {for (final day in days) day.localDate: day};
     final includesToday = byDate[today]?.entries.isNotEmpty ?? false;
     final end = includesToday ? today : shiftLocalDate(today, -1);
-    final window = _window(byDate, schedule, end, windowDays);
+    final window = _window(
+      byDate,
+      schedule,
+      projection ??
+          TrainingScheduleProjection(
+            schedule: null,
+            plans: const [],
+            workouts: const [],
+            today: LocalDay.parse(today),
+          ),
+      end,
+      windowDays,
+    );
     final logged = [
       for (final item in window)
         if (item.isLogged) byDate[item.localDate]!,
@@ -96,16 +111,19 @@ class NutritionAverages {
   static List<NutritionAverageDay> _window(
     Map<String, NutritionDay> byDate,
     NutritionTargetSchedule? schedule,
+    TrainingScheduleProjection projection,
     String end,
     int windowDays,
   ) => [
     for (var offset = windowDays - 1; offset >= 0; offset--)
-      _averageDay(byDate, schedule, shiftLocalDate(end, -offset)),
+      _averageDay(byDate, schedule, projection, shiftLocalDate(end, -offset)),
   ];
 
+  /// Ziel je Tag nach Tagesart (Trainings- oder Ruhetag).
   static NutritionAverageDay _averageDay(
     Map<String, NutritionDay> byDate,
     NutritionTargetSchedule? schedule,
+    TrainingScheduleProjection projection,
     String date,
   ) {
     final day = byDate[date];
@@ -113,7 +131,12 @@ class NutritionAverages {
     return NutritionAverageDay(
       localDate: date,
       kilocalories: logged ? day.totals.kilocalories : null,
-      targetKilocalories: schedule?.targetOn(date)?.kilocalories,
+      targetKilocalories: dayTarget(
+        localDate: date,
+        targets: schedule,
+        manualKind: day?.dayKind,
+        projection: projection,
+      )?.target.kilocalories,
     );
   }
 
@@ -165,17 +188,20 @@ class NutritionAveragesOverview {
     required List<NutritionDay> days,
     required NutritionTargetSchedule? schedule,
     required String today,
+    TrainingScheduleProjection? projection,
   }) : week = NutritionAverages.compute(
          days: days,
          schedule: schedule,
          today: today,
          windowDays: 7,
+         projection: projection,
        ),
        month = NutritionAverages.compute(
          days: days,
          schedule: schedule,
          today: today,
          windowDays: 30,
+         projection: projection,
        );
 
   final NutritionAverages week;

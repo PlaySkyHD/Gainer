@@ -678,6 +678,11 @@ class TrainingScheduleProjection {
 
   TrainingPlanModel? plan(String planId) => _plans[planId];
 
+  /// Wurde an [date] ein (nicht gelöschtes) Krafttraining gestartet und
+  /// beendet? Gilt auch ohne Rhythmus.
+  bool hasFinishedOn(LocalDay date) =>
+      _finishedByDay[date]?.isNotEmpty ?? false;
+
   String planName(String planId) => _plans[planId]?.name ?? 'Plan';
 
   bool _isActivePlan(String? planId) {
