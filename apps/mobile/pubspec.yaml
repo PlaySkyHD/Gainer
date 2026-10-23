@@ -32,3 +32,4 @@ flutter:
   uses-material-design: false
   assets:
     - assets/sounds/
+    - assets/food/
