@@ -9,6 +9,7 @@ import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
 import '../../services/platform/platform_ports.dart';
 import '../sync/local_sync_store.dart';
+import 'bls_food_catalog.dart';
 
 typedef NutritionIdFactory = String Function();
 
@@ -54,6 +55,16 @@ class NutritionFood {
   /// Gewicht eines Stücks, z. B. aus der Portionsgröße oder einem früheren
   /// Eintrag; null, wenn nur Gramm sinnvoll sind.
   final double? pieceGrams;
+}
+
+/// Treffer der lokalen Suche; [partial], wenn keiner alle Wörter enthält.
+class LocalFoodSearch {
+  const LocalFoodSearch({required this.foods, this.partial = false});
+
+  static const empty = LocalFoodSearch(foods: []);
+
+  final List<NutritionFood> foods;
+  final bool partial;
 }
 
 class MealEstimateDraft {
@@ -225,6 +236,7 @@ class NutritionRepository {
     NutritionIdFactory? ids,
     DateTime Function()? clock,
     this.scheduleProjection,
+    this.localFoods,
   }) : ids = ids ?? _newUuidV4,
        clock = clock ?? DateTime.now;
 
@@ -234,6 +246,9 @@ class NutritionRepository {
   /// Festlegung als Ruhetag.
   final ScheduleProjectionReader? scheduleProjection;
   final NutritionOnlineProvider? online;
+
+  /// Allgemeine Lebensmittel ohne Netz (BLS); ohne Katalog keine lokale Suche.
+  final LocalFoodCatalog? localFoods;
   final CapturePlatform? capture;
   final NutritionIdFactory ids;
   final DateTime Function() clock;
@@ -907,6 +922,34 @@ class NutritionRepository {
       versions: _list(_map(rows.first.workingCopy)['versions'])
           .map(_targetFromJson)
           .toList(),
+    );
+  }
+
+  /// Gibt es eine Produktsuche online (Open Food Facts)?
+  bool get canSearchOnline => online != null;
+
+  /// Sucht im lokalen Katalog; geht ohne Netz. Treffer tragen die Herkunft
+  /// des Katalogs und Werte pro 100 g.
+  Future<LocalFoodSearch> searchLocalFoods(String query) async {
+    final catalog = localFoods;
+    if (catalog == null || query.trim().length < 2) {
+      return LocalFoodSearch.empty;
+    }
+    final result = await catalog.search(query.trim());
+    return LocalFoodSearch(
+      foods: List.unmodifiable([
+        for (final food in result.foods)
+          NutritionFood(
+            name: food.name,
+            brand: null,
+            per100Grams: food.per100Grams,
+            source: NutritionSource(
+              provider: catalog.provider,
+              basisGrams: 100,
+            ),
+          ),
+      ]),
+      partial: result.partial,
     );
   }
 

@@ -167,6 +167,14 @@ NutritionOnlineException mapNutritionApiException(
   ApiException error, {
   required String operation,
 }) {
+  if (error.code == 'network_error' && operation == 'Suche') {
+    return NutritionOnlineException(
+      operation,
+      error.statusCode,
+      error.code,
+      'Die Produktsuche braucht Internet. Lebensmittel aus dem BLS findest du auch offline.',
+    );
+  }
   final detail = switch ((error.statusCode, error.code)) {
     (400, 'validation_failed') =>
       'Bitte prüfe die Eingabe und versuche es erneut.',

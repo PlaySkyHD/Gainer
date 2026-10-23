@@ -5,10 +5,12 @@ import 'package:drift/native.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/api_nutrition_online_provider.dart';
+import 'package:gainer_mobile/data/repositories/nutrition/bls_food_catalog.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/domain/models/nutrition/food_search.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/nutrition/nutrition_screen.dart';
@@ -352,6 +354,99 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('nutrition_import_not_supported'), findsNothing);
     expect(viewModel.snapshot!.day.localDate, '2026-10-12');
+  });
+
+  group('BLS search', () {
+    final catalog = BlsFoodCatalog.fromIndex(
+      FoodSearchIndex(const [
+        LocalFood(
+          code: 'C133000',
+          name: 'Hafer Flocken',
+          per100Grams: NutritionTotals(
+            kilocalories: 348,
+            proteinGrams: 13.22,
+            carbohydrateGrams: 53.3,
+            fatGrams: 6.65,
+            fiberGrams: 10.98,
+            saltGrams: 0,
+          ),
+        ),
+        LocalFood(
+          code: 'F503100',
+          name: 'Banane roh',
+          per100Grams: NutritionTotals(kilocalories: 79, fiberGrams: 2),
+        ),
+      ]),
+    );
+
+    Future<void> openSearch(WidgetTester tester, String query) async {
+      await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Lebensmittel suchen'));
+      await tester.pumpAndSettle();
+      final search = find.byKey(const ValueKey('nutrition-entry-search'));
+      await tester.enterText(search, query);
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+      'offline: BLS foods appear while typing and keep their source',
+      (tester) async {
+        final harness = await _pumpDiary(tester, [], localFoods: catalog);
+        await openSearch(tester, 'Haferflocken');
+
+        expect(find.text('Lebensmittel (BLS)'), findsOneWidget);
+        expect(find.text('BLS 4.0 · 348 kcal / 100 g'), findsOneWidget);
+        expect(find.text('Produktsuche braucht Internet.'), findsOneWidget);
+        expect(find.text('Banane roh'), findsNothing);
+
+        await tester.enterText(
+          find.byKey(const ValueKey('nutrition-entry-amount')),
+          '50',
+        );
+        await tester.tap(find.text('Hafer Flocken'));
+        await tester.pumpAndSettle();
+        final entry = harness.viewModel.snapshot!.day.entries.single;
+        expect(entry.productName, 'Hafer Flocken');
+        expect(entry.source!.provider, 'BLS 4.0');
+        expect(entry.source!.barcode, isNull);
+        expect(entry.totals.kilocalories, 174);
+        expect(entry.totals.fiberGrams, closeTo(5.49, 0.001));
+        expect(
+          harness.viewModel.snapshot!.recentFoods.map((food) => food.name),
+          contains('Hafer Flocken'),
+        );
+      },
+    );
+
+    testWidgets('online: products follow the BLS group after submitting', (
+      tester,
+    ) async {
+      final online = _SearchOnline();
+      await _pumpDiary(tester, [], localFoods: catalog, online: online);
+      await openSearch(tester, 'Banane');
+
+      expect(find.text('Banane roh'), findsOneWidget);
+      expect(online.searchCalls, 0);
+      expect(find.text('Produktsuche braucht Internet.'), findsNothing);
+
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(online.searchCalls, 1);
+      expect(find.text('Produkte (Open Food Facts)'), findsOneWidget);
+      expect(find.text('Bio Bananen'), findsOneWidget);
+
+      // Neue Eingabe: alte Produkttreffer passen nicht mehr und entfallen.
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-entry-search')),
+        'Hafer',
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.text('Bio Bananen'), findsNothing);
+      expect(find.text('Hafer Flocken'), findsOneWidget);
+    });
   });
 
   testWidgets('day navigation and edit preserve food source provenance', (
@@ -1277,6 +1372,32 @@ class _FakeCapture implements CapturePlatform {
   Future<String?> scanBarcode() async => null;
 }
 
+class _SearchOnline implements NutritionOnlineProvider {
+  int searchCalls = 0;
+
+  @override
+  Future<List<NutritionFood>> searchFoods(String query) async {
+    searchCalls++;
+    return [
+      NutritionFood(
+        name: 'Bio Bananen',
+        brand: 'Testmarke',
+        per100Grams: const NutritionTotals(kilocalories: 90),
+        source: NutritionSource(
+          provider: 'Open Food Facts',
+          barcode: '4001234567890',
+          retrievedAtUtc: DateTime.utc(2026, 10, 12, 10),
+          basisGrams: 100,
+        ),
+      ),
+    ];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError(invocation.memberName.toString());
+}
+
 class _EstimateOnline implements NutritionOnlineProvider {
   _EstimateOnline(this.components);
 
@@ -1359,6 +1480,7 @@ Future<_DiaryHarness> _pumpDiary(
   CapturePlatform? capture,
   NutritionOnlineProvider? online,
   DictationPlatform? dictation,
+  LocalFoodCatalog? localFoods,
   bool inTab = false,
 }) async {
   _usePhoneViewport(tester);
@@ -1373,6 +1495,7 @@ Future<_DiaryHarness> _pumpDiary(
     clock: () => DateTime.utc(2026, 10, 12, 10),
     capture: capture,
     online: online,
+    localFoods: localFoods,
   );
   if (schedule != null) await repository.saveTargetSchedule(schedule);
   final entryIds = <String>[];
