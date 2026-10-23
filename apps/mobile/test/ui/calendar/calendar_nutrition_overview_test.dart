@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
@@ -15,6 +16,24 @@ const _target = CalendarNutritionTarget(
   proteinGrams: 180,
   carbohydrateGrams: 332,
   fatGrams: 80,
+);
+
+const _restTarget = CalendarNutritionTarget(
+  kilocalories: 2200,
+  proteinGrams: 180,
+  carbohydrateGrams: 190,
+  fatGrams: 80,
+  kind: NutritionDayKind.rest,
+  manual: true,
+);
+
+const _restDay = CalendarNutrition(
+  kilocalories: 2100,
+  proteinGrams: 160,
+  carbohydrateGrams: 180,
+  fatGrams: 75,
+  saltGrams: 4.2,
+  target: _restTarget,
 );
 
 const _underTarget = CalendarNutrition(
@@ -226,6 +245,68 @@ void main() {
       expect(days, ['2026-10-22']);
     });
 
+    testWidgets('a past day shows its day kind and it can be changed', (
+      tester,
+    ) async {
+      usePhoneSize(tester);
+      final harness = await createCalendarHarness(tester);
+      await tester.runAsync(() async {
+        await harness.target(
+          from: '2026-10-01',
+          rest: const NutritionDayTarget(
+            inputMode: NutritionTargetInputMode.grams,
+            kilocalories: 2200,
+            proteinGrams: 180,
+            carbohydrateGrams: 190,
+            fatGrams: 80,
+          ),
+        );
+        await harness.food(LocalDay(2026, 10, 14), kcal: 2100, protein: 150);
+        await harness.nutrition.setDayKind(
+          '2026-10-14',
+          NutritionDayKind.training,
+        );
+      });
+      await pumpCalendar(tester, harness);
+      await tapDay(tester, LocalDay(2026, 10, 14));
+      final chip = find.byKey(const ValueKey('nutrition-day-kind-chip'));
+      await scrollIntoView(tester, chip);
+      expect(find.text('Trainingstag · manuell'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(
+              find
+                  .descendant(
+                    of: find.byKey(const ValueKey('calendar-nutrition-target')),
+                    matching: find.byType(Text),
+                  )
+                  .first,
+            )
+            .data,
+        '2.600',
+      );
+
+      await tester.tap(chip);
+      await settle(tester);
+      await tester.tap(find.text('Automatisch (Ruhetag)'));
+      await settle(tester);
+      await scrollIntoView(tester, chip);
+      expect(find.text('Ruhetag'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(
+              find
+                  .descendant(
+                    of: find.byKey(const ValueKey('calendar-nutrition-target')),
+                    matching: find.byType(Text),
+                  )
+                  .first,
+            )
+            .data,
+        '2.200',
+      );
+    });
+
     testWidgets('past days without food and future days show no overview', (
       tester,
     ) async {
@@ -267,6 +348,34 @@ void main() {
         );
       }, tags: ['golden']);
     }
+
+    for (final brightness in Brightness.values) {
+      testWidgets('Ernährungsübersicht Ruhetag ${brightness.name}', (
+        tester,
+      ) async {
+        cardSize(tester, 400);
+        await _pumpCard(tester, _restDay, brightness: brightness);
+        expect(tester.takeException(), isNull);
+        await expectLater(
+          find.byType(CupertinoApp),
+          matchesGoldenFile(
+            'goldens/calendar_nutrition_rest_day_${brightness.name}.png',
+          ),
+        );
+      }, tags: ['golden']);
+    }
+
+    testWidgets('Ernährungsübersicht Ruhetag Textgröße 2', (tester) async {
+      cardSize(tester, 880);
+      await _pumpCard(tester, _restDay, textScale: 2);
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(CupertinoApp),
+        matchesGoldenFile(
+          'goldens/calendar_nutrition_rest_day_scale2_light.png',
+        ),
+      );
+    }, tags: ['golden']);
 
     testWidgets('Ernährungsübersicht über Ziel dunkel', (tester) async {
       cardSize(tester, 400);

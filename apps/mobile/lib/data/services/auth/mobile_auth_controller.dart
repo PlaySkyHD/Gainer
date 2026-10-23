@@ -460,6 +460,7 @@ class MobileAuthController extends ChangeNotifier
       store: store,
       online: online ? ApiNutritionOnlineProvider(api) : null,
       capture: capture,
+      scheduleProjection: training.readScheduleProjection,
     );
     final bodyViewModel = BodyViewModel(
       body,

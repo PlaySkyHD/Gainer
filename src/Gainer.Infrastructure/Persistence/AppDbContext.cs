@@ -10,6 +10,7 @@ using Gainer.Infrastructure.Catalog;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -41,6 +42,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     public DbSet<ReusableMeal> ReusableMeals => Set<ReusableMeal>();
 
     public DbSet<ReusableMealComponent> ReusableMealComponents => Set<ReusableMealComponent>();
+
+    public DbSet<NutritionDayTemplate> NutritionDayTemplates => Set<NutritionDayTemplate>();
+
+    public DbSet<NutritionDayTemplateEntry> NutritionDayTemplateEntries => Set<NutritionDayTemplateEntry>();
 
     public DbSet<NutritionTargetSchedule> NutritionTargetSchedules => Set<NutritionTargetSchedule>();
 
@@ -89,6 +94,33 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     public DbSet<ChangeItem> ChangeItems => Set<ChangeItem>();
 
     private Guid CurrentUserId => userContext.UserId ?? Guid.Empty;
+
+    /// <summary>Columns shared by diary entries and day template entries.</summary>
+    private static void ConfigureEntryValues<TEntry>(
+        EntityTypeBuilder<TEntry> entry)
+        where TEntry : NutritionEntryValues
+    {
+        entry.HasKey(item => item.Id);
+        entry.Property(item => item.Meal).HasConversion<string>().HasMaxLength(16);
+        entry.Property(item => item.ProductName).HasMaxLength(200).IsRequired();
+        entry.Property(item => item.Brand).HasMaxLength(160);
+        entry.Property(item => item.Provider).HasMaxLength(64);
+        entry.Property(item => item.Barcode).HasMaxLength(64);
+        foreach (Expression<Func<TEntry, decimal?>> column in new Expression<Func<TEntry, decimal?>>[]
+                 {
+                     item => item.ProteinGrams, item => item.CarbohydrateGrams, item => item.FatGrams, item => item.SaltGrams,
+                     item => item.ProteinGramsPerBasis, item => item.CarbohydrateGramsPerBasis, item => item.FatGramsPerBasis,
+                     item => item.SaltGramsPerBasis, item => item.PieceGrams,
+                 })
+        {
+            entry.Property(column).HasPrecision(9, 2);
+        }
+        entry.Property(item => item.AmountGrams).HasPrecision(9, 2);
+        entry.Property(item => item.Kilocalories).HasPrecision(9, 2);
+        entry.Property(item => item.BasisGrams).HasPrecision(9, 2);
+        entry.Property(item => item.KilocaloriesPerBasis).HasPrecision(9, 2);
+        entry.Property(item => item.PieceCount).HasPrecision(7, 2);
+    }
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder builder)
@@ -691,8 +723,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     {
         modelBuilder.Entity<NutritionDay>(day =>
         {
-            day.ToTable("nutrition_days", DatabaseSchemas.Tracking);
+            day.ToTable("nutrition_days", DatabaseSchemas.Tracking, table =>
+                table.HasCheckConstraint("CK_nutrition_days_day_kind", "\"DayKind\" IS NULL OR \"DayKind\" IN ('Training', 'Rest')"));
             day.HasKey(item => item.Id);
+            day.Property(item => item.DayKind).HasConversion<string>().HasMaxLength(16);
             day.HasAlternateKey(item => new { item.UserId, item.Id });
             day.Property(item => item.Version).IsConcurrencyToken();
             day.HasIndex(item => new { item.UserId, item.LocalDate }).IsUnique();
@@ -717,27 +751,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_nutrition_entries_salt", "(\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"SaltGramsPerBasis\" IS NULL OR \"SaltGramsPerBasis\" >= 0)");
                 table.HasCheckConstraint("CK_nutrition_entries_pieces", "(\"PieceGrams\" IS NULL OR \"PieceGrams\" > 0) AND (\"PieceCount\" IS NULL OR (\"PieceCount\" > 0 AND \"PieceGrams\" IS NOT NULL))");
             });
-            entry.HasKey(item => item.Id);
-            entry.Property(item => item.Meal).HasConversion<string>().HasMaxLength(16);
-            entry.Property(item => item.ProductName).HasMaxLength(200).IsRequired();
-            entry.Property(item => item.Brand).HasMaxLength(160);
+            ConfigureEntryValues(entry);
             entry.Property(item => item.AmountUnit).HasMaxLength(16).IsRequired();
-            entry.Property(item => item.Provider).HasMaxLength(64);
-            entry.Property(item => item.Barcode).HasMaxLength(64);
-            entry.Property(item => item.AmountGrams).HasPrecision(9, 2);
-            entry.Property(item => item.Kilocalories).HasPrecision(9, 2);
-            entry.Property(item => item.ProteinGrams).HasPrecision(9, 2);
-            entry.Property(item => item.CarbohydrateGrams).HasPrecision(9, 2);
-            entry.Property(item => item.FatGrams).HasPrecision(9, 2);
-            entry.Property(item => item.BasisGrams).HasPrecision(9, 2);
-            entry.Property(item => item.KilocaloriesPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.ProteinGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.CarbohydrateGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.FatGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.SaltGrams).HasPrecision(9, 2);
-            entry.Property(item => item.SaltGramsPerBasis).HasPrecision(9, 2);
-            entry.Property(item => item.PieceGrams).HasPrecision(9, 2);
-            entry.Property(item => item.PieceCount).HasPrecision(7, 2);
             entry.HasIndex(item => new { item.UserId, item.NutritionDayId, item.Meal, item.Position }).IsUnique();
             entry.HasIndex(item => new { item.UserId, item.Barcode });
             entry.HasOne(item => item.NutritionDay)
@@ -812,6 +827,42 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             component.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<NutritionDayTemplate>(template =>
+        {
+            template.ToTable("nutrition_day_templates", DatabaseSchemas.Tracking, table =>
+            {
+                table.HasCheckConstraint("CK_nutrition_day_templates_name", NameNotBlankCheck);
+                table.HasCheckConstraint("CK_nutrition_day_templates_day_kind", "\"DayKind\" IS NULL OR \"DayKind\" IN ('Training', 'Rest')");
+            });
+            template.HasKey(item => item.Id);
+            template.HasAlternateKey(item => new { item.UserId, item.Id });
+            template.Property(item => item.Name).HasMaxLength(NutritionLimits.MaxDayTemplateNameLength).IsRequired();
+            template.Property(item => item.DayKind).HasConversion<string>().HasMaxLength(16);
+            template.Property(item => item.Version).IsConcurrencyToken();
+            template.HasIndex(item => new { item.UserId, item.UpdatedAtUtc });
+            template.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NutritionDayTemplateEntry>(entry =>
+        {
+            entry.ToTable("nutrition_day_template_entries", DatabaseSchemas.Tracking, table =>
+            {
+                table.HasCheckConstraint("CK_nutrition_day_template_entries_meal", "\"Meal\" IN ('Breakfast', 'Lunch', 'Dinner', 'Snacks')");
+                table.HasCheckConstraint("CK_nutrition_day_template_entries_position", PositionNonNegativeCheck);
+                table.HasCheckConstraint("CK_nutrition_day_template_entries_name", "length(trim(\"ProductName\")) > 0");
+                table.HasCheckConstraint("CK_nutrition_day_template_entries_amount", "\"AmountGrams\" > 0");
+                table.HasCheckConstraint("CK_nutrition_day_template_entries_basis", "\"BasisGrams\" > 0 AND \"KilocaloriesPerBasis\" >= 0");
+            });
+            ConfigureEntryValues(entry);
+            entry.HasIndex(item => new { item.UserId, item.NutritionDayTemplateId, item.Meal, item.Position }).IsUnique();
+            entry.HasOne(item => item.NutritionDayTemplate)
+                .WithMany(template => template.Entries)
+                .HasForeignKey(item => new { item.UserId, item.NutritionDayTemplateId })
+                .HasPrincipalKey(template => new { template.UserId, template.Id })
+                .OnDelete(DeleteBehavior.Cascade);
+            entry.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<NutritionTargetSchedule>(schedule =>
         {
             schedule.ToTable("nutrition_target_schedules", DatabaseSchemas.Tracking);
@@ -834,6 +885,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint("CK_nutrition_target_versions_category", "\"Category\" IN ('Custom', 'Cut', 'Maintenance', 'Bulk')");
                 table.HasCheckConstraint("CK_nutrition_target_versions_dates", "\"EffectiveUntil\" IS NULL OR \"EffectiveUntil\" >= \"EffectiveFrom\"");
                 table.HasCheckConstraint("CK_nutrition_target_versions_input", "(\"InputMode\" = 'Grams' AND \"ProteinPercent\" IS NULL AND \"CarbohydratePercent\" IS NULL AND \"FatPercent\" IS NULL) OR (\"InputMode\" = 'Percent' AND \"ProteinPercent\" > 0 AND \"CarbohydratePercent\" > 0 AND \"FatPercent\" > 0 AND \"ProteinPercent\" + \"CarbohydratePercent\" + \"FatPercent\" = 100)");
+                table.HasCheckConstraint("CK_nutrition_target_versions_rest", "(\"RestKilocalories\" IS NULL AND \"RestInputMode\" IS NULL AND \"RestProteinGrams\" IS NULL AND \"RestCarbohydrateGrams\" IS NULL AND \"RestFatGrams\" IS NULL AND \"RestProteinPercent\" IS NULL AND \"RestCarbohydratePercent\" IS NULL AND \"RestFatPercent\" IS NULL) OR (\"RestKilocalories\" > 0 AND \"RestKilocalories\" <= 20000 AND \"RestProteinGrams\" > 0 AND \"RestProteinGrams\" <= 2000 AND \"RestCarbohydrateGrams\" > 0 AND \"RestCarbohydrateGrams\" <= 2000 AND \"RestFatGrams\" > 0 AND \"RestFatGrams\" <= 2000 AND ((\"RestInputMode\" = 'Grams' AND \"RestProteinPercent\" IS NULL AND \"RestCarbohydratePercent\" IS NULL AND \"RestFatPercent\" IS NULL) OR (\"RestInputMode\" = 'Percent' AND \"RestProteinPercent\" > 0 AND \"RestCarbohydratePercent\" > 0 AND \"RestFatPercent\" > 0 AND \"RestProteinPercent\" + \"RestCarbohydratePercent\" + \"RestFatPercent\" = 100)))");
             });
             version.HasKey(item => item.Id);
             version.Property(item => item.Name).HasMaxLength(NutritionLimits.MaxTargetPhaseNameLength).HasDefaultValue("Ziel");
@@ -847,6 +899,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             version.Property(item => item.ProteinPercent).HasPrecision(5, 2);
             version.Property(item => item.CarbohydratePercent).HasPrecision(5, 2);
             version.Property(item => item.FatPercent).HasPrecision(5, 2);
+            version.Property(item => item.RestInputMode).HasConversion<string>().HasMaxLength(16);
+            version.Property(item => item.RestKilocalories).HasPrecision(10, 2);
+            version.Property(item => item.RestProteinGrams).HasPrecision(10, 2);
+            version.Property(item => item.RestCarbohydrateGrams).HasPrecision(10, 2);
+            version.Property(item => item.RestFatGrams).HasPrecision(10, 2);
+            version.Property(item => item.RestProteinPercent).HasPrecision(5, 2);
+            version.Property(item => item.RestCarbohydratePercent).HasPrecision(5, 2);
+            version.Property(item => item.RestFatPercent).HasPrecision(5, 2);
             version.Property(item => item.Origin).HasConversion<string>().HasMaxLength(24);
             version.Property(item => item.AlgorithmVersion).HasMaxLength(80);
             version.Property(item => item.Reason).HasMaxLength(500);

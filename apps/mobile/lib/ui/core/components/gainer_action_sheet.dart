@@ -11,6 +11,7 @@ final class GainerSheetAction<T> {
     required this.value,
     this.destructive = false,
     this.hint,
+    this.enabled = true,
   });
 
   final String label;
@@ -20,6 +21,10 @@ final class GainerSheetAction<T> {
 
   /// Kurzer Hinweis unter dem Titel der Aktion.
   final String? hint;
+
+  /// Deaktivierte Aktionen bleiben sichtbar, lassen sich aber nicht wählen;
+  /// [hint] erklärt dann den Grund.
+  final bool enabled;
 }
 
 /// Zeigt das Sheet; liefert die gewählte Aktion oder null bei Schließen ohne Auswahl.
@@ -223,14 +228,17 @@ class _GroupRow<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    return Semantics(
+    final row = Semantics(
       button: true,
+      enabled: action.enabled,
       label: action.label,
       hint: action.hint,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => Navigator.of(context).pop<T>(action.value),
+        onTap: action.enabled
+            ? () => Navigator.of(context).pop<T>(action.value)
+            : null,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44),
           child: Padding(
@@ -276,5 +284,6 @@ class _GroupRow<T> extends StatelessWidget {
         ),
       ),
     );
+    return action.enabled ? row : Opacity(opacity: 0.4, child: row);
   }
 }

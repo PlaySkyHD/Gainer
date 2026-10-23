@@ -7,6 +7,8 @@ public static class NutritionLimits
     public const int MaxComponentNameLength = 200;
     public const int MaxReusableMealComponents = 50;
     public const int MaxTargetVersions = 100;
+    public const int MaxDayTemplates = 50;
+    public const int MaxDayTemplateNameLength = 80;
     public const int MaxTargetPhaseNameLength = 80;
     public const int MaxEstimateComponents = 20;
     public const int MaxDataGapsPerEstimateComponent = 10;

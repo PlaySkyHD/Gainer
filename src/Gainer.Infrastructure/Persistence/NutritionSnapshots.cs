@@ -19,10 +19,11 @@ internal static class NutritionSnapshots
             NutritionCalculator.Sum(entries.Select(item => item.Totals)),
             day.CreatedAtUtc,
             day.UpdatedAtUtc,
-            day.Version);
+            day.Version,
+            day.DayKind);
     }
 
-    public static NutritionEntrySnapshot Entry(NutritionEntry entry)
+    public static NutritionEntrySnapshot Entry(NutritionEntryValues entry)
     {
         decimal basisFactor = 100m / entry.BasisGrams;
         var per100 = new NutritionPer100Grams(

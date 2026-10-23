@@ -6,6 +6,21 @@ enum NutritionTargetInputMode { grams, percent }
 
 enum NutritionTargetCategory { custom, cut, maintenance, bulk }
 
+/// Ob ein Tag für sein Ernährungsziel als Trainings- oder Ruhetag zählt.
+enum NutritionDayKind { training, rest }
+
+NutritionDayKind? nutritionDayKindFromWire(Object? value) => switch (value) {
+  null => null,
+  'Training' => NutritionDayKind.training,
+  'Rest' => NutritionDayKind.rest,
+  _ => throw FormatException('Unbekannte Tagesart: $value'),
+};
+
+String nutritionDayKindToWire(NutritionDayKind value) => switch (value) {
+  NutritionDayKind.training => 'Training',
+  NutritionDayKind.rest => 'Rest',
+};
+
 class NutritionValidationException implements Exception {
   const NutritionValidationException(this.fields);
   final Map<String, String> fields;
@@ -185,8 +200,11 @@ class NutritionEntry {
 }
 
 class NutritionDay {
-  NutritionDay({required this.localDate, required List<NutritionEntry> entries})
-    : entries = List.unmodifiable(_orderedEntries(entries)) {
+  NutritionDay({
+    required this.localDate,
+    required List<NutritionEntry> entries,
+    this.dayKind,
+  }) : entries = List.unmodifiable(_orderedEntries(entries)) {
     if (!isValidLocalDate(localDate)) {
       throw const NutritionValidationException({
         'localDate': 'Ungültiger Kalendertag.',
@@ -220,6 +238,9 @@ class NutritionDay {
   final String localDate;
   final List<NutritionEntry> entries;
 
+  /// Vom Nutzer festgelegte Tagesart; null heißt automatisch.
+  final NutritionDayKind? dayKind;
+
   NutritionTotals get totals {
     double? sum(double? Function(NutritionTotals) select) {
       final values = entries
@@ -248,12 +269,20 @@ class NutritionDay {
       json['entries'],
       'entries',
     ).map(NutritionEntry.fromJson).toList(),
+    dayKind: nutritionDayKindFromWire(json['dayKind']),
   );
 
   Map<String, Object?> toJson() => {
     'localDate': localDate,
     'entries': [for (final entry in entries) entry.toJson()],
+    if (dayKind case final kind?) 'dayKind': nutritionDayKindToWire(kind),
   };
+
+  NutritionDay withEntries(List<NutritionEntry> entries) =>
+      NutritionDay(localDate: localDate, entries: entries, dayKind: dayKind);
+
+  NutritionDay withDayKind(NutritionDayKind? dayKind) =>
+      NutritionDay(localDate: localDate, entries: entries, dayKind: dayKind);
 
   NutritionDay replace(NutritionEntry entry) {
     final index = entries.indexWhere((item) => item.entryId == entry.entryId);
@@ -263,14 +292,11 @@ class NutritionDay {
     } else {
       next[index] = entry;
     }
-    return NutritionDay(localDate: localDate, entries: next);
+    return withEntries(next);
   }
 
-  NutritionDay remove(String entryId) => NutritionDay(
-    localDate: localDate,
-    entries: _reindex(
-      entries.where((item) => item.entryId != entryId).toList(),
-    ),
+  NutritionDay remove(String entryId) => withEntries(
+    _reindex(entries.where((item) => item.entryId != entryId).toList()),
   );
 
   NutritionDay move(String entryId, NutritionMeal meal, int targetPosition) {
@@ -295,16 +321,84 @@ class NutritionDay {
       moving.copyWith(meal: meal, position: targetPosition),
     );
     final other = items.where((item) => item.meal != meal);
-    return NutritionDay(
-      localDate: localDate,
-      entries: [...other, ..._reindex(destination)],
-    );
+    return withEntries([...other, ..._reindex(destination)]);
   }
 
   int _nextPosition(NutritionMeal meal) => entries
       .where((item) => item.meal == meal)
       .fold<int>(0, (max, item) => math.max(max, item.position + 1));
 }
+
+/// Benannte Kopie der Einträge eines Ernährungstags, die sich auf andere Tage
+/// anwenden lässt. Angewendete Einträge sind Kopien mit neuen IDs.
+class NutritionDayTemplate {
+  NutritionDayTemplate({
+    required this.templateId,
+    required String name,
+    required this.dayKind,
+    required List<NutritionEntry> entries,
+    this.updatedAtUtc,
+  }) : name = name.trim(),
+       entries = List.unmodifiable(_orderedEntries(entries)) {
+    if (templateId.isEmpty) {
+      throw const NutritionValidationException({
+        'templateId': 'Vorlage ohne ID.',
+      });
+    }
+    if (this.name.isEmpty || this.name.length > maxNameLength) {
+      throw const NutritionValidationException({
+        'name': 'Der Name muss 1 bis 80 Zeichen haben.',
+      });
+    }
+    if (entries.isEmpty || entries.length > maxEntriesPerDay) {
+      throw const NutritionValidationException({
+        'entries': 'Eine Vorlage braucht 1 bis 200 Einträge.',
+      });
+    }
+    if (entries.map((item) => item.entryId).toSet().length != entries.length) {
+      throw const NutritionValidationException({
+        'entries': 'Eintrags-IDs müssen eindeutig sein.',
+      });
+    }
+  }
+
+  factory NutritionDayTemplate.fromJson(Map<String, dynamic> json) =>
+      NutritionDayTemplate(
+        templateId: _requiredString(json, 'templateId'),
+        name: _requiredString(json, 'name'),
+        dayKind: nutritionDayKindFromWire(json['dayKind']),
+        entries: _objectList(
+          json['entries'],
+          'entries',
+        ).map(NutritionEntry.fromJson).toList(),
+        updatedAtUtc: DateTime.tryParse((json['updatedAtUtc'] as String?) ?? '')
+            ?.toUtc(),
+      );
+
+  static const maxNameLength = 80;
+  static const maxTemplates = 50;
+
+  final String templateId;
+  final String name;
+  final NutritionDayKind? dayKind;
+  final List<NutritionEntry> entries;
+  final DateTime? updatedAtUtc;
+
+  NutritionTotals get totals =>
+      NutritionDay(localDate: '2000-01-01', entries: entries).totals;
+
+  Map<String, Object?> toJson() => {
+    'templateId': templateId,
+    'name': name,
+    'dayKind': dayKind == null ? null : nutritionDayKindToWire(dayKind!),
+    'entries': [for (final entry in entries) entry.toJson()],
+    if (updatedAtUtc case final stamp?)
+      'updatedAtUtc': stamp.toUtc().toIso8601String(),
+  };
+}
+
+/// Höchstzahl der Einträge eines Tages, auch nach dem Anwenden einer Vorlage.
+const maxEntriesPerDay = 200;
 
 class ReusableMealComponent {
   ReusableMealComponent({
@@ -484,6 +578,7 @@ class NutritionTargetVersion {
     this.algorithmVersion,
     this.reason,
     this.saltGrams,
+    this.restDay,
   });
 
   /// Standard-Salzgrenze, wenn eine Zielphase keine eigene hat (DGE-Richtwert).
@@ -502,6 +597,59 @@ class NutritionTargetVersion {
   final double? saltGrams;
 
   double get effectiveSaltGrams => saltGrams ?? defaultSaltGrams;
+
+  /// Eigenes Ziel für Ruhetage; ohne gilt das Ziel der Version an allen Tagen.
+  final NutritionDayTarget? restDay;
+
+  /// Das Ziel der Version selbst, das an Trainingstagen gilt.
+  NutritionDayTarget get trainingDay => NutritionDayTarget(
+    inputMode: inputMode,
+    kilocalories: kilocalories,
+    proteinGrams: proteinGrams,
+    carbohydrateGrams: carbohydrateGrams,
+    fatGrams: fatGrams,
+    proteinPercent: proteinPercent,
+    carbohydratePercent: carbohydratePercent,
+    fatPercent: fatPercent,
+  );
+
+  NutritionTargetVersion copyWith({
+    String? targetVersionId,
+    String? name,
+    NutritionTargetCategory? category,
+    String? effectiveFrom,
+    String? effectiveUntil,
+    bool clearEffectiveUntil = false,
+    NutritionDayTarget? trainingDay,
+    double? saltGrams,
+    bool clearSaltGrams = false,
+    NutritionDayTarget? restDay,
+    bool clearRestDay = false,
+  }) {
+    final training = trainingDay ?? this.trainingDay;
+    return NutritionTargetVersion(
+      targetVersionId: targetVersionId ?? this.targetVersionId,
+      name: name ?? this.name,
+      category: category ?? this.category,
+      effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+      effectiveUntil: clearEffectiveUntil
+          ? null
+          : effectiveUntil ?? this.effectiveUntil,
+      inputMode: training.inputMode,
+      kilocalories: training.kilocalories,
+      proteinGrams: training.proteinGrams,
+      carbohydrateGrams: training.carbohydrateGrams,
+      fatGrams: training.fatGrams,
+      proteinPercent: training.proteinPercent,
+      carbohydratePercent: training.carbohydratePercent,
+      fatPercent: training.fatPercent,
+      origin: origin,
+      algorithmVersion: algorithmVersion,
+      reason: reason,
+      saltGrams: clearSaltGrams ? null : saltGrams ?? this.saltGrams,
+      restDay: clearRestDay ? null : restDay ?? this.restDay,
+    );
+  }
 
   double get macroEnergyKilocalories =>
       proteinGrams * 4 + carbohydrateGrams * 4 + fatGrams * 9;
@@ -524,6 +672,55 @@ class NutritionTargetVersion {
     'algorithmVersion': algorithmVersion,
     'reason': reason,
     if (saltGrams != null) 'saltGrams': saltGrams,
+    if (restDay case final rest?) 'restDay': rest.toJson(),
+  };
+}
+
+/// kcal und Makros eines Tagesziels (Trainings- oder Ruhetag).
+class NutritionDayTarget {
+  const NutritionDayTarget({
+    required this.inputMode,
+    required this.kilocalories,
+    required this.proteinGrams,
+    required this.carbohydrateGrams,
+    required this.fatGrams,
+    this.proteinPercent,
+    this.carbohydratePercent,
+    this.fatPercent,
+  });
+
+  factory NutritionDayTarget.fromJson(Map<String, dynamic> json) =>
+      NutritionDayTarget(
+        inputMode: NutritionTargetInputMode.values.firstWhere(
+          (e) =>
+              e.name.toLowerCase() ==
+              ((json['inputMode'] as String?) ?? 'Grams').toLowerCase(),
+        ),
+        kilocalories: _number(json, 'kilocalories'),
+        proteinGrams: _number(json, 'proteinGrams'),
+        carbohydrateGrams: _number(json, 'carbohydrateGrams'),
+        fatGrams: _number(json, 'fatGrams'),
+        proteinPercent: (json['proteinPercent'] as num?)?.toDouble(),
+        carbohydratePercent: (json['carbohydratePercent'] as num?)?.toDouble(),
+        fatPercent: (json['fatPercent'] as num?)?.toDouble(),
+      );
+
+  final NutritionTargetInputMode inputMode;
+  final double kilocalories, proteinGrams, carbohydrateGrams, fatGrams;
+  final double? proteinPercent, carbohydratePercent, fatPercent;
+
+  double get macroEnergyKilocalories =>
+      proteinGrams * 4 + carbohydrateGrams * 4 + fatGrams * 9;
+
+  Map<String, Object?> toJson() => {
+    'inputMode': _title(inputMode.name),
+    'kilocalories': kilocalories,
+    'proteinGrams': proteinGrams,
+    'carbohydrateGrams': carbohydrateGrams,
+    'fatGrams': fatGrams,
+    'proteinPercent': proteinPercent,
+    'carbohydratePercent': carbohydratePercent,
+    'fatPercent': fatPercent,
   };
 }
 
@@ -729,6 +926,23 @@ void _validateTargetVersion(
       target.effectiveUntil!.compareTo(target.effectiveFrom) < 0) {
     errors['versions.$index.effectiveUntil'] = 'Enddatum liegt vor Beginn.';
   }
+  _validateDayTarget(target.trainingDay, 'versions.$index', errors);
+  if (target.restDay case final rest?) {
+    _validateDayTarget(rest, 'versions.$index.restDay', errors);
+  }
+  final salt = target.saltGrams;
+  if (salt != null && (!salt.isFinite || salt <= 0 || salt > 100)) {
+    errors['versions.$index.saltGrams'] =
+        'Die Salzgrenze muss zwischen 0 und 100 g liegen.';
+  }
+}
+
+/// Prüft kcal, Makros und Prozentanteile eines Tagesziels.
+void _validateDayTarget(
+  NutritionDayTarget target,
+  String prefix,
+  Map<String, String> errors,
+) {
   if (![
         target.kilocalories,
         target.proteinGrams,
@@ -736,13 +950,8 @@ void _validateTargetVersion(
         target.fatGrams,
       ].every((v) => v.isFinite && v >= 0) ||
       target.kilocalories <= 0) {
-    errors['versions.$index.nutrients'] =
+    errors['$prefix.nutrients'] =
         'Zielwerte müssen gültig und Kalorien positiv sein.';
-  }
-  final salt = target.saltGrams;
-  if (salt != null && (!salt.isFinite || salt <= 0 || salt > 100)) {
-    errors['versions.$index.saltGrams'] =
-        'Die Salzgrenze muss zwischen 0 und 100 g liegen.';
   }
   if (target.inputMode == NutritionTargetInputMode.percent) {
     final p = target.proteinPercent,
@@ -753,10 +962,17 @@ void _validateTargetVersion(
         f == null ||
         ![p, c, f].every((v) => v.isFinite && v >= 0) ||
         (p + c + f - 100).abs() > 0.01) {
-      errors['versions.$index.percentages'] =
+      errors['$prefix.percentages'] =
           'Makroanteile müssen zusammen 100 % ergeben.';
     }
   }
+}
+
+/// Prüft ein Tagesziel einzeln, z. B. im Editor vor dem Speichern.
+Map<String, String> validateDayTarget(NutritionDayTarget target) {
+  final errors = <String, String>{};
+  _validateDayTarget(target, 'target', errors);
+  return errors;
 }
 
 void _validateTargetOverlap(
