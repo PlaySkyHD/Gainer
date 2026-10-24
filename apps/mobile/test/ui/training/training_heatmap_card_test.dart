@@ -1,10 +1,12 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/cardio/cardio_repository.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_session.dart';
 import 'package:gainer_mobile/domain/models/training/training_heatmap.dart';
 import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
+import 'package:gainer_mobile/ui/features/training/training_format.dart';
 import 'package:gainer_mobile/ui/features/training/training_heatmap_card.dart';
 import 'package:gainer_mobile/ui/features/training/training_statistics_section.dart';
 import 'package:gainer_mobile/ui/features/training/training_statistics_view_model.dart';
@@ -16,6 +18,9 @@ import 'training_test_support.dart';
 LocalDay _oct(int day) => LocalDay(2026, 10, day);
 
 const _gridKey = ValueKey('training-heatmap-grid');
+const _selectionKey = ValueKey('training-heatmap-selection');
+const _openKey = ValueKey('training-heatmap-open');
+const _semanticsKey = ValueKey('training-heatmap-semantics');
 
 /// Cardio, deren Einheiten nicht lesbar sind.
 class _FailingCardio extends CardioRepository {
@@ -24,6 +29,19 @@ class _FailingCardio extends CardioRepository {
   @override
   Future<List<CardioSession>> readSessions() async =>
       throw StateError('nicht lesbar');
+}
+
+/// Cardio, die mitzählt, wie oft die Einheiten gelesen werden.
+class _CountingCardio extends CardioRepository {
+  _CountingCardio({required super.store});
+
+  var reads = 0;
+
+  @override
+  Future<List<CardioSession>> readSessions() {
+    reads++;
+    return super.readSessions();
+  }
 }
 
 /// Kraft am 5. und 12., Cardio am 12. und 15. Oktober: drei Trainingstage.
@@ -127,9 +145,11 @@ void main() {
 
     expect(find.byKey(const ValueKey('training-heatmap')), findsNothing);
     expect(find.text('Kreuzheben'), findsWidgets);
+    // Der Fehler wird gemeldet, nicht verschluckt.
+    expect(tester.takeException(), isA<StateError>());
   });
 
-  testWidgets('Tippen auf einen Trainingstag öffnet den Kalendertag', (
+  testWidgets('Tippen wählt einen Tag, erst die Schaltfläche öffnet ihn', (
     tester,
   ) async {
     usePhoneSize(tester);
@@ -143,11 +163,17 @@ void main() {
       cardio: harness.cardio,
       onOpenDay: opened.add,
     );
-    await tester.tapAt(_cellCenter(tester, _oct(13)));
-    await tester.tapAt(_cellCenter(tester, _oct(12)));
-    await tester.tapAt(_cellCenter(tester, _oct(15)));
+    expect(find.byKey(_selectionKey), findsNothing);
+    expect(find.byKey(_openKey), findsNothing);
 
-    expect(opened, [_oct(12), _oct(15)]);
+    await tester.tapAt(_cellCenter(tester, _oct(12)));
+    await tester.pump();
+    // 45 Minuten Kraft plus 32 Minuten Cardio.
+    expect(find.text('Mo, 12. Okt. · 77 min'), findsOneWidget);
+    expect(opened, isEmpty);
+
+    await tester.tap(find.byKey(_openKey));
+    expect(opened, [_oct(12)]);
   });
 
   testWidgets('Textgröße 2 läuft nicht über', (tester) async {
@@ -155,13 +181,170 @@ void main() {
     final harness = await createCalendarHarness(tester);
     await tester.runAsync(() => _seed(harness));
 
-    await _pumpSection(tester, harness, cardio: harness.cardio, textScale: 2);
+    await _pumpSection(
+      tester,
+      harness,
+      cardio: harness.cardio,
+      textScale: 2,
+      onOpenDay: (_) {},
+    );
+    await tester.tapAt(_cellCenter(tester, _oct(15)));
+    await tester.pump();
 
     expect(
       find.text('3 Trainingstage in den letzten 12 Monaten'),
       findsOneWidget,
     );
+    expect(find.text('Do, 15. Okt. · 32 min'), findsOneWidget);
+    expect(find.text('Im Kalender öffnen'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  group('Auswahl', () {
+    // Montag 5., 12. und Donnerstag 15. Oktober; heute ist Donnerstag, 22.
+    TrainingHeatmap build({LocalDay? today}) => buildTrainingHeatmap(
+      [
+        for (final (day, minutes) in [(5, 60), (12, 45), (15, 30)])
+          (
+            startedAtUtc: DateTime.utc(2026, 10, day, 10),
+            endedAtUtc: DateTime.utc(2026, 10, day, 10, minutes),
+          ),
+      ],
+      today: today ?? calendarToday,
+      dayOf: LocalDay.of,
+    );
+
+    Future<void> pumpCard(
+      WidgetTester tester,
+      TrainingHeatmap heatmap, {
+      ValueChanged<LocalDay>? onOpenDay,
+    }) async {
+      await tester.pumpWidget(
+        trainingTestApp(
+          home: CupertinoPageScaffold(
+            child: Padding(
+              padding: const EdgeInsets.all(GainerSpacing.m),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: TrainingHeatmapCard(
+                  heatmap: heatmap,
+                  onOpenDay: onOpenDay,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Offset cellAt(WidgetTester tester, int week, int weekday) {
+      final rect = tester.getRect(find.byKey(_gridKey));
+      final step = rect.width / build().weeks.length;
+      return rect.topLeft + Offset((week + 0.4) * step, (weekday + 0.4) * step);
+    }
+
+    String selection(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(_selectionKey)).data!;
+
+    testWidgets('Tippen wählt auch Tage ohne Training und den nächsten Tag', (
+      tester,
+    ) async {
+      usePhoneSize(tester);
+      final heatmap = build();
+      final opened = <LocalDay>[];
+      await pumpCard(tester, heatmap, onOpenDay: opened.add);
+
+      final thirteenth = heatmap.cellOf(_oct(13))!;
+      await tester.tapAt(cellAt(tester, thirteenth.week, thirteenth.weekday));
+      await tester.pump();
+      expect(selection(tester), 'Di, 13. Okt. · kein Training');
+
+      // Sonntag nach heute ist leer; nächstgelegen ist Sonntag, 18.
+      final today = heatmap.cellOf(calendarToday)!;
+      await tester.tapAt(cellAt(tester, today.week, 6));
+      await tester.pump();
+      expect(selection(tester), 'So, 18. Okt. · kein Training');
+
+      await tester.tap(find.byKey(_openKey));
+      expect(opened, [_oct(18)]);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('ohne Kalender keine Schaltfläche', (tester) async {
+      usePhoneSize(tester);
+      final heatmap = build();
+      await pumpCard(tester, heatmap);
+
+      final cell = heatmap.cellOf(_oct(12))!;
+      await tester.tapAt(cellAt(tester, cell.week, cell.weekday));
+      await tester.pump();
+
+      expect(selection(tester), 'Mo, 12. Okt. · 45 min');
+      expect(find.byKey(_openKey), findsNothing);
+    });
+
+    testWidgets('VoiceOver springt von Trainingstag zu Trainingstag', (
+      tester,
+    ) async {
+      usePhoneSize(tester);
+      final semantics = tester.ensureSemantics();
+      final opened = <LocalDay>[];
+      await pumpCard(tester, build(), onOpenDay: opened.add);
+
+      SemanticsNode node() => tester.getSemantics(find.byKey(_semanticsKey));
+      void perform(SemanticsAction action) =>
+          node().owner!.performAction(node().id, action);
+
+      var data = node().getSemanticsData();
+      expect(data.label, '3 Trainingstage in den letzten 12 Monaten');
+      expect(data.value, 'Kein Tag gewählt');
+      expect(data.increasedValue, 'Mo, 5. Okt. · 60 min');
+      expect(data.decreasedValue, 'Do, 15. Okt. · 30 min');
+      expect(find.bySemanticsLabel('Im Kalender öffnen'), findsNothing);
+
+      perform(SemanticsAction.decrease);
+      await tester.pump();
+      data = node().getSemanticsData();
+      expect(data.value, 'Do, 15. Okt. · 30 min');
+      expect(data.decreasedValue, 'Mo, 12. Okt. · 45 min');
+      // Nach dem jüngsten Trainingstag gibt es keinen weiteren.
+      expect(data.hasAction(SemanticsAction.increase), isFalse);
+
+      perform(SemanticsAction.decrease);
+      await tester.pump();
+      expect(node().getSemanticsData().value, 'Mo, 12. Okt. · 45 min');
+
+      perform(SemanticsAction.increase);
+      await tester.pump();
+      expect(node().getSemanticsData().value, 'Do, 15. Okt. · 30 min');
+
+      // Die Schaltfläche ist ein eigenes, erreichbares Element.
+      final button = find.bySemanticsLabel('Im Kalender öffnen');
+      expect(button, findsOneWidget);
+      final buttonNode = tester.getSemantics(button);
+      buttonNode.owner!.performAction(buttonNode.id, SemanticsAction.tap);
+      expect(opened, [_oct(15)]);
+      semantics.dispose();
+    });
+
+    testWidgets('die Auswahl bleibt beim Neuladen, solange der Tag passt', (
+      tester,
+    ) async {
+      usePhoneSize(tester);
+      final heatmap = build();
+      await pumpCard(tester, heatmap);
+      final cell = heatmap.cellOf(_oct(12))!;
+      await tester.tapAt(cellAt(tester, cell.week, cell.weekday));
+      await tester.pump();
+
+      await pumpCard(tester, build());
+      expect(selection(tester), 'Mo, 12. Okt. · 45 min');
+
+      await pumpCard(tester, build(today: LocalDay(2027, 11, 1)));
+      expect(find.byKey(_selectionKey), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('Breite', () {
@@ -250,10 +433,10 @@ void main() {
     );
 
     final inputs = await loadStatisticsInputs(harness.repository);
-    final heatmap = await loadTrainingHeatmap(
+    final heatmap = trainingHeatmapOf(
       inputs.workouts,
+      await harness.cardio.readSessions(),
       today: calendarToday,
-      cardio: harness.cardio,
     );
 
     expect(heatmap.trainingDays, 2);
@@ -263,6 +446,101 @@ void main() {
     expect(heatmap.dayAt(cell.week, cell.weekday)!.minutes, 77);
     final eighth = heatmap.cellOf(_oct(8))!;
     expect(heatmap.dayAt(eighth.week, eighth.weekday)!.hasTraining, isFalse);
+  });
+
+  group('ViewModel', () {
+    test('nicht lesbares Cardio meldet den Fehler und lässt nur die Heatmap '
+        'weg', () async {
+      final harness = await CalendarHarness.create();
+      addTearDown(harness.dispose);
+      await _seed(harness);
+      final reported = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() => FlutterError.onError = previous);
+      final model = TrainingStatisticsViewModel(
+        repository: harness.repository,
+        cardio: _FailingCardio(store: harness.training.store),
+      );
+      addTearDown(model.dispose);
+
+      await model.load();
+
+      expect(model.heatmap, isNull);
+      expect(model.exercises, isNotEmpty);
+      expect(model.errorMessage, isNull);
+      expect(reported, hasLength(1));
+      expect(reported.single.exception, isA<StateError>());
+    });
+
+    test('der Aufwärm-Schalter lädt Cardio und Heatmap nicht neu', () async {
+      final harness = await CalendarHarness.create();
+      addTearDown(harness.dispose);
+      await _seed(harness);
+      final cardio = _CountingCardio(store: harness.training.store);
+      final model = TrainingStatisticsViewModel(
+        repository: harness.repository,
+        cardio: cardio,
+      );
+      addTearDown(model.dispose);
+
+      await model.load();
+      final heatmap = model.heatmap;
+      expect(cardio.reads, 1);
+      expect(heatmap!.trainingDays, 3);
+
+      await model.setIncludeWarmups(true);
+
+      expect(model.includeWarmups, isTrue);
+      expect(model.exercises, isNotEmpty);
+      expect(cardio.reads, 1);
+      expect(model.heatmap, same(heatmap));
+    });
+  });
+
+  test('Text eines gewählten Tags', () {
+    final heatmap = buildTrainingHeatmap(
+      [
+        (
+          startedAtUtc: DateTime.utc(2026, 10, 12, 10),
+          endedAtUtc: DateTime.utc(2026, 10, 12, 10, 45),
+        ),
+      ],
+      today: calendarToday,
+      dayOf: LocalDay.of,
+    );
+
+    expect(
+      trainingHeatmapDayText(heatmap.dayOn(_oct(12))!),
+      'Mo, 12. Okt. · 45 min',
+    );
+    expect(
+      trainingHeatmapDayText(heatmap.dayOn(_oct(13))!),
+      'Di, 13. Okt. · kein Training',
+    );
+  });
+
+  test('Monatsnamen kommen aus einem gemeinsamen Helfer', () {
+    expect(
+      [for (var m = 1; m <= 12; m++) formatMonthLabel(m)],
+      [
+        'Jan',
+        'Feb',
+        'Mär',
+        'Apr',
+        'Mai',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Okt',
+        'Nov',
+        'Dez',
+      ],
+    );
+    expect(formatMonthShort(3), 'März');
+    expect(formatMonthShort(9), 'Sept.');
+    expect(formatShortDate(DateTime(2026, 10, 16)), '16. Okt.');
   });
 
   test('Zusammenfassung und Farben', () {

@@ -35,7 +35,7 @@ const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 /// Datum wie im Trainingskopf: „16. Okt.“.
 String formatShortDate(DateTime local) =>
-    '${local.day}. ${_shortMonths[local.month - 1]}';
+    '${local.day}. ${formatMonthShort(local.month)}';
 
 /// Kurzer Wochentag wie im Datums-Badge: „Do“.
 String formatWeekdayShort(DateTime local) => _weekdays[local.weekday - 1];
@@ -45,6 +45,13 @@ String formatMonthTitle(DateTime local) =>
 
 /// Ausgeschriebener Monat: 10 → „Oktober“.
 String formatMonthName(int month) => _months[month - 1];
+
+/// Abgekürzter Monat im Datum: 10 → „Okt.“, 3 → „März“.
+String formatMonthShort(int month) => _shortMonths[month - 1];
+
+/// Monat in drei Buchstaben ohne Punkt für knappe Beschriftungen wie
+/// Achsen: 10 → „Okt“, 3 → „Mär“.
+String formatMonthLabel(int month) => formatMonthName(month).substring(0, 3);
 
 String formatClockTime(DateTime local) =>
     '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';

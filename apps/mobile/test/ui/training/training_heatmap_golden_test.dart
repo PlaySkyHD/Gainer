@@ -40,10 +40,11 @@ void main() {
     final name = brightness.name;
 
     testWidgets('Heatmap der Trainingstage $name', (tester) async {
-      tester.view.physicalSize = const Size(390, 300);
+      tester.view.physicalSize = const Size(390, 320);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
+      final heatmap = _yearOfTraining();
 
       await tester.pumpWidget(
         trainingTestApp(
@@ -53,13 +54,25 @@ void main() {
               padding: const EdgeInsets.all(GainerSpacing.m),
               child: Align(
                 alignment: Alignment.topCenter,
-                child: TrainingHeatmapCard(heatmap: _yearOfTraining()),
+                child: TrainingHeatmapCard(heatmap: heatmap, onOpenDay: (_) {}),
               ),
             ),
           ),
         ),
       );
       await tester.pumpAndSettle();
+      // Dienstag, 13. Oktober wählen.
+      final grid = tester.getRect(
+        find.byKey(const ValueKey('training-heatmap-grid')),
+      );
+      final step = grid.width / heatmap.weeks.length;
+      final cell = heatmap.cellOf(LocalDay(2026, 10, 13))!;
+      await tester.tapAt(
+        grid.topLeft +
+            Offset((cell.week + 0.5) * step, (cell.weekday + 0.5) * step),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Di, 13. Okt. · 73 min'), findsOneWidget);
 
       expect(tester.takeException(), isNull);
       await expectLater(

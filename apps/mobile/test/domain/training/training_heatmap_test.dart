@@ -196,6 +196,67 @@ void main() {
       expect(day.level, 4);
     });
 
+    test('Bereich und Datum je Kästchen', () {
+      final heatmap = _build(const []);
+
+      expect(heatmap.contains(heatmap.start), isTrue);
+      expect(heatmap.contains(_today), isTrue);
+      expect(heatmap.contains(LocalDay(2025, 10, 24)), isFalse);
+      expect(heatmap.contains(LocalDay(2026, 10, 25)), isFalse);
+      expect(heatmap.dateAt(0, 0), heatmap.firstMonday);
+      expect(heatmap.dateAt(52, 5), _today);
+      expect(heatmap.dayOn(_today)!.date, _today);
+      expect(heatmap.dayOn(LocalDay(2026, 10, 25)), isNull);
+      expect(heatmap.days, hasLength(365));
+      expect(heatmap.days.first.date, heatmap.start);
+      expect(heatmap.days.last.date, _today);
+    });
+
+    test('nächstgelegener Tag, auch ohne Training', () {
+      final heatmap = _build([_session(LocalDay(2026, 10, 20), 45)]);
+
+      // Mitte der Spalte 52, Zeile 1: Dienstag, 20. Oktober.
+      expect(heatmap.nearestDay(52.5, 1.5)!.date, LocalDay(2026, 10, 20));
+      // Knapp daneben zählt das nähere Kästchen.
+      expect(heatmap.nearestDay(52.9, 2.1)!.date, LocalDay(2026, 10, 21));
+      // Rechts neben dem Raster: der nächste vorhandene Tag.
+      expect(heatmap.nearestDay(60, 5.5)!.date, _today);
+      // Vor dem Start (Spalte 0, Montag) liegt der erste Tag am nächsten.
+      expect(heatmap.nearestDay(0.5, 0.5)!.date, LocalDay(2025, 10, 27));
+      expect(heatmap.nearestDay(-3, 5.5)!.date, heatmap.start);
+    });
+
+    test('ohne Tage gibt es keinen nächstgelegenen', () {
+      final empty = TrainingHeatmap(
+        start: _today,
+        today: _today,
+        weeks: const [],
+        trainingDays: 0,
+      );
+      expect(empty.nearestDay(0, 0), isNull);
+    });
+
+    test('nächster und voriger Trainingstag', () {
+      final heatmap = _build([
+        _session(LocalDay(2026, 3, 2), 30),
+        _session(LocalDay(2026, 10, 1), 30),
+        _session(LocalDay(2026, 10, 20), 30),
+      ]);
+
+      expect(heatmap.nextTrainingDay(null)!.date, LocalDay(2026, 3, 2));
+      expect(heatmap.previousTrainingDay(null)!.date, LocalDay(2026, 10, 20));
+      expect(
+        heatmap.nextTrainingDay(LocalDay(2026, 3, 2))!.date,
+        LocalDay(2026, 10, 1),
+      );
+      expect(
+        heatmap.previousTrainingDay(LocalDay(2026, 10, 5))!.date,
+        LocalDay(2026, 10, 1),
+      );
+      expect(heatmap.nextTrainingDay(LocalDay(2026, 10, 20)), isNull);
+      expect(heatmap.previousTrainingDay(LocalDay(2026, 3, 2)), isNull);
+    });
+
     test('Standard nutzt die Gerätezeitzone', () {
       final local = DateTime(2026, 10, 22, 18);
       final heatmap = buildTrainingHeatmap([
