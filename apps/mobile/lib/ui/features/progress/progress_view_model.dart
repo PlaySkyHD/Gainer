@@ -26,9 +26,11 @@ class ProgressViewModel extends ChangeNotifier {
     final cached = await _readCachedDashboard();
     if (!_isCurrentDashboardRequest(request)) return;
     if (cached != null) {
+      // Gespeicherte Werte zeigen, während der Server antwortet. Als veraltet
+      // gelten sie erst, wenn das Aktualisieren scheitert; sonst flackert der
+      // Hinweis bei jedem Neuladen kurz auf.
       dashboard = cached.value;
       dashboardCachedAtUtc = cached.cachedAtUtc;
-      dashboardIsStale = true;
       notifyListeners();
     }
     try {
