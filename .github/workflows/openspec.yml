@@ -1,0 +1,45 @@
+name: OpenSpec
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openspec-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  no-open-changes:
+    name: No open OpenSpec changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # A change is archived in the same pull request that implements it, so that
+      # openspec/specs always describes what is on main.
+      - name: Reject changes that are not archived
+        run: |
+          open_changes=()
+          for dir in openspec/changes/*/; do
+            [[ -d "$dir" ]] || continue
+            name="$(basename "$dir")"
+            [[ "$name" == "archive" ]] && continue
+            open_changes+=("$name")
+          done
+
+          if (( ${#open_changes[@]} > 0 )); then
+            for name in "${open_changes[@]}"; do
+              echo "::error file=openspec/changes/${name}::OpenSpec change '${name}' is not archived. Run 'openspec archive ${name} -y' before merging."
+            done
+            exit 1
+          fi
+
+          echo "No open OpenSpec changes."

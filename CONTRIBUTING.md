@@ -15,6 +15,7 @@ Eine Aufgabe ist erst abgeschlossen, wenn:
 - Dokumentation und generierte Verträge bei Bedarf aktualisiert sind,
 - **betroffene Builds und Tests nach jedem Task grün** sind,
 - die Checkbox in der OpenSpec-Taskliste erst nach erfolgreicher Verifikation gesetzt wurde.
+- der Change vor dem Merge mit `openspec archive <change> -y` archiviert ist und `openspec validate --specs --strict` besteht.
 
 Für die vollständige lokale Prüfung:
 
