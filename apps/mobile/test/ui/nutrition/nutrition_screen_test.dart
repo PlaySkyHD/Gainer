@@ -390,16 +390,32 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    Finder sheetSearch() =>
+        find.byKey(const ValueKey('nutrition-entry-search'));
+
     testWidgets(
-      'offline: BLS foods appear while typing and keep their source',
+      'offline: BLS foods appear while typing, adding closes the sheet',
       (tester) async {
         final harness = await _pumpDiary(tester, [], localFoods: catalog);
         await openSearch(tester, 'Haferflocken');
 
-        expect(find.text('Lebensmittel (BLS)'), findsOneWidget);
+        expect(
+          find.byType(GainerSegmentedControl<NutritionMeal>),
+          findsNothing,
+        );
         expect(find.text('BLS 4.0 · 348 kcal / 100 g'), findsOneWidget);
-        expect(find.text('Produktsuche braucht Internet.'), findsOneWidget);
         expect(find.text('Banane roh'), findsNothing);
+        expect(
+          find.byKey(const ValueKey('nutrition-search-online')),
+          findsNothing,
+        );
+
+        await tester.tap(find.text('Produkte'));
+        await tester.pumpAndSettle();
+        expect(find.text('Produktsuche braucht Internet.'), findsOneWidget);
+        expect(find.text('Hafer Flocken'), findsNothing);
+        await tester.tap(find.text('Alle'));
+        await tester.pumpAndSettle();
 
         await tester.enterText(
           find.byKey(const ValueKey('nutrition-entry-amount')),
@@ -407,6 +423,11 @@ void main() {
         );
         await tester.tap(find.text('Hafer Flocken'));
         await tester.pumpAndSettle();
+        expect(
+          sheetSearch(),
+          findsNothing,
+          reason: 'Das Sheet ist geschlossen.',
+        );
         final entry = harness.viewModel.snapshot!.day.entries.single;
         expect(entry.productName, 'Hafer Flocken');
         expect(entry.source!.provider, 'BLS 4.0');
@@ -417,10 +438,35 @@ void main() {
           harness.viewModel.snapshot!.recentFoods.map((food) => food.name),
           contains('Hafer Flocken'),
         );
+
+        // Das nächste Öffnen beginnt leer: Startseite mit Tabs, leere Suche.
+        await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byType(GainerSegmentedControl<NutritionMeal>),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('Lebensmittel suchen'));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<CupertinoSearchTextField>(
+                find.descendant(
+                  of: sheetSearch(),
+                  matching: find.byType(CupertinoSearchTextField),
+                ),
+              )
+              .controller!
+              .text,
+          isEmpty,
+        );
+        // Keine alten Treffer; „Hafer Flocken“ steht nur noch im Tagebuch.
+        expect(find.text('BLS 4.0 · 348 kcal / 100 g'), findsNothing);
+        expect(harness.viewModel.localResults, isEmpty);
       },
     );
 
-    testWidgets('online: products follow the BLS group after submitting', (
+    testWidgets('online: products join the same list and can be filtered', (
       tester,
     ) async {
       final online = _SearchOnline();
@@ -429,23 +475,49 @@ void main() {
 
       expect(find.text('Banane roh'), findsOneWidget);
       expect(online.searchCalls, 0);
-      expect(find.text('Produktsuche braucht Internet.'), findsNothing);
+      final searchOnline = find.byKey(
+        const ValueKey('nutrition-search-online'),
+      );
+      expect(searchOnline, findsOneWidget);
 
-      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.ensureVisible(searchOnline);
+      await tester.tap(searchOnline);
       await tester.pumpAndSettle();
       expect(online.searchCalls, 1);
-      expect(find.text('Produkte (Open Food Facts)'), findsOneWidget);
-      expect(find.text('Bio Bananen'), findsOneWidget);
-
-      // Neue Eingabe: alte Produkttreffer passen nicht mehr und entfallen.
-      await tester.enterText(
-        find.byKey(const ValueKey('nutrition-entry-search')),
-        'Hafer',
+      expect(searchOnline, findsNothing);
+      expect(find.text('Banane roh'), findsOneWidget);
+      expect(
+        find.text('Open Food Facts · Testmarke · 90 kcal / 100 g'),
+        findsOneWidget,
       );
+
+      await tester.tap(find.text('BLS'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bio Bananen'), findsNothing);
+      expect(find.text('Banane roh'), findsOneWidget);
+      await tester.tap(find.text('Produkte'));
+      await tester.pumpAndSettle();
+      expect(
+        online.searchCalls,
+        1,
+        reason: 'Schon gesucht, keine neue Anfrage.',
+      );
+      expect(find.text('Bio Bananen'), findsOneWidget);
+      expect(find.text('Banane roh'), findsNothing);
+
+      // Neue Eingabe: alte Produkte entfallen, die Schaltfläche kommt wieder.
+      await tester.tap(find.text('Alle'));
+      await tester.enterText(sheetSearch(), 'Hafer');
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();
       expect(find.text('Bio Bananen'), findsNothing);
       expect(find.text('Hafer Flocken'), findsOneWidget);
+      expect(searchOnline, findsOneWidget);
+
+      // Der Filter „Produkte“ startet die Suche für die neue Eingabe.
+      await tester.tap(find.text('Produkte'));
+      await tester.pumpAndSettle();
+      expect(online.searchCalls, 2);
     });
   });
 
@@ -650,16 +722,8 @@ void main() {
     expect(entry.totals.kilocalories, 0);
     expect(entry.totals.saltGrams, 6);
     expect(harness.viewModel.snapshot!.day.totals.saltGrams, 6);
-
-    await tester.enterText(
-      find.byKey(const ValueKey('nutrition-salt-amount')),
-      '0,8',
-    );
-    await tester.pump();
-    await tester.ensureVisible(add);
-    await tester.tap(add);
-    await tester.pumpAndSettle();
-    expect(harness.viewModel.snapshot!.day.totals.saltGrams, 6.8);
+    // Nach dem Speichern schließt das Sheet.
+    expect(find.byKey(const ValueKey('nutrition-salt-amount')), findsNothing);
   });
 
   testWidgets('estimate shows inherent salt and offers own salt', (

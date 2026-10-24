@@ -152,6 +152,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _saltAmount = TextEditingController();
   MealDictationController? _dictation;
   Timer? _localSearch;
+
+  /// Schließt das offene Hinzufügen-Sheet; null, wenn keines offen ist.
+  VoidCallback? _closeEntrySheet;
   bool _wasVisible = true;
 
   bool get _visible => widget.isVisible?.call() ?? true;
@@ -516,61 +519,81 @@ class _NutritionScreenState extends State<NutritionScreen> {
     return showGainerSheet<FoodComponentDraft>(
       context: context,
       heightFactor: 0.9,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setSheetState) => AnimatedBuilder(
-          animation: vm,
-          builder: (context, _) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _entryHeader(
-                sheetContext,
-                target,
-                mode,
-                onBack: () => setSheetState(() {
-                  vm.dismissActionError();
-                  mode = _NutritionEntryMode.choices;
-                }),
-              ),
-              if (target is DayMealTarget) _mealSegment(vm),
-              Expanded(
-                child: ListView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(
-                    GainerSpacing.m,
-                    GainerSpacing.m,
-                    GainerSpacing.m,
-                    GainerSpacing.l,
-                  ),
-                  children: mode == _NutritionEntryMode.choices
-                      ? _choiceChildren(
-                          target,
-                          (option) => setSheetState(() => mode = option),
-                        )
-                      : _entryChildren(
-                          context,
-                          vm,
-                          mode,
-                          target,
-                          (draft) => Navigator.of(sheetContext).pop(draft),
-                          (option) => setSheetState(() => mode = option),
-                        ),
+      builder: (sheetContext) {
+        _closeEntrySheet = () => Navigator.of(sheetContext).pop();
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) => AnimatedBuilder(
+            animation: vm,
+            builder: (context, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _entryHeader(
+                  sheetContext,
+                  target,
+                  mode,
+                  onBack: () => setSheetState(() {
+                    vm.dismissActionError();
+                    mode = _NutritionEntryMode.choices;
+                  }),
                 ),
-              ),
-            ],
+                // Die Mahlzeit wird auf der Startseite gewählt; Unterseiten
+                // zeigen nur ihr Werkzeug.
+                if (target is DayMealTarget &&
+                    mode == _NutritionEntryMode.choices)
+                  _mealSegment(vm),
+                Expanded(
+                  child: ListView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(
+                      GainerSpacing.m,
+                      GainerSpacing.m,
+                      GainerSpacing.m,
+                      GainerSpacing.l,
+                    ),
+                    children: mode == _NutritionEntryMode.choices
+                        ? _choiceChildren(
+                            target,
+                            (option) => setSheetState(() => mode = option),
+                          )
+                        : _entryChildren(
+                            context,
+                            vm,
+                            mode,
+                            target,
+                            (draft) => Navigator.of(sheetContext).pop(draft),
+                            (option) => setSheetState(() => mode = option),
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
-    ).whenComplete(_resetEstimate);
+        );
+      },
+    ).whenComplete(_resetEntrySheet);
   }
 
-  /// Beim Schließen des Sheets beginnt die nächste Schätzung leer.
-  void _resetEstimate() {
+  /// Beim Schließen des Sheets beginnt das nächste Öffnen leer: Startseite,
+  /// leere Suche ohne alte Treffer, 100 g und eine neue Schätzung.
+  void _resetEntrySheet() {
+    _closeEntrySheet = null;
     if (!mounted) return;
+    _localSearch?.cancel();
     _dictation?.cancel();
     _estimateText.clear();
     _saltAmount.clear();
-    widget.viewModel.clearEstimateDraft();
+    _search.clear();
+    _amount.text = '100';
+    _addPieces.clear();
+    widget.viewModel
+      ..clearEstimateDraft()
+      ..resetFoodSearch();
+  }
+
+  /// Nach erfolgreichem Speichern in eine Mahlzeit schließt das Sheet.
+  void _closeAfterSave() {
+    if (widget.viewModel.errorMessage == null) _closeEntrySheet?.call();
   }
 
   Widget _entryHeader(
@@ -753,8 +776,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
       for (final food in foods)
         GainerListRow(
           title: food.name,
+          // Quelle zuerst, damit gemischte Treffer unterscheidbar sind.
           subtitle: [
-            food.brand ?? food.source.provider ?? fallback,
+            food.source.provider ?? fallback,
+            ?food.brand,
             '${_fmtKcal(food.per100Grams.kilocalories)} kcal / 100 g',
             if (food.pieceGrams case final grams?)
               '1 Stk = ${_fmtGrams(grams)} g',
@@ -801,43 +826,103 @@ class _NutritionScreenState extends State<NutritionScreen> {
     ];
   }
 
+  /// Eine Trefferliste für BLS und Open Food Facts. Der Filter beschränkt sie
+  /// auf eine Quelle; Produkte kommen erst auf ausdrücklichen Wunsch dazu,
+  /// weil Open Food Facts Suchanfragen begrenzt.
   List<Widget> _searchTools(
     NutritionViewModel vm,
     ValueChanged<NutritionFood> onSelect,
-  ) => [
-    GainerSearchField(
-      key: const ValueKey('nutrition-entry-search'),
-      controller: _search,
-      placeholder: 'Lebensmittel, Produkt oder Marke',
-      onChanged: (query) => _scheduleLocalSearch(vm, query),
-      onSubmitted: (query) => _searchFoods(vm, query),
-    ),
-    const SizedBox(height: GainerSpacing.m),
-    _amountGroup(),
-    if (vm.localResults.isNotEmpty) ...[
-      const SizedBox(height: GainerSpacing.m),
-      _foodResults(
-        vm.localResults,
-        'BLS',
-        onSelect,
-        header: vm.localResultsPartial
-            ? 'Lebensmittel (BLS) · Teiltreffer'
-            : 'Lebensmittel (BLS)',
+  ) {
+    final query = _search.text.trim();
+    final source = vm.searchSource;
+    final showLocal = source != FoodSourceFilter.openFoodFacts;
+    final showOnline = source != FoodSourceFilter.bls;
+    final onlineCurrent = vm.onlineSearchQuery == query;
+    final foods = [
+      if (showLocal) ...vm.localResults,
+      if (showOnline && onlineCurrent) ...vm.searchResults,
+    ];
+    final canStartOnline =
+        showOnline &&
+        vm.canSearchOnline &&
+        !onlineCurrent &&
+        !vm.isOnlineOperation;
+    // Nur der Filter „Open Food Facts“ braucht den Hinweis; in „Alle“
+    // genügen die BLS-Treffer.
+    final needsInternet =
+        source == FoodSourceFilter.openFoodFacts && !vm.canSearchOnline;
+    return [
+      GainerSearchField(
+        key: const ValueKey('nutrition-entry-search'),
+        controller: _search,
+        placeholder: 'Lebensmittel, Produkt oder Marke',
+        onChanged: (query) => _scheduleLocalSearch(vm, query),
+        onSubmitted: (query) => _searchFoods(vm, query),
       ),
-    ],
-    if (!vm.canSearchOnline) ...[
       const SizedBox(height: GainerSpacing.m),
-      _hint('Produktsuche braucht Internet.'),
-    ] else if (vm.searchResults.isNotEmpty) ...[
-      const SizedBox(height: GainerSpacing.m),
-      _foodResults(
-        vm.searchResults,
-        'Lebensmittel',
-        onSelect,
-        header: 'Produkte (Open Food Facts)',
-      ),
-    ],
-  ];
+      _amountGroup(),
+      if (query.length >= 2) ...[
+        const SizedBox(height: GainerSpacing.m),
+        GainerSegmentedControl<FoodSourceFilter>(
+          key: const ValueKey('nutrition-search-source'),
+          options: const {
+            FoodSourceFilter.all: 'Alle',
+            FoodSourceFilter.bls: 'BLS',
+            // Ausgeschrieben passt „Open Food Facts“ nicht ins Segment;
+            // die Zeilen nennen die Quelle.
+            FoodSourceFilter.openFoodFacts: 'Produkte',
+          },
+          value: source,
+          onChanged: (value) => _selectSearchSource(vm, value, query),
+        ),
+        // Über der Liste, damit sie nicht hinter 20 Treffern verschwindet.
+        if (needsInternet) ...[
+          const SizedBox(height: GainerSpacing.m),
+          _hint('Produktsuche braucht Internet.'),
+        ] else if (canStartOnline) ...[
+          const SizedBox(height: GainerSpacing.m),
+          GainerPillButton(
+            key: const ValueKey('nutrition-search-online'),
+            label: 'In Open Food Facts suchen',
+            icon: CupertinoIcons.globe,
+            variant: GainerPillVariant.tonal,
+            expand: true,
+            onPressed: () => _searchFoods(vm, query),
+          ),
+        ],
+        if (foods.isNotEmpty) ...[
+          const SizedBox(height: GainerSpacing.m),
+          _foodResults(
+            foods,
+            'Lebensmittel',
+            onSelect,
+            header: showLocal && vm.localResultsPartial ? 'Teiltreffer' : null,
+          ),
+        ] else if (!canStartOnline &&
+            !vm.isOnlineOperation &&
+            !needsInternet) ...[
+          const SizedBox(height: GainerSpacing.m),
+          _hint('Keine Treffer.'),
+        ],
+      ],
+    ];
+  }
+
+  /// „Produkte“ heißt: Open Food Facts zeigen. Für die aktuelle Eingabe wird
+  /// dann online gesucht, falls das noch nicht geschehen ist.
+  void _selectSearchSource(
+    NutritionViewModel vm,
+    FoodSourceFilter value,
+    String query,
+  ) {
+    vm.setSearchSource(value);
+    if (value == FoodSourceFilter.openFoodFacts &&
+        vm.canSearchOnline &&
+        vm.onlineSearchQuery != query &&
+        query.length >= 2) {
+      _searchFoods(vm, query);
+    }
+  }
 
   /// Lokale Treffer folgen der Eingabe mit kurzer Pause, damit nicht jeder
   /// Tastendruck eine Suche startet.
@@ -939,6 +1024,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           saltGramsPer100: _saltPer100.saltGrams,
         );
         if (widget.viewModel.errorMessage == null) _saltAmount.clear();
+        _closeAfterSave();
       case MealDraftTarget():
         final accepted = _commitDraft(
           FoodComponentDraft(
@@ -1075,11 +1161,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
   );
 
   /// Übernimmt ein gefundenes Lebensmittel in das [target].
-  void _submitFood(
+  Future<void> _submitFood(
     NutritionFood food,
     FoodAddTarget target,
     ValueChanged<FoodComponentDraft> onDraft,
-  ) {
+  ) async {
     final pieces = _parse(_addPieces.text);
     final pieceGrams = food.pieceGrams;
     if (pieces != null && pieceGrams == null) {
@@ -1094,7 +1180,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
         : _parse(_amount.text) ?? 100;
     switch (target) {
       case DayMealTarget():
-        widget.viewModel.addFood(food, amountGrams: amount, pieceCount: pieces);
+        await widget.viewModel.addFood(
+          food,
+          amountGrams: amount,
+          pieceCount: pieces,
+        );
+        _closeAfterSave();
       case MealDraftTarget():
         _commitDraft(
           FoodComponentDraft(
@@ -2077,6 +2168,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           _pieceGrams.clear();
           _pieceCount.clear();
         }
+        _closeAfterSave();
       case MealDraftTarget():
         final accepted = _commitDraft(
           FoodComponentDraft(
