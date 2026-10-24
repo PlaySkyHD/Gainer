@@ -10,7 +10,7 @@ class NutritionViewModel extends ChangeNotifier {
     required this.repository,
     required this.localDate,
     this.dictation,
-  }) {
+  }) : _today = localDateOf(repository.clock()) {
     if (!isValidLocalDate(localDate)) {
       throw ArgumentError.value(localDate, 'localDate');
     }
@@ -52,7 +52,25 @@ class NutritionViewModel extends ChangeNotifier {
   /// Tab sichtbar wird) übernimmt ihn, statt auf [localDate] zurückzufallen.
   String? _pendingDate;
 
+  /// Kalendertag, der zuletzt „heute“ war; daran erkennt [checkToday] einen
+  /// neuen Tag.
+  String _today;
+
   Future<void> load() => _loadDay(_pendingDate ?? _failedDate ?? localDate);
+
+  /// Hat ein neuer Tag begonnen (über Nacht geöffnet oder Rückkehr in die
+  /// App) und zeigt die Ansicht noch den alten Tag als „heute“, wechselt sie
+  /// auf den neuen. Ein bewusst gewählter anderer Tag bleibt stehen. Liefert
+  /// true, wenn sie wechselt; dann braucht es kein zusätzliches [load].
+  bool checkToday() {
+    final today = localDateOf(repository.clock());
+    if (today == _today) return false;
+    final showedToday = (_pendingDate ?? localDate) == _today;
+    _today = today;
+    if (!showedToday) return false;
+    _loadDay(today);
+    return true;
+  }
 
   Future<void> selectDate(String value) {
     if (!isValidLocalDate(value)) {
@@ -762,3 +780,9 @@ enum NutritionErrorOperation {
   estimate,
   label,
 }
+
+/// `JJJJ-MM-TT` des Kalendertags von [date].
+String localDateOf(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
