@@ -17,7 +17,7 @@ jobs:
   no-open-changes:
     name: No open OpenSpec changes
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Check out repository
@@ -43,3 +43,13 @@ jobs:
           fi
 
           echo "No open OpenSpec changes."
+
+      # The change validation does not fully check MODIFIED requirements (for
+      # example their length), so the merged specs are validated as well.
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Validate merged specs
+        run: npx --yes @fission-ai/openspec@1.14.2 validate --specs --strict
