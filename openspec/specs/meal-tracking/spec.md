@@ -69,6 +69,18 @@ Ein Nutzer SHALL eigene Ernährungseinträge bearbeiten, zwischen Mahlzeiten ver
 - **WHEN** eine Änderung mit veralteter Basisversion synchronisiert wird
 - **THEN** lehnt der Server sie als sichtbaren Konflikt ab und überschreibt keinen Stand still
 
+#### Scenario: Ersten Eintrag löschen
+
+- **GIVEN** unter Frühstück liegen drei Einträge auf den Positionen 0, 1 und 2
+- **WHEN** der Nutzer den ersten löscht und die übrigen auf 0 und 1 nachrücken
+- **THEN** übernimmt der Server den Stand mit denselben Eintrags-IDs und meldet keinen Konflikt
+
+#### Scenario: Einträge umsortieren
+
+- **GIVEN** zwei Einträge einer Mahlzeit tauschen ihre Positionen oder ein neuer Eintrag kommt an Position 0
+- **WHEN** der Tag synchronisiert wird
+- **THEN** speichert der Server die neue Reihenfolge atomar und meldet keinen Konflikt
+
 ### Requirement: Manuelle und wiederverwendbare Lebensmittel
 
 Die Anwendung MUST einen manuellen Eintrag mit frei benanntem Lebensmittel und validierten Nährwerten ermöglichen. Sie SHALL zuletzt beziehungsweise häufig verwendete eigene Snapshots lokal anbieten, ohne dafür eine externe Suche auszulösen oder Daten anderer Nutzer einzubeziehen.

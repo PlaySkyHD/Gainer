@@ -125,6 +125,41 @@ public sealed class NutritionPersistenceTests
         Assert.AreEqual("Original", (await context.NutritionEntries.AsNoTracking().SingleAsync()).ProductName);
     }
 
+    [TestMethod]
+    public async Task ReorderingEntriesWithStableIdsIsNotAConflict()
+    {
+        (string connectionString, Guid firstUser, _) = await CreateDatabaseAsync();
+        Guid dayId = Guid.NewGuid();
+        Guid a = Guid.NewGuid(), b = Guid.NewGuid(), c = Guid.NewGuid(), added = Guid.NewGuid();
+        NutritionEntryInput[][] saves =
+        [
+            [Entry(a, MealType.Breakfast, 0, "A", 100m, 100m, null), Entry(b, MealType.Breakfast, 1, "B", 100m, 100m, null), Entry(c, MealType.Breakfast, 2, "C", 100m, 100m, null)],
+            // Deleting the first entry moves the others up.
+            [Entry(b, MealType.Breakfast, 0, "B", 100m, 100m, null), Entry(c, MealType.Breakfast, 1, "C", 100m, 100m, null)],
+            // A new first entry moves the others down.
+            [Entry(added, MealType.Breakfast, 0, "Neu", 100m, 100m, null), Entry(b, MealType.Breakfast, 1, "B", 100m, 100m, null), Entry(c, MealType.Breakfast, 2, "C", 100m, 100m, null)],
+            // Swapping two entries.
+            [Entry(added, MealType.Breakfast, 0, "Neu", 100m, 100m, null), Entry(c, MealType.Breakfast, 1, "C", 100m, 100m, null), Entry(b, MealType.Breakfast, 2, "B", 100m, 100m, null)],
+            // Moving the first entry to another meal.
+            [Entry(c, MealType.Breakfast, 0, "C", 100m, 100m, null), Entry(b, MealType.Breakfast, 1, "B", 100m, 100m, null), Entry(added, MealType.Lunch, 0, "Neu", 100m, 100m, null)],
+        ];
+
+        for (int index = 0; index < saves.Length; index++)
+        {
+            await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+            var handler = new NutritionDayMutationHandler(context, new TestUserContext(firstUser), TimeProvider.System);
+            NutritionDaySnapshot saved = await handler.SaveAsync(Save(dayId, index, saves[index]));
+            Assert.AreEqual(index + 1, saved.Version);
+        }
+
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        {
+            NutritionDaySnapshot stored = await new NutritionQueries(context).GetDayAsync(new DateOnly(2026, 8, 19)) ?? throw new AssertFailedException();
+            CollectionAssert.AreEqual(new[] { c, b, added }, stored.Entries.Select(item => item.EntryId).ToArray());
+            Assert.AreEqual(MealType.Lunch, stored.Entries.Single(item => item.EntryId == added).Meal);
+        }
+    }
+
     private static async Task SaveForUserAsync(string connectionString, Guid userId, Guid dayId, string productName)
     {
         await using AppDbContext context = Fixture.CreateContext(connectionString, userId);

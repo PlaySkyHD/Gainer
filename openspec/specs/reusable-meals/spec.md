@@ -49,6 +49,12 @@ Die Anwendung MUST im Ernährungsbereich eine eigenständige Gerichtebibliothek 
 - **WHEN** er in der Gerichtebibliothek archivierte Gerichte einblendet
 - **THEN** kann er dessen gespeicherte Komponenten weiterhin ansehen, während das Gericht in keinem Ernährungstag neu angeboten wird
 
+#### Scenario: Komponenten umsortieren oder entfernen
+
+- **GIVEN** ein Gericht hat drei Komponenten
+- **WHEN** der Nutzer die erste entfernt oder zwei Komponenten tauscht und speichert
+- **THEN** übernimmt der Server den Stand mit denselben Komponenten-IDs und meldet keinen Konflikt
+
 ### Requirement: Gerichtskomponenten über das gemeinsame Hinzufügen-Sheet
 
 Der Gerichtseditor MUST zum Hinzufügen einer Komponente dasselbe Hinzufügen-Sheet mit denselben Wegen wie die Mahlzeiten verwenden, soweit Netz und Gerät sie unterstützen. Ein bestätigtes Ergebnis MUST als unabhängiger Komponenten-Snapshot in den lokalen Gerichtsentwurf übernommen werden und DARF keinen Ernährungstag verändern. Der Nutzer MUST die Komponenten vor dem Speichern einzeln bearbeiten, entfernen und umordnen können.
