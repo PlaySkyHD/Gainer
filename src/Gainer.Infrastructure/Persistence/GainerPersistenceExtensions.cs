@@ -66,6 +66,8 @@ public static class GainerPersistenceExtensions
         builder.Services.Configure<OpenAiProviderOptions>(builder.Configuration.GetSection(OpenAiProviderOptions.SectionName));
         builder.Services.AddHttpClient<IOpenAiResponsesProvider, OpenAiResponsesProvider>(client =>
             client.BaseAddress = new Uri(OpenAiBaseAddress));
+        builder.Services.AddScoped<ICoachMemoryStore, CoachMemoryStore>();
+        builder.Services.AddScoped<ICoachMemoryQueries>(services => services.GetRequiredService<ICoachMemoryStore>());
         builder.Services.AddScoped<ICoachService, CoachService>();
         builder.Services.Configure<MealEstimationOptions>(builder.Configuration.GetSection(MealEstimationOptions.SectionName));
         builder.Services.Configure<MealImageOptions>(builder.Configuration.GetSection(MealImageOptions.SectionName));

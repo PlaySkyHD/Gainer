@@ -18,12 +18,16 @@ public sealed class CoachControllerTests
             "Summary",
             [new CoachObservation("Observed", ["fact-1"])],
             [new CoachFact("fact-1", "weight", "Average", 80m, null, "kg", "30 days", "weight-average-v1")],
-            ["gap"], ["continue observing"], 3);
+            ["gap"], ["continue observing"], 3,
+            [new CoachMemorySuggestion(CoachMemoryCategory.Intolerance, "Laktoseintoleranz")]);
         ActionResult<CoachResponse> action = await new CoachController(new StubCoach(answer)).Create(
             new CoachResponseRequest("question"), CancellationToken.None);
         CoachResponse response = (CoachResponse)((OkObjectResult)action.Result!).Value!;
         Assert.AreEqual(3, response.AsOfRevision);
         Assert.AreEqual("fact-1", response.Facts.Single().FactId);
+        CoachMemorySuggestionResponse suggestion = response.MemorySuggestions!.Single();
+        Assert.AreEqual("intolerance", suggestion.Category);
+        Assert.AreEqual("Laktoseintoleranz", suggestion.Text);
     }
 
     [TestMethod]

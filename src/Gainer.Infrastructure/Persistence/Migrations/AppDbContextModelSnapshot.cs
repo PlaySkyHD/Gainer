@@ -162,6 +162,46 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Gainer.Core.Coach.CoachMemory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CreatedAtUtc");
+
+                    b.ToTable("coach_memories", "ai", t =>
+                        {
+                            t.HasCheckConstraint("CK_coach_memories_category", "\"Category\" IN ('Goal', 'Preference', 'Intolerance', 'Injury', 'Other')");
+
+                            t.HasCheckConstraint("CK_coach_memories_text", "length(trim(\"Text\")) > 0 AND length(\"Text\") <= 200");
+                        });
+                });
+
             modelBuilder.Entity("Gainer.Core.Integrations.StravaConnection", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -4876,6 +4916,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Gainer.Core.BodyTracking.DailyCheckIn", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gainer.Core.Coach.CoachMemory", b =>
                 {
                     b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
                         .WithMany()
