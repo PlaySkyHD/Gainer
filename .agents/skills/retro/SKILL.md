@@ -18,7 +18,7 @@ You improve the **environment** for future agent runs: skills, rules, lessons, c
    - made an expensive or repeated tool call that a better tool or pointer would avoid,
    - lacked information (logs, server state, credentials flow) and had to guess or ask.
 2. **Classify each candidate** with the categories below and pick the cheapest durable fix.
-3. **Drop weak candidates.** Keep only findings with a concrete moment from the session as evidence. Keep at most three, ordered by how much time or risk they cost. Before filing, confirm the suspected cause with a quick test: rerun the command, call the hook with sample JSON, or read the code location. If you cannot confirm it, drop the finding or mark it clearly as a hypothesis in the issue.
+3. **Drop weak candidates.** Keep only findings with a concrete moment from the session as evidence. Keep at most three, ordered by how much time or risk they cost. Before filing, confirm the suspected cause with a quick test: rerun the command, call the hook with sample JSON, or read the code location. If you cannot confirm it, drop the finding or mark it clearly as a hypothesis in the issue. A claim about compiler behaviour (Swift has no local compiler here) counts as confirmed only by a red CI run or by similar code that already builds on `main`; search for counterexamples first.
 4. **File them** as described under "Issues". If nothing survives, say so in one line and stop.
 5. **Report** in two or three lines which issues you created or commented on.
 
