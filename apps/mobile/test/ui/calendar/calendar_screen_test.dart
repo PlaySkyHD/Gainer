@@ -186,11 +186,13 @@ void main() {
     });
     final areas = <MobileArea>[];
     final days = <String>[];
+    final checkInDays = <String>[];
     await pumpCalendar(
       tester,
       harness,
       onOpenArea: areas.add,
       onOpenNutritionDay: days.add,
+      onOpenCheckInDay: checkInDays.add,
     );
 
     await tapDay(tester, _oct(14));
@@ -210,9 +212,11 @@ void main() {
     await settle(tester);
     expect(days, ['2026-10-14']);
 
+    // Der Check-in öffnet den gewählten Tag, nicht nur den Tab.
     await tester.tap(find.text('82,4 kg'));
     await settle(tester);
-    expect(areas, [MobileArea.body]);
+    expect(checkInDays, ['2026-10-14']);
+    expect(areas, isEmpty);
   });
 
   testWidgets('swiping changes the month and "Heute" returns', (tester) async {

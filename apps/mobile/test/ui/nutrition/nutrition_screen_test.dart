@@ -1126,6 +1126,41 @@ void main() {
     },
   );
 
+  group('a new day', () {
+    Future<void> resume(WidgetTester tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('moves the diary from yesterday to today on return', (
+      tester,
+    ) async {
+      var now = DateTime.utc(2026, 10, 12, 23, 50);
+      final harness = await _pumpDiary(tester, ['Joghurt'], clock: () => now);
+      expect(harness.viewModel.localDate, '2026-10-12');
+
+      now = DateTime.utc(2026, 10, 13, 7);
+      await resume(tester);
+
+      expect(harness.viewModel.localDate, '2026-10-13');
+      expect(find.text('Joghurt'), findsNothing);
+      expect(find.text('Heute'), findsOneWidget);
+    });
+
+    testWidgets('keeps a deliberately chosen day', (tester) async {
+      var now = DateTime.utc(2026, 10, 12, 23, 50);
+      final harness = await _pumpDiary(tester, [], clock: () => now);
+      await harness.viewModel.selectDate('2026-10-10');
+      await tester.pumpAndSettle();
+
+      now = DateTime.utc(2026, 10, 13, 7);
+      await resume(tester);
+
+      expect(harness.viewModel.localDate, '2026-10-10');
+    });
+  });
+
   testWidgets('day card without targets shows actuals and a targets action', (
     tester,
   ) async {
@@ -1644,6 +1679,7 @@ Future<_DiaryHarness> _pumpDiary(
   NutritionOnlineProvider? online,
   DictationPlatform? dictation,
   LocalFoodCatalog? localFoods,
+  DateTime Function()? clock,
   bool inTab = false,
 }) async {
   _usePhoneViewport(tester);
@@ -1655,7 +1691,7 @@ Future<_DiaryHarness> _pumpDiary(
     store: store,
     ids: () =>
         '00000000-0000-4000-8000-${(nextId++).toString().padLeft(12, '0')}',
-    clock: () => DateTime.utc(2026, 10, 12, 10),
+    clock: clock ?? () => DateTime.utc(2026, 10, 12, 10),
     capture: capture,
     online: online,
     localFoods: localFoods,

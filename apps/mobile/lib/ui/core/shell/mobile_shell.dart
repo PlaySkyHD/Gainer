@@ -86,6 +86,10 @@ class MobileShell extends StatelessWidget {
                     account.nutritionViewModel.selectDate(localDate);
                     model.selectTab(MobileArea.nutrition.index);
                   },
+                  onOpenCheckInDay: (localDate) {
+                    account.bodyViewModel.requestCheckIn(localDate);
+                    model.selectTab(MobileArea.body.index);
+                  },
                   visibility: model,
                   isVisible: () => model.selectedIndex == area.index,
                   refresh: Listenable.merge([
