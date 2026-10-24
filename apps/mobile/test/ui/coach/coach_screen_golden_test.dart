@@ -7,12 +7,15 @@ import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/coach/coach_screen.dart';
 import 'package:gainer_mobile/ui/features/coach/coach_view_model.dart';
 
+import 'coach_memory_fakes.dart';
+
 void main() {
   for (final brightness in [Brightness.light, Brightness.dark]) {
     testWidgets('coach screen matches golden in ${brightness.name} mode', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(390, 844);
+      // Hoch genug für Antwort, Vorschlag und Lücken in einem Bild.
+      tester.view.physicalSize = const Size(390, 1300);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -26,9 +29,18 @@ void main() {
           dataGaps: ['Schlafdaten fehlen.'],
           suggestions: ['Plane einen Deload-Tag.'],
           asOfRevision: 9,
+          memorySuggestions: [
+            ApiCoachMemorySuggestion(
+              category: CoachMemoryCategory.goal,
+              text: 'Halbmarathon im Mai',
+            ),
+          ],
         ),
       );
-      final model = CoachViewModel(CoachRepository(api));
+      final model = CoachViewModel(
+        CoachRepository(api),
+        memories: FakeCoachMemoryRepository(),
+      );
       addTearDown(model.dispose);
       addTearDown(api.close);
 

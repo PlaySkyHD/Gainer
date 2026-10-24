@@ -210,6 +210,61 @@ class ApiClient {
     return ApiCoachResponse.fromJson(_asObject(response.data));
   }
 
+  /// Notizen des Coach-Gedächtnisses, neueste zuerst.
+  Future<ApiCoachMemoryList> listCoachMemories() async {
+    final response = await _request('GET', '/api/v1/coach/memories');
+    return ApiCoachMemoryList.fromJson(_asObject(response.data));
+  }
+
+  /// Legt eine Notiz an, auch um einen Vorschlag zu übernehmen. Ein schon
+  /// vorhandener Text liefert den bestehenden Eintrag.
+  Future<ApiCoachMemory> createCoachMemory(
+    CoachMemoryCategory category,
+    String text,
+  ) async {
+    final response = await _mutate(
+      'POST',
+      '/api/v1/coach/memories',
+      body: _coachMemoryBody(category, text),
+    );
+    return ApiCoachMemory.fromJson(_asObject(response.data));
+  }
+
+  Future<ApiCoachMemory> updateCoachMemory(
+    String id,
+    CoachMemoryCategory category,
+    String text,
+  ) async {
+    _validateIdentifier(id, 'id');
+    final response = await _mutate(
+      'PUT',
+      '/api/v1/coach/memories/$id',
+      body: _coachMemoryBody(category, text),
+    );
+    return ApiCoachMemory.fromJson(_asObject(response.data));
+  }
+
+  Future<void> deleteCoachMemory(String id) async {
+    _validateIdentifier(id, 'id');
+    await _mutate('DELETE', '/api/v1/coach/memories/$id');
+  }
+
+  /// „Alles vergessen“.
+  Future<void> deleteAllCoachMemories() async {
+    await _mutate('DELETE', '/api/v1/coach/memories');
+  }
+
+  Map<String, Object?> _coachMemoryBody(
+    CoachMemoryCategory category,
+    String text,
+  ) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty || trimmed.length > coachMemoryMaxTextLength) {
+      throw ArgumentError.value(text, 'text', 'Expected 1 to 200 characters.');
+    }
+    return {'category': category.wireName, 'text': trimmed};
+  }
+
   Future<ApiFoodProduct> lookupFoodByBarcode(String barcode) async {
     if (!RegExp(r'^\d{4,32}$').hasMatch(barcode)) {
       throw ArgumentError.value(barcode, 'barcode', 'Expected 4 to 32 digits.');
