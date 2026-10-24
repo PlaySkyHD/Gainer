@@ -1096,6 +1096,36 @@ void main() {
     expect(harness.viewModel.localDate, '2026-10-10');
   });
 
+  testWidgets(
+    'a day chosen in the calendar survives the reload when the tab appears',
+    (tester) async {
+      final harness = await _pumpDiary(tester, ['Joghurt']);
+      await harness.viewModel.repository.saveEntry(
+        '2026-10-10',
+        NutritionEntry(
+          entryId: '00000000-0000-4000-8000-000000000990',
+          meal: NutritionMeal.lunch,
+          position: 0,
+          productName: 'Quark',
+          brand: null,
+          amountGrams: 250,
+          per100Grams: const NutritionTotals(kilocalories: 70),
+          source: null,
+        ),
+      );
+
+      // Wie aus dem Kalender: Tag wählen, dann sofort Tab-Wechsel mit Neuladen.
+      unawaited(harness.viewModel.selectDate('2026-10-10'));
+      unawaited(harness.viewModel.load());
+      await tester.pumpAndSettle();
+
+      expect(harness.viewModel.localDate, '2026-10-10');
+      expect(find.text('Sa. 10. Okt.'), findsOneWidget);
+      expect(find.text('Quark'), findsOneWidget);
+      expect(find.text('Joghurt'), findsNothing);
+    },
+  );
+
   testWidgets('day card without targets shows actuals and a targets action', (
     tester,
   ) async {
