@@ -45,7 +45,7 @@ context: |
   Beta keine MVP-Voraussetzung, weil nur das Backend Datenbankzugriff erhält;
   strikte Isolation im Backend und Cross-User-Integrationstests sind zwingend.
 
-  Offline-First: Strukturierte Trackingdaten liegen auf dem Gerät in IndexedDB.
+  Offline-First: Strukturierte Trackingdaten liegen auf dem Gerät in einer Drift-Datenbank.
   Fachänderung und Outbox-Eintrag werden atomar gespeichert und über einen
   idempotenten Sync-Vertrag mit PostgreSQL synchronisiert. Der MVP unterstützt
   zunächst ein aktiv schreibendes Hauptgerät pro Nutzer und verspricht auf iOS
@@ -72,7 +72,7 @@ context: |
   Exercise Library, wiederverwendbare Workout Templates, Previous Performance,
   Set Logging, Workout History und Rest Timer.
 
-  Lies README.md und passende Regeln aus .github/instructions/ vor Änderungen.
+  Lies README.md, docs/agent-lessons-learned.md und passende Regeln aus .agents/instructions/ vor Änderungen.
   Halte den Scope auf den MVP begrenzt und erfinde keine bestehenden APIs oder Features.
 
 rules:
