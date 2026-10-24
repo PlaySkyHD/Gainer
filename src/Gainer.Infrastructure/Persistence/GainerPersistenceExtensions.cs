@@ -59,6 +59,7 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<ISyncMutationExecutor, SyncMutationExecutor>();
         builder.Services.AddScoped<ISyncMutationProcessor, SyncMutationProcessor>();
         builder.Services.AddScoped<ISyncChangeFeed, SyncChangeFeed>();
+        builder.Services.AddScoped<IAccountDataExport, AccountDataExportQuery>();
         builder.Services.AddScoped<ISyncClientRegistry, SyncClientRegistry>();
         builder.Services.AddScoped<ISyncHandoverService, SyncHandoverService>();
         builder.Services.AddScoped<IInsightQueries, InsightQueries>();
