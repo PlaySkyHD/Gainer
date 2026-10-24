@@ -183,6 +183,8 @@ In both branches, never create the root as a side effect: do not run `openspec i
    mv "<changeRoot>" "<planningHome.changesDir>/archive/<target-name>"
    ```
 
+   Run `openspec validate --specs --strict` afterwards (with the same selected-root flags). The change validation does not fully check MODIFIED requirements (e.g. their length), and CI runs this check too. If it fails, fix the specs and say so in the summary.
+
 6. **Display summary**
 
    Show archive completion summary including:
