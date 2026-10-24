@@ -35,6 +35,7 @@ class CalendarDayView extends StatelessWidget {
     this.onOpenCardio,
     this.onOpenTraining,
     this.onToday,
+    this.liveSteps,
     this.overview,
     super.key,
   });
@@ -64,6 +65,10 @@ class CalendarDayView extends StatelessWidget {
 
   /// Zurück zum heutigen Tag; null, wenn heute gezeigt wird.
   final VoidCallback? onToday;
+
+  /// Schritte von heute aus Apple Health. Sie ersetzen für heute den Wert des
+  /// Check-ins, der meist morgens gespeichert wurde.
+  final int? liveSteps;
 
   /// Dashboard-Daten des früheren Heute-Tabs; nur für heute gesetzt.
   final ProgressViewModel? overview;
@@ -284,7 +289,22 @@ class CalendarDayView extends StatelessWidget {
 
   Widget? _checkInSection(ProgressViewModel? dashboard) {
     final checkIn = day.checkIn;
-    if (checkIn == null) return null;
+    final steps = (_isToday ? liveSteps : null) ?? checkIn?.steps;
+    if (checkIn == null) {
+      // Heute ohne Check-in: die Schritte aus Apple Health trotzdem zeigen.
+      if (!_isToday || steps == null) return null;
+      return GainerGroupedSection(
+        key: const ValueKey('calendar-checkin-card'),
+        header: 'Check-in',
+        children: [
+          _ValueRow(
+            label: 'Schritte',
+            value: formatStepCount(steps),
+            onTap: onOpenCheckIn,
+          ),
+        ],
+      );
+    }
     // Heute zeigt die Gewichtskarte das lokal erfasste Gewicht; es steht
     // dann nicht noch einmal im Check-in.
     final weightShown = _isToday && dashboard?.dashboard != null;
@@ -295,7 +315,7 @@ class CalendarDayView extends StatelessWidget {
           value: calendarWeight(checkIn.weightKg),
           onTap: onOpenCheckIn,
         ),
-      if (checkIn.steps case final steps?)
+      if (steps != null)
         _ValueRow(
           label: 'Schritte',
           value: formatStepCount(steps),
