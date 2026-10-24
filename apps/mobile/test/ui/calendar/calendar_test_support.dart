@@ -317,6 +317,7 @@ Future<void> pumpCalendar(
   bool Function()? isVisible,
   Listenable? refresh,
   NutritionRepository? nutrition,
+  LocalDay? Function()? takeRequestedDay,
 }) async {
   final active = ActiveWorkoutController(harness.repository);
   addTearDown(active.dispose);
@@ -336,6 +337,7 @@ Future<void> pumpCalendar(
         steps: steps,
         visibility: visibility,
         isVisible: isVisible,
+        takeRequestedDay: takeRequestedDay,
         refresh: refresh,
       ),
     ),

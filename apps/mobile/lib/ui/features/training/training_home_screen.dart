@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
+import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
@@ -25,6 +26,7 @@ class TrainingHomeScreen extends StatefulWidget {
     required this.repository,
     required this.activeWorkout,
     this.cardio,
+    this.onOpenCalendarDay,
     super.key,
   });
 
@@ -33,6 +35,9 @@ class TrainingHomeScreen extends StatefulWidget {
 
   /// Cardio mit Pulsgurt; ohne Wert entfällt der Herz-Button.
   final CardioFeature? cardio;
+
+  /// Öffnet einen Tag im Kalender, etwa aus der Heatmap der Statistik.
+  final ValueChanged<LocalDay>? onOpenCalendarDay;
 
   @override
   State<TrainingHomeScreen> createState() => _TrainingHomeScreenState();
@@ -176,6 +181,7 @@ class _TrainingHomeScreenState extends State<TrainingHomeScreen> {
             TrainingSegment.statistics => TrainingStatisticsSection(
               repository: widget.repository,
               cardio: widget.cardio?.repository,
+              onOpenCalendarDay: widget.onOpenCalendarDay,
             ),
           },
         ],

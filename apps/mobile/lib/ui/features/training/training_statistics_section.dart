@@ -2,12 +2,14 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/cardio/cardio_repository.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
+import '../../../domain/models/training/training_schedule.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import '../cardio/cardio_statistics_area.dart';
 import 'exercise_statistics_screen.dart';
 import 'muscle_map_screen.dart';
 import 'training_format.dart';
+import 'training_heatmap_card.dart';
 import 'training_statistics_view_model.dart';
 import 'warmup_sets_row.dart';
 
@@ -18,6 +20,7 @@ class TrainingStatisticsSection extends StatefulWidget {
   const TrainingStatisticsSection({
     required this.repository,
     this.cardio,
+    this.onOpenCalendarDay,
     super.key,
   });
 
@@ -25,6 +28,9 @@ class TrainingStatisticsSection extends StatefulWidget {
 
   /// Cardio-Einheiten für den Bereich „Cardio“; ohne Wert entfällt er.
   final CardioRepository? cardio;
+
+  /// Öffnet einen Tag im Kalender; ohne Wert ist die Heatmap nicht antippbar.
+  final ValueChanged<LocalDay>? onOpenCalendarDay;
 
   @override
   State<TrainingStatisticsSection> createState() =>
@@ -37,8 +43,10 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
   @override
   void initState() {
     super.initState();
-    _viewModel = TrainingStatisticsViewModel(repository: widget.repository)
-      ..load();
+    _viewModel = TrainingStatisticsViewModel(
+      repository: widget.repository,
+      cardio: widget.cardio,
+    )..load();
   }
 
   @override
@@ -66,6 +74,16 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (model.heatmap case final heatmap?
+                when heatmap.trainingDays > 0) ...[
+              const GainerSectionHeader(title: 'Trainingstage'),
+              const SizedBox(height: GainerSpacing.xs),
+              TrainingHeatmapCard(
+                heatmap: heatmap,
+                onOpenDay: widget.onOpenCalendarDay,
+              ),
+              const SizedBox(height: GainerSpacing.l),
+            ],
             if (widget.cardio case final cardio?) ...[
               CardioStatisticsArea(repository: cardio),
               const GainerSectionHeader(title: 'Kraft'),

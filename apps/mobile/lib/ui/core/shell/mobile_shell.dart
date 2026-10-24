@@ -65,6 +65,7 @@ class MobileShell extends StatelessWidget {
                   repository: account.training,
                   activeWorkout: account.activeWorkout,
                   cardio: _cardioOf(account),
+                  onOpenCalendarDay: model.openCalendarDay,
                 ),
                 MobileArea.nutrition => NutritionScreen(
                   viewModel: account.nutritionViewModel,
@@ -102,6 +103,7 @@ class MobileShell extends StatelessWidget {
                   },
                   visibility: model,
                   isVisible: () => model.selectedIndex == area.index,
+                  takeRequestedDay: model.takeRequestedCalendarDay,
                   refresh: Listenable.merge([
                     account.syncStatus,
                     account.activeWorkout,
