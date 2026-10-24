@@ -63,6 +63,7 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 ## 7. Arbeitsweise, die sich bewährt hat
 
 - Jede Änderung als OpenSpec-Change mit `openspec validate <change> --strict`, dann ein PR pro Thema.
+- **Im selben PR archivieren.** Als letzten Schritt vor dem Merge übernimmt `openspec archive <change> -y` die Deltas in `openspec/specs`. Der Workflow „OpenSpec“ schlägt fehl, solange unter `openspec/changes/` ein Change außerhalb von `archive/` liegt. Bis Oktober 2026 blieben 40 Changes offen, die Specs widersprachen sich und mussten von Hand zusammengeführt werden. Deltas gehören in die passende fachliche Spec (z. B. `training-session`, `meal-tracking`), nicht in eine neue Mini-Capability je Feature. Ändert ein Feature eine bestehende Anforderung, nutze `MODIFIED` oder `REMOVED`, statt im Proposal auf einen anderen Change zu verweisen.
 - Merge erst, wenn alle Checks grün sind, dann sofort TestFlight.
 - Ein Subagent-Brief mit festen Regeln (graphify, keine `.gymapp/`, kein `git restore`, Format nur geänderter Dateien, Tests, Vorschau, Bericht) spart Rückfragen.
 - Ursachen im Code belegen, bevor ein Fix gebaut wird (HealthKit-Ende, Schreibgerät-Registrierung, Konfliktcodes).

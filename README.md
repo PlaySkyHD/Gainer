@@ -87,7 +87,7 @@ tests/Gainer.ArchitectureTests/  Modul- und Abhängigkeitsregeln
 contracts/openapi/               Generierter OpenAPI-Vertrag
 deploy/                          Dockerfiles, Compose, Caddy, Skripte, Runbook
 scripts/                         Verifikations- und Prüfskripte
-openspec/                        Anforderungen, Design und Tasks je Änderung
+openspec/                        Fachliche Specs (specs/) und Changes (changes/)
 docs/                            Hinweise für die Arbeit am Repo
 ```
 
@@ -174,7 +174,8 @@ gh workflow run mobile.yml --ref main -f build_signed_ipa=false -f upload_testfl
 
 ## Mitwirken
 
-- Jede Änderung ist ein OpenSpec-Change unter [`openspec/changes`](openspec/changes) (`openspec validate <change> --strict`) mit einem eigenen PR.
+- Der aktuelle Stand der App steht in den fachlichen Specs unter [`openspec/specs`](openspec/specs).
+- Jede Änderung ist ein OpenSpec-Change unter [`openspec/changes`](openspec/changes) (`openspec validate <change> --strict`) mit einem eigenen PR. Vor dem Merge archiviert derselbe PR den Change (`openspec archive <change> -y`), damit seine Deltas in den Specs landen. Der Workflow „OpenSpec“ lehnt PRs mit offenen Changes ab.
 - Gemergt wird erst, wenn alle Checks grün sind.
 - Arbeitsweise, Definition of Done und Commit-Konventionen stehen in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - Erkenntnisse aus bisherigen Umsetzungen stehen in [`docs/agent-lessons-learned.md`](docs/agent-lessons-learned.md).
