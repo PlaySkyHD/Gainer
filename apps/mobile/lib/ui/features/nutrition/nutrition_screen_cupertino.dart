@@ -168,6 +168,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _saltAmount = TextEditingController();
   MealDictationController? _dictation;
   Timer? _localSearch;
+  late final AppLifecycleListener _lifecycle;
+  Timer? _midnight;
 
   /// Schließt das offene Hinzufügen-Sheet; null, wenn keines offen ist.
   VoidCallback? _closeEntrySheet;
@@ -180,12 +182,40 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   void _onVisibility() {
     final visible = _visible;
-    if (visible && !_wasVisible) widget.viewModel.load();
+    if (visible && !_wasVisible) _reload();
     _wasVisible = visible;
   }
 
   void _onRefresh() {
-    if (_visible) widget.viewModel.load();
+    if (_visible) _reload();
+  }
+
+  /// Lädt neu; hat inzwischen ein neuer Tag begonnen, wandert „heute“ mit.
+  void _reload() {
+    if (!widget.viewModel.checkToday()) widget.viewModel.load();
+  }
+
+  void _onResume() {
+    // Nach der Rückkehr in die App kann ein neuer Tag begonnen haben.
+    if (_visible) {
+      _reload();
+    } else {
+      widget.viewModel.checkToday();
+    }
+    _scheduleMidnight();
+  }
+
+  /// Weckt kurz nach Mitternacht, damit „heute“ mitwandert, auch wenn die App
+  /// über Nacht geöffnet bleibt.
+  void _scheduleMidnight() {
+    _midnight?.cancel();
+    final now = DateTime.now();
+    final next = DateTime(now.year, now.month, now.day + 1, 0, 0, 5);
+    _midnight = Timer(next.difference(now), () {
+      if (!mounted) return;
+      widget.viewModel.checkToday();
+      _scheduleMidnight();
+    });
   }
 
   @override
@@ -206,7 +236,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
     super.initState();
     widget.visibility?.addListener(_onVisibility);
     widget.refresh?.addListener(_onRefresh);
+    _lifecycle = AppLifecycleListener(onResume: _onResume);
     _wasVisible = _visible;
+    _scheduleMidnight();
     widget.viewModel.load();
     if (widget.viewModel.dictation case final platform?) {
       _dictation = MealDictationController(
@@ -222,6 +254,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
     widget.refresh?.removeListener(_onRefresh);
     _dictation?.dispose();
     _localSearch?.cancel();
+    _lifecycle.dispose();
+    _midnight?.cancel();
     for (final controller in [
       _name,
       _brand,

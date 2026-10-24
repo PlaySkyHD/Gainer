@@ -25,6 +25,21 @@ class BodyViewModel extends ChangeNotifier {
   Map<String, String> fieldErrors = const {};
   bool _disposed = false;
 
+  /// Check-in-Tag `JJJJ-MM-TT`, den ein anderer Bereich (der Kalender) öffnen
+  /// möchte; der Check-in-Screen holt ihn mit [takeCheckInRequest] ab.
+  String? requestedCheckInDate;
+
+  void requestCheckIn(String localDate) {
+    requestedCheckInDate = localDate;
+    _notify();
+  }
+
+  String? takeCheckInRequest() {
+    final date = requestedCheckInDate;
+    requestedCheckInDate = null;
+    return date;
+  }
+
   Future<void> load() => _run(() async {
     await repository.flushPendingResting();
     final loaded = await repository.read();
