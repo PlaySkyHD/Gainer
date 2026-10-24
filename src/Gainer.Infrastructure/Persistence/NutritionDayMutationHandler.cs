@@ -2,6 +2,7 @@ using Gainer.Core.Mutations;
 using Gainer.Core.Nutrition;
 using Gainer.Core.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
@@ -22,6 +23,9 @@ public sealed class NutritionDayMutationHandler(
             .Include(item => item.Entries)
             .SingleOrDefaultAsync(item => item.Id == mutation.NutritionDayId, cancellationToken);
         DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
+        await using IDbContextTransaction? transaction = context.Database.CurrentTransaction is null
+            ? await context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
         if (day is null)
         {
             if (mutation.BaseVersion != 0)
@@ -44,7 +48,9 @@ public sealed class NutritionDayMutationHandler(
             {
                 throw new NutritionDayConflictException("The nutrition day changed since the supplied base version.");
             }
+            // Removals are flushed before the stable entry IDs and positions are reused by the replacement rows.
             context.NutritionEntries.RemoveRange(day.Entries.ToArray());
+            await SaveOrConflictAsync(cancellationToken);
             day.UpdatedAtUtc = utcNow;
             day.Version++;
         }
@@ -58,18 +64,8 @@ public sealed class NutritionDayMutationHandler(
             context.NutritionEntries.Add(entry);
         }
 
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw new NutritionDayConflictException("The nutrition day changed concurrently.");
-        }
-        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-        {
-            throw new NutritionDayConflictException("A nutrition day or entry already exists for this identifier, date, or position.");
-        }
+        await SaveOrConflictAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
 
         NutritionDaySnapshot snapshot = NutritionSnapshots.Day(day, replacementEntries);
         changeCollector?.CaptureUpsert(snapshot);
@@ -102,6 +98,22 @@ public sealed class NutritionDayMutationHandler(
         }
         changeCollector?.CaptureDeletion(ResourceKey.Create(ResourceKind.NutritionDay, day.Id), deletedVersion);
         return deletedVersion;
+    }
+
+    private async Task SaveOrConflictAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new NutritionDayConflictException("The nutrition day changed concurrently.");
+        }
+        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new NutritionDayConflictException("A nutrition day or entry already exists for this identifier, date, or position.");
+        }
     }
 
     private Guid CurrentUserId() =>

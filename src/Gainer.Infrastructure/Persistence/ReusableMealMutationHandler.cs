@@ -2,6 +2,7 @@ using Gainer.Core.Mutations;
 using Gainer.Core.Nutrition;
 using Gainer.Core.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
@@ -22,6 +23,9 @@ public sealed class ReusableMealMutationHandler(
             .Include(item => item.Components)
             .SingleOrDefaultAsync(item => item.Id == mutation.ReusableMealId, cancellationToken);
         DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
+        await using IDbContextTransaction? transaction = context.Database.CurrentTransaction is null
+            ? await context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
         if (meal is null)
         {
             if (mutation.BaseVersion != 0) throw new ReusableMealNotFoundException();
@@ -41,7 +45,9 @@ public sealed class ReusableMealMutationHandler(
                 throw new ReusableMealConflictException("The reusable meal changed since the supplied base version.");
             if (meal.Status == ReusableMealStatus.Archived)
                 throw new ReusableMealConflictException("An archived reusable meal cannot be edited.");
+            // Removals are flushed before the stable component IDs and positions are reused by the replacement rows.
             context.ReusableMealComponents.RemoveRange(meal.Components.ToArray());
+            await SaveAsync(cancellationToken);
             meal.UpdatedAtUtc = utcNow;
             meal.Version++;
         }
@@ -54,6 +60,7 @@ public sealed class ReusableMealMutationHandler(
             .ToArray();
         context.ReusableMealComponents.AddRange(replacements);
         await SaveAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         ReusableMealSnapshot snapshot = SmartNutritionSnapshots.ReusableMeal(meal, replacements);
         changeCollector?.CaptureUpsert(snapshot);
         return snapshot;

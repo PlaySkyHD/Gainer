@@ -270,12 +270,42 @@ public sealed class SmartNutritionPersistenceTests
         }
     }
 
+    [TestMethod]
+    public async Task ReorderingComponentsWithStableIdsIsNotAConflict()
+    {
+        (string connectionString, Guid firstUser, _) = await CreateDatabaseAsync();
+        Guid mealId = Guid.NewGuid();
+        Guid rice = Guid.NewGuid(), chicken = Guid.NewGuid(), sauce = Guid.NewGuid();
+        ReusableMealComponentDraft[][] saves =
+        [
+            [Component(rice, 0, "Reis"), Component(chicken, 1, "Hähnchen"), Component(sauce, 2, "Soße")],
+            // Removing the first component moves the others up.
+            [Component(chicken, 0, "Hähnchen"), Component(sauce, 1, "Soße")],
+            // Swapping two components.
+            [Component(sauce, 0, "Soße"), Component(chicken, 1, "Hähnchen")],
+        ];
+
+        for (int index = 0; index < saves.Length; index++)
+        {
+            await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+            var handler = new ReusableMealMutationHandler(context, new TestUserContext(firstUser), TimeProvider.System);
+            ReusableMealSnapshot saved = await handler.SaveAsync(SaveMeal(mealId, index, "Bowl", 1m, saves[index]));
+            Assert.AreEqual(index + 1, saved.Version);
+            CollectionAssert.AreEqual(
+                saves[index].Select(item => item.ComponentId).ToArray(),
+                saved.Components.Select(item => item.ComponentId).ToArray());
+        }
+    }
+
     private static SaveReusableMealMutation SaveMeal(
         Guid id, long version, string name, decimal portion, params ReusableMealComponentDraft[] components) =>
         SaveReusableMealMutation.Create(Metadata(), id, version, ReusableMealDraft.Create(name, null, portion, components));
 
     private static ReusableMealComponentDraft Component(int position, string name, decimal amount, decimal kcal) =>
         ReusableMealComponentDraft.Create(Guid.NewGuid(), position, name, amount, new NutritionPer100Grams(kcal, 10m, 20m, 5m));
+
+    private static ReusableMealComponentDraft Component(Guid id, int position, string name) =>
+        ReusableMealComponentDraft.Create(id, position, name, 100m, new NutritionPer100Grams(100m, 10m, 20m, 5m));
 
     private static NutritionTargetVersionDraft Target(DateOnly effectiveFrom, decimal kcal) =>
         NutritionTargetVersionDraft.Create(Guid.NewGuid(), effectiveFrom, kcal, 180m, 260m, 80m, NutritionTargetOrigin.Manual, null, null);
