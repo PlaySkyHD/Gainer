@@ -5,6 +5,7 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 ## 1. Subagents und Worktrees
 
 - **Worktrees starten auf `main`, nicht auf deinem Feature-Branch.** Ein Subagent mit `isolation: worktree` sieht deine neuen Bausteine und OpenSpec-Dateien nicht. Erster Schritt in jedem Subagent-Prompt: `git merge --no-edit <feature-branch>`.
+- **Graphify-Graph im Worktree zuerst bauen.** `graphify-out/` steht in `.gitignore`, ein neuer Worktree hat also keinen Graphen, und die Regel „erst `graphify query`“ läuft ins Leere. Erster Schritt in jedem Worktree und in jedem Subagent-Prompt: `graphify update .` (nur AST, keine API-Kosten, etwa 35 Sekunden). Danach erst suchen oder Dateien lesen.
 - **Gemeinsame Bausteine zuerst, dann parallel.** Wenn mehrere Agents dieselbe Komponente brauchen (z. B. einen neuen Parameter an `GainerGroupedSection`), baut der Orchestrator sie vorher auf dem Basis-Branch. Sonst erfindet jeder Agent seine eigene Variante und es entstehen Merge-Konflikte.
 - **Ein Agent pro Dateibereich.** Zwei Agents, die gleichzeitig `sync_repository.dart` oder dieselbe große Screen-Datei ändern, blockieren sich. Abhängige Arbeit nacheinander und gestapelt (Branch B auf Branch A) erledigen.
 - **„Fertig“ ist nicht geprüft.** Jedes Agent-Ergebnis vor dem PR selbst prüfen: `flutter analyze`, `flutter test`, Format-Check und eine lesbare Vorschau (siehe 3). Beim Review gefunden: falsch platzierte Einheiten in Formularzeilen, Überlauf bei Textgröße 2, eine falsch gerechnete Zahl in einer Spec.
@@ -58,9 +59,18 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 - **Ein wartender Stand je Ressource.** Zwischenschritte (gestartet → geändert → beendet) einzeln nachzuspielen erzeugt Konflikte, sobald ein früher Schritt hängt. Neue Änderungen fassen den noch nicht gesendeten Eintrag zusammen.
 - **Einzelschreiber-Modell sichtbar machen.** Ist das Gerät nicht Schreibgerät, muss der Nutzer das sofort sehen und übernehmen können. Sonst sammeln sich unbemerkt Änderungen.
 - **Abhängigkeiten zuerst senden** (Übung vor Training). Fehlende Referenzen sind kein Konflikt, sondern ein Grund zu warten.
+- **Kindzeilen ersetzen: Löschen zuerst speichern.** Handler, die alle Unterzeilen ersetzen und dabei dieselben IDs wiederverwenden (Ernährungseinträge, Gerichtskomponenten, Trainingssätze), müssen das Entfernen mit `SaveChanges` abschließen, bevor sie die neuen Zeilen anlegen, beides in einer Transaktion. EF Core ordnet die Befehle sonst so, dass eindeutige Indizes wie Mahlzeit + Position kurzzeitig doppelt belegt sind. Löschen des ersten Eintrags, Einfügen oben oder Tauschen scheitern dann.
+- **Datenbankfehler nicht als Versionskonflikt tarnen.** Ein Unique-Fehler, den der Server als `stale_base_version` meldet, erscheint in der App als „neuere Version auf dem Server“, auch mit nur einem Gerät. Die Selbstheilung greift nicht, weil der lokale Stand genau der abgelehnte ist. Bei unerklärlichen Konflikten den Ablauf als Integrationstest gegen Postgres nachstellen, bevor am Client gesucht wird.
 - **Abgeleitete Logik bei neuen Features prüfen.** Vorwerte wurden nach Position zugeordnet; mit Aufwärmsätzen verrutschten sie. Zuordnung jetzt nach Position innerhalb des Satztyps.
 
-## 7. Arbeitsweise, die sich bewährt hat
+## 7. Agent-Konfiguration
+
+- **Quelle ist `.agents/`.** Skills liegen in `.agents/skills/<name>/SKILL.md`, Instructions in `.agents/instructions/`. `.claude/skills/<name>` und `.claude/rules/<name>.md` sind relative Symlinks darauf; nie Kopien anlegen.
+- **Instructions:** `backend`, `mobile` und `security` gelten beim Programmieren, `code-review` nur beim Review (Skill `gainer-review`). Sie beschreiben Gainer-Konventionen in wenigen Zeilen; Fallstricke gehören in diese Datei. Keine allgemeinen Vorlagen aus anderen Projekten übernehmen: Die frühere Sammlung verlangte Azure Tables statt EF Core und englische Specs.
+- **Neuer Skill:** in `.agents/skills/` anlegen, dann `ln -s ../../.agents/skills/<name> .claude/skills/<name>`. Der Ordnername muss dem `name:` im Frontmatter entsprechen.
+- **Neue Instruction:** neben `applyTo` (Copilot) auch `paths:` (Claude) ins Frontmatter schreiben und nach `.claude/rules/` verlinken. Ohne `paths:` lädt Claude die Regel in jede Sitzung.
+
+## 8. Arbeitsweise, die sich bewährt hat
 
 - Jede Änderung als OpenSpec-Change mit `openspec validate <change> --strict`, dann ein PR pro Thema.
 - **Im selben PR archivieren.** Als letzten Schritt vor dem Merge übernimmt `openspec archive <change> -y` die Deltas in `openspec/specs`. Der Workflow „OpenSpec“ schlägt fehl, solange unter `openspec/changes/` ein Change außerhalb von `archive/` liegt. Bis Oktober 2026 blieben 40 Changes offen, die Specs widersprachen sich und mussten von Hand zusammengeführt werden. Deltas gehören in die passende fachliche Spec (z. B. `training-session`, `meal-tracking`), nicht in eine neue Mini-Capability je Feature. Ändert ein Feature eine bestehende Anforderung, nutze `MODIFIED` oder `REMOVED`, statt im Proposal auf einen anderen Change zu verweisen.
