@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 enum MobileArea {
-  calendar('Kalender', CupertinoIcons.calendar),
+  calendar('Übersicht', CupertinoIcons.square_grid_2x2),
   body('Check-in', CupertinoIcons.heart),
   nutrition('Essen', CupertinoIcons.drop),
   training('Training', CupertinoIcons.sportscourt),

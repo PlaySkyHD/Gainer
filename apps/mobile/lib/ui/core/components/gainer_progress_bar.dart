@@ -11,6 +11,7 @@ class GainerProgressBar extends StatelessWidget {
     required this.target,
     this.height = 6,
     this.warnWhenExceeded = true,
+    this.color,
   });
 
   final double? consumed;
@@ -20,6 +21,10 @@ class GainerProgressBar extends StatelessWidget {
   /// False für Mindestziele wie Ballaststoffe: Darüber bleibt der Balken voll
   /// in der Akzentfarbe.
   final bool warnWhenExceeded;
+
+  /// Füllfarbe; ohne Angabe die Akzentfarbe. Über dem Ziel gilt weiter die
+  /// Warnfarbe.
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +46,7 @@ class GainerProgressBar extends StatelessWidget {
                   width: constraints.maxWidth * ratio,
                   height: height,
                   child: ColoredBox(
-                    color: exceeded ? colors.warning : colors.accent,
+                    color: exceeded ? colors.warning : color ?? colors.accent,
                   ),
                 ),
               ),

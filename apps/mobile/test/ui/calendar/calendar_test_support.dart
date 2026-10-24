@@ -340,8 +340,21 @@ Future<void> pumpCalendar(
   await settle(tester);
 }
 
+/// Tippt einen Tag im Monatskalender an. Er steht unten auf der Übersicht;
+/// daher erst hinscrollen. Danach scrollt die Seite selbst zurück nach oben.
 Future<void> tapDay(WidgetTester tester, LocalDay day) async {
-  await tester.tap(find.byKey(ValueKey('calendar-day-${day.toIso()}')));
+  final cell = find.byKey(ValueKey('calendar-day-${day.toIso()}'));
+  await tester.scrollUntilVisible(
+    cell.hitTestable(),
+    300,
+    scrollable: find
+        .descendant(
+          of: find.byType(CalendarScreen),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
+  await tester.tap(cell);
   await settle(tester);
 }
 

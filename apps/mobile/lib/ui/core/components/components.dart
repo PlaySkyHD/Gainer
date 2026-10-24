@@ -4,6 +4,7 @@ library;
 export 'gainer_action_sheet.dart';
 export 'gainer_card.dart';
 export 'gainer_date_row.dart';
+export 'gainer_day_navigator.dart';
 export 'gainer_floating_tab_bar.dart';
 export 'gainer_grouped_section.dart';
 export 'gainer_list_row.dart';

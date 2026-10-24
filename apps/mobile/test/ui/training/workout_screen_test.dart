@@ -128,7 +128,7 @@ void main() {
     await settle(tester);
 
     expect(find.text('Beenden'), findsNothing);
-    await tester.tap(find.text('Kalender'));
+    await tester.tap(find.text('Übersicht'));
     await settle(tester);
 
     expect(find.text('Kalender-Inhalt'), findsOneWidget);
