@@ -199,6 +199,7 @@ void main() {
   testWidgets('manual diary entry is persisted as one local sync mutation', (
     tester,
   ) async {
+    _usePhoneViewport(tester);
     final database = LocalDatabase(NativeDatabase.memory());
     addTearDown(database.close);
     final store = LocalSyncStore(database: database, accountId: accountId);
@@ -218,6 +219,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mittag'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.text('Manuell erfassen', skipOffstage: false),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Manuell erfassen'));
     await tester.pumpAndSettle();
@@ -247,7 +252,7 @@ void main() {
       await store.readOutbox(aggregateType: 'nutrition-day'),
       hasLength(1),
     );
-    expect(viewModel.statusMessage, contains('lokal gespeichert'));
+    expect(viewModel.statusMessage, '„Haferflocken“ hinzugefügt.');
   });
 
   testWidgets('nutrition overview keeps forms behind contextual routes', (
@@ -354,6 +359,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('nutrition_import_not_supported'), findsNothing);
     expect(viewModel.snapshot!.day.localDate, '2026-10-12');
+  });
+
+  testWidgets('the add sheet groups the ways to add food', (tester) async {
+    await _pumpDiary(tester, []);
+    await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+    await tester.pumpAndSettle();
+
+    for (final header in ['Finden', 'Mit KI', 'Selbst eintragen']) {
+      expect(find.text(header), findsOneWidget);
+    }
+    double top(String mode) =>
+        tester.getTopLeft(find.byKey(ValueKey('nutrition-mode-$mode'))).dy;
+    expect(top('search'), lessThan(top('recent')));
+    expect(top('barcode'), lessThan(top('estimate')));
+    expect(top('label'), lessThan(top('manual')));
+    expect(top('manual'), lessThan(top('salt')));
   });
 
   group('BLS search', () {
@@ -465,6 +486,53 @@ void main() {
         expect(harness.viewModel.localResults, isEmpty);
       },
     );
+
+    testWidgets('long press adds several foods while the sheet stays open', (
+      tester,
+    ) async {
+      final harness = await _pumpDiary(tester, [], localFoods: catalog);
+
+      await tester.longPress(find.byKey(const ValueKey('meal-add-lunch')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mehrere hinzufügen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Mehrere hinzufügen'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('nutrition-entry-done')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Lebensmittel suchen'));
+      await tester.pumpAndSettle();
+      for (final (query, name) in [
+        ('Haferflocken', 'Hafer Flocken'),
+        ('Banane', 'Banane roh'),
+      ]) {
+        await tester.enterText(sheetSearch(), query);
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(name));
+        await tester.pumpAndSettle();
+        // Offen und bereit für das nächste: Suche leer, Hinweis sichtbar.
+        expect(sheetSearch(), findsOneWidget);
+        expect(find.text('„$name“ hinzugefügt.'), findsWidgets);
+        expect(harness.viewModel.localResults, isEmpty);
+      }
+
+      final entries = harness.viewModel.snapshot!.day.entries;
+      expect(entries.map((entry) => entry.productName), [
+        'Hafer Flocken',
+        'Banane roh',
+      ]);
+      expect(
+        entries.every((entry) => entry.meal == NutritionMeal.lunch),
+        isTrue,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('nutrition-entry-done')));
+      await tester.pumpAndSettle();
+      expect(sheetSearch(), findsNothing);
+    });
 
     testWidgets('online: products join the same list and can be filtered', (
       tester,
@@ -703,8 +771,9 @@ void main() {
     await tester.tap(find.text('Mittag'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(
-      find.byKey(const ValueKey('nutrition-mode-salt')),
+      find.byKey(const ValueKey('nutrition-mode-salt'), skipOffstage: false),
     );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('nutrition-mode-salt')));
     await tester.pumpAndSettle();
     final add = find.byKey(const ValueKey('nutrition-salt-add'));

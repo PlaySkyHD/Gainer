@@ -47,3 +47,27 @@ Solange für die aktuelle Eingabe nicht online gesucht wurde und eine Online-Anb
 - **GIVEN** Produkte für „Banane“ werden angezeigt
 - **WHEN** der Nutzer „Hafer“ eingibt
 - **THEN** verschwinden die Produkte, und „In Open Food Facts suchen“ steht wieder über der Liste
+
+### Requirement: Mehrere hinzufügen
+
+Langes Drücken auf „Hinzufügen“ einer Mahlzeit oder auf das Plus der Ernährung SHALL „Mehrere hinzufügen“ anbieten. In diesem Modus SHALL das Sheet nach jedem erfolgreichen Eintrag offen bleiben, Suche, Treffer und Menge leeren und den Eintrag bestätigen. Ein Haken im Kopf SHALL das Sheet schließen.
+
+#### Scenario: Zwei Lebensmittel zum Mittagessen
+- **GIVEN** der Nutzer drückt lange auf „Hinzufügen“ beim Mittagessen und wählt „Mehrere hinzufügen“
+- **WHEN** er nacheinander „Hafer Flocken“ und „Banane roh“ über die Suche übernimmt
+- **THEN** enthält das Mittagessen beide Einträge, das Sheet ist noch offen und das Suchfeld leer
+
+#### Scenario: Fertig
+- **GIVEN** das Sheet ist im Modus „Mehrere hinzufügen“ offen
+- **WHEN** der Nutzer den Haken antippt
+- **THEN** schließt das Sheet
+
+### Requirement: Gegliederte Startseite
+
+Die Startseite des Sheets SHALL die Wege gruppieren: „Finden“ (Lebensmittel suchen, Zuletzt verwendet, Barcode), „Mit KI“ (Mahlzeit schätzen, Etikett erfassen) und „Selbst eintragen“ (Gespeicherte Gerichte, Manuell erfassen, Salz hinzufügen). Eine Unterseite SHALL oben beginnen, auch wenn die Startseite gescrollt war.
+
+#### Scenario: Reihenfolge
+- **GIVEN** das Sheet „Hinzufügen“ ist offen
+- **WHEN** der Nutzer die Startseite ansieht
+- **THEN** steht „Lebensmittel suchen“ zuerst und „Salz hinzufügen“ zuletzt
+

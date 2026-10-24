@@ -16,6 +16,9 @@ Rückmeldung vom Gerät zur neuen BLS-Suche:
 - **Quellenfilter** „Alle · BLS · Produkte“ über der Liste, sobald gesucht wird.
 - **Produktsuche sichtbar:** Über der Liste steht die Schaltfläche „In Open Food Facts suchen“, solange für die aktuelle Eingabe noch nicht online gesucht wurde. Absenden über die Tastatur und der Filter „Produkte“ starten die Suche ebenfalls.
 
+- **Mehrere hinzufügen:** Langes Drücken auf „Hinzufügen“ einer Mahlzeit oder auf das Plus bietet „Mehrere hinzufügen“ an. In diesem Modus bleibt das Sheet nach jedem Eintrag offen, leert Suche und Menge für das nächste Lebensmittel und zeigt „„Name“ hinzugefügt.“. Ein Haken oben rechts schließt es.
+- **Startseite gegliedert** in „Finden“ (Suchen, Zuletzt, Barcode), „Mit KI“ (Schätzen, Etikett) und „Selbst eintragen“ (Gerichte, Manuell, Salz). Jede Unterseite beginnt oben, auch wenn die Startseite gescrollt war.
+
 ### Non-Goals
 
 - Keine automatische Online-Suche beim Tippen. Open Food Facts begrenzt Suchanfragen, und der Server teilt sein Budget.
