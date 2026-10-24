@@ -115,12 +115,17 @@ class GainerSheetHeader extends StatelessWidget {
     required this.title,
     this.leading,
     this.trailing,
+    this.compactTrailing = false,
     super.key,
   });
 
   final String title;
   final Widget? leading;
   final Widget? trailing;
+
+  /// Für runde Icon-Buttons: Die Aktion bekommt nur ihre 44 pt, der Titel
+  /// den restlichen Platz. Sonst teilen sich Titel und Aktion die Breite.
+  final bool compactTrailing;
 
   @override
   Widget build(BuildContext context) {
@@ -154,7 +159,9 @@ class GainerSheetHeader extends StatelessWidget {
               ),
             ),
           ),
-          if (trailing case final action?)
+          if (trailing case final action? when compactTrailing)
+            action
+          else if (trailing case final action?)
             // Bei großer Schrift darf die Aktion umbrechen statt überzulaufen.
             Flexible(child: action)
           else

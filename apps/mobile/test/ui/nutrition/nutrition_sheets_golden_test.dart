@@ -30,10 +30,24 @@ void main() {
       harness.dispose();
     }, tags: ['golden']);
 
+    testWidgets('add several sheet ${variant.name}', (tester) async {
+      final harness = await _pump(tester, variant.brightness);
+      await tester.longPress(find.byKey(const ValueKey('nutrition-add-food')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mehrere hinzufügen'));
+      await tester.pumpAndSettle();
+      await expectLater(
+        find.byType(CupertinoApp),
+        matchesGoldenFile('goldens/nutrition_add_several_${variant.name}.png'),
+      );
+      harness.dispose();
+    }, tags: ['golden']);
+
     testWidgets('food search ${variant.name}', (tester) async {
       final harness = await _pump(
         tester,
         variant.brightness,
+        online: _UnusedOnline(),
         localFoods: BlsFoodCatalog.fromIndex(
           parseBlsCatalog(File(BlsFoodCatalog.asset).readAsStringSync()),
         ),
@@ -127,6 +141,7 @@ Future<_Harness> _pump(
   WidgetTester tester,
   Brightness brightness, {
   LocalFoodCatalog? localFoods,
+  NutritionOnlineProvider? online,
 }) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
@@ -138,6 +153,7 @@ Future<_Harness> _pump(
     store: LocalSyncStore(database: database, accountId: accountId),
     clock: () => DateTime.utc(2026, 10, 12, 10),
     localFoods: localFoods,
+    online: online,
   );
   final viewModel = NutritionViewModel(
     repository: repository,
@@ -156,4 +172,12 @@ Future<_Harness> _pump(
   );
   await tester.pumpAndSettle();
   return _Harness(repository, viewModel);
+}
+
+/// Online-Anbindung, die im Golden nicht aufgerufen wird; sie lässt nur die
+/// Schaltfläche „In Open Food Facts suchen“ erscheinen.
+class _UnusedOnline implements NutritionOnlineProvider {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError(invocation.memberName.toString());
 }

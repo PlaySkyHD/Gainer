@@ -73,7 +73,7 @@ extension on _NutritionEntryMode {
     _NutritionEntryMode.meals => 'Ein gespeichertes Gericht übernehmen',
     _NutritionEntryMode.manual => 'Nährwerte selbst eingeben',
     _NutritionEntryMode.salt => 'Selbst gesalzen, z. B. eine Prise',
-    _NutritionEntryMode.search => 'Lebensmittel (auch offline) und Produkte',
+    _NutritionEntryMode.search => 'BLS-Lebensmittel und Produkte',
     _NutritionEntryMode.barcode => 'Produkt über den Barcode finden',
     _NutritionEntryMode.estimate => 'Text oder Foto als Vorschlag prüfen',
     _NutritionEntryMode.label => 'Nährwertetikett fotografieren und prüfen',
@@ -92,21 +92,37 @@ extension on _NutritionEntryMode {
   };
 }
 
-/// Erfassungswege je Ziel. Mehrteilige Schätzung, Etikettenscan und das
-/// Übernehmen gespeicherter Gerichte sind nur für Tagesmahlzeiten verfügbar.
-List<_NutritionEntryMode> _modesFor(FoodAddTarget target) => [
-  for (final mode in _NutritionEntryMode.values)
-    if (mode != _NutritionEntryMode.choices &&
-        (target is DayMealTarget ||
-            const {
-              _NutritionEntryMode.recent,
-              _NutritionEntryMode.manual,
-              _NutritionEntryMode.salt,
-              _NutritionEntryMode.search,
-              _NutritionEntryMode.barcode,
-            }.contains(mode)))
-      mode,
-];
+/// Erfassungswege je Ziel, gruppiert: finden, mit KI erfassen, selbst
+/// eintragen. Mehrteilige Schätzung, Etikettenscan und das Übernehmen
+/// gespeicherter Gerichte sind nur für Tagesmahlzeiten verfügbar.
+List<({String title, List<_NutritionEntryMode> modes})> _modeGroupsFor(
+  FoodAddTarget target,
+) {
+  final day = target is DayMealTarget;
+  return [
+    (
+      title: 'Finden',
+      modes: const [
+        _NutritionEntryMode.search,
+        _NutritionEntryMode.recent,
+        _NutritionEntryMode.barcode,
+      ],
+    ),
+    if (day)
+      (
+        title: 'Mit KI',
+        modes: const [_NutritionEntryMode.estimate, _NutritionEntryMode.label],
+      ),
+    (
+      title: 'Selbst eintragen',
+      modes: [
+        if (day) _NutritionEntryMode.meals,
+        _NutritionEntryMode.manual,
+        _NutritionEntryMode.salt,
+      ],
+    ),
+  ];
+}
 
 class NutritionScreen extends StatefulWidget {
   const NutritionScreen({
@@ -152,6 +168,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _saltAmount = TextEditingController();
   MealDictationController? _dictation;
   Timer? _localSearch;
+
+  /// Schließt das offene Hinzufügen-Sheet; null, wenn keines offen ist.
+  VoidCallback? _closeEntrySheet;
+
+  /// „Mehrere hinzufügen“: Das Sheet bleibt nach jedem Eintrag offen.
+  bool _addingMultiple = false;
   bool _wasVisible = true;
 
   bool get _visible => widget.isVisible?.call() ?? true;
@@ -237,11 +259,14 @@ class _NutritionScreenState extends State<NutritionScreen> {
           onPick: () => _pickDay(context),
         ),
         trailing: [
-          GainerToolbarButton(
-            key: const ValueKey('nutrition-add-food'),
-            icon: CupertinoIcons.add,
-            semanticLabel: 'Lebensmittel hinzufügen',
-            onPressed: _openEntry,
+          GestureDetector(
+            onLongPress: () => _offerMultipleAdd(null),
+            child: GainerToolbarButton(
+              key: const ValueKey('nutrition-add-food'),
+              icon: CupertinoIcons.add,
+              semanticLabel: 'Lebensmittel hinzufügen',
+              onPressed: _openEntry,
+            ),
           ),
           GainerToolbarButton(
             key: const ValueKey('nutrition-more-menu'),
@@ -350,6 +375,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
             vm.selectMeal(meal);
             _openEntry();
           },
+          onAddMultiple: () => _offerMultipleAdd(meal),
           onEdit: _editEntry,
           onRemove: (entry) => vm.removeEntry(entry.entryId),
           onConfirmRemove: (entry) => confirmGainerDelete(
@@ -509,68 +535,126 @@ class _NutritionScreenState extends State<NutritionScreen> {
   /// und verändert keinen Ernährungstag; Abbrechen liefert `null`.
   Future<FoodComponentDraft?> _openEntry({
     FoodAddTarget target = const DayMealTarget(),
+    bool multiple = false,
   }) {
     final vm = widget.viewModel;
     vm.dismissActionError();
+    _addingMultiple = multiple && target is DayMealTarget;
     var mode = _NutritionEntryMode.choices;
     return showGainerSheet<FoodComponentDraft>(
       context: context,
       heightFactor: 0.9,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setSheetState) => AnimatedBuilder(
-          animation: vm,
-          builder: (context, _) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _entryHeader(
-                sheetContext,
-                target,
-                mode,
-                onBack: () => setSheetState(() {
-                  vm.dismissActionError();
-                  mode = _NutritionEntryMode.choices;
-                }),
-              ),
-              if (target is DayMealTarget) _mealSegment(vm),
-              Expanded(
-                child: ListView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(
-                    GainerSpacing.m,
-                    GainerSpacing.m,
-                    GainerSpacing.m,
-                    GainerSpacing.l,
-                  ),
-                  children: mode == _NutritionEntryMode.choices
-                      ? _choiceChildren(
-                          target,
-                          (option) => setSheetState(() => mode = option),
-                        )
-                      : _entryChildren(
-                          context,
-                          vm,
-                          mode,
-                          target,
-                          (draft) => Navigator.of(sheetContext).pop(draft),
-                          (option) => setSheetState(() => mode = option),
-                        ),
+      builder: (sheetContext) {
+        _closeEntrySheet = () => Navigator.of(sheetContext).pop();
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) => AnimatedBuilder(
+            animation: vm,
+            builder: (context, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _entryHeader(
+                  sheetContext,
+                  target,
+                  mode,
+                  multiple: _addingMultiple,
+                  onBack: () => setSheetState(() {
+                    vm.dismissActionError();
+                    mode = _NutritionEntryMode.choices;
+                  }),
                 ),
-              ),
-            ],
+                // Die Mahlzeit wird auf der Startseite gewählt; Unterseiten
+                // zeigen nur ihr Werkzeug.
+                if (target is DayMealTarget &&
+                    mode == _NutritionEntryMode.choices)
+                  _mealSegment(vm),
+                Expanded(
+                  child: ListView(
+                    // Jede Seite beginnt oben, auch nach Scrollen auf der Startseite.
+                    key: ValueKey('nutrition-entry-page-${mode.name}'),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(
+                      GainerSpacing.m,
+                      GainerSpacing.m,
+                      GainerSpacing.m,
+                      GainerSpacing.l,
+                    ),
+                    children: mode == _NutritionEntryMode.choices
+                        ? _choiceChildren(
+                            target,
+                            (option) => setSheetState(() => mode = option),
+                          )
+                        : _entryChildren(
+                            context,
+                            vm,
+                            mode,
+                            target,
+                            (draft) => Navigator.of(sheetContext).pop(draft),
+                            (option) => setSheetState(() => mode = option),
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
-    ).whenComplete(_resetEstimate);
+        );
+      },
+    ).whenComplete(_resetEntrySheet);
   }
 
-  /// Beim Schließen des Sheets beginnt die nächste Schätzung leer.
-  void _resetEstimate() {
+  /// Beim Schließen des Sheets beginnt das nächste Öffnen leer: Startseite,
+  /// leere Suche ohne alte Treffer, 100 g und eine neue Schätzung.
+  void _resetEntrySheet() {
+    _closeEntrySheet = null;
+    _addingMultiple = false;
     if (!mounted) return;
+    _localSearch?.cancel();
     _dictation?.cancel();
     _estimateText.clear();
     _saltAmount.clear();
-    widget.viewModel.clearEstimateDraft();
+    _search.clear();
+    _amount.text = '100';
+    _addPieces.clear();
+    widget.viewModel
+      ..clearEstimateDraft()
+      ..resetFoodSearch();
+  }
+
+  /// Nach erfolgreichem Speichern in eine Mahlzeit schließt das Sheet. Beim
+  /// Hinzufügen mehrerer bleibt es offen und ist bereit für das nächste.
+  void _closeAfterSave() {
+    if (widget.viewModel.errorMessage != null) return;
+    if (!_addingMultiple) {
+      _closeEntrySheet?.call();
+      return;
+    }
+    _localSearch?.cancel();
+    _search.clear();
+    _amount.text = '100';
+    _addPieces.clear();
+    widget.viewModel.resetFoodSearch();
+  }
+
+  /// Langes Drücken auf „Hinzufügen“: mehrere Einträge nacheinander, ohne
+  /// dass das Sheet jedes Mal schließt.
+  Future<void> _offerMultipleAdd(NutritionMeal? meal) async {
+    final choice = await showGainerActionSheet<bool>(
+      context: context,
+      title: meal == null ? 'Hinzufügen' : _mealName(meal),
+      groups: const [
+        [
+          GainerSheetAction(
+            label: 'Mehrere hinzufügen',
+            icon: CupertinoIcons.square_stack,
+            value: true,
+            hint: 'Das Fenster bleibt nach jedem Eintrag offen.',
+          ),
+        ],
+      ],
+    );
+    if (choice != true || !mounted) return;
+    if (meal != null) widget.viewModel.selectMeal(meal);
+    await _openEntry(multiple: true);
   }
 
   Widget _entryHeader(
@@ -578,14 +662,26 @@ class _NutritionScreenState extends State<NutritionScreen> {
     FoodAddTarget target,
     _NutritionEntryMode mode, {
     required VoidCallback onBack,
+    bool multiple = false,
   }) {
     final atChoices = mode == _NutritionEntryMode.choices;
     return GainerSheetHeader(
       title: atChoices
           ? (target is MealDraftTarget
                 ? 'Bestandteil hinzufügen'
+                : multiple
+                ? 'Mehrere hinzufügen'
                 : 'Hinzufügen')
           : mode.title,
+      compactTrailing: true,
+      trailing: multiple
+          ? GainerToolbarButton(
+              key: const ValueKey('nutrition-entry-done'),
+              icon: CupertinoIcons.checkmark,
+              semanticLabel: 'Fertig',
+              onPressed: () => Navigator.of(sheetContext).pop(),
+            )
+          : null,
       leading: GainerToolbarButton(
         key: ValueKey(
           atChoices ? 'nutrition-entry-close' : 'nutrition-entry-options',
@@ -617,19 +713,23 @@ class _NutritionScreenState extends State<NutritionScreen> {
     FoodAddTarget target,
     ValueChanged<_NutritionEntryMode> onSelectMode,
   ) => [
-    GainerGroupedSection(
-      children: [
-        for (final option in _modesFor(target))
-          GainerListRow(
-            key: ValueKey('nutrition-mode-${option.name}'),
-            leadingIcon: option.icon,
-            title: option.title,
-            subtitle: option.description,
-            showChevron: true,
-            onTap: () => onSelectMode(option),
-          ),
-      ],
-    ),
+    for (final (index, group) in _modeGroupsFor(target).indexed) ...[
+      if (index > 0) const SizedBox(height: GainerSpacing.l),
+      GainerGroupedSection(
+        header: group.title,
+        children: [
+          for (final option in group.modes)
+            GainerListRow(
+              key: ValueKey('nutrition-mode-${option.name}'),
+              leadingIcon: option.icon,
+              title: option.title,
+              subtitle: option.description,
+              showChevron: true,
+              onTap: () => onSelectMode(option),
+            ),
+        ],
+      ),
+    ],
   ];
 
   List<Widget> _entryChildren(
@@ -753,8 +853,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
       for (final food in foods)
         GainerListRow(
           title: food.name,
+          // Quelle zuerst, damit gemischte Treffer unterscheidbar sind.
           subtitle: [
-            food.brand ?? food.source.provider ?? fallback,
+            food.source.provider ?? fallback,
+            ?food.brand,
             '${_fmtKcal(food.per100Grams.kilocalories)} kcal / 100 g',
             if (food.pieceGrams case final grams?)
               '1 Stk = ${_fmtGrams(grams)} g',
@@ -801,43 +903,103 @@ class _NutritionScreenState extends State<NutritionScreen> {
     ];
   }
 
+  /// Eine Trefferliste für BLS und Open Food Facts. Der Filter beschränkt sie
+  /// auf eine Quelle; Produkte kommen erst auf ausdrücklichen Wunsch dazu,
+  /// weil Open Food Facts Suchanfragen begrenzt.
   List<Widget> _searchTools(
     NutritionViewModel vm,
     ValueChanged<NutritionFood> onSelect,
-  ) => [
-    GainerSearchField(
-      key: const ValueKey('nutrition-entry-search'),
-      controller: _search,
-      placeholder: 'Lebensmittel, Produkt oder Marke',
-      onChanged: (query) => _scheduleLocalSearch(vm, query),
-      onSubmitted: (query) => _searchFoods(vm, query),
-    ),
-    const SizedBox(height: GainerSpacing.m),
-    _amountGroup(),
-    if (vm.localResults.isNotEmpty) ...[
-      const SizedBox(height: GainerSpacing.m),
-      _foodResults(
-        vm.localResults,
-        'BLS',
-        onSelect,
-        header: vm.localResultsPartial
-            ? 'Lebensmittel (BLS) · Teiltreffer'
-            : 'Lebensmittel (BLS)',
+  ) {
+    final query = _search.text.trim();
+    final source = vm.searchSource;
+    final showLocal = source != FoodSourceFilter.openFoodFacts;
+    final showOnline = source != FoodSourceFilter.bls;
+    final onlineCurrent = vm.onlineSearchQuery == query;
+    final foods = [
+      if (showLocal) ...vm.localResults,
+      if (showOnline && onlineCurrent) ...vm.searchResults,
+    ];
+    final canStartOnline =
+        showOnline &&
+        vm.canSearchOnline &&
+        !onlineCurrent &&
+        !vm.isOnlineOperation;
+    // Nur der Filter „Open Food Facts“ braucht den Hinweis; in „Alle“
+    // genügen die BLS-Treffer.
+    final needsInternet =
+        source == FoodSourceFilter.openFoodFacts && !vm.canSearchOnline;
+    return [
+      GainerSearchField(
+        key: const ValueKey('nutrition-entry-search'),
+        controller: _search,
+        placeholder: 'Lebensmittel, Produkt oder Marke',
+        onChanged: (query) => _scheduleLocalSearch(vm, query),
+        onSubmitted: (query) => _searchFoods(vm, query),
       ),
-    ],
-    if (!vm.canSearchOnline) ...[
       const SizedBox(height: GainerSpacing.m),
-      _hint('Produktsuche braucht Internet.'),
-    ] else if (vm.searchResults.isNotEmpty) ...[
-      const SizedBox(height: GainerSpacing.m),
-      _foodResults(
-        vm.searchResults,
-        'Lebensmittel',
-        onSelect,
-        header: 'Produkte (Open Food Facts)',
-      ),
-    ],
-  ];
+      _amountGroup(),
+      if (query.length >= 2) ...[
+        const SizedBox(height: GainerSpacing.m),
+        GainerSegmentedControl<FoodSourceFilter>(
+          key: const ValueKey('nutrition-search-source'),
+          options: const {
+            FoodSourceFilter.all: 'Alle',
+            FoodSourceFilter.bls: 'BLS',
+            // Ausgeschrieben passt „Open Food Facts“ nicht ins Segment;
+            // die Zeilen nennen die Quelle.
+            FoodSourceFilter.openFoodFacts: 'Produkte',
+          },
+          value: source,
+          onChanged: (value) => _selectSearchSource(vm, value, query),
+        ),
+        // Über der Liste, damit sie nicht hinter 20 Treffern verschwindet.
+        if (needsInternet) ...[
+          const SizedBox(height: GainerSpacing.m),
+          _hint('Produktsuche braucht Internet.'),
+        ] else if (canStartOnline) ...[
+          const SizedBox(height: GainerSpacing.m),
+          GainerPillButton(
+            key: const ValueKey('nutrition-search-online'),
+            label: 'In Open Food Facts suchen',
+            icon: CupertinoIcons.globe,
+            variant: GainerPillVariant.tonal,
+            expand: true,
+            onPressed: () => _searchFoods(vm, query),
+          ),
+        ],
+        if (foods.isNotEmpty) ...[
+          const SizedBox(height: GainerSpacing.m),
+          _foodResults(
+            foods,
+            'Lebensmittel',
+            onSelect,
+            header: showLocal && vm.localResultsPartial ? 'Teiltreffer' : null,
+          ),
+        ] else if (!canStartOnline &&
+            !vm.isOnlineOperation &&
+            !needsInternet) ...[
+          const SizedBox(height: GainerSpacing.m),
+          _hint('Keine Treffer.'),
+        ],
+      ],
+    ];
+  }
+
+  /// „Produkte“ heißt: Open Food Facts zeigen. Für die aktuelle Eingabe wird
+  /// dann online gesucht, falls das noch nicht geschehen ist.
+  void _selectSearchSource(
+    NutritionViewModel vm,
+    FoodSourceFilter value,
+    String query,
+  ) {
+    vm.setSearchSource(value);
+    if (value == FoodSourceFilter.openFoodFacts &&
+        vm.canSearchOnline &&
+        vm.onlineSearchQuery != query &&
+        query.length >= 2) {
+      _searchFoods(vm, query);
+    }
+  }
 
   /// Lokale Treffer folgen der Eingabe mit kurzer Pause, damit nicht jeder
   /// Tastendruck eine Suche startet.
@@ -939,6 +1101,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           saltGramsPer100: _saltPer100.saltGrams,
         );
         if (widget.viewModel.errorMessage == null) _saltAmount.clear();
+        _closeAfterSave();
       case MealDraftTarget():
         final accepted = _commitDraft(
           FoodComponentDraft(
@@ -1075,11 +1238,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
   );
 
   /// Übernimmt ein gefundenes Lebensmittel in das [target].
-  void _submitFood(
+  Future<void> _submitFood(
     NutritionFood food,
     FoodAddTarget target,
     ValueChanged<FoodComponentDraft> onDraft,
-  ) {
+  ) async {
     final pieces = _parse(_addPieces.text);
     final pieceGrams = food.pieceGrams;
     if (pieces != null && pieceGrams == null) {
@@ -1094,7 +1257,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
         : _parse(_amount.text) ?? 100;
     switch (target) {
       case DayMealTarget():
-        widget.viewModel.addFood(food, amountGrams: amount, pieceCount: pieces);
+        await widget.viewModel.addFood(
+          food,
+          amountGrams: amount,
+          pieceCount: pieces,
+        );
+        _closeAfterSave();
       case MealDraftTarget():
         _commitDraft(
           FoodComponentDraft(
@@ -2077,6 +2245,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           _pieceGrams.clear();
           _pieceCount.clear();
         }
+        _closeAfterSave();
       case MealDraftTarget():
         final accepted = _commitDraft(
           FoodComponentDraft(
@@ -2612,10 +2781,16 @@ class _AddGlyph extends StatelessWidget {
 
 /// Zeile „+ Beschriftung“ in Akzentfarbe am Ende einer Karte.
 class _AddRow extends StatelessWidget {
-  const _AddRow({required this.label, required this.onPressed, super.key});
+  const _AddRow({
+    required this.label,
+    required this.onPressed,
+    this.onLongPress,
+    super.key,
+  });
 
   final String label;
   final VoidCallback? onPressed;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -2627,6 +2802,7 @@ class _AddRow extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onPressed,
+        onLongPress: onPressed == null ? null : onLongPress,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44),
           child: Padding(
@@ -3147,6 +3323,7 @@ class _MealSection extends StatelessWidget {
     required this.meal,
     required this.entries,
     required this.onAdd,
+    required this.onAddMultiple,
     required this.onEdit,
     required this.onRemove,
     required this.onConfirmRemove,
@@ -3155,6 +3332,9 @@ class _MealSection extends StatelessWidget {
   final NutritionMeal meal;
   final List<NutritionEntry> entries;
   final VoidCallback onAdd;
+
+  /// Langes Drücken auf „Hinzufügen“.
+  final VoidCallback onAddMultiple;
   final ValueChanged<NutritionEntry> onEdit;
   final ValueChanged<NutritionEntry> onRemove;
   final Future<bool> Function(NutritionEntry entry) onConfirmRemove;
@@ -3187,6 +3367,7 @@ class _MealSection extends StatelessWidget {
               key: ValueKey('meal-add-${meal.name}'),
               label: 'Hinzufügen',
               onPressed: onAdd,
+              onLongPress: onAddMultiple,
             ),
           ],
         ),
