@@ -66,9 +66,9 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 ## 7. Agent-Konfiguration
 
 - **Quelle ist `.agents/`.** Skills liegen in `.agents/skills/<name>/SKILL.md`, Instructions in `.agents/instructions/`. `.claude/skills/<name>` und `.claude/rules/<name>.md` sind relative Symlinks darauf; nie Kopien anlegen.
+- **Instructions:** `backend`, `mobile` und `security` gelten beim Programmieren, `code-review` nur beim Review (Skill `gainer-review`). Sie beschreiben Gainer-Konventionen in wenigen Zeilen; Fallstricke gehören in diese Datei. Keine allgemeinen Vorlagen aus anderen Projekten übernehmen: Die frühere Sammlung verlangte Azure Tables statt EF Core und englische Specs.
 - **Neuer Skill:** in `.agents/skills/` anlegen, dann `ln -s ../../.agents/skills/<name> .claude/skills/<name>`. Der Ordnername muss dem `name:` im Frontmatter entsprechen.
 - **Neue Instruction:** neben `applyTo` (Copilot) auch `paths:` (Claude) ins Frontmatter schreiben und nach `.claude/rules/` verlinken. Ohne `paths:` lädt Claude die Regel in jede Sitzung.
-- **Review-Instructions** (`code-review-*`) sind keine Rules, weil sie beim Programmieren nur Kontext kosten. Claude lädt sie über den Skill `gainer-review`.
 
 ## 8. Arbeitsweise, die sich bewährt hat
 

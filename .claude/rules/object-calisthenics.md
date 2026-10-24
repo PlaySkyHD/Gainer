@@ -1,1 +1,0 @@
-../../.agents/instructions/object-calisthenics.instructions.md

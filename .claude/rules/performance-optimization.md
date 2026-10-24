@@ -1,1 +1,0 @@
-../../.agents/instructions/performance-optimization.instructions.md
