@@ -680,6 +680,55 @@ void main() {
       model.dispose();
     },
   );
+
+  testWidgets('a check-in requested by the calendar opens that day', (
+    tester,
+  ) async {
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final model = BodyViewModel(
+      BodyRepository(
+        store: LocalSyncStore(database: database, accountId: accountId),
+      ),
+    );
+    await tester.pumpWidget(CupertinoApp(home: BodyScreen(viewModel: model)));
+    await tester.pumpAndSettle();
+
+    model.requestCheckIn('2026-10-18');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('body-save-checkin')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('body-checkin-date')),
+        matching: find.text('18. Okt 2026'),
+      ),
+      findsOneWidget,
+    );
+    expect(model.requestedCheckInDate, isNull);
+  });
+
+  testWidgets('a request made before the screen exists opens on first frame', (
+    tester,
+  ) async {
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final model = BodyViewModel(
+      BodyRepository(
+        store: LocalSyncStore(database: database, accountId: accountId),
+      ),
+    )..requestCheckIn('2026-10-17');
+    await tester.pumpWidget(CupertinoApp(home: BodyScreen(viewModel: model)));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('body-checkin-date')),
+        matching: find.text('17. Okt 2026'),
+      ),
+      findsOneWidget,
+    );
+  });
 }
 
 String _localDate(DateTime date) =>

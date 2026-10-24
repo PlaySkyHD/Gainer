@@ -54,16 +54,36 @@ class _BodyScreenState extends State<BodyScreen> {
   int _healthToken = 0;
   StateSetter? _sheetSetState;
 
+  /// Läuft gerade ein Check-in-Editor? Dann wartet eine neue Anfrage.
+  bool _editorOpen = false;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => widget.viewModel.load(),
-    );
+    widget.viewModel.addListener(_onCheckInRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.viewModel.load();
+      _onCheckInRequest();
+    });
+  }
+
+  /// Öffnet den Check-in eines Tages, den der Kalender angefordert hat. Nach
+  /// dem Frame, damit der Tab-Wechsel zuerst sichtbar ist.
+  void _onCheckInRequest() {
+    if (widget.viewModel.requestedCheckInDate == null || _editorOpen) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _editorOpen) return;
+      final date = DateTime.tryParse(
+        widget.viewModel.takeCheckInRequest() ?? '',
+      );
+      if (date == null) return;
+      await _openCheckIn(widget.viewModel, day: date);
+    });
   }
 
   @override
   void dispose() {
+    widget.viewModel.removeListener(_onCheckInRequest);
     for (final controller in [_startWeight, _targetWeight, _checkInWeight]) {
       controller.dispose();
     }
@@ -286,12 +306,18 @@ class _BodyScreenState extends State<BodyScreen> {
     _unit = next;
   }
 
-  Future<void> _openCheckIn(BodyViewModel model) async {
-    final now = DateTime.now();
-    _checkInDate = DateTime(now.year, now.month, now.day);
+  /// Öffnet den Check-in für [day], ohne Angabe für heute.
+  Future<void> _openCheckIn(BodyViewModel model, {DateTime? day}) async {
+    final date = day ?? DateTime.now();
+    _checkInDate = DateTime(date.year, date.month, date.day);
     _prefillCheckIn(model, _checkInDate);
     unawaited(_loadHealth(model, _checkInDate));
-    await _showEditor(model, goal: false);
+    _editorOpen = true;
+    try {
+      await _showEditor(model, goal: false);
+    } finally {
+      _editorOpen = false;
+    }
   }
 
   DailyCheckIn? _checkInFor(BodyViewModel model, String localDate) => model

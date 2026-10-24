@@ -36,6 +36,7 @@ class CalendarScreen extends StatefulWidget {
     this.overview,
     this.onOpenArea,
     this.onOpenNutritionDay,
+    this.onOpenCheckInDay,
     this.visibility,
     this.isVisible,
     this.refresh,
@@ -60,6 +61,9 @@ class CalendarScreen extends StatefulWidget {
 
   /// Öffnet den Tab „Essen“ für den Tag `JJJJ-MM-TT`.
   final ValueChanged<String>? onOpenNutritionDay;
+
+  /// Öffnet den Check-in des Tages `JJJJ-MM-TT`; ohne Wert nur den Tab.
+  final ValueChanged<String>? onOpenCheckInDay;
 
   /// Meldet Tab-Wechsel; zusammen mit [isVisible] lädt der Kalender neu,
   /// sobald der Tab wieder sichtbar wird.
@@ -291,7 +295,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 onOpenCardio: widget.cardio == null ? null : _openCardio,
                 onOpenNutrition: () =>
                     widget.onOpenNutritionDay?.call(model.selected.toIso()),
-                onOpenCheckIn: () => widget.onOpenArea?.call(MobileArea.body),
+                onOpenCheckIn: () => widget.onOpenCheckInDay == null
+                    ? widget.onOpenArea?.call(MobileArea.body)
+                    : widget.onOpenCheckInDay!(model.selected.toIso()),
                 onDayKind: () => _chooseDayKind(day),
                 onOpenTraining: () =>
                     widget.onOpenArea?.call(MobileArea.training),
