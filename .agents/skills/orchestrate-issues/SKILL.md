@@ -30,6 +30,7 @@ Every prompt contains:
 - `git fetch origin && git switch -c fix/issue-<n>-<slug> origin/main` (worktrees do not start on main),
 - the graphify rule: if `graphify-out/graph.json` is missing run `graphify update .`, then `graphify query` before grep,
 - no `git restore`, `git stash`, `git reset --hard`; no pull request; no push to main,
+- file edits go through the Read, Edit and Write tools, not `sed -i`, heredocs or `cat >` in Bash, because worktree isolation blocks those; longer probe scripts are written with Write and then executed,
 - "the repository is public: no secrets, personal data or content about other private projects",
 - the exact scope and anchors, and which files not to touch,
 - the checks to run (format, analyzer, tests, golden preview) for the touched area,
