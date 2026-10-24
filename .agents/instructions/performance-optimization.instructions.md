@@ -1,6 +1,8 @@
 ---
 applyTo: '**/*.{cs,java,py}'
 description: 'Performance guidance for backend code in this repository, focused on APIs, workers, background jobs, and data access in .NET, Java, and Python.'
+paths:
+  - "**/*.{cs,java,py}"
 ---
 
 # Performance Optimization

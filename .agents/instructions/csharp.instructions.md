@@ -1,6 +1,8 @@
 ---
 description: 'Guidelines for building C# applications'
 applyTo: '**/*.cs'
+paths:
+  - "**/*.cs"
 ---
 
 # C# Development

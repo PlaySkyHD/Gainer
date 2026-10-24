@@ -1,6 +1,9 @@
 ---
 applyTo: '.github/workflows/*.yml,.github/workflows/*.yaml'
 description: 'Best practices for GitHub Actions CI/CD workflows covering structure, security, caching, and deployment.'
+paths:
+  - ".github/workflows/*.yml"
+  - ".github/workflows/*.yaml"
 ---
 
 # GitHub Actions CI/CD Best Practices

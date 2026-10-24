@@ -1,0 +1,1 @@
+../../.agents/instructions/csharp.instructions.md
