@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/repositories/body/body_repository.dart';
 import 'package:gainer_mobile/data/repositories/cardio/cardio_repository.dart';
+import 'package:gainer_mobile/data/repositories/health/health_steps_sync.dart';
 import 'package:gainer_mobile/data/repositories/insights/insights_repository.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/training/training_log_repository.dart';
@@ -311,6 +312,7 @@ Future<void> pumpCalendar(
   ValueChanged<MobileArea>? onOpenArea,
   ValueChanged<String>? onOpenNutritionDay,
   ValueChanged<String>? onOpenCheckInDay,
+  HealthStepsSync? steps,
   Listenable? visibility,
   bool Function()? isVisible,
   Listenable? refresh,
@@ -331,6 +333,7 @@ Future<void> pumpCalendar(
         onOpenArea: onOpenArea,
         onOpenNutritionDay: onOpenNutritionDay,
         onOpenCheckInDay: onOpenCheckInDay,
+        steps: steps,
         visibility: visibility,
         isVisible: isVisible,
         refresh: refresh,

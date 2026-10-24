@@ -201,6 +201,50 @@ class BodyRepository {
     return RestingMeasurementStatus.savedToCheckIn;
   }
 
+  /// Setzt nur die Schritte eines vorhandenen Check-ins, z. B. die fertige
+  /// Tagessumme aus Apple Health. Liefert true, wenn sich etwas geändert hat;
+  /// ohne Check-in für den Tag oder bei gleichem Wert bleibt alles unverändert.
+  Future<bool> updateSteps({
+    required String localDate,
+    required int steps,
+  }) async {
+    validateDailyCheckIn(
+      localDate: localDate,
+      weightKg: 1,
+      caloriesKcal: null,
+      proteinGrams: null,
+      carbohydrateGrams: null,
+      fatGrams: null,
+      steps: steps,
+      sleepMinutes: null,
+    );
+    final existing = _findCheckInForDay(
+      await store.readAggregates(_dailyCheckInType),
+      localDate,
+    );
+    if (existing == null) return false;
+    final prior = DailyCheckIn.fromJson(_map(existing.workingCopy));
+    if (prior.steps == steps) return false;
+    await _writeCheckIn(
+      existing: existing,
+      checkIn: DailyCheckIn(
+        localDate: prior.localDate,
+        weightKg: prior.weightKg,
+        caloriesKcal: prior.caloriesKcal,
+        proteinGrams: prior.proteinGrams,
+        carbohydrateGrams: prior.carbohydrateGrams,
+        fatGrams: prior.fatGrams,
+        steps: steps,
+        sleepMinutes: prior.sleepMinutes,
+        restingHeartRateBpm: prior.restingHeartRateBpm,
+        restingHrvMs: prior.restingHrvMs,
+        createdAtUtc: prior.createdAtUtc,
+        updatedAtUtc: clock().toUtc().toIso8601String(),
+      ),
+    );
+    return true;
+  }
+
   /// Überträgt wartende Ruhewerte in Check-ins, die es inzwischen gibt (z. B.
   /// aus dem Health-Import). Wartende Werte ohne Check-in bleiben liegen.
   Future<void> flushPendingResting() async {

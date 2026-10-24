@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
+import '../../../data/repositories/health/health_steps_sync.dart';
 import '../../../data/repositories/strava/strava_service.dart';
 import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../features/access/account_operator_screen.dart';
@@ -85,6 +86,13 @@ class MobileShell extends StatelessWidget {
                   onOpenNutritionDay: (localDate) {
                     account.nutritionViewModel.selectDate(localDate);
                     model.selectTab(MobileArea.nutrition.index);
+                  },
+                  steps: switch (account.bodyViewModel.health) {
+                    final health? => HealthStepsSync(
+                      health: health,
+                      body: account.bodyViewModel.repository,
+                    ),
+                    null => null,
                   },
                   onOpenCheckInDay: (localDate) {
                     account.bodyViewModel.requestCheckIn(localDate);
