@@ -67,6 +67,7 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 
 - **Quelle ist `.agents/`.** Skills liegen in `.agents/skills/<name>/SKILL.md`, Instructions in `.agents/instructions/`. `.claude/skills/<name>` und `.claude/rules/<name>.md` sind relative Symlinks darauf; nie Kopien anlegen.
 - **Instructions:** `backend`, `mobile` und `security` gelten beim Programmieren, `code-review` nur beim Review (Skill `gainer-review`). Sie beschreiben Gainer-Konventionen in wenigen Zeilen; Fallstricke gehören in diese Datei. Keine allgemeinen Vorlagen aus anderen Projekten übernehmen: Die frühere Sammlung verlangte Azure Tables statt EF Core und englische Specs.
+- **Retro nach jedem PR.** Direkt nach `gh pr create` läuft der Skill `retro` (in Claude Code erinnert ein Hook daran, andere Agents rufen ihn selbst auf). Er legt belegte Findings zur Agent-Umgebung als Issues mit Label `agent-retro` an. Die Fixes kommen in eigenen PRs mit `Fixes #<n>`, nie in den gerade erstellten PR.
 - **Neuer Skill:** in `.agents/skills/` anlegen, dann `ln -s ../../.agents/skills/<name> .claude/skills/<name>`. Der Ordnername muss dem `name:` im Frontmatter entsprechen.
 - **Neue Instruction:** neben `applyTo` (Copilot) auch `paths:` (Claude) ins Frontmatter schreiben und nach `.claude/rules/` verlinken. Ohne `paths:` lädt Claude die Regel in jede Sitzung.
 
