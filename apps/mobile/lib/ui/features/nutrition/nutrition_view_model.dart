@@ -30,6 +30,12 @@ class NutritionViewModel extends ChangeNotifier {
   /// Treffer aus dem lokalen Katalog (BLS), schon beim Tippen.
   List<NutritionFood> localResults = const [];
   bool localResultsPartial = false;
+
+  /// Eingabe, zu der [searchResults] gehören; null ohne Online-Suche.
+  String? onlineSearchQuery;
+
+  /// Quelle, auf die die Trefferliste beschränkt ist.
+  FoodSourceFilter searchSource = FoodSourceFilter.all;
   int _localSearchGeneration = 0;
   NutritionFood? barcodeFood;
   bool isLoading = false;
@@ -348,8 +354,9 @@ class NutritionViewModel extends ChangeNotifier {
   /// mehr zur Eingabe und entfallen; spätere Antworten überholen frühere nicht.
   Future<void> searchLocalFoods(String query) async {
     final generation = ++_localSearchGeneration;
-    if (searchResults.isNotEmpty) {
+    if (onlineSearchQuery != null && onlineSearchQuery != query.trim()) {
       searchResults = const [];
+      onlineSearchQuery = null;
       _notify();
     }
     LocalFoodSearch result;
@@ -368,9 +375,10 @@ class NutritionViewModel extends ChangeNotifier {
     () async {
       isOnlineOperation = true;
       searchResults = await repository.searchFoods(query);
+      onlineSearchQuery = query.trim();
       statusMessage = searchResults.isEmpty
-          ? 'Keine Lebensmittel gefunden.'
-          : '${searchResults.length} Lebensmittel gefunden.';
+          ? 'Keine Produkte bei Open Food Facts gefunden.'
+          : '${searchResults.length} Produkte von Open Food Facts gefunden.';
     },
     saving: false,
     operation: NutritionErrorOperation.search,
@@ -531,6 +539,24 @@ class NutritionViewModel extends ChangeNotifier {
   }
 
   /// Verwirft einen offenen Vorschlag ohne Statusmeldung, z. B. beim Schließen.
+  void setSearchSource(FoodSourceFilter value) {
+    if (searchSource == value) return;
+    searchSource = value;
+    _notify();
+  }
+
+  /// Leert Suche, Treffer und Barcode-Ergebnis für das nächste Öffnen.
+  void resetFoodSearch() {
+    _localSearchGeneration++;
+    localResults = const [];
+    localResultsPartial = false;
+    searchResults = const [];
+    onlineSearchQuery = null;
+    barcodeFood = null;
+    searchSource = FoodSourceFilter.all;
+    _notify();
+  }
+
   void clearEstimateDraft() {
     if (mealEstimateDraft == null) return;
     mealEstimateDraft = null;
@@ -717,6 +743,9 @@ class NutritionViewModel extends ChangeNotifier {
         _ => 'Die Aufnahme ist fehlgeschlagen. Versuche es erneut.',
       };
 }
+
+/// Quellen der Lebensmittelsuche.
+enum FoodSourceFilter { all, bls, openFoodFacts }
 
 enum NutritionErrorOperation {
   day,
