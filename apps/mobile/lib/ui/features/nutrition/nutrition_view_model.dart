@@ -48,7 +48,11 @@ class NutritionViewModel extends ChangeNotifier {
   int _dayLoadGeneration = 0;
   String? _failedDate;
 
-  Future<void> load() => _loadDay(_failedDate ?? localDate);
+  /// Tag, der gerade geladen wird. Ein Neuladen währenddessen (etwa weil der
+  /// Tab sichtbar wird) übernimmt ihn, statt auf [localDate] zurückzufallen.
+  String? _pendingDate;
+
+  Future<void> load() => _loadDay(_pendingDate ?? _failedDate ?? localDate);
 
   Future<void> selectDate(String value) {
     if (!isValidLocalDate(value)) {
@@ -60,6 +64,7 @@ class NutritionViewModel extends ChangeNotifier {
 
   Future<void> _loadDay(String date) async {
     final generation = ++_dayLoadGeneration;
+    _pendingDate = date;
     isLoading = true;
     errorMessage = null;
     errorOperation = null;
@@ -79,6 +84,7 @@ class NutritionViewModel extends ChangeNotifier {
       }
     } finally {
       if (!_disposed && generation == _dayLoadGeneration) {
+        _pendingDate = null;
         isLoading = false;
         _notify();
       }
