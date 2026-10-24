@@ -34,6 +34,7 @@ class CalendarDayView extends StatelessWidget {
     this.onDayKind,
     this.onOpenCardio,
     this.onOpenTraining,
+    this.onToday,
     this.overview,
     super.key,
   });
@@ -60,6 +61,9 @@ class CalendarDayView extends StatelessWidget {
 
   /// Öffnet den Trainings-Tab aus der Trainingsübersicht.
   final VoidCallback? onOpenTraining;
+
+  /// Zurück zum heutigen Tag; null, wenn heute gezeigt wird.
+  final VoidCallback? onToday;
 
   /// Dashboard-Daten des früheren Heute-Tabs; nur für heute gesetzt.
   final ProgressViewModel? overview;
@@ -96,6 +100,10 @@ class CalendarDayView extends StatelessWidget {
     final training = _trainingSection();
     if (training != null) sections.add(training);
 
+    // Ernährung zuerst: Sie ändert sich über den Tag am meisten.
+    final nutrition = _nutritionSection();
+    if (nutrition != null) sections.add(nutrition);
+
     if (dashboard != null &&
         (dashboard.dashboard != null ||
             dashboard.errorMessage != null ||
@@ -109,9 +117,6 @@ class CalendarDayView extends StatelessWidget {
         ),
       );
     }
-
-    final nutrition = _nutritionSection();
-    if (nutrition != null) sections.add(nutrition);
 
     if (dashboard?.dashboard != null) {
       sections.add(
@@ -135,7 +140,29 @@ class CalendarDayView extends StatelessWidget {
       key: ValueKey('calendar-day-view-${day.date.toIso()}'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        GainerSectionHeader(title: calendarDayLabel(day.date)),
+        Row(
+          children: [
+            Expanded(
+              child: GainerSectionHeader(title: calendarDayLabel(day.date)),
+            ),
+            if (onToday case final toToday?)
+              CupertinoButton(
+                key: const ValueKey('calendar-today'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: GainerSpacing.xs,
+                ),
+                minimumSize: const Size(0, GainerRadii.iconButtonDiameter),
+                onPressed: toToday,
+                child: Text(
+                  'Zu heute',
+                  style: GainerTypography.label.copyWith(
+                    color: colors.accent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+          ],
+        ),
         const SizedBox(height: GainerSpacing.s),
         for (var i = 0; i < sections.length; i++) ...[
           if (i > 0) const SizedBox(height: GainerSpacing.m),
