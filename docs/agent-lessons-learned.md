@@ -43,6 +43,12 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
   - Geht es auch mit `sg docker` nicht, beim Nutzer nachfragen.
 - **EF-Migrationen nach `dotnet ef migrations add` mit `dotnet format` nachziehen.** Generierte Dateien haben BOM und Block-Namespace, die CI prüft `--verify-no-changes`. Startprojekt ist `src/Gainer.Infrastructure` (dort liegt die Design-Time-Factory).
 - **`git pull --ff-only`** auf `main` verwenden. Nie `git restore`, `git stash` oder `git reset --hard`.
+- **History von `main` nur mit Backup und Vorher-nachher-Vergleich umschreiben.**
+  - Vorher `git clone --mirror` als Backup, umgeschrieben wird in einem separaten Clone. Kein `--prune-empty`, das entfernt absichtlich leere Commits (z. B. „ci: trigger checks …“).
+  - Anzahl der Commits und Merges sowie die Betreffzeilen vorher und nachher vergleichen.
+  - Offene PRs vorher mergen oder schließen. GitHub schließt sie beim Force-Push automatisch und öffnet sie nach dem Force-Push des Branches nicht wieder, ein neuer PR ist nötig.
+  - Das Ruleset nur für den Push deaktivieren, mit `git push --force-with-lease=main:<alter-sha>` pushen und das Ruleset sofort wieder aktivieren.
+  - `refs/pull/*` halten alte Commits auf GitHub weiter sichtbar. Löschen kann nur der GitHub Support.
 
 ## 5. Produkt und Design
 
