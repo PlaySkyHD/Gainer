@@ -27,11 +27,11 @@ Every prompt contains:
 
 - the issue number and `gh api …/issues/<n>` to read it,
 - "Read `docs/agent-lessons-learned.md` first",
-- `git fetch origin`, then as a separate command `git switch -c fix/issue-<n>-<slug> origin/main` (worktrees do not start on main),
+- `git fetch origin`, then as a separate command `git switch -c fix/issue-<n>-<slug> origin/main`; if the fetch fails, stop and report instead of branching from a stale `origin/main` (worktrees do not start on main),
 - the graphify rule: if `graphify-out/graph.json` is missing run `graphify update .`, then `graphify query` before grep,
 - no `git restore`, `git stash`, `git reset --hard`; no pull request; no push to main,
 - file edits go through the Read, Edit and Write tools, not `sed -i`, heredocs or `cat >` in Bash, because worktree isolation blocks those; longer probe scripts are written with Write and then executed,
-- run shell commands one at a time, without `&&`, `;` or `git -C`, because worktree isolation rejects chained commands,
+- the shell rules for isolated worktrees from `docs/agent-lessons-learned.md` section 1 (separate git setup commands, no `git -C` outside the worktree, `cd apps/mobile && <check>` for app checks),
 - "the repository is public: no secrets, personal data or content about other private projects",
 - the exact scope and anchors, and which files not to touch,
 - the checks to run (format, analyzer, tests, golden preview) for the touched area,
