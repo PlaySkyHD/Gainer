@@ -267,6 +267,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('cached values are not marked stale while refreshing', (
+    tester,
+  ) async {
+    _useTallView(tester);
+    final response = Completer<ApiDashboardInsights>();
+    final api = _DashboardApi((_) => response.future);
+    final model = ProgressViewModel(
+      _CachedInsights(
+        api,
+        CachedDashboardInsights(
+          value: _insights(trendKgPerWeek: -0.5),
+          cachedAtUtc: DateTime.utc(2026, 10, 14, 8),
+        ),
+      ),
+    );
+    addTearDown(model.dispose);
+    addTearDown(api.close);
+    const hint = 'Gespeicherte Fortschrittsdaten · möglicherweise veraltet';
+
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.forBrightness(Brightness.light),
+        home: _Overview(model: model),
+      ),
+    );
+    unawaited(model.load());
+    await tester.pump();
+    // Die gespeicherten Werte stehen schon da, ohne Hinweis.
+    expect(_rich('81,5 kg'), findsOneWidget);
+    expect(find.text(hint), findsNothing);
+
+    response.complete(_insights(trendKgPerWeek: -0.4));
+    await tester.pumpAndSettle();
+    expect(find.text(hint), findsNothing);
+    expect(find.text('−0,4 kg/Woche'), findsOneWidget);
+  });
+
   testWidgets('failed refresh keeps cached values visible and marked stale', (
     tester,
   ) async {
