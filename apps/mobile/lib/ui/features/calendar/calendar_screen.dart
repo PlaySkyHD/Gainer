@@ -41,6 +41,7 @@ class CalendarScreen extends StatefulWidget {
     this.steps,
     this.visibility,
     this.isVisible,
+    this.takeRequestedDay,
     this.refresh,
     super.key,
   });
@@ -74,6 +75,10 @@ class CalendarScreen extends StatefulWidget {
   /// sobald der Tab wieder sichtbar wird.
   final Listenable? visibility;
   final bool Function()? isVisible;
+
+  /// Liefert einen von außen angefragten Tag einmal (etwa aus der Heatmap der
+  /// Trainingsstatistik); geprüft bei jeder Meldung von [visibility].
+  final LocalDay? Function()? takeRequestedDay;
 
   /// Meldet geänderte Daten, etwa nach einem Sync; der Kalender lädt dann
   /// neu, wenn er sichtbar ist.
@@ -111,8 +116,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _scheduleMidnight();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _showRequestedDay();
       _reloadAll();
     });
+  }
+
+  /// Wählt einen von außen angefragten Tag und scrollt zu seinen Werten.
+  void _showRequestedDay() {
+    if (widget.takeRequestedDay?.call() case final day?) _selectFromGrid(day);
   }
 
   @override
@@ -156,6 +167,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _onVisibility() {
+    _showRequestedDay();
     final visible = _visible;
     if (visible && !_wasVisible) _reloadAll();
     _wasVisible = visible;

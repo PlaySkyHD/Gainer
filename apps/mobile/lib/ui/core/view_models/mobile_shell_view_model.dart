@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
+import '../../../domain/models/training/training_schedule.dart';
+
 enum MobileArea {
   calendar('Übersicht', CupertinoIcons.square_grid_2x2),
   body('Check-in', CupertinoIcons.heart),
@@ -25,6 +27,7 @@ class MobileShellViewModel extends ChangeNotifier {
   String? _requestedWorkoutId;
   bool _requestedCardio = false;
   bool _requestedCloseOverlays = false;
+  LocalDay? _requestedCalendarDay;
 
   int get selectedIndex => _selectedIndex;
   MobileArea get selectedArea => MobileArea.values[_selectedIndex];
@@ -70,6 +73,20 @@ class MobileShellViewModel extends ChangeNotifier {
     final requested = _requestedCloseOverlays;
     _requestedCloseOverlays = false;
     return requested;
+  }
+
+  /// Wechselt in den Kalender und bittet ihn, [day] zu zeigen.
+  void openCalendarDay(LocalDay day) {
+    _requestedCalendarDay = day;
+    notifyListeners();
+    selectTab(MobileArea.calendar.index);
+  }
+
+  /// Liefert den angefragten Kalendertag einmal und löscht ihn danach.
+  LocalDay? takeRequestedCalendarDay() {
+    final day = _requestedCalendarDay;
+    _requestedCalendarDay = null;
+    return day;
   }
 
   /// Bittet darum, nach dem Tab-Wechsel die Live-Ansicht der Cardio-Einheit

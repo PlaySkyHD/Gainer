@@ -5,6 +5,7 @@ import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
+import 'package:gainer_mobile/ui/features/calendar/calendar_format.dart';
 import 'package:gainer_mobile/ui/features/calendar/calendar_screen.dart';
 
 import '../training/training_plans_test_support.dart';
@@ -403,6 +404,45 @@ void main() {
 
     expect(dayLabel(tester, calendarToday), contains('Krafttraining'));
     expect(find.text('Abendtraining'), findsOneWidget);
+  });
+
+  testWidgets('a day requested from outside is shown once', (tester) async {
+    usePhoneSize(tester);
+    final harness = await createCalendarHarness(tester);
+    final tab = ValueNotifier<int>(1);
+    addTearDown(tab.dispose);
+    LocalDay? requested = LocalDay(2026, 9, 15);
+    await tester.runAsync(
+      () => harness.finishedEmpty('Septembertraining', requested!),
+    );
+    LocalDay? take() {
+      final day = requested;
+      requested = null;
+      return day;
+    }
+
+    await pumpCalendar(
+      tester,
+      harness,
+      visibility: tab,
+      isVisible: () => tab.value == 0,
+      takeRequestedDay: take,
+    );
+
+    // Beim ersten Bild angefragt: der Tag aus einem anderen Monat.
+    expect(find.text(calendarDayLabel(LocalDay(2026, 9, 15))), findsOneWidget);
+    expect(find.text('Septembertraining'), findsOneWidget);
+
+    await tester.runAsync(
+      () => harness.finishedEmpty('Oktobertraining', _oct(5)),
+    );
+    requested = _oct(5);
+    tab.value = 0;
+    await settle(tester);
+
+    expect(find.text(calendarDayLabel(_oct(5))), findsOneWidget);
+    expect(find.text('Oktobertraining'), findsOneWidget);
+    expect(requested, isNull);
   });
 
   testWidgets('a refresh signal reloads while visible', (tester) async {

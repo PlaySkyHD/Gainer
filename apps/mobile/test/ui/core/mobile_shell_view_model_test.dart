@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
 
 void main() {
@@ -35,6 +36,21 @@ void main() {
     expect(notifications, 1);
     expect(model.takeRequestedWorkout(), 'workout-1');
     expect(model.takeRequestedWorkout(), isNull);
+    model.dispose();
+  });
+
+  test('opening a calendar day switches the tab and delivers it once', () {
+    final model = MobileShellViewModel();
+    model.selectTab(MobileArea.training.index);
+    var notifications = 0;
+    model.addListener(() => notifications++);
+
+    expect(model.takeRequestedCalendarDay(), isNull);
+    model.openCalendarDay(LocalDay(2026, 9, 15));
+    expect(model.selectedArea, MobileArea.calendar);
+    expect(notifications, 2);
+    expect(model.takeRequestedCalendarDay(), LocalDay(2026, 9, 15));
+    expect(model.takeRequestedCalendarDay(), isNull);
     model.dispose();
   });
 

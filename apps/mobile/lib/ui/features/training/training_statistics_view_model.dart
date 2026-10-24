@@ -1,9 +1,13 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../data/repositories/cardio/cardio_repository.dart';
 import '../../../data/repositories/sync/local_sync_store.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/body/body_tracking.dart';
+import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
+import '../../../domain/models/training/training_heatmap.dart';
+import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/training_statistics.dart';
 import '../../../domain/models/training/workout_model.dart';
 
@@ -99,13 +103,38 @@ List<TrainedExerciseSummary> summarizeTrainedExercises(
   return summaries;
 }
 
-/// Liste der trainierten Übungen mit Suche und Aufwärmsatz-Schalter.
+/// Heatmap der letzten 12 Monate aus gezählten Trainings und, falls
+/// vorhanden, nicht gelöschten Cardio-Einheiten.
+Future<TrainingHeatmap> loadTrainingHeatmap(
+  List<Workout> countedWorkouts, {
+  required LocalDay today,
+  CardioRepository? cardio,
+}) async {
+  final sessions = await cardio?.readSessions() ?? const <CardioSession>[];
+  return buildTrainingHeatmap([
+    for (final workout in countedWorkouts)
+      if (workout.endedAtUtc case final ended?)
+        (startedAtUtc: workout.startedAtUtc, endedAtUtc: ended),
+    for (final session in sessions)
+      if (session.deletedAtUtc == null)
+        (startedAtUtc: session.startedAtUtc, endedAtUtc: session.endedAtUtc),
+  ], today: today);
+}
+
+/// Liste der trainierten Übungen mit Suche und Aufwärmsatz-Schalter sowie
+/// die Heatmap der Trainingstage.
 class TrainingStatisticsViewModel extends ChangeNotifier {
-  TrainingStatisticsViewModel({required this.repository});
+  TrainingStatisticsViewModel({required this.repository, this.cardio});
 
   final TrainingLogRepository repository;
 
+  /// Cardio-Einheiten für die Heatmap; ohne Wert zählt nur Krafttraining.
+  final CardioRepository? cardio;
+
   List<TrainedExerciseSummary> exercises = const [];
+
+  /// Null, solange nicht geladen oder wenn die Einheiten nicht lesbar sind.
+  TrainingHeatmap? heatmap;
   bool includeWarmups = false;
   bool isLoading = false;
   bool hasLoaded = false;
@@ -143,6 +172,16 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
         inputs,
         includeWarmups: includeWarmups,
       );
+      try {
+        heatmap = await loadTrainingHeatmap(
+          inputs.workouts,
+          today: repository.schedule.today(),
+          cardio: cardio,
+        );
+      } on Object {
+        // Ohne lesbare Cardio-Einheiten wäre die Heatmap unvollständig.
+        heatmap = null;
+      }
     } catch (_) {
       if (!_disposed) {
         errorMessage = 'Die Statistik konnte nicht berechnet werden.';
