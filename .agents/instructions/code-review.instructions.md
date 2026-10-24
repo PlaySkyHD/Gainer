@@ -31,7 +31,7 @@ Befunde nach Schweregrad, je mit Datei und Zeile, konkretem Auslöser („bei Ei
 
 ## OpenSpec
 
-- Ein PR trägt genau einen Change, archiviert mit `openspec archive <change> -y`; unter `openspec/changes/` bleibt nichts außerhalb von `archive/`.
+- Ein PR trägt genau einen Change, archiviert mit `openspec archive <change> -y`; unter `openspec/changes/` bleibt nichts außerhalb von `archive/`. Danach muss `openspec validate --specs --strict` grün sein (prüft u. a. die Länge von MODIFIED-Anforderungen; die CI tut das ebenfalls).
 - Deltas stehen in der passenden fachlichen Spec. `MODIFIED` ersetzt den alten Text vollständig, `REMOVED` löscht ihn.
 - Artefakte sind auf Deutsch. Jede Anforderung hat ein Given/When/Then-Szenario, jede Aufgabe einen prüfenden Test.
 - Specs und Code müssen übereinstimmen; Zahlen in Beispielen nachrechnen.

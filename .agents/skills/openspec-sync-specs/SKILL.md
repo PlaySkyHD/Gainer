@@ -177,7 +177,7 @@ In both branches, never create the root as a side effect: do not run `openspec i
 
 5. **Validate updated main specs**
 
-   Run `openspec validate --specs` with the same selected-root flags used earlier.
+   Run `openspec validate --specs --strict` with the same selected-root flags used earlier.
    If validation fails, report the problems and do not claim the sync succeeded.
 
 6. **Show summary**
