@@ -9,6 +9,7 @@ import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/body/body_screen.dart';
 import 'package:gainer_mobile/ui/features/body/body_view_model.dart';
+import 'package:gainer_mobile/ui/features/body/check_in_format.dart';
 
 import '../../support/fake_health_platform.dart';
 
@@ -17,10 +18,13 @@ const _account = '00000000-0000-4000-8000-000000000003';
 String _localDate(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
-DateTime _midnight() {
-  final now = DateTime.now();
-  return DateTime(now.year, now.month, now.day);
-}
+/// Fester Tag ohne Zeitumstellung, damit die Tests nicht vom Ausführungstag
+/// abhängen.
+final _day = DateTime(2026, 10, 12);
+
+/// Nächte der Zeitumstellung in Europa (Herbst 2026, Frühling 2027).
+final _autumnDay = DateTime(2026, 10, 25);
+final _springDay = DateTime(2027, 3, 28);
 
 class _Harness {
   _Harness(this.model, this.repository, this.health, this.today);
@@ -29,10 +33,16 @@ class _Harness {
   final BodyRepository repository;
   final FakeHealthPlatform health;
   final DateTime today;
+
+  /// Fester Abend, damit Aufstehzeiten nie „in der Zukunft“ liegen.
+  DateTime now() => DateTime(today.year, today.month, today.day, 20);
 }
 
-/// Fester Abend, damit Aufstehzeiten nie „in der Zukunft“ liegen.
-_Harness _harness(WidgetTester tester, FakeHealthPlatform health) {
+_Harness _harness(
+  WidgetTester tester,
+  FakeHealthPlatform health, {
+  DateTime? today,
+}) {
   tester.view.physicalSize = const Size(390, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -42,19 +52,19 @@ _Harness _harness(WidgetTester tester, FakeHealthPlatform health) {
   final repository = BodyRepository(
     store: LocalSyncStore(database: database, accountId: _account),
   );
-  final real = DateTime.now();
-  final today = DateTime(real.year, real.month, real.day);
+  final day = today ?? _day;
+  final clock = DateTime(day.year, day.month, day.day, 20);
   final model = BodyViewModel(
     repository,
     health: CheckInHealthCoordinator(
       platform: health,
       accountId: _account,
-      clock: () => today.add(const Duration(hours: 20)),
+      clock: () => clock,
       onError: (_) {},
     ),
   );
   addTearDown(model.dispose);
-  return _Harness(model, repository, health, today);
+  return _Harness(model, repository, health, day);
 }
 
 Future<void> _open(
@@ -66,7 +76,7 @@ Future<void> _open(
     CupertinoApp(
       debugShowCheckedModeBanner: false,
       theme: GainerTheme.forBrightness(brightness),
-      home: BodyScreen(viewModel: h.model),
+      home: BodyScreen(viewModel: h.model, clock: h.now),
     ),
   );
   await tester.pumpAndSettle();
@@ -78,7 +88,7 @@ FakeHealthPlatform _healthWithData(DateTime today) => FakeHealthPlatform()
   ..bodyMass = [
     BodyMassSample(
       uuid: 'w1',
-      measuredAtUtc: today.add(const Duration(hours: 7)).toUtc(),
+      measuredAtUtc: DateTime(today.year, today.month, today.day, 7).toUtc(),
       weightKilograms: 81.4,
       sourceName: 'Waage',
     ),
@@ -124,7 +134,7 @@ void main() {
     testWidgets('check-in sheet matches golden in ${brightness.name} mode', (
       tester,
     ) async {
-      final h = _harness(tester, _healthWithData(_midnight()));
+      final h = _harness(tester, _healthWithData(_day));
       await _open(tester, h, brightness: brightness);
 
       await expectLater(
@@ -137,7 +147,7 @@ void main() {
   testWidgets('prefills weight, sleep and steps from Apple Health', (
     tester,
   ) async {
-    final h = _harness(tester, _healthWithData(_midnight()));
+    final h = _harness(tester, _healthWithData(_day));
     await _open(tester, h);
 
     expect(_weightText(tester), '81,4');
@@ -214,6 +224,74 @@ void main() {
     expect(write.id, endsWith('-${_localDate(h.today)}-sleep'));
   });
 
+  // Unter TZ=Europe/Berlin liegen 510 (Herbst) bzw. 390 (Frühling) echte
+  // Minuten zwischen 23:30 und 07:00; unter UTC 450. Die Schlafenszeit in
+  // Health bleibt in jedem Fall 23:30 Uhr am Vortag.
+  for (final (name, day) in [('autumn', _autumnDay), ('spring', _springDay)]) {
+    testWidgets('manual sleep in the $name DST night keeps 23:30 as bedtime', (
+      tester,
+    ) async {
+      final h = _harness(tester, FakeHealthPlatform(), today: day);
+      await _open(tester, h);
+      final bedtime = DateTime(day.year, day.month, day.day - 1, 23, 30);
+      final wake = DateTime(day.year, day.month, day.day, 7);
+      final realMinutes = wake.difference(bedtime).inMinutes;
+
+      await _pickTime(tester, 'body-checkin-bedtime', 23, 30);
+      await _pickTime(tester, 'body-checkin-wake', 7, 0);
+      expect(find.text(formatSleepDuration(realMinutes)), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('body-checkin-weight')),
+        '80,9',
+      );
+      await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
+      await tester.pumpAndSettle();
+
+      final saved = (await h.repository.read()).checkIns.single.value;
+      expect(saved.localDate, _localDate(day));
+      expect(saved.sleepMinutes, realMinutes);
+      final write = h.health.sleepWrites.single;
+      expect(write.bed, bedtime.toUtc());
+      expect(write.wake, wake.toUtc());
+      expect(write.bed.toLocal().hour, 23);
+      expect(write.bed.toLocal().minute, 30);
+      expect(write.wake.difference(write.bed).inMinutes, saved.sleepMinutes);
+    });
+
+    testWidgets('Health sleep in the $name DST night keeps its duration', (
+      tester,
+    ) async {
+      final bedtime = DateTime(day.year, day.month, day.day - 1, 23, 30);
+      final wake = DateTime(day.year, day.month, day.day, 7);
+      final realMinutes = wake.difference(bedtime).inMinutes;
+      final health = FakeHealthPlatform()
+        ..sleep = HealthSleepWindow(
+          bedtimeUtc: bedtime.toUtc(),
+          wakeUtc: wake.toUtc(),
+          asleepMinutes: realMinutes - 20,
+          sourceName: 'Watch',
+        );
+      final h = _harness(tester, health, today: day);
+      await _open(tester, h);
+
+      expect(find.text('23:30'), findsOneWidget);
+      expect(find.text('07:00'), findsOneWidget);
+      expect(find.text(formatSleepDuration(realMinutes)), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('body-checkin-weight')),
+        '80,9',
+      );
+      await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
+      await tester.pumpAndSettle();
+
+      final saved = (await h.repository.read()).checkIns.single.value;
+      expect(saved.sleepMinutes, realMinutes);
+      expect(h.health.sleepWrites, isEmpty);
+    });
+  }
+
   testWidgets('saving writes weight to Health when no foreign sample exists', (
     tester,
   ) async {
@@ -234,7 +312,7 @@ void main() {
   testWidgets('saving does not write over foreign Health samples', (
     tester,
   ) async {
-    final h = _harness(tester, _healthWithData(_midnight()));
+    final h = _harness(tester, _healthWithData(_day));
     await _open(tester, h);
     await tester.enterText(
       find.byKey(const ValueKey('body-checkin-weight')),
@@ -270,11 +348,11 @@ void main() {
   });
 
   testWidgets('changing the date reloads the Health values', (tester) async {
-    final h = _harness(tester, _healthWithData(_midnight()));
+    final h = _harness(tester, _healthWithData(_day));
     await _open(tester, h);
     expect(find.text('23:10'), findsOneWidget);
 
-    final yesterday = h.today.subtract(const Duration(days: 1));
+    final yesterday = DateTime(h.today.year, h.today.month, h.today.day - 1);
     await tester.tap(find.byKey(const ValueKey('body-checkin-date')));
     await tester.pumpAndSettle();
     tester

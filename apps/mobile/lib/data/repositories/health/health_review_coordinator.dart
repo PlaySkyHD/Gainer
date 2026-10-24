@@ -325,9 +325,10 @@ class HealthReviewCoordinator {
     return DateTime(parsed.year, parsed.month, parsed.day);
   }
 
+  /// Kalendertage statt 24 Stunden: Der Tag der Zeitumstellung hat 23 oder 25.
   static String _addDays(String date, int amount) {
-    final day = DateTime.parse(date).add(Duration(days: amount));
-    return _date(day);
+    final day = DateTime.parse(date);
+    return _date(DateTime(day.year, day.month, day.day + amount));
   }
 
   static String _date(DateTime value) =>

@@ -140,6 +140,28 @@ void main() {
     expect(health.lastToUtc, DateTime(2026, 10, 13).toUtc());
   });
 
+  // Der Tag der Zeitumstellung hat 25 bzw. 23 Stunden; „+24 h“ landete unter
+  // TZ=Europe/Berlin im Herbst wieder am selben Tag und lieferte keine Proben.
+  for (final (day, next) in [
+    ('2026-10-25', DateTime(2026, 10, 26)),
+    ('2027-03-28', DateTime(2027, 3, 29)),
+  ]) {
+    test(
+      'a range ending on the DST day $day ends at the next midnight',
+      () async {
+        await HealthReviewCoordinator(
+          store: store,
+          bodyRepository: body,
+          platform: health,
+          accountId: accountId,
+          currentSessionIdentity: () => identity,
+          clock: () => DateTime(2027, 6),
+        ).prepareWeightReview(fromLocalDate: day, toLocalDate: day);
+        expect(health.lastToUtc, next.toUtc());
+      },
+    );
+  }
+
   test(
     'empty query results remain an empty review and do not imply denial',
     () async {

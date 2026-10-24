@@ -22,7 +22,7 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
   void initState() {
     super.initState();
     final today = DateTime.now();
-    _from = today.subtract(const Duration(days: 6));
+    _from = DateTime(today.year, today.month, today.day - 6);
     _to = today;
     widget.viewModel.load();
   }

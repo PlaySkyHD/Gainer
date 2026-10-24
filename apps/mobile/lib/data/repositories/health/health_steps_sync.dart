@@ -22,9 +22,9 @@ class HealthStepsSync {
   /// ab. Liefert, wie viele Check-ins sich geändert haben. Wirft nie.
   Future<int> syncRecent({int days = 7}) async {
     final now = _clock();
-    final today = DateTime(now.year, now.month, now.day);
-    final first = _localDate(today.subtract(Duration(days: days)));
-    final yesterday = _localDate(today.subtract(const Duration(days: 1)));
+    // Kalendertage statt 24 Stunden, sonst fehlt der Tag der Zeitumstellung.
+    final first = _localDate(DateTime(now.year, now.month, now.day - days));
+    final yesterday = _localDate(DateTime(now.year, now.month, now.day - 1));
     var changed = 0;
     try {
       final snapshot = await body.read();
