@@ -74,6 +74,25 @@ class CheckInHealthCoordinator {
     return (from: from.toUtc(), to: end.toUtc());
   }
 
+  /// Schritte eines Tages (heute bis jetzt) ohne Berechtigungsdialog. Den
+  /// Zugriff fragt nur der Check-in an; ohne ihn, ohne Daten oder bei Fehlern
+  /// null. Wirft nie.
+  Future<int?> readSteps(String localDate) async {
+    final day = dayWindow(localDate);
+    if (day == null) return null;
+    try {
+      if (!await platform.isAvailable()) return null;
+      final count = await platform.readStepCount(
+        fromUtc: day.from,
+        toUtc: day.to,
+      );
+      return count != null && count > 0 ? count : null;
+    } catch (error) {
+      _onError(error);
+      return null;
+    }
+  }
+
   /// Fragt die Berechtigung an und liest die Tageswerte; wirft nie.
   Future<CheckInHealthSnapshot> load(String localDate) async {
     try {
