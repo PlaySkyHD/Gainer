@@ -5,6 +5,7 @@ import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
 import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
+import 'package:gainer_mobile/ui/features/calendar/calendar_screen.dart';
 
 import '../training/training_plans_test_support.dart';
 import '../training/training_test_support.dart';
@@ -21,7 +22,16 @@ void main() {
 
     await pumpCalendar(tester, harness);
 
-    expect(find.text('Kalender'), findsWidgets);
+    expect(find.text('Übersicht'), findsWidgets);
+    // Oben die Tages-Pille, ohne zusätzliches „Heute“ für den heutigen Tag.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('calendar-date-pill')),
+        matching: find.text('Heute'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('calendar-today')), findsNothing);
     expect(find.text('Oktober 2026'), findsOneWidget);
     for (final name in ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']) {
       expect(find.text(name), findsOneWidget);
@@ -33,6 +43,58 @@ void main() {
     expect(today.properties.selected, isTrue);
     expect(find.text('Donnerstag, 22. Oktober'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the day pill steps days, jumps to the calendar and back', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    final harness = await createCalendarHarness(tester);
+    await pumpCalendar(tester, harness);
+    final pill = find.byKey(const ValueKey('calendar-date-pill'));
+    String pillText() => tester
+        .widget<Text>(find.descendant(of: pill, matching: find.byType(Text)))
+        .data!;
+    final scroll = find
+        .descendant(
+          of: find.byType(CalendarScreen),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    double offset() => tester.state<ScrollableState>(scroll).position.pixels;
+
+    // Ein Tipp auf den Text scrollt zum Kalender unten.
+    await tester.tap(pill);
+    await settle(tester);
+    expect(offset(), greaterThan(0));
+    expect(find.text('Oktober 2026').hitTestable(), findsOneWidget);
+
+    // Ein Tag im Kalender führt zurück nach oben zu seinen Werten.
+    await tapDay(tester, LocalDay(2026, 10, 14));
+    expect(offset(), 0);
+    expect(pillText(), 'Mi. 14. Okt.');
+    expect(find.text('Mittwoch, 14. Oktober'), findsOneWidget);
+
+    // Pfeile wechseln den Tag, auch über die Monatsgrenze.
+    await tester.tap(find.bySemanticsLabel('Vorheriger Tag'));
+    await settle(tester);
+    expect(find.text('Dienstag, 13. Oktober'), findsOneWidget);
+    for (var i = 0; i < 19; i++) {
+      await tester.tap(find.bySemanticsLabel('Nächster Tag'));
+      await settle(tester);
+    }
+    expect(pillText(), 'So. 1. Nov.');
+    expect(find.text('Sonntag, 1. November'), findsOneWidget);
+    await scrollIntoView(tester, find.text('November 2026'));
+    expect(find.text('November 2026'), findsOneWidget);
+
+    // „Zu heute“ steht nur bei einem anderen Tag.
+    await scrollIntoView(tester, find.byKey(const ValueKey('calendar-today')));
+    await tester.tap(find.byKey(const ValueKey('calendar-today')));
+    await settle(tester);
+    expect(pillText(), 'Heute');
+    expect(find.byKey(const ValueKey('calendar-today')), findsNothing);
+    expect(find.text('Donnerstag, 22. Oktober'), findsOneWidget);
   });
 
   testWidgets('without a schedule today points to the rhythm editor', (
@@ -291,9 +353,10 @@ void main() {
     final weight = tester.getTopLeft(find.text('Gewicht')).dy;
     final nutrition = tester.getTopLeft(find.text('Ernährung')).dy;
     final training = tester.getTopLeft(find.text('Trainingsübersicht')).dy;
-    expect(plan, lessThan(weight));
-    expect(weight, lessThan(nutrition));
-    expect(nutrition, lessThan(training));
+    // Plan, dann Ernährung, Gewicht und Trainingsübersicht.
+    expect(plan, lessThan(nutrition));
+    expect(nutrition, lessThan(weight));
+    expect(weight, lessThan(training));
 
     await tester.tap(find.text('Trainingsübersicht'));
     await settle(tester);

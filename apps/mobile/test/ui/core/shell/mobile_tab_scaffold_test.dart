@@ -24,18 +24,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Inhalt Kalender'), findsOneWidget);
+    expect(find.text('Inhalt Übersicht'), findsOneWidget);
     expect(find.text('Inhalt Training'), findsNothing);
-    expect(_isSelected(tester, 'Kalender'), isTrue);
+    expect(_isSelected(tester, 'Übersicht'), isTrue);
 
     await tester.tap(find.text('Training'));
     await tester.pumpAndSettle();
 
     expect(model.selectedArea, MobileArea.training);
     expect(find.text('Inhalt Training'), findsOneWidget);
-    expect(find.text('Inhalt Kalender'), findsNothing);
+    expect(find.text('Inhalt Übersicht'), findsNothing);
     expect(_isSelected(tester, 'Training'), isTrue);
-    expect(_isSelected(tester, 'Kalender'), isFalse);
+    expect(_isSelected(tester, 'Übersicht'), isFalse);
     semantics.dispose();
   });
 
@@ -55,7 +55,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final slot = tester.getTopLeft(find.text('Trainingsleiste'));
-    final tabBar = tester.getTopLeft(find.text('Kalender'));
+    final tabBar = tester.getTopLeft(find.text('Übersicht'));
     expect(slot.dy, lessThan(tabBar.dy));
   });
 
@@ -86,7 +86,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final fieldBottom = tester.getBottomLeft(find.byKey(field)).dy;
-    final tabBarTop = tester.getTopLeft(find.text('Kalender')).dy;
+    final tabBarTop = tester.getTopLeft(find.text('Übersicht')).dy;
     final keyboardTop = 844 - 300;
     expect(fieldBottom, closeTo(keyboardTop, 0.5));
     expect(tabBarTop, greaterThan(keyboardTop));

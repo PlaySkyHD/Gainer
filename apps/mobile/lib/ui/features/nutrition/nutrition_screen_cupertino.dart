@@ -286,8 +286,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
       final snapshot = vm.snapshot;
       final dayView = GainerScaffold(
         title: 'Ernährung',
-        leading: _DayNavigator(
-          label: _dateLabel(vm.localDate, _dateString(vm.repository.clock())),
+        leading: GainerDayNavigator(
+          pillKey: const ValueKey('nutrition-date-pill'),
+          label: gainerDayLabel(
+            DateTime.parse(vm.localDate),
+            DateTime.parse(_dateString(vm.repository.clock())),
+          ),
           onPrevious: () => _shiftDay(-1),
           onNext: () => _shiftDay(1),
           onPick: () => _pickDay(context),
@@ -2993,68 +2997,6 @@ class _LabelTargetDraft {
 
 /// Tageswechsel in der Toolbar: ‹ [Datum] › in einer gemeinsamen Pille. Das
 /// Datum öffnet die Datumsauswahl.
-class _DayNavigator extends StatelessWidget {
-  const _DayNavigator({
-    required this.label,
-    required this.onPrevious,
-    required this.onNext,
-    required this.onPick,
-  });
-
-  final String label;
-  final VoidCallback onPrevious;
-  final VoidCallback onNext;
-  final VoidCallback onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = GainerDesign.colorsOf(context);
-    Widget arrow(IconData icon, String semanticLabel, VoidCallback onTap) =>
-        Semantics(
-          button: true,
-          label: semanticLabel,
-          excludeSemantics: true,
-          child: CupertinoButton(
-            padding: EdgeInsets.zero,
-            minimumSize: const Size.square(GainerRadii.iconButtonDiameter),
-            onPressed: onTap,
-            child: Icon(icon, size: 22, color: colors.primaryText),
-          ),
-        );
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.elevatedSurface,
-        borderRadius: GainerRadii.pill,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          arrow(CupertinoIcons.chevron_left, 'Vorheriger Tag', onPrevious),
-          Semantics(
-            button: true,
-            label: 'Tag auswählen',
-            excludeSemantics: true,
-            child: CupertinoButton(
-              key: const ValueKey('nutrition-date-pill'),
-              padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.xs),
-              minimumSize: const Size(0, GainerRadii.iconButtonDiameter),
-              onPressed: onPick,
-              child: Text(
-                label,
-                style: GainerTypography.body.copyWith(
-                  color: colors.primaryText,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-          arrow(CupertinoIcons.chevron_right, 'Nächster Tag', onNext),
-        ],
-      ),
-    );
-  }
-}
-
 /// Eine Tageskarte: Kalorien groß mit Fortschritt, darunter drei kompakte
 /// Makro-Spalten. Ohne Ziele nur die Ist-Werte und der Weg zu den Zielen.
 /// Aktuelle Ziele im Bereich „Ziele“; Antippen öffnet den Editor.
@@ -3206,6 +3148,7 @@ class _DayCard extends StatelessWidget {
                     'Protein',
                     totals.proteinGrams,
                     goal?.proteinGrams,
+                    tint: colors.protein,
                   ),
                   const SizedBox(width: GainerSpacing.s),
                   _macro(
@@ -3213,34 +3156,53 @@ class _DayCard extends StatelessWidget {
                     'Kohlenhydrate',
                     totals.carbohydrateGrams,
                     goal?.carbohydrateGrams,
+                    tint: colors.carbohydrate,
                   ),
                   const SizedBox(width: GainerSpacing.s),
-                  _macro(colors, 'Fett', totals.fatGrams, goal?.fatGrams),
+                  _macro(
+                    colors,
+                    'Fett',
+                    totals.fatGrams,
+                    goal?.fatGrams,
+                    tint: colors.fat,
+                  ),
                 ],
               ),
               const SizedBox(height: GainerSpacing.s),
-              // Ballaststoffe (Mindestziel) und Salz (Obergrenze) in eigener
-              // Zeile mit gleicher Spaltenbreite wie die Makros.
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _macro(
-                    colors,
-                    'Ballaststoffe',
-                    totals.fiberGrams,
-                    target?.effectiveFiberGrams,
-                    minimum: true,
-                  ),
-                  const SizedBox(width: GainerSpacing.s),
-                  _macro(
-                    colors,
-                    'Salz',
-                    totals.saltGrams,
-                    target?.effectiveSaltGrams,
-                  ),
-                  const SizedBox(width: GainerSpacing.s),
-                  const Spacer(),
-                ],
+              // Ballaststoffe (Mindestziel) und Salz (Obergrenze) zentriert in
+              // eigener Zeile, je so breit wie eine Makrospalte.
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final column =
+                      (constraints.maxWidth - 2 * GainerSpacing.s) / 3;
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: column,
+                        child: _macroBody(
+                          colors,
+                          'Ballaststoffe',
+                          totals.fiberGrams,
+                          target?.effectiveFiberGrams,
+                          minimum: true,
+                        ),
+                      ),
+                      const SizedBox(width: GainerSpacing.s),
+                      SizedBox(
+                        width: column,
+                        child: _macroBody(
+                          colors,
+                          'Salz',
+                          totals.saltGrams,
+                          target?.effectiveSaltGrams,
+                          barColor: colors.secondaryText,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               if (goal == null) ...[
                 const SizedBox(height: GainerSpacing.m),
@@ -3259,88 +3221,83 @@ class _DayCard extends StatelessWidget {
     );
   }
 
-  /// [minimum] markiert Mindestziele: Über dem Ziel gibt es keine Warnfarbe.
   Widget _macro(
     GainerColors colors,
     String name,
     double? consumed,
     double? goal, {
+    Color? tint,
+  }) => Expanded(child: _macroBody(colors, name, consumed, goal, tint: tint));
+
+  /// [minimum] markiert Mindestziele: Über dem Ziel gibt es keine Warnfarbe.
+  /// [tint] färbt Punkt und Balken eines Makros; der Text bleibt in
+  /// Textfarbe. [barColor] färbt nur den Balken (z. B. Salz neutral).
+  Widget _macroBody(
+    GainerColors colors,
+    String name,
+    double? consumed,
+    double? goal, {
     bool minimum = false,
+    Color? tint,
+    Color? barColor,
   }) {
     final actual = consumed == null ? '–' : _fmtGrams(consumed);
-    return Expanded(
-      child: Semantics(
-        label: goal == null
-            ? '$name, $actual g'
-            : '$name, $actual von ${_fmtGrams(goal)} g',
-        excludeSemantics: true,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GainerTypography.caption.copyWith(
-                color: colors.secondaryText,
-              ),
-            ),
-            const SizedBox(height: 2),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                goal == null ? '$actual g' : '$actual / ${_fmtGrams(goal)} g',
-                maxLines: 1,
-                style: GainerTypography.value.copyWith(
-                  color: colors.primaryText,
+    return Semantics(
+      label: goal == null
+          ? '$name, $actual g'
+          : '$name, $actual von ${_fmtGrams(goal)} g',
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (tint != null) ...[
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: tint,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const SizedBox.square(dimension: 7),
+                ),
+                const SizedBox(width: GainerSpacing.xxs),
+              ],
+              Flexible(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GainerTypography.caption.copyWith(
+                    color: colors.secondaryText,
+                  ),
                 ),
               ),
-            ),
-            if (goal != null) ...[
-              const SizedBox(height: GainerSpacing.xxs),
-              GainerProgressBar(
-                consumed: consumed,
-                target: goal,
-                height: 4,
-                warnWhenExceeded: !minimum,
-              ),
             ],
+          ),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              goal == null ? '$actual g' : '$actual / ${_fmtGrams(goal)} g',
+              maxLines: 1,
+              style: GainerTypography.value.copyWith(color: colors.primaryText),
+            ),
+          ),
+          if (goal != null) ...[
+            const SizedBox(height: GainerSpacing.xxs),
+            GainerProgressBar(
+              consumed: consumed,
+              target: goal,
+              height: 4,
+              warnWhenExceeded: !minimum,
+              color: tint ?? barColor,
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
-}
-
-/// „Heute“, „Gestern“, „Morgen“ oder kurzes Datum wie „Mo. 12. Okt.“.
-String _dateLabel(String value, String today) {
-  final date = DateTime.parse(value);
-  final now = DateTime.parse(today);
-  final difference = DateTime.utc(
-    date.year,
-    date.month,
-    date.day,
-  ).difference(DateTime.utc(now.year, now.month, now.day)).inDays;
-  if (difference == 0) return 'Heute';
-  if (difference == -1) return 'Gestern';
-  if (difference == 1) return 'Morgen';
-  const weekdays = ['Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.', 'So.'];
-  const months = [
-    'Jan.',
-    'Feb.',
-    'März',
-    'Apr.',
-    'Mai',
-    'Juni',
-    'Juli',
-    'Aug.',
-    'Sept.',
-    'Okt.',
-    'Nov.',
-    'Dez.',
-  ];
-  return '${weekdays[date.weekday - 1]} ${date.day}. ${months[date.month - 1]}';
 }
 
 enum _EntryAction { move, remove }

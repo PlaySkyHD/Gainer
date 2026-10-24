@@ -88,6 +88,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Timer? _midnight;
   bool _wasVisible = true;
 
+  /// Monatskalender unten; Ziel für „Tag auswählen“.
+  final _monthGrid = GlobalKey();
+
   bool get _visible => widget.isVisible?.call() ?? true;
 
   @override
@@ -233,6 +236,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
     await _reload();
   }
 
+  static const _scrollDuration = Duration(milliseconds: 300);
+
+  /// Scrollt zum Kalender unten. Er ist das letzte Element; die Liste baut
+  /// ihn womöglich erst beim Scrollen, daher erst ans Ende, dann ausrichten.
+  Future<void> _scrollToCalendar() async {
+    final scroll = PrimaryScrollController.maybeOf(context);
+    if (scroll == null || !scroll.hasClients) return;
+    await scroll.animateTo(
+      scroll.position.maxScrollExtent,
+      duration: _scrollDuration,
+      curve: Curves.easeOutCubic,
+    );
+    if (_monthGrid.currentContext case final grid? when grid.mounted) {
+      await Scrollable.ensureVisible(grid, duration: _scrollDuration);
+    }
+  }
+
+  /// Tag im Kalender unten gewählt: zurück nach oben zu seinen Werten.
+  void _selectFromGrid(LocalDay date) {
+    _viewModel.select(date);
+    final scroll = PrimaryScrollController.maybeOf(context);
+    if (scroll == null || !scroll.hasClients) return;
+    scroll.animateTo(0, duration: _scrollDuration, curve: Curves.easeOutCubic);
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -243,15 +271,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
         final projection = model.projection;
         final day = model.selectedDay;
         return GainerScaffold(
-          title: 'Kalender',
+          title: 'Übersicht',
           onRefresh: _reloadAll,
-          trailing: [
-            GainerPillButton(
-              key: const ValueKey('calendar-today'),
-              label: 'Heute',
-              variant: GainerPillVariant.tonal,
-              onPressed: model.goToToday,
+          leading: GainerDayNavigator(
+            pillKey: const ValueKey('calendar-date-pill'),
+            label: gainerDayLabel(
+              model.selected.toDateTime(),
+              model.today.toDateTime(),
             ),
+            onPrevious: () => model.select(model.selected.addDays(-1)),
+            onNext: () => model.select(model.selected.addDays(1)),
+            onPick: _scrollToCalendar,
+          ),
+          trailing: [
             GainerToolbarButton(
               key: const ValueKey('calendar-schedule'),
               icon: CupertinoIcons.ellipsis,
@@ -260,16 +292,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ],
           children: [
-            CalendarMonthGrid(
-              month: model.month,
-              today: model.today,
-              selected: model.selected,
-              markersOf: (date) =>
-                  model.day(date)?.markersFor(model.today) ?? const [],
-              onSelect: model.select,
-              onChangeMonth: model.changeMonth,
-            ),
-            const SizedBox(height: GainerSpacing.l),
             if (model.errorMessage case final message?) ...[
               Text(
                 message,
@@ -301,7 +323,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 onDayKind: () => _chooseDayKind(day),
                 onOpenTraining: () =>
                     widget.onOpenArea?.call(MobileArea.training),
+                // Neben der Datumsüberschrift statt in der Kopfzeile: Dort
+                // läge es bei langen Daten über dem Pfeil der Tages-Pille.
+                onToday: model.selected == model.today ? null : model.goToToday,
               ),
+            // Der Kalender steht unten: Meist interessiert der heutige Tag.
+            const SizedBox(height: GainerSpacing.l),
+            CalendarMonthGrid(
+              key: _monthGrid,
+              month: model.month,
+              today: model.today,
+              selected: model.selected,
+              markersOf: (date) =>
+                  model.day(date)?.markersFor(model.today) ?? const [],
+              onSelect: _selectFromGrid,
+              onChangeMonth: model.changeMonth,
+            ),
           ],
         );
       },
