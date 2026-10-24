@@ -5,5 +5,5 @@ public static class DatabaseSchemaVersion
 {
     public const string MigrationHistorySchema = DatabaseSchemas.Identity;
     public const string MigrationHistoryTable = "__EFMigrationsHistory";
-    public const string RequiredMigration = "20260820084159_AddNutritionGoalPhases";
+    public const string RequiredMigration = "20261024214315_AddCoachMemory";
 }
