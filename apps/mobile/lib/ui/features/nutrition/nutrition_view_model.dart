@@ -155,7 +155,7 @@ class NutritionViewModel extends ChangeNotifier {
       ),
     );
     snapshot = await repository.read(localDate);
-    statusMessage = 'Eintrag lokal gespeichert und für den Sync vorgemerkt.';
+    statusMessage = '„$productName“ hinzugefügt.';
   }, saving: true);
 
   Future<void> removeEntry(String entryId) => _run(
@@ -463,8 +463,7 @@ class NutritionViewModel extends ChangeNotifier {
       ),
     );
     snapshot = await repository.read(localDate);
-    statusMessage =
-        'Lebensmittel-Snapshot gespeichert und für den Sync vorgemerkt.';
+    statusMessage = '„${food.name}“ hinzugefügt.';
   }, saving: true);
 
   Future<void> confirmEstimatedComponent(int componentIndex) async {

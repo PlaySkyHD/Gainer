@@ -30,6 +30,19 @@ void main() {
       harness.dispose();
     }, tags: ['golden']);
 
+    testWidgets('add several sheet ${variant.name}', (tester) async {
+      final harness = await _pump(tester, variant.brightness);
+      await tester.longPress(find.byKey(const ValueKey('nutrition-add-food')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mehrere hinzufügen'));
+      await tester.pumpAndSettle();
+      await expectLater(
+        find.byType(CupertinoApp),
+        matchesGoldenFile('goldens/nutrition_add_several_${variant.name}.png'),
+      );
+      harness.dispose();
+    }, tags: ['golden']);
+
     testWidgets('food search ${variant.name}', (tester) async {
       final harness = await _pump(
         tester,
