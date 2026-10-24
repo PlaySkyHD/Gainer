@@ -57,10 +57,17 @@ Future<void> runUiDesignCaptureFlow(
   await tester.pumpAndSettle();
   await _waitForDashboard(tester, fixture);
   await capture('tab-kalender');
-  // Monatsraster und darunter heute mit Plan-Karte und Gewichtsverlauf.
-  expect(find.byKey(const ValueKey('calendar-month-grid')), findsOneWidget);
+  // Übersicht: oben heute mit Plan-Karte und Gewicht, unten der Monatskalender.
+  expect(find.byKey(const ValueKey('calendar-date-pill')), findsOneWidget);
   expect(find.byKey(const ValueKey('training-today-card')), findsOneWidget);
   expect(find.text('Gewicht'), findsWidgets);
+  await _scrollActiveTabUntilVisible(
+    tester,
+    find.byKey(const ValueKey('calendar-month-grid')),
+  );
+  expect(find.byKey(const ValueKey('calendar-month-grid')), findsOneWidget);
+  _resetActiveTabScroll(tester);
+  await tester.pumpAndSettle();
 
   await _tapTab(tester, 'Check-in');
   expect(find.text('Verlauf'), findsOneWidget);
@@ -140,7 +147,8 @@ Future<void> runUiDesignCaptureFlow(
   await tester.pumpWidget(app(GainerTheme.dark));
   await tester.pumpAndSettle();
   for (final tab in const [
-    ('Kalender', 'tab-dark-kalender'),
+    // Der Screenshot behält seinen Namen; der Tab heißt jetzt „Übersicht“.
+    ('Übersicht', 'tab-dark-kalender'),
     ('Check-in', 'tab-dark-checkin'),
     ('Essen', 'tab-dark-essen'),
     ('Training', 'tab-dark-training'),
@@ -149,8 +157,9 @@ Future<void> runUiDesignCaptureFlow(
     await _tapTab(tester, tab.$1);
     _resetActiveTabScroll(tester);
     await tester.pumpAndSettle();
-    if (tab.$1 == 'Kalender') {
-      expect(find.byKey(const ValueKey('calendar-month-grid')), findsOneWidget);
+    if (tab.$1 == 'Übersicht') {
+      // Oben steht der Tag; der Monatskalender folgt unten.
+      expect(find.byKey(const ValueKey('calendar-date-pill')), findsOneWidget);
     }
     await capture(tab.$2);
   }

@@ -15,6 +15,9 @@ final class GainerColors {
     required this.onAccent,
     required this.warning,
     required this.destructive,
+    required this.carbohydrate,
+    required this.protein,
+    required this.fat,
   });
 
   final Color background;
@@ -29,6 +32,12 @@ final class GainerColors {
   final Color warning;
   final Color destructive;
 
+  /// Makrofarben für Punkt und Balken; Werte und Namen bleiben in Textfarben.
+  /// Mit dem Paletten-Validator für Farbfehlsichtigkeit geprüft.
+  final Color carbohydrate;
+  final Color protein;
+  final Color fat;
+
   static const dark = GainerColors(
     background: Color(0xFF000000),
     surface: Color(0xFF1C1C1E),
@@ -41,6 +50,9 @@ final class GainerColors {
     onAccent: Color(0xFF00363B),
     warning: Color(0xFFFFA400),
     destructive: Color(0xFFFF453A),
+    carbohydrate: Color(0xFF008300),
+    protein: Color(0xFF3987E5),
+    fat: Color(0xFFD55181),
   );
 
   static const light = GainerColors(
@@ -55,6 +67,9 @@ final class GainerColors {
     onAccent: Color(0xFFFFFFFF),
     warning: Color(0xFFE9651F),
     destructive: Color(0xFFDD2C00),
+    carbohydrate: Color(0xFF008300),
+    protein: Color(0xFF2A78D6),
+    fat: Color(0xFFD55181),
   );
 
   static GainerColors forBrightness(Brightness brightness) =>

@@ -152,6 +152,7 @@ class CalendarNutritionOverview extends StatelessWidget {
         value: nutrition.carbohydrateGrams,
         target: nutrition.targetCarbohydrateGrams,
         stacked: stacked,
+        tint: (colors) => colors.carbohydrate,
       ),
       _Macro(
         key: const ValueKey('calendar-nutrition-protein'),
@@ -159,6 +160,7 @@ class CalendarNutritionOverview extends StatelessWidget {
         value: nutrition.proteinGrams,
         target: nutrition.targetProteinGrams,
         stacked: stacked,
+        tint: (colors) => colors.protein,
       ),
       _Macro(
         key: const ValueKey('calendar-nutrition-fat'),
@@ -166,6 +168,7 @@ class CalendarNutritionOverview extends StatelessWidget {
         value: nutrition.fatGrams,
         target: nutrition.targetFatGrams,
         stacked: stacked,
+        tint: (colors) => colors.fat,
       ),
     ];
     final fiber = _Macro(
@@ -195,32 +198,37 @@ class CalendarNutritionOverview extends StatelessWidget {
         ],
       );
     }
-    // Ballaststoffe (Mindestziel) und Salz (Obergrenze) stehen in eigener
-    // Zeile unter den Makros.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    // Ballaststoffe (Mindestziel) und Salz (Obergrenze) stehen zentriert in
+    // eigener Zeile unter den Makros, je so breit wie eine Makrospalte.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = GainerSpacing.m;
+        final column = (constraints.maxWidth - 2 * gap) / 3;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var i = 0; i < macros.length; i++) ...[
-              if (i > 0) const SizedBox(width: GainerSpacing.m),
-              Expanded(child: macros[i]),
-            ],
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < macros.length; i++) ...[
+                  if (i > 0) const SizedBox(width: gap),
+                  Expanded(child: macros[i]),
+                ],
+              ],
+            ),
+            const SizedBox(height: GainerSpacing.m),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: column, child: fiber),
+                const SizedBox(width: gap),
+                SizedBox(width: column, child: salt),
+              ],
+            ),
           ],
-        ),
-        const SizedBox(height: GainerSpacing.m),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: fiber),
-            const SizedBox(width: GainerSpacing.m),
-            Expanded(child: salt),
-            const SizedBox(width: GainerSpacing.m),
-            const Spacer(),
-          ],
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -473,6 +481,7 @@ class _Macro extends StatelessWidget {
     required this.stacked,
     this.decimals = 0,
     this.minimum = false,
+    this.tint,
     super.key,
   });
 
@@ -481,6 +490,9 @@ class _Macro extends StatelessWidget {
   final double? target;
   final bool stacked;
   final int decimals;
+
+  /// Makrofarbe für Punkt und Balken; ohne Wert neutral (Ballaststoffe, Salz).
+  final Color Function(GainerColors colors)? tint;
 
   /// Mindestziel: Über dem Ziel gibt es keine Warnfarbe.
   final bool minimum;
@@ -493,19 +505,29 @@ class _Macro extends StatelessWidget {
         ? CrossAxisAlignment.start
         : CrossAxisAlignment.center;
     final textAlignment = stacked ? Alignment.centerLeft : Alignment.center;
+    final color = tint?.call(colors);
     return Column(
       crossAxisAlignment: alignment,
       children: [
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: textAlignment,
-          child: Text(
-            name,
-            maxLines: 1,
-            style: GainerTypography.label.copyWith(
-              fontWeight: FontWeight.w600,
-              color: colors.primaryText,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (color != null) ...[
+                _Dot(color: color),
+                const SizedBox(width: GainerSpacing.xxs),
+              ],
+              Text(
+                name,
+                maxLines: 1,
+                style: GainerTypography.label.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: colors.primaryText,
+                ),
+              ),
+            ],
           ),
         ),
         if (goal != null) ...[
@@ -517,6 +539,7 @@ class _Macro extends StatelessWidget {
               target: goal,
               height: 4,
               warnWhenExceeded: !minimum,
+              color: color ?? (minimum ? null : colors.secondaryText),
             ),
           ),
         ],
@@ -533,4 +556,18 @@ class _Macro extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Farbpunkt vor dem Namen eines Makros; trägt die Farbe, der Text bleibt
+/// in Textfarbe.
+class _Dot extends StatelessWidget {
+  const _Dot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    child: const SizedBox.square(dimension: 8),
+  );
 }
