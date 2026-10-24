@@ -18,6 +18,7 @@ final class GainerMobilePlatform: MobilePlatformApi {
   private let routeStore = NativeExtensionSnapshotStore()
   @available(iOS 17.0, *)
   private let liveActivities = NativeLiveActivities()
+  private var pendingShare: CheckedContinuation<Void, Never>?
 
   init(sessionKeychain: SecureSessionKeychain = SecureSessionKeychain()) {
     self.sessionKeychain = sessionKeychain
@@ -472,6 +473,45 @@ final class GainerMobilePlatform: MobilePlatformApi {
   func openAppSettings() async throws {
     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
     _ = await UIApplication.shared.open(url)
+  }
+
+  func shareFile(path: String) async throws {
+    guard pendingShare == nil else {
+      throw PigeonError(code: "share_busy", message: "A share sheet is already open.", details: nil)
+    }
+    let url = URL(fileURLWithPath: path)
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      throw PigeonError(code: "share_file_missing", message: "The file to share does not exist.", details: nil)
+    }
+    let scene = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .first { $0.activationState == .foregroundActive }
+    var top = scene?.windows.first(where: \.isKeyWindow)?.rootViewController
+    while let presented = top?.presentedViewController {
+      top = presented
+    }
+    guard let presenter = top else {
+      throw PigeonError(code: "share_unavailable", message: "The share sheet is unavailable.", details: nil)
+    }
+    let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    if let popover = sheet.popoverPresentationController {
+      popover.sourceView = presenter.view
+      popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0, height: 0)
+      popover.permittedArrowDirections = []
+    }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      pendingShare = continuation
+      sheet.completionWithItemsHandler = { [weak self] _, _, _, _ in
+        Task { @MainActor in self?.finishShare() }
+      }
+      presenter.present(sheet, animated: true)
+    }
+  }
+
+  /// Das Sheet kann den Abschluss mehrfach melden; fortgesetzt wird nur einmal.
+  private func finishShare() {
+    pendingShare?.resume()
+    pendingShare = nil
   }
 
   func readPendingRoute() async throws -> PlatformRoute? {

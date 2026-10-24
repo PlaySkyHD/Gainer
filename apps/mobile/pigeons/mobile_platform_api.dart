@@ -497,6 +497,11 @@ abstract class MobilePlatformApi {
   @async
   void openAppSettings();
 
+  /// Öffnet das Teilen-Sheet für die Datei unter [path], z. B. für den
+  /// Datenexport. Kehrt zurück, sobald das Sheet geschlossen ist.
+  @async
+  void shareFile(String path);
+
   @async
   PlatformRoute? readPendingRoute();
 
