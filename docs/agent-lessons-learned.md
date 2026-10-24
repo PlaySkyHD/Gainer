@@ -15,7 +15,7 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 
 - **Swift wird nur in der CI gebaut.** Auf dem Linux-Host gibt es keinen Swift-Compiler. Jede Swift-Änderung zeilenweise reviewen, bevor gepusht wird.
 - **Main-Actor-Falle:** Ein `@MainActor`-Initialisierer als Standardargument (`init(x: Foo = Foo())`) kompiliert nicht, weil Standardargumente nicht auf dem Main Actor laufen. Stattdessen Optional übergeben und im Initialisierer erzeugen: `self.x = x ?? Foo()`.
-- **`guard let x` verdeckt keine lokale Variable `x` im selben Scope.** `guard let` bindet in den umgebenden Scope; `var presenter = …; guard let presenter else { … }` kompiliert nicht. Stattdessen `var top = …; guard let presenter = top else { … }`. `if let` darf verdecken, weil es einen neuen Scope öffnet.
+- **Vermutete Compiler-Fallen erst nach Beleg festhalten.** Ohne lokalen Compiler ist eine Swift-Regel nur belegt durch einen roten CI-Lauf oder durch gleichartigen Code, der auf `main` schon baut. Vorher im Code nach Gegenbeispielen suchen: Die Regel „`guard let x` darf eine lokale Variable `x` nicht verdecken“ war falsch, `GainerMobilePlatform.readSleep` macht genau das und baut.
 - **Neue Swift-Dateien** müssen in `Runner.xcodeproj/project.pbxproj` eingetragen werden (PBXBuildFile, PBXFileReference, Gruppe, Sources-Phase). Das Projekt synchronisiert Ordner nicht automatisch.
 - **Pigeon:** Nach jeder Änderung an `pigeons/mobile_platform_api.dart` neu generieren und **die generierte Dart-Datei formatieren**. Die CI prüft `dart format --set-exit-if-changed lib test pigeons` inklusive generiertem Code.
 - **HealthKit lehnt Zeiträume ab, die in der Zukunft enden.** „Bis heute“ endet jetzt, nicht um Mitternacht.
