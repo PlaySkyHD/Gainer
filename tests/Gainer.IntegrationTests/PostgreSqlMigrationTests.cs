@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 
@@ -65,7 +64,7 @@ public sealed class PostgreSqlMigrationTests
         CollectionAssert.AreEquivalent(DatabaseSchemas.All.ToArray(), await ReadSchemasAsync());
         CollectionAssert.Contains(
             (await context.Database.GetAppliedMigrationsAsync(TestContext.CancellationToken)).ToArray(),
-            DatabaseSchemaVersion.RequiredMigration);
+            context.Database.GetMigrations().Last());
     }
 
     [TestMethod]
@@ -93,22 +92,22 @@ public sealed class PostgreSqlMigrationTests
     }
 
     [TestMethod]
-    public async Task SchemaReadinessRequiresTheCurrentMigration()
+    public async Task SchemaReadinessRequiresEveryMigrationIncludingTheLatest()
     {
-        IConfiguration configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:gainer-db"] = ConnectionString,
-            })
-            .Build();
-        var healthCheck = new DatabaseSchemaReadinessHealthCheck(configuration);
+        await using AppDbContext context = Fixture.CreateContext(ConnectionString);
+        var healthCheck = new DatabaseSchemaReadinessHealthCheck(context);
+        string[] migrations = context.Database.GetMigrations().ToArray();
+        string previousToLatest = migrations[^2];
 
         HealthCheckResult beforeMigration = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
-        await using AppDbContext context = Fixture.CreateContext(ConnectionString);
+        await ((IInfrastructure<IServiceProvider>)context).Instance.GetRequiredService<IMigrator>()
+            .MigrateAsync(previousToLatest, TestContext.CancellationToken);
+        HealthCheckResult missingLatest = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
         await context.Database.MigrateAsync(TestContext.CancellationToken);
         HealthCheckResult afterMigration = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
 
         Assert.AreEqual(HealthStatus.Unhealthy, beforeMigration.Status);
+        Assert.AreEqual(HealthStatus.Unhealthy, missingLatest.Status, $"The database lacks {migrations[^1]} and must not be ready.");
         Assert.AreEqual(HealthStatus.Healthy, afterMigration.Status);
     }
 

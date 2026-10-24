@@ -5,6 +5,7 @@ using Gainer.Infrastructure.Persistence;
 using Gainer.Infrastructure.Catalog;
 using Gainer.Infrastructure.Coach;
 using Gainer.Infrastructure.Nutrition;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace Gainer.Infrastructure.HealthChecks;
@@ -123,35 +124,23 @@ internal sealed class PostgreSqlReadinessHealthCheck(IConfiguration configuratio
     }
 }
 
-internal sealed class DatabaseSchemaReadinessHealthCheck(IConfiguration configuration) : IHealthCheck
+/// <summary>
+/// Reports the schema as ready only when EF Core finds no migration of the compiled model that is missing in the history table.
+/// The expected migrations come from the assembly and the history table from the context options, so nothing is maintained by hand.
+/// </summary>
+internal sealed class DatabaseSchemaReadinessHealthCheck(AppDbContext database) : IHealthCheck
 {
-    private const string MigrationHistoryQuery =
-        "SELECT EXISTS (" +
-        "SELECT 1 FROM identity.\"__EFMigrationsHistory\" " +
-        "WHERE \"MigrationId\" = @required_migration)";
-
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
-        var connectionString = GainerPersistenceExtensions.ResolveConnectionString(configuration, "gainer-db");
-
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            return HealthCheckResult.Unhealthy("Database schema cannot be verified.");
-        }
-
         try
         {
-            await using var connection = new NpgsqlConnection(connectionString);
-            await connection.OpenAsync(cancellationToken);
-            await using var command = new NpgsqlCommand(MigrationHistoryQuery, connection);
-            command.Parameters.AddWithValue("required_migration", DatabaseSchemaVersion.RequiredMigration);
-            var hasRequiredMigration = await command.ExecuteScalarAsync(cancellationToken) is true;
+            bool hasPendingMigrations = (await database.Database.GetPendingMigrationsAsync(cancellationToken)).Any();
 
-            return hasRequiredMigration
-                ? HealthCheckResult.Healthy()
-                : HealthCheckResult.Unhealthy("Database schema is not at the required version.");
+            return hasPendingMigrations
+                ? HealthCheckResult.Unhealthy("Database schema is not at the required version.")
+                : HealthCheckResult.Healthy();
         }
         catch (Exception exception) when (exception is NpgsqlException or TimeoutException)
         {

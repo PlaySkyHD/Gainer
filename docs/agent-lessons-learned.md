@@ -43,8 +43,7 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
   - Aufruf: `sg docker -c 'dotnet test …'`. Das gilt auch für `docker compose config` und alle anderen Docker-Befehle, weil die Shell meist älter ist als die Mitgliedschaft in der Gruppe `docker`.
   - Schlägt `docker ps` ohne `sg` fehl, ist das kein Grund für einen Workaround. Kein lokales Postgres, kein `apt install`, kein Dienst auf dem Host.
   - Geht es auch mit `sg docker` nicht, beim Nutzer nachfragen.
-- **EF-Migrationen nach `dotnet ef migrations add` mit `dotnet format` nachziehen.** Generierte Dateien haben BOM und Block-Namespace, die CI prüft `--verify-no-changes`. Startprojekt ist `src/Gainer.Infrastructure` (dort liegt die Design-Time-Factory). Bei jeder neuen Migration auch `DatabaseSchemaVersion.RequiredMigration` nachziehen (der Architekturtest `DatabaseSchemaVersionTests` erzwingt es).
-- **`git pull --ff-only`** auf `main` verwenden. Nie `git restore`, `git stash` oder `git reset --hard`.
+- **EF-Migrationen nach `dotnet ef migrations add` mit `dotnet format` nachziehen.** Generierte Dateien haben BOM und Block-Namespace, die CI prüft `--verify-no-changes`. Startprojekt ist `src/Gainer.Infrastructure` (dort liegt die Design-Time-Factory).- **`git pull --ff-only`** auf `main` verwenden. Nie `git restore`, `git stash` oder `git reset --hard`.
 - **History von `main` nur mit Backup und Vorher-nachher-Vergleich umschreiben.**
   - Vorher `git clone --mirror` als Backup, umgeschrieben wird in einem separaten Clone. Kein `--prune-empty`, das entfernt absichtlich leere Commits (z. B. „ci: trigger checks …“).
   - Anzahl der Commits und Merges sowie die Betreffzeilen vorher und nachher vergleichen.
