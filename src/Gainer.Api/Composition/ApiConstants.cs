@@ -20,4 +20,7 @@ public static class ApiConstants
 
     /// <summary>Rate-limit policy for token refresh, separate so a sign-in flood cannot end sessions.</summary>
     public const string TokenRefreshRateLimitPolicy = "token-refresh";
+
+    /// <summary>Rate-limit policy for the per-user data export.</summary>
+    public const string AccountExportRateLimitPolicy = "account-export";
 }

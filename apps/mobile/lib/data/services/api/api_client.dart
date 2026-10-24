@@ -239,6 +239,17 @@ class ApiClient {
     return _asObject(response.data);
   }
 
+  /// Alle eigenen Daten als JSON-Objekt (`GET /api/v1/account/export`).
+  Future<Map<String, Object?>> getAccountExport() async {
+    final response = await _request(
+      'GET',
+      '/api/v1/account/export',
+      // Bei vielen Trainings und Ernährungstagen ist die Antwort groß.
+      receiveTimeout: const Duration(minutes: 2),
+    );
+    return _asObject(response.data);
+  }
+
   Future<ApiStravaStatus> getStravaStatus() async {
     final response = await _request('GET', '/api/v1/integrations/strava');
     return ApiStravaStatus.fromJson(_asObject(response.data));

@@ -5,6 +5,55 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/account/export": {
+      "get": {
+        "tags": [
+          "AccountExport"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountExportResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountExportResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountExportResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/account-operator/accounts": {
       "get": {
         "tags": [
@@ -2774,6 +2823,85 @@
           },
           "password": {
             "type": "string"
+          }
+        }
+      },
+      "AccountExportResourceResponse": {
+        "required": [
+          "resourceType",
+          "resourceId",
+          "version",
+          "snapshot"
+        ],
+        "type": "object",
+        "properties": {
+          "resourceType": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/JsonElement"
+          }
+        }
+      },
+      "AccountExportResponse": {
+        "required": [
+          "format",
+          "schemaVersion",
+          "syncProtocolVersion",
+          "exportedAtUtc",
+          "asOfRevision",
+          "resources"
+        ],
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "syncProtocolVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "exportedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "asOfRevision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountExportResourceResponse"
+            }
           }
         }
       },
@@ -5952,6 +6080,9 @@
     }
   },
   "tags": [
+    {
+      "name": "AccountExport"
+    },
     {
       "name": "AccountOperatorAccounts"
     },

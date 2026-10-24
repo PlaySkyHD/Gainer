@@ -553,6 +553,11 @@ abstract interface class CardioHealthPlatform {
 }
 
 /// Anmelde-Sheet des Systems für OAuth (z. B. Strava).
+/// iOS-Teilen-Sheet für eine Datei; kehrt zurück, wenn es geschlossen ist.
+abstract interface class FileSharePlatform {
+  Future<void> shareFile(String path);
+}
+
 abstract interface class WebAuthenticationPlatform {
   /// Rückleitung auf [callbackScheme]; null, wenn der Nutzer abbricht.
   Future<Uri?> authenticate(Uri url, {required String callbackScheme});

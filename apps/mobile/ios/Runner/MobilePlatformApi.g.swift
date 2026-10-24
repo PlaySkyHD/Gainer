@@ -1404,6 +1404,9 @@ protocol MobilePlatformApi {
   func areLiveActivitiesEnabled() async throws -> Bool
   /// Öffnet die Einstellungen der App, z. B. um Live Activities einzuschalten.
   func openAppSettings() async throws
+  /// Öffnet das Teilen-Sheet für die Datei unter [path], z. B. für den
+  /// Datenexport. Kehrt zurück, sobald das Sheet geschlossen ist.
+  func shareFile(path: String) async throws
   func readPendingRoute() async throws -> PlatformRoute?
   func clearPendingRoute() async throws
   func retryPendingRoute() async throws
@@ -2019,6 +2022,25 @@ class MobilePlatformApiSetup {
       }
     } else {
       openAppSettingsChannel.setMessageHandler(nil)
+    }
+    /// Öffnet das Teilen-Sheet für die Datei unter [path], z. B. für den
+    /// Datenexport. Kehrt zurück, sobald das Sheet geschlossen ist.
+    let shareFileChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.shareFile\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      shareFileChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let pathArg = args[0] as! String
+        Task { @MainActor in
+          do {
+            try await api.shareFile(path: pathArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      shareFileChannel.setMessageHandler(nil)
     }
     let readPendingRouteChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.gainer_mobile.MobilePlatformApi.readPendingRoute\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

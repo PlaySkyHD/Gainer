@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../data/repositories/health/health_steps_sync.dart';
 import '../../../data/repositories/strava/strava_service.dart';
+import '../../../data/repositories/sync/data_export_service.dart';
 import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../features/access/account_operator_screen.dart';
 import '../../features/access/logout_everywhere.dart';
@@ -17,6 +18,7 @@ import '../../features/coach/coach_screen.dart';
 import '../../features/licenses/licenses_screen.dart';
 import '../../features/nutrition/nutrition_screen.dart';
 import '../../features/strava/strava_screen.dart';
+import '../../features/sync/data_export_screen.dart';
 import '../../features/sync/sync_screen.dart';
 import '../../features/training/compact_training_bar.dart';
 import '../../features/training/training_home_screen.dart';
@@ -273,6 +275,21 @@ class _MoreScreen extends StatelessWidget {
                     accountId: account.store.accountId,
                     apiOrigin: account.api.configuration.canonicalApiOrigin,
                     isScopeActive: account.isSessionActive,
+                  ),
+                ),
+              ),
+            ),
+            GainerListRow(
+              key: const ValueKey('account-data-export'),
+              title: 'Daten exportieren',
+              leadingIcon: CupertinoIcons.square_arrow_up,
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                CupertinoPageRoute<void>(
+                  builder: (_) => DataExportScreen(
+                    service: ApiDataExportService(api: account.api),
+                    online: account.online,
+                    status: account.syncStatus,
                   ),
                 ),
               ),
