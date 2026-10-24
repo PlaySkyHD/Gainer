@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   no-open-changes:
-    name: No open OpenSpec changes
+    name: OpenSpec archived and valid
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -48,8 +48,17 @@ jobs:
       # example their length), so the merged specs are validated as well.
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: ${{ !cancelled() }}
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: tools/openspec/package-lock.json
+
+      # The CLI version is pinned in tools/openspec/package.json and its lockfile.
+      - name: Install OpenSpec CLI
+        if: ${{ !cancelled() }}
+        run: npm ci --prefix tools/openspec
 
       - name: Validate merged specs
-        run: npx --yes @fission-ai/openspec@1.14.2 validate --specs --strict
+        if: ${{ !cancelled() }}
+        run: tools/openspec/node_modules/.bin/openspec validate --specs --strict
