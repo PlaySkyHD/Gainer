@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Text.Json;
 using Gainer.Core.Security;
 using Gainer.Core.BodyTracking;
+using Gainer.Core.Coach;
 using Gainer.Core.Integrations;
 using Gainer.Core.Nutrition;
 using Gainer.Core.Training;
@@ -77,6 +78,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 
     public DbSet<StravaExport> StravaExports => Set<StravaExport>();
 
+    /// <summary>Notes the user confirmed for the coach.</summary>
+    public DbSet<CoachMemory> CoachMemories => Set<CoachMemory>();
+
     public DbSet<WorkoutExercise> WorkoutExercises => Set<WorkoutExercise>();
 
     public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
@@ -132,8 +136,34 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         ConfigureTraining(builder);
         ConfigureSync(builder);
         ConfigureIntegrations(builder);
+        ConfigureCoach(builder);
         ApplyStorageConventions(builder.Model);
         ApplyUserQueryFilters(builder);
+    }
+
+    private static void ConfigureCoach(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CoachMemory>(memory =>
+        {
+            memory.ToTable("coach_memories", DatabaseSchemas.Ai, table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_coach_memories_category",
+                    "\"Category\" IN ('Goal', 'Preference', 'Intolerance', 'Injury', 'Other')");
+                table.HasCheckConstraint(
+                    "CK_coach_memories_text",
+                    $"length(trim(\"Text\")) > 0 AND length(\"Text\") <= {CoachMemoryRules.MaxTextLength}");
+            });
+            memory.HasKey(item => item.Id);
+            memory.Property(item => item.Id).ValueGeneratedNever();
+            memory.Property(item => item.Category).HasConversion<string>().HasMaxLength(16);
+            memory.Property(item => item.Text).HasMaxLength(CoachMemoryRules.MaxTextLength).IsRequired();
+            memory.HasIndex(item => new { item.UserId, item.CreatedAtUtc });
+            memory.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     private static void ConfigureIntegrations(ModelBuilder modelBuilder)

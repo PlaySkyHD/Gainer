@@ -14,13 +14,17 @@ public sealed record CoachFact(
 
 public sealed record CoachObservation(string Text, IReadOnlyList<string> FactIds);
 
+/// <summary>A durable note the model proposes; nothing is stored until the user confirms it.</summary>
+public sealed record CoachMemorySuggestion(CoachMemoryCategory Category, string Text);
+
 public sealed record CoachAnswer(
     string Summary,
     IReadOnlyList<CoachObservation> Observations,
     IReadOnlyList<CoachFact> Facts,
     IReadOnlyList<string> DataGaps,
     IReadOnlyList<string> Suggestions,
-    long AsOfRevision);
+    long AsOfRevision,
+    IReadOnlyList<CoachMemorySuggestion> MemorySuggestions);
 
 public interface ICoachService
 {
@@ -50,9 +54,10 @@ public static class CoachToolCatalog
         "summary":{"type":"string","minLength":1,"maxLength":1000},
         "observations":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"text":{"type":"string","minLength":1,"maxLength":500},"factIds":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":160}}},"required":["text","factIds"],"additionalProperties":false}},
         "dataGaps":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":300}},
-        "suggestions":{"type":"array","maxItems":6,"items":{"type":"string","minLength":1,"maxLength":300}}
+        "suggestions":{"type":"array","maxItems":6,"items":{"type":"string","minLength":1,"maxLength":300}},
+        "memorySuggestions":{"type":"array","maxItems":3,"items":{"type":"object","properties":{"category":{"type":"string","enum":["goal","preference","intolerance","injury","other"]},"text":{"type":"string","minLength":1,"maxLength":200}},"required":["category","text"],"additionalProperties":false}}
       },
-      "required":["summary","observations","dataGaps","suggestions"],
+      "required":["summary","observations","dataGaps","suggestions","memorySuggestions"],
       "additionalProperties":false
     }
     """).RootElement.Clone();

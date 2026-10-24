@@ -1,5 +1,9 @@
 import 'dart:convert';
 
+import 'coach_memory_api_models.dart';
+
+export 'coach_memory_api_models.dart';
+
 class ApiSession {
   const ApiSession({
     required this.userId,
@@ -900,10 +904,14 @@ class ApiCoachResponse {
     required this.dataGaps,
     required this.suggestions,
     required this.asOfRevision,
+    this.memorySuggestions = const [],
   });
   final String summary;
   final List<String> observations, dataGaps, suggestions;
   final int asOfRevision;
+
+  /// Notizen, die der Coach zum Merken vorschlägt.
+  final List<ApiCoachMemorySuggestion> memorySuggestions;
   factory ApiCoachResponse.fromJson(Map<String, dynamic> json) {
     final observations = json['observations'];
     if (observations is! List ||
@@ -920,6 +928,9 @@ class ApiCoachResponse {
       dataGaps: _requiredStringList(json, 'dataGaps'),
       suggestions: _requiredStringList(json, 'suggestions'),
       asOfRevision: _requiredInt(json, 'asOfRevision'),
+      memorySuggestions: ApiCoachMemorySuggestion.listFromJson(
+        json['memorySuggestions'],
+      ),
     );
   }
 }

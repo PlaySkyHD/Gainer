@@ -15,6 +15,7 @@ import '../../models/api/api_models.dart';
 import '../../models/local/local_mutation.dart';
 import '../../repositories/body/body_repository.dart';
 import '../../repositories/cardio/cardio_repository.dart';
+import '../../repositories/coach/coach_memory_repository.dart';
 import '../../repositories/health/cardio_health_exporter.dart';
 import '../../repositories/health/check_in_health_coordinator.dart';
 import '../../repositories/health/health_review_coordinator.dart';
@@ -503,7 +504,11 @@ class MobileAuthController extends ChangeNotifier
     final progressViewModel = ProgressViewModel(
       InsightsRepository(api, store: store),
     );
-    final coachViewModel = CoachViewModel(CoachRepository(api));
+    final coachViewModel = CoachViewModel(
+      CoachRepository(api),
+      memories: ApiCoachMemoryRepository(api),
+      online: online,
+    );
     nextScope = AccountScope(
       session: session,
       generation: generation,

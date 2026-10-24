@@ -34,7 +34,9 @@ public sealed class CoachController(ICoachService coach) : ControllerBase
                     item.Unit, item.Period, item.AlgorithmVersion)).ToList(),
                 answer.DataGaps,
                 answer.Suggestions,
-                answer.AsOfRevision));
+                answer.AsOfRevision,
+                answer.MemorySuggestions.Select(item => new CoachMemorySuggestionResponse(
+                    CoachMemoryRules.ToWire(item.Category), item.Text)).ToList()));
         }
         catch (OpenAiProviderException exception)
         {

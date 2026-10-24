@@ -28,4 +28,38 @@ public sealed class CoachToolSchemaTests
         Assert.AreEqual(8, schema.GetProperty("properties").GetProperty("observations").GetProperty("maxItems").GetInt32());
         Assert.AreEqual(6, schema.GetProperty("properties").GetProperty("suggestions").GetProperty("maxItems").GetInt32());
     }
+
+    [TestMethod]
+    public void MemorySuggestionsAreARequiredBoundedListOfCategoryAndText()
+    {
+        JsonElement schema = CoachToolCatalog.OutputSchema;
+        Assert.IsTrue(schema.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "memorySuggestions"));
+        JsonElement suggestions = schema.GetProperty("properties").GetProperty("memorySuggestions");
+        Assert.AreEqual(CoachMemoryRules.MaxSuggestions, suggestions.GetProperty("maxItems").GetInt32());
+        JsonElement item = suggestions.GetProperty("items");
+        Assert.IsFalse(item.GetProperty("additionalProperties").GetBoolean());
+        CollectionAssert.AreEqual(
+            CoachMemoryRules.WireNames.ToArray(),
+            item.GetProperty("properties").GetProperty("category").GetProperty("enum").EnumerateArray().Select(value => value.GetString()).ToArray());
+        Assert.AreEqual(CoachMemoryRules.MaxTextLength, item.GetProperty("properties").GetProperty("text").GetProperty("maxLength").GetInt32());
+        CollectionAssert.AreEquivalent(
+            new[] { "category", "text" },
+            item.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray());
+    }
+
+    [TestMethod]
+    public void MemoryRulesNormalizeTextAndRoundTripCategories()
+    {
+        Assert.AreEqual("Halbmarathon im Mai", CoachMemoryRules.Normalize(" Halbmarathon\r\n\tim \u0000 Mai  "));
+        Assert.AreEqual(string.Empty, CoachMemoryRules.Normalize(null));
+        Assert.AreEqual(CoachMemoryRules.DuplicateKey("laktose"), CoachMemoryRules.DuplicateKey(" LAKTOSE "));
+        foreach (CoachMemoryCategory category in Enum.GetValues<CoachMemoryCategory>())
+        {
+            Assert.IsTrue(CoachMemoryRules.TryParse(CoachMemoryRules.ToWire(category), out CoachMemoryCategory parsed));
+            Assert.AreEqual(category, parsed);
+        }
+        Assert.IsFalse(CoachMemoryRules.TryParse("Goal", out _));
+        Assert.IsFalse(CoachMemoryRules.TryParse(null, out _));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => CoachMemoryRules.ToWire((CoachMemoryCategory)42));
+    }
 }
