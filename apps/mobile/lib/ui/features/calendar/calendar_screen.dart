@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/cardio/cardio_repository.dart';
+import '../../../data/repositories/health/health_steps_sync.dart';
 import '../../../data/repositories/nutrition/nutrition_repository.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
@@ -37,6 +38,7 @@ class CalendarScreen extends StatefulWidget {
     this.onOpenArea,
     this.onOpenNutritionDay,
     this.onOpenCheckInDay,
+    this.steps,
     this.visibility,
     this.isVisible,
     this.refresh,
@@ -65,6 +67,9 @@ class CalendarScreen extends StatefulWidget {
   /// Öffnet den Check-in des Tages `JJJJ-MM-TT`; ohne Wert nur den Tab.
   final ValueChanged<String>? onOpenCheckInDay;
 
+  /// Schritte aus Apple Health: heute live, vergangene Tage nachgezogen.
+  final HealthStepsSync? steps;
+
   /// Meldet Tab-Wechsel; zusammen mit [isVisible] lädt der Kalender neu,
   /// sobald der Tab wieder sichtbar wird.
   final Listenable? visibility;
@@ -90,6 +95,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   /// Monatskalender unten; Ziel für „Tag auswählen“.
   final _monthGrid = GlobalKey();
+
+  /// Schritte von heute aus Apple Health; null ohne Zugriff oder Daten.
+  int? _todaySteps;
 
   bool get _visible => widget.isVisible?.call() ?? true;
 
@@ -130,11 +138,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
     super.dispose();
   }
 
-  /// Lädt Kalender und Dashboard neu.
+  /// Lädt Kalender, Dashboard und Schritte neu.
   Future<void> _reloadAll() => Future.wait([
     _viewModel.load(),
     if (widget.overview case final overview?) overview.load(),
+    _refreshSteps(),
   ]);
+
+  /// Liest die Schritte von heute live und zieht vergangene Check-ins nach;
+  /// hat sich dabei etwas geändert, lädt der Kalender die Tage neu.
+  Future<void> _refreshSteps() async {
+    final steps = widget.steps;
+    if (steps == null) return;
+    final today = await steps.today();
+    if (mounted && today != _todaySteps) setState(() => _todaySteps = today);
+    if (await steps.syncRecent() > 0 && mounted) await _viewModel.load();
+  }
 
   void _onVisibility() {
     final visible = _visible;
@@ -326,6 +345,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 // Neben der Datumsüberschrift statt in der Kopfzeile: Dort
                 // läge es bei langen Daten über dem Pfeil der Tages-Pille.
                 onToday: model.selected == model.today ? null : model.goToToday,
+                liveSteps: _todaySteps,
               ),
             // Der Kalender steht unten: Meist interessiert der heutige Tag.
             const SizedBox(height: GainerSpacing.l),

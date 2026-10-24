@@ -6,6 +6,9 @@ class FakeHealthPlatform implements HealthPlatform {
   bool available = true;
   List<BodyMassSample> bodyMass = const [];
   int? steps;
+
+  /// Schritte je Tag nach Beginn des Lesefensters; ersetzt [steps].
+  int? Function(DateTime fromUtc)? stepsFor;
   HealthSleepWindow? sleep;
 
   /// Wirft beim jeweiligen Aufruf, wenn gesetzt.
@@ -54,7 +57,7 @@ class FakeHealthPlatform implements HealthPlatform {
   }) async {
     stepReads.add((from: fromUtc, to: toUtc));
     if (readError != null) throw readError!;
-    return steps;
+    return stepsFor?.call(fromUtc) ?? steps;
   }
 
   @override
