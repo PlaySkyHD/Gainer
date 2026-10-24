@@ -4,7 +4,7 @@ Stand: 12. Oktober 2026. Die Paritätsinventur für Task 1.1 wurde vom Hauptagen
 
 ## Maßgebliche Quellen
 
-- Migrationsplan: `openspec/changes/migrate-pwa-to-ios-first-flutter/{proposal.md,design.md,tasks.md}`.
+- Migrationsplan: `openspec/changes/archive/2026-10-24-migrate-pwa-to-ios-first-flutter/{proposal.md,design.md,tasks.md}`.
 - Aktive Fachanforderungen: `build-ai-body-training-tracker-mvp`, `add-meal-calorie-tracking`, `add-smart-meals-and-nutrition-targets`, `add-azure-nutrition-label-scanning`.
 - PWA-UI: `apps/web/src/components/*`; lokale Fachlogik: `apps/web/src/lib/offline/*`; API-Transport: `apps/web/src/lib/api/*`.
 - Backendvertrag: `contracts/openapi/Gainer.Api.json`; Auth-/Sync-Schutz in `src/Gainer.Api`, Datenverträge in `src/Gainer.Contracts`, Fachlogik/Persistenz in `src/Gainer.Core` und `src/Gainer.Infrastructure`.
