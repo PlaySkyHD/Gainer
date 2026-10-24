@@ -23,6 +23,12 @@ Future<void> runProgrammaticTabChecks(
   await _tapTab(tester, 'Essen');
   await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
   await tester.pumpAndSettle();
+  // „Manuell erfassen“ steht in der letzten Gruppe und kann unter dem Rand
+  // liegen.
+  await tester.ensureVisible(
+    find.byKey(const ValueKey('nutrition-mode-manual'), skipOffstage: false),
+  );
+  await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('nutrition-mode-manual')));
   await tester.pumpAndSettle();
   expect(find.byKey(const ValueKey('nutrition-entry-name')), findsOneWidget);
@@ -90,6 +96,12 @@ Future<void> runUiDesignCaptureFlow(
   );
   await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
   await tester.pumpAndSettle();
+  // „Manuell erfassen“ steht in der letzten Gruppe und kann unter dem Rand
+  // liegen.
+  await tester.ensureVisible(
+    find.byKey(const ValueKey('nutrition-mode-manual'), skipOffstage: false),
+  );
+  await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('nutrition-mode-manual')));
   await tester.pumpAndSettle();
   await tester.ensureVisible(
@@ -155,6 +167,12 @@ Future<void> runUiDesignCaptureFlow(
     find.byKey(const ValueKey('nutrition-add-food')),
   );
   await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+  await tester.pumpAndSettle();
+  // „Manuell erfassen“ steht in der letzten Gruppe und kann unter dem Rand
+  // liegen.
+  await tester.ensureVisible(
+    find.byKey(const ValueKey('nutrition-mode-manual'), skipOffstage: false),
+  );
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('nutrition-mode-manual')));
   await tester.pumpAndSettle();
