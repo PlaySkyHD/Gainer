@@ -15,6 +15,7 @@ You plan, brief, verify, open the pull requests and merge. Subagents only implem
 ## 2. Plan
 
 - Map each issue to the files it changes.
+- Docs or skill changes of a few lines you make yourself: branch from `origin/main`, commit with `Fixes #<n>`, continue with section 5. A subagent costs more than the change.
 - Disjoint files: run in parallel.
 - Same file, different places: run in parallel, but give each agent an exact anchor ("insert directly after the bullet starting with …") several lines apart. Check later with `git merge-tree`.
 - Same lines or one issue depends on another: run sequentially, or stack branch B on branch A.
