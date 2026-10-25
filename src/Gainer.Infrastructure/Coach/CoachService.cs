@@ -334,34 +334,36 @@ public sealed partial class CoachService(
         return accepted;
     }
 
+    private const string NotesPrefix = MemoryNotesLabel + "\n{\"notes\":[";
+    private const string NotesSuffix = "]}";
+
     /// <summary>
     /// Newest notes first while the notes item, exactly as sent, stays within the prompt budget.
-    /// At most 50 entries, so rebuilding the text per note stays cheap.
+    /// Each note is serialized once; the lengths add up with the fixed wrapper and the commas.
     /// </summary>
     private static (IReadOnlyList<CoachMemoryItem> Notes, string Text) BoundedNotes(IReadOnlyList<CoachMemoryItem> notes)
     {
         var selected = new List<CoachMemoryItem>();
-        string text = string.Empty;
+        var entries = new List<string>();
+        int length = NotesPrefix.Length + NotesSuffix.Length;
         foreach (CoachMemoryItem note in notes)
         {
-            string candidate = NotesText([.. selected, note]);
-            if (candidate.Length > CoachMemoryRules.MaxPromptCharacters) break;
+            string entry = NoteJson(note);
+            int added = entry.Length + (entries.Count > 0 ? 1 : 0);
+            if (length + added > CoachMemoryRules.MaxPromptCharacters) break;
+            length += added;
+            entries.Add(entry);
             selected.Add(note);
-            text = candidate;
         }
-        return (selected, text);
+        return (selected, entries.Count == 0 ? string.Empty : NotesPrefix + string.Join(',', entries) + NotesSuffix);
     }
 
-    private static string NotesText(IEnumerable<CoachMemoryItem> notes) =>
-        MemoryNotesLabel + "\n" + JsonSerializer.Serialize(new
-        {
-            notes = notes.Select(item => new
-            {
-                id = MemoryFactId(item),
-                category = CoachMemoryRules.ToWire(item.Category),
-                text = item.Text,
-            }),
-        }, NotesJsonOptions);
+    private static string NoteJson(CoachMemoryItem item) => JsonSerializer.Serialize(new
+    {
+        id = MemoryFactId(item),
+        category = CoachMemoryRules.ToWire(item.Category),
+        text = item.Text,
+    }, NotesJsonOptions);
 
     private static JsonElement UserText(string text) => JsonSerializer.SerializeToElement(new
     {

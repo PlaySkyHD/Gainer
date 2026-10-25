@@ -4,7 +4,7 @@
 
 ### Requirement: Export der eigenen Daten
 
-Das System SHALL einem angemeldeten Nutzer seine fachlichen Daten als eine JSON-Datei bereitstellen: den aktuellen Stand jeder eigenen Sync-Ressource ohne gelöschte und im Abschnitt `coachMemories` die eigenen Gedächtnis-Einträge. Der Export MUST NOT Passwörter, Passkeys, Sessions, Tokens, Geräte oder Integrationszugänge enthalten. Die Datei SHALL Format-Kennzeichen, Schemaversion, Exportzeitpunkt und Server-Revision tragen. Der Endpunkt MUST pro Nutzer begrenzt sein.
+Das System SHALL einem angemeldeten Nutzer alle eigenen Daten als JSON-Datei bereitstellen, nur für den aus der Sitzung bestimmten Nutzer: den aktuellen Stand jeder Sync-Ressource ohne gelöschte und im Abschnitt `coachMemories` alle Gedächtnis-Einträge. Der Export MUST NOT Passwörter, Passkeys, Sessions, Tokens, Geräte oder Integrationszugänge enthalten. Die Datei SHALL Format-Kennzeichen, Schemaversion, Exportzeitpunkt und Server-Revision tragen. Der Endpunkt MUST pro Nutzer begrenzt sein.
 
 #### Scenario: Vollständiger Export
 

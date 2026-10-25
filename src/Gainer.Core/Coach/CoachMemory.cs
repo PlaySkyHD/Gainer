@@ -91,8 +91,19 @@ public static class CoachMemoryRules
     public const int MaxTextLength = 200;
     public const int MaxSuggestions = 3;
 
-    /// <summary>Upper bound for the notes input item, measured on the text actually sent to the model.</summary>
-    public const int MaxPromptCharacters = 4_000;
+    /// <summary>Room per note in the prompt for id, category, JSON and separator (the longest category needs 84).</summary>
+    public const int PromptOverheadPerNote = 100;
+
+    /// <summary>Room for the label and the JSON wrapper of the notes item.</summary>
+    public const int PromptOverheadFixed = 100;
+
+    /// <summary>
+    /// Fixed upper bound for the notes input item, measured on the text actually sent to the model.
+    /// Text budget and overhead are counted separately, so a full memory of 50 notes with 200 characters
+    /// fits; only texts that need JSON escaping (quotes, backslashes) can push the oldest notes out.
+    /// </summary>
+    public const int MaxPromptCharacters =
+        MaxEntriesPerUser * (MaxTextLength + PromptOverheadPerNote) + PromptOverheadFixed;
 
     public static IReadOnlyList<string> WireNames { get; } = ["goal", "preference", "intolerance", "injury", "other"];
 

@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Gainer.Core.BodyTracking;
 using Gainer.Core.Coach;
@@ -129,26 +130,51 @@ public sealed class CoachServiceTests
     }
 
     [TestMethod]
-    public async Task NotesAreBoundedNewestFirst()
+    public async Task AFullMemoryOfLongNotesFitsTheBudget()
     {
-        CoachMemoryItem[] notes = Enumerable.Range(0, 25)
-            .Select(index => Note(CoachMemoryCategory.Other, $"{index:D2}" + new string('x', 198)))
+        // The longest category, so the per-note overhead is at its maximum.
+        CoachMemoryItem[] notes = Enumerable.Range(0, CoachMemoryRules.MaxEntriesPerUser)
+            .Select(index => Note(CoachMemoryCategory.Intolerance, $"{index:D2}" + new string('x', 198)))
             .ToArray();
         var provider = new FakeProvider(Response(Message(EmptyAnswer)));
 
         await Service(provider, notes).AnswerAsync("Fortschritt?");
 
-        // The budget covers the sent text, including label, ids and JSON: 14 notes of 200 characters fit.
         string text = InputText(provider.Requests.Single().GetProperty("input")[0]);
         Assert.IsLessThanOrEqualTo(CoachMemoryRules.MaxPromptCharacters, text.Length);
-        Assert.Contains($"memory:{notes[13].Id:N}", text);
-        Assert.DoesNotContain($"memory:{notes[14].Id:N}", text);
+        CollectionAssert.AreEqual(
+            notes.Select(item => $"memory:{item.Id:N}").ToArray(),
+            NoteIds(text));
+    }
+
+    [TestMethod]
+    public async Task NotesThatNeedEscapingAreBoundedNewestFirst()
+    {
+        // Quotes double in JSON, so not all of them fit; the newest ones win.
+        CoachMemoryItem[] notes = Enumerable.Range(0, CoachMemoryRules.MaxEntriesPerUser)
+            .Select(index => Note(CoachMemoryCategory.Other, $"{index:D2}" + new string('"', 198)))
+            .ToArray();
+        var provider = new FakeProvider(Response(Message(EmptyAnswer)));
+
+        await Service(provider, notes).AnswerAsync("Fortschritt?");
+
+        string text = InputText(provider.Requests.Single().GetProperty("input")[0]);
+        Assert.IsLessThanOrEqualTo(CoachMemoryRules.MaxPromptCharacters, text.Length);
+        string[] ids = NoteIds(text);
+        Assert.IsLessThan(notes.Length, ids.Length);
+        CollectionAssert.AreEqual(notes.Take(ids.Length).Select(item => $"memory:{item.Id:N}").ToArray(), ids);
+        // The next note would not have fit.
+        CoachMemoryItem next = notes[ids.Length];
+        int nextEntry = JsonSerializer.Serialize(
+            new { id = $"memory:{next.Id:N}", category = "other", text = next.Text },
+            new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }).Length;
+        Assert.IsGreaterThan(CoachMemoryRules.MaxPromptCharacters, text.Length + 1 + nextEntry);
     }
 
     [TestMethod]
     public async Task NotesKeepUmlautsAndTheBudgetCountsTheSentText()
     {
-        CoachMemoryItem[] notes = Enumerable.Range(0, 25)
+        CoachMemoryItem[] notes = Enumerable.Range(0, CoachMemoryRules.MaxEntriesPerUser)
             .Select(index => Note(CoachMemoryCategory.Other, $"{index:D2} Laktoseunverträglichkeit " + new string('ü', 172)))
             .ToArray();
         var provider = new FakeProvider(Response(Message(EmptyAnswer)));
@@ -159,8 +185,16 @@ public sealed class CoachServiceTests
         Assert.Contains("Laktoseunverträglichkeit", text);
         Assert.DoesNotContain("\\u", text);
         Assert.IsLessThanOrEqualTo(CoachMemoryRules.MaxPromptCharacters, text.Length);
-        Assert.Contains($"memory:{notes[13].Id:N}", text);
-        Assert.DoesNotContain($"memory:{notes[14].Id:N}", text);
+        Assert.HasCount(notes.Length, NoteIds(text));
+    }
+
+    /// <summary>Ids of the notes item in order; also proves the hand-built JSON parses.</summary>
+    private static string[] NoteIds(string notesText)
+    {
+        string json = notesText[(notesText.IndexOf('\n', StringComparison.Ordinal) + 1)..];
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.GetProperty("notes").EnumerateArray()
+            .Select(item => item.GetProperty("id").GetString()!).ToArray();
     }
 
     [TestMethod]
