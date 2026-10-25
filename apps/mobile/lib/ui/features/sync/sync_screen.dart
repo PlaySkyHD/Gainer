@@ -731,6 +731,7 @@ class _SyncScreenState extends State<SyncScreen> {
     'daily-check-in' => 'Check-in',
     'nutrition-day' => 'Ernährung',
     'cardio-session' => 'Cardio',
+    'water-intake-day' => 'Wasser',
     'body-goal' => 'Körperziel',
     _ => 'Eintrag',
   };

@@ -14,8 +14,10 @@ import 'meal_dictation_controller.dart';
 import 'nutrition_averages_view.dart';
 import 'nutrition_day_kind.dart';
 import 'nutrition_day_templates.dart';
+import 'nutrition_settings_screen.dart';
 import 'nutrition_targets_editor.dart';
 import 'nutrition_view_model.dart';
+import 'nutrition_water_card.dart';
 
 const _notRecognizedLabel = 'nicht erkannt';
 
@@ -376,6 +378,20 @@ class _NutritionScreenState extends State<NutritionScreen> {
       onManage: _editTargets,
       onDayKind: () => _chooseDayKind(snapshot),
     ),
+    if (vm.preferences.waterEnabled)
+      Padding(
+        padding: const EdgeInsets.only(top: GainerSpacing.s),
+        child: NutritionWaterCard(
+          amountMl: vm.waterMl,
+          goalMl: vm.preferences.waterGoalMl,
+          onAdd: vm.addWater,
+          onEdit: () => showWaterAmountSheet(
+            context,
+            currentMl: vm.waterMl,
+            onSave: vm.setWater,
+          ),
+        ),
+      ),
     if (snapshot.suggestedTemplate case final template?)
       Padding(
         padding: const EdgeInsets.only(top: GainerSpacing.s),
@@ -483,6 +499,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
             icon: CupertinoIcons.slider_horizontal_3,
             value: _NutritionMenuAction.planning,
           ),
+          GainerSheetAction(
+            label: 'Einstellungen',
+            icon: CupertinoIcons.gear,
+            hint: 'Wasser erfassen',
+            value: _NutritionMenuAction.settings,
+          ),
         ],
       ],
     );
@@ -496,6 +518,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
         await _editTargets();
       case _NutritionMenuAction.planning:
         await _openPlanning();
+      case _NutritionMenuAction.settings:
+        await openNutritionSettings(
+          context,
+          preferences: widget.viewModel.repository.preferences,
+        );
       case null:
     }
   }
@@ -3302,7 +3329,13 @@ class _DayCard extends StatelessWidget {
 
 enum _EntryAction { move, remove }
 
-enum _NutritionMenuAction { saveTemplate, applyTemplate, targets, planning }
+enum _NutritionMenuAction {
+  saveTemplate,
+  applyTemplate,
+  targets,
+  planning,
+  settings,
+}
 
 /// Mahlzeit: Abschnittsüberschrift mit kcal rechts, darunter eine gruppierte
 /// Karte mit einer Zeile je Eintrag. Wischen nach links löscht nach

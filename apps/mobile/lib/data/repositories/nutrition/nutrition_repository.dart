@@ -10,6 +10,8 @@ import '../../models/local/local_mutation.dart';
 import '../../services/platform/platform_ports.dart';
 import '../sync/local_sync_store.dart';
 import 'bls_food_catalog.dart';
+import 'nutrition_preferences.dart';
+import 'water_intake_repository.dart';
 
 typedef NutritionIdFactory = String Function();
 
@@ -208,8 +210,25 @@ class NutritionSnapshot {
     this.automaticDayKind = NutritionDayKind.rest,
     this.templates = const [],
     this.suggestedTemplate,
+    this.waterMl = 0,
   });
   final NutritionDay day;
+
+  /// Getrunkenes Wasser des Tages in ml; 0 ohne Eintrag.
+  final int waterMl;
+
+  /// Derselbe Stand mit neuer Wassermenge, ohne den Tag neu zu lesen.
+  NutritionSnapshot withWater(int amountMl) => NutritionSnapshot(
+    day: day,
+    meals: meals,
+    targetSchedule: targetSchedule,
+    recentFoods: recentFoods,
+    dayTarget: dayTarget,
+    automaticDayKind: automaticDayKind,
+    templates: templates,
+    suggestedTemplate: suggestedTemplate,
+    waterMl: amountMl,
+  );
   final List<({String id, ReusableMeal value})> meals;
   final NutritionTargetSchedule? targetSchedule;
   final List<NutritionFood> recentFoods;
@@ -252,6 +271,18 @@ class NutritionRepository {
   final CapturePlatform? capture;
   final NutritionIdFactory ids;
   final DateTime Function() clock;
+
+  /// Wassermenge je Tag (eigene Sync-Ressource).
+  late final WaterIntakeRepository water = WaterIntakeRepository(
+    store: store,
+    ids: ids,
+    clock: clock,
+  );
+
+  /// Gerätelokale Einstellungen der Ernährung (z. B. Wasser erfassen).
+  late final NutritionPreferences preferences = NutritionPreferences(
+    store: store,
+  );
 
   Future<NutritionSnapshot> read(String localDate) async {
     if (!isValidLocalDate(localDate)) {
@@ -300,6 +331,7 @@ class NutritionRepository {
               localDate.compareTo(_dateString(clock())) < 0
           ? null
           : templates.where((item) => item.dayKind == kind).firstOrNull,
+      waterMl: await water.read(localDate),
     );
   }
 

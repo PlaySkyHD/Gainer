@@ -485,6 +485,9 @@ const forceableAggregateTypes = {
   'nutrition-day',
   nutritionDayTemplateType,
   'cardio-session',
+  // Der Body trägt die Summe wie die Arbeitskopie; `addedMl` entfällt beim
+  // Erzwingen, dann geht die Summe als `setWaterIntake`.
+  'water-intake-day',
 };
 
 class ConflictResourceInfo {
@@ -530,7 +533,8 @@ bool _hasServerType(String aggregateType) => switch (aggregateType) {
   'reusable-meal' ||
   'nutrition-target-schedule' ||
   nutritionDayTemplateType ||
-  'cardio-session' => true,
+  'cardio-session' ||
+  'water-intake-day' => true,
   _ => false,
 };
 
@@ -551,7 +555,7 @@ String? _resourceTitle(String aggregateType, Object? workingCopy) {
                 '${started.month.toString().padLeft(2, '0')}.${started.year}';
       final parts = [?title, ?date];
       return parts.isEmpty ? null : parts.join(' · ');
-    case 'daily-check-in' || 'nutrition-day':
+    case 'daily-check-in' || 'nutrition-day' || 'water-intake-day':
       return text('localDate');
     case 'cardio-session':
       final started = DateTime.tryParse(text('startedAtUtc') ?? '')?.toLocal();
@@ -585,5 +589,6 @@ String _serverType(String aggregateType) => switch (aggregateType) {
   'nutrition-target-schedule' => 'NutritionTargetSchedule',
   nutritionDayTemplateType => 'NutritionDayTemplate',
   'cardio-session' => 'CardioSession',
+  'water-intake-day' => 'WaterIntakeDay',
   _ => throw ArgumentError.value(aggregateType, 'aggregateType'),
 };

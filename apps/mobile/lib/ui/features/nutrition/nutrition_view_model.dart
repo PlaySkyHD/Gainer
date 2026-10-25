@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../../data/repositories/nutrition/nutrition_preferences.dart';
 import '../../../data/repositories/nutrition/nutrition_repository.dart';
 import '../../../data/services/platform/platform_ports.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
@@ -14,9 +15,17 @@ class NutritionViewModel extends ChangeNotifier {
     if (!isValidLocalDate(localDate)) {
       throw ArgumentError.value(localDate, 'localDate');
     }
+    repository.preferences.values.addListener(_notify);
   }
 
   final NutritionRepository repository;
+
+  /// Gerätelokale Einstellungen (Wasser erfassen, Tagesziel).
+  NutritionPreferenceValues get preferences =>
+      repository.preferences.values.value;
+
+  /// Getrunkenes Wasser des angezeigten Tages in ml.
+  int get waterMl => snapshot?.waterMl ?? 0;
 
   /// Diktat für die Mahlzeiten-Schätzung; ohne Plattform kein Diktat-Button.
   final DictationPlatform? dictation;
@@ -90,6 +99,7 @@ class NutritionViewModel extends ChangeNotifier {
     _notify();
     try {
       final next = await repository.read(date);
+      await repository.preferences.read();
       if (_disposed || generation != _dayLoadGeneration) return;
       localDate = date;
       snapshot = next;
@@ -734,6 +744,42 @@ class NutritionViewModel extends ChangeNotifier {
     }
   }
 
+  /// Addiert [addedMl] Wasser zum angezeigten Tag (Schnellknöpfe).
+  Future<bool> addWater(int addedMl) =>
+      _changeWater((date) => repository.water.add(date, addedMl));
+
+  /// Setzt die Wassermenge des angezeigten Tages (Korrektur, Rückgängig).
+  /// Liefert false, wenn nichts gespeichert wurde.
+  Future<bool> setWater(int amountMl) =>
+      _changeWater((date) => repository.water.setAmount(date, amountMl));
+
+  /// Ohne Ladeanzeige, damit schnelle Tipps nicht flackern; die Warteschlange
+  /// im Repository hält die Reihenfolge.
+  Future<bool> _changeWater(Future<int> Function(String date) change) async {
+    if (_disposed) return false;
+    final date = localDate;
+    if (errorOperation == NutritionErrorOperation.diary) {
+      errorMessage = null;
+      errorOperation = null;
+    }
+    try {
+      final total = await change(date);
+      final current = snapshot;
+      if (current != null && localDate == date) {
+        snapshot = current.withWater(total);
+      }
+      return true;
+    } catch (error) {
+      if (!_disposed) {
+        errorMessage = _messageFor(error);
+        errorOperation = NutritionErrorOperation.diary;
+      }
+      return false;
+    } finally {
+      _notify();
+    }
+  }
+
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -741,6 +787,7 @@ class NutritionViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    repository.preferences.values.removeListener(_notify);
     super.dispose();
   }
 

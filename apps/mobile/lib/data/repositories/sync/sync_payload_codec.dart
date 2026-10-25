@@ -16,6 +16,7 @@ const _reusableMealType = 'reusable-meal';
 const _nutritionTargetScheduleType = 'nutrition-target-schedule';
 const _nutritionDayTemplateType = 'nutrition-day-template';
 const _cardioSessionType = 'cardio-session';
+const _waterIntakeDayType = 'water-intake-day';
 
 /// Pure translation between PWA-shaped local aggregates and the Sync v2
 /// backend DTOs. Keep transport orchestration out of this codec.
@@ -34,6 +35,7 @@ class SyncPayloadCodec {
         'NutritionTargetSchedule' => _nutritionTargetScheduleType,
         'NutritionDayTemplate' => _nutritionDayTemplateType,
         'CardioSession' => _cardioSessionType,
+        'WaterIntakeDay' => _waterIntakeDayType,
         _ => null,
       };
 
@@ -70,6 +72,9 @@ class SyncPayloadCodec {
             : 'saveNutritionDayTemplate';
       case _cardioSessionType:
         return _cardioSessionOperation(mutation);
+      case _waterIntakeDayType:
+        // Eine Addition nur ohne zuvor wartende Änderung (D2); sonst die Summe.
+        return body['addedMl'] is int ? 'addWaterIntake' : 'setWaterIntake';
       default:
         throw ArgumentError.value(mutation.aggregateType, 'aggregateType');
     }
@@ -172,6 +177,14 @@ class SyncPayloadCodec {
         return _nutritionDayTemplatePayload(mutation, body, baseVersion);
       case _cardioSessionType:
         return _cardioSessionPayload(mutation, body, baseVersion);
+      case _waterIntakeDayType:
+        final added = body['addedMl'];
+        return {
+          'waterIntakeDayId': mutation.aggregateId,
+          'localDate': body['localDate'],
+          'baseVersion': baseVersion,
+          'amountMl': added is int ? added : body['amountMl'],
+        };
       default:
         throw ArgumentError.value(mutation.aggregateType, 'aggregateType');
     }
@@ -697,6 +710,7 @@ class SyncPayloadCodec {
       'nutritionDayId',
       'reusableMealId',
       'nutritionTargetScheduleId',
+      'waterIntakeDayId',
     ]) {
       snapshot.remove(key);
     }
