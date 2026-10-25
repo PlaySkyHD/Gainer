@@ -75,11 +75,13 @@ class MobileShellViewModel extends ChangeNotifier {
     return requested;
   }
 
-  /// Wechselt in den Kalender und bittet ihn, [day] zu zeigen.
+  /// Wechselt in den Kalender und bittet ihn danach, [day] zu zeigen. Der
+  /// Kalender holt den Tag erst nach dem nächsten Bild ab, wenn der Tab
+  /// sichtbar ist und seine Ticker laufen.
   void openCalendarDay(LocalDay day) {
+    selectTab(MobileArea.calendar.index);
     _requestedCalendarDay = day;
     notifyListeners();
-    selectTab(MobileArea.calendar.index);
   }
 
   /// Liefert den angefragten Kalendertag einmal und löscht ihn danach.

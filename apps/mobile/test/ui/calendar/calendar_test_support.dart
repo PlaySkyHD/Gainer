@@ -318,28 +318,30 @@ Future<void> pumpCalendar(
   Listenable? refresh,
   NutritionRepository? nutrition,
   LocalDay? Function()? takeRequestedDay,
+  Widget Function(Widget calendar)? wrap,
 }) async {
   final active = ActiveWorkoutController(harness.repository);
   addTearDown(active.dispose);
+  final calendar = CalendarScreen(
+    training: harness.repository,
+    activeWorkout: active,
+    cardioSessions: harness.cardio,
+    nutrition: nutrition ?? harness.nutrition,
+    overview: overview,
+    onOpenArea: onOpenArea,
+    onOpenNutritionDay: onOpenNutritionDay,
+    onOpenCheckInDay: onOpenCheckInDay,
+    steps: steps,
+    visibility: visibility,
+    isVisible: isVisible,
+    takeRequestedDay: takeRequestedDay,
+    refresh: refresh,
+  );
   await tester.pumpWidget(
     trainingTestApp(
       brightness: brightness,
       textScale: textScale,
-      home: CalendarScreen(
-        training: harness.repository,
-        activeWorkout: active,
-        cardioSessions: harness.cardio,
-        nutrition: nutrition ?? harness.nutrition,
-        overview: overview,
-        onOpenArea: onOpenArea,
-        onOpenNutritionDay: onOpenNutritionDay,
-        onOpenCheckInDay: onOpenCheckInDay,
-        steps: steps,
-        visibility: visibility,
-        isVisible: isVisible,
-        takeRequestedDay: takeRequestedDay,
-        refresh: refresh,
-      ),
+      home: wrap?.call(calendar) ?? calendar,
     ),
   );
   await settle(tester);

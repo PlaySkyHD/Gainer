@@ -54,6 +54,23 @@ void main() {
     model.dispose();
   });
 
+  test('the calendar tab is selected before the day is handed over', () {
+    final model = MobileShellViewModel();
+    model.selectTab(MobileArea.training.index);
+    final delivered = <(MobileArea, LocalDay)>[];
+    // Wie der Kalender: bei jeder Meldung die Anfrage abholen.
+    model.addListener(() {
+      if (model.takeRequestedCalendarDay() case final day?) {
+        delivered.add((model.selectedArea, day));
+      }
+    });
+
+    model.openCalendarDay(LocalDay(2026, 9, 15));
+
+    expect(delivered, [(MobileArea.calendar, LocalDay(2026, 9, 15))]);
+    model.dispose();
+  });
+
   test('an open cardio request is delivered exactly once', () {
     final model = MobileShellViewModel();
     var notifications = 0;

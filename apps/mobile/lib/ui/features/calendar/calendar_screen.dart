@@ -106,6 +106,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   bool get _visible => widget.isVisible?.call() ?? true;
 
+  /// Ob [_showRequestedDayAfterFrame] schon auf das nächste Bild wartet.
+  bool _requestedDayScheduled = false;
+
   @override
   void initState() {
     super.initState();
@@ -166,9 +169,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (await steps.syncRecent() > 0 && mounted) await _viewModel.load();
   }
 
+  /// Zeigt einen angefragten Tag erst nach dem nächsten Bild. Ein Tab-Wechsel
+  /// schaltet Offstage und TickerMode erst dann um; vorher scrollte der
+  /// Kalender unsichtbar mit stummgeschalteten Tickern.
+  void _showRequestedDayAfterFrame() {
+    if (_requestedDayScheduled) return;
+    _requestedDayScheduled = true;
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
+        _requestedDayScheduled = false;
+        if (mounted && _visible) _showRequestedDay();
+      })
+      ..ensureVisualUpdate();
+  }
+
   void _onVisibility() {
-    _showRequestedDay();
     final visible = _visible;
+    if (visible) _showRequestedDayAfterFrame();
     if (visible && !_wasVisible) _reloadAll();
     _wasVisible = visible;
   }

@@ -103,19 +103,19 @@ List<TrainedExerciseSummary> summarizeTrainedExercises(
   return summaries;
 }
 
-/// Heatmap der letzten 12 Monate aus gezählten Trainings und, falls
-/// vorhanden, nicht gelöschten Cardio-Einheiten.
-Future<TrainingHeatmap> loadTrainingHeatmap(
-  List<Workout> countedWorkouts, {
+/// Heatmap der letzten 12 Monate aus gezählten Trainings und nicht gelöschten
+/// Cardio-Einheiten. [CardioRepository.readSessions] liefert schon keine
+/// gelöschten; der Filter schützt andere Aufrufer.
+TrainingHeatmap trainingHeatmapOf(
+  List<Workout> countedWorkouts,
+  List<CardioSession> cardioSessions, {
   required LocalDay today,
-  CardioRepository? cardio,
-}) async {
-  final sessions = await cardio?.readSessions() ?? const <CardioSession>[];
+}) {
   return buildTrainingHeatmap([
     for (final workout in countedWorkouts)
       if (workout.endedAtUtc case final ended?)
         (startedAtUtc: workout.startedAtUtc, endedAtUtc: ended),
-    for (final session in sessions)
+    for (final session in cardioSessions)
       if (session.deletedAtUtc == null)
         (startedAtUtc: session.startedAtUtc, endedAtUtc: session.endedAtUtc),
   ], today: today);
@@ -159,7 +159,10 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> load() async {
+  /// Lädt Übungen und Heatmap.
+  Future<void> load() => _load(withHeatmap: true);
+
+  Future<void> _load({required bool withHeatmap}) async {
     if (_disposed) return;
     isLoading = true;
     errorMessage = null;
@@ -172,15 +175,17 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
         inputs,
         includeWarmups: includeWarmups,
       );
-      try {
-        heatmap = await loadTrainingHeatmap(
-          inputs.workouts,
-          today: repository.schedule.today(),
-          cardio: cardio,
-        );
-      } on Object {
+      if (withHeatmap) {
+        final sessions = await _readCardioSessions();
+        if (_disposed) return;
         // Ohne lesbare Cardio-Einheiten wäre die Heatmap unvollständig.
-        heatmap = null;
+        heatmap = sessions == null
+            ? null
+            : trainingHeatmapOf(
+                inputs.workouts,
+                sessions,
+                today: repository.schedule.today(),
+              );
       }
     } catch (_) {
       if (!_disposed) {
@@ -195,9 +200,33 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
     }
   }
 
+  /// Cardio-Einheiten für die Heatmap; ohne [cardio] keine. Sind sie nicht
+  /// lesbar, wird der Fehler gemeldet und das Ergebnis ist `null`.
+  Future<List<CardioSession>?> _readCardioSessions() async {
+    final cardio = this.cardio;
+    if (cardio == null) return const [];
+    try {
+      return await cardio.readSessions();
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'Trainingsstatistik',
+          context: ErrorDescription(
+            'beim Lesen der Cardio-Einheiten für die Heatmap',
+          ),
+        ),
+      );
+      return null;
+    }
+  }
+
+  /// Speichert den Schalter und berechnet nur die Übungen neu; Cardio und
+  /// Heatmap hängen nicht von Aufwärmsätzen ab.
   Future<void> setIncludeWarmups(bool value) async {
     await writeIncludeWarmupSets(repository.store, value);
-    await load();
+    await _load(withHeatmap: false);
   }
 
   void _notify() {

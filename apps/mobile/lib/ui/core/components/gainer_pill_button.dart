@@ -66,8 +66,11 @@ class GainerPillButton extends StatelessWidget {
         ),
       ],
     );
+    // Der sichtbare Inhalt ist von der Semantik ausgeschlossen; das Label
+    // kommt deshalb immer von hier, sonst bliebe der Button für VoiceOver
+    // namenlos.
     final button = Semantics(
-      label: isLoading ? '$label, lädt' : null,
+      label: isLoading ? '$label, lädt' : label,
       child: CupertinoButton(
         minimumSize: const Size.square(GainerRadii.iconButtonDiameter),
         padding: EdgeInsets.symmetric(

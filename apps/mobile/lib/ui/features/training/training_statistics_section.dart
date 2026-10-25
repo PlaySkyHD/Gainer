@@ -29,7 +29,8 @@ class TrainingStatisticsSection extends StatefulWidget {
   /// Cardio-Einheiten für den Bereich „Cardio“; ohne Wert entfällt er.
   final CardioRepository? cardio;
 
-  /// Öffnet einen Tag im Kalender; ohne Wert ist die Heatmap nicht antippbar.
+  /// Öffnet einen in der Heatmap gewählten Tag im Kalender; ohne Wert fehlt
+  /// die Schaltfläche „Im Kalender öffnen“.
   final ValueChanged<LocalDay>? onOpenCalendarDay;
 
   @override

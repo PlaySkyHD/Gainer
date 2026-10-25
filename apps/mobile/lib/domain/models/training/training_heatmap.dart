@@ -30,6 +30,14 @@ final class TrainingHeatmap {
     required this.trainingDays,
   });
 
+  /// Leerer Zeitraum der zwölf Monate bis [today]; Grundlage für
+  /// [buildTrainingHeatmap], damit Start, Spalten und Bereich nur hier
+  /// berechnet werden.
+  TrainingHeatmap._span(this.today)
+    : start = LocalDay(today.year - 1, today.month, today.day + 1),
+      weeks = const [],
+      trainingDays = 0;
+
   /// Erster Tag des Zeitraums: heute vor einem Jahr plus ein Tag.
   final LocalDay start;
   final LocalDay today;
@@ -43,6 +51,14 @@ final class TrainingHeatmap {
   /// Montag der ersten Spalte.
   LocalDay get firstMonday => start.addDays(1 - start.weekday);
 
+  /// Ob [date] im Zeitraum von [start] bis [today] liegt.
+  bool contains(LocalDay date) => !date.isBefore(start) && !date.isAfter(today);
+
+  /// Kalendertag an Spalte [week] und Zeile [weekday], auch außerhalb des
+  /// Zeitraums.
+  LocalDay dateAt(int week, int weekday) =>
+      firstMonday.addDays(week * 7 + weekday);
+
   /// Tag an Spalte [week] und Zeile [weekday] (0 = Montag); `null` außerhalb.
   TrainingHeatmapDay? dayAt(int week, int weekday) {
     if (week < 0 || week >= weeks.length) return null;
@@ -52,10 +68,57 @@ final class TrainingHeatmap {
 
   /// Spalte und Zeile von [date]; `null` außerhalb des Zeitraums.
   ({int week, int weekday})? cellOf(LocalDay date) {
-    if (date.isBefore(start) || date.isAfter(today)) return null;
+    if (!contains(date)) return null;
     final offset = firstMonday.daysUntil(date);
     return (week: offset ~/ 7, weekday: offset % 7);
   }
+
+  /// Tag zu [date]; `null` außerhalb des Zeitraums.
+  TrainingHeatmapDay? dayOn(LocalDay date) {
+    final cell = cellOf(date);
+    return cell == null ? null : dayAt(cell.week, cell.weekday);
+  }
+
+  /// Alle Tage des Zeitraums in zeitlicher Reihenfolge.
+  Iterable<TrainingHeatmapDay> get days =>
+      weeks.expand((week) => week).nonNulls;
+
+  /// Tag, dessen Kästchen dem Punkt am nächsten liegt. [week] und [weekday]
+  /// sind Kästchenkoordinaten (Spalte 2,5 ist die Mitte der dritten Spalte).
+  /// Auch Tage ohne Training kommen in Frage; `null` nur ohne Tage.
+  TrainingHeatmapDay? nearestDay(double week, double weekday) {
+    TrainingHeatmapDay? nearest;
+    var best = double.infinity;
+    for (var column = 0; column < weeks.length; column++) {
+      for (var row = 0; row < 7; row++) {
+        final day = weeks[column][row];
+        if (day == null) continue;
+        final dx = column + 0.5 - week;
+        final dy = row + 0.5 - weekday;
+        final distance = dx * dx + dy * dy;
+        if (distance < best) {
+          best = distance;
+          nearest = day;
+        }
+      }
+    }
+    return nearest;
+  }
+
+  /// Erster Trainingstag nach [date]. Ohne [date] (keine Auswahl) der
+  /// jüngste, damit beide Richtungen beim neuesten Training beginnen.
+  TrainingHeatmapDay? nextTrainingDay(LocalDay? date) => date == null
+      ? previousTrainingDay(null)
+      : days
+            .where((day) => day.hasTraining && day.date.isAfter(date))
+            .firstOrNull;
+
+  /// Letzter Trainingstag vor [date]; ohne [date] der jüngste.
+  TrainingHeatmapDay? previousTrainingDay(LocalDay? date) => days
+      .where(
+        (day) => day.hasTraining && (date == null || day.date.isBefore(date)),
+      )
+      .lastOrNull;
 }
 
 /// Baut die Heatmap aus Kraft- und Cardio-Einheiten. Die Minuten einer
@@ -66,11 +129,11 @@ TrainingHeatmap buildTrainingHeatmap(
   required LocalDay today,
   LocalDay Function(DateTime utc) dayOf = localDayOfUtc,
 }) {
-  final start = LocalDay(today.year - 1, today.month, today.day + 1);
+  final span = TrainingHeatmap._span(today);
   final seconds = <LocalDay, int>{};
   for (final session in sessions) {
     final day = dayOf(session.startedAtUtc);
-    if (day.isBefore(start) || day.isAfter(today)) continue;
+    if (!span.contains(day)) continue;
     final duration = session.endedAtUtc.difference(session.startedAtUtc);
     seconds[day] =
         (seconds[day] ?? 0) + (duration.isNegative ? 0 : duration.inSeconds);
@@ -80,23 +143,16 @@ TrainingHeatmap buildTrainingHeatmap(
   };
   final bounds = heatmapBounds(minutes.values);
 
-  final firstMonday = start.addDays(1 - start.weekday);
-  final weekCount = (firstMonday.daysUntil(today) ~/ 7) + 1;
+  final weekCount = span.cellOf(today)!.week + 1;
   final weeks = [
     for (var week = 0; week < weekCount; week++)
       [
         for (var weekday = 0; weekday < 7; weekday++)
-          _day(
-            firstMonday.addDays(week * 7 + weekday),
-            start,
-            today,
-            minutes,
-            bounds,
-          ),
+          _day(span, span.dateAt(week, weekday), minutes, bounds),
       ],
   ];
   return TrainingHeatmap(
-    start: start,
+    start: span.start,
     today: today,
     weeks: List.unmodifiable(weeks),
     trainingDays: minutes.length,
@@ -104,13 +160,12 @@ TrainingHeatmap buildTrainingHeatmap(
 }
 
 TrainingHeatmapDay? _day(
+  TrainingHeatmap span,
   LocalDay date,
-  LocalDay start,
-  LocalDay today,
   Map<LocalDay, int> minutes,
   List<double> bounds,
 ) {
-  if (date.isBefore(start) || date.isAfter(today)) return null;
+  if (!span.contains(date)) return null;
   final value = minutes[date];
   return TrainingHeatmapDay(
     date: date,
