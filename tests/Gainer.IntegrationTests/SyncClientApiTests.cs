@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Gainer.Api.Composition;
 using Gainer.Api.Security;
 using Gainer.Contracts.Security;
@@ -69,6 +70,92 @@ public sealed class SyncClientApiTests
         Assert.AreEqual(clientId, response.ClientId);
         Assert.AreEqual("Integration iPhone", response.DisplayName);
         Assert.IsTrue(response.IsActiveWriter);
+    }
+
+    [TestMethod]
+    public async Task OlderAppsAreAskedToUpdateOnceWaterIsInTheFeed()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        await CreateUserAsync(app);
+        using HttpClient client = app.GetTestClient();
+        client.BaseAddress = new Uri(TestOrigin);
+        await client.AuthenticateAsync(Email, Password);
+        Guid clientId = Guid.NewGuid();
+        using (HttpResponseMessage registration = await client.PutAsJsonAsync(
+            $"/api/v1/sync/clients/{clientId}",
+            new RegisterSyncClientRequest(clientId, "Neues iPhone", SyncProtocol.CurrentVersion, false)))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, registration.StatusCode, await registration.Content.ReadAsStringAsync());
+        }
+
+        // An app before protocol 4 pulls without a version and expects version 3.
+        using (HttpResponseMessage legacy = await client.GetAsync("/api/v1/sync/changes?after=0&limit=200"))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, legacy.StatusCode);
+            PullChangesResponse empty = (await legacy.Content.ReadFromJsonAsync<PullChangesResponse>())!;
+            Assert.AreEqual(SyncProtocol.UnversionedPullVersion, empty.ProtocolVersion);
+        }
+
+        Guid dayId = Guid.NewGuid();
+        using (HttpResponseMessage push = await client.PutAsJsonAsync(
+            $"/api/v1/sync/mutations/{Guid.NewGuid()}",
+            new PushMutationRequest(
+                SyncProtocol.CurrentVersion,
+                clientId,
+                1,
+                "setWaterIntake",
+                [new ResourceVersionRequest("WaterIntakeDay", dayId, 0)],
+                null,
+                JsonSerializer.SerializeToElement(new
+                {
+                    waterIntakeDayId = dayId,
+                    localDate = "2026-10-25",
+                    baseVersion = 0,
+                    amountMl = 750,
+                }))))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, push.StatusCode, await push.Content.ReadAsStringAsync());
+        }
+
+        using (HttpResponseMessage legacy = await client.GetAsync("/api/v1/sync/changes?after=0&limit=200"))
+        {
+            Assert.AreEqual(HttpStatusCode.Conflict, legacy.StatusCode);
+            Assert.AreEqual("upgrade_required", await ProblemCodeAsync(legacy));
+        }
+        using (HttpResponseMessage current = await client.GetAsync(
+            $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion}"))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, current.StatusCode);
+            PullChangesResponse page = (await current.Content.ReadFromJsonAsync<PullChangesResponse>())!;
+            Assert.AreEqual(SyncProtocol.CurrentVersion, page.ProtocolVersion);
+            SyncChangeResponse water = page.Batches.Single().Changes.Single();
+            Assert.AreEqual("WaterIntakeDay", water.ResourceType);
+            Assert.AreEqual(dayId, water.ResourceId);
+        }
+        using (HttpResponseMessage tooNew = await client.GetAsync(
+            $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion + 1}"))
+        {
+            Assert.AreEqual(HttpStatusCode.BadRequest, tooNew.StatusCode);
+        }
+        using (HttpResponseMessage tooOld = await client.GetAsync("/api/v1/sync/changes?after=0&limit=200&protocolVersion=1"))
+        {
+            Assert.AreEqual(HttpStatusCode.Conflict, tooOld.StatusCode);
+            Assert.AreEqual("upgrade_required", await ProblemCodeAsync(tooOld));
+        }
+
+        // The old app learns it at registration, where it shows "Aktualisiere die App".
+        Guid oldDevice = Guid.NewGuid();
+        using HttpResponseMessage oldRegistration = await client.PutAsJsonAsync(
+            $"/api/v1/sync/clients/{oldDevice}",
+            new RegisterSyncClientRequest(oldDevice, "Altes iPhone", SyncProtocol.UnversionedPullVersion, false));
+        Assert.AreEqual(HttpStatusCode.Conflict, oldRegistration.StatusCode);
+        Assert.AreEqual("upgrade_required", await ProblemCodeAsync(oldRegistration));
+    }
+
+    private static async Task<string?> ProblemCodeAsync(HttpResponseMessage response)
+    {
+        using JsonDocument problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return problem.RootElement.TryGetProperty("code", out JsonElement code) ? code.GetString() : null;
     }
 
     private async Task<WebApplication> CreateApplicationAsync()

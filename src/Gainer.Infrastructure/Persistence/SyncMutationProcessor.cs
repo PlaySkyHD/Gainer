@@ -226,7 +226,9 @@ public sealed class SyncMutationProcessor(
         {
             throw new SyncMutationValidationException("invalid_envelope", "The mutation envelope is invalid.");
         }
-        if (command.Content.ProtocolVersion is not (SyncProtocol.CurrentVersion or SyncProtocol.PreviousVersion))
+        if (command.Content.ProtocolVersion is < SyncProtocol.PreviousVersion or > SyncProtocol.CurrentVersion ||
+            command.Content.Resources.Any(item =>
+                !SyncResourceProtocol.Supports(command.Content.ProtocolVersion, item.ResourceType ?? string.Empty)))
         {
             throw new SyncUpgradeRequiredException();
         }

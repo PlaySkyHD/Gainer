@@ -7,7 +7,7 @@ using Npgsql;
 namespace Gainer.Infrastructure.Persistence;
 
 /// <summary>
-/// Adds to or sets the water amount of one local day. A missing day is created from base version 0;
+/// Sets the water total of one local day. A missing day is created from base version 0;
 /// a day is never deleted, 0 ml stays a stored state.
 /// </summary>
 public sealed class WaterIntakeMutationHandler(
@@ -16,8 +16,8 @@ public sealed class WaterIntakeMutationHandler(
     TimeProvider timeProvider,
     IChangeCollector? changeCollector = null) : IWaterIntakeMutationHandler
 {
-    public async Task<WaterIntakeDaySnapshot> ChangeAsync(
-        ChangeWaterIntakeMutation mutation,
+    public async Task<WaterIntakeDaySnapshot> SetAsync(
+        SetWaterIntakeMutation mutation,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(mutation);
@@ -32,7 +32,7 @@ public sealed class WaterIntakeMutationHandler(
             {
                 Id = mutation.WaterIntakeDayId,
                 LocalDate = mutation.LocalDate,
-                AmountMl = mutation.ApplyTo(0),
+                AmountMl = mutation.AmountMl,
                 CreatedAtUtc = utcNow,
                 UpdatedAtUtc = utcNow,
                 Version = 1,
@@ -41,11 +41,19 @@ public sealed class WaterIntakeMutationHandler(
         }
         else
         {
-            if (day.LocalDate != mutation.LocalDate || day.Version != mutation.BaseVersion)
+            // The id belongs to one local date; another date is a malformed request, not a stale version.
+            if (day.LocalDate != mutation.LocalDate)
+            {
+                throw new NutritionValidationException(new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [nameof(mutation.LocalDate)] = "The water intake day belongs to another local date.",
+                });
+            }
+            if (day.Version != mutation.BaseVersion)
             {
                 throw new WaterIntakeConflictException("The water intake changed since the supplied base version.");
             }
-            day.AmountMl = mutation.ApplyTo(day.AmountMl);
+            day.AmountMl = mutation.AmountMl;
             day.UpdatedAtUtc = utcNow;
             day.Version++;
         }

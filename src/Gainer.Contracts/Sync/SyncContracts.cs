@@ -7,7 +7,15 @@ public static class SyncProtocol
 {
     /// <summary>Oldest protocol still accepted for non-training operations such as nutrition.</summary>
     public const int PreviousVersion = 2;
-    public const int CurrentVersion = 3;
+
+    /// <summary>Protocol 4 adds the water intake resource; older clients cannot apply it.</summary>
+    public const int CurrentVersion = 4;
+
+    /// <summary>
+    /// Protocol of a pull without <c>protocolVersion</c>. Apps before protocol 4 do not send it and expect
+    /// version 3 in the response.
+    /// </summary>
+    public const int UnversionedPullVersion = 3;
 
     /// <summary>Lowest protocol that may send training payloads (rebuilt workout, plan and exercise contract).</summary>
     public const int TrainingContractVersion = 3;

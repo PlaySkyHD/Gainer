@@ -8,7 +8,7 @@ namespace Gainer.UnitTests;
 [TestClass]
 public sealed class SyncContractTests
 {
-    private static readonly int[] ExpectedProtocolWindow = [2, 3];
+    private static readonly int[] ExpectedProtocolWindow = [2, 4];
 
     [TestMethod]
     public void ClientRequestsCannotSelectAUserIdentity()
@@ -71,6 +71,18 @@ public sealed class SyncContractTests
             new[] { SyncProtocol.PreviousVersion, SyncProtocol.CurrentVersion });
         var nutrition = new ResourceVersionRequest("NutritionDay", Guid.NewGuid(), 0);
         Assert.HasCount(0, Validate(nutrition));
+    }
+
+    [TestMethod]
+    public void ProtocolFourAddsWaterAndKeepsOlderClientsInTheWindow()
+    {
+        Assert.IsFalse(Gainer.Core.Sync.SyncResourceProtocol.Supports(3, "WaterIntakeDay"));
+        Assert.IsTrue(Gainer.Core.Sync.SyncResourceProtocol.Supports(4, "WaterIntakeDay"));
+        Assert.IsTrue(Gainer.Core.Sync.SyncResourceProtocol.Supports(2, "NutritionDay"));
+        CollectionAssert.AreEqual(
+            new[] { "WaterIntakeDay" },
+            Gainer.Core.Sync.SyncResourceProtocol.TypesNewerThan(3).ToArray());
+        Assert.HasCount(0, Gainer.Core.Sync.SyncResourceProtocol.TypesNewerThan(4));
     }
 
     private static List<ValidationResult> Validate(object value)

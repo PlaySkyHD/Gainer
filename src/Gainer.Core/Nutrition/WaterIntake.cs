@@ -18,7 +18,6 @@ public static class WaterIntakeLimits
 {
     public const int MinDailyMl = 0;
     public const int MaxDailyMl = 10_000;
-    public const int MinAddedMl = 1;
 }
 
 public sealed record WaterIntakeDaySnapshot(
@@ -32,32 +31,23 @@ public sealed record WaterIntakeDaySnapshot(
     public ResourceKey Resource => ResourceKey.Create(ResourceKind.WaterIntakeDay, WaterIntakeDayId);
 }
 
-/// <summary>How a water mutation changes the stored day amount.</summary>
-public enum WaterIntakeChange
+/// <summary>
+/// Sets the water total of one local day; creates the day from base version 0. Quick buttons and corrections both
+/// send the new total: the base version already guards against lost updates, and a total survives outbox coalescing.
+/// </summary>
+public sealed record SetWaterIntakeMutation : ITypedMutation<WaterIntakeDaySnapshot>
 {
-    /// <summary>Adds the amount to the stored total (quick buttons).</summary>
-    Add = 1,
-
-    /// <summary>Replaces the stored total (correction and undo).</summary>
-    Set = 2,
-}
-
-/// <summary>Adds to or sets the water amount of one local day; creates the day from base version 0.</summary>
-public sealed record ChangeWaterIntakeMutation : ITypedMutation<WaterIntakeDaySnapshot>
-{
-    private ChangeWaterIntakeMutation(
+    private SetWaterIntakeMutation(
         MutationMetadata metadata,
         Guid waterIntakeDayId,
         DateOnly localDate,
         long baseVersion,
-        WaterIntakeChange change,
         int amountMl)
     {
         Metadata = metadata;
         WaterIntakeDayId = waterIntakeDayId;
         LocalDate = localDate;
         BaseVersion = baseVersion;
-        Change = change;
         AmountMl = amountMl;
         Scope = AtomicMutationScope.Create(ResourceVersionExpectation.Create(
             ResourceKey.Create(ResourceKind.WaterIntakeDay, waterIntakeDayId), baseVersion));
@@ -68,17 +58,15 @@ public sealed record ChangeWaterIntakeMutation : ITypedMutation<WaterIntakeDaySn
     public Guid WaterIntakeDayId { get; }
     public DateOnly LocalDate { get; }
     public long BaseVersion { get; }
-    public WaterIntakeChange Change { get; }
 
-    /// <summary>Added milliliters for <see cref="WaterIntakeChange.Add"/>, the new total for <see cref="WaterIntakeChange.Set"/>.</summary>
+    /// <summary>New total of the day in milliliters.</summary>
     public int AmountMl { get; }
 
-    public static ChangeWaterIntakeMutation Create(
+    public static SetWaterIntakeMutation Create(
         MutationMetadata metadata,
         Guid waterIntakeDayId,
         DateOnly localDate,
         long baseVersion,
-        WaterIntakeChange change,
         int amountMl)
     {
         ArgumentNullException.ThrowIfNull(metadata);
@@ -87,32 +75,23 @@ public sealed record ChangeWaterIntakeMutation : ITypedMutation<WaterIntakeDaySn
             throw new ArgumentException("The water intake day identifier cannot be empty.", nameof(waterIntakeDayId));
         }
         ArgumentOutOfRangeException.ThrowIfNegative(baseVersion);
-        if (!Enum.IsDefined(change)) throw new ArgumentOutOfRangeException(nameof(change));
-        int minimum = change == WaterIntakeChange.Add ? WaterIntakeLimits.MinAddedMl : WaterIntakeLimits.MinDailyMl;
-        if (amountMl < minimum || amountMl > WaterIntakeLimits.MaxDailyMl)
+        if (amountMl is < WaterIntakeLimits.MinDailyMl or > WaterIntakeLimits.MaxDailyMl)
         {
-            throw InvalidAmount($"Amount must be between {minimum} and {WaterIntakeLimits.MaxDailyMl} ml.");
+            throw Invalid(
+                nameof(AmountMl),
+                $"Amount must be between {WaterIntakeLimits.MinDailyMl} and {WaterIntakeLimits.MaxDailyMl} ml.");
         }
-        return new ChangeWaterIntakeMutation(metadata, waterIntakeDayId, localDate, baseVersion, change, amountMl);
+        return new SetWaterIntakeMutation(metadata, waterIntakeDayId, localDate, baseVersion, amountMl);
     }
 
-    /// <summary>Total after applying this change to <paramref name="currentMl"/>; rejects totals above the daily limit.</summary>
-    public int ApplyTo(int currentMl)
-    {
-        long total = Change == WaterIntakeChange.Add ? (long)currentMl + AmountMl : AmountMl;
-        return total <= WaterIntakeLimits.MaxDailyMl
-            ? (int)total
-            : throw InvalidAmount($"The daily total cannot exceed {WaterIntakeLimits.MaxDailyMl} ml.");
-    }
-
-    private static NutritionValidationException InvalidAmount(string message) =>
-        new(new Dictionary<string, string>(StringComparer.Ordinal) { [nameof(AmountMl)] = message });
+    private static NutritionValidationException Invalid(string field, string message) =>
+        new(new Dictionary<string, string>(StringComparer.Ordinal) { [field] = message });
 }
 
 public interface IWaterIntakeMutationHandler
 {
-    Task<WaterIntakeDaySnapshot> ChangeAsync(
-        ChangeWaterIntakeMutation mutation,
+    Task<WaterIntakeDaySnapshot> SetAsync(
+        SetWaterIntakeMutation mutation,
         CancellationToken cancellationToken = default);
 }
 

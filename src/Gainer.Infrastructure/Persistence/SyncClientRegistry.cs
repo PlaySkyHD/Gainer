@@ -28,7 +28,13 @@ public sealed class SyncClientRegistry(
         string displayName = command.DisplayName.Trim();
         if (displayName.Length is < 1 or > 100)
             throw new SyncMutationValidationException("invalid_display_name", "Display name must contain 1 to 100 characters.");
-        if (command.ProtocolVersion is not (SyncProtocol.PreviousVersion or SyncProtocol.CurrentVersion))
+        // Constants only: Infrastructure must not reference Contracts at runtime.
+        if (command.ProtocolVersion is < SyncProtocol.PreviousVersion or > SyncProtocol.CurrentVersion)
+            throw new SyncUpgradeRequiredException();
+        // Older apps abort on resource types they do not know and keep their cursor; they learn to update here.
+        IReadOnlyList<string> unknownTypes = SyncResourceProtocol.TypesNewerThan(command.ProtocolVersion);
+        if (unknownTypes.Count > 0 &&
+            await context.ChangeItems.AnyAsync(item => unknownTypes.Contains(item.ResourceType), cancellationToken))
             throw new SyncUpgradeRequiredException();
 
         await using var transaction = await context.Database.BeginTransactionAsync(

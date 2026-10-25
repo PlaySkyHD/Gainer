@@ -263,15 +263,14 @@ public sealed class SyncMutationExecutor(
                             Metadata(mutationId, content), payload.NutritionDayId, payload.BaseVersion), cancellationToken);
                     return Result(collector);
                 }
-            case "addWaterIntake" or "setWaterIntake":
+            case "setWaterIntake":
                 {
-                    ChangeWaterIntakePayload payload = Deserialize<ChangeWaterIntakePayload>(content.Payload);
+                    SetWaterIntakePayload payload = Deserialize<SetWaterIntakePayload>(content.Payload);
                     ValidateExpectation(content, ResourceKind.WaterIntakeDay, payload.WaterIntakeDayId, payload.BaseVersion);
-                    WaterIntakeChange change = content.Operation == "addWaterIntake" ? WaterIntakeChange.Add : WaterIntakeChange.Set;
                     WaterIntakeDaySnapshot snapshot = await new WaterIntakeMutationHandler(context, userContext, timeProvider, collector)
-                        .ChangeAsync(ChangeWaterIntakeMutation.Create(
+                        .SetAsync(SetWaterIntakeMutation.Create(
                             Metadata(mutationId, content), payload.WaterIntakeDayId, payload.LocalDate,
-                            payload.BaseVersion, change, payload.AmountMl), cancellationToken);
+                            payload.BaseVersion, payload.AmountMl), cancellationToken);
                     return Result(collector, snapshot);
                 }
             case "saveCardioSession":
@@ -609,7 +608,7 @@ public sealed class SyncMutationExecutor(
         IReadOnlyList<NutritionEntryPayload>? Entries,
         string? DayKind = null);
     private sealed record DeleteNutritionDayTemplatePayload(Guid TemplateId, long BaseVersion);
-    private sealed record ChangeWaterIntakePayload(Guid WaterIntakeDayId, DateOnly LocalDate, long BaseVersion, int AmountMl);
+    private sealed record SetWaterIntakePayload(Guid WaterIntakeDayId, DateOnly LocalDate, long BaseVersion, int AmountMl);
     private sealed record SaveReusableMealPayload(
         Guid ReusableMealId,
         long BaseVersion,
