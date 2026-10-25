@@ -2908,7 +2908,7 @@ class _AddRow extends StatelessWidget {
                     children: [
                       icon,
                       const SizedBox(width: GainerSpacing.xxs),
-                      text,
+                      Flexible(child: text),
                     ],
                   ),
           ),
