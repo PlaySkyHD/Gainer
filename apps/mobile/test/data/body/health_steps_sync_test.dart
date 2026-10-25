@@ -119,6 +119,26 @@ void main() {
     );
   });
 
+  test('the day after a DST switch still syncs the switch day', () async {
+    // Montag nach der Umstellung auf Sommerzeit: „heute − 24 h“ wäre unter
+    // TZ=Europe/Berlin der Samstag, der Sonntag fiele heraus.
+    final monday = DateTime(2027, 3, 29, 12, 30);
+    final springSync = HealthStepsSync(
+      health: CheckInHealthCoordinator(
+        platform: platform,
+        accountId: _account,
+        clock: () => monday,
+      ),
+      body: body,
+      clock: () => monday,
+    );
+    await checkIn('2027-03-28', steps: 1200);
+    platform.steps = 7300;
+
+    expect(await springSync.syncRecent(), 1);
+    expect(await storedSteps('2027-03-28'), 7300);
+  });
+
   test('without Health data nothing changes', () async {
     await checkIn('2026-10-23', steps: 1200);
     expect(await sync.syncRecent(), 0);
