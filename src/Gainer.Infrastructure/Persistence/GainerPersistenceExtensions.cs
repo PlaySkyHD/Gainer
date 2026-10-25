@@ -90,7 +90,9 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<StravaExportProcessor>();
         builder.Services.AddDbContext<AppDbContext>((serviceProvider, options) =>
         {
-            string? connectionString = ResolveConnectionString(builder.Configuration, connectionName);
+            string connectionString = ResolveConnectionString(builder.Configuration, connectionName)
+                ?? throw new InvalidOperationException(
+                    $"The database connection is not configured. Set ConnectionStrings:{connectionName}, or make Database:PasswordFile point to a readable, non-empty file.");
             options.UseNpgsql(connectionString, npgsql => npgsql.MigrationsHistoryTable(
                 DatabaseSchemaVersion.MigrationHistoryTable,
                 DatabaseSchemaVersion.MigrationHistorySchema));
@@ -102,14 +104,26 @@ public static class GainerPersistenceExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Resolves the connection string from configuration or from the configured password file.
+    /// Returns <see langword="null"/> when no usable connection is configured, that is when the password file is missing, unreadable or empty.
+    /// </summary>
     internal static string? ResolveConnectionString(IConfiguration configuration, string connectionName)
     {
         string? direct = configuration.GetConnectionString(connectionName);
         string? passwordFile = configuration["Database:PasswordFile"];
         if (string.IsNullOrWhiteSpace(passwordFile)) return direct;
-        if (!File.Exists(passwordFile)) throw new InvalidOperationException("The configured database password file does not exist.");
-        string password = File.ReadAllText(passwordFile).Trim();
-        if (string.IsNullOrWhiteSpace(password)) throw new InvalidOperationException("The configured database password file is empty.");
+        string password;
+        try
+        {
+            password = File.ReadAllText(passwordFile).Trim();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(password)) return null;
         return new Npgsql.NpgsqlConnectionStringBuilder
         {
             Host = configuration["Database:Host"] ?? "postgres",

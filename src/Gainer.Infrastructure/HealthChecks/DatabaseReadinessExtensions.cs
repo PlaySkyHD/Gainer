@@ -123,12 +123,13 @@ internal sealed class PostgreSqlReadinessHealthCheck(IConfiguration configuratio
     }
 }
 
+/// <summary>
+/// Reports the schema as ready only when every migration compiled into the assembly is in the migration history.
+/// One query counts the expected IDs in the history, so the check needs neither an <see cref="AppDbContext"/> nor a hand-kept version.
+/// </summary>
 internal sealed class DatabaseSchemaReadinessHealthCheck(IConfiguration configuration) : IHealthCheck
 {
-    private const string MigrationHistoryQuery =
-        "SELECT EXISTS (" +
-        "SELECT 1 FROM identity.\"__EFMigrationsHistory\" " +
-        "WHERE \"MigrationId\" = @required_migration)";
+    private static readonly string CountAppliedQuery = BuildCountAppliedQuery();
 
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
@@ -141,21 +142,39 @@ internal sealed class DatabaseSchemaReadinessHealthCheck(IConfiguration configur
             return HealthCheckResult.Unhealthy("Database schema cannot be verified.");
         }
 
+        string[] expected = DatabaseSchemaVersion.ExpectedMigrationArray;
+
         try
         {
             await using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync(cancellationToken);
-            await using var command = new NpgsqlCommand(MigrationHistoryQuery, connection);
-            command.Parameters.AddWithValue("required_migration", DatabaseSchemaVersion.RequiredMigration);
-            var hasRequiredMigration = await command.ExecuteScalarAsync(cancellationToken) is true;
+            await using var command = new NpgsqlCommand(CountAppliedQuery, connection);
+            command.Parameters.AddWithValue("ids", expected);
+            var applied = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
 
-            return hasRequiredMigration
+            return applied == expected.Length
                 ? HealthCheckResult.Healthy()
                 : HealthCheckResult.Unhealthy("Database schema is not at the required version.");
         }
-        catch (Exception exception) when (exception is NpgsqlException or TimeoutException)
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UndefinedTable)
         {
+            return HealthCheckResult.Unhealthy("Database schema is not at the required version.");
+        }
+        catch (Exception exception) when (
+            exception is NpgsqlException or TimeoutException or ArgumentException)
+        {
+            // ArgumentException: the configured connection string is malformed.
             return HealthCheckResult.Unhealthy("Database schema cannot be verified.");
         }
+    }
+
+    private static string BuildCountAppliedQuery()
+    {
+        var identifiers = new NpgsqlCommandBuilder();
+
+        return "SELECT COUNT(*) FROM " +
+            $"{identifiers.QuoteIdentifier(DatabaseSchemaVersion.MigrationHistorySchema)}." +
+            $"{identifiers.QuoteIdentifier(DatabaseSchemaVersion.MigrationHistoryTable)} " +
+            "WHERE \"MigrationId\" = ANY(@ids)";
     }
 }

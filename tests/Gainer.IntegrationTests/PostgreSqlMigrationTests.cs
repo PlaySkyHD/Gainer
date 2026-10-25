@@ -1,3 +1,4 @@
+using Gainer.Core.Security;
 using Gainer.Core.Sync;
 using Gainer.Core.Training;
 using Gainer.Infrastructure.HealthChecks;
@@ -5,8 +6,9 @@ using Gainer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 
@@ -65,7 +67,7 @@ public sealed class PostgreSqlMigrationTests
         CollectionAssert.AreEquivalent(DatabaseSchemas.All.ToArray(), await ReadSchemasAsync());
         CollectionAssert.Contains(
             (await context.Database.GetAppliedMigrationsAsync(TestContext.CancellationToken)).ToArray(),
-            DatabaseSchemaVersion.RequiredMigration);
+            context.Database.GetMigrations().Last());
     }
 
     [TestMethod]
@@ -93,24 +95,132 @@ public sealed class PostgreSqlMigrationTests
     }
 
     [TestMethod]
-    public async Task SchemaReadinessRequiresTheCurrentMigration()
+    public async Task SchemaReadinessRequiresEveryMigrationIncludingTheLatest()
     {
-        IConfiguration configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:gainer-db"] = ConnectionString,
-            })
-            .Build();
-        var healthCheck = new DatabaseSchemaReadinessHealthCheck(configuration);
+        await using AppDbContext context = Fixture.CreateContext(ConnectionString);
+        var healthCheck = new DatabaseSchemaReadinessHealthCheck(CreateConfiguration(("ConnectionStrings:gainer-db", ConnectionString)));
+        string[] migrations = context.Database.GetMigrations().ToArray();
+        string previousToLatest = migrations[^2];
+
+        CollectionAssert.AreEqual(migrations, DatabaseSchemaVersion.ExpectedMigrations.ToArray());
 
         HealthCheckResult beforeMigration = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
-        await using AppDbContext context = Fixture.CreateContext(ConnectionString);
+        Assert.AreEqual("Database schema is not at the required version.", beforeMigration.Description);
+        await ((IInfrastructure<IServiceProvider>)context).Instance.GetRequiredService<IMigrator>()
+            .MigrateAsync(previousToLatest, TestContext.CancellationToken);
+        HealthCheckResult missingLatest = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
         await context.Database.MigrateAsync(TestContext.CancellationToken);
         HealthCheckResult afterMigration = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
 
         Assert.AreEqual(HealthStatus.Unhealthy, beforeMigration.Status);
+        Assert.AreEqual(HealthStatus.Unhealthy, missingLatest.Status, $"The database lacks {migrations[^1]} and must not be ready.");
         Assert.AreEqual(HealthStatus.Healthy, afterMigration.Status);
     }
+
+    [TestMethod]
+    public async Task SchemaReadinessIsUnhealthyWithoutThrowingWhenTheDatabaseCannotBeReached()
+    {
+        (string Name, string? Value)[][] configurations =
+        [
+            [("ConnectionStrings:gainer-db", "not a connection string")],
+            [("ConnectionStrings:gainer-db", "Host=127.0.0.1;Port=1;Database=gainer;Username=test;Password=test;Timeout=2")],
+        ];
+
+        foreach ((string Name, string? Value)[] settings in configurations)
+        {
+            var healthCheck = new DatabaseSchemaReadinessHealthCheck(CreateConfiguration(settings));
+
+            HealthCheckResult result = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
+
+            Assert.AreEqual(HealthStatus.Unhealthy, result.Status);
+            Assert.AreEqual("Database schema cannot be verified.", result.Description);
+        }
+    }
+
+    [TestMethod]
+    public async Task ReadinessChecksAreUnhealthyWithoutThrowingWhenNoConnectionIsConfigured()
+    {
+        string directory = Directory.CreateTempSubdirectory("gainer-password-").FullName;
+        try
+        {
+            string emptyFile = Path.Combine(directory, "empty");
+            await File.WriteAllTextAsync(emptyFile, "  \n", TestContext.CancellationToken);
+            (string Name, string? Value)[][] configurations =
+            [
+                [],
+                [("ConnectionStrings:gainer-db", "   ")],
+                [("Database:PasswordFile", Path.Combine(directory, "missing"))],
+                [("Database:PasswordFile", emptyFile)],
+                [("Database:PasswordFile", directory)],
+            ];
+
+            foreach ((string Name, string? Value)[] settings in configurations)
+            {
+                IConfiguration configuration = CreateConfiguration(settings);
+
+                HealthCheckResult schema = await new DatabaseSchemaReadinessHealthCheck(configuration)
+                    .CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
+                HealthCheckResult postgres = await new PostgreSqlReadinessHealthCheck(configuration)
+                    .CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
+
+                Assert.AreEqual(HealthStatus.Unhealthy, schema.Status);
+                Assert.AreEqual("Database schema cannot be verified.", schema.Description);
+                Assert.AreEqual(HealthStatus.Unhealthy, postgres.Status);
+                Assert.AreEqual("PostgreSQL connection is not configured.", postgres.Description);
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void PersistenceFailsWithAClearMessageWhenNoConnectionIsConfigured()
+    {
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+        builder.Services.AddScoped<IUserContext>(_ => new MigrationTestUserContext());
+        builder.AddGainerPersistence();
+        using IHost host = builder.Build();
+        using IServiceScope scope = host.Services.CreateScope();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => scope.ServiceProvider.GetRequiredService<AppDbContext>());
+
+        Assert.Contains("ConnectionStrings:gainer-db", exception.Message);
+        Assert.Contains("Database:PasswordFile", exception.Message);
+    }
+
+    private sealed class MigrationTestUserContext : IUserContext
+    {
+        public Guid? UserId => null;
+    }
+
+    [TestMethod]
+    public async Task ConnectionStringIsBuiltFromAReadablePasswordFile()
+    {
+        string file = Path.Combine(Path.GetTempPath(), $"gainer-password-{Guid.NewGuid():N}");
+        await File.WriteAllTextAsync(file, "secret-from-file\n", TestContext.CancellationToken);
+        try
+        {
+            string? connectionString = GainerPersistenceExtensions.ResolveConnectionString(
+                CreateConfiguration(("Database:PasswordFile", file), ("Database:Host", "db.example.test")),
+                "gainer-db");
+
+            var builder = new NpgsqlConnectionStringBuilder(connectionString);
+            Assert.AreEqual("db.example.test", builder.Host);
+            Assert.AreEqual("secret-from-file", builder.Password);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    private static IConfiguration CreateConfiguration(params (string Name, string? Value)[] settings) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(settings.Select(setting => new KeyValuePair<string, string?>(setting.Name, setting.Value)))
+            .Build();
 
     [TestMethod]
     public async Task RebuildTrainingModelDropsLegacyTrainingDataAndKeepsCatalog()
