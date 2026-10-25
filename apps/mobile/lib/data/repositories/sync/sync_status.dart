@@ -124,11 +124,13 @@ class SyncStatusTracker extends ValueNotifier<SyncStatus> {
             lastSyncedAtUtc: reachedServer ? at : null,
             pendingCount: await _pendingCount(),
             isWriter: writer,
-            upgradeRequired: switch (report.state) {
-              SyncRunState.upgradeRequired => true,
-              SyncRunState.busy => value.upgradeRequired,
-              _ => false,
-            },
+            // Nur ein Lauf, der Registrierung und Pull geschafft hat, löst
+            // den Bedarf auf; Anmeldefehler oder ein laufender Sync nicht.
+            upgradeRequired: report.state == SyncRunState.upgradeRequired
+                ? true
+                : reachedServer
+                ? false
+                : value.upgradeRequired,
           ),
         );
       });

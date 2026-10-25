@@ -28,6 +28,7 @@ void main() {
   late List<Map<String, dynamic>> mutations;
   late List<Map<String, dynamic>> pullBatches;
   late List<String?> pullProtocols;
+  int? upgradeFromRevision;
   var counter = 0x400;
 
   setUp(() async {
@@ -35,6 +36,7 @@ void main() {
     mutations = [];
     pullBatches = [];
     pullProtocols = [];
+    upgradeFromRevision = null;
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
       final path = request.uri.path;
@@ -77,16 +79,17 @@ void main() {
         final requested = request.uri.queryParameters['protocolVersion'];
         pullProtocols.add(requested);
         final protocol = int.tryParse(requested ?? '') ?? 3;
+        // Wie der Server: Ab `upgradeFromRevision` kennt der Client die
+        // Ressourcen nicht; davor liefert er, danach `upgrade_required`.
+        final blockedFrom = upgradeFromRevision;
         final batches = [
           for (final batch in pullBatches)
-            if ((batch['revision'] as int) > after) batch,
+            if ((batch['revision'] as int) > after &&
+                (blockedFrom == null ||
+                    (batch['revision'] as int) < blockedFrom))
+              batch,
         ];
-        final hasWater = batches.any(
-          (batch) => (batch['changes'] as List).any(
-            (change) => (change as Map)['resourceType'] == 'WaterIntakeDay',
-          ),
-        );
-        if (protocol < 4 && hasWater) {
+        if (blockedFrom != null && batches.isEmpty) {
           request.response.statusCode = 409;
           request.response.write(
             jsonEncode({'code': 'upgrade_required', 'message': 'Update'}),
@@ -98,7 +101,7 @@ void main() {
               'nextCursor': batches.isEmpty
                   ? after
                   : batches.last['revision'] as int,
-              'hasMore': false,
+              'hasMore': blockedFrom != null,
               'batches': batches,
             }),
           );
@@ -239,6 +242,71 @@ void main() {
     expect(next.baseVersion, 3);
   });
 
+  Map<String, dynamic> checkInBatch(int revision) => {
+    'batchId': _id(0xa00 + revision),
+    'revision': revision,
+    'originMutationId': null,
+    'changes': [
+      {
+        'resourceType': 'DailyCheckIn',
+        'resourceId': _id(0xb00 + revision),
+        'version': 1,
+        'isTombstone': false,
+        'snapshot': {
+          'checkInId': _id(0xb00 + revision),
+          'localDate': '2026-10-24',
+          'values': {'weightKg': 80},
+          'createdAtUtc': '2026-10-24T08:00:00Z',
+          'updatedAtUtc': '2026-10-24T08:00:00Z',
+          'version': 1,
+        },
+      },
+    ],
+  };
+
+  test(
+    'upgrade_required after a page still counts the applied batches',
+    () async {
+      pullBatches = [checkInBatch(1), checkInBatch(2)];
+      upgradeFromRevision = 2;
+
+      final report = await sync.synchronize(now: DateTime.utc(2026, 10, 25, 9));
+
+      expect(report.state, SyncRunState.upgradeRequired);
+      expect(report.pulledBatches, 1);
+      expect(await store.readSyncMetadata('pull-cursor'), 1);
+    },
+  );
+
+  test(
+    'an unknown type after a known batch counts the applied batch',
+    () async {
+      pullBatches = [
+        checkInBatch(1),
+        {
+          'batchId': _id(0x9ff),
+          'revision': 2,
+          'originMutationId': null,
+          'changes': [
+            {
+              'resourceType': 'FutureResource',
+              'resourceId': _id(0x9fe),
+              'version': 1,
+              'isTombstone': false,
+              'snapshot': {'value': 1},
+            },
+          ],
+        },
+      ];
+
+      final report = await sync.synchronize(now: DateTime.utc(2026, 10, 25, 9));
+
+      expect(report.state, SyncRunState.upgradeRequired);
+      expect(report.pulledBatches, 1);
+      expect(await store.readSyncMetadata('pull-cursor'), 1);
+    },
+  );
+
   test('ids are fixed per account and day', () {
     expect(
       waterIntakeDayId(_accountId, _day),
@@ -256,13 +324,20 @@ void main() {
       waterIntakeDayId(_accountId, _day),
       isNot(waterIntakeDayId(_clientId, _day)),
     );
+    // UUID v8 (RFC 9562): Version-Nibble 8, Variante RFC 4122 (10xx).
     expect(
       waterIntakeDayId(_accountId, _day),
       matches(
         RegExp(
-          r'^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
         ),
       ),
+    );
+    // Fester Wert (unabhängig mit Python berechnet): ändert sich die
+    // Ableitung, bekäme derselbe Tag auf alten und neuen Geräten zwei IDs.
+    expect(
+      waterIntakeDayId(_accountId, _day),
+      '3e4e395c-a674-8ec0-ab85-97101ace98a0',
     );
   });
 }

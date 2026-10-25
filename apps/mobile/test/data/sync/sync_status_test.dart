@@ -159,9 +159,11 @@ void main() {
       await tracker.recordRun(_report(SyncRunState.upgradeRequired), now);
       expect(tracker.value.upgradeRequired, isTrue);
 
-      // Ein gleichzeitiger Lauf ändert nichts am Hinweis.
-      await tracker.recordRun(_report(SyncRunState.busy), now);
-      expect(tracker.value.upgradeRequired, isTrue);
+      // Läufe, die den Server nicht erreichen, ändern nichts am Hinweis.
+      for (final state in [SyncRunState.busy, SyncRunState.authBlocked]) {
+        await tracker.recordRun(_report(state), now);
+        expect(tracker.value.upgradeRequired, isTrue, reason: state.name);
+      }
 
       await tracker.recordRun(_report(SyncRunState.synced), now);
       expect(tracker.value.upgradeRequired, isFalse);

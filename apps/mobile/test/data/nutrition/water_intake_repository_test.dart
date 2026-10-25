@@ -186,13 +186,48 @@ void main() {
     var version = 0;
     water.beforeCommitForTesting = () => confirm(++version);
 
-    await expectLater(water.add(_day, 200), throwsStateError);
+    await expectLater(
+      water.add(_day, 200),
+      throwsA(
+        isA<WaterIntakeSaveException>().having(
+          (error) => error.toString(),
+          'message',
+          'Die Wassermenge hat sich gerade beim Synchronisieren geändert. '
+              'Bitte versuche es noch einmal.',
+        ),
+      ),
+    );
     expect(version, 3);
     expect(await outbox(), isEmpty);
 
     // The queue keeps working afterwards.
     water.beforeCommitForTesting = null;
     expect(await water.add(_day, 100), 600);
+  });
+
+  test('frozen edits during a handover give a German message', () async {
+    // Wie während einer Übergabe; der Schlüssel ist für Aufrufer gesperrt.
+    await database
+        .into(database.localSyncMetadata)
+        .insertOnConflictUpdate(
+          LocalSyncMetadataCompanion.insert(
+            key: 'local-writes-frozen',
+            valueJson: 'true',
+          ),
+        );
+
+    await expectLater(
+      water.add(_day, 200),
+      throwsA(
+        isA<WaterIntakeSaveException>().having(
+          (error) => error.message,
+          'message',
+          startsWith('Während der Geräteübergabe'),
+        ),
+      ),
+    );
+    expect(await water.read(_day), 0);
+    expect(await outbox(), isEmpty);
   });
 
   test(

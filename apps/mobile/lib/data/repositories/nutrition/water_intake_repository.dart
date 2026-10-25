@@ -13,18 +13,28 @@ import '../sync/local_sync_store.dart';
 
 export '../sync/local_conflict_recovery.dart' show waterIntakeAggregateType;
 
-/// Namensraum der Tages-IDs (UUID v5); fest, damit jedes Gerät dieselbe ID
-/// für denselben Nutzer und Tag bildet.
+/// Namensraum der Tages-IDs (UUID v8, SHA-256); fest, damit jedes Gerät
+/// dieselbe ID für denselben Nutzer und Tag bildet.
 const _waterDayNamespace = '6f1c2a9e-4b7d-4e2a-9c3f-2d8b5a7e1f40';
 
 /// Wie oft eine Änderung neu gelesen und erneut versucht wird, wenn ein Pull
 /// oder eine Bestätigung den Tag zwischen Lesen und Schreiben ändert.
 const _maxCommitAttempts = 3;
 
+/// Speichern der Wassermenge ist gescheitert; [message] ist für den Nutzer.
+class WaterIntakeSaveException implements Exception {
+  const WaterIntakeSaveException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// Wassermenge je lokalem Tag über die kontogebundene Outbox (D2, D3).
 ///
 /// Jede Änderung sendet die neue Summe des Tages. Die ID ist je Nutzer und
-/// Tag fest (UUID v5), damit zwei Geräte denselben Tag nie unter zwei IDs
+/// Tag fest (UUID v8), damit zwei Geräte denselben Tag nie unter zwei IDs
 /// anlegen. Änderungen laufen nacheinander; der Commit prüft, dass der
 /// gelesene Stand noch gilt, sonst wird neu gelesen.
 class WaterIntakeRepository {
@@ -95,12 +105,19 @@ class WaterIntakeRepository {
       try {
         await _commit(id, localDate, existing, total);
         return total;
-      } on StateError catch (error) {
+      } on LocalResourceChangedException {
         // Ein Pull oder eine Bestätigung kam dazwischen: neu lesen.
-        if (error.message != localResourceChangedMessage ||
-            attempt >= _maxCommitAttempts) {
-          rethrow;
+        if (attempt >= _maxCommitAttempts) {
+          throw const WaterIntakeSaveException(
+            'Die Wassermenge hat sich gerade beim Synchronisieren geändert. '
+            'Bitte versuche es noch einmal.',
+          );
         }
+      } on LocalWritesFrozenException {
+        throw const WaterIntakeSaveException(
+          'Während der Geräteübergabe lässt sich nichts ändern. Schließe sie '
+          'zuerst ab oder brich sie ab.',
+        );
       }
     }
   }
@@ -173,13 +190,15 @@ class WaterIntakeRepository {
   }
 }
 
-/// UUID v5 aus Konto und Tag: dieselben Eingaben ergeben auf jedem Gerät
-/// dieselbe ID, verschiedene Konten nie dieselbe.
+/// Namensbasierte UUID v8 (RFC 9562) aus Konto und Tag: die ersten 16 Byte
+/// des SHA-256 über Namensraum, Konto und Datum, mit Version 8 und Variante
+/// RFC 4122. Dieselben Eingaben ergeben auf jedem Gerät dieselbe ID,
+/// verschiedene Konten nie dieselbe.
 String waterIntakeDayId(String accountId, String localDate) {
   final namespace = _uuidBytes(_waterDayNamespace);
   final name = utf8.encode('${accountId.toLowerCase()}:$localDate');
-  final hash = sha1.convert([...namespace, ...name]).bytes.sublist(0, 16);
-  hash[6] = (hash[6] & 0x0f) | 0x50;
+  final hash = sha256.convert([...namespace, ...name]).bytes.sublist(0, 16);
+  hash[6] = (hash[6] & 0x0f) | 0x80;
   hash[8] = (hash[8] & 0x3f) | 0x80;
   final hex = hash.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
   return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
