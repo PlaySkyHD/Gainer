@@ -138,9 +138,29 @@ public sealed class CoachServiceTests
 
         await Service(provider, notes).AnswerAsync("Fortschritt?");
 
+        // The budget covers the sent text, including label, ids and JSON: 14 notes of 200 characters fit.
         string text = InputText(provider.Requests.Single().GetProperty("input")[0]);
-        Assert.Contains($"memory:{notes[19].Id:N}", text);
-        Assert.DoesNotContain($"memory:{notes[20].Id:N}", text);
+        Assert.IsLessThanOrEqualTo(CoachMemoryRules.MaxPromptCharacters, text.Length);
+        Assert.Contains($"memory:{notes[13].Id:N}", text);
+        Assert.DoesNotContain($"memory:{notes[14].Id:N}", text);
+    }
+
+    [TestMethod]
+    public async Task NotesKeepUmlautsAndTheBudgetCountsTheSentText()
+    {
+        CoachMemoryItem[] notes = Enumerable.Range(0, 25)
+            .Select(index => Note(CoachMemoryCategory.Other, $"{index:D2} Laktoseunverträglichkeit " + new string('ü', 172)))
+            .ToArray();
+        var provider = new FakeProvider(Response(Message(EmptyAnswer)));
+
+        await Service(provider, notes).AnswerAsync("Fortschritt?");
+
+        string text = InputText(provider.Requests.Single().GetProperty("input")[0]);
+        Assert.Contains("Laktoseunverträglichkeit", text);
+        Assert.DoesNotContain("\\u", text);
+        Assert.IsLessThanOrEqualTo(CoachMemoryRules.MaxPromptCharacters, text.Length);
+        Assert.Contains($"memory:{notes[13].Id:N}", text);
+        Assert.DoesNotContain($"memory:{notes[14].Id:N}", text);
     }
 
     [TestMethod]

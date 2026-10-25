@@ -690,17 +690,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CoachMemoryRequest"
+                "$ref": "#/components/schemas/CoachMemoryUpdateRequest"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/CoachMemoryRequest"
+                "$ref": "#/components/schemas/CoachMemoryUpdateRequest"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/CoachMemoryRequest"
+                "$ref": "#/components/schemas/CoachMemoryUpdateRequest"
               }
             }
           },
@@ -3209,6 +3209,15 @@
             "items": {
               "$ref": "#/components/schemas/AccountExportResourceResponse"
             }
+          },
+          "coachMemories": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CoachMemoryResponse"
+            }
           }
         }
       },
@@ -3543,6 +3552,36 @@
           },
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "CoachMemoryUpdateRequest": {
+        "required": [
+          "category",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "category": {
+            "maxLength": 16,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "baseVersion": {
+            "maximum": 9223372036854776000,
+            "minimum": 1,
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
           }
         }
       },

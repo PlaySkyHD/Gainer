@@ -21,7 +21,10 @@ public sealed class CoachMemoriesController(ICoachMemoryStore memories) : Contro
         return Ok(new CoachMemoryListResponse(items.Select(ToResponse).ToList(), CoachMemoryRules.MaxEntriesPerUser));
     }
 
-    /// <summary>Creates an entry, also to accept a suggestion. The same text again returns the existing entry with 200.</summary>
+    /// <summary>
+    /// Creates an entry, also to accept a suggestion. The same text again returns the existing entry with 200;
+    /// a different category is applied to it.
+    /// </summary>
     [HttpPost]
     [ProducesResponseType<CoachMemoryResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<CoachMemoryResponse>(StatusCodes.Status200OK)]
@@ -38,6 +41,7 @@ public sealed class CoachMemoriesController(ICoachMemoryStore memories) : Contro
             return result.Created ? StatusCode(StatusCodes.Status201Created, response) : Ok(response);
         });
 
+    /// <summary>Changes an entry; with <c>baseVersion</c> a newer stored version answers 409 <c>memory_conflict</c>.</summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType<CoachMemoryResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -45,10 +49,10 @@ public sealed class CoachMemoriesController(ICoachMemoryStore memories) : Contro
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult<CoachMemoryResponse>> Update(
         Guid id,
-        CoachMemoryRequest request,
+        CoachMemoryUpdateRequest request,
         CancellationToken cancellationToken = default) =>
-        HandleAsync(async () => Ok(ToResponse(
-            await memories.UpdateAsync(id, ParseCategory(request.Category), request.Text, cancellationToken))));
+        HandleAsync(async () => Ok(ToResponse(await memories.UpdateAsync(
+            id, ParseCategory(request.Category), request.Text, request.BaseVersion, cancellationToken))));
 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -89,7 +93,8 @@ public sealed class CoachMemoriesController(ICoachMemoryStore memories) : Contro
         int status = exception.Code switch
         {
             CoachMemoryException.NotFound => StatusCodes.Status404NotFound,
-            CoachMemoryException.LimitReached or CoachMemoryException.Duplicate => StatusCodes.Status409Conflict,
+            CoachMemoryException.LimitReached or CoachMemoryException.Duplicate or CoachMemoryException.Conflict =>
+                StatusCodes.Status409Conflict,
             _ => StatusCodes.Status400BadRequest,
         };
         var problem = new ProblemDetails
@@ -102,7 +107,8 @@ public sealed class CoachMemoriesController(ICoachMemoryStore memories) : Contro
         return StatusCode(status, problem);
     }
 
-    private static CoachMemoryResponse ToResponse(CoachMemoryItem item) => new(
+    /// <summary>Wire form of an entry; the account export uses it too.</summary>
+    internal static CoachMemoryResponse ToResponse(CoachMemoryItem item) => new(
         item.Id,
         CoachMemoryRules.ToWire(item.Category),
         item.Text,
