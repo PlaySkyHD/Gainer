@@ -48,3 +48,5 @@ You improve the **environment** for future agent runs: skills, rules, lessons, c
 ## Writing for agents
 
 Write fixes the way agents read them: short declarative sentences, one rule per line, the reason in a few words, a concrete command or path instead of a description. Put a rule where it is read at the right moment: always-loaded files only for pointers, skills for knowledge needed on demand, review rules for judgement calls, checks for everything mechanical.
+
+Check numbers, thresholds and API names in the proposed text against the code (`graphify query`, then grep), and name the fix commit the rule comes from. A value that holds for one widget only is written as such. The text is copied verbatim later.
