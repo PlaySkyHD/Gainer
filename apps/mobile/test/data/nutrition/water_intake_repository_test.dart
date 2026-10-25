@@ -53,19 +53,20 @@ void main() {
           )!
           as Map<String, dynamic>;
 
-  /// Bestätigt den lokalen Stand wie ein Pull: saubere Serverkopie, leere
-  /// Outbox.
-  Future<void> confirm(int version) async {
-    final row = (await store.readAggregates(waterIntakeAggregateType)).single;
-    final snapshot = Map<String, Object?>.from(row.workingCopy! as Map);
+  /// Bestätigt einen Stand wie ein Pull: saubere Serverkopie, leere Outbox.
+  Future<void> confirm(int version, {int? amountMl}) async {
+    final dayId = water.dayIdFor(_day);
+    final row = await store.readAggregate(waterIntakeAggregateType, dayId);
+    final snapshot = Map<String, Object?>.from(row!.workingCopy! as Map);
+    if (amountMl != null) snapshot['amountMl'] = amountMl;
     await database
         .into(database.localResources)
         .insertOnConflictUpdate(
           LocalResourcesCompanion.insert(
             aggregateType: waterIntakeAggregateType,
-            aggregateId: row.aggregateId,
+            aggregateId: dayId,
             envelopeJson: serverEnvelope(
-              aggregateId: row.aggregateId,
+              aggregateId: dayId,
               snapshot: snapshot,
               version: version,
             ).encode(),
@@ -75,21 +76,23 @@ void main() {
     await database.delete(database.localOutbox).go();
   }
 
-  test('first add creates the day and is sent as an addition', () async {
+  test('the first change creates the day under its fixed id', () async {
     expect(await water.read(_day), 0);
 
     expect(await water.add(_day, 300), 300);
 
     expect(await water.read(_day), 300);
     final mutation = (await outbox()).single;
+    expect(mutation.aggregateId, waterIntakeDayId(_accountId, _day));
     expect(mutation.operation, LocalMutationOperation.create);
-    expect(operationOf(mutation), 'addWaterIntake');
+    expect(operationOf(mutation), 'setWaterIntake');
     expect(payloadOf(mutation), {
       'waterIntakeDayId': mutation.aggregateId,
       'localDate': _day,
       'baseVersion': 0,
       'amountMl': 300,
     });
+    expect((mutation.body! as Map).containsKey('addedMl'), isFalse);
   });
 
   test('offline taps merge into one waiting total', () async {
@@ -124,16 +127,72 @@ void main() {
     expect(await water.add(_day, 200), 700);
     final added = (await outbox()).single;
     expect(added.operation, LocalMutationOperation.update);
-    expect(operationOf(added), 'addWaterIntake');
+    expect(operationOf(added), 'setWaterIntake');
     expect(payloadOf(added), containsPair('baseVersion', 3));
-    expect(payloadOf(added), containsPair('amountMl', 200));
+    expect(payloadOf(added), containsPair('amountMl', 700));
 
     await confirm(4);
     expect(await water.setAmount(_day, 250), 250);
     final corrected = (await outbox()).single;
-    expect(operationOf(corrected), 'setWaterIntake');
     expect(payloadOf(corrected), containsPair('baseVersion', 4));
     expect(payloadOf(corrected), containsPair('amountMl', 250));
+  });
+
+  test('an ack between reading and writing is not overwritten', () async {
+    await water.add(_day, 500);
+    var acked = false;
+    water.beforeCommitForTesting = () async {
+      if (acked) return;
+      acked = true;
+      // Der Server bestätigt den wartenden Stand, während getippt wird.
+      await confirm(1);
+    };
+
+    expect(await water.add(_day, 200), 700);
+
+    final mutation = (await outbox()).single;
+    expect(mutation.operation, LocalMutationOperation.update);
+    expect(mutation.baseVersion, 1);
+    expect(payloadOf(mutation)['amountMl'], 700);
+    final envelope = await store.readAggregate(
+      waterIntakeAggregateType,
+      water.dayIdFor(_day),
+    );
+    expect(envelope!.serverVersion, 1);
+    expect(envelope.syncState, LocalSyncState.pending);
+  });
+
+  test(
+    'a pull with another total between reading and writing is respected',
+    () async {
+      await water.add(_day, 500);
+      await confirm(1);
+      var pulled = false;
+      water.beforeCommitForTesting = () async {
+        if (pulled) return;
+        pulled = true;
+        await confirm(2, amountMl: 900);
+      };
+
+      expect(await water.add(_day, 200), 1100);
+      final mutation = (await outbox()).single;
+      expect(mutation.baseVersion, 2);
+      expect(payloadOf(mutation)['amountMl'], 1100);
+    },
+  );
+
+  test('a day that keeps changing gives up after a few attempts', () async {
+    await water.add(_day, 500);
+    var version = 0;
+    water.beforeCommitForTesting = () => confirm(++version);
+
+    await expectLater(water.add(_day, 200), throwsStateError);
+    expect(version, 3);
+    expect(await outbox(), isEmpty);
+
+    // The queue keeps working afterwards.
+    water.beforeCommitForTesting = null;
+    expect(await water.add(_day, 100), 600);
   });
 
   test(
@@ -148,7 +207,6 @@ void main() {
       expect(await water.setAmount(_day, 0), 0);
       final reset = (await outbox()).single;
       expect(reset.operation, LocalMutationOperation.update);
-      expect(operationOf(reset), 'setWaterIntake');
       expect(payloadOf(reset)['amountMl'], 0);
       expect(await water.read(_day), 0);
     },
@@ -228,6 +286,20 @@ void main() {
       ),
     );
     expect((await other.read()).waterEnabled, isFalse);
+  });
+
+  test('quick preference changes do not overwrite each other', () async {
+    final preferences = NutritionPreferences(store: store);
+
+    await Future.wait([
+      preferences.update((current) => current.copyWith(waterEnabled: true)),
+      preferences.update((current) => current.copyWith(waterGoalMl: 3000)),
+    ]);
+
+    expect(
+      await NutritionPreferences(store: store).read(),
+      const NutritionPreferenceValues(waterEnabled: true, waterGoalMl: 3000),
+    );
   });
 
   test('invalid stored preferences fall back per value', () async {

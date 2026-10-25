@@ -1,20 +1,32 @@
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../domain/models/nutrition/nutrition.dart';
 import '../../../domain/models/nutrition/water_intake.dart';
 import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
+import '../sync/local_conflict_recovery.dart' show waterIntakeAggregateType;
 import '../sync/local_sync_store.dart';
 
-/// Lokaler Aggregattyp der Wassermenge eines Tages (Server: `WaterIntakeDay`).
-const waterIntakeAggregateType = 'water-intake-day';
+export '../sync/local_conflict_recovery.dart' show waterIntakeAggregateType;
 
-/// Wassermenge je lokalem Tag über die kontogebundene Outbox (D2).
+/// Namensraum der Tages-IDs (UUID v5); fest, damit jedes Gerät dieselbe ID
+/// für denselben Nutzer und Tag bildet.
+const _waterDayNamespace = '6f1c2a9e-4b7d-4e2a-9c3f-2d8b5a7e1f40';
+
+/// Wie oft eine Änderung neu gelesen und erneut versucht wird, wenn ein Pull
+/// oder eine Bestätigung den Tag zwischen Lesen und Schreiben ändert.
+const _maxCommitAttempts = 3;
+
+/// Wassermenge je lokalem Tag über die kontogebundene Outbox (D2, D3).
 ///
-/// Jede Änderung liest den aktuellen Stand und schreibt in einer Warteschlange,
-/// damit zwei schnelle Tipps nicht denselben Stand lesen. Wartet für den Tag
-/// keine Änderung, geht eine Addition als `addedMl` mit; sonst trägt der Body
-/// nur die neue Summe, die beim Zusammenfassen in der Outbox richtig bleibt.
+/// Jede Änderung sendet die neue Summe des Tages. Die ID ist je Nutzer und
+/// Tag fest (UUID v5), damit zwei Geräte denselben Tag nie unter zwei IDs
+/// anlegen. Änderungen laufen nacheinander; der Commit prüft, dass der
+/// gelesene Stand noch gilt, sonst wird neu gelesen.
 class WaterIntakeRepository {
   WaterIntakeRepository({
     required this.store,
@@ -26,42 +38,80 @@ class WaterIntakeRepository {
   final String Function() ids;
   final DateTime Function() clock;
 
+  /// Läuft nach dem Lesen und vor dem Commit; nur für Tests, die ein
+  /// Wettrennen mit dem Sync nachstellen.
+  @visibleForTesting
+  Future<void> Function()? beforeCommitForTesting;
+
   Future<void> _queue = Future.value();
+
+  /// Feste ID der Wassermenge von [localDate] für dieses Konto.
+  String dayIdFor(String localDate) =>
+      waterIntakeDayId(store.accountId, localDate);
 
   /// Getrunkene Menge in ml; 0 ohne gespeicherten Tag.
   Future<int> read(String localDate) async {
     _requireDate(localDate);
-    final existing = await _find(localDate);
+    final existing = await store.readAggregate(
+      waterIntakeAggregateType,
+      dayIdFor(localDate),
+    );
     return existing == null ? 0 : _amountOf(existing.workingCopy);
   }
 
   /// Addiert [addedMl] und liefert die neue Tagesmenge.
-  Future<int> add(String localDate, int addedMl) =>
-      _serialized(() => _change(localDate, addedMl, add: true));
+  Future<int> add(String localDate, int addedMl) => _serialized(
+    () => _change(localDate, (current) {
+      if (!WaterIntakeLimits.canAdd(current, addedMl)) {
+        throw const NutritionValidationException({
+          'amountMl': 'Mehr als 10.000 ml am Tag sind nicht möglich.',
+        });
+      }
+      return current + addedMl;
+    }),
+  );
 
   /// Setzt die Tagesmenge auf [amountMl] (Korrektur, Rückgängig).
-  Future<int> setAmount(String localDate, int amountMl) =>
-      _serialized(() => _change(localDate, amountMl, add: false));
+  Future<int> setAmount(String localDate, int amountMl) => _serialized(
+    () => _change(localDate, (_) {
+      if (!WaterIntakeLimits.isValidDaily(amountMl)) {
+        throw const NutritionValidationException({
+          'amountMl': 'Erlaubt sind 0 bis 10.000 ml.',
+        });
+      }
+      return amountMl;
+    }),
+  );
 
-  Future<int> _change(String localDate, int amount, {required bool add}) async {
+  Future<int> _change(String localDate, int Function(int current) next) async {
     _requireDate(localDate);
-    final existing = await _find(localDate);
-    final current = existing == null ? 0 : _amountOf(existing.workingCopy);
-    if (add && !WaterIntakeLimits.canAdd(current, amount)) {
-      throw const NutritionValidationException({
-        'amountMl': 'Mehr als 10.000 ml am Tag sind nicht möglich.',
-      });
+    final id = dayIdFor(localDate);
+    for (var attempt = 1; ; attempt++) {
+      final existing = await store.readAggregate(waterIntakeAggregateType, id);
+      final current = existing == null ? 0 : _amountOf(existing.workingCopy);
+      final total = next(current);
+      if (existing != null && total == current) return current;
+      await beforeCommitForTesting?.call();
+      try {
+        await _commit(id, localDate, existing, total);
+        return total;
+      } on StateError catch (error) {
+        // Ein Pull oder eine Bestätigung kam dazwischen: neu lesen.
+        if (error.message != localResourceChangedMessage ||
+            attempt >= _maxCommitAttempts) {
+          rethrow;
+        }
+      }
     }
-    final total = add ? current + amount : amount;
-    if (!WaterIntakeLimits.isValidDaily(total)) {
-      throw const NutritionValidationException({
-        'amountMl': 'Erlaubt sind 0 bis 10.000 ml.',
-      });
-    }
-    if (existing != null && total == current) return current;
+  }
 
+  Future<void> _commit(
+    String id,
+    String localDate,
+    LocalAggregateEnvelope<Object?>? existing,
+    int total,
+  ) {
     final now = clock().toUtc();
-    final aggregateId = existing?.aggregateId ?? ids();
     final previous = existing?.workingCopy;
     final working = <String, Object?>{
       'localDate': localDate,
@@ -71,20 +121,17 @@ class WaterIntakeRepository {
           now.toIso8601String(),
       'updatedAtUtc': now.toIso8601String(),
     };
-    // Nur ohne wartende Änderung als Addition senden (D2).
-    final sendsDelta =
-        add && (existing == null || existing.syncState == LocalSyncState.clean);
-    await store.commitMutation(
+    return store.commitMutation(
       mutationId: ids(),
       aggregateType: waterIntakeAggregateType,
-      aggregateId: aggregateId,
+      aggregateId: id,
       operation: existing == null
           ? LocalMutationOperation.create
           : LocalMutationOperation.update,
       baseVersion: existing?.serverVersion,
-      body: {...working, if (sendsDelta) 'addedMl': amount},
+      body: working,
       envelope: existing == null
-          ? localEnvelope(aggregateId: aggregateId, workingCopy: working)
+          ? localEnvelope(aggregateId: id, workingCopy: working)
           : LocalAggregateEnvelope(
               aggregateId: existing.aggregateId,
               serverSnapshot: existing.serverSnapshot,
@@ -93,23 +140,23 @@ class WaterIntakeRepository {
               optimisticVersion: existing.optimisticVersion + 1,
               syncState: LocalSyncState.pending,
             ),
+      // Gilt der gelesene Stand beim Commit nicht mehr, schlägt er fehl.
+      resourceExpectations: [
+        LocalResourceExpectation(
+          aggregateType: waterIntakeAggregateType,
+          aggregateId: id,
+          optimisticVersion: existing?.optimisticVersion,
+          serverVersion: existing?.serverVersion,
+        ),
+      ],
       createdAtUtc: now,
     );
-    return total;
   }
 
   Future<T> _serialized<T>(Future<T> Function() action) {
     final result = _queue.then((_) => action());
     _queue = result.then((_) {}, onError: (_) {});
     return result;
-  }
-
-  Future<LocalAggregateEnvelope<Object?>?> _find(String localDate) async {
-    for (final row in await store.readAggregates(waterIntakeAggregateType)) {
-      final working = row.workingCopy;
-      if (working is Map && working['localDate'] == localDate) return row;
-    }
-    return null;
   }
 
   static int _amountOf(Object? workingCopy) {
@@ -124,4 +171,25 @@ class WaterIntakeRepository {
       });
     }
   }
+}
+
+/// UUID v5 aus Konto und Tag: dieselben Eingaben ergeben auf jedem Gerät
+/// dieselbe ID, verschiedene Konten nie dieselbe.
+String waterIntakeDayId(String accountId, String localDate) {
+  final namespace = _uuidBytes(_waterDayNamespace);
+  final name = utf8.encode('${accountId.toLowerCase()}:$localDate');
+  final hash = sha1.convert([...namespace, ...name]).bytes.sublist(0, 16);
+  hash[6] = (hash[6] & 0x0f) | 0x50;
+  hash[8] = (hash[8] & 0x3f) | 0x80;
+  final hex = hash.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+}
+
+List<int> _uuidBytes(String uuid) {
+  final hex = uuid.replaceAll('-', '');
+  return [
+    for (var i = 0; i < hex.length; i += 2)
+      int.parse(hex.substring(i, i + 2), radix: 16),
+  ];
 }

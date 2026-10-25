@@ -200,7 +200,9 @@ void main() {
     expect(_enabled(tester, 200), isFalse);
   });
 
-  testWidgets('a failed change shows an error above the diary', (tester) async {
+  testWidgets('a failed change shows its error in the water card', (
+    tester,
+  ) async {
     final harness = await _pump(tester, waterMl: 9900);
 
     final saved = await harness.viewModel.addWater(500);
@@ -208,10 +210,68 @@ void main() {
 
     expect(saved, isFalse);
     expect(
-      find.text('Mehr als 10.000 ml am Tag sind nicht möglich.'),
-      findsOneWidget,
+      tester
+          .widget<Text>(find.byKey(const ValueKey('nutrition-water-error')))
+          .data,
+      'Mehr als 10.000 ml am Tag sind nicht möglich.',
     );
     expect(_valueText(tester), '9.900 / 2.500 ml');
+    expect(harness.viewModel.errorOperation, NutritionErrorOperation.water);
+
+    // Der nächste gelungene Tipp räumt nur den eigenen Fehler weg.
+    await harness.viewModel.setWater(9000);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('nutrition-water-error')), findsNothing);
+  });
+
+  testWidgets('a water change keeps errors of the diary', (tester) async {
+    final harness = await _pump(tester, waterMl: 500);
+    harness.viewModel.reportInputError(
+      'Eintrag konnte nicht gelöscht werden.',
+      operation: NutritionErrorOperation.diary,
+    );
+
+    expect(await harness.viewModel.addWater(200), isTrue);
+    await tester.pumpAndSettle();
+
+    expect(
+      harness.viewModel.errorMessage,
+      'Eintrag konnte nicht gelöscht werden.',
+    );
+    expect(harness.viewModel.errorOperation, NutritionErrorOperation.diary);
+    expect(_valueText(tester), '700 / 2.500 ml');
+  });
+
+  testWidgets('a failed save keeps the sheet open and shows why', (
+    tester,
+  ) async {
+    final harness = await _pump(tester, waterMl: 600);
+    harness.repository.water.beforeCommitForTesting = () async =>
+        throw StateError('Speicher nicht verfügbar');
+
+    await tester.tap(_amount);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-water-field')),
+      '900',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('nutrition-water-save')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WaterAmountSheet), findsOneWidget);
+    final error = tester
+        .widget<Text>(find.byKey(const ValueKey('nutrition-water-save-error')))
+        .data;
+    expect(error, contains('Speicher nicht verfügbar'));
+    expect(await harness.repository.water.read(_day), 600);
+
+    // Ein zweiter Versuch gelingt und schließt das Sheet.
+    harness.repository.water.beforeCommitForTesting = null;
+    await tester.tap(find.byKey(const ValueKey('nutrition-water-save')));
+    await tester.pumpAndSettle();
+    expect(find.byType(WaterAmountSheet), findsNothing);
+    expect(_valueText(tester), '900 / 2.500 ml');
   });
 
   testWidgets('the card fits at text size 2', (tester) async {

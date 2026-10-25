@@ -629,6 +629,7 @@ class ApiClient {
     required int after,
     required String expectedAccountId,
     int limit = 200,
+    int? protocolVersion,
   }) async {
     _validateIdentifier(expectedAccountId, 'expectedAccountId');
     if (after < 0 || limit < 1 || limit > 200) {
@@ -639,7 +640,12 @@ class ApiClient {
     final response = await _request(
       'GET',
       '/api/v1/sync/changes',
-      queryParameters: {'after': after, 'limit': limit},
+      // Ohne Version behandelt der Server den Pull wie von Protokoll 3.
+      queryParameters: {
+        'after': after,
+        'limit': limit,
+        'protocolVersion': ?protocolVersion,
+      },
       headers: {accountIdentityHeaderName: expectedAccountId},
     );
     return SyncPullResponse.fromJson(_asObject(response.data));

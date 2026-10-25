@@ -70,11 +70,12 @@ void main() {
     final forced = (await store.readOutbox()).single;
     final body = forced.body! as Map<String, dynamic>;
     expect(forced.operation, LocalMutationOperation.create);
-    expect(body.containsKey('addedMl'), isFalse);
     expect(SyncPayloadCodec.serverOperation(forced, body), 'setWaterIntake');
-    expect(
-      SyncPayloadCodec.serverPayload(forced, body, 0),
-      containsPair('amountMl', 500),
-    );
+    expect(SyncPayloadCodec.serverPayload(forced, body, 0), {
+      'waterIntakeDayId': forced.aggregateId,
+      'localDate': '2026-10-25',
+      'baseVersion': 0,
+      'amountMl': 500,
+    });
   });
 }

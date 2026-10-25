@@ -97,10 +97,19 @@ class NutritionViewModel extends ChangeNotifier {
     errorOperation = null;
     statusMessage = null;
     _notify();
+    final waterRevision = _waterRevision;
     try {
-      final next = await repository.read(date);
+      var next = await repository.read(date);
       await repository.preferences.read();
       if (_disposed || generation != _dayLoadGeneration) return;
+      // Kam während des Ladens eine Wasseränderung für diesen Tag an, ist ihr
+      // Stand neuer als der gelesene.
+      final current = snapshot;
+      if (_waterRevision != waterRevision &&
+          current != null &&
+          current.day.localDate == date) {
+        next = next.withWater(current.waterMl);
+      }
       localDate = date;
       snapshot = next;
       _failedDate = null;
@@ -753,26 +762,31 @@ class NutritionViewModel extends ChangeNotifier {
   Future<bool> setWater(int amountMl) =>
       _changeWater((date) => repository.water.setAmount(date, amountMl));
 
+  /// Zählt gespeicherte Wasseränderungen; ein laufendes Laden erkennt daran,
+  /// dass sein gelesener Wasserstand veraltet ist.
+  int _waterRevision = 0;
+
   /// Ohne Ladeanzeige, damit schnelle Tipps nicht flackern; die Warteschlange
-  /// im Repository hält die Reihenfolge.
+  /// im Repository hält die Reihenfolge. Löscht nur eigene Wasserfehler.
   Future<bool> _changeWater(Future<int> Function(String date) change) async {
     if (_disposed) return false;
     final date = localDate;
-    if (errorOperation == NutritionErrorOperation.diary) {
+    if (errorOperation == NutritionErrorOperation.water) {
       errorMessage = null;
       errorOperation = null;
     }
     try {
       final total = await change(date);
+      _waterRevision++;
       final current = snapshot;
-      if (current != null && localDate == date) {
+      if (current != null && current.day.localDate == date) {
         snapshot = current.withWater(total);
       }
       return true;
     } catch (error) {
       if (!_disposed) {
         errorMessage = _messageFor(error);
-        errorOperation = NutritionErrorOperation.diary;
+        errorOperation = NutritionErrorOperation.water;
       }
       return false;
     } finally {
@@ -820,6 +834,9 @@ enum FoodSourceFilter { all, bls, openFoodFacts }
 enum NutritionErrorOperation {
   day,
   diary,
+
+  /// Wasser-Karte und Korrektur-Sheet.
+  water,
   entry,
   planning,
   search,

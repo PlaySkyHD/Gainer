@@ -25,6 +25,10 @@ class LocalResourceExpectation {
 
 const _resourceChangedMessage =
     'A local resource changed during the transaction.';
+
+/// Meldung des [StateError], wenn eine [LocalResourceExpectation] beim
+/// Commit nicht mehr stimmt; Aufrufer lesen dann neu und versuchen es erneut.
+const localResourceChangedMessage = _resourceChangedMessage;
 const _localWritesFrozenKey = 'local-writes-frozen';
 const _accountOwnerIdKey = 'account-owner-id';
 const pullCursorMetadataKey = 'pull-cursor';

@@ -17,6 +17,7 @@ class NutritionWaterCard extends StatelessWidget {
     required this.goalMl,
     required this.onAdd,
     required this.onEdit,
+    this.error,
     super.key,
   });
 
@@ -25,8 +26,12 @@ class NutritionWaterCard extends StatelessWidget {
   final ValueChanged<int> onAdd;
   final VoidCallback onEdit;
 
+  /// Fehler der letzten Wasseränderung, unter den Knöpfen.
+  final String? error;
+
   @override
   Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
     final large = MediaQuery.textScalerOf(context).scale(1) > 1.5;
     final label = '${formatWaterMl(amountMl)} / ${formatWaterMl(goalMl)} ml';
     final buttons = [
@@ -90,6 +95,20 @@ class NutritionWaterCard extends StatelessWidget {
                     ],
                   ],
                 ),
+              if (error case final message?)
+                Padding(
+                  padding: const EdgeInsets.only(top: GainerSpacing.xs),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      message,
+                      key: const ValueKey('nutrition-water-error'),
+                      style: GainerTypography.label.copyWith(
+                        color: colors.destructive,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -98,12 +117,15 @@ class NutritionWaterCard extends StatelessWidget {
   }
 }
 
-/// Öffnet die Korrektur der Tagesmenge. [onSave] liefert true, wenn
-/// gespeichert wurde; dann schließt das Sheet, sonst bleibt es offen.
+/// Speichert die Tagesmenge; liefert null bei Erfolg, sonst die Fehlermeldung.
+typedef WaterAmountSave = Future<String?> Function(int amountMl);
+
+/// Öffnet die Korrektur der Tagesmenge. Gelingt [onSave], schließt das Sheet;
+/// sonst bleibt es offen und zeigt den Fehler.
 Future<void> showWaterAmountSheet(
   BuildContext context, {
   required int currentMl,
-  required Future<bool> Function(int amountMl) onSave,
+  required WaterAmountSave onSave,
 }) => showGainerSheet<void>(
   context: context,
   builder: (_) => WaterAmountSheet(currentMl: currentMl, onSave: onSave),
@@ -118,7 +140,7 @@ class WaterAmountSheet extends StatefulWidget {
   });
 
   final int currentMl;
-  final Future<bool> Function(int amountMl) onSave;
+  final WaterAmountSave onSave;
 
   @override
   State<WaterAmountSheet> createState() => _WaterAmountSheetState();
@@ -127,6 +149,7 @@ class WaterAmountSheet extends StatefulWidget {
 class _WaterAmountSheetState extends State<WaterAmountSheet> {
   late final _amount = TextEditingController(text: '${widget.currentMl}');
   bool _saving = false;
+  String? _saveError;
 
   @override
   void dispose() {
@@ -146,13 +169,19 @@ class _WaterAmountSheetState extends State<WaterAmountSheet> {
       : 'Erlaubt sind 0 bis ${formatWaterMl(WaterIntakeLimits.maxDailyMl)} ml.';
 
   Future<void> _save(int value) async {
-    setState(() => _saving = true);
-    final saved = await widget.onSave(value);
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    final error = await widget.onSave(value);
     if (!mounted) return;
-    if (saved) {
+    if (error == null) {
       Navigator.of(context).pop();
     } else {
-      setState(() => _saving = false);
+      setState(() {
+        _saving = false;
+        _saveError = error;
+      });
     }
   }
 
@@ -185,6 +214,20 @@ class _WaterAmountSheetState extends State<WaterAmountSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (_saveError case final message?)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: GainerSpacing.s),
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        message,
+                        key: const ValueKey('nutrition-water-save-error'),
+                        style: GainerTypography.body.copyWith(
+                          color: colors.destructive,
+                        ),
+                      ),
+                    ),
+                  ),
                 GainerGroupedSection(
                   footer:
                       'Korrigiere die Menge des Tages, etwa wenn ein Glas '

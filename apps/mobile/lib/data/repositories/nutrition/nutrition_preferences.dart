@@ -76,17 +76,25 @@ class NutritionPreferences {
     return decoded;
   }
 
+  Future<void> _queue = Future.value();
+
   /// Liest, wendet [change] an und schreibt nur bei Änderung zurück.
+  /// Änderungen laufen nacheinander, damit zwei schnelle Eingaben (Schalter
+  /// und Ziel) nicht vom selben alten Stand ausgehen und sich überschreiben.
   Future<NutritionPreferenceValues> update(
     NutritionPreferenceValues Function(NutritionPreferenceValues current)
     change,
-  ) async {
-    final current = await read();
-    final next = change(current);
-    if (next != current) {
-      await store.writeSyncMetadata(_preferencesKey, next.toJson());
-      values.value = next;
-    }
-    return next;
+  ) {
+    final result = _queue.then((_) async {
+      final current = await read();
+      final next = change(current);
+      if (next != current) {
+        await store.writeSyncMetadata(_preferencesKey, next.toJson());
+        values.value = next;
+      }
+      return next;
+    });
+    _queue = result.then((_) {}, onError: (_) {});
+    return result;
   }
 }

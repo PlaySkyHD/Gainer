@@ -144,7 +144,7 @@ void main() {
             jsonEncode({
               'clientId': clientId,
               'displayName': 'Gainer iPhone',
-              'protocolVersion': 3,
+              'protocolVersion': 4,
               'isActiveWriter': activeWriter,
               'registeredAtUtc': '2026-10-12T10:00:00Z',
               'lastSeenAtUtc': '2026-10-12T10:00:00Z',
@@ -178,7 +178,7 @@ void main() {
           );
         } else {
           receivedMutations.add(body);
-          expect(body['protocolVersion'], 3);
+          expect(body['protocolVersion'], 4);
           expect(body['clientId'], clientId);
           if (!lenientMutations) {
             expect(body['clientSequence'], 1);
@@ -201,6 +201,10 @@ void main() {
         }
       } else if (path == '/api/v1/sync/changes' && request.method == 'GET') {
         final after = int.parse(request.uri.queryParameters['after']!);
+        // Die App nennt ihre Protokollversion; der Server antwortet in ihr.
+        final protocol = int.parse(
+          request.uri.queryParameters['protocolVersion']!,
+        );
         request.response.headers.contentType = ContentType.json;
         if (pullFailureCode != null) {
           request.response.statusCode = pullFailureStatus;
@@ -218,7 +222,7 @@ void main() {
           pullCursor = pullRevision;
           request.response.write(
             jsonEncode({
-              'protocolVersion': 3,
+              'protocolVersion': protocol,
               'nextCursor': pullRevision,
               'hasMore': false,
               'batches': [
@@ -255,7 +259,7 @@ void main() {
         } else {
           request.response.write(
             jsonEncode({
-              'protocolVersion': 3,
+              'protocolVersion': protocol,
               'nextCursor': after,
               'hasMore': false,
               'batches': [],
@@ -618,6 +622,60 @@ void main() {
       await database.close();
     },
   );
+
+  test(
+    'upgrade_required during pull asks for an update and keeps the cursor',
+    () async {
+      activeWriter = false;
+      pullFailureCode = 'upgrade_required';
+      final (store, database, api, repository) = await fixture();
+
+      final report = await repository.synchronize();
+
+      expect(report.state, SyncRunState.upgradeRequired);
+      expect(await store.readSyncMetadata('pull-cursor'), isNull);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test('entries an older app parked with upgrade_required are sent after the update', () async {
+    final (store, database, api, repository) = await fixture();
+    final parked = await store.commitMutation(
+      mutationId: mutationId,
+      aggregateType: 'daily-check-in',
+      aggregateId: checkInId,
+      operation: LocalMutationOperation.create,
+      baseVersion: null,
+      body: {'localDate': '2026-10-12', 'weightKg': 82.5},
+      envelope: localEnvelope(
+        aggregateId: checkInId,
+        workingCopy: {'localDate': '2026-10-12', 'weightKg': 82.5},
+      ),
+    );
+    await store.updateMutation(
+      LocalMutation(
+        mutationId: parked.mutationId,
+        accountId: parked.accountId,
+        aggregateType: parked.aggregateType,
+        aggregateId: parked.aggregateId,
+        sequence: parked.sequence,
+        status: LocalMutationStatus.upgradeRequired,
+        createdAtUtc: parked.createdAtUtc,
+        operation: parked.operation,
+        baseVersion: parked.baseVersion,
+        body: parked.body,
+        lastErrorCode: 'upgrade_required',
+      ),
+    );
+
+    final report = await repository.synchronize();
+
+    expect(report.pushed, 1);
+    expect(receivedMutations.single['operation'], 'createDailyCheckIn');
+    api.close();
+    await database.close();
+  });
 
   test(
     'concurrent mutation 409 remains retryable rather than a user conflict',
@@ -1215,12 +1273,18 @@ void main() {
   });
 
   test(
-    'unknown sync resource rejects its batch and leaves cursor unchanged',
+    'unknown sync resource asks for an update and leaves cursor unchanged',
     () async {
       pullResourceType = 'FutureCatalogItem';
       final (store, database, api, repository) = await fixture();
-      await expectLater(repository.synchronize(), throwsFormatException);
+      final report = await repository.synchronize();
+      expect(report.state, SyncRunState.upgradeRequired);
       expect(await store.readSyncMetadata('pull-cursor'), isNull);
+      expect(
+        await store.readAggregate('daily-check-in', checkInId),
+        isNull,
+        reason: 'Der Batch wird nicht teilweise angewendet.',
+      );
       api.close();
       await database.close();
     },

@@ -472,6 +472,9 @@ extension LocalConflictRecovery on LocalSyncStore {
 /// Lokaler Typ der Tagesvorlagen.
 const nutritionDayTemplateType = 'nutrition-day-template';
 
+/// Lokaler Typ der Wassermenge eines Tages (Server: `WaterIntakeDay`).
+const waterIntakeAggregateType = 'water-intake-day';
+
 /// Aggregattypen, deren Mutationsnutzlast der Arbeitskopie entspricht. Bei
 /// Körperzielen (erwartetes aktives Ziel), wiederverwendbaren Mahlzeiten
 /// (Archivstatus im Body) und Zielplänen fehlt diese Gleichheit.
@@ -485,9 +488,7 @@ const forceableAggregateTypes = {
   'nutrition-day',
   nutritionDayTemplateType,
   'cardio-session',
-  // Der Body trägt die Summe wie die Arbeitskopie; `addedMl` entfällt beim
-  // Erzwingen, dann geht die Summe als `setWaterIntake`.
-  'water-intake-day',
+  waterIntakeAggregateType,
 };
 
 class ConflictResourceInfo {
@@ -534,7 +535,7 @@ bool _hasServerType(String aggregateType) => switch (aggregateType) {
   'nutrition-target-schedule' ||
   nutritionDayTemplateType ||
   'cardio-session' ||
-  'water-intake-day' => true,
+  waterIntakeAggregateType => true,
   _ => false,
 };
 
@@ -555,7 +556,7 @@ String? _resourceTitle(String aggregateType, Object? workingCopy) {
                 '${started.month.toString().padLeft(2, '0')}.${started.year}';
       final parts = [?title, ?date];
       return parts.isEmpty ? null : parts.join(' · ');
-    case 'daily-check-in' || 'nutrition-day' || 'water-intake-day':
+    case 'daily-check-in' || 'nutrition-day' || waterIntakeAggregateType:
       return text('localDate');
     case 'cardio-session':
       final started = DateTime.tryParse(text('startedAtUtc') ?? '')?.toLocal();
@@ -589,6 +590,6 @@ String _serverType(String aggregateType) => switch (aggregateType) {
   'nutrition-target-schedule' => 'NutritionTargetSchedule',
   nutritionDayTemplateType => 'NutritionDayTemplate',
   'cardio-session' => 'CardioSession',
-  'water-intake-day' => 'WaterIntakeDay',
+  waterIntakeAggregateType => 'WaterIntakeDay',
   _ => throw ArgumentError.value(aggregateType, 'aggregateType'),
 };

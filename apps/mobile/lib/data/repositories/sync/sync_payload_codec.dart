@@ -3,6 +3,7 @@ import '../../../domain/models/training/training_plan_model.dart';
 import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../models/local/local_mutation.dart';
+import 'local_conflict_recovery.dart' show waterIntakeAggregateType;
 
 const _bodyGoalType = 'body-goal';
 const _dailyCheckInType = 'daily-check-in';
@@ -16,7 +17,7 @@ const _reusableMealType = 'reusable-meal';
 const _nutritionTargetScheduleType = 'nutrition-target-schedule';
 const _nutritionDayTemplateType = 'nutrition-day-template';
 const _cardioSessionType = 'cardio-session';
-const _waterIntakeDayType = 'water-intake-day';
+const _waterIntakeDayType = waterIntakeAggregateType;
 
 /// Pure translation between PWA-shaped local aggregates and the Sync v2
 /// backend DTOs. Keep transport orchestration out of this codec.
@@ -73,8 +74,8 @@ class SyncPayloadCodec {
       case _cardioSessionType:
         return _cardioSessionOperation(mutation);
       case _waterIntakeDayType:
-        // Eine Addition nur ohne zuvor wartende Änderung (D2); sonst die Summe.
-        return body['addedMl'] is int ? 'addWaterIntake' : 'setWaterIntake';
+        // Immer die Summe des Tages; die Basisversion schützt vor Überschreiben.
+        return 'setWaterIntake';
       default:
         throw ArgumentError.value(mutation.aggregateType, 'aggregateType');
     }
@@ -178,12 +179,11 @@ class SyncPayloadCodec {
       case _cardioSessionType:
         return _cardioSessionPayload(mutation, body, baseVersion);
       case _waterIntakeDayType:
-        final added = body['addedMl'];
         return {
           'waterIntakeDayId': mutation.aggregateId,
           'localDate': body['localDate'],
           'baseVersion': baseVersion,
-          'amountMl': added is int ? added : body['amountMl'],
+          'amountMl': body['amountMl'],
         };
       default:
         throw ArgumentError.value(mutation.aggregateType, 'aggregateType');

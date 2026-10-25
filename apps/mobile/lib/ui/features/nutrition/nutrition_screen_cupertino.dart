@@ -386,10 +386,15 @@ class _NutritionScreenState extends State<NutritionScreen> {
           amountMl: vm.waterMl,
           goalMl: vm.preferences.waterGoalMl,
           onAdd: vm.addWater,
+          error: vm.errorOperation == NutritionErrorOperation.water
+              ? vm.errorMessage
+              : null,
           onEdit: () => showWaterAmountSheet(
             context,
             currentMl: vm.waterMl,
-            onSave: vm.setWater,
+            onSave: (amountMl) async => await vm.setWater(amountMl)
+                ? null
+                : vm.errorMessage ?? 'Speichern nicht möglich.',
           ),
         ),
       ),

@@ -16,7 +16,8 @@ const _day = '2026-10-25';
 String _id(int value) =>
     '00000000-0000-4000-8000-${value.toString().padLeft(12, '0')}';
 
-/// Push und Pull der Wassermenge gegen einen Fake-Server.
+/// Push und Pull der Wassermenge gegen einen Fake-Server, der wie der echte
+/// Server Wasser nur an Clients ab Protokoll 4 ausliefert.
 void main() {
   late HttpServer server;
   late LocalDatabase database;
@@ -26,12 +27,14 @@ void main() {
   late WaterIntakeRepository water;
   late List<Map<String, dynamic>> mutations;
   late List<Map<String, dynamic>> pullBatches;
+  late List<String?> pullProtocols;
   var counter = 0x400;
 
   setUp(() async {
     counter = 0x400;
     mutations = [];
     pullBatches = [];
+    pullProtocols = [];
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
       final path = request.uri.path;
@@ -50,7 +53,7 @@ void main() {
           jsonEncode({
             'clientId': _clientId,
             'displayName': 'Gainer iPhone',
-            'protocolVersion': 3,
+            'protocolVersion': nativeSyncProtocolVersion,
             'isActiveWriter': true,
             'registeredAtUtc': '2026-10-25T08:00:00Z',
             'lastSeenAtUtc': '2026-10-25T08:00:00Z',
@@ -71,20 +74,35 @@ void main() {
         );
       } else if (path == '/api/v1/sync/changes') {
         final after = int.parse(request.uri.queryParameters['after']!);
+        final requested = request.uri.queryParameters['protocolVersion'];
+        pullProtocols.add(requested);
+        final protocol = int.tryParse(requested ?? '') ?? 3;
         final batches = [
           for (final batch in pullBatches)
             if ((batch['revision'] as int) > after) batch,
         ];
-        request.response.write(
-          jsonEncode({
-            'protocolVersion': 3,
-            'nextCursor': batches.isEmpty
-                ? after
-                : batches.last['revision'] as int,
-            'hasMore': false,
-            'batches': batches,
-          }),
+        final hasWater = batches.any(
+          (batch) => (batch['changes'] as List).any(
+            (change) => (change as Map)['resourceType'] == 'WaterIntakeDay',
+          ),
         );
+        if (protocol < 4 && hasWater) {
+          request.response.statusCode = 409;
+          request.response.write(
+            jsonEncode({'code': 'upgrade_required', 'message': 'Update'}),
+          );
+        } else {
+          request.response.write(
+            jsonEncode({
+              'protocolVersion': protocol,
+              'nextCursor': batches.isEmpty
+                  ? after
+                  : batches.last['revision'] as int,
+              'hasMore': false,
+              'batches': batches,
+            }),
+          );
+        }
       } else {
         request.response.statusCode = 404;
       }
@@ -134,84 +152,117 @@ void main() {
     'version': version,
   };
 
-  test('offline taps go out as one total, later taps as additions', () async {
-    await water.add(_day, 500);
-    await water.add(_day, 500);
-    final waiting = (await store.readOutbox()).single;
-    pullBatches = [
-      {
-        'batchId': _id(0x900),
-        'revision': 1,
-        'originMutationId': waiting.mutationId,
-        'changes': [
-          {
-            'resourceType': 'WaterIntakeDay',
-            'resourceId': waiting.aggregateId,
-            'version': 1,
-            'isTombstone': false,
-            'snapshot': serverDay(waiting.aggregateId, 1000, 1),
-          },
-        ],
-      },
-    ];
-
-    final first = await sync.synchronize(now: DateTime.utc(2026, 10, 25, 9));
-
-    expect(first.pushed, 1);
-    expect(mutations.single['operation'], 'setWaterIntake');
-    expect(mutations.single['resources'], [
+  Map<String, dynamic> batch(
+    int revision,
+    String id,
+    int amountMl,
+    int version, {
+    String? origin,
+  }) => {
+    'batchId': _id(0x900 + revision),
+    'revision': revision,
+    'originMutationId': origin,
+    'changes': [
       {
         'resourceType': 'WaterIntakeDay',
-        'resourceId': waiting.aggregateId,
+        'resourceId': id,
+        'version': version,
+        'isTombstone': false,
+        'snapshot': serverDay(id, amountMl, version),
+      },
+    ],
+  };
+
+  test(
+    'every change goes out as the day total on the server version',
+    () async {
+      final dayId = waterIntakeDayId(_accountId, _day);
+      await water.add(_day, 500);
+      await water.add(_day, 500);
+      final waiting = (await store.readOutbox()).single;
+      expect(waiting.aggregateId, dayId);
+      pullBatches = [batch(1, dayId, 1000, 1, origin: waiting.mutationId)];
+
+      final first = await sync.synchronize(now: DateTime.utc(2026, 10, 25, 9));
+
+      expect(first.pushed, 1);
+      expect(mutations.single['operation'], 'setWaterIntake');
+      expect(mutations.single['resources'], [
+        {
+          'resourceType': 'WaterIntakeDay',
+          'resourceId': dayId,
+          'baseVersion': 0,
+        },
+      ]);
+      expect(mutations.single['payload'], {
+        'waterIntakeDayId': dayId,
+        'localDate': _day,
         'baseVersion': 0,
-      },
-    ]);
-    expect(mutations.single['payload'], {
-      'waterIntakeDayId': waiting.aggregateId,
-      'localDate': _day,
-      'baseVersion': 0,
-      'amountMl': 1000,
-    });
-    final confirmed = await store.readAggregate(
-      waterIntakeAggregateType,
-      waiting.aggregateId,
-    );
-    expect(confirmed!.serverVersion, 1);
-    expect(await water.read(_day), 1000);
+        'amountMl': 1000,
+      });
+      expect(pullProtocols, everyElement('$nativeSyncProtocolVersion'));
+      final confirmed = await store.readAggregate(
+        waterIntakeAggregateType,
+        dayId,
+      );
+      expect(confirmed!.serverVersion, 1);
+      expect(await water.read(_day), 1000);
 
-    await water.add(_day, 200);
-    final second = await sync.synchronize(now: DateTime.utc(2026, 10, 25, 10));
+      await water.add(_day, 200);
+      final second = await sync.synchronize(
+        now: DateTime.utc(2026, 10, 25, 10),
+      );
 
-    expect(second.pushed, 1);
-    expect(mutations.last['operation'], 'addWaterIntake');
-    expect(mutations.last['payload'], containsPair('baseVersion', 1));
-    expect(mutations.last['payload'], containsPair('amountMl', 200));
-  });
+      expect(second.pushed, 1);
+      expect(mutations.last['operation'], 'setWaterIntake');
+      expect(mutations.last['payload'], containsPair('baseVersion', 1));
+      expect(mutations.last['payload'], containsPair('amountMl', 1200));
+    },
+  );
 
-  test('a day from another device is pulled into the local store', () async {
-    final id = _id(0x777);
-    pullBatches = [
-      {
-        'batchId': _id(0x901),
-        'revision': 1,
-        'originMutationId': null,
-        'changes': [
-          {
-            'resourceType': 'WaterIntakeDay',
-            'resourceId': id,
-            'version': 3,
-            'isTombstone': false,
-            'snapshot': serverDay(id, 1750, 3),
-          },
-        ],
-      },
-    ];
+  test('another device writes the same day under the same id', () async {
+    final dayId = waterIntakeDayId(_accountId, _day);
+    pullBatches = [batch(1, dayId, 1750, 3)];
 
-    await sync.synchronize(now: DateTime.utc(2026, 10, 25, 9));
+    final report = await sync.synchronize(now: DateTime.utc(2026, 10, 25, 9));
 
+    expect(report.state, isNot(SyncRunState.upgradeRequired));
     expect(await water.read(_day), 1750);
-    final envelope = await store.readAggregate(waterIntakeAggregateType, id);
+    final envelope = await store.readAggregate(waterIntakeAggregateType, dayId);
     expect(envelope!.serverVersion, 3);
     expect((envelope.workingCopy! as Map).containsKey('version'), isFalse);
+
+    // Weiter von dieser Version aus, ohne zweite ID für denselben Tag.
+    await water.add(_day, 250);
+    final next = (await store.readOutbox()).single;
+    expect(next.aggregateId, dayId);
+    expect(next.baseVersion, 3);
+  });
+
+  test('ids are fixed per account and day', () {
+    expect(
+      waterIntakeDayId(_accountId, _day),
+      waterIntakeDayId(_accountId, _day),
+    );
+    expect(
+      waterIntakeDayId(_accountId.toUpperCase(), _day),
+      waterIntakeDayId(_accountId, _day),
+    );
+    expect(
+      waterIntakeDayId(_accountId, _day),
+      isNot(waterIntakeDayId(_accountId, '2026-10-26')),
+    );
+    expect(
+      waterIntakeDayId(_accountId, _day),
+      isNot(waterIntakeDayId(_clientId, _day)),
+    );
+    expect(
+      waterIntakeDayId(_accountId, _day),
+      matches(
+        RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+        ),
+      ),
+    );
   });
 }

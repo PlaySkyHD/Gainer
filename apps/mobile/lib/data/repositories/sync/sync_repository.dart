@@ -14,9 +14,24 @@ import 'local_sync_store.dart';
 import 'native_handover_repository.dart';
 import 'sync_payload_codec.dart';
 
-/// Trainingsoperationen verlangen Protokollversion 3; sonst antwortet der
-/// Server mit `upgrade_required`.
-const nativeSyncProtocolVersion = 3;
+/// Trainingsoperationen verlangen Protokollversion 3, die Wassermenge
+/// Version 4; sonst antwortet der Server mit `upgrade_required`. Der Pull
+/// nennt die Version, damit der Server nur Ressourcen liefert, die diese App
+/// kennt.
+const nativeSyncProtocolVersion = 4;
+
+/// Der Server lieferte eine Ressource, die diese App-Version nicht kennt.
+/// Der Pull bricht ab, ohne den Cursor zu bewegen; nach einem Update kommt
+/// dieselbe Änderung erneut.
+class UnsupportedSyncResourceException implements Exception {
+  const UnsupportedSyncResourceException(this.resourceType);
+
+  final String resourceType;
+
+  @override
+  String toString() =>
+      'UnsupportedSyncResourceException($resourceType): app update required';
+}
 
 const _syncLeaseKey = 'sync-lease';
 const _pullCursorKey = pullCursorMetadataKey;
@@ -305,6 +320,13 @@ class SyncRepository implements MobileSyncActions {
         final blocked = await _pullFailureReport(error, pushed);
         if (blocked == null) rethrow;
         return blocked;
+      } on UnsupportedSyncResourceException {
+        // Neuere Daten, als diese App kennt: Update nötig, nichts geht verloren.
+        return SyncRunReport(
+          state: SyncRunState.upgradeRequired,
+          pushed: pushed,
+          pulledBatches: pulled,
+        );
       }
       if (!registration.isActiveWriter || await _healStaleConflicts() == 0) {
         break;
@@ -372,6 +394,14 @@ class SyncRepository implements MobileSyncActions {
             ? error.code
             : 'authentication_required',
         pushed: pushed,
+      );
+    }
+    // Der Feed enthält Ressourcen, die diese Protokollversion nicht kennt.
+    if (error.code == 'upgrade_required') {
+      return SyncRunReport(
+        state: SyncRunState.upgradeRequired,
+        pushed: pushed,
+        pulledBatches: 0,
       );
     }
     return null;
@@ -648,6 +678,7 @@ class SyncRepository implements MobileSyncActions {
         after: cursor,
         limit: 200,
         expectedAccountId: store.accountId,
+        protocolVersion: nativeSyncProtocolVersion,
       );
     } on ApiException catch (error) {
       if (error.statusCode == 401 || error.code == 'account_changed') {
@@ -682,9 +713,8 @@ class SyncRepository implements MobileSyncActions {
           change.resourceType,
         );
         if (aggregateType == null) {
-          throw FormatException(
-            'Unsupported sync resource type ${change.resourceType}; pull cursor was not advanced.',
-          );
+          // Die Transaktion rollt zurück: Cursor und Daten bleiben unverändert.
+          throw UnsupportedSyncResourceException(change.resourceType);
         }
         if (change.isTombstone) {
           await _applyTombstone(batch, change, aggregateType);
@@ -1360,12 +1390,16 @@ class SyncRepository implements MobileSyncActions {
     }
   }
 
+  /// Läuft nach erfolgreicher Registrierung. Einträge, die eine ältere
+  /// App-Version wegen `upgrade_required` angehalten hat, gehen jetzt mit
+  /// dieser Version wieder hinaus.
   Future<void> _resumeInactiveAndAuthenticated() async {
     final records = await store.readOutbox();
     for (final record in records.where(
       (row) =>
           row.status == LocalMutationStatus.inactiveClient ||
           row.status == LocalMutationStatus.authBlocked ||
+          row.status == LocalMutationStatus.upgradeRequired ||
           row.status == LocalMutationStatus.syncing,
     )) {
       await store.updateMutation(
@@ -1376,6 +1410,7 @@ class SyncRepository implements MobileSyncActions {
           clearRetry:
               record.status == LocalMutationStatus.syncing ||
               record.status == LocalMutationStatus.authBlocked ||
+              record.status == LocalMutationStatus.upgradeRequired ||
               record.status == LocalMutationStatus.inactiveClient,
         ),
       );
@@ -1498,7 +1533,7 @@ String _resourceTypeForAggregate(String aggregateType) =>
       'nutrition-target-schedule' => 'NutritionTargetSchedule',
       'nutrition-day-template' => 'NutritionDayTemplate',
       'cardio-session' => 'CardioSession',
-      'water-intake-day' => 'WaterIntakeDay',
+      waterIntakeAggregateType => 'WaterIntakeDay',
       _ => throw ArgumentError.value(
         aggregateType,
         'aggregateType',

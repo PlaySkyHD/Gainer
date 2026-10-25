@@ -153,6 +153,21 @@ void main() {
     },
   );
 
+  test(
+    'a required update stays visible until a run reaches the server',
+    () async {
+      await tracker.recordRun(_report(SyncRunState.upgradeRequired), now);
+      expect(tracker.value.upgradeRequired, isTrue);
+
+      // Ein gleichzeitiger Lauf ändert nichts am Hinweis.
+      await tracker.recordRun(_report(SyncRunState.busy), now);
+      expect(tracker.value.upgradeRequired, isTrue);
+
+      await tracker.recordRun(_report(SyncRunState.synced), now);
+      expect(tracker.value.upgradeRequired, isFalse);
+    },
+  );
+
   test('listeners are told only about real changes', () async {
     var notified = 0;
     tracker.addListener(() => notified++);
