@@ -2867,6 +2867,17 @@ class _AddRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
     final color = onPressed == null ? colors.placeholderText : colors.accent;
+    // Bei großer Schrift Symbol über der Beschriftung stapeln, die dann
+    // umbrechen darf, statt die Zeile zu sprengen.
+    final stacked = MediaQuery.textScalerOf(context).scale(1) > 1.5;
+    final icon = Icon(CupertinoIcons.add, size: 18, color: color);
+    final text = Text(
+      label,
+      style: GainerTypography.label.copyWith(
+        color: color,
+        fontWeight: FontWeight.w600,
+      ),
+    );
     return Semantics(
       button: true,
       enabled: onPressed != null,
@@ -2878,19 +2889,28 @@ class _AddRow extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 44),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.m),
-            child: Row(
-              children: [
-                Icon(CupertinoIcons.add, size: 18, color: color),
-                const SizedBox(width: GainerSpacing.xxs),
-                Text(
-                  label,
-                  style: GainerTypography.label.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w600,
+            child: stacked
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: GainerSpacing.xs,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        icon,
+                        const SizedBox(height: GainerSpacing.xxs),
+                        text,
+                      ],
+                    ),
+                  )
+                : Row(
+                    children: [
+                      icon,
+                      const SizedBox(width: GainerSpacing.xxs),
+                      Flexible(child: text),
+                    ],
                   ),
-                ),
-              ],
-            ),
           ),
         ),
       ),
