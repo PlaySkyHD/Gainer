@@ -46,11 +46,12 @@ class ApiCoachMemory {
     required this.createdAtUtc,
     required this.updatedAtUtc,
     required this.version,
+    this.unknownCategory,
   });
 
   /// Eine unbekannte Kategorie (etwa von einem neueren Server) wird zu
   /// „Sonstiges“: Der Coach liest die Notiz, also muss der Nutzer sie sehen
-  /// und löschen können.
+  /// und löschen können. Der Wire-Wert bleibt in [unknownCategory] erhalten.
   factory ApiCoachMemory.fromJson(Map<String, dynamic> json) {
     final id = json['id'];
     final text = json['text'];
@@ -64,19 +65,26 @@ class ApiCoachMemory {
         updated == null) {
       throw const FormatException('Invalid coach memory.');
     }
+    final known = CoachMemoryCategory.fromWire(category);
     return ApiCoachMemory(
       id: id,
-      category:
-          CoachMemoryCategory.fromWire(category) ?? CoachMemoryCategory.other,
+      category: known ?? CoachMemoryCategory.other,
       text: text,
       createdAtUtc: created.toUtc(),
       updatedAtUtc: updated.toUtc(),
       version: (json['version'] as num?)?.toInt() ?? 1,
+      unknownCategory: known == null ? category : null,
     );
   }
 
   final String id;
+
+  /// Angezeigte Kategorie; bei unbekanntem Wire-Wert „Sonstiges“.
   final CoachMemoryCategory category;
+
+  /// Wire-Wert einer Kategorie, die die App nicht kennt, sonst null. Ändert
+  /// der Nutzer die Kategorie nicht, geht dieser Wert unverändert zurück.
+  final String? unknownCategory;
   final String text;
   final DateTime createdAtUtc;
   final DateTime updatedAtUtc;

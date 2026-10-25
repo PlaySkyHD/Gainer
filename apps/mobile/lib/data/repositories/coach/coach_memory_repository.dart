@@ -12,12 +12,14 @@ abstract interface class CoachMemoryRepository {
   Future<ApiCoachMemory> create(CoachMemoryCategory category, String text);
 
   /// Ändert eine Notiz, die zuletzt in [baseVersion] gelesen wurde. Ist sie
-  /// inzwischen anders, scheitert das mit `memory_conflict`.
+  /// inzwischen anders, scheitert das mit `memory_conflict`. Ein
+  /// [unknownCategory] geht statt [category] unverändert zurück.
   Future<ApiCoachMemory> update(
     String id,
     CoachMemoryCategory category,
     String text, {
     int? baseVersion,
+    String? unknownCategory,
   });
 
   /// Löscht eine Notiz. Gibt es sie schon nicht mehr, gilt das als Erfolg.
@@ -44,7 +46,14 @@ class ApiCoachMemoryRepository implements CoachMemoryRepository {
     CoachMemoryCategory category,
     String text, {
     int? baseVersion,
-  }) => api.updateCoachMemory(id, category, text, baseVersion: baseVersion);
+    String? unknownCategory,
+  }) => api.updateCoachMemory(
+    id,
+    category,
+    text,
+    baseVersion: baseVersion,
+    unknownCategory: unknownCategory,
+  );
 
   @override
   Future<void> delete(String id) async {
@@ -65,11 +74,9 @@ String coachMemoryErrorMessage(Object error) => switch (error) {
   ApiException(code: 'memory_limit_reached') =>
     'Das Gedächtnis ist voll. Lösche zuerst eine Notiz.',
   ApiException(code: 'memory_duplicate') => 'Diese Notiz gibt es schon.',
-  ApiException(code: 'memory_not_found') =>
-    'Die Notiz gibt es nicht mehr. Die Liste ist neu geladen.',
+  ApiException(code: 'memory_not_found') => 'Die Notiz gibt es nicht mehr.',
   ApiException(code: 'memory_conflict') =>
-    'Die Notiz wurde inzwischen auf einem anderen Gerät geändert. Die Liste '
-        'ist neu geladen; sichere erneut, um deine Fassung zu übernehmen.',
+    'Die Notiz wurde inzwischen auf einem anderen Gerät geändert.',
   ApiException(code: 'network_error') =>
     'Keine Verbindung. Das Gedächtnis lässt sich nur online ändern.',
   _ => 'Das hat nicht geklappt. Versuche es erneut.',
@@ -83,8 +90,10 @@ bool isCoachMemoryOfflineError(Object error) =>
 bool isCoachMemoryFullError(Object error) =>
     error is ApiException && error.code == 'memory_limit_reached';
 
-/// True, wenn die Liste veraltet ist: Die Notiz wurde anderswo geändert oder
-/// gelöscht.
-bool isCoachMemoryStaleError(Object error) =>
-    error is ApiException &&
-    (error.code == 'memory_conflict' || error.code == 'memory_not_found');
+/// True, wenn die Notiz inzwischen anderswo geändert wurde.
+bool isCoachMemoryConflictError(Object error) =>
+    error is ApiException && error.code == 'memory_conflict';
+
+/// True, wenn es die Notiz auf dem Server nicht mehr gibt.
+bool isCoachMemoryGoneError(Object error) =>
+    error is ApiException && error.code == 'memory_not_found';

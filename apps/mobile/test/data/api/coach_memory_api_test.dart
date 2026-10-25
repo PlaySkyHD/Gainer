@@ -85,6 +85,15 @@ void main() {
       );
       expect(updated.category, CoachMemoryCategory.injury);
       await repository.update(id, CoachMemoryCategory.goal, 'Ohne Basis');
+      final kept = await repository.update(
+        id,
+        CoachMemoryCategory.other,
+        'Schläft schlecht',
+        baseVersion: 2,
+        unknownCategory: 'sleep',
+      );
+      expect(kept.unknownCategory, 'sleep');
+      expect(kept.category, CoachMemoryCategory.other);
       await repository.delete(id);
       await repository.deleteAll();
 
@@ -93,6 +102,7 @@ void main() {
         'POST /api/v1/coach/memories {"category":"intolerance","text":"Laktoseintoleranz"}',
         'PUT /api/v1/coach/memories/$id {"category":"injury","text":"Knie schonen","baseVersion":2}',
         'PUT /api/v1/coach/memories/$id {"category":"goal","text":"Ohne Basis"}',
+        'PUT /api/v1/coach/memories/$id {"category":"sleep","text":"Schläft schlecht","baseVersion":2}',
         'DELETE /api/v1/coach/memories/$id',
         'DELETE /api/v1/coach/memories',
       ]);
@@ -112,6 +122,15 @@ void main() {
       );
       expect(
         () => repository.update('../x', CoachMemoryCategory.goal, 'x'),
+        throwsArgumentError,
+      );
+      expect(
+        () => repository.update(
+          id,
+          CoachMemoryCategory.other,
+          'x',
+          unknownCategory: 'Not valid!',
+        ),
         throwsArgumentError,
       );
       expect(() => repository.delete('nope'), throwsArgumentError);
@@ -215,6 +234,8 @@ void main() {
       CoachMemoryCategory.other,
     ]);
     expect(mixed.items.last.text, 'Schläft schlecht');
+    expect(mixed.items.last.unknownCategory, 'sleep');
+    expect(mixed.items.first.unknownCategory, isNull);
     expect(
       () => ApiCoachMemoryList.fromJson({'items': 'x'}),
       throwsFormatException,
@@ -249,9 +270,10 @@ void main() {
       coachMemoryErrorMessage(problem('memory_conflict')),
       contains('anderen Gerät geändert'),
     );
-    expect(isCoachMemoryStaleError(problem('memory_conflict')), isTrue);
-    expect(isCoachMemoryStaleError(problem('memory_not_found')), isTrue);
-    expect(isCoachMemoryStaleError(problem('memory_duplicate')), isFalse);
+    expect(isCoachMemoryConflictError(problem('memory_conflict')), isTrue);
+    expect(isCoachMemoryConflictError(problem('memory_not_found')), isFalse);
+    expect(isCoachMemoryGoneError(problem('memory_not_found')), isTrue);
+    expect(isCoachMemoryGoneError(problem('memory_duplicate')), isFalse);
     expect(isCoachMemoryFullError(problem('memory_limit_reached')), isTrue);
     expect(isCoachMemoryFullError(StateError('x')), isFalse);
     expect(coachMemoryTextLength('  💪a  '), 3);

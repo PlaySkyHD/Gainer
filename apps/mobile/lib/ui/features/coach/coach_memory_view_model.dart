@@ -3,6 +3,17 @@ import 'package:flutter/foundation.dart';
 import '../../../data/models/api/coach_memory_api_models.dart';
 import '../../../data/repositories/coach/coach_memory_repository.dart';
 
+/// Grund, warum [CoachMemoryViewModel.save] nichts gespeichert hat.
+class CoachMemorySaveFailure {
+  const CoachMemorySaveFailure(this.message, {this.entryGone = false});
+
+  final String message;
+
+  /// Die bearbeitete Notiz gibt es auf dem Server nicht mehr. Erneut gegen
+  /// ihre ID zu sichern ist sinnlos; das Sheet legt sie stattdessen neu an.
+  final bool entryGone;
+}
+
 /// Liste und Änderungen des Coach-Gedächtnisses. Änderungen gehen nur, wenn
 /// die Liste online geladen wurde und keine andere Änderung läuft.
 class CoachMemoryViewModel extends ChangeNotifier {
@@ -55,25 +66,28 @@ class CoachMemoryViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> load() async {
-    if (_disposed || isLoading) return;
+  /// Lädt die Liste. True, wenn sie jetzt frisch vom Server stammt.
+  Future<bool> load() async {
+    if (_disposed || isLoading) return false;
     isLoading = true;
     loadError = null;
     actionError = null;
     _notify();
     try {
       final result = await repository.list();
-      if (_disposed) return;
+      if (_disposed) return false;
       items = result.items;
       maxEntries = result.maxEntries;
       isLoaded = true;
       isOffline = false;
+      return true;
     } on Object catch (error) {
-      if (_disposed) return;
+      if (_disposed) return false;
       isOffline = isCoachMemoryOfflineError(error);
       loadError = isOffline
           ? _offlineReason
           : 'Das Gedächtnis konnte nicht geladen werden. Versuche es erneut.';
+      return false;
     } finally {
       if (!_disposed) {
         isLoading = false;
@@ -83,10 +97,11 @@ class CoachMemoryViewModel extends ChangeNotifier {
   }
 
   /// Legt eine Notiz an ([id] null) oder ändert sie. Liefert null bei Erfolg,
-  /// sonst den Grund. Das Notiz-Sheet zeigt ihn und bleibt dafür offen.
+  /// sonst den Grund; das Notiz-Sheet zeigt ihn und bleibt dafür offen.
   /// Wurde die Notiz anderswo geändert oder gelöscht oder ist das Gedächtnis
-  /// voll, lädt die Liste neu.
-  Future<String?> save({
+  /// voll, lädt die Liste neu. Eine unbekannte Kategorie geht unverändert
+  /// zurück, solange [category] die angezeigte geblieben ist.
+  Future<CoachMemorySaveFailure?> save({
     String? id,
     required CoachMemoryCategory category,
     required String text,
@@ -103,17 +118,45 @@ class CoachMemoryViewModel extends ChangeNotifier {
             category,
             text,
             baseVersion: base?.version,
+            unknownCategory: base?.category == category
+                ? base?.unknownCategory
+                : null,
           ),
         );
       }
     }, onError: (error) => failure = error);
     if (saved) return null;
     final error = failure;
-    if (error == null) return isOffline ? _offlineReason : _busyReason;
-    if (isCoachMemoryStaleError(error) || isCoachMemoryFullError(error)) {
-      await load();
+    if (error == null) {
+      return CoachMemorySaveFailure(isOffline ? _offlineReason : _busyReason);
     }
-    return coachMemoryErrorMessage(error);
+    final message = coachMemoryErrorMessage(error);
+    if (id != null && isCoachMemoryGoneError(error)) {
+      final reloaded = await load();
+      return CoachMemorySaveFailure(
+        '$message${reloaded ? ' Die Liste ist neu geladen.' : ''} '
+        '„Sichern“ legt sie als neue Notiz an.',
+        entryGone: true,
+      );
+    }
+    if (isCoachMemoryConflictError(error)) {
+      return CoachMemorySaveFailure(
+        await load()
+            ? '$message Die Liste ist neu geladen; sichere erneut, um deine '
+                  'Fassung zu übernehmen.'
+            : '$message Lade die Liste neu, bevor du erneut sicherst.',
+      );
+    }
+    if (isCoachMemoryFullError(error)) await load();
+    return CoachMemorySaveFailure(message);
+  }
+
+  /// Meldet einen Fehler auf dem Screen, etwa wenn das Notiz-Sheet schon zu
+  /// war, als das Speichern scheiterte.
+  void reportActionError(String message) {
+    if (_disposed) return;
+    actionError = message;
+    _notify();
   }
 
   /// Ersetzt einen vorhandenen Eintrag an seiner Stelle (der Server sortiert

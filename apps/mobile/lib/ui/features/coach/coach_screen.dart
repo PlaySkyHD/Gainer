@@ -41,7 +41,9 @@ class _CoachScreenState extends State<CoachScreen> {
                     CupertinoPageRoute<void>(
                       builder: (_) => CoachMemoryScreen(
                         repository: memories,
-                        online: model.online,
+                        // Aktueller Stand statt Zustand beim Öffnen des
+                        // Kontos; der Screen bietet selbst „Erneut laden“.
+                        online: !model.memoryOffline,
                       ),
                     ),
                   );
@@ -163,7 +165,9 @@ class _CoachScreenState extends State<CoachScreen> {
                     : null,
                 onDismiss: () => widget.viewModel.dismiss(index),
               ),
-            if (widget.viewModel.rememberBlockedReason case final reason?)
+            // Sperrgrund und „Erneut prüfen“ nur, solange etwas zu merken ist.
+            if (widget.viewModel.rememberBlockedReason case final reason?
+                when widget.viewModel.hasOpenSuggestions)
               Padding(
                 padding: const EdgeInsets.all(GainerSpacing.m),
                 child: Text(
@@ -172,7 +176,8 @@ class _CoachScreenState extends State<CoachScreen> {
                   style: GainerTypography.body.copyWith(color: colors.warning),
                 ),
               ),
-            if (widget.viewModel.memoryOffline)
+            if (widget.viewModel.memoryOffline &&
+                widget.viewModel.hasOpenSuggestions)
               GainerListRow(
                 key: const ValueKey('coach-remember-retry'),
                 title: 'Erneut prüfen',

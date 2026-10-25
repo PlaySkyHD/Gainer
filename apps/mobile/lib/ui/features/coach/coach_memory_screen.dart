@@ -40,12 +40,27 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
     super.dispose();
   }
 
-  Future<void> _edit([ApiCoachMemory? memory]) => showCoachMemoryEditor(
-    context,
-    memory: memory,
-    onSave: (draft) =>
-        _model.save(id: memory?.id, category: draft.category, text: draft.text),
-  );
+  Future<void> _edit([ApiCoachMemory? memory]) async {
+    var sheetOpen = true;
+    await showCoachMemoryEditor(
+      context,
+      memory: memory,
+      onSave: (draft) async {
+        final failure = await _model.save(
+          id: draft.id,
+          category: draft.category,
+          text: draft.text,
+        );
+        // Wurde das Sheet während des Speicherns geschlossen, meldet der
+        // Screen den Fehler, damit er nicht verloren geht.
+        if (failure != null && !sheetOpen) {
+          _model.reportActionError(failure.message);
+        }
+        return failure;
+      },
+    );
+    sheetOpen = false;
+  }
 
   Future<bool> _confirmDelete(ApiCoachMemory memory) async {
     if (!_model.canEdit) return false;
@@ -224,18 +239,24 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
 
 /// Eingabe des Notiz-Sheets.
 class CoachMemoryDraft {
-  const CoachMemoryDraft(this.category, this.text);
+  const CoachMemoryDraft(this.category, this.text, {this.id});
 
   final CoachMemoryCategory category;
   final String text;
+
+  /// Die zu ändernde Notiz; null legt eine neue an.
+  final String? id;
 }
 
 /// Speichert einen Entwurf; null bei Erfolg, sonst der Grund.
-typedef CoachMemorySave = Future<String?> Function(CoachMemoryDraft draft);
+typedef CoachMemorySave = Future<CoachMemorySaveFailure?> Function(
+  CoachMemoryDraft draft,
+);
 
 /// Sheet zum Anlegen ([memory] null) oder Bearbeiten einer Notiz. Es ruft
 /// [onSave] selbst auf und schließt erst nach Erfolg; bei einem Fehler bleibt
-/// der getippte Text stehen und der Grund erscheint im Sheet.
+/// der getippte Text stehen und der Grund erscheint im Sheet. Wurde die
+/// bearbeitete Notiz inzwischen gelöscht, legt erneutes Sichern sie neu an.
 Future<void> showCoachMemoryEditor(
   BuildContext context, {
   ApiCoachMemory? memory,
@@ -261,6 +282,10 @@ class _CoachMemoryEditorState extends State<CoachMemoryEditor> {
   late final _text = TextEditingController(text: widget.memory?.text ?? '');
   late CoachMemoryCategory _category =
       widget.memory?.category ?? CoachMemoryCategory.goal;
+
+  /// Die bearbeitete Notiz; null legt eine neue an, auch wenn die bearbeitete
+  /// inzwischen gelöscht wurde.
+  late String? _id = widget.memory?.id;
   bool _saving = false;
   String? _error;
 
@@ -277,17 +302,18 @@ class _CoachMemoryEditorState extends State<CoachMemoryEditor> {
       _saving = true;
       _error = null;
     });
-    final error = await widget.onSave(
-      CoachMemoryDraft(_category, _text.text.trim()),
+    final failure = await widget.onSave(
+      CoachMemoryDraft(_category, _text.text.trim(), id: _id),
     );
     if (!mounted) return;
-    if (error == null) {
+    if (failure == null) {
       Navigator.of(context).pop();
       return;
     }
     setState(() {
       _saving = false;
-      _error = error;
+      _error = failure.message;
+      if (failure.entryGone) _id = null;
     });
   }
 
@@ -298,7 +324,7 @@ class _CoachMemoryEditorState extends State<CoachMemoryEditor> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         GainerSheetHeader(
-          title: widget.memory == null ? 'Neue Notiz' : 'Notiz bearbeiten',
+          title: _id == null ? 'Neue Notiz' : 'Notiz bearbeiten',
           trailing: GainerPillButton(
             key: const ValueKey('coach-memory-save'),
             label: 'Sichern',
@@ -372,7 +398,10 @@ class _CoachMemoryEditorState extends State<CoachMemoryEditor> {
 
 /// Begrenzt die Notiz in UTF-16-Einheiten wie der Server, nicht in
 /// Graphemen wie [LengthLimitingTextInputFormatter]. Gekürzt wird nur an
-/// Zeichengrenzen, ein Emoji wird also nie halbiert.
+/// Zeichengrenzen, ein Emoji wird also nie halbiert. Wie dort mit
+/// [MaxLengthEnforcement.truncateAfterCompositionEnds]: Während einer
+/// IME-Komposition (etwa Japanisch oder Diktat) wird nicht gekürzt, erst
+/// danach.
 class CoachMemoryLengthFormatter extends TextInputFormatter {
   const CoachMemoryLengthFormatter();
 
@@ -384,9 +413,10 @@ class CoachMemoryLengthFormatter extends TextInputFormatter {
     const max = coachMemoryMaxTextLength;
     if (newValue.text.length <= max) return newValue;
     // Schon voll: Eingabe ablehnen, statt das Ende abzuschneiden.
-    if (oldValue.text.length == max && oldValue.selection.isCollapsed) {
+    if (oldValue.text.length == max && !oldValue.composing.isValid) {
       return oldValue;
     }
+    if (newValue.composing.isValid) return newValue;
     final kept = StringBuffer();
     for (final character in newValue.text.characters) {
       if (kept.length + character.length > max) break;
@@ -394,12 +424,19 @@ class CoachMemoryLengthFormatter extends TextInputFormatter {
     }
     final text = kept.toString();
     int clamp(int offset) => offset.clamp(0, text.length);
+    final composing = newValue.composing;
     return TextEditingValue(
       text: text,
       selection: newValue.selection.copyWith(
         baseOffset: clamp(newValue.selection.baseOffset),
         extentOffset: clamp(newValue.selection.extentOffset),
       ),
+      composing: !composing.isCollapsed && text.length > composing.start
+          ? TextRange(
+              start: composing.start,
+              end: composing.end.clamp(0, text.length),
+            )
+          : TextRange.empty,
     );
   }
 }

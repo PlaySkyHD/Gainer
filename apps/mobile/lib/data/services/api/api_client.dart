@@ -233,17 +233,32 @@ class ApiClient {
 
   /// Ändert eine Notiz. Mit [baseVersion] lehnt der Server mit
   /// `memory_conflict` ab, wenn sie inzwischen anderswo geändert wurde.
+  /// [unknownCategory] ist ein Wire-Wert, den die App nicht kennt; er geht
+  /// statt [category] unverändert zurück.
   Future<ApiCoachMemory> updateCoachMemory(
     String id,
     CoachMemoryCategory category,
     String text, {
     int? baseVersion,
+    String? unknownCategory,
   }) async {
     _validateIdentifier(id, 'id');
+    if (unknownCategory != null &&
+        !RegExp(r'^[a-z_]{1,16}$').hasMatch(unknownCategory)) {
+      throw ArgumentError.value(
+        unknownCategory,
+        'unknownCategory',
+        'Expected 1 to 16 lowercase letters.',
+      );
+    }
     final response = await _mutate(
       'PUT',
       '/api/v1/coach/memories/$id',
-      body: {..._coachMemoryBody(category, text), 'baseVersion': ?baseVersion},
+      body: {
+        ..._coachMemoryBody(category, text),
+        'category': unknownCategory ?? category.wireName,
+        'baseVersion': ?baseVersion,
+      },
     );
     return ApiCoachMemory.fromJson(_asObject(response.data));
   }

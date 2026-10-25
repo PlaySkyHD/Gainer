@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
@@ -461,6 +463,157 @@ void main() {
     expect(find.text('Marathon im Oktober'), findsOneWidget);
   });
 
+  Future<void> editFirstNote(WidgetTester tester, String text) async {
+    await tester.tap(find.text('Halbmarathon im Mai'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('coach-memory-text')),
+      text,
+    );
+    await tester.pump();
+  }
+
+  testWidgets('a conflict without a fresh list does not claim a reload', (
+    tester,
+  ) async {
+    final repository = await pumpMemory(tester);
+    await editFirstNote(tester, 'Marathon im Oktober');
+    repository
+      ..failWith = memoryConflict
+      ..failListWith = serverError;
+
+    await tester.tap(find.byKey(const ValueKey('coach-memory-save')));
+    await tester.pumpAndSettle();
+
+    final message = tester.widget<Text>(editorError()).data!;
+    expect(message, contains('Lade die Liste neu'));
+    expect(message, isNot(contains('neu geladen')));
+  });
+
+  testWidgets('a note deleted elsewhere is saved as a new note on request', (
+    tester,
+  ) async {
+    final repository = await pumpMemory(tester);
+    await editFirstNote(tester, 'Marathon im Oktober');
+    // Auf einem anderen Gerät gelöscht.
+    repository.items.removeAt(0);
+    repository.failWith = memoryNotFound;
+
+    await tester.tap(find.byKey(const ValueKey('coach-memory-save')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Neue Notiz'), findsOneWidget);
+    expect(fieldText(tester), 'Marathon im Oktober');
+    expect(
+      tester.widget<Text>(editorError()).data,
+      'Die Notiz gibt es nicht mehr. Die Liste ist neu geladen. '
+      '„Sichern“ legt sie als neue Notiz an.',
+    );
+    expect(repository.calls.last, 'list');
+
+    await tester.tap(find.byKey(const ValueKey('coach-memory-save')));
+    await tester.pumpAndSettle();
+
+    expect(repository.calls.last, 'create goal Marathon im Oktober');
+    expect(
+      repository.calls.where((call) => call.startsWith('update')),
+      hasLength(1),
+    );
+    expect(find.text('Neue Notiz'), findsNothing);
+    expect(find.text('Marathon im Oktober'), findsOneWidget);
+  });
+
+  testWidgets('a deleted note with a failed reload says nothing about it', (
+    tester,
+  ) async {
+    final repository = await pumpMemory(tester);
+    await editFirstNote(tester, 'Marathon im Oktober');
+    repository
+      ..failWith = memoryNotFound
+      ..failListWith = serverError;
+
+    await tester.tap(find.byKey(const ValueKey('coach-memory-save')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Text>(editorError()).data,
+      'Die Notiz gibt es nicht mehr. „Sichern“ legt sie als neue Notiz an.',
+    );
+  });
+
+  testWidgets('closing the sheet while saving reports a failure on screen', (
+    tester,
+  ) async {
+    final repository = await pumpMemory(tester);
+    await editFirstNote(tester, 'Marathon im Oktober');
+    repository
+      ..updateGate = Completer<void>()
+      ..failWith = serverError;
+
+    await tester.tap(find.byKey(const ValueKey('coach-memory-save')));
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('Schließen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Notiz bearbeiten'), findsNothing);
+
+    repository.updateGate!.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('coach-memory-error')))
+          .data,
+      'Das hat nicht geklappt. Versuche es erneut.',
+    );
+    expect(find.text('Halbmarathon im Mai'), findsOneWidget);
+  });
+
+  testWidgets('an unknown category goes back unchanged unless changed', (
+    tester,
+  ) async {
+    final repository = await pumpMemory(
+      tester,
+      items: [
+        ApiCoachMemory(
+          id: '33333333-0000-4000-8000-000000000001',
+          category: CoachMemoryCategory.other,
+          text: 'Schläft schlecht',
+          createdAtUtc: DateTime.utc(2026, 10, 24, 12),
+          updatedAtUtc: DateTime.utc(2026, 10, 24, 12),
+          version: 1,
+          unknownCategory: 'sleep',
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('Schläft schlecht'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('coach-memory-text')),
+      'Schläft sehr schlecht',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('coach-memory-save')));
+    await tester.pumpAndSettle();
+    expect(
+      repository.calls.last,
+      'update 33333333-0000-4000-8000-000000000001 sleep Schläft sehr schlecht',
+    );
+    expect(find.text('Sonstiges'), findsOneWidget);
+
+    await tester.tap(find.text('Schläft sehr schlecht'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('coach-memory-category-goal')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('coach-memory-save')));
+    await tester.pumpAndSettle();
+    expect(
+      repository.calls.last,
+      'update 33333333-0000-4000-8000-000000000001 goal Schläft sehr schlecht',
+    );
+    expect(find.text('Ziele'), findsOneWidget);
+  });
+
   testWidgets('length counts UTF-16 units like the server, also for emoji', (
     tester,
   ) async {
@@ -505,6 +658,34 @@ void main() {
     expect(formatter.formatEditUpdate(TextEditingValue.empty, short), short);
   });
 
+  test('length formatter waits for an IME composition to end', () {
+    const formatter = CoachMemoryLengthFormatter();
+    final before = TextEditingValue(
+      text: 'a' * 198,
+      selection: const TextSelection.collapsed(offset: 198),
+    );
+    // Japanische Eingabe: Die Komposition darf kurz über die Grenze gehen.
+    final composing = TextEditingValue(
+      text: '${'a' * 198}にほんご',
+      selection: const TextSelection.collapsed(offset: 202),
+      composing: const TextRange(start: 198, end: 202),
+    );
+    expect(formatter.formatEditUpdate(before, composing), composing);
+    // Ein voller Wert während der Komposition wird nicht festgehalten.
+    final fullComposing = TextEditingValue(
+      text: 'a' * 200,
+      composing: const TextRange(start: 198, end: 200),
+    );
+    expect(formatter.formatEditUpdate(fullComposing, composing), composing);
+
+    // Nach der Komposition wird gekürzt.
+    final committed = composing.copyWith(composing: TextRange.empty);
+    final truncated = formatter.formatEditUpdate(composing, committed);
+    expect(truncated.text, '${'a' * 198}にほ');
+    expect(truncated.selection, const TextSelection.collapsed(offset: 200));
+    expect(truncated.composing, TextRange.empty);
+  });
+
   testWidgets('a note with an unknown category appears under Sonstiges', (
     tester,
   ) async {
@@ -530,7 +711,8 @@ void main() {
   testWidgets('remembering a known text with a new category keeps its place', (
     tester,
   ) async {
-    final repository = _RecategorizingRepository(sampleMemories());
+    final repository = FakeCoachMemoryRepository(sampleMemories())
+      ..createReturnsExisting = true;
     await pumpMemory(tester, repository: repository);
 
     await tester.tap(find.byKey(const ValueKey('coach-memory-add')));
@@ -569,7 +751,10 @@ void main() {
 
     expect(model.isOffline, isTrue);
     expect(
-      await model.save(category: CoachMemoryCategory.goal, text: 'x'),
+      (await model.save(
+        category: CoachMemoryCategory.goal,
+        text: 'x',
+      ))!.message,
       contains('Keine Verbindung'),
     );
     expect(await model.delete('id'), isFalse);
@@ -582,7 +767,8 @@ void main() {
 
   test('saving the same text again keeps a single entry', () async {
     final existing = sampleMemories().first;
-    final repository = _ReturningRepository(existing);
+    final repository = FakeCoachMemoryRepository([existing])
+      ..createReturnsExisting = true;
     final model = CoachMemoryViewModel(repository);
     await model.load();
 
@@ -595,7 +781,8 @@ void main() {
   });
 
   test('a recategorized entry is replaced where it stands', () async {
-    final repository = _RecategorizingRepository(sampleMemories());
+    final repository = FakeCoachMemoryRepository(sampleMemories())
+      ..createReturnsExisting = true;
     final model = CoachMemoryViewModel(repository);
     await model.load();
     final order = [for (final item in model.items) item.id];
@@ -620,47 +807,22 @@ void main() {
     await model.load();
     model.isBusy = true;
     expect(
-      await model.save(category: CoachMemoryCategory.goal, text: 'x'),
+      (await model.save(
+        category: CoachMemoryCategory.goal,
+        text: 'x',
+      ))!.message,
       contains('läuft noch'),
     );
     expect(repository.calls, ['list']);
     model.dispose();
   });
-}
 
-/// Liefert beim Anlegen eines vorhandenen Textes den bestehenden Eintrag mit
-/// neuer Kategorie und Version zurück, wie der Server.
-class _RecategorizingRepository extends FakeCoachMemoryRepository {
-  _RecategorizingRepository(super.items);
-
-  @override
-  Future<ApiCoachMemory> create(
-    CoachMemoryCategory category,
-    String text,
-  ) async {
-    final index = items.indexWhere((item) => item.text == text);
-    if (index < 0) return super.create(category, text);
-    calls.add('create ${category.wireName} $text');
-    final existing = items[index];
-    return items[index] = memoryItem(
-      existing.id,
-      category,
-      existing.text,
-      version: existing.version + 1,
-    );
-  }
-}
-
-/// Liefert beim Anlegen den schon vorhandenen Eintrag zurück, wie der Server
-/// bei einem Duplikat.
-class _ReturningRepository extends FakeCoachMemoryRepository {
-  _ReturningRepository(this.existing) : super([existing]);
-
-  final ApiCoachMemory existing;
-
-  @override
-  Future<ApiCoachMemory> create(
-    CoachMemoryCategory category,
-    String text,
-  ) async => existing;
+  test('a failure reported after the sheet closed reaches the screen', () {
+    final model = CoachMemoryViewModel(FakeCoachMemoryRepository());
+    model.reportActionError('Fehler');
+    expect(model.actionError, 'Fehler');
+    model.dispose();
+    model.reportActionError('später');
+    expect(model.actionError, 'Fehler');
+  });
 }
