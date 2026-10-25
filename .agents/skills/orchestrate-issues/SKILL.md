@@ -15,7 +15,10 @@ You plan, brief, verify, open the pull requests and merge. Subagents only implem
 ## 2. Plan
 
 - Map each issue to the files it changes.
-- Docs or skill changes of a few lines you make yourself: branch from `origin/main`, commit with `Fixes #<n>`, continue with section 5. A subagent costs more than the change.
+- Docs or skill changes of up to about ten lines in one file you make yourself; a subagent costs more than the change. Longer docs and skill texts go to a `haiku` subagent.
+  - Same steps as the brief in section 3: `git fetch origin`, `git switch -c fix/issue-<n>-<slug> origin/main`, Conventional Commit with `Fixes #<n>` and Co-Authored-By, `git push -u origin <branch>`.
+  - Not while a subagent edits the same file. Note your own Umwege for the retro.
+  - Then switch back to your planning branch and continue with section 5.
 - Disjoint files: run in parallel.
 - Same file, different places: run in parallel, but give each agent an exact anchor ("insert directly after the bullet starting with …") several lines apart. Check later with `git merge-tree`.
 - Same lines or one issue depends on another: run sequentially, or stack branch B on branch A.
