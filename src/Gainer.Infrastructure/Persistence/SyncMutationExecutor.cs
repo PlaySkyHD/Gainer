@@ -263,6 +263,16 @@ public sealed class SyncMutationExecutor(
                             Metadata(mutationId, content), payload.NutritionDayId, payload.BaseVersion), cancellationToken);
                     return Result(collector);
                 }
+            case "setWaterIntake":
+                {
+                    SetWaterIntakePayload payload = Deserialize<SetWaterIntakePayload>(content.Payload);
+                    ValidateExpectation(content, ResourceKind.WaterIntakeDay, payload.WaterIntakeDayId, payload.BaseVersion);
+                    WaterIntakeDaySnapshot snapshot = await new WaterIntakeMutationHandler(context, userContext, timeProvider, collector)
+                        .SetAsync(SetWaterIntakeMutation.Create(
+                            Metadata(mutationId, content), payload.WaterIntakeDayId, payload.LocalDate,
+                            payload.BaseVersion, payload.AmountMl), cancellationToken);
+                    return Result(collector, snapshot);
+                }
             case "saveCardioSession":
                 {
                     SaveCardioSessionPayload payload = Deserialize<SaveCardioSessionPayload>(content.Payload);
@@ -598,6 +608,7 @@ public sealed class SyncMutationExecutor(
         IReadOnlyList<NutritionEntryPayload>? Entries,
         string? DayKind = null);
     private sealed record DeleteNutritionDayTemplatePayload(Guid TemplateId, long BaseVersion);
+    private sealed record SetWaterIntakePayload(Guid WaterIntakeDayId, DateOnly LocalDate, long BaseVersion, int AmountMl);
     private sealed record SaveReusableMealPayload(
         Guid ReusableMealId,
         long BaseVersion,

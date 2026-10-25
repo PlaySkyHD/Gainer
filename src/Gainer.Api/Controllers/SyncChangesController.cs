@@ -20,6 +20,7 @@ public sealed class SyncChangesController(ISyncChangeFeed feed, IUserContext use
     public async Task<ActionResult<PullChangesResponse>> Get(
         [FromQuery] long after = 0,
         [FromQuery] int limit = 200,
+        [FromQuery] int? protocolVersion = null,
         CancellationToken cancellationToken = default)
     {
         if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext) is { } identityProblem)
@@ -30,9 +31,20 @@ public sealed class SyncChangesController(ISyncChangeFeed feed, IUserContext use
             ModelState.AddModelError("cursor", "Cursor or limit is outside the supported range.");
             return ValidationProblem(ModelState);
         }
-        SyncChangeFeedPage page = await feed.GetAsync(after, limit, cancellationToken);
+        // Apps before protocol 4 send no version and compare the response version with 3.
+        int clientProtocol = protocolVersion ?? SyncProtocol.UnversionedPullVersion;
+        if (clientProtocol > SyncProtocol.CurrentVersion)
+        {
+            ModelState.AddModelError(nameof(protocolVersion), "The protocol version is newer than this server.");
+            return ValidationProblem(ModelState);
+        }
+        if (clientProtocol < SyncProtocol.PreviousVersion) return UpgradeRequired();
+
+        SyncChangeFeedPage page = await feed.GetAsync(after, limit, clientProtocol, cancellationToken);
+        // Nothing the client can apply before the next unknown resource: it must update, its cursor stays.
+        if (page.UpgradeRequired && page.Batches.Count == 0) return UpgradeRequired();
         return Ok(new PullChangesResponse(
-            SyncProtocol.CurrentVersion,
+            clientProtocol,
             page.NextCursor,
             page.HasMore,
             page.Batches.Select(batch => new SyncChangeBatchResponse(
@@ -45,5 +57,11 @@ public sealed class SyncChangesController(ISyncChangeFeed feed, IUserContext use
                     change.Version,
                     change.IsTombstone,
                     change.Snapshot)).ToList())).ToList()));
+    }
+
+    private static ObjectResult UpgradeRequired()
+    {
+        var upgrade = new SyncUpgradeRequiredException();
+        return SyncProblemResults.Create(StatusCodes.Status409Conflict, upgrade.Code, upgrade.Message);
     }
 }

@@ -56,7 +56,8 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
       valueListenable: widget.status,
       builder: (context, status, child) {
         final media = MediaQuery.of(context);
-        final showBanner = !status.isWriter;
+        // Ein nötiges Update geht vor: Ohne es synchronisiert nichts mehr.
+        final showBanner = status.upgradeRequired || !status.isWriter;
         // Gleicher Aufbau mit und ohne Hinweis, damit die Tabs ihren Zustand
         // (Navigation, Scrollposition) behalten.
         return Column(
@@ -69,7 +70,9 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                   GainerSpacing.m,
                   GainerSpacing.xs,
                 ),
-                child: _BannerCard(busy: _busy, onTakeOver: _takeOver),
+                child: status.upgradeRequired
+                    ? const _UpgradeCard()
+                    : _BannerCard(busy: _busy, onTakeOver: _takeOver),
               )
             else
               const SizedBox.shrink(),
@@ -83,6 +86,52 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
         );
       },
       child: widget.child,
+    );
+  }
+}
+
+/// Der Server hat Daten, die diese App-Version nicht kennt. Lokale Änderungen
+/// bleiben gespeichert; nach dem Update geht der Sync weiter.
+class _UpgradeCard extends StatelessWidget {
+  const _UpgradeCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: GainerCard(
+        key: const ValueKey('sync-upgrade-banner'),
+        padding: const EdgeInsets.all(GainerSpacing.s),
+        child: Row(
+          children: [
+            Icon(CupertinoIcons.arrow_down_circle, color: colors.warning),
+            const SizedBox(width: GainerSpacing.s),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bitte App aktualisieren',
+                    style: GainerTypography.cardTitle.copyWith(
+                      color: colors.primaryText,
+                    ),
+                  ),
+                  const SizedBox(height: GainerSpacing.xxs),
+                  Text(
+                    'Neue Daten brauchen eine neuere Version. Lokale '
+                    'Änderungen bleiben gespeichert.',
+                    style: GainerTypography.label.copyWith(
+                      color: colors.secondaryText,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

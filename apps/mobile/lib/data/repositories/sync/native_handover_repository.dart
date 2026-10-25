@@ -2,8 +2,7 @@ import '../../models/api/sync_api_models.dart';
 import '../../services/api/api_client.dart';
 import '../../services/local/pending_handover_secret_store.dart';
 import 'local_sync_store.dart';
-
-const nativeHandoverSyncProtocolVersion = 3;
+import 'sync_protocol.dart';
 
 /// Crash-safe native ownership transfer. Every identity needed to retry a
 /// request is written to the purpose-bound secure record before network I/O.
@@ -270,13 +269,13 @@ class NativeHandoverRepository {
       SyncClientRegistrationRequest(
         clientId: clientId,
         displayName: displayName,
-        protocolVersion: nativeHandoverSyncProtocolVersion,
+        protocolVersion: nativeSyncProtocolVersion,
         takeOverWriting: false,
       ),
       expectedAccountId: accountId,
     );
     if (registration.clientId != clientId ||
-        registration.protocolVersion < nativeHandoverSyncProtocolVersion) {
+        registration.protocolVersion < nativeSyncProtocolVersion) {
       throw StateError('The server did not confirm this device registration.');
     }
     return registration;

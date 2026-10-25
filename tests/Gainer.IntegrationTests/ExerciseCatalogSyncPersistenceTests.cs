@@ -277,12 +277,12 @@ public sealed class ExerciseCatalogSyncPersistenceTests
             new { categoryId, name = "Private" }));
 
         await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
-        SyncChangeFeedPage ownerPage = await new SyncChangeFeed(ownerContext).GetAsync(0, 10, TestContext.CancellationToken);
+        SyncChangeFeedPage ownerPage = await new SyncChangeFeed(ownerContext).GetAsync(0, 10, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion, TestContext.CancellationToken);
         Assert.IsTrue(ownerPage.Batches.SelectMany(batch => batch.Changes)
             .Any(change => change.ResourceType == "ExerciseCategory" && change.ResourceId == categoryId));
 
         await using AppDbContext otherContext = Fixture.CreateContext(connectionString, other);
-        SyncChangeFeedPage otherPage = await new SyncChangeFeed(otherContext).GetAsync(0, 10, TestContext.CancellationToken);
+        SyncChangeFeedPage otherPage = await new SyncChangeFeed(otherContext).GetAsync(0, 10, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion, TestContext.CancellationToken);
         Assert.IsFalse(otherPage.Batches.Any());
     }
 

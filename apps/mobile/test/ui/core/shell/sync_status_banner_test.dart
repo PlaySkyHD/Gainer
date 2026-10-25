@@ -55,6 +55,28 @@ void main() {
     expect(find.text('Inhalt'), findsOneWidget);
   });
 
+  testWidgets('nötiges Update: Hinweis ohne Übernehmen, Inhalt bleibt', (
+    tester,
+  ) async {
+    status.value = const SyncStatus(upgradeRequired: true);
+    await tester.pumpWidget(banner());
+
+    expect(find.text('Bitte App aktualisieren'), findsOneWidget);
+    expect(
+      find.text(
+        'Neue Daten brauchen eine neuere Version. Lokale Änderungen bleiben '
+        'gespeichert.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Übernehmen'), findsNothing);
+    expect(find.text('Inhalt'), findsOneWidget);
+
+    status.value = const SyncStatus();
+    await tester.pump();
+    expect(find.text('Bitte App aktualisieren'), findsNothing);
+  });
+
   testWidgets('kein Schreibgerät: Hinweis mit Übernehmen über dem Inhalt', (
     tester,
   ) async {

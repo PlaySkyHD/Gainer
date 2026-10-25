@@ -3,6 +3,7 @@ import '../../../domain/models/training/training_plan_model.dart';
 import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../models/local/local_mutation.dart';
+import 'local_conflict_recovery.dart' show waterIntakeAggregateType;
 
 const _bodyGoalType = 'body-goal';
 const _dailyCheckInType = 'daily-check-in';
@@ -16,6 +17,7 @@ const _reusableMealType = 'reusable-meal';
 const _nutritionTargetScheduleType = 'nutrition-target-schedule';
 const _nutritionDayTemplateType = 'nutrition-day-template';
 const _cardioSessionType = 'cardio-session';
+const _waterIntakeDayType = waterIntakeAggregateType;
 
 /// Pure translation between PWA-shaped local aggregates and the Sync v2
 /// backend DTOs. Keep transport orchestration out of this codec.
@@ -34,6 +36,7 @@ class SyncPayloadCodec {
         'NutritionTargetSchedule' => _nutritionTargetScheduleType,
         'NutritionDayTemplate' => _nutritionDayTemplateType,
         'CardioSession' => _cardioSessionType,
+        'WaterIntakeDay' => _waterIntakeDayType,
         _ => null,
       };
 
@@ -70,6 +73,9 @@ class SyncPayloadCodec {
             : 'saveNutritionDayTemplate';
       case _cardioSessionType:
         return _cardioSessionOperation(mutation);
+      case _waterIntakeDayType:
+        // Immer die Summe des Tages; die Basisversion schützt vor Überschreiben.
+        return 'setWaterIntake';
       default:
         throw ArgumentError.value(mutation.aggregateType, 'aggregateType');
     }
@@ -172,6 +178,13 @@ class SyncPayloadCodec {
         return _nutritionDayTemplatePayload(mutation, body, baseVersion);
       case _cardioSessionType:
         return _cardioSessionPayload(mutation, body, baseVersion);
+      case _waterIntakeDayType:
+        return {
+          'waterIntakeDayId': mutation.aggregateId,
+          'localDate': body['localDate'],
+          'baseVersion': baseVersion,
+          'amountMl': body['amountMl'],
+        };
       default:
         throw ArgumentError.value(mutation.aggregateType, 'aggregateType');
     }
@@ -697,6 +710,7 @@ class SyncPayloadCodec {
       'nutritionDayId',
       'reusableMealId',
       'nutritionTargetScheduleId',
+      'waterIntakeDayId',
     ]) {
       snapshot.remove(key);
     }

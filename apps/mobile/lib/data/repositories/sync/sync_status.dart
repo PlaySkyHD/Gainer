@@ -15,6 +15,7 @@ class SyncStatus {
     this.lastSyncedAtUtc,
     this.pendingCount = 0,
     this.isWriter = true,
+    this.upgradeRequired = false,
   });
 
   /// Zeitpunkt des letzten Syncs, bei dem der Server erreicht wurde.
@@ -27,14 +28,20 @@ class SyncStatus {
   /// meldete. Vor dem ersten Sync gilt `true`, damit kein Banner blinkt.
   final bool isWriter;
 
+  /// `true`, solange der letzte Sync-Lauf eine neuere App-Version verlangte
+  /// (Server `upgrade_required` oder unbekannte Ressource im Pull).
+  final bool upgradeRequired;
+
   SyncStatus copyWith({
     DateTime? lastSyncedAtUtc,
     int? pendingCount,
     bool? isWriter,
+    bool? upgradeRequired,
   }) => SyncStatus(
     lastSyncedAtUtc: lastSyncedAtUtc ?? this.lastSyncedAtUtc,
     pendingCount: pendingCount ?? this.pendingCount,
     isWriter: isWriter ?? this.isWriter,
+    upgradeRequired: upgradeRequired ?? this.upgradeRequired,
   );
 
   @override
@@ -42,10 +49,12 @@ class SyncStatus {
       other is SyncStatus &&
       other.lastSyncedAtUtc == lastSyncedAtUtc &&
       other.pendingCount == pendingCount &&
-      other.isWriter == isWriter;
+      other.isWriter == isWriter &&
+      other.upgradeRequired == upgradeRequired;
 
   @override
-  int get hashCode => Object.hash(lastSyncedAtUtc, pendingCount, isWriter);
+  int get hashCode =>
+      Object.hash(lastSyncedAtUtc, pendingCount, isWriter, upgradeRequired);
 }
 
 /// Hält den [SyncStatus] eines Kontos aktuell: nach jedem Sync-Lauf und nach
@@ -115,6 +124,13 @@ class SyncStatusTracker extends ValueNotifier<SyncStatus> {
             lastSyncedAtUtc: reachedServer ? at : null,
             pendingCount: await _pendingCount(),
             isWriter: writer,
+            // Nur ein Lauf, der Registrierung und Pull geschafft hat, löst
+            // den Bedarf auf; Anmeldefehler oder ein laufender Sync nicht.
+            upgradeRequired: report.state == SyncRunState.upgradeRequired
+                ? true
+                : reachedServer
+                ? false
+                : value.upgradeRequired,
           ),
         );
       });

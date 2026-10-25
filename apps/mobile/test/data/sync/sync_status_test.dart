@@ -153,6 +153,23 @@ void main() {
     },
   );
 
+  test(
+    'a required update stays visible until a run reaches the server',
+    () async {
+      await tracker.recordRun(_report(SyncRunState.upgradeRequired), now);
+      expect(tracker.value.upgradeRequired, isTrue);
+
+      // Läufe, die den Server nicht erreichen, ändern nichts am Hinweis.
+      for (final state in [SyncRunState.busy, SyncRunState.authBlocked]) {
+        await tracker.recordRun(_report(state), now);
+        expect(tracker.value.upgradeRequired, isTrue, reason: state.name);
+      }
+
+      await tracker.recordRun(_report(SyncRunState.synced), now);
+      expect(tracker.value.upgradeRequired, isFalse);
+    },
+  );
+
   test('listeners are told only about real changes', () async {
     var notified = 0;
     tracker.addListener(() => notified++);

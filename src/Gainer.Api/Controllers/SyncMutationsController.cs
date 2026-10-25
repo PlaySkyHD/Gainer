@@ -118,17 +118,8 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         }
     }
 
-    private ObjectResult SyncProblem(int status, string code, string title)
-    {
-        var problem = new ProblemDetails
-        {
-            Status = status,
-            Title = title,
-            Type = $"https://gainer.local/problems/{code}",
-        };
-        problem.Extensions["code"] = code;
-        return StatusCode(status, problem);
-    }
+    private static ObjectResult SyncProblem(int status, string code, string title) =>
+        SyncProblemResults.Create(status, code, title);
 
     private ObjectResult SyncValidationProblem(string title, IReadOnlyDictionary<string, string> errors)
     {

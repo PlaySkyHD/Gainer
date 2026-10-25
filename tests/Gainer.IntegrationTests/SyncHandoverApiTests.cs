@@ -241,6 +241,72 @@ public sealed class SyncHandoverApiTests
     }
 
     [TestMethod]
+    public async Task DeviceHandoverWorksAfterWaterWasRecorded()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        await CreateUserAsync(app, UserAEmail);
+        using HttpClient client = app.GetTestClient();
+        client.BaseAddress = new Uri(TestOrigin);
+        TestSession auth = await LoginAsync(client, UserAEmail);
+        Guid source = Guid.NewGuid();
+        Guid target = Guid.NewGuid();
+        await RegisterAsync(client, auth, source, "Source", takeOverWriting: false, HttpStatusCode.OK);
+
+        Guid dayId = Guid.NewGuid();
+        using (HttpResponseMessage water = await SendMutationAsync(
+            client,
+            auth,
+            HttpMethod.Put,
+            $"/api/v1/sync/mutations/{Guid.NewGuid()}",
+            new PushMutationRequest(
+                SyncProtocol.CurrentVersion,
+                source,
+                1,
+                "setWaterIntake",
+                [new ResourceVersionRequest("WaterIntakeDay", dayId, 0)],
+                null,
+                JsonSerializer.SerializeToElement(new
+                {
+                    waterIntakeDayId = dayId,
+                    localDate = new DateOnly(2026, 10, 25),
+                    baseVersion = 0,
+                    amountMl = 1250,
+                }, JsonOptions))))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, water.StatusCode, await water.Content.ReadAsStringAsync());
+        }
+
+        // A target that registers with the old protocol is told to update; the current app passes.
+        using (HttpResponseMessage oldTarget = await SendMutationAsync(
+            client,
+            auth,
+            HttpMethod.Put,
+            $"/api/v1/sync/clients/{target}",
+            new RegisterSyncClientRequest(target, "Target", SyncProtocol.UnversionedPullVersion, false)))
+        {
+            Assert.AreEqual(HttpStatusCode.Conflict, oldTarget.StatusCode);
+            Assert.AreEqual("upgrade_required", await ProblemCodeAsync(oldTarget));
+        }
+        await RegisterAsync(client, auth, target, "Target", takeOverWriting: false, HttpStatusCode.OK);
+
+        BeginSyncHandoverResponse begin = await BeginAsync(
+            client, auth, new BeginSyncHandoverRequest(Guid.NewGuid(), source, 1));
+        CompleteSyncHandoverResponse completed = await CompleteAsync(
+            client, auth, begin.HandoverId, new CompleteSyncHandoverRequest(begin.OneTimeCode, target, 1));
+
+        Assert.IsTrue(completed.IsActiveWriter);
+        Assert.IsTrue(await IsActiveWriterAsync(client, auth, target));
+        using var pull = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion}");
+        auth.Apply(pull);
+        using HttpResponseMessage pulled = await client.SendAsync(pull);
+        Assert.AreEqual(HttpStatusCode.OK, pulled.StatusCode);
+        PullChangesResponse page = (await pulled.Content.ReadFromJsonAsync<PullChangesResponse>())!;
+        Assert.AreEqual(dayId, page.Batches.Single().Changes.Single().ResourceId);
+    }
+
+    [TestMethod]
     public async Task HandoverFencesLateWritesAndCompetingTakeoverUntilCancel()
     {
         await using WebApplication app = await CreateApplicationAsync();

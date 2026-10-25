@@ -424,7 +424,7 @@ public sealed class PostgreSqlMigrationTests
 
         await using (AppDbContext context = Fixture.CreateContext(ConnectionString, userId))
         {
-            SyncChangeFeedPage page = await new SyncChangeFeed(context).GetAsync(0, 200, TestContext.CancellationToken);
+            SyncChangeFeedPage page = await new SyncChangeFeed(context).GetAsync(0, 200, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion, TestContext.CancellationToken);
             List<SyncFeedChange> changes = page.Batches.SelectMany(batch => batch.Changes).ToList();
             Assert.IsFalse(changes.Any(change => change.ResourceType == "WorkoutRotation"));
             Assert.AreEqual(workoutId, changes.Single().ResourceId);

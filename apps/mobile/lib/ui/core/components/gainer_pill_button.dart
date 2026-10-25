@@ -15,6 +15,7 @@ class GainerPillButton extends StatelessWidget {
     this.isLoading = false,
     this.variant = GainerPillVariant.filled,
     this.expand = false,
+    this.compact = false,
     super.key,
   });
 
@@ -26,6 +27,10 @@ class GainerPillButton extends StatelessWidget {
 
   /// Füllt die verfügbare Breite, etwa für gestapelte Dialogaktionen.
   final bool expand;
+
+  /// Weniger Innenabstand für mehrere Buttons nebeneinander, etwa
+  /// Schnellknöpfe in einer Karte.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +73,9 @@ class GainerPillButton extends StatelessWidget {
       label: isLoading ? '$label, lädt' : label,
       child: CupertinoButton(
         minimumSize: const Size.square(GainerRadii.iconButtonDiameter),
-        padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.l),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? GainerSpacing.s : GainerSpacing.l,
+        ),
         color: enabled || isLoading ? background : colors.elevatedSurface,
         disabledColor: enabled || isLoading
             ? background

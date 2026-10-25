@@ -144,7 +144,7 @@ void main() {
             jsonEncode({
               'clientId': clientId,
               'displayName': 'Gainer iPhone',
-              'protocolVersion': 3,
+              'protocolVersion': 4,
               'isActiveWriter': activeWriter,
               'registeredAtUtc': '2026-10-12T10:00:00Z',
               'lastSeenAtUtc': '2026-10-12T10:00:00Z',
@@ -178,7 +178,7 @@ void main() {
           );
         } else {
           receivedMutations.add(body);
-          expect(body['protocolVersion'], 3);
+          expect(body['protocolVersion'], 4);
           expect(body['clientId'], clientId);
           if (!lenientMutations) {
             expect(body['clientSequence'], 1);
@@ -201,6 +201,10 @@ void main() {
         }
       } else if (path == '/api/v1/sync/changes' && request.method == 'GET') {
         final after = int.parse(request.uri.queryParameters['after']!);
+        // Die App nennt ihre Protokollversion; der Server antwortet in ihr.
+        final protocol = int.parse(
+          request.uri.queryParameters['protocolVersion']!,
+        );
         request.response.headers.contentType = ContentType.json;
         if (pullFailureCode != null) {
           request.response.statusCode = pullFailureStatus;
@@ -218,7 +222,7 @@ void main() {
           pullCursor = pullRevision;
           request.response.write(
             jsonEncode({
-              'protocolVersion': 3,
+              'protocolVersion': protocol,
               'nextCursor': pullRevision,
               'hasMore': false,
               'batches': [
@@ -255,7 +259,7 @@ void main() {
         } else {
           request.response.write(
             jsonEncode({
-              'protocolVersion': 3,
+              'protocolVersion': protocol,
               'nextCursor': after,
               'hasMore': false,
               'batches': [],
@@ -614,6 +618,103 @@ void main() {
         LocalMutationStatus.authBlocked,
       );
       expect(await store.readSyncMetadata('pull-cursor'), isNull);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test(
+    'upgrade_required during pull asks for an update and keeps the cursor',
+    () async {
+      activeWriter = false;
+      pullFailureCode = 'upgrade_required';
+      final (store, database, api, repository) = await fixture();
+
+      final report = await repository.synchronize();
+
+      expect(report.state, SyncRunState.upgradeRequired);
+      expect(await store.readSyncMetadata('pull-cursor'), isNull);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test('entries an older app parked with upgrade_required are sent after the update', () async {
+    final (store, database, api, repository) = await fixture();
+    final parked = await store.commitMutation(
+      mutationId: mutationId,
+      aggregateType: 'daily-check-in',
+      aggregateId: checkInId,
+      operation: LocalMutationOperation.create,
+      baseVersion: null,
+      body: {'localDate': '2026-10-12', 'weightKg': 82.5},
+      envelope: localEnvelope(
+        aggregateId: checkInId,
+        workingCopy: {'localDate': '2026-10-12', 'weightKg': 82.5},
+      ),
+    );
+    await store.updateMutation(
+      LocalMutation(
+        mutationId: parked.mutationId,
+        accountId: parked.accountId,
+        aggregateType: parked.aggregateType,
+        aggregateId: parked.aggregateId,
+        sequence: parked.sequence,
+        status: LocalMutationStatus.upgradeRequired,
+        createdAtUtc: parked.createdAtUtc,
+        operation: parked.operation,
+        baseVersion: parked.baseVersion,
+        body: parked.body,
+        lastErrorCode: 'upgrade_required',
+      ),
+    );
+
+    final report = await repository.synchronize();
+
+    expect(report.pushed, 1);
+    expect(receivedMutations.single['operation'], 'createDailyCheckIn');
+    api.close();
+    await database.close();
+  });
+
+  test(
+    'a push rejected with upgrade_required is not resent by the same version',
+    () async {
+      mutationFailureCode = 'upgrade_required';
+      mutationFailureStatus = 409;
+      final (store, database, api, repository) = await fixture();
+      await store.commitMutation(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
+        aggregateId: checkInId,
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12', 'weightKg': 82.5},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12', 'weightKg': 82.5},
+        ),
+      );
+
+      final first = await repository.synchronize();
+      expect(first.state, SyncRunState.upgradeRequired);
+      expect(
+        (await store.readOutbox()).single.status,
+        LocalMutationStatus.upgradeRequired,
+      );
+
+      // Derselbe App-Stand sendet den Eintrag nicht in einer Schleife neu.
+      int mutationRequests() => received
+          .where((r) => r.uri.path.startsWith('/api/v1/sync/mutations/'))
+          .length;
+      final sentBefore = mutationRequests();
+      expect(sentBefore, 1);
+      await repository.synchronize();
+      expect(mutationRequests(), sentBefore);
+      expect(
+        (await store.readOutbox()).single.status,
+        LocalMutationStatus.upgradeRequired,
+      );
       api.close();
       await database.close();
     },
@@ -1215,12 +1316,18 @@ void main() {
   });
 
   test(
-    'unknown sync resource rejects its batch and leaves cursor unchanged',
+    'unknown sync resource asks for an update and leaves cursor unchanged',
     () async {
       pullResourceType = 'FutureCatalogItem';
       final (store, database, api, repository) = await fixture();
-      await expectLater(repository.synchronize(), throwsFormatException);
+      final report = await repository.synchronize();
+      expect(report.state, SyncRunState.upgradeRequired);
       expect(await store.readSyncMetadata('pull-cursor'), isNull);
+      expect(
+        await store.readAggregate('daily-check-in', checkInId),
+        isNull,
+        reason: 'Der Batch wird nicht teilweise angewendet.',
+      );
       api.close();
       await database.close();
     },
@@ -1341,6 +1448,37 @@ void main() {
       );
       expect(completedRecord.phase, 'sourceBegan');
       expect(completedRecord.oneTimeCode, 'once-only-fixture');
+      api.close();
+      await database.close();
+    },
+  );
+
+  test(
+    'sync and device handover register with the same current protocol',
+    () async {
+      pullRevision = 7;
+      handoverCompleteRevision = 1;
+      final secretStore = _MemoryPendingHandoverSecretStore();
+      final (_, database, api, repository) = await fixture(
+        handoverSecrets: secretStore,
+      );
+
+      await repository.synchronize();
+      await repository.completeHandover(
+        handoverId: 'f1234567-1234-4234-8234-123456789abc',
+        oneTimeCode: 'target-one-time-code',
+        frozenRevision: 1,
+        sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+        expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      );
+
+      // Eine ältere Version bei der Übergabe setzte das Gerät beim Server
+      // zurück und scheiterte nach dem ersten Wasser an `upgrade_required`.
+      expect(registrationRequests.length, greaterThanOrEqualTo(2));
+      expect(
+        registrationRequests.map((body) => body['protocolVersion']),
+        everyElement(nativeSyncProtocolVersion),
+      );
       api.close();
       await database.close();
     },

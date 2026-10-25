@@ -25,6 +25,21 @@ class LocalResourceExpectation {
 
 const _resourceChangedMessage =
     'A local resource changed during the transaction.';
+
+/// Eine [LocalResourceExpectation] stimmte beim Commit nicht mehr; nichts
+/// wurde geschrieben. Aufrufer lesen neu und versuchen es erneut. Bleibt ein
+/// [StateError], damit bestehende Behandlungen weiter greifen.
+class LocalResourceChangedException extends StateError {
+  LocalResourceChangedException() : super(_resourceChangedMessage);
+}
+
+/// Lokale Änderungen sind während einer Geräteübergabe eingefroren; nichts
+/// wurde geschrieben.
+class LocalWritesFrozenException extends StateError {
+  LocalWritesFrozenException()
+    : super('Local edits are frozen while sync ownership is handed over.');
+}
+
 const _localWritesFrozenKey = 'local-writes-frozen';
 const _accountOwnerIdKey = 'account-owner-id';
 const pullCursorMetadataKey = 'pull-cursor';
@@ -201,9 +216,7 @@ class LocalSyncStore {
         database.localSyncMetadata,
       )..where((t) => t.key.equals(_localWritesFrozenKey))).getSingleOrNull();
       if (frozenRow != null && jsonDecode(frozenRow.valueJson) == true) {
-        throw StateError(
-          'Local edits are frozen while sync ownership is handed over.',
-        );
+        throw LocalWritesFrozenException();
       }
       final sequence = await _nextOutboxSequence(aggregateType, aggregateId);
       final tail = await _coalescingTail(
@@ -365,17 +378,17 @@ class LocalSyncStore {
               .getSingleOrNull();
       if (expectation.optimisticVersion == null) {
         if (row != null) {
-          throw StateError(_resourceChangedMessage);
+          throw LocalResourceChangedException();
         }
       } else if (row == null) {
-        throw StateError(_resourceChangedMessage);
+        throw LocalResourceChangedException();
       } else {
         final value = LocalAggregateEnvelope<Object?>.fromJson(
           jsonDecode(row.envelopeJson) as Map<String, dynamic>,
         );
         if (value.optimisticVersion != expectation.optimisticVersion ||
             value.serverVersion != expectation.serverVersion) {
-          throw StateError(_resourceChangedMessage);
+          throw LocalResourceChangedException();
         }
       }
     }

@@ -57,15 +57,6 @@ public sealed class SyncClientsController(ISyncClientRegistry registry, IUserCon
         }
     }
 
-    private ObjectResult Problem(int status, string code, string title)
-    {
-        var problem = new ProblemDetails
-        {
-            Status = status,
-            Title = title,
-            Type = $"https://gainer.local/problems/{code}",
-        };
-        problem.Extensions["code"] = code;
-        return StatusCode(status, problem);
-    }
+    private static ObjectResult Problem(int status, string code, string title) =>
+        SyncProblemResults.Create(status, code, title);
 }

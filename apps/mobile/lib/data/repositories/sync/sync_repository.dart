@@ -13,13 +13,28 @@ import 'local_conflict_recovery.dart';
 import 'local_sync_store.dart';
 import 'native_handover_repository.dart';
 import 'sync_payload_codec.dart';
+import 'sync_protocol.dart';
 
-/// Trainingsoperationen verlangen Protokollversion 3; sonst antwortet der
-/// Server mit `upgrade_required`.
-const nativeSyncProtocolVersion = 3;
+export 'sync_protocol.dart' show nativeSyncProtocolVersion;
+
+/// Der Server lieferte eine Ressource, die diese App-Version nicht kennt.
+/// Der Pull bricht ab, ohne den Cursor zu bewegen; nach einem Update kommt
+/// dieselbe Änderung erneut.
+class UnsupportedSyncResourceException implements Exception {
+  const UnsupportedSyncResourceException(this.resourceType);
+
+  final String resourceType;
+
+  @override
+  String toString() =>
+      'UnsupportedSyncResourceException($resourceType): app update required';
+}
 
 const _syncLeaseKey = 'sync-lease';
 const _pullCursorKey = pullCursorMetadataKey;
+
+/// Protokollversion der letzten erfolgreichen Registrierung dieses Kontos.
+const _registeredProtocolKey = 'registered-protocol-version';
 
 enum SyncRunState {
   idle,
@@ -286,6 +301,7 @@ class SyncRepository implements MobileSyncActions {
       if (blocked == null) rethrow;
       return blocked;
     }
+    await _resumeAfterProtocolUpgrade();
 
     var pushed = 0;
     var pulled = 0;
@@ -302,9 +318,20 @@ class SyncRepository implements MobileSyncActions {
       try {
         pulled += await _pullAll();
       } on ApiException catch (error) {
-        final blocked = await _pullFailureReport(error, pushed);
+        final blocked = await _pullFailureReport(
+          error,
+          pushed,
+          pulled + _appliedInPull,
+        );
         if (blocked == null) rethrow;
         return blocked;
+      } on UnsupportedSyncResourceException {
+        // Neuere Daten, als diese App kennt: Update nötig, nichts geht verloren.
+        return SyncRunReport(
+          state: SyncRunState.upgradeRequired,
+          pushed: pushed,
+          pulledBatches: pulled + _appliedInPull,
+        );
       }
       if (!registration.isActiveWriter || await _healStaleConflicts() == 0) {
         break;
@@ -365,6 +392,7 @@ class SyncRepository implements MobileSyncActions {
   Future<SyncRunReport?> _pullFailureReport(
     ApiException error,
     int pushed,
+    int pulled,
   ) async {
     if (error.statusCode == 401 || error.code == 'account_changed') {
       return _blockAuthorization(
@@ -372,6 +400,15 @@ class SyncRepository implements MobileSyncActions {
             ? error.code
             : 'authentication_required',
         pushed: pushed,
+      );
+    }
+    // Der Feed enthält Ressourcen, die diese Protokollversion nicht kennt.
+    // Batches davor sind schon angewendet und zählen mit.
+    if (error.code == 'upgrade_required') {
+      return SyncRunReport(
+        state: SyncRunState.upgradeRequired,
+        pushed: pushed,
+        pulledBatches: pulled,
       );
     }
     return null;
@@ -619,8 +656,13 @@ class SyncRepository implements MobileSyncActions {
         mutation.aggregateId,
   };
 
+  /// Im laufenden [_pullAll] schon angewendete Batches; bleibt bei einem
+  /// Abbruch lesbar, damit der Bericht sie mitzählt.
+  int _appliedInPull = 0;
+
   Future<int> _pullAll() async {
     var applied = 0;
+    _appliedInPull = 0;
     while (true) {
       final cursorValue = await store.readSyncMetadata(_pullCursorKey);
       final cursor = cursorValue is int ? cursorValue : 0;
@@ -635,6 +677,7 @@ class SyncRepository implements MobileSyncActions {
       for (final batch in response.batches) {
         await _applyBatch(batch);
         applied++;
+        _appliedInPull = applied;
       }
       if (!response.hasMore) break;
     }
@@ -648,6 +691,7 @@ class SyncRepository implements MobileSyncActions {
         after: cursor,
         limit: 200,
         expectedAccountId: store.accountId,
+        protocolVersion: nativeSyncProtocolVersion,
       );
     } on ApiException catch (error) {
       if (error.statusCode == 401 || error.code == 'account_changed') {
@@ -682,9 +726,8 @@ class SyncRepository implements MobileSyncActions {
           change.resourceType,
         );
         if (aggregateType == null) {
-          throw FormatException(
-            'Unsupported sync resource type ${change.resourceType}; pull cursor was not advanced.',
-          );
+          // Die Transaktion rollt zurück: Cursor und Daten bleiben unverändert.
+          throw UnsupportedSyncResourceException(change.resourceType);
         }
         if (change.isTombstone) {
           await _applyTombstone(batch, change, aggregateType);
@@ -1382,6 +1425,32 @@ class SyncRepository implements MobileSyncActions {
     }
   }
 
+  /// Läuft nach erfolgreicher Registrierung. Hat sich dieses Konto zuletzt
+  /// mit einer älteren Protokollversion registriert (oder ist der Stand
+  /// unbekannt, weil eine ältere App ihn nicht speicherte), war seither ein
+  /// App-Update: Einträge, die damals wegen `upgrade_required` angehalten
+  /// wurden, gehen wieder hinaus. Mit derselben Version bleiben sie liegen,
+  /// sonst lehnte der Server sie bei jedem Lauf erneut ab.
+  Future<void> _resumeAfterProtocolUpgrade() async {
+    final stored = await store.readSyncMetadata(_registeredProtocolKey);
+    if (stored is int && stored >= nativeSyncProtocolVersion) return;
+    for (final record in await store.readOutbox()) {
+      if (record.status != LocalMutationStatus.upgradeRequired) continue;
+      await store.updateMutation(
+        _copyMutation(
+          record,
+          status: LocalMutationStatus.pending,
+          clearError: true,
+          clearRetry: true,
+        ),
+      );
+    }
+    await store.writeSyncMetadata(
+      _registeredProtocolKey,
+      nativeSyncProtocolVersion,
+    );
+  }
+
   SyncMutationRequest _toRequest(LocalMutation mutation, String clientId) {
     if (mutation.clientSequence == null) {
       throw StateError('Mutation sequence was not prepared.');
@@ -1498,6 +1567,7 @@ String _resourceTypeForAggregate(String aggregateType) =>
       'nutrition-target-schedule' => 'NutritionTargetSchedule',
       'nutrition-day-template' => 'NutritionDayTemplate',
       'cardio-session' => 'CardioSession',
+      waterIntakeAggregateType => 'WaterIntakeDay',
       _ => throw ArgumentError.value(
         aggregateType,
         'aggregateType',

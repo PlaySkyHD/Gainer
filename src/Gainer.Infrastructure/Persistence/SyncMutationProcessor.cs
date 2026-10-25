@@ -114,20 +114,27 @@ public sealed class SyncMutationProcessor(
             ExerciseCategoryConflictException or
             BodyGoalConflictException or TrainingPlanConflictException or TrainingScheduleConflictException or WorkoutConflictException or
             NutritionDayConflictException or NutritionDayTemplateConflictException or ReusableMealConflictException or NutritionTargetScheduleConflictException or
-            CardioSessionConflictException)
+            CardioSessionConflictException or WaterIntakeConflictException)
         {
             throw new SyncMutationConflictException("stale_base_version", "The resource changed since the supplied base version.");
         }
         catch (Exception exception) when (exception is DailyCheckInNotFoundException or CustomExerciseNotFoundException or
             ExerciseCategoryNotFoundException or
             TrainingPlanNotFoundException or TrainingScheduleNotFoundException or WorkoutNotFoundException or NutritionDayNotFoundException or
-            NutritionDayTemplateNotFoundException or ReusableMealNotFoundException or NutritionTargetScheduleNotFoundException or CardioSessionNotFoundException)
+            NutritionDayTemplateNotFoundException or ReusableMealNotFoundException or NutritionTargetScheduleNotFoundException or CardioSessionNotFoundException or
+            WaterIntakeNotFoundException)
         {
             throw new SyncMutationConflictException("resource_not_found", "The resource is no longer available.");
         }
         catch (NutritionValidationException)
         {
             throw new SyncMutationValidationException("invalid_payload", "The nutrition payload is invalid.");
+        }
+        catch (WaterIntakeDayExistsException)
+        {
+            throw new SyncMutationValidationException(
+                "water_day_exists",
+                "Another water intake id already holds this local date.");
         }
         catch (Exception exception) when (IsRetryableConcurrency(exception))
         {
@@ -225,7 +232,9 @@ public sealed class SyncMutationProcessor(
         {
             throw new SyncMutationValidationException("invalid_envelope", "The mutation envelope is invalid.");
         }
-        if (command.Content.ProtocolVersion is not (SyncProtocol.CurrentVersion or SyncProtocol.PreviousVersion))
+        if (command.Content.ProtocolVersion is < SyncProtocol.PreviousVersion or > SyncProtocol.CurrentVersion ||
+            command.Content.Resources.Any(item =>
+                !SyncResourceProtocol.Supports(command.Content.ProtocolVersion, item.ResourceType ?? string.Empty)))
         {
             throw new SyncUpgradeRequiredException();
         }

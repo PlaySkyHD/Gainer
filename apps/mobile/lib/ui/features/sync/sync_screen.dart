@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import '../../../data/models/local/local_mutation.dart';
+import '../../../data/repositories/sync/local_conflict_recovery.dart'
+    show waterIntakeAggregateType;
 import '../../../data/repositories/sync/sync_repository.dart';
 import '../../../data/services/local/pending_handover_secret_store.dart';
 import '../../core/components/components.dart';
@@ -731,6 +733,7 @@ class _SyncScreenState extends State<SyncScreen> {
     'daily-check-in' => 'Check-in',
     'nutrition-day' => 'Ernährung',
     'cardio-session' => 'Cardio',
+    waterIntakeAggregateType => 'Wasser',
     'body-goal' => 'Körperziel',
     _ => 'Eintrag',
   };

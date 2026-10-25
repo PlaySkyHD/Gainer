@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../../data/repositories/nutrition/nutrition_preferences.dart';
 import '../../../data/repositories/nutrition/nutrition_repository.dart';
 import '../../../data/services/platform/platform_ports.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
@@ -14,9 +15,17 @@ class NutritionViewModel extends ChangeNotifier {
     if (!isValidLocalDate(localDate)) {
       throw ArgumentError.value(localDate, 'localDate');
     }
+    repository.preferences.values.addListener(_notify);
   }
 
   final NutritionRepository repository;
+
+  /// Gerätelokale Einstellungen (Wasser erfassen, Tagesziel).
+  NutritionPreferenceValues get preferences =>
+      repository.preferences.values.value;
+
+  /// Getrunkenes Wasser des angezeigten Tages in ml.
+  int get waterMl => snapshot?.waterMl ?? 0;
 
   /// Diktat für die Mahlzeiten-Schätzung; ohne Plattform kein Diktat-Button.
   final DictationPlatform? dictation;
@@ -88,9 +97,19 @@ class NutritionViewModel extends ChangeNotifier {
     errorOperation = null;
     statusMessage = null;
     _notify();
+    final waterRevision = _waterRevision;
     try {
-      final next = await repository.read(date);
+      var next = await repository.read(date);
+      await repository.preferences.read();
       if (_disposed || generation != _dayLoadGeneration) return;
+      // Kam während des Ladens eine Wasseränderung für diesen Tag an, ist ihr
+      // Stand neuer als der gelesene.
+      final current = snapshot;
+      if (_waterRevision != waterRevision &&
+          current != null &&
+          current.day.localDate == date) {
+        next = next.withWater(current.waterMl);
+      }
       localDate = date;
       snapshot = next;
       _failedDate = null;
@@ -734,6 +753,47 @@ class NutritionViewModel extends ChangeNotifier {
     }
   }
 
+  /// Addiert [addedMl] Wasser zum angezeigten Tag (Schnellknöpfe).
+  Future<bool> addWater(int addedMl) =>
+      _changeWater((date) => repository.water.add(date, addedMl));
+
+  /// Setzt die Wassermenge des angezeigten Tages (Korrektur, Rückgängig).
+  /// Liefert false, wenn nichts gespeichert wurde.
+  Future<bool> setWater(int amountMl) =>
+      _changeWater((date) => repository.water.setAmount(date, amountMl));
+
+  /// Zählt gespeicherte Wasseränderungen; ein laufendes Laden erkennt daran,
+  /// dass sein gelesener Wasserstand veraltet ist.
+  int _waterRevision = 0;
+
+  /// Ohne Ladeanzeige, damit schnelle Tipps nicht flackern; die Warteschlange
+  /// im Repository hält die Reihenfolge. Löscht nur eigene Wasserfehler.
+  Future<bool> _changeWater(Future<int> Function(String date) change) async {
+    if (_disposed) return false;
+    final date = localDate;
+    if (errorOperation == NutritionErrorOperation.water) {
+      errorMessage = null;
+      errorOperation = null;
+    }
+    try {
+      final total = await change(date);
+      _waterRevision++;
+      final current = snapshot;
+      if (current != null && current.day.localDate == date) {
+        snapshot = current.withWater(total);
+      }
+      return true;
+    } catch (error) {
+      if (!_disposed) {
+        errorMessage = _messageFor(error);
+        errorOperation = NutritionErrorOperation.water;
+      }
+      return false;
+    } finally {
+      _notify();
+    }
+  }
+
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -741,6 +801,7 @@ class NutritionViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    repository.preferences.values.removeListener(_notify);
     super.dispose();
   }
 
@@ -773,6 +834,9 @@ enum FoodSourceFilter { all, bls, openFoodFacts }
 enum NutritionErrorOperation {
   day,
   diary,
+
+  /// Wasser-Karte und Korrektur-Sheet.
+  water,
   entry,
   planning,
   search,

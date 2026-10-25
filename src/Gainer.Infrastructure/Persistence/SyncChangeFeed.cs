@@ -9,6 +9,7 @@ public sealed class SyncChangeFeed(AppDbContext context) : ISyncChangeFeed
     public async Task<SyncChangeFeedPage> GetAsync(
         long after,
         int limit,
+        int clientProtocolVersion,
         CancellationToken cancellationToken = default)
     {
         if (after < 0 || limit is < 1 or > 200) throw new ArgumentOutOfRangeException(nameof(limit));
@@ -36,6 +37,17 @@ public sealed class SyncChangeFeed(AppDbContext context) : ISyncChangeFeed
                     item.IsTombstone,
                     item.SnapshotJson is null ? null : JsonDocument.Parse(item.SnapshotJson).RootElement.Clone()))
                 .ToList())).ToList();
+
+        // A client must never skip a batch it cannot apply: stop before it and keep the cursor there.
+        int unsupported = result.FindIndex(batch => batch.Changes.Any(change =>
+            !SyncResourceProtocol.Supports(clientProtocolVersion, change.ResourceType)));
+        if (unsupported >= 0)
+        {
+            List<SyncFeedBatch> supported = result.Take(unsupported).ToList();
+            long cursor = supported.Count == 0 ? after : supported[^1].Revision;
+            return new SyncChangeFeedPage(cursor, true, supported, UpgradeRequired: true);
+        }
+
         long nextCursor = batches[^1].Revision;
         bool hasMore = await context.ChangeBatches.AsNoTracking()
             .AnyAsync(item => item.Revision > nextCursor, cancellationToken);

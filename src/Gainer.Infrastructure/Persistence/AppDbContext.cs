@@ -48,6 +48,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 
     public DbSet<NutritionDayTemplateEntry> NutritionDayTemplateEntries => Set<NutritionDayTemplateEntry>();
 
+    public DbSet<WaterIntakeDay> WaterIntakeDays => Set<WaterIntakeDay>();
+
     public DbSet<NutritionTargetSchedule> NutritionTargetSchedules => Set<NutritionTargetSchedule>();
 
     public DbSet<NutritionTargetVersion> NutritionTargetVersions => Set<NutritionTargetVersion>();
@@ -895,6 +897,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 .HasPrincipalKey(template => new { template.UserId, template.Id })
                 .OnDelete(DeleteBehavior.Cascade);
             entry.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WaterIntakeDay>(day =>
+        {
+            day.ToTable("water_intake_days", DatabaseSchemas.Tracking, table =>
+                table.HasCheckConstraint(
+                    "CK_water_intake_days_amount",
+                    $"\"AmountMl\" >= {WaterIntakeLimits.MinDailyMl} AND \"AmountMl\" <= {WaterIntakeLimits.MaxDailyMl}"));
+            day.HasKey(item => item.Id);
+            day.Property(item => item.Version).IsConcurrencyToken();
+            day.HasIndex(item => new { item.UserId, item.LocalDate }).IsUnique();
+            day.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<NutritionTargetSchedule>(schedule =>

@@ -83,7 +83,7 @@ void main() {
           jsonEncode({
             'clientId': _clientId,
             'displayName': 'Gainer iPhone',
-            'protocolVersion': 3,
+            'protocolVersion': nativeSyncProtocolVersion,
             'isActiveWriter': true,
             'registeredAtUtc': '2026-10-12T10:00:00Z',
             'lastSeenAtUtc': '2026-10-12T10:00:00Z',
@@ -118,7 +118,7 @@ void main() {
         ];
         request.response.write(
           jsonEncode({
-            'protocolVersion': 3,
+            'protocolVersion': nativeSyncProtocolVersion,
             'nextCursor': batches.isEmpty
                 ? after
                 : batches.last['revision'] as int,

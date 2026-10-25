@@ -90,7 +90,7 @@ public sealed class CardioSessionSyncPersistenceTests
             Assert.IsTrue(deleted.Changes.Single().IsTombstone);
             Assert.AreEqual(3, deleted.Changes.Single().Version);
             Assert.AreEqual(0, await context.CardioSessions.CountAsync());
-            SyncChangeFeedPage feed = await new SyncChangeFeed(context).GetAsync(0, 10);
+            SyncChangeFeedPage feed = await new SyncChangeFeed(context).GetAsync(0, 10, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion);
             Assert.HasCount(3, feed.Batches);
             Assert.IsTrue(feed.Batches[2].Changes.Single().IsTombstone);
         }

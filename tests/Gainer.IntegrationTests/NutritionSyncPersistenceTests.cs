@@ -124,7 +124,7 @@ public sealed class NutritionSyncPersistenceTests
             ProcessedSyncMutationResult deleted = await Processor(context, firstUser).ProcessAsync(delete);
             Assert.IsTrue(deleted.Changes.Single().IsTombstone);
             Assert.AreEqual(2, deleted.Changes.Single().Version);
-            SyncChangeFeedPage feed = await new SyncChangeFeed(context).GetAsync(0, 10);
+            SyncChangeFeedPage feed = await new SyncChangeFeed(context).GetAsync(0, 10, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion);
             Assert.HasCount(2, feed.Batches);
             Assert.IsTrue(feed.Batches[1].Changes.Single().IsTombstone);
         }
