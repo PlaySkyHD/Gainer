@@ -23,8 +23,7 @@ if (pending.Length > 0)
 }
 if (logger.IsEnabled(LogLevel.Information))
 {
-    string? latestApplied = (await database.Database.GetAppliedMigrationsAsync()).LastOrDefault();
-    logger.LogInformation("Gainer database schema is current at {LatestMigration}.", latestApplied);
+    logger.LogInformation("Gainer database schema is current at {LatestMigration}.", database.Database.GetMigrations().Last());
 }
 
 namespace Gainer.Migrator

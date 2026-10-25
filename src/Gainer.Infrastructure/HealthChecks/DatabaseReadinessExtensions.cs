@@ -5,7 +5,6 @@ using Gainer.Infrastructure.Persistence;
 using Gainer.Infrastructure.Catalog;
 using Gainer.Infrastructure.Coach;
 using Gainer.Infrastructure.Nutrition;
-using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace Gainer.Infrastructure.HealthChecks;
@@ -125,10 +124,10 @@ internal sealed class PostgreSqlReadinessHealthCheck(IConfiguration configuratio
 }
 
 /// <summary>
-/// Reports the schema as ready only when EF Core finds no migration of the compiled model that is missing in the history table.
-/// The expected migrations come from the assembly and the history table from the context options, so nothing is maintained by hand.
+/// Reports the schema as ready only when every migration compiled into the assembly is in the migration history.
+/// One query counts the expected IDs in the history, so the check needs neither an <see cref="AppDbContext"/> nor a hand-kept version.
 /// </summary>
-internal sealed class DatabaseSchemaReadinessHealthCheck(AppDbContext database) : IHealthCheck
+internal sealed class DatabaseSchemaReadinessHealthCheck(IConfiguration configuration) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
@@ -136,13 +135,37 @@ internal sealed class DatabaseSchemaReadinessHealthCheck(AppDbContext database) 
     {
         try
         {
-            bool hasPendingMigrations = (await database.Database.GetPendingMigrationsAsync(cancellationToken)).Any();
+            var connectionString = GainerPersistenceExtensions.ResolveConnectionString(configuration, "gainer-db");
 
-            return hasPendingMigrations
-                ? HealthCheckResult.Unhealthy("Database schema is not at the required version.")
-                : HealthCheckResult.Healthy();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                return HealthCheckResult.Unhealthy("Database schema cannot be verified.");
+            }
+
+            IReadOnlyList<string> expected = DatabaseSchemaVersion.ExpectedMigrations;
+            var identifiers = new NpgsqlCommandBuilder();
+            string query =
+                "SELECT COUNT(*) FROM " +
+                $"{identifiers.QuoteIdentifier(DatabaseSchemaVersion.MigrationHistorySchema)}." +
+                $"{identifiers.QuoteIdentifier(DatabaseSchemaVersion.MigrationHistoryTable)} " +
+                "WHERE \"MigrationId\" = ANY(@ids)";
+
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = new NpgsqlCommand(query, connection);
+            command.Parameters.AddWithValue("ids", expected.ToArray());
+            var applied = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+
+            return applied == expected.Count
+                ? HealthCheckResult.Healthy()
+                : HealthCheckResult.Unhealthy("Database schema is not at the required version.");
         }
-        catch (Exception exception) when (exception is NpgsqlException or TimeoutException)
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            return HealthCheckResult.Unhealthy("Database schema is not at the required version.");
+        }
+        catch (Exception exception) when (
+            exception is NpgsqlException or TimeoutException or InvalidOperationException or ArgumentException)
         {
             return HealthCheckResult.Unhealthy("Database schema cannot be verified.");
         }

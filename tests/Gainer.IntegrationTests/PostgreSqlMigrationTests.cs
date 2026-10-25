@@ -5,6 +5,7 @@ using Gainer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
@@ -95,11 +96,14 @@ public sealed class PostgreSqlMigrationTests
     public async Task SchemaReadinessRequiresEveryMigrationIncludingTheLatest()
     {
         await using AppDbContext context = Fixture.CreateContext(ConnectionString);
-        var healthCheck = new DatabaseSchemaReadinessHealthCheck(context);
+        var healthCheck = new DatabaseSchemaReadinessHealthCheck(CreateConfiguration(("ConnectionStrings:gainer-db", ConnectionString)));
         string[] migrations = context.Database.GetMigrations().ToArray();
         string previousToLatest = migrations[^2];
 
+        CollectionAssert.AreEqual(migrations, DatabaseSchemaVersion.ExpectedMigrations.ToArray());
+
         HealthCheckResult beforeMigration = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
+        Assert.AreEqual("Database schema is not at the required version.", beforeMigration.Description);
         await ((IInfrastructure<IServiceProvider>)context).Instance.GetRequiredService<IMigrator>()
             .MigrateAsync(previousToLatest, TestContext.CancellationToken);
         HealthCheckResult missingLatest = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
@@ -110,6 +114,35 @@ public sealed class PostgreSqlMigrationTests
         Assert.AreEqual(HealthStatus.Unhealthy, missingLatest.Status, $"The database lacks {migrations[^1]} and must not be ready.");
         Assert.AreEqual(HealthStatus.Healthy, afterMigration.Status);
     }
+
+    [TestMethod]
+    public async Task SchemaReadinessIsUnhealthyWithoutThrowingWhenTheDatabaseCannotBeReached()
+    {
+        string missingPasswordFile = Path.Combine(Path.GetTempPath(), $"gainer-missing-{Guid.NewGuid():N}");
+        (string Name, string? Value)[][] configurations =
+        [
+            [],
+            [("ConnectionStrings:gainer-db", "   ")],
+            [("ConnectionStrings:gainer-db", "not a connection string")],
+            [("ConnectionStrings:gainer-db", "Host=127.0.0.1;Port=1;Database=gainer;Username=test;Password=test;Timeout=2")],
+            [("Database:PasswordFile", missingPasswordFile)],
+        ];
+
+        foreach ((string Name, string? Value)[] settings in configurations)
+        {
+            var healthCheck = new DatabaseSchemaReadinessHealthCheck(CreateConfiguration(settings));
+
+            HealthCheckResult result = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
+
+            Assert.AreEqual(HealthStatus.Unhealthy, result.Status);
+            Assert.AreEqual("Database schema cannot be verified.", result.Description);
+        }
+    }
+
+    private static IConfiguration CreateConfiguration(params (string Name, string? Value)[] settings) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(settings.Select(setting => new KeyValuePair<string, string?>(setting.Name, setting.Value)))
+            .Build();
 
     [TestMethod]
     public async Task RebuildTrainingModelDropsLegacyTrainingDataAndKeepsCatalog()
