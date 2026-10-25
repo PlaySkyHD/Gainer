@@ -29,6 +29,19 @@ class GainerScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
     final theme = CupertinoTheme.of(context);
+    final media = MediaQuery.of(context);
+    // Die linke Aktion darf die rechten nicht überdecken: Sie bekommt nur den
+    // Platz zwischen Rand und Aktionsgruppe.
+    final trailingWidth = trailing.isEmpty
+        ? 0.0
+        : trailing.length * GainerRadii.iconButtonDiameter +
+              (trailing.length - 1) * GainerSpacing.xs;
+    final leadingMaxWidth =
+        media.size.width -
+        media.padding.horizontal -
+        2 * GainerSpacing.m -
+        trailingWidth -
+        (trailing.isEmpty ? 0 : GainerSpacing.xs);
     return CupertinoTheme(
       data: theme.copyWith(
         textTheme: theme.textTheme.copyWith(
@@ -47,7 +60,17 @@ class GainerScaffold extends StatelessWidget {
             CupertinoSliverNavigationBar(
               backgroundColor: colors.background,
               largeTitle: Text(title),
-              leading: leading,
+              leading: leading == null
+                  ? null
+                  : ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: leadingMaxWidth.clamp(
+                          GainerRadii.iconButtonDiameter,
+                          double.infinity,
+                        ),
+                      ),
+                      child: leading,
+                    ),
               trailing: trailing.isEmpty
                   ? null
                   : Row(

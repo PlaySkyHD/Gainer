@@ -46,20 +46,26 @@ class GainerDayNavigator extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           arrow(CupertinoIcons.chevron_left, 'Vorheriger Tag', onPrevious),
-          Semantics(
-            button: true,
-            label: 'Tag auswählen',
-            excludeSemantics: true,
-            child: CupertinoButton(
-              key: pillKey,
-              padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.xs),
-              minimumSize: const Size(0, GainerRadii.iconButtonDiameter),
-              onPressed: onPick,
-              child: Text(
-                label,
-                style: GainerTypography.body.copyWith(
-                  color: colors.primaryText,
-                  fontWeight: FontWeight.w600,
+          Flexible(
+            child: Semantics(
+              button: true,
+              label: 'Tag auswählen',
+              excludeSemantics: true,
+              child: CupertinoButton(
+                key: pillKey,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: GainerSpacing.xs,
+                ),
+                minimumSize: const Size(0, GainerRadii.iconButtonDiameter),
+                onPressed: onPick,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GainerTypography.body.copyWith(
+                    color: colors.primaryText,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
