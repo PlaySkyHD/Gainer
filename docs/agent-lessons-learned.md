@@ -31,6 +31,8 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 - **Goldens zeigen Blockschrift.** Für Layout-Entscheidungen lesbare Vorschauen erzeugen: `cd apps/mobile && tool/preview_goldens.sh test/ui/<bereich>`. Danach `rm -rf test/zz_preview`.
 - **`failures/`-Ordner nie committen.** Sie stehen in `.gitignore`. Trotzdem nach `--update-goldens` prüfen, dass nur echte Goldens im Diff sind.
 - **Textgröße 2 testen.** Zeilen mit Beschriftung, Eingabe und Einheit laufen sonst über. Bei großer Schrift Beschriftung über die Eingabe stapeln.
+  - Überlauf-Tests in Listen scrollen jede geprüfte Zeile mit `scrollUntilVisible` ins Bild. Listen bauen nur sichtbare Zeilen, ein Test ohne Scrollen ist sonst grün, obwohl die unteren Zeilen überlaufen.
+  - Neben 2,0 auch Werte knapp unter der Stapel-Schwelle testen (z. B. 1,3 und 1,5). Texte in einer `Row` stehen in `Flexible`, damit sie auch unterhalb der Schwelle umbrechen.
 - **`AppLifecycleListener` im Code** braucht in reinen `test()`-Tests `TestWidgetsFlutterBinding.ensureInitialized()`.
 - **Wenn ein Screen entfällt,** auch die Liste erwarteter Screenshots in `scripts/Verify-Mobile.ps1` anpassen, sonst schlägt der iOS-Simulator-Job fehl.
 - **Zahlen in Specs nachrechnen.** Ein Beispiel „80 % von 80 kg → 62,5 kg“ widersprach der eigenen Rundungsregel (richtig: 65 kg).
