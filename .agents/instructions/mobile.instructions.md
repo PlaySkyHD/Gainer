@@ -26,7 +26,10 @@ Stack: Flutter nur mit Cupertino-Widgets, `provider`, Drift als lokale Datenbank
 
 ## Prüfen
 
-- `flutter analyze`, `flutter test`, `dart format --set-exit-if-changed lib test pigeons`.
+- In einem frischen Worktree zuerst `flutter pub get`. Ohne läuft der Analyzer mit einer langen Warnliste voll.
+- `flutter analyze`, `flutter test --reporter failures-only <ordner>`, `dart format --set-exit-if-changed lib test pigeons`.
+- Lokal nur die betroffenen Ordner testen. Die gesamte Suite dauert 13–19 Minuten, die CI prüft sie.
+- Ausgaben nicht ungefiltert zurückgeben: Sie bleiben für alle folgenden Turns im Kontext.
 - Lesbare Golden-Vorschau: `tool/preview_goldens.sh test/ui/<bereich>`, danach `rm -rf test/zz_preview`.
 - Nach Änderungen an `pigeons/mobile_platform_api.dart` neu generieren und die generierte Datei formatieren.
 - Swift kompiliert nur in der CI: Änderungen zeilenweise prüfen, neue Dateien in `Runner.xcodeproj/project.pbxproj` eintragen.
