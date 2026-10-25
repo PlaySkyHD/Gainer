@@ -445,6 +445,52 @@ void main() {
     expect(requested, isNull);
   });
 
+  testWidgets('a requested day is taken once the tab shows and ticks', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    final harness = await createCalendarHarness(tester);
+    final tab = ValueNotifier<int>(1);
+    addTearDown(tab.dispose);
+    LocalDay? requested;
+    final tickersAtTake = <bool>[];
+    LocalDay? take() {
+      final day = requested;
+      requested = null;
+      if (day != null) {
+        final calendar = tester.element(find.byType(CalendarScreen));
+        tickersAtTake.add(TickerMode.getValuesNotifier(calendar).value.enabled);
+      }
+      return day;
+    }
+
+    await pumpCalendar(
+      tester,
+      harness,
+      visibility: tab,
+      isVisible: () => tab.value == 0,
+      takeRequestedDay: take,
+      // Wie CupertinoTabScaffold: TickerMode folgt dem Tab erst im
+      // nächsten Bild.
+      wrap: (calendar) => ValueListenableBuilder<int>(
+        valueListenable: tab,
+        builder: (context, index, child) =>
+            TickerMode(enabled: index == 0, child: child!),
+        child: calendar,
+      ),
+    );
+
+    requested = _oct(5);
+    tab.value = 0;
+    // Beim Umschalten selbst bleibt die Anfrage liegen.
+    expect(requested, _oct(5));
+    await settle(tester);
+
+    expect(tickersAtTake, [true]);
+    expect(requested, isNull);
+    expect(find.text(calendarDayLabel(_oct(5))), findsOneWidget);
+  });
+
   testWidgets('a refresh signal reloads while visible', (tester) async {
     usePhoneSize(tester);
     final harness = await createCalendarHarness(tester);

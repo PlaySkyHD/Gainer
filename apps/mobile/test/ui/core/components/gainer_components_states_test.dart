@@ -30,6 +30,28 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('VoiceOver liest das Label eines bereiten Buttons', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    var taps = 0;
+    await tester.pumpWidget(
+      componentHarness(
+        child: GainerPillButton(
+          label: 'Speichern',
+          icon: CupertinoIcons.checkmark,
+          onPressed: () => taps++,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.bySemanticsLabel('Speichern'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Speichern'));
+    expect(taps, 1);
+    semantics.dispose();
+  });
+
   testWidgets('Ladezustand behält die Größe des Buttons', (tester) async {
     Future<Size> sizeOf({required bool loading}) async {
       await tester.pumpWidget(
