@@ -24,12 +24,20 @@ const _defaultBedMinutes = 23 * 60;
 const _defaultWakeMinutes = 7 * 60;
 
 class BodyScreen extends StatefulWidget {
-  const BodyScreen({required this.viewModel, this.cardio, super.key});
+  const BodyScreen({
+    required this.viewModel,
+    this.cardio,
+    this.clock,
+    super.key,
+  });
 
   final BodyViewModel viewModel;
 
   /// Pulsgurt und Check-in für die HRV-Messung; ohne Wert entfällt der Einstieg.
   final CardioFeature? cardio;
+
+  /// Uhr für „heute“; Tests setzen einen festen Tag. Standard: [DateTime.now].
+  final DateTime Function()? clock;
 
   @override
   State<BodyScreen> createState() => _BodyScreenState();
@@ -41,21 +49,28 @@ class _BodyScreenState extends State<BodyScreen> {
   late final TextEditingController _checkInWeight = TextEditingController();
   BodyGoalKind _kind = BodyGoalKind.maintain;
   BodyWeightUnit _unit = BodyWeightUnit.kilograms;
-  DateTime _startDate = DateTime.now();
+  late DateTime _startDate = _now();
   DateTime? _targetDate;
-  DateTime _checkInDate = DateTime.now();
+  late DateTime _checkInDate = _now();
 
   // Schlaf als Minuten seit Mitternacht; null = nicht gesetzt.
   int? _bedMinutes;
   int? _wakeMinutes;
   int? _existingSleepMinutes;
   bool _sleepFromHealth = false;
+
+  /// Schlaf aus Health als echte Zeitpunkte. Gilt, solange [_sleepFromHealth]
+  /// gesetzt ist; aus den Uhrzeiten allein ist die doppelte Herbststunde
+  /// mehrdeutig.
+  ({DateTime bedtime, DateTime wake})? _healthSleep;
   String? _healthWeightText;
   int _healthToken = 0;
   StateSetter? _sheetSetState;
 
   /// Läuft gerade ein Check-in-Editor? Dann wartet eine neue Anfrage.
   bool _editorOpen = false;
+
+  DateTime _now() => (widget.clock ?? DateTime.now)();
 
   @override
   void initState() {
@@ -177,7 +192,7 @@ class _BodyScreenState extends State<BodyScreen> {
     if (!canMeasure && entries.isEmpty) return null;
     return RestingHistoryCard(
       entries: entries,
-      today: DateTime.now(),
+      today: _now(),
       onMeasure: canMeasure
           ? () async {
               await openHrvMeasurement(context, cardio);
@@ -198,7 +213,7 @@ class _BodyScreenState extends State<BodyScreen> {
         ),
       ];
     }
-    final today = _dateOnly(DateTime.now());
+    final today = _dateOnly(_now());
     final entry = snapshot.checkIns
         .where((item) => item.value.localDate == today)
         .firstOrNull
@@ -286,7 +301,7 @@ class _BodyScreenState extends State<BodyScreen> {
     _targetWeight.text = value == null
         ? ''
         : _editableWeight(weightForDisplay(value.targetWeightKg, _unit));
-    _startDate = DateTime.tryParse(value?.startDate ?? '') ?? DateTime.now();
+    _startDate = DateTime.tryParse(value?.startDate ?? '') ?? _now();
     _targetDate = DateTime.tryParse(value?.targetDate ?? '');
     await _showEditor(model, goal: true);
   }
@@ -308,7 +323,7 @@ class _BodyScreenState extends State<BodyScreen> {
 
   /// Öffnet den Check-in für [day], ohne Angabe für heute.
   Future<void> _openCheckIn(BodyViewModel model, {DateTime? day}) async {
-    final date = day ?? DateTime.now();
+    final date = day ?? _now();
     _checkInDate = DateTime(date.year, date.month, date.day);
     _prefillCheckIn(model, _checkInDate);
     unawaited(_loadHealth(model, _checkInDate));
@@ -342,6 +357,7 @@ class _BodyScreenState extends State<BodyScreen> {
       final wake = loaded.sleep!.wakeUtc.toLocal();
       _bedMinutes = bed.hour * 60 + bed.minute;
       _wakeMinutes = wake.hour * 60 + wake.minute;
+      _healthSleep = (bedtime: bed, wake: wake);
       _sleepFromHealth = true;
     }
     _sheetSetState?.call(() {});
@@ -357,6 +373,7 @@ class _BodyScreenState extends State<BodyScreen> {
     _wakeMinutes = null;
     _existingSleepMinutes = existing?.sleepMinutes;
     _sleepFromHealth = false;
+    _healthSleep = null;
   }
 
   /// Formular-Sheet für Ziel oder Check-in; „Sichern“ ist die Abschlussaktion.
@@ -402,7 +419,9 @@ class _BodyScreenState extends State<BodyScreen> {
                     ),
                     label: 'Sichern',
                     isLoading: liveModel.isSaving,
-                    onPressed: liveModel.isSaving
+                    // Ungültige Schlafzeiten erklärt der Hinweis am Schlaf.
+                    onPressed:
+                        liveModel.isSaving || (!goal && _sleepTimesInvalid)
                         ? null
                         : () => _saveFromSheet(
                             sheetContext,
@@ -562,7 +581,7 @@ class _BodyScreenState extends State<BodyScreen> {
               title: 'Datum',
               value: _checkInDate,
               format: _prettyDateTime,
-              maximum: DateTime.now(),
+              maximum: _now(),
               onChanged: model.isSaving
                   ? null
                   : (picked) => rebuild(() {
@@ -609,14 +628,17 @@ class _BodyScreenState extends State<BodyScreen> {
   List<Widget> _sleepSection(StateSetter rebuild, String? errorText) {
     final bed = _bedMinutes;
     final wake = _wakeMinutes;
-    final duration = bed != null && wake != null
-        ? sleepMinutesBetween(bed, wake)
-        : (bed == null && wake == null ? _existingSleepMinutes : null);
+    final duration =
+        _sleepWindow()?.minutes ??
+        (bed == null && wake == null ? _existingSleepMinutes : null);
     return [
       GainerGroupedSection(
         header: 'Schlaf',
         footer:
-            errorText ?? (_sleepFromHealth ? 'Schlaf aus Apple Health' : null),
+            errorText ??
+            (_sleepTimesInvalid
+                ? 'Diese Uhrzeit gibt es in der Nacht der Zeitumstellung nicht.'
+                : (_sleepFromHealth ? 'Schlaf aus Apple Health' : null)),
         children: [
           _timeRow(
             'Zu Bett',
@@ -743,32 +765,36 @@ class _BodyScreenState extends State<BodyScreen> {
     );
   }
 
-  Future<void> _saveCheckIn(BodyViewModel model) async {
+  /// Eingegebener Schlaf als Zeitpunkte; null, solange eine Uhrzeit fehlt
+  /// oder die Uhrzeiten keine gültige Nacht ergeben ([_sleepTimesInvalid]).
+  /// Unveränderter Schlaf aus Health behält dessen Zeitpunkte.
+  SleepWindow? _sleepWindow() {
+    final health = _healthSleep;
+    if (_sleepFromHealth && health != null) {
+      return sleepWindowBetween(health.bedtime, health.wake);
+    }
     final bed = _bedMinutes;
     final wake = _wakeMinutes;
-    final hasSleepTimes = bed != null && wake != null;
-    final sleepMinutes = hasSleepTimes
-        ? sleepMinutesBetween(bed, wake)
-        : _existingSleepMinutes;
-    // Aufgestanden liegt am Check-in-Tag, Zu Bett davor (ggf. vor Mitternacht).
-    final wakeAt = hasSleepTimes
-        ? DateTime(
-            _checkInDate.year,
-            _checkInDate.month,
-            _checkInDate.day,
-            wake ~/ 60,
-            wake % 60,
-          )
-        : null;
+    if (bed == null || wake == null) return null;
+    return sleepWindowOn(_checkInDate, bed, wake);
+  }
+
+  /// Beide Uhrzeiten gesetzt, aber eine fällt in die übersprungene
+  /// Frühlingsstunde und schiebt Zu Bett hinter Aufgestanden.
+  bool get _sleepTimesInvalid =>
+      _bedMinutes != null && _wakeMinutes != null && _sleepWindow() == null;
+
+  Future<void> _saveCheckIn(BodyViewModel model) async {
+    final sleep = _sleepWindow();
     await model.saveCheckIn(
       localDate: _dateOnly(_checkInDate),
       weightKg: weightToKilograms(
         _parseEditableDouble(_checkInWeight) ?? double.nan,
         _unit,
       ),
-      sleepMinutes: sleepMinutes,
-      bedtime: wakeAt?.subtract(Duration(minutes: sleepMinutes!)),
-      wake: wakeAt,
+      sleepMinutes: sleep?.minutes ?? _existingSleepMinutes,
+      bedtime: sleep?.bedtime,
+      wake: sleep?.wake,
     );
   }
 
