@@ -29,6 +29,8 @@ Stack: Flutter nur mit Cupertino-Widgets, `provider`, Drift als lokale Datenbank
 - In einem frischen Worktree zuerst `flutter pub get`. Ohne läuft der Analyzer mit einer langen Warnliste voll.
 - `flutter analyze`, `flutter test --reporter failures-only <ordner>`, `dart format --set-exit-if-changed lib test pigeons`.
 - Lokal nur die betroffenen Ordner testen. Die gesamte Suite dauert 13–19 Minuten, die CI prüft sie.
+  - Betroffen sind die Ordner aller Nutzer eines geänderten Bausteins, nicht nur seiner eigenen Tests. Die Nutzer listet `grep -rl <Baustein> lib test`.
+  - Änderungen in `lib/ui/core/` wirken auf alle Screens: `test/ui`, `test/mobile_shell_test.dart` und `test/data/services/mobile_auth_controller_test.dart` testen. Das dauert länger als 10 Minuten, also mit `run_in_background` starten.
 - Ausgaben nicht ungefiltert zurückgeben: Sie bleiben für alle folgenden Turns im Kontext.
 - Lesbare Golden-Vorschau: `tool/preview_goldens.sh test/ui/<bereich>`, danach `rm -rf test/zz_preview`.
 - Nach Änderungen an `pigeons/mobile_platform_api.dart` neu generieren und die generierte Datei formatieren.
