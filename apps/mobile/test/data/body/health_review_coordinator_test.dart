@@ -140,6 +140,33 @@ void main() {
     expect(health.lastToUtc, DateTime(2026, 10, 13).toUtc());
   });
 
+  test(
+    'the 90-day limit counts calendar days across the spring DST switch',
+    () async {
+      // 2027-01-01 bis 2027-04-02 sind 91 Tage. Über die Frühlingsumstellung
+      // fehlt eine Stunde; „inDays“ zählte unter TZ=Europe/Berlin nur 90.
+      await expectLater(
+        coordinator().prepareWeightReview(
+          fromLocalDate: '2027-01-01',
+          toLocalDate: '2027-04-02',
+        ),
+        throwsArgumentError,
+      );
+      await HealthReviewCoordinator(
+        store: store,
+        bodyRepository: body,
+        platform: health,
+        accountId: accountId,
+        currentSessionIdentity: () => identity,
+        clock: () => DateTime(2027, 6),
+      ).prepareWeightReview(
+        fromLocalDate: '2027-01-01',
+        toLocalDate: '2027-04-01',
+      );
+      expect(health.lastToUtc, DateTime(2027, 4, 2).toUtc());
+    },
+  );
+
   // Der Tag der Zeitumstellung hat 25 bzw. 23 Stunden; „+24 h“ landete unter
   // TZ=Europe/Berlin im Herbst wieder am selben Tag und lieferte keine Proben.
   for (final (day, next) in [

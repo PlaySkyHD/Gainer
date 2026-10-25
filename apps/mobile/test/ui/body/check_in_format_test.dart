@@ -10,7 +10,7 @@ int _clockShift(DateTime from, DateTime to) =>
 void main() {
   test('Schlafdauer geht über Mitternacht', () {
     final day = DateTime(2026, 10, 12);
-    int minutes(int bed, int wake) => sleepWindowOn(day, bed, wake).minutes;
+    int minutes(int bed, int wake) => sleepWindowOn(day, bed, wake)!.minutes;
 
     expect(minutes(23 * 60 + 30, 7 * 60), 450);
     expect(minutes(23 * 60 + 10, 6 * 60 + 45), 455);
@@ -21,11 +21,15 @@ void main() {
   test(
     'Zu Bett liegt am Vortag, wenn die Uhrzeit nach dem Aufstehen liegt',
     () {
-      final night = sleepWindowOn(DateTime(2026, 10, 12), 23 * 60 + 30, 7 * 60);
+      final night = sleepWindowOn(
+        DateTime(2026, 10, 12),
+        23 * 60 + 30,
+        7 * 60,
+      )!;
       expect(night.bedtime, DateTime(2026, 10, 11, 23, 30));
       expect(night.wake, DateTime(2026, 10, 12, 7));
 
-      final morning = sleepWindowOn(DateTime(2026, 10, 12), 60, 9 * 60);
+      final morning = sleepWindowOn(DateTime(2026, 10, 12), 60, 9 * 60)!;
       expect(morning.bedtime, DateTime(2026, 10, 12, 1));
       expect(morning.wake, DateTime(2026, 10, 12, 9));
     },
@@ -37,7 +41,7 @@ void main() {
     ('Frühling', DateTime(2027, 3, 28)),
   ]) {
     test('Zeitumstellung ($name): Uhrzeiten bleiben, Dauer ist echt', () {
-      final sleep = sleepWindowOn(day, 23 * 60 + 30, 7 * 60);
+      final sleep = sleepWindowOn(day, 23 * 60 + 30, 7 * 60)!;
       final bedtime = DateTime(day.year, day.month, day.day - 1, 23, 30);
       final wake = DateTime(day.year, day.month, day.day, 7);
 
@@ -49,6 +53,45 @@ void main() {
       expect(sleep.minutes, sleep.wake.difference(sleep.bedtime).inMinutes);
     });
   }
+
+  test('Herbstnacht: Dauer höchstens 24 Stunden', () {
+    // Zu Bett 07:30, Aufgestanden 07:00: unter TZ=Europe/Berlin 1470 echte
+    // Minuten, die das Backend (SleepMinutes.Maximum) ablehnen würde.
+    final day = DateTime(2026, 10, 25);
+    final bedtime = DateTime(2026, 10, 24, 7, 30);
+    final wake = DateTime(2026, 10, 25, 7);
+    final sleep = sleepWindowOn(day, 7 * 60 + 30, 7 * 60)!;
+
+    expect(sleep.bedtime, bedtime);
+    expect(sleep.wake, wake);
+    final real = 1410 + _clockShift(bedtime, wake);
+    expect(sleep.minutes, real > maxSleepMinutes ? maxSleepMinutes : real);
+    expect(sleep.minutes, lessThanOrEqualTo(maxSleepMinutes));
+  });
+
+  test('Zu Bett nach Aufgestanden ergibt keine Nacht', () {
+    final wake = DateTime(2026, 10, 12, 7);
+    expect(
+      sleepWindowBetween(wake.add(const Duration(minutes: 1)), wake),
+      isNull,
+    );
+    expect(sleepWindowBetween(wake, wake)!.minutes, 0);
+  });
+
+  test('Frühling: Uhrzeit in der übersprungenen Stunde', () {
+    // 02:30 gibt es am 28.03.2027 in Europe/Berlin nicht; Dart macht 03:30
+    // daraus, also nach 03:10. Unter UTC ist die Nacht 40 Minuten lang.
+    final day = DateTime(2027, 3, 28);
+    final bedtime = DateTime(2027, 3, 28, 2, 30);
+    final wake = DateTime(2027, 3, 28, 3, 10);
+    final sleep = sleepWindowOn(day, 2 * 60 + 30, 3 * 60 + 10);
+
+    if (bedtime.isAfter(wake)) {
+      expect(sleep, isNull);
+    } else {
+      expect(sleep!.minutes, wake.difference(bedtime).inMinutes);
+    }
+  });
 
   test('Dauer und Uhrzeit werden deutsch formatiert', () {
     expect(formatSleepDuration(455), '7 h 35 min');

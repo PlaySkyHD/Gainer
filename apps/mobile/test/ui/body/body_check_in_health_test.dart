@@ -6,6 +6,7 @@ import 'package:gainer_mobile/data/repositories/health/check_in_health_coordinat
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/body/body_screen.dart';
 import 'package:gainer_mobile/ui/features/body/body_view_model.dart';
@@ -291,6 +292,111 @@ void main() {
       expect(h.health.sleepWrites, isEmpty);
     });
   }
+
+  testWidgets('a 24.5 h autumn night is saved as at most 24 h', (tester) async {
+    final h = _harness(tester, FakeHealthPlatform(), today: _autumnDay);
+    await _open(tester, h);
+    final bedtime = DateTime(2026, 10, 24, 7, 30);
+    final wake = DateTime(2026, 10, 25, 7);
+    final real = wake.difference(bedtime).inMinutes;
+    final expected = real > maxSleepMinutes ? maxSleepMinutes : real;
+
+    await _pickTime(tester, 'body-checkin-bedtime', 7, 30);
+    await _pickTime(tester, 'body-checkin-wake', 7, 0);
+    expect(find.text(formatSleepDuration(expected)), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('body-checkin-weight')),
+      '80,9',
+    );
+    await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
+    await tester.pumpAndSettle();
+
+    expect(h.model.fieldErrors, isEmpty);
+    final saved = (await h.repository.read()).checkIns.single.value;
+    expect(saved.sleepMinutes, expected);
+    final write = h.health.sleepWrites.single;
+    expect(write.bed, bedtime.toUtc());
+    expect(write.wake, wake.toUtc());
+  });
+
+  testWidgets('Health sleep in the repeated autumn hour keeps its instants', (
+    tester,
+  ) async {
+    // 01:30Z ist unter TZ=Europe/Berlin 02:30 Uhr in der zweiten, doppelten
+    // Stunde (MEZ). Aus der Uhrzeit zurückgerechnet würde daraus 02:30 MESZ,
+    // eine Stunde früher.
+    final bedtimeUtc = DateTime.utc(2026, 10, 25, 1, 30);
+    final wakeUtc = DateTime.utc(2026, 10, 25, 6);
+    final health = FakeHealthPlatform()
+      ..sleep = HealthSleepWindow(
+        bedtimeUtc: bedtimeUtc,
+        wakeUtc: wakeUtc,
+        asleepMinutes: 250,
+        sourceName: 'Gainer',
+        fromGainer: true,
+      );
+    final h = _harness(tester, health, today: _autumnDay);
+    await _open(tester, h);
+
+    final bed = bedtimeUtc.toLocal(), wake = wakeUtc.toLocal();
+    expect(
+      find.text(formatMinuteOfDay(bed.hour * 60 + bed.minute)),
+      findsOneWidget,
+    );
+    expect(
+      find.text(formatMinuteOfDay(wake.hour * 60 + wake.minute)),
+      findsOneWidget,
+    );
+    expect(find.text(formatSleepDuration(270)), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('body-checkin-weight')),
+      '80,9',
+    );
+    await tester.tap(find.byKey(const ValueKey('body-save-checkin')));
+    await tester.pumpAndSettle();
+
+    final saved = (await h.repository.read()).checkIns.single.value;
+    expect(saved.sleepMinutes, 270);
+    final write = h.health.sleepWrites.single;
+    expect(write.bed, bedtimeUtc);
+    expect(write.wake, wakeUtc);
+  });
+
+  testWidgets('a bedtime in the skipped spring hour blocks saving', (
+    tester,
+  ) async {
+    final h = _harness(tester, FakeHealthPlatform(), today: _springDay);
+    await _open(tester, h);
+    await _pickTime(tester, 'body-checkin-bedtime', 2, 30);
+    await _pickTime(tester, 'body-checkin-wake', 3, 10);
+
+    // 02:30 gibt es am 28.03.2027 in Europe/Berlin nicht (Dart: 03:30, also
+    // nach 03:10). Unter UTC ist es eine gültige Nacht von 40 Minuten.
+    final skipped = DateTime(
+      2027,
+      3,
+      28,
+      2,
+      30,
+    ).isAfter(DateTime(2027, 3, 28, 3, 10));
+    final save = tester.widget<GainerPillButton>(
+      find.byKey(const ValueKey('body-save-checkin')),
+    );
+    if (skipped) {
+      expect(
+        find.text(
+          'Diese Uhrzeit gibt es in der Nacht der Zeitumstellung nicht.',
+        ),
+        findsOneWidget,
+      );
+      expect(save.onPressed, isNull);
+      expect(find.text('–'), findsOneWidget);
+    } else {
+      expect(save.onPressed, isNotNull);
+      expect(find.text('40 min'), findsOneWidget);
+    }
+  });
 
   testWidgets('saving writes weight to Health when no foreign sample exists', (
     tester,

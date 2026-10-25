@@ -1,3 +1,4 @@
+import '../../../domain/models/training/training_schedule.dart';
 import '../body/body_repository.dart';
 import 'check_in_health_coordinator.dart';
 
@@ -16,15 +17,15 @@ class HealthStepsSync {
   final DateTime Function() _clock;
 
   /// Schritte von heute bis jetzt; null ohne Zugriff oder Daten.
-  Future<int?> today() => health.readSteps(_localDate(_clock()));
+  Future<int?> today() => health.readSteps(LocalDay.of(_clock()).toIso());
 
   /// Gleicht die Check-ins der letzten [days] Tage ohne heute mit Apple Health
   /// ab. Liefert, wie viele Check-ins sich geändert haben. Wirft nie.
   Future<int> syncRecent({int days = 7}) async {
-    final now = _clock();
     // Kalendertage statt 24 Stunden, sonst fehlt der Tag der Zeitumstellung.
-    final first = _localDate(DateTime(now.year, now.month, now.day - days));
-    final yesterday = _localDate(DateTime(now.year, now.month, now.day - 1));
+    final today = LocalDay.of(_clock());
+    final first = today.addDays(-days).toIso();
+    final yesterday = today.addDays(-1).toIso();
     var changed = 0;
     try {
       final snapshot = await body.read();
@@ -42,9 +43,4 @@ class HealthStepsSync {
     }
     return changed;
   }
-
-  static String _localDate(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
 }

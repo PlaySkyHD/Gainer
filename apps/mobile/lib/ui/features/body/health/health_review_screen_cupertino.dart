@@ -2,13 +2,17 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../../data/repositories/health/health_review_coordinator.dart';
 import '../../../../data/services/platform/platform_ports.dart';
+import '../../../../domain/models/training/training_schedule.dart';
 import '../../../core/components/components.dart';
 import '../../../core/theme.dart';
 import 'health_review_view_model.dart';
 
 class HealthReviewScreen extends StatefulWidget {
-  const HealthReviewScreen({super.key, required this.viewModel});
+  const HealthReviewScreen({super.key, required this.viewModel, this.clock});
   final HealthReviewViewModel viewModel;
+
+  /// Uhr für „heute“; Tests setzen einen festen Tag. Standard: [DateTime.now].
+  final DateTime Function()? clock;
 
   @override
   State<HealthReviewScreen> createState() => _HealthReviewScreenState();
@@ -18,11 +22,15 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
   late DateTime _from;
   late DateTime _to;
 
+  DateTime _now() => (widget.clock ?? DateTime.now)();
+
   @override
   void initState() {
     super.initState();
-    final today = DateTime.now();
-    _from = DateTime(today.year, today.month, today.day - 6);
+    final today = _now();
+    // Kalendertage statt 6 × 24 Stunden, sonst verrutscht der Start über eine
+    // Zeitumstellung kurz nach Mitternacht um einen Tag.
+    _from = LocalDay.of(today).addDays(-6).toDateTime();
     _to = today;
     widget.viewModel.load();
   }
@@ -73,7 +81,7 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
                 value: _to,
                 format: _displayDate,
                 minimum: _from,
-                maximum: DateTime.now(),
+                maximum: _now(),
                 onChanged: vm.isLoading
                     ? null
                     : (picked) => setState(() => _to = picked),

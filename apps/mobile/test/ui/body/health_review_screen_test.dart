@@ -260,6 +260,47 @@ void main() {
       expect(health.lastFromUtc, threeDaysAgo.toUtc());
     },
   );
+
+  testWidgets(
+    'the default range starts six calendar days back across the spring DST switch',
+    (tester) async {
+      // Kurz nach Mitternacht am Tag nach der Umstellung: „− 6 × 24 h“ landete
+      // unter TZ=Europe/Berlin am 22. statt am 23. März.
+      final now = DateTime(2027, 3, 29, 0, 30);
+      final database = LocalDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final store = LocalSyncStore(database: database, accountId: accountId);
+      final health = _HealthFake();
+      final coordinator = HealthReviewCoordinator(
+        store: store,
+        bodyRepository: BodyRepository(store: store),
+        platform: health,
+        accountId: accountId,
+        currentSessionIdentity: () =>
+            const HealthSessionIdentity(accountId: accountId, generation: 1),
+        clock: () => now,
+      );
+      final viewModel = HealthReviewViewModel(coordinator);
+      await tester.pumpWidget(
+        CupertinoApp(
+          home: HealthReviewScreen(viewModel: viewModel, clock: () => now),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final start = DateTime(2027, 3, 23);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('health-from')),
+          matching: find.text(_displayDate(start)),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Health-Proben laden'));
+      await tester.pumpAndSettle();
+      expect(health.lastFromUtc, start.toUtc());
+    },
+  );
 }
 
 String _formatDate(DateTime value) =>

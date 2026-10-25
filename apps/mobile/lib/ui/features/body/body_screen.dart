@@ -58,6 +58,11 @@ class _BodyScreenState extends State<BodyScreen> {
   int? _wakeMinutes;
   int? _existingSleepMinutes;
   bool _sleepFromHealth = false;
+
+  /// Schlaf aus Health als echte Zeitpunkte. Gilt, solange [_sleepFromHealth]
+  /// gesetzt ist; aus den Uhrzeiten allein ist die doppelte Herbststunde
+  /// mehrdeutig.
+  ({DateTime bedtime, DateTime wake})? _healthSleep;
   String? _healthWeightText;
   int _healthToken = 0;
   StateSetter? _sheetSetState;
@@ -352,6 +357,7 @@ class _BodyScreenState extends State<BodyScreen> {
       final wake = loaded.sleep!.wakeUtc.toLocal();
       _bedMinutes = bed.hour * 60 + bed.minute;
       _wakeMinutes = wake.hour * 60 + wake.minute;
+      _healthSleep = (bedtime: bed, wake: wake);
       _sleepFromHealth = true;
     }
     _sheetSetState?.call(() {});
@@ -367,6 +373,7 @@ class _BodyScreenState extends State<BodyScreen> {
     _wakeMinutes = null;
     _existingSleepMinutes = existing?.sleepMinutes;
     _sleepFromHealth = false;
+    _healthSleep = null;
   }
 
   /// Formular-Sheet für Ziel oder Check-in; „Sichern“ ist die Abschlussaktion.
@@ -412,7 +419,9 @@ class _BodyScreenState extends State<BodyScreen> {
                     ),
                     label: 'Sichern',
                     isLoading: liveModel.isSaving,
-                    onPressed: liveModel.isSaving
+                    // Ungültige Schlafzeiten erklärt der Hinweis am Schlaf.
+                    onPressed:
+                        liveModel.isSaving || (!goal && _sleepTimesInvalid)
                         ? null
                         : () => _saveFromSheet(
                             sheetContext,
@@ -626,7 +635,10 @@ class _BodyScreenState extends State<BodyScreen> {
       GainerGroupedSection(
         header: 'Schlaf',
         footer:
-            errorText ?? (_sleepFromHealth ? 'Schlaf aus Apple Health' : null),
+            errorText ??
+            (_sleepTimesInvalid
+                ? 'Diese Uhrzeit gibt es in der Nacht der Zeitumstellung nicht.'
+                : (_sleepFromHealth ? 'Schlaf aus Apple Health' : null)),
         children: [
           _timeRow(
             'Zu Bett',
@@ -753,13 +765,24 @@ class _BodyScreenState extends State<BodyScreen> {
     );
   }
 
-  /// Eingegebener Schlaf als Zeitpunkte; null, solange eine Uhrzeit fehlt.
-  ({DateTime bedtime, DateTime wake, int minutes})? _sleepWindow() {
+  /// Eingegebener Schlaf als Zeitpunkte; null, solange eine Uhrzeit fehlt
+  /// oder die Uhrzeiten keine gültige Nacht ergeben ([_sleepTimesInvalid]).
+  /// Unveränderter Schlaf aus Health behält dessen Zeitpunkte.
+  SleepWindow? _sleepWindow() {
+    final health = _healthSleep;
+    if (_sleepFromHealth && health != null) {
+      return sleepWindowBetween(health.bedtime, health.wake);
+    }
     final bed = _bedMinutes;
     final wake = _wakeMinutes;
     if (bed == null || wake == null) return null;
     return sleepWindowOn(_checkInDate, bed, wake);
   }
+
+  /// Beide Uhrzeiten gesetzt, aber eine fällt in die übersprungene
+  /// Frühlingsstunde und schiebt Zu Bett hinter Aufgestanden.
+  bool get _sleepTimesInvalid =>
+      _bedMinutes != null && _wakeMinutes != null && _sleepWindow() == null;
 
   Future<void> _saveCheckIn(BodyViewModel model) async {
     final sleep = _sleepWindow();
