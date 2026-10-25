@@ -353,7 +353,7 @@ Die Startseite des Sheets SHALL die Wege gruppieren: „Finden“ (Lebensmittel 
 
 ### Requirement: Wassermenge pro Tag
 
-Das System SHALL pro Nutzer und lokalem Kalendertag höchstens eine getrunkene Wassermenge in ganzen Millilitern speichern, unter einer festen ID je Nutzer und Tag. Die Menge MUST zwischen 0 und 10.000 ml liegen. Jede Änderung MUST die neue Tagesmenge setzen, die Basisversion prüfen und die Version erhöhen. Ein anderes Datum für eine bekannte ID MUST als ungültig abgelehnt werden. Ein Tag mit 0 ml SHALL als Stand erhalten bleiben.
+Das System SHALL pro Nutzer und lokalem Kalendertag höchstens eine Wassermenge in ganzen Millilitern speichern, unter einer festen ID je Nutzer und Tag (UUID v8 aus SHA-256). Die Menge MUST zwischen 0 und 10.000 ml liegen. Jede Änderung MUST die neue Tagesmenge setzen, die Basisversion prüfen und die Version erhöhen. Ein anderes Datum für eine bekannte ID und eine zweite ID für einen belegten Tag MUST als ungültig abgelehnt werden. Ein Tag mit 0 ml SHALL bestehen bleiben.
 
 #### Scenario: Erstes Glas des Tages
 
@@ -390,6 +390,12 @@ Das System SHALL pro Nutzer und lokalem Kalendertag höchstens eine getrunkene W
 - **GIVEN** zwei Geräte desselben Kontos erfassen offline Wasser für den 25.10.2026
 - **WHEN** beide synchronisieren
 - **THEN** verwenden beide dieselbe ID, der zweite Stand wird ein lösbarer Konflikt dieser Ressource und es entsteht kein zweiter Tag
+
+#### Scenario: Zweite ID für einen belegten Tag
+
+- **GIVEN** für den 25.10.2026 ist Wasser unter einer ID gespeichert
+- **WHEN** eine Mutation mit einer anderen ID denselben Tag anlegen will
+- **THEN** antwortet der Server mit `water_day_exists` statt mit einem Versionskonflikt und ändert nichts
 
 #### Scenario: Falsches Datum für eine bekannte ID
 
