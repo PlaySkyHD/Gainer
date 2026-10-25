@@ -19,8 +19,11 @@ You improve the **environment** for future agent runs: skills, rules, lessons, c
    - lacked information (logs, server state, credentials flow) and had to guess or ask.
 2. **Classify each candidate** with the categories below and pick the cheapest durable fix.
 3. **Drop weak candidates.** Keep only findings with a concrete moment from the session as evidence. Keep at most three, ordered by how much time or risk they cost. Before filing, confirm the suspected cause with a quick test: rerun the command, call the hook with sample JSON, or read the code location. If you cannot confirm it, drop the finding or mark it clearly as a hypothesis in the issue. A claim about compiler behaviour (Swift has no local compiler here) counts as confirmed only by a red CI run or by similar code that already builds on `main`; search for counterexamples first.
-4. **File them** as described under "Issues". If nothing survives, say so in one line and stop.
-5. **Report** in two or three lines which issues you created or commented on.
+4. **Check the proposed text.** A fix agent copies the Vorschlag verbatim.
+   - Check every number, threshold, path, command and API name in it against the code (`graphify update .` if `graphify-out/graph.json` is missing, `graphify query`, then grep).
+   - A value that holds for one widget, endpoint or job only is written with that scope.
+5. **File them** as described under "Issues". If nothing survives, say so in one line and stop.
+6. **Report** in two or three lines which issues you created or commented on.
 
 ## Categories
 
@@ -40,7 +43,7 @@ You improve the **environment** for future agent runs: skills, rules, lessons, c
 - Body, short:
   - **Beobachtung**: what happened in the session, with the PR number.
   - **Ursache**: the file or missing piece that caused it.
-  - **Vorschlag**: the concrete change and the file it goes in.
+  - **Vorschlag**: the concrete change and the file it goes in, checked as in step 4. Name the merged commit or the code location the values come from.
   - **Kategorie**: one of the categories above.
 - The repository is public. Never include secrets, tokens, personal or fitness data, user prompts verbatim, or anything about other private projects.
 - Do not fix findings inside the pull request you just opened. Each fix is its own pull request that closes the issue with `Fixes #<n>`.
@@ -48,5 +51,3 @@ You improve the **environment** for future agent runs: skills, rules, lessons, c
 ## Writing for agents
 
 Write fixes the way agents read them: short declarative sentences, one rule per line, the reason in a few words, a concrete command or path instead of a description. Put a rule where it is read at the right moment: always-loaded files only for pointers, skills for knowledge needed on demand, review rules for judgement calls, checks for everything mechanical.
-
-Check numbers, thresholds and API names in the proposed text against the code (`graphify query`, then grep), and name the fix commit the rule comes from. A value that holds for one widget only is written as such. The text is copied verbatim later.
