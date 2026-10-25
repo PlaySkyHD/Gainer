@@ -23,10 +23,61 @@ class CoachViewModel extends ChangeNotifier {
   final _suggestionStates = <int, CoachSuggestionState>{};
   final _suggestionErrors = <int, String>{};
 
+  /// Zuletzt bekannt: keine Verbindung. Eine erfolgreiche Anfrage hebt das auf.
+  late bool memoryOffline = !online;
+
+  /// Das Gedächtnis ist laut Liste oder `memory_limit_reached` voll.
+  bool memoryFull = false;
+
+  /// Zählt Lesevorgänge der Belegung. Nur das Ergebnis des neuesten gilt;
+  /// ein Merken macht laufende Lesevorgänge ungültig. So überschreibt eine
+  /// ältere Antwort nie einen neueren Stand.
+  int _usageGeneration = 0;
+
   CoachSuggestionState suggestionState(int index) =>
       _suggestionStates[index] ?? CoachSuggestionState.open;
 
   String? suggestionError(int index) => _suggestionErrors[index];
+
+  /// Grund, warum „Merken“ gerade nicht geht, sonst null.
+  String? get rememberBlockedReason {
+    if (memoryOffline) {
+      return 'Keine Verbindung. „Merken“ geht erst wieder online.';
+    }
+    if (memoryFull) {
+      return 'Das Gedächtnis ist voll. Lösche unter Gedächtnis eine Notiz, '
+          'um Neues zu merken.';
+    }
+    return null;
+  }
+
+  /// Mindestens ein Vorschlag wartet auf „Merken“ oder „Verwerfen“.
+  bool get hasOpenSuggestions {
+    final answer = response;
+    if (answer == null) return false;
+    for (var i = 0; i < answer.memorySuggestions.length; i++) {
+      if (suggestionState(i) == CoachSuggestionState.open) return true;
+    }
+    return false;
+  }
+
+  /// Liest Belegung und Höchstzahl des Gedächtnisses, damit „Merken“ bei
+  /// vollem Gedächtnis gesperrt ist. Nur nötig, solange Vorschläge offen sind.
+  Future<void> refreshMemoryUsage() async {
+    final store = memories;
+    if (_disposed || store == null || !hasOpenSuggestions) return;
+    final generation = ++_usageGeneration;
+    try {
+      final list = await store.list();
+      if (_disposed || generation != _usageGeneration) return;
+      memoryFull = list.items.length >= list.maxEntries;
+      memoryOffline = false;
+    } on Object catch (error) {
+      if (_disposed || generation != _usageGeneration) return;
+      if (isCoachMemoryOfflineError(error)) memoryOffline = true;
+    }
+    notifyListeners();
+  }
 
   Future<void> ask(String question) async {
     if (_disposed) return;
@@ -41,12 +92,16 @@ class CoachViewModel extends ChangeNotifier {
     _suggestionStates.clear();
     _suggestionErrors.clear();
     notifyListeners();
+    var answered = false;
     try {
       final result = await repository.ask(question.trim());
       if (_disposed) return;
       response = result;
-    } catch (_) {
+      memoryOffline = false;
+      answered = true;
+    } catch (error) {
       if (_disposed) return;
+      if (isCoachMemoryOfflineError(error)) memoryOffline = true;
       errorMessage = 'Der Coach ist gerade nicht verfügbar. Deine Frage wurde nicht gespeichert.';
     } finally {
       if (!_disposed) {
@@ -54,6 +109,7 @@ class CoachViewModel extends ChangeNotifier {
         notifyListeners();
       }
     }
+    if (answered) await refreshMemoryUsage();
   }
 
   /// Speichert den Vorschlag [index] der aktuellen Antwort im Gedächtnis.
@@ -65,7 +121,8 @@ class CoachViewModel extends ChangeNotifier {
         answer == null ||
         index < 0 ||
         index >= answer.memorySuggestions.length ||
-        suggestionState(index) != CoachSuggestionState.open) {
+        suggestionState(index) != CoachSuggestionState.open ||
+        rememberBlockedReason != null) {
       return;
     }
     final suggestion = answer.memorySuggestions[index];
@@ -74,14 +131,30 @@ class CoachViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       await store.create(suggestion.category, suggestion.text);
+      // Vorher begonnene Lesevorgänge kennen den neuen Eintrag nicht.
+      _usageGeneration++;
       if (_disposed || !identical(response, answer)) return;
       _suggestionStates[index] = CoachSuggestionState.saved;
     } on Object catch (error) {
       if (_disposed || !identical(response, answer)) return;
       _suggestionStates[index] = CoachSuggestionState.open;
-      _suggestionErrors[index] = coachMemoryErrorMessage(error);
+      // Offline und voll sperren alle Vorschläge; den Grund nennt der
+      // Abschnitt einmal, nicht jede Zeile.
+      if (isCoachMemoryOfflineError(error)) {
+        memoryOffline = true;
+      } else if (isCoachMemoryFullError(error)) {
+        _usageGeneration++;
+        memoryFull = true;
+      } else {
+        _suggestionErrors[index] = coachMemoryErrorMessage(error);
+      }
+      notifyListeners();
+      return;
     }
     notifyListeners();
+    // Die Liste zählt richtig, auch wenn der Text schon gemerkt war und der
+    // Server nur den vorhandenen Eintrag zurückgab.
+    await refreshMemoryUsage();
   }
 
   /// Blendet den Vorschlag [index] aus; gespeichert wird nichts.

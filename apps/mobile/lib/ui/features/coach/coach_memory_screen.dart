@@ -2,37 +2,64 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import '../../../data/models/api/coach_memory_api_models.dart';
+import '../../../data/repositories/coach/coach_memory_repository.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'coach_memory_view_model.dart';
 
 /// „Gedächtnis“: alles, was sich der Coach über den Nutzer merkt.
 class CoachMemoryScreen extends StatefulWidget {
-  const CoachMemoryScreen({required this.viewModel, super.key});
+  const CoachMemoryScreen({
+    required this.repository,
+    this.online = true,
+    super.key,
+  });
 
-  final CoachMemoryViewModel viewModel;
+  final CoachMemoryRepository repository;
+
+  /// Das Konto wurde mit Verbindung geöffnet.
+  final bool online;
 
   @override
   State<CoachMemoryScreen> createState() => _CoachMemoryScreenState();
 }
 
 class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
-  CoachMemoryViewModel get _model => widget.viewModel;
+  late final CoachMemoryViewModel _model;
 
   @override
   void initState() {
     super.initState();
-    _model.start();
+    _model = CoachMemoryViewModel(widget.repository, online: widget.online)
+      ..start();
+  }
+
+  @override
+  void dispose() {
+    _model.dispose();
+    super.dispose();
   }
 
   Future<void> _edit([ApiCoachMemory? memory]) async {
-    final draft = await showCoachMemoryEditor(context, memory: memory);
-    if (draft == null || !mounted) return;
-    await _model.save(
-      id: memory?.id,
-      category: draft.category,
-      text: draft.text,
+    var sheetOpen = true;
+    await showCoachMemoryEditor(
+      context,
+      memory: memory,
+      onSave: (draft) async {
+        final failure = await _model.save(
+          id: draft.id,
+          category: draft.category,
+          text: draft.text,
+        );
+        // Wurde das Sheet während des Speicherns geschlossen, meldet der
+        // Screen den Fehler, damit er nicht verloren geht.
+        if (failure != null && !sheetOpen) {
+          _model.reportActionError(failure.message);
+        }
+        return failure;
+      },
     );
+    sheetOpen = false;
   }
 
   Future<bool> _confirmDelete(ApiCoachMemory memory) async {
@@ -210,29 +237,42 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
   }
 }
 
-/// Ergebnis des Notiz-Sheets.
+/// Eingabe des Notiz-Sheets.
 class CoachMemoryDraft {
-  const CoachMemoryDraft(this.category, this.text);
+  const CoachMemoryDraft(this.category, this.text, {this.id});
 
   final CoachMemoryCategory category;
   final String text;
+
+  /// Die zu ändernde Notiz; null legt eine neue an.
+  final String? id;
 }
 
-/// Sheet zum Anlegen ([memory] null) oder Bearbeiten einer Notiz.
-Future<CoachMemoryDraft?> showCoachMemoryEditor(
+/// Speichert einen Entwurf; null bei Erfolg, sonst der Grund.
+typedef CoachMemorySave = Future<CoachMemorySaveFailure?> Function(
+  CoachMemoryDraft draft,
+);
+
+/// Sheet zum Anlegen ([memory] null) oder Bearbeiten einer Notiz. Es ruft
+/// [onSave] selbst auf und schließt erst nach Erfolg; bei einem Fehler bleibt
+/// der getippte Text stehen und der Grund erscheint im Sheet. Wurde die
+/// bearbeitete Notiz inzwischen gelöscht, legt erneutes Sichern sie neu an.
+Future<void> showCoachMemoryEditor(
   BuildContext context, {
   ApiCoachMemory? memory,
-}) => showGainerSheet<CoachMemoryDraft>(
+  required CoachMemorySave onSave,
+}) => showGainerSheet<void>(
   context: context,
   heightFactor: 0.65,
-  builder: (_) => CoachMemoryEditor(memory: memory),
+  builder: (_) => CoachMemoryEditor(memory: memory, onSave: onSave),
 );
 
 /// Inhalt des Notiz-Sheets; öffentlich für Tests.
 class CoachMemoryEditor extends StatefulWidget {
-  const CoachMemoryEditor({this.memory, super.key});
+  const CoachMemoryEditor({required this.onSave, this.memory, super.key});
 
   final ApiCoachMemory? memory;
+  final CoachMemorySave onSave;
 
   @override
   State<CoachMemoryEditor> createState() => _CoachMemoryEditorState();
@@ -243,15 +283,38 @@ class _CoachMemoryEditorState extends State<CoachMemoryEditor> {
   late CoachMemoryCategory _category =
       widget.memory?.category ?? CoachMemoryCategory.goal;
 
+  /// Die bearbeitete Notiz; null legt eine neue an, auch wenn die bearbeitete
+  /// inzwischen gelöscht wurde.
+  late String? _id = widget.memory?.id;
+  bool _saving = false;
+  String? _error;
+
   @override
   void dispose() {
     _text.dispose();
     super.dispose();
   }
 
-  bool get _canSave {
-    final text = _text.text.trim();
-    return text.isNotEmpty && text.length <= coachMemoryMaxTextLength;
+  bool get _canSave => !_saving && isValidCoachMemoryText(_text.text);
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final failure = await widget.onSave(
+      CoachMemoryDraft(_category, _text.text.trim(), id: _id),
+    );
+    if (!mounted) return;
+    if (failure == null) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _saving = false;
+      _error = failure.message;
+      if (failure.entryGone) _id = null;
+    });
   }
 
   @override
@@ -261,15 +324,12 @@ class _CoachMemoryEditorState extends State<CoachMemoryEditor> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         GainerSheetHeader(
-          title: widget.memory == null ? 'Neue Notiz' : 'Notiz bearbeiten',
+          title: _id == null ? 'Neue Notiz' : 'Notiz bearbeiten',
           trailing: GainerPillButton(
             key: const ValueKey('coach-memory-save'),
             label: 'Sichern',
-            onPressed: _canSave
-                ? () =>
-                      Navigator.of(context)
-                          .pop(CoachMemoryDraft(_category, _text.text.trim()))
-                : null,
+            isLoading: _saving,
+            onPressed: _canSave ? _save : null,
           ),
         ),
         Expanded(
@@ -282,9 +342,20 @@ class _CoachMemoryEditorState extends State<CoachMemoryEditor> {
               GainerSpacing.l,
             ),
             children: [
+              if (_error case final message?)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: GainerSpacing.m),
+                  child: Text(
+                    message,
+                    key: const ValueKey('coach-memory-editor-error'),
+                    style: GainerTypography.body.copyWith(
+                      color: colors.destructive,
+                    ),
+                  ),
+                ),
               GainerGroupedSection(
                 footer:
-                    '${_text.text.trim().length} von '
+                    '${coachMemoryTextLength(_text.text)} von '
                     '$coachMemoryMaxTextLength Zeichen',
                 children: [
                   GainerTextFieldRow(
@@ -293,11 +364,7 @@ class _CoachMemoryEditorState extends State<CoachMemoryEditor> {
                     controller: _text,
                     fieldKey: const ValueKey('coach-memory-text'),
                     maxLines: 4,
-                    inputFormatters: [
-                      LengthLimitingTextInputFormatter(
-                        coachMemoryMaxTextLength,
-                      ),
-                    ],
+                    inputFormatters: const [CoachMemoryLengthFormatter()],
                     onChanged: (_) => setState(() {}),
                   ),
                 ],
@@ -325,6 +392,44 @@ class _CoachMemoryEditorState extends State<CoachMemoryEditor> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Begrenzt die Notiz in UTF-16-Einheiten wie der Server, nicht in
+/// Graphemen wie [LengthLimitingTextInputFormatter]. Gekürzt wird nur an
+/// Zeichengrenzen, ein Emoji wird also nie halbiert. Wie dort mit
+/// [MaxLengthEnforcement.truncateAfterCompositionEnds]: Während einer
+/// IME-Komposition (etwa Japanisch oder Diktat) wird nicht gekürzt, erst
+/// danach.
+class CoachMemoryLengthFormatter extends TextInputFormatter {
+  const CoachMemoryLengthFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    const max = coachMemoryMaxTextLength;
+    if (newValue.text.length <= max) return newValue;
+    // Schon voll: Eingabe ablehnen, statt das Ende abzuschneiden.
+    if (oldValue.text.length == max && !oldValue.composing.isValid) {
+      return oldValue;
+    }
+    if (newValue.composing.isValid) return newValue;
+    final kept = StringBuffer();
+    for (final character in newValue.text.characters) {
+      if (kept.length + character.length > max) break;
+      kept.write(character);
+    }
+    final text = kept.toString();
+    int clamp(int offset) => offset.clamp(0, text.length);
+    return TextEditingValue(
+      text: text,
+      selection: newValue.selection.copyWith(
+        baseOffset: clamp(newValue.selection.baseOffset),
+        extentOffset: clamp(newValue.selection.extentOffset),
+      ),
     );
   }
 }

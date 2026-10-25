@@ -37,7 +37,7 @@ public sealed record CoachResponse(
     long AsOfRevision,
     IReadOnlyList<CoachMemorySuggestionResponse>? MemorySuggestions = null);
 
-/// <summary>Creates or replaces a coach memory entry.</summary>
+/// <summary>Creates a coach memory entry. The same text again sets the category of the existing entry.</summary>
 public sealed record CoachMemoryRequest
 {
     public CoachMemoryRequest(string category, string text)
@@ -50,8 +50,35 @@ public sealed record CoachMemoryRequest
     [Required, StringLength(16, MinimumLength = 1)]
     public string Category { get; init; }
 
+    /// <summary>1 to 200 UTF-16 code units after trimming.</summary>
     [Required, StringLength(200, MinimumLength = 1)]
     public string Text { get; init; }
+}
+
+/// <summary>Replaces category and text of a coach memory entry.</summary>
+public sealed record CoachMemoryUpdateRequest
+{
+    public CoachMemoryUpdateRequest(string category, string text, long? baseVersion = null)
+    {
+        Category = category;
+        Text = text;
+        BaseVersion = baseVersion;
+    }
+
+    /// <summary>One of goal, preference, intolerance, injury, other.</summary>
+    [Required, StringLength(16, MinimumLength = 1)]
+    public string Category { get; init; }
+
+    /// <summary>1 to 200 UTF-16 code units after trimming.</summary>
+    [Required, StringLength(200, MinimumLength = 1)]
+    public string Text { get; init; }
+
+    /// <summary>
+    /// Version the client edited. A different stored version answers 409 <c>memory_conflict</c>.
+    /// Optional for older app builds; without it the change is not checked.
+    /// </summary>
+    [Range(1, long.MaxValue)]
+    public long? BaseVersion { get; init; }
 }
 
 public sealed record CoachMemoryResponse(

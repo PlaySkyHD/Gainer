@@ -33,6 +33,14 @@ public sealed class CoachMemoryStore(AppDbContext context, IUserContext userCont
         string key = CoachMemoryRules.DuplicateKey(normalized);
         if (existing.FirstOrDefault(item => CoachMemoryRules.DuplicateKey(item.Text) == key) is { } duplicate)
         {
+            // Same text, other category: the user's latest choice wins, the entry keeps its place.
+            if (duplicate.Category != category)
+            {
+                duplicate.Category = category;
+                Touch(duplicate);
+                await context.SaveChangesAsync(cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
             return new CoachMemoryCreateResult(ToItem(duplicate), Created: false);
         }
         if (existing.Count >= CoachMemoryRules.MaxEntriesPerUser)
@@ -56,13 +64,21 @@ public sealed class CoachMemoryStore(AppDbContext context, IUserContext userCont
     }
 
     public async Task<CoachMemoryItem> UpdateAsync(
-        Guid id, CoachMemoryCategory category, string text, CancellationToken cancellationToken = default)
+        Guid id,
+        CoachMemoryCategory category,
+        string text,
+        long? baseVersion = null,
+        CancellationToken cancellationToken = default)
     {
         string normalized = CoachMemoryRules.RequireValidText(text);
         RequireKnown(category);
         await using IDbContextTransaction transaction = await LockAsync(cancellationToken);
         List<CoachMemory> existing = await context.CoachMemories.ToListAsync(cancellationToken);
         CoachMemory memory = existing.SingleOrDefault(item => item.Id == id) ?? throw NotFound();
+        if (baseVersion is { } expected && memory.Version != expected)
+        {
+            throw new CoachMemoryException(CoachMemoryException.Conflict, "The memory entry was changed in the meantime.");
+        }
         string key = CoachMemoryRules.DuplicateKey(normalized);
         if (existing.Any(item => item.Id != id && CoachMemoryRules.DuplicateKey(item.Text) == key))
         {
@@ -72,8 +88,7 @@ public sealed class CoachMemoryStore(AppDbContext context, IUserContext userCont
         {
             memory.Category = category;
             memory.Text = normalized;
-            memory.UpdatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-            memory.Version++;
+            Touch(memory);
             await context.SaveChangesAsync(cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
@@ -100,6 +115,12 @@ public sealed class CoachMemoryStore(AppDbContext context, IUserContext userCont
         await context.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({LockNamespace}, {userKey})", cancellationToken);
         return transaction;
+    }
+
+    private void Touch(CoachMemory memory)
+    {
+        memory.UpdatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+        memory.Version++;
     }
 
     private Guid CurrentUserId() => userContext.UserId ?? throw new UserIsolationViolationException();

@@ -57,15 +57,22 @@ public sealed class CoachMemoryTests
             new[] { second.Item.Id, first.Item.Id },
             (await store.ListAsync(token)).Select(item => item.Id).ToArray());
 
-        CoachMemoryItem updated = await store.UpdateAsync(first.Item.Id, CoachMemoryCategory.Other, "Halbmarathon im Juni", token);
+        CoachMemoryItem updated = await store.UpdateAsync(
+            first.Item.Id, CoachMemoryCategory.Other, "Halbmarathon im Juni", first.Item.Version, token);
         Assert.AreEqual(CoachMemoryCategory.Other, updated.Category);
         Assert.AreEqual("Halbmarathon im Juni", updated.Text);
         Assert.AreEqual(2, updated.Version);
         Assert.IsGreaterThan(first.Item.UpdatedAtUtc, updated.UpdatedAtUtc);
         Assert.AreEqual(first.Item.CreatedAtUtc, updated.CreatedAtUtc);
 
-        CoachMemoryItem unchanged = await store.UpdateAsync(first.Item.Id, CoachMemoryCategory.Other, "Halbmarathon im Juni", token);
+        CoachMemoryItem unchanged = await store.UpdateAsync(
+            first.Item.Id, CoachMemoryCategory.Other, "Halbmarathon im Juni", updated.Version, token);
         Assert.AreEqual(2, unchanged.Version);
+
+        // Older app builds send no base version; their change is applied unchecked.
+        CoachMemoryItem withoutBase = await store.UpdateAsync(
+            first.Item.Id, CoachMemoryCategory.Goal, "Halbmarathon im Juni", cancellationToken: token);
+        Assert.AreEqual(3, withoutBase.Version);
 
         Assert.IsTrue(await store.DeleteAsync(second.Item.Id, token));
         Assert.IsFalse(await store.DeleteAsync(second.Item.Id, token));
@@ -83,15 +90,93 @@ public sealed class CoachMemoryTests
         CancellationToken token = TestContext.CancellationToken;
 
         CoachMemoryCreateResult original = await store.CreateAsync(CoachMemoryCategory.Intolerance, "Laktoseintoleranz", token);
-        CoachMemoryCreateResult again = await store.CreateAsync(CoachMemoryCategory.Other, " LAKTOSEINTOLERANZ ", token);
+        CoachMemoryCreateResult again = await store.CreateAsync(CoachMemoryCategory.Intolerance, " LAKTOSEINTOLERANZ ", token);
         Assert.IsFalse(again.Created);
         Assert.AreEqual(original.Item.Id, again.Item.Id);
+        Assert.AreEqual(original.Item, again.Item);
         Assert.HasCount(1, await store.ListAsync(token));
 
         CoachMemoryCreateResult other = await store.CreateAsync(CoachMemoryCategory.Preference, "Trainiert morgens", token);
         CoachMemoryException duplicate = await Assert.ThrowsAsync<CoachMemoryException>(() =>
-            store.UpdateAsync(other.Item.Id, CoachMemoryCategory.Preference, "laktoseintoleranz", token));
+            store.UpdateAsync(other.Item.Id, CoachMemoryCategory.Preference, "laktoseintoleranz", cancellationToken: token));
         Assert.AreEqual(CoachMemoryException.Duplicate, duplicate.Code);
+    }
+
+    [TestMethod]
+    public async Task SameTextWithOtherCategoryUpdatesTheExistingEntryInPlace()
+    {
+        (string connectionString, Guid user, _) = await CreateDatabaseAsync();
+        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        var store = new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider());
+        CancellationToken token = TestContext.CancellationToken;
+        CoachMemoryCreateResult original = await store.CreateAsync(CoachMemoryCategory.Other, "Laktoseintoleranz", token);
+        CoachMemoryCreateResult newer = await store.CreateAsync(CoachMemoryCategory.Preference, "Trainiert morgens", token);
+
+        CoachMemoryCreateResult again = await store.CreateAsync(CoachMemoryCategory.Intolerance, "laktoseintoleranz", token);
+
+        Assert.IsFalse(again.Created);
+        Assert.AreEqual(original.Item.Id, again.Item.Id);
+        Assert.AreEqual(CoachMemoryCategory.Intolerance, again.Item.Category);
+        Assert.AreEqual("Laktoseintoleranz", again.Item.Text);
+        Assert.AreEqual(2, again.Item.Version);
+        Assert.IsGreaterThan(original.Item.UpdatedAtUtc, again.Item.UpdatedAtUtc);
+        Assert.AreEqual(original.Item.CreatedAtUtc, again.Item.CreatedAtUtc);
+        IReadOnlyList<CoachMemoryItem> list = await store.ListAsync(token);
+        CollectionAssert.AreEqual(new[] { newer.Item.Id, original.Item.Id }, list.Select(item => item.Id).ToArray());
+        Assert.AreEqual(CoachMemoryCategory.Intolerance, list[1].Category);
+
+        await using AppDbContext verify = Fixture.CreateContext(connectionString, user);
+        CoachMemory stored = await verify.CoachMemories.SingleAsync(item => item.Id == original.Item.Id, token);
+        Assert.AreEqual(CoachMemoryCategory.Intolerance, stored.Category);
+        Assert.AreEqual(2, stored.Version);
+    }
+
+    [TestMethod]
+    public async Task ConcurrentUpdatesFromTheSameBaseVersionLetOnlyOneWin()
+    {
+        (string connectionString, Guid user, _) = await CreateDatabaseAsync();
+        CancellationToken token = TestContext.CancellationToken;
+        CoachMemoryItem original;
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        {
+            original = (await new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider())
+                .CreateAsync(CoachMemoryCategory.Goal, "Halbmarathon im Mai", token)).Item;
+        }
+
+        string[] texts = ["Halbmarathon im Juni", "Marathon im Oktober"];
+        (string Text, CoachMemoryItem? Item, CoachMemoryException? Error)[] outcomes = await Task.WhenAll(texts.Select(async text =>
+        {
+            await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+            var store = new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider());
+            try
+            {
+                return (text, (CoachMemoryItem?)await store.UpdateAsync(
+                    original.Id, CoachMemoryCategory.Goal, text, original.Version, token), (CoachMemoryException?)null);
+            }
+            catch (CoachMemoryException exception)
+            {
+                return (text, null, exception);
+            }
+        }));
+
+        var winner = outcomes.Single(item => item.Item is not null);
+        var loser = outcomes.Single(item => item.Error is not null);
+        Assert.AreEqual(CoachMemoryException.Conflict, loser.Error!.Code);
+        Assert.AreEqual(2, winner.Item!.Version);
+        await using AppDbContext verify = Fixture.CreateContext(connectionString, user);
+        CoachMemory stored = await verify.CoachMemories.SingleAsync(token);
+        Assert.AreEqual(winner.Text, stored.Text);
+        Assert.AreEqual(2, stored.Version);
+
+        var controller = new CoachMemoriesController(
+            new CoachMemoryStore(verify, new TestUserContext(user), new SteppingTimeProvider()));
+        AssertProblem(
+            (await controller.Update(original.Id, new CoachMemoryUpdateRequest("goal", loser.Text, original.Version), token)).Result,
+            409,
+            CoachMemoryException.Conflict);
+        ActionResult<CoachMemoryResponse> retried = await controller.Update(
+            original.Id, new CoachMemoryUpdateRequest("goal", loser.Text, stored.Version), token);
+        Assert.AreEqual(3, ((CoachMemoryResponse)((OkObjectResult)retried.Result!).Value!).Version);
     }
 
     [TestMethod]
@@ -164,11 +249,16 @@ public sealed class CoachMemoryTests
 
         ActionResult<CoachMemoryResponse> repeated = await controller.Create(new CoachMemoryRequest("goal", "halbmarathon im mai"), token);
         Assert.AreEqual(memory.Id, ((CoachMemoryResponse)((OkObjectResult)repeated.Result!).Value!).Id);
+        ActionResult<CoachMemoryResponse> recategorized = await controller.Create(new CoachMemoryRequest("other", "Halbmarathon im Mai"), token);
+        var recategorizedMemory = (CoachMemoryResponse)((OkObjectResult)recategorized.Result!).Value!;
+        Assert.AreEqual(memory.Id, recategorizedMemory.Id);
+        Assert.AreEqual("other", recategorizedMemory.Category);
+        Assert.AreEqual(2, recategorizedMemory.Version);
 
         AssertProblem((await controller.Create(new CoachMemoryRequest("diagnosis", "x"), token)).Result, 400, CoachMemoryException.Invalid);
-        AssertProblem((await controller.Update(memory.Id, new CoachMemoryRequest("goal", " "), token)).Result, 400, CoachMemoryException.Invalid);
+        AssertProblem((await controller.Update(memory.Id, new CoachMemoryUpdateRequest("goal", " "), token)).Result, 400, CoachMemoryException.Invalid);
 
-        ActionResult<CoachMemoryResponse> updated = await controller.Update(memory.Id, new CoachMemoryRequest("injury", "Knie schonen"), token);
+        ActionResult<CoachMemoryResponse> updated = await controller.Update(memory.Id, new CoachMemoryUpdateRequest("injury", "Knie schonen", 2), token);
         Assert.AreEqual("injury", ((CoachMemoryResponse)((OkObjectResult)updated.Result!).Value!).Category);
 
         var list = (CoachMemoryListResponse)((OkObjectResult)(await controller.List(token)).Result!).Value!;
@@ -206,8 +296,8 @@ public sealed class CoachMemoryTests
             var list = (CoachMemoryListResponse)((OkObjectResult)(await controller.List(token)).Result!).Value!;
             Assert.AreEqual("stranger-private", list.Items.Single().Text);
 
-            string foreignUpdate = ProblemJson((await controller.Update(ownerEntry, new CoachMemoryRequest("goal", "overwrite"), token)).Result);
-            string unknownUpdate = ProblemJson((await controller.Update(Guid.NewGuid(), new CoachMemoryRequest("goal", "overwrite"), token)).Result);
+            string foreignUpdate = ProblemJson((await controller.Update(ownerEntry, new CoachMemoryUpdateRequest("goal", "overwrite", 1), token)).Result);
+            string unknownUpdate = ProblemJson((await controller.Update(Guid.NewGuid(), new CoachMemoryUpdateRequest("goal", "overwrite", 1), token)).Result);
             Assert.AreEqual(unknownUpdate, foreignUpdate);
             Assert.Contains(CoachMemoryException.NotFound, foreignUpdate);
 

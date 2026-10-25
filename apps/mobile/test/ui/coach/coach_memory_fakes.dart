@@ -20,6 +20,17 @@ class FakeCoachMemoryRepository implements CoachMemoryRepository {
 
   /// Hält `create` an, bis der Completer erfüllt ist.
   Completer<void>? createGate;
+
+  /// Hält `update` an, bis der Completer erfüllt ist.
+  Completer<void>? updateGate;
+
+  /// Je `list`-Aufruf ein Completer: Der Aufruf liest den Stand sofort und
+  /// antwortet erst, wenn sein Completer erfüllt ist (veraltete Antwort).
+  final listGates = <Completer<void>>[];
+
+  /// Wie der Server: Ein schon gemerkter Text liefert den vorhandenen Eintrag
+  /// mit neuer Kategorie, statt einen neuen anzulegen.
+  bool createReturnsExisting = false;
   var _next = 0;
 
   @override
@@ -29,7 +40,12 @@ class FakeCoachMemoryRepository implements CoachMemoryRepository {
       failListWith = null;
       throw error;
     }
-    return ApiCoachMemoryList(items: [...items], maxEntries: maxEntries);
+    final snapshot = ApiCoachMemoryList(
+      items: [...items],
+      maxEntries: maxEntries,
+    );
+    if (listGates.isNotEmpty) await listGates.removeAt(0).future;
+    return snapshot;
   }
 
   @override
@@ -40,6 +56,16 @@ class FakeCoachMemoryRepository implements CoachMemoryRepository {
     calls.add('create ${category.wireName} $text');
     await createGate?.future;
     _throwIfScripted();
+    final existing = items.indexWhere((item) => item.text == text);
+    if (createReturnsExisting && existing >= 0) {
+      final current = items[existing];
+      return items[existing] = memoryItem(
+        current.id,
+        category,
+        current.text,
+        version: current.version + (current.category == category ? 0 : 1),
+      );
+    }
     final memory = memoryItem(
       'aaaaaaaa-0000-4000-8000-${(_next++).toString().padLeft(12, '0')}',
       category,
@@ -49,16 +75,31 @@ class FakeCoachMemoryRepository implements CoachMemoryRepository {
     return memory;
   }
 
+  /// Basisversionen der `update`-Aufrufe, in Reihenfolge.
+  final baseVersions = <int?>[];
+
   @override
   Future<ApiCoachMemory> update(
     String id,
     CoachMemoryCategory category,
-    String text,
-  ) async {
-    calls.add('update $id ${category.wireName} $text');
+    String text, {
+    int? baseVersion,
+    String? unknownCategory,
+  }) async {
+    calls.add('update $id ${unknownCategory ?? category.wireName} $text');
+    baseVersions.add(baseVersion);
+    await updateGate?.future;
     _throwIfScripted();
-    final updated = memoryItem(id, category, text, version: 2);
     final index = items.indexWhere((item) => item.id == id);
+    final updated = ApiCoachMemory(
+      id: id,
+      category: category,
+      text: text,
+      createdAtUtc: items[index].createdAtUtc,
+      updatedAtUtc: items[index].updatedAtUtc,
+      version: items[index].version + 1,
+      unknownCategory: unknownCategory,
+    );
     items[index] = updated;
     return updated;
   }
@@ -109,6 +150,24 @@ const limitReached = ApiException(
   statusCode: 409,
   code: 'memory_limit_reached',
   message: 'full',
+);
+
+const memoryConflict = ApiException(
+  statusCode: 409,
+  code: 'memory_conflict',
+  message: 'conflict',
+);
+
+const memoryNotFound = ApiException(
+  statusCode: 404,
+  code: 'memory_not_found',
+  message: 'gone',
+);
+
+const serverError = ApiException(
+  statusCode: 500,
+  code: 'server_error',
+  message: 'boom',
 );
 
 /// Beispielgedächtnis ohne echte Nutzerdaten.

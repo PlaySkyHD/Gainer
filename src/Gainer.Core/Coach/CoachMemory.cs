@@ -33,7 +33,10 @@ public sealed record CoachMemoryItem(
     DateTime UpdatedAtUtc,
     long Version);
 
-/// <summary>Result of creating an entry; <see cref="Created" /> is false when the same text already existed.</summary>
+/// <summary>
+/// Result of creating an entry; <see cref="Created" /> is false when the same text already existed.
+/// The existing entry then carries the requested category.
+/// </summary>
 public sealed record CoachMemoryCreateResult(CoachMemoryItem Item, bool Created);
 
 /// <summary>Read-only access to the current user's memory, as used by the coach.</summary>
@@ -49,8 +52,16 @@ public interface ICoachMemoryStore : ICoachMemoryQueries
     Task<CoachMemoryCreateResult> CreateAsync(
         CoachMemoryCategory category, string text, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Replaces category and text. With <paramref name="baseVersion" /> the change only applies to that
+    /// version; otherwise it throws <see cref="CoachMemoryException.Conflict" />. Without it the change is unchecked.
+    /// </summary>
     Task<CoachMemoryItem> UpdateAsync(
-        Guid id, CoachMemoryCategory category, string text, CancellationToken cancellationToken = default);
+        Guid id,
+        CoachMemoryCategory category,
+        string text,
+        long? baseVersion = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Returns false when no own entry with this id exists.</summary>
     Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
@@ -66,6 +77,7 @@ public sealed class CoachMemoryException(string code, string message) : Exceptio
     public const string NotFound = "memory_not_found";
     public const string LimitReached = "memory_limit_reached";
     public const string Duplicate = "memory_duplicate";
+    public const string Conflict = "memory_conflict";
 
     public string Code { get; } = code;
 }
@@ -74,11 +86,24 @@ public sealed class CoachMemoryException(string code, string message) : Exceptio
 public static class CoachMemoryRules
 {
     public const int MaxEntriesPerUser = 50;
+
+    /// <summary>Counted in UTF-16 code units (<see cref="string.Length" />); the app counts the same way.</summary>
     public const int MaxTextLength = 200;
     public const int MaxSuggestions = 3;
 
-    /// <summary>Upper bound for the memory text sent to the model per request.</summary>
-    public const int MaxPromptCharacters = 4_000;
+    /// <summary>Room per note in the prompt for id, category, JSON and separator (the longest category needs 84).</summary>
+    public const int PromptOverheadPerNote = 100;
+
+    /// <summary>Room for the label and the JSON wrapper of the notes item.</summary>
+    public const int PromptOverheadFixed = 100;
+
+    /// <summary>
+    /// Fixed upper bound for the notes input item, measured on the text actually sent to the model.
+    /// Text budget and overhead are counted separately, so a full memory of 50 notes with 200 characters
+    /// fits; only texts that need JSON escaping (quotes, backslashes) can push the oldest notes out.
+    /// </summary>
+    public const int MaxPromptCharacters =
+        MaxEntriesPerUser * (MaxTextLength + PromptOverheadPerNote) + PromptOverheadFixed;
 
     public static IReadOnlyList<string> WireNames { get; } = ["goal", "preference", "intolerance", "injury", "other"];
 

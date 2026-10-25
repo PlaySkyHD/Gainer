@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Gainer.Api.Composition;
 using Gainer.Api.Controllers;
 using Gainer.Contracts.Sync;
+using Gainer.Core.Coach;
 using Gainer.Core.Sync;
 using Gainer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -93,6 +95,47 @@ public sealed class AccountDataExportTests
         AccountDataExport export = await new AccountDataExportQuery(context).ExportAsync(TestContext.CancellationToken);
         Assert.AreEqual(0, export.AsOfRevision);
         Assert.IsEmpty(export.Resources);
+        Assert.IsEmpty(export.CoachMemories);
+    }
+
+    [TestMethod]
+    public async Task ExportHoldsTheCoachMemoryOfTheCurrentUserOnly()
+    {
+        (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
+        CoachMemory older = Memory(CoachMemoryCategory.Goal, "Halbmarathon im Mai", new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc));
+        CoachMemory newer = Memory(CoachMemoryCategory.Intolerance, "Laktoseintoleranz", new DateTime(2026, 10, 2, 8, 0, 0, DateTimeKind.Utc));
+        newer.Version = 3;
+        await AddMemoriesAsync(connectionString, firstUser, older, newer);
+        await AddMemoriesAsync(connectionString, secondUser,
+            Memory(CoachMemoryCategory.Injury, "second-private", new DateTime(2026, 10, 3, 8, 0, 0, DateTimeKind.Utc)));
+
+        await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+        AccountDataExport export = await new AccountDataExportQuery(context).ExportAsync(TestContext.CancellationToken);
+
+        Assert.IsEmpty(export.Resources);
+        CollectionAssert.AreEqual(new[] { newer.Id, older.Id }, export.CoachMemories.Select(item => item.Id).ToArray());
+        CoachMemoryItem exported = export.CoachMemories[0];
+        Assert.AreEqual(CoachMemoryCategory.Intolerance, exported.Category);
+        Assert.AreEqual("Laktoseintoleranz", exported.Text);
+        Assert.AreEqual(3, exported.Version);
+        Assert.AreEqual(newer.CreatedAtUtc, exported.CreatedAtUtc);
+        Assert.IsFalse(export.CoachMemories.Any(item => item.Text == "second-private"));
+
+        var controller = new AccountExportController(new AccountDataExportQuery(context), TimeProvider.System)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+        };
+        ActionResult<AccountExportResponse> action = await controller.Get(TestContext.CancellationToken);
+        AccountExportResponse response = (AccountExportResponse)((OkObjectResult)action.Result!).Value!;
+        Assert.AreEqual(1, response.SchemaVersion);
+        CollectionAssert.AreEqual(new[] { "intolerance", "goal" }, response.CoachMemories!.Select(item => item.Category).ToArray());
+        string json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Contains("\"coachMemories\":[", json);
+        Assert.DoesNotContain("second-private", json);
+
+        await using AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser);
+        AccountDataExport secondExport = await new AccountDataExportQuery(foreign).ExportAsync(TestContext.CancellationToken);
+        Assert.AreEqual("second-private", secondExport.CoachMemories.Single().Text);
     }
 
     [TestMethod]
@@ -150,6 +193,23 @@ public sealed class AccountDataExportTests
         ResourceVersion = version,
         IsTombstone = true,
     };
+
+    private static CoachMemory Memory(CoachMemoryCategory category, string text, DateTime createdAtUtc) => new()
+    {
+        Id = Guid.NewGuid(),
+        Category = category,
+        Text = text,
+        CreatedAtUtc = createdAtUtc,
+        UpdatedAtUtc = createdAtUtc,
+        Version = 1,
+    };
+
+    private async Task AddMemoriesAsync(string connectionString, Guid userId, params CoachMemory[] memories)
+    {
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        context.CoachMemories.AddRange(memories);
+        await context.SaveChangesAsync(TestContext.CancellationToken);
+    }
 
     private async Task AddBatchAsync(string connectionString, Guid userId, long revision, params ChangeItem[] items)
     {

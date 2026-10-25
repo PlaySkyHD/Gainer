@@ -34,6 +34,7 @@ public sealed class AccountExportController(IAccountDataExport export, TimeProvi
                 item.ResourceType,
                 item.ResourceId,
                 item.Version,
-                item.Snapshot)).ToList()));
+                item.Snapshot)).ToList(),
+            data.CoachMemories.Select(CoachMemoriesController.ToResponse).ToList()));
     }
 }
