@@ -19,7 +19,7 @@ Stack: Flutter nur mit Cupertino-Widgets, `provider`, Drift als lokale Datenbank
 
 - Bausteine aus `lib/ui/core/components` verwenden (`GainerGroupedSection`, `GainerListRow`, `showGainerSheet` …), bevor eigene entstehen. Maßstab ist der Trainings-Tab.
 - Texte auf Deutsch, Zahlen deutsch formatiert und immer beschriftet.
-- Bei Textgröße 2 darf nichts überlaufen; Beschriftung dann über die Eingabe stapeln. Wie Überlauf-Tests scrollen und welche Textgrößen sie prüfen, steht in `docs/agent-lessons-learned.md` Abschnitt 3.
+- Bei Textgröße 2 und knapp unter der Stapel-Schwelle darf nichts überlaufen; ab der Schwelle Beschriftung über die Eingabe stapeln. Wie Überlauf-Tests scrollen und welche Textgrößen sie prüfen, steht in `docs/agent-lessons-learned.md` im Abschnitt „Tests und visuelle Kontrolle“.
 - Von außen geöffnete Vollbilder über `pushSingleInstance`.
 - Nichts anbieten, was im aktuellen Zustand nicht funktionieren kann.
 - Die Animations-Skills (`animate`, `review-animations`, `emil-design-eng` …) zeigen CSS und Framer Motion. In Flutter: `Curves.easeOut` statt `ease-out`, implizite Animationen (`AnimatedContainer`, `AnimatedOpacity`) statt CSS-Transitions, `SpringSimulation` für Federn, `MediaQuery.disableAnimationsOf(context)` statt `prefers-reduced-motion`.
