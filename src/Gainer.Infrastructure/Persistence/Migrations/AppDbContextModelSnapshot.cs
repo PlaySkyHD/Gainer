@@ -1018,6 +1018,42 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Gainer.Core.Nutrition.WaterIntakeDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AmountMl")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("LocalDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "LocalDate")
+                        .IsUnique();
+
+                    b.ToTable("water_intake_days", "tracking", t =>
+                        {
+                            t.HasCheckConstraint("CK_water_intake_days_amount", "\"AmountMl\" >= 0 AND \"AmountMl\" <= 10000");
+                        });
+                });
+
             modelBuilder.Entity("Gainer.Core.Sync.ChangeBatch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5057,6 +5093,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("ReusableMeal");
+                });
+
+            modelBuilder.Entity("Gainer.Core.Nutrition.WaterIntakeDay", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Gainer.Core.Sync.ChangeBatch", b =>

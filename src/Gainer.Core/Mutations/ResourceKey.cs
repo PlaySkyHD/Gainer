@@ -43,4 +43,5 @@ public enum ResourceKind
     /// <summary>Replaces the removed workout rotation (formerly 5, which stays unused).</summary>
     TrainingSchedule = 12,
     NutritionDayTemplate = 13,
+    WaterIntakeDay = 14,
 }
