@@ -103,8 +103,9 @@ List<TrainedExerciseSummary> summarizeTrainedExercises(
   return summaries;
 }
 
-/// Heatmap der letzten 12 Monate aus gezählten Trainings und Cardio-Einheiten
-/// (aus [CardioRepository.readSessions], also ohne gelöschte).
+/// Heatmap der letzten 12 Monate aus gezählten Trainings und nicht gelöschten
+/// Cardio-Einheiten. [CardioRepository.readSessions] liefert schon keine
+/// gelöschten; der Filter schützt andere Aufrufer.
 TrainingHeatmap trainingHeatmapOf(
   List<Workout> countedWorkouts,
   List<CardioSession> cardioSessions, {
@@ -115,7 +116,8 @@ TrainingHeatmap trainingHeatmapOf(
       if (workout.endedAtUtc case final ended?)
         (startedAtUtc: workout.startedAtUtc, endedAtUtc: ended),
     for (final session in cardioSessions)
-      (startedAtUtc: session.startedAtUtc, endedAtUtc: session.endedAtUtc),
+      if (session.deletedAtUtc == null)
+        (startedAtUtc: session.startedAtUtc, endedAtUtc: session.endedAtUtc),
   ], today: today);
 }
 

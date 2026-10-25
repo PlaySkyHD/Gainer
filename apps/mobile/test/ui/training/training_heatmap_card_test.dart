@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -299,11 +301,12 @@ void main() {
       var data = node().getSemanticsData();
       expect(data.label, '3 Trainingstage in den letzten 12 Monaten');
       expect(data.value, 'Kein Tag gewählt');
-      expect(data.increasedValue, 'Mo, 5. Okt. · 60 min');
+      // Ohne Auswahl beginnen beide Richtungen beim jüngsten Trainingstag.
+      expect(data.increasedValue, 'Do, 15. Okt. · 30 min');
       expect(data.decreasedValue, 'Do, 15. Okt. · 30 min');
       expect(find.bySemanticsLabel('Im Kalender öffnen'), findsNothing);
 
-      perform(SemanticsAction.decrease);
+      perform(SemanticsAction.increase);
       await tester.pump();
       data = node().getSemanticsData();
       expect(data.value, 'Do, 15. Okt. · 30 min');
@@ -318,6 +321,10 @@ void main() {
       perform(SemanticsAction.increase);
       await tester.pump();
       expect(node().getSemanticsData().value, 'Do, 15. Okt. · 30 min');
+
+      // Die sichtbare Zeile wird nicht ein zweites Mal vorgelesen.
+      expect(find.byKey(_selectionKey), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('15. Okt')), findsNothing);
 
       // Die Schaltfläche ist ein eigenes, erreichbares Element.
       final button = find.bySemanticsLabel('Im Kalender öffnen');
@@ -496,6 +503,56 @@ void main() {
       expect(cardio.reads, 1);
       expect(model.heatmap, same(heatmap));
     });
+  });
+
+  test('trainingHeatmapOf übergeht gelöschte Cardio-Einheiten', () async {
+    final harness = await CalendarHarness.create();
+    addTearDown(harness.dispose);
+    await _seed(harness);
+    final inputs = await loadStatisticsInputs(harness.repository);
+    final deleted = [
+      for (final session in await harness.cardio.readSessions())
+        session.copyWith(deletedAtUtc: () => DateTime.utc(2026, 10, 20)),
+    ];
+
+    final heatmap = trainingHeatmapOf(
+      inputs.workouts,
+      deleted,
+      today: calendarToday,
+    );
+
+    // Nur noch Kraft am 5. und 12.; Cardio am 15. entfällt.
+    expect(heatmap.trainingDays, 2);
+    expect(heatmap.dayOn(_oct(15))!.hasTraining, isFalse);
+  });
+
+  test('Auswahlring bleibt in der halben Lücke und auf der Malfläche', () {
+    for (final step in [6.0, 10.0, 16.0]) {
+      final size = Size(step * 53, step * 7);
+      final gap = math.max(1.0, step * 0.2);
+      for (final (week, weekday) in [(0, 0), (10, 3), (52, 6)]) {
+        final ring = trainingHeatmapSelectionRing(
+          week: week,
+          weekday: weekday,
+          step: step,
+          size: size,
+        );
+        // Außenkante des Strichs.
+        final outer = ring.shape.outerRect.inflate(ring.stroke / 2);
+        final allowed = Rect.fromLTWH(
+          week * step - gap / 2,
+          weekday * step - gap / 2,
+          step,
+          step,
+        ).intersect(Offset.zero & size);
+        const epsilon = 1e-9;
+        expect(outer.left, greaterThanOrEqualTo(allowed.left - epsilon));
+        expect(outer.top, greaterThanOrEqualTo(allowed.top - epsilon));
+        expect(outer.right, lessThanOrEqualTo(allowed.right + epsilon));
+        expect(outer.bottom, lessThanOrEqualTo(allowed.bottom + epsilon));
+        expect(ring.shape.width, greaterThan(0));
+      }
+    }
   });
 
   test('Text eines gewählten Tags', () {

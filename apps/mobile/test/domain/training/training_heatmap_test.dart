@@ -243,7 +243,8 @@ void main() {
         _session(LocalDay(2026, 10, 20), 30),
       ]);
 
-      expect(heatmap.nextTrainingDay(null)!.date, LocalDay(2026, 3, 2));
+      // Ohne Auswahl beginnen beide Richtungen beim jüngsten Trainingstag.
+      expect(heatmap.nextTrainingDay(null)!.date, LocalDay(2026, 10, 20));
       expect(heatmap.previousTrainingDay(null)!.date, LocalDay(2026, 10, 20));
       expect(
         heatmap.nextTrainingDay(LocalDay(2026, 3, 2))!.date,

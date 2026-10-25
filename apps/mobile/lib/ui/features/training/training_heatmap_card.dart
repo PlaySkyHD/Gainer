@@ -28,6 +28,36 @@ String trainingHeatmapDayText(TrainingHeatmapDay day) {
   return '${formatWeekdayShort(date)}, ${formatShortDate(date)} · $amount';
 }
 
+/// Ring um das gewählte Kästchen an Spalte [week] und Zeile [weekday]. Er
+/// reicht höchstens bis zur Mitte der Lücke zu den Nachbarn und an den
+/// Rändern nicht über die Malfläche [size] hinaus; [shape] ist die Mittellinie
+/// des Strichs der Breite [stroke].
+@visibleForTesting
+({RRect shape, double stroke}) trainingHeatmapSelectionRing({
+  required int week,
+  required int weekday,
+  required double step,
+  required Size size,
+}) {
+  final gap = math.max(1.0, step * 0.2);
+  final cell = step - gap;
+  final outer = Rect.fromLTWH(
+    week * step,
+    weekday * step,
+    cell,
+    cell,
+  ).inflate(gap / 2).intersect(Offset.zero & size);
+  final stroke = math.max(1.5, gap);
+  final radius = math.max(0.0, cell * 0.25 + gap / 2 - stroke / 2);
+  return (
+    shape: RRect.fromRectAndRadius(
+      outer.deflate(stroke / 2),
+      Radius.circular(radius),
+    ),
+    stroke: stroke,
+  );
+}
+
 /// Farbe einer Stufe: 0 neutral, 1–4 zunehmend Akzent.
 Color trainingHeatmapColor(GainerColors colors, int level) {
   if (level <= 0) return colors.elevatedSurface;
@@ -143,10 +173,15 @@ class _TrainingHeatmapCardState extends State<TrainingHeatmapCard> {
           ),
           if (selected != null) ...[
             const SizedBox(height: GainerSpacing.s),
-            Text(
-              trainingHeatmapDayText(selected),
-              key: const ValueKey('training-heatmap-selection'),
-              style: GainerTypography.body.copyWith(color: colors.primaryText),
+            // VoiceOver liest den Tag schon als Wert des Rasters.
+            ExcludeSemantics(
+              child: Text(
+                trainingHeatmapDayText(selected),
+                key: const ValueKey('training-heatmap-selection'),
+                style: GainerTypography.body.copyWith(
+                  color: colors.primaryText,
+                ),
+              ),
             ),
             if (onOpenDay != null) ...[
               const SizedBox(height: GainerSpacing.xs),
@@ -359,20 +394,17 @@ class _CellPainter extends CustomPainter {
     }
     if (selected case (:final week, :final weekday)) {
       // Ring um das gewählte Kästchen, auch bei Tagen ohne Training sichtbar.
-      final stroke = math.max(1.5, gap);
+      final ring = trainingHeatmapSelectionRing(
+        week: week,
+        weekday: weekday,
+        step: step,
+        size: size,
+      );
       canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            week * step,
-            weekday * step,
-            cell,
-            cell,
-          ).inflate(stroke / 2),
-          radius + Radius.circular(stroke / 2),
-        ),
+        ring.shape,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = stroke
+          ..strokeWidth = ring.stroke
           ..color = colors.primaryText,
       );
     }

@@ -105,12 +105,13 @@ final class TrainingHeatmap {
     return nearest;
   }
 
-  /// Erster Trainingstag nach [date]; ohne [date] der früheste.
-  TrainingHeatmapDay? nextTrainingDay(LocalDay? date) => days
-      .where(
-        (day) => day.hasTraining && (date == null || day.date.isAfter(date)),
-      )
-      .firstOrNull;
+  /// Erster Trainingstag nach [date]. Ohne [date] (keine Auswahl) der
+  /// jüngste, damit beide Richtungen beim neuesten Training beginnen.
+  TrainingHeatmapDay? nextTrainingDay(LocalDay? date) => date == null
+      ? previousTrainingDay(null)
+      : days
+            .where((day) => day.hasTraining && day.date.isAfter(date))
+            .firstOrNull;
 
   /// Letzter Trainingstag vor [date]; ohne [date] der jüngste.
   TrainingHeatmapDay? previousTrainingDay(LocalDay? date) => days
