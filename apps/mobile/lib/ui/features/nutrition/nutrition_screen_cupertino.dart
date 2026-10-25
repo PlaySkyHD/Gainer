@@ -6,6 +6,7 @@ import '../../../data/repositories/nutrition/nutrition_repository.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/nutrition/day_target.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
+import '../../../domain/models/training/training_schedule.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import '../training/training_schedule_sheet.dart';
@@ -1657,11 +1658,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
     }
   }
 
-  Future<void> _shiftDay(int days) {
-    final date = DateTime.parse(widget.viewModel.localDate)
-        .add(Duration(days: days));
-    return widget.viewModel.selectDate(_dateString(date));
-  }
+  /// Kalendertage statt 24 Stunden, sonst bleibt der Tag der Zeitumstellung
+  /// hängen.
+  Future<void> _shiftDay(int days) => widget.viewModel.selectDate(
+    LocalDay.parse(widget.viewModel.localDate).addDays(days).toIso(),
+  );
 
   Future<void> _pickDay(BuildContext context) async {
     final initial = DateTime.parse(widget.viewModel.localDate);

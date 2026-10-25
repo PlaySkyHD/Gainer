@@ -1,3 +1,4 @@
+import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../services/platform/platform_ports.dart';
 import '../body/body_repository.dart';
@@ -158,7 +159,7 @@ class HealthReviewCoordinator {
         );
         continue;
       }
-      final localDate = _date(sample.measuredAtUtc.toLocal());
+      final localDate = localDateForSample(sample);
       _requireActiveSession(session);
       final result = await bodyRepository.importHealthWeight(
         probeId: sample.uuid,
@@ -304,34 +305,37 @@ class HealthReviewCoordinator {
   }
 
   static String localDateForSample(BodyMassSample sample) =>
-      _date(sample.measuredAtUtc.toLocal());
+      LocalDay.of(sample.measuredAtUtc.toLocal()).toIso();
 
+  /// Zählt Kalendertage, nicht 24-Stunden-Dauern: Über eine Zeitumstellung
+  /// hinweg fehlt sonst eine Stunde und der Zeitraum wird einen Tag zu kurz
+  /// gezählt.
   static void _validateRange(String from, String to) {
-    if (!_validLocalDate(from) ||
-        !_validLocalDate(to) ||
-        from.compareTo(to) > 0) {
+    final start = _tryParseDay(from), end = _tryParseDay(to);
+    if (start == null || end == null || start.isAfter(end)) {
       throw ArgumentError('Der Health-Zeitraum ist ungültig.');
     }
-    final start = DateTime.parse(from), end = DateTime.parse(to);
-    if (end.difference(start).inDays > 90) {
+    if (start.daysUntil(end) > 90) {
       throw ArgumentError(
         'Der Health-Importzeitraum darf höchstens 90 Tage umfassen.',
       );
     }
   }
 
-  static DateTime _localMidnight(String date) {
-    final parsed = DateTime.parse(date);
-    return DateTime(parsed.year, parsed.month, parsed.day);
-  }
+  static DateTime _localMidnight(String date) =>
+      LocalDay.parse(date).toDateTime();
 
-  static String _addDays(String date, int amount) {
-    final day = DateTime.parse(date).add(Duration(days: amount));
-    return _date(day);
-  }
+  /// Kalendertage statt 24 Stunden: Der Tag der Zeitumstellung hat 23 oder 25.
+  static String _addDays(String date, int amount) =>
+      LocalDay.parse(date).addDays(amount).toIso();
 
-  static String _date(DateTime value) =>
-      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+  static LocalDay? _tryParseDay(String value) {
+    try {
+      return LocalDay.parse(value);
+    } on FormatException {
+      return null;
+    }
+  }
 
   HealthSessionIdentity _requireActiveSession([
     HealthSessionIdentity? expected,
@@ -350,10 +354,4 @@ class HealthReviewCoordinator {
 
   bool _isActiveSession(HealthSessionIdentity expected) =>
       currentSessionIdentity() == expected && store.accountId == accountId;
-
-  static bool _validLocalDate(String value) {
-    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return false;
-    final parsed = DateTime.tryParse(value);
-    return parsed != null && _date(parsed) == value;
-  }
 }
