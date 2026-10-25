@@ -353,7 +353,7 @@ Die Startseite des Sheets SHALL die Wege gruppieren: „Finden“ (Lebensmittel 
 
 ### Requirement: Wassermenge pro Tag
 
-Das System SHALL pro Nutzer und lokalem Kalendertag höchstens eine getrunkene Wassermenge in ganzen Millilitern speichern. Die Menge MUST zwischen 0 und 10.000 ml liegen. „Menge hinzufügen“ MUST mindestens 1 ml addieren und DARF die Obergrenze nicht überschreiten. „Tagesmenge setzen“ SHALL jeden Wert von 0 bis 10.000 ml erlauben. Beide Änderungen MUST die Basisversion prüfen und die Version erhöhen. Ein Tag mit 0 ml SHALL als Stand erhalten bleiben.
+Das System SHALL pro Nutzer und lokalem Kalendertag höchstens eine getrunkene Wassermenge in ganzen Millilitern speichern, unter einer festen ID je Nutzer und Tag. Die Menge MUST zwischen 0 und 10.000 ml liegen. Jede Änderung MUST die neue Tagesmenge setzen, die Basisversion prüfen und die Version erhöhen. Ein anderes Datum für eine bekannte ID MUST als ungültig abgelehnt werden. Ein Tag mit 0 ml SHALL als Stand erhalten bleiben.
 
 #### Scenario: Erstes Glas des Tages
 
@@ -364,13 +364,13 @@ Das System SHALL pro Nutzer und lokalem Kalendertag höchstens eine getrunkene W
 #### Scenario: Weitere Menge hinzufügen
 
 - **GIVEN** für den Tag sind 1.250 ml mit Version 3 gespeichert
-- **WHEN** eine Mutation mit Basisversion 3 weitere 500 ml hinzufügt
-- **THEN** beträgt die Tagesmenge 1.750 ml mit Version 4
+- **WHEN** der Nutzer weitere 500 ml hinzufügt
+- **THEN** sendet die App die Summe 1.750 ml mit Basisversion 3 und der Server speichert sie mit Version 4
 
 #### Scenario: Obergrenze
 
 - **GIVEN** für den Tag sind 9.800 ml gespeichert
-- **WHEN** eine Mutation 300 ml hinzufügen oder die Menge auf 10.001 ml setzen will
+- **WHEN** eine Mutation die Menge auf 10.001 ml setzen will
 - **THEN** lehnt der Server sie als ungültig ab und die Menge bleibt 9.800 ml
 
 #### Scenario: Auf 0 ml zurücksetzen
@@ -385,15 +385,33 @@ Das System SHALL pro Nutzer und lokalem Kalendertag höchstens eine getrunkene W
 - **WHEN** eine Mutation mit Basisversion 3 eintrifft
 - **THEN** antwortet der Server mit `stale_base_version` und ändert die Menge nicht
 
+#### Scenario: Zwei Geräte, derselbe Tag
+
+- **GIVEN** zwei Geräte desselben Kontos erfassen offline Wasser für den 25.10.2026
+- **WHEN** beide synchronisieren
+- **THEN** verwenden beide dieselbe ID, der zweite Stand wird ein lösbarer Konflikt dieser Ressource und es entsteht kein zweiter Tag
+
+#### Scenario: Falsches Datum für eine bekannte ID
+
+- **GIVEN** die ID eines Tages gehört zum 25.10.2026
+- **WHEN** eine Mutation dieselbe ID mit dem 26.10.2026 sendet
+- **THEN** antwortet der Server mit `invalid_payload` und ändert nichts
+
 ### Requirement: Wassermenge synchronisieren
 
-Die App MUST jede Änderung der Wassermenge atomar mit Mutation-ID in der Outbox des Kontos speichern und offline sofort anzeigen. Wartet eine ungesendete Änderung, SHALL sie die neue Summe senden statt einer Differenz. Der Server MUST jede Änderung mit Snapshot im Change-Feed veröffentlichen, damit sie im Datenexport erscheint. Fremde Daten DÜRFEN weder lesbar noch änderbar sein.
+Die App MUST jede Änderung der Wassermenge atomar mit Mutation-ID in der Outbox des Kontos speichern und offline sofort anzeigen. Ein Pull oder eine Bestätigung zwischen Lesen und Schreiben DARF nicht überschrieben werden. Der Server MUST jede Änderung mit Snapshot im Change-Feed veröffentlichen, damit sie im Datenexport erscheint. Fremde Daten DÜRFEN weder lesbar noch änderbar sein.
 
 #### Scenario: Offline mehrfach tippen
 
 - **GIVEN** das Gerät ist offline und für heute sind 0 ml gespeichert
 - **WHEN** der Nutzer nacheinander „+500 ml“, „+500 ml“ und „+300 ml“ tippt
 - **THEN** zeigt die Karte sofort 1.300 ml, es wartet genau eine Änderung für den Tag, und nach dem Sync speichert der Server 1.300 ml
+
+#### Scenario: Bestätigung während des Tippens
+
+- **GIVEN** für heute wartet 500 ml auf den Server
+- **WHEN** die Bestätigung mit Version 1 genau zwischen Lesen und Schreiben eines Tipps auf „+200 ml“ eintrifft
+- **THEN** liest die App neu und sendet 700 ml mit Basisversion 1
 
 #### Scenario: Fremden Tag adressieren
 
@@ -409,7 +427,7 @@ Die App MUST jede Änderung der Wassermenge atomar mit Mutation-ID in der Outbox
 
 ### Requirement: Wasser-Karte im Ernährungstag
 
-Ist „Wasser erfassen“ eingeschaltet, SHALL der Ernährungstag unter der Tageskarte eine Karte „Wasser“ mit „Menge / Ziel ml“ in deutscher Zahlenformatierung, einem Fortschrittsbalken und den Schnellknöpfen „+200 ml“, „+300 ml“ und „+500 ml“ zeigen. Ein Schnellknopf, der die Obergrenze überschreiten würde, MUST deaktiviert sein. Antippen der Menge SHALL ein Sheet öffnen, in dem der Nutzer die Tagesmenge korrigieren oder auf 0 ml zurücksetzen kann. Bei Textgröße 2 DARF nichts überlaufen.
+Ist „Wasser erfassen“ eingeschaltet, SHALL der Ernährungstag unter der Tageskarte eine Karte „Wasser“ zeigen: „Menge / Ziel ml“ in deutscher Zahlenformatierung, ein Fortschrittsbalken und die Schnellknöpfe „+200 ml“, „+300 ml“ und „+500 ml“. Ein Schnellknopf über der Obergrenze MUST deaktiviert sein. Antippen der Menge SHALL ein Sheet zum Korrigieren oder Zurücksetzen auf 0 ml öffnen. Fehler beim Speichern MUST in der Karte bzw. im offenen Sheet stehen. Bei Textgröße 2 DARF nichts überlaufen.
 
 #### Scenario: Schnellknopf
 
@@ -428,6 +446,12 @@ Ist „Wasser erfassen“ eingeschaltet, SHALL der Ernährungstag unter der Tage
 - **GIVEN** das Sheet „Wasser“ ist offen
 - **WHEN** der Nutzer 12000 eingibt
 - **THEN** zeigt das Feld „Erlaubt sind 0 bis 10.000 ml.“, „Sichern“ ist gesperrt und nichts wird gespeichert
+
+#### Scenario: Speichern scheitert
+
+- **GIVEN** das Sheet „Wasser“ ist offen und der lokale Speicher lehnt die Änderung ab
+- **WHEN** der Nutzer sichert
+- **THEN** bleibt das Sheet offen, zeigt den Fehler und die Menge bleibt unverändert
 
 #### Scenario: Grenze erreicht
 
