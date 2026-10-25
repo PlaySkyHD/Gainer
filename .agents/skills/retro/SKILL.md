@@ -9,7 +9,7 @@ You improve the **environment** for future agent runs: skills, rules, lessons, c
 
 ## Steps
 
-1. **Collect evidence from this session.** Default to the current session, which is in your context. For another session, read its transcript under `~/.claude/projects/<repo-slug>/<session-id>.jsonl`. For questions about usage, quota or context size, run `python3 -I scripts/agent-usage.py ~/.claude/projects/<repo-slug>/<session-id>` (path without `.jsonl`; per agent: model, turns, context, cache rebuilds, share of the total) instead of reading transcripts. Note each moment where the agent:
+1. **Collect evidence from this session.** Default to the current session, which is in your context. For another session, read its transcript under `~/.claude/projects/<repo-slug>/<session-id>.jsonl`. For questions about usage, quota or context size, run `python3 -I scripts/agent-usage.py ~/.claude/projects/<slug>/<session-id>` (path without `.jsonl`; `<slug>` is the session's working directory with `/` replaced by `-`, for T3 worktrees the worktree path, see `ls ~/.claude/projects`; per agent: model, turns, context, cache rebuilds, share of the total) instead of reading transcripts. Note each moment where the agent:
    - was corrected by the user or had to redo work,
    - searched long for a file, command, skill or fact,
    - followed a skill, rule or lesson that was wrong, outdated or contradicted the code,

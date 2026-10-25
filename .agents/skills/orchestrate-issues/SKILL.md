@@ -61,7 +61,7 @@ Start agents in the background with worktree isolation. Do not touch their files
 - Open one PR per issue with `gh pr create`, body via the `pr` skill, `Fixes #<n>` in the body. Register it with T3 if `link_pull_request` exists.
 - Review right after `gh pr create`: run `code-review <PR>`.
   - First review of a fresh PR: `medium`. After a rework: `low` on the new state. Sync protocol or migrations: full review (`high`).
-  - Send findings back via `SendMessage` to the same agent only if its context is small (under about 150k tokens or at most one round so far). Otherwise start a fresh agent with a compact brief: branch, list of findings, checks. The branch holds the state, the old transcript is not needed.
+  - Send findings back via `SendMessage` to the same agent only if its context is small: under about 150k tokens and at most one review round so far. Otherwise start a fresh agent with a compact brief: branch, list of findings, checks. The branch holds the state, the old transcript is not needed.
   - Pure style or refactoring hints from follow-up rounds may stay open, so the loop ends.
 - Watch checks (`watch_pull_request` if available, otherwise `gh pr checks <n>`). Never poll in a sleep loop.
 - Merge only when all checks are green, `mergeable_state` is `clean` and the review findings are fixed or rejected with a reason: `gh pr merge <n> --merge`.
