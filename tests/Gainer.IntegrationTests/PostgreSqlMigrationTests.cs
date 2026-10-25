@@ -1,3 +1,4 @@
+using Gainer.Core.Security;
 using Gainer.Core.Sync;
 using Gainer.Core.Training;
 using Gainer.Infrastructure.HealthChecks;
@@ -7,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 
@@ -118,14 +120,10 @@ public sealed class PostgreSqlMigrationTests
     [TestMethod]
     public async Task SchemaReadinessIsUnhealthyWithoutThrowingWhenTheDatabaseCannotBeReached()
     {
-        string missingPasswordFile = Path.Combine(Path.GetTempPath(), $"gainer-missing-{Guid.NewGuid():N}");
         (string Name, string? Value)[][] configurations =
         [
-            [],
-            [("ConnectionStrings:gainer-db", "   ")],
             [("ConnectionStrings:gainer-db", "not a connection string")],
             [("ConnectionStrings:gainer-db", "Host=127.0.0.1;Port=1;Database=gainer;Username=test;Password=test;Timeout=2")],
-            [("Database:PasswordFile", missingPasswordFile)],
         ];
 
         foreach ((string Name, string? Value)[] settings in configurations)
@@ -136,6 +134,86 @@ public sealed class PostgreSqlMigrationTests
 
             Assert.AreEqual(HealthStatus.Unhealthy, result.Status);
             Assert.AreEqual("Database schema cannot be verified.", result.Description);
+        }
+    }
+
+    [TestMethod]
+    public async Task ReadinessChecksAreUnhealthyWithoutThrowingWhenNoConnectionIsConfigured()
+    {
+        string directory = Directory.CreateTempSubdirectory("gainer-password-").FullName;
+        try
+        {
+            string emptyFile = Path.Combine(directory, "empty");
+            await File.WriteAllTextAsync(emptyFile, "  \n", TestContext.CancellationToken);
+            (string Name, string? Value)[][] configurations =
+            [
+                [],
+                [("ConnectionStrings:gainer-db", "   ")],
+                [("Database:PasswordFile", Path.Combine(directory, "missing"))],
+                [("Database:PasswordFile", emptyFile)],
+                [("Database:PasswordFile", directory)],
+            ];
+
+            foreach ((string Name, string? Value)[] settings in configurations)
+            {
+                IConfiguration configuration = CreateConfiguration(settings);
+
+                HealthCheckResult schema = await new DatabaseSchemaReadinessHealthCheck(configuration)
+                    .CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
+                HealthCheckResult postgres = await new PostgreSqlReadinessHealthCheck(configuration)
+                    .CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
+
+                Assert.AreEqual(HealthStatus.Unhealthy, schema.Status);
+                Assert.AreEqual("Database schema cannot be verified.", schema.Description);
+                Assert.AreEqual(HealthStatus.Unhealthy, postgres.Status);
+                Assert.AreEqual("PostgreSQL connection is not configured.", postgres.Description);
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void PersistenceFailsWithAClearMessageWhenNoConnectionIsConfigured()
+    {
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+        builder.Services.AddScoped<IUserContext>(_ => new MigrationTestUserContext());
+        builder.AddGainerPersistence();
+        using IHost host = builder.Build();
+        using IServiceScope scope = host.Services.CreateScope();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => scope.ServiceProvider.GetRequiredService<AppDbContext>());
+
+        Assert.Contains("ConnectionStrings:gainer-db", exception.Message);
+        Assert.Contains("Database:PasswordFile", exception.Message);
+    }
+
+    private sealed class MigrationTestUserContext : IUserContext
+    {
+        public Guid? UserId => null;
+    }
+
+    [TestMethod]
+    public async Task ConnectionStringIsBuiltFromAReadablePasswordFile()
+    {
+        string file = Path.Combine(Path.GetTempPath(), $"gainer-password-{Guid.NewGuid():N}");
+        await File.WriteAllTextAsync(file, "secret-from-file\n", TestContext.CancellationToken);
+        try
+        {
+            string? connectionString = GainerPersistenceExtensions.ResolveConnectionString(
+                CreateConfiguration(("Database:PasswordFile", file), ("Database:Host", "db.example.test")),
+                "gainer-db");
+
+            var builder = new NpgsqlConnectionStringBuilder(connectionString);
+            Assert.AreEqual("db.example.test", builder.Host);
+            Assert.AreEqual("secret-from-file", builder.Password);
+        }
+        finally
+        {
+            File.Delete(file);
         }
     }
 

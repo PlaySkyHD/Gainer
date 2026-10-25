@@ -129,34 +129,30 @@ internal sealed class PostgreSqlReadinessHealthCheck(IConfiguration configuratio
 /// </summary>
 internal sealed class DatabaseSchemaReadinessHealthCheck(IConfiguration configuration) : IHealthCheck
 {
+    private static readonly string CountAppliedQuery = BuildCountAppliedQuery();
+
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
+        var connectionString = GainerPersistenceExtensions.ResolveConnectionString(configuration, "gainer-db");
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return HealthCheckResult.Unhealthy("Database schema cannot be verified.");
+        }
+
+        string[] expected = DatabaseSchemaVersion.ExpectedMigrationArray;
+
         try
         {
-            var connectionString = GainerPersistenceExtensions.ResolveConnectionString(configuration, "gainer-db");
-
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                return HealthCheckResult.Unhealthy("Database schema cannot be verified.");
-            }
-
-            IReadOnlyList<string> expected = DatabaseSchemaVersion.ExpectedMigrations;
-            var identifiers = new NpgsqlCommandBuilder();
-            string query =
-                "SELECT COUNT(*) FROM " +
-                $"{identifiers.QuoteIdentifier(DatabaseSchemaVersion.MigrationHistorySchema)}." +
-                $"{identifiers.QuoteIdentifier(DatabaseSchemaVersion.MigrationHistoryTable)} " +
-                "WHERE \"MigrationId\" = ANY(@ids)";
-
             await using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync(cancellationToken);
-            await using var command = new NpgsqlCommand(query, connection);
-            command.Parameters.AddWithValue("ids", expected.ToArray());
+            await using var command = new NpgsqlCommand(CountAppliedQuery, connection);
+            command.Parameters.AddWithValue("ids", expected);
             var applied = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
 
-            return applied == expected.Count
+            return applied == expected.Length
                 ? HealthCheckResult.Healthy()
                 : HealthCheckResult.Unhealthy("Database schema is not at the required version.");
         }
@@ -165,9 +161,20 @@ internal sealed class DatabaseSchemaReadinessHealthCheck(IConfiguration configur
             return HealthCheckResult.Unhealthy("Database schema is not at the required version.");
         }
         catch (Exception exception) when (
-            exception is NpgsqlException or TimeoutException or InvalidOperationException or ArgumentException)
+            exception is NpgsqlException or TimeoutException or ArgumentException)
         {
+            // ArgumentException: the configured connection string is malformed.
             return HealthCheckResult.Unhealthy("Database schema cannot be verified.");
         }
+    }
+
+    private static string BuildCountAppliedQuery()
+    {
+        var identifiers = new NpgsqlCommandBuilder();
+
+        return "SELECT COUNT(*) FROM " +
+            $"{identifiers.QuoteIdentifier(DatabaseSchemaVersion.MigrationHistorySchema)}." +
+            $"{identifiers.QuoteIdentifier(DatabaseSchemaVersion.MigrationHistoryTable)} " +
+            "WHERE \"MigrationId\" = ANY(@ids)";
     }
 }

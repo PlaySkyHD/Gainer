@@ -1,6 +1,4 @@
-using System.Reflection;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -10,24 +8,20 @@ public static class DatabaseSchemaVersion
     public const string MigrationHistorySchema = DatabaseSchemas.Identity;
     public const string MigrationHistoryTable = "__EFMigrationsHistory";
 
-    private static readonly Lazy<IReadOnlyList<string>> ExpectedMigrationIds = new(DiscoverMigrationIds);
+    private static readonly Lazy<string[]> ExpectedMigrationIds = new(DiscoverMigrationIds);
 
     /// <summary>
-    /// Gets the IDs of all migrations compiled for <see cref="AppDbContext"/>, discovered once and without a database.
+    /// Gets the IDs of all migrations of <see cref="AppDbContext"/> in application order, asked once from EF Core without a database connection.
     /// The API is ready only when every one of them is in the migration history, so nothing needs maintaining by hand.
     /// </summary>
     public static IReadOnlyList<string> ExpectedMigrations => ExpectedMigrationIds.Value;
 
-    private static IReadOnlyList<string> DiscoverMigrationIds()
+    internal static string[] ExpectedMigrationArray => ExpectedMigrationIds.Value;
+
+    private static string[] DiscoverMigrationIds()
     {
-        string[] ids = typeof(AppDbContext).Assembly
-            .GetTypes()
-            .Where(type => typeof(Migration).IsAssignableFrom(type) && !type.IsAbstract)
-            .Where(type => type.GetCustomAttribute<DbContextAttribute>()?.ContextType == typeof(AppDbContext))
-            .Select(type => type.GetCustomAttribute<MigrationAttribute>()?.Id)
-            .OfType<string>()
-            .Order(StringComparer.Ordinal)
-            .ToArray();
+        using AppDbContext context = new AppDbContextFactory().CreateDbContext([]);
+        string[] ids = context.Database.GetMigrations().ToArray();
 
         return ids.Length > 0
             ? ids
