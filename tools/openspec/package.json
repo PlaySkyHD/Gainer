@@ -1,0 +1,8 @@
+{
+  "name": "gainer-openspec-tooling",
+  "private": true,
+  "description": "Pinned OpenSpec CLI for CI (.github/workflows/openspec.yml). Update the version here and in package-lock.json.",
+  "dependencies": {
+    "@fission-ai/openspec": "1.14.2"
+  }
+}

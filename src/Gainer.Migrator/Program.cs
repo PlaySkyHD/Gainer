@@ -23,7 +23,7 @@ if (pending.Length > 0)
 }
 if (logger.IsEnabled(LogLevel.Information))
 {
-    logger.LogInformation("Gainer database schema is current at {RequiredMigration}.", DatabaseSchemaVersion.RequiredMigration);
+    logger.LogInformation("Gainer database schema is current at {LatestMigration}.", DatabaseSchemaVersion.ExpectedMigrations[^1]);
 }
 
 namespace Gainer.Migrator

@@ -3,7 +3,7 @@
 ## 1. Backend
 
 - [x] 1.1 `WaterIntakeDay`, Snapshot, Mutationen, Grenzen und Exceptions in Core; `ResourceKind.WaterIntakeDay = 14` (D1, D2, D3).
-- [x] 1.2 Konfiguration in `AppDbContext`, Migration `AddWaterTracking`, `DatabaseSchemaVersion.RequiredMigration` (D5).
+- [x] 1.2 Konfiguration in `AppDbContext`, Migration `AddWaterTracking` (D5).
 - [x] 1.3 `WaterIntakeMutationHandler`, Operationen `addWaterIntake` und `setWaterIntake` in `SyncMutationExecutor`, Fehlercodes in `SyncMutationProcessor` (D2, D5).
 - [x] 1.4 Integrationstests gegen Postgres: Anlegen, Addieren, Setzen, Grenzen, Versionskonflikt, zweite ID für denselben Tag, zwei Nutzer, Change-Feed-Snapshot und Export.
 

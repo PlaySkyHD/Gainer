@@ -36,7 +36,7 @@ Ein Tag mit 0 ml bleibt als Stand bestehen. „Zurücksetzen“ setzt 0 ml. Es g
 
 `WaterIntakeDay : UserOwnedEntity` in `Gainer.Core.Nutrition`, Tabelle `tracking.water_intake_days` mit eindeutigem Index `(UserId, LocalDate)`, Check-Constraint `AmountMl BETWEEN 0 AND 10000`, `Version` als Concurrency-Token und Cascade auf den Nutzer. Der globale Query-Filter isoliert die Nutzer. `WaterIntakeMutationHandler` folgt dem Muster der übrigen Handler und meldet `WaterIntakeConflictException` bzw. `WaterIntakeNotFoundException`. `SyncMutationProcessor` übersetzt sie in `stale_base_version` bzw. `resource_not_found`. Der Snapshot `WaterIntakeDaySnapshot` enthält `waterIntakeDayId`, `localDate`, `amountMl`, Zeitstempel und `version`.
 
-`DatabaseSchemaVersion.RequiredMigration` zeigt auf die neue Migration `AddWaterTracking`, damit die API erst nach der Migration bereit ist.
+Die Bereitschaftsprüfung leitet die erwarteten Migrationen aus EF ab. Die neue Migration `AddWaterTracking` zählt damit automatisch dazu, und die API ist erst nach ihr bereit.
 
 ### D6 – App: Sync
 
