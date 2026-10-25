@@ -321,14 +321,15 @@ public sealed class SyncPersistenceTests
 
         await using AppDbContext firstContext = Fixture.CreateContext(connectionString, firstUser);
         var feed = new SyncChangeFeed(firstContext);
-        SyncChangeFeedPage firstPage = await feed.GetAsync(0, 1, TestContext.CancellationToken);
+        const int protocol = Gainer.Contracts.Sync.SyncProtocol.CurrentVersion;
+        SyncChangeFeedPage firstPage = await feed.GetAsync(0, 1, protocol, TestContext.CancellationToken);
         Assert.AreEqual(1, firstPage.NextCursor);
         Assert.IsTrue(firstPage.HasMore);
         Assert.HasCount(1, firstPage.Batches);
         Assert.HasCount(2, firstPage.Batches[0].Changes);
         Assert.AreEqual(firstResource, firstPage.Batches[0].Changes[0].ResourceId);
 
-        SyncChangeFeedPage secondPage = await feed.GetAsync(firstPage.NextCursor, 1, TestContext.CancellationToken);
+        SyncChangeFeedPage secondPage = await feed.GetAsync(firstPage.NextCursor, 1, protocol, TestContext.CancellationToken);
         Assert.AreEqual(2, secondPage.NextCursor);
         Assert.IsFalse(secondPage.HasMore);
         Assert.HasCount(1, secondPage.Batches);
@@ -337,13 +338,13 @@ public sealed class SyncPersistenceTests
         Assert.IsTrue(tombstone.IsTombstone);
         Assert.IsNull(tombstone.Snapshot);
 
-        SyncChangeFeedPage replay = await feed.GetAsync(secondPage.NextCursor, 1, TestContext.CancellationToken);
+        SyncChangeFeedPage replay = await feed.GetAsync(secondPage.NextCursor, 1, protocol, TestContext.CancellationToken);
         Assert.AreEqual(2, replay.NextCursor);
         Assert.IsFalse(replay.HasMore);
         Assert.IsEmpty(replay.Batches);
 
         await using AppDbContext secondContext = Fixture.CreateContext(connectionString, secondUser);
-        SyncChangeFeedPage secondUserPage = await new SyncChangeFeed(secondContext).GetAsync(0, 10, TestContext.CancellationToken);
+        SyncChangeFeedPage secondUserPage = await new SyncChangeFeed(secondContext).GetAsync(0, 10, protocol, TestContext.CancellationToken);
         Assert.HasCount(1, secondUserPage.Batches);
         Assert.AreEqual("DailyCheckIn", secondUserPage.Batches[0].Changes.Single().ResourceType);
     }

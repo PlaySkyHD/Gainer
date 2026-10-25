@@ -359,7 +359,7 @@ public sealed class TrainingSyncIsolationTests
             new { workoutId = deletedWorkoutId, baseVersion = 1 }));
 
         await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
-        List<SyncFeedChange> ownerChanges = (await new SyncChangeFeed(ownerContext).GetAsync(0, 200, TestContext.CancellationToken))
+        List<SyncFeedChange> ownerChanges = (await new SyncChangeFeed(ownerContext).GetAsync(0, 200, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion, TestContext.CancellationToken))
             .Batches.SelectMany(batch => batch.Changes).ToList();
         SyncFeedChange activeWorkout = ownerChanges.Single(change => change.ResourceType == "Workout" && change.ResourceId == workoutId);
         Assert.IsFalse(activeWorkout.IsTombstone);
@@ -378,7 +378,7 @@ public sealed class TrainingSyncIsolationTests
         Assert.IsTrue(ownerChanges.Any(change => change.ResourceType == "ExerciseCategory" && change.ResourceId == categoryId));
 
         await using AppDbContext intruderContext = Fixture.CreateContext(connectionString, intruder);
-        List<SyncFeedChange> intruderChanges = (await new SyncChangeFeed(intruderContext).GetAsync(0, 200, TestContext.CancellationToken))
+        List<SyncFeedChange> intruderChanges = (await new SyncChangeFeed(intruderContext).GetAsync(0, 200, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion, TestContext.CancellationToken))
             .Batches.SelectMany(batch => batch.Changes).ToList();
         Assert.HasCount(1, intruderChanges);
         Assert.AreEqual("CustomExercise", intruderChanges[0].ResourceType);

@@ -6,12 +6,6 @@ namespace Gainer.Infrastructure.Persistence;
 
 public sealed class SyncChangeFeed(AppDbContext context) : ISyncChangeFeed
 {
-    public Task<SyncChangeFeedPage> GetAsync(
-        long after,
-        int limit,
-        CancellationToken cancellationToken = default) =>
-        GetAsync(after, limit, int.MaxValue, cancellationToken);
-
     public async Task<SyncChangeFeedPage> GetAsync(
         long after,
         int limit,

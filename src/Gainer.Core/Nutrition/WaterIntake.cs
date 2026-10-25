@@ -98,3 +98,9 @@ public interface IWaterIntakeMutationHandler
 public sealed class WaterIntakeConflictException(string message) : Exception(message);
 
 public sealed class WaterIntakeNotFoundException : Exception;
+
+/// <summary>
+/// Another id already holds this local date. Clients derive the id from account and date, so this is a malformed
+/// request rather than a newer version: retrying with a new base version cannot resolve it.
+/// </summary>
+public sealed class WaterIntakeDayExistsException : Exception;

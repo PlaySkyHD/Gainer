@@ -59,20 +59,9 @@ public sealed class SyncChangesController(ISyncChangeFeed feed, IUserContext use
                     change.Snapshot)).ToList())).ToList()));
     }
 
-    private ObjectResult UpgradeRequired()
+    private static ObjectResult UpgradeRequired()
     {
         var upgrade = new SyncUpgradeRequiredException();
-        var problem = new ProblemDetails
-        {
-            Status = StatusCodes.Status409Conflict,
-            Title = upgrade.Message,
-            Type = "https://gainer.local/problems/" + upgrade.Code,
-        };
-        problem.Extensions["code"] = upgrade.Code;
-        return new ObjectResult(problem)
-        {
-            StatusCode = StatusCodes.Status409Conflict,
-            ContentTypes = { "application/problem+json" },
-        };
+        return SyncProblemResults.Create(StatusCodes.Status409Conflict, upgrade.Code, upgrade.Message);
     }
 }

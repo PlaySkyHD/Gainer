@@ -130,6 +130,12 @@ public sealed class SyncMutationProcessor(
         {
             throw new SyncMutationValidationException("invalid_payload", "The nutrition payload is invalid.");
         }
+        catch (WaterIntakeDayExistsException)
+        {
+            throw new SyncMutationValidationException(
+                "water_day_exists",
+                "Another water intake id already holds this local date.");
+        }
         catch (Exception exception) when (IsRetryableConcurrency(exception))
         {
             throw new SyncMutationConflictException("concurrent_mutation", "Another mutation advanced the user state concurrently.");

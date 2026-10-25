@@ -59,7 +59,7 @@ public sealed class WaterIntakeSyncTests
         Assert.AreEqual(3, reset.Version);
 
         await using AppDbContext context = Fixture.CreateContext(connectionString, user);
-        SyncChangeFeedPage feed = await new SyncChangeFeed(context).GetAsync(0, 50, TestContext.CancellationToken);
+        SyncChangeFeedPage feed = await new SyncChangeFeed(context).GetAsync(0, 50, SyncProtocol.CurrentVersion, TestContext.CancellationToken);
         SyncFeedChange[] changes = feed.Batches.SelectMany(batch => batch.Changes).ToArray();
         Assert.HasCount(3, changes);
         Assert.IsTrue(changes.All(change => change.ResourceType == "WaterIntakeDay" && change.ResourceId == dayId));
@@ -109,7 +109,8 @@ public sealed class WaterIntakeSyncTests
         await ExpectConflict(connectionString, user, client, 3, Set(dayId, 1, 200), "stale_base_version");
         await ExpectConflict(connectionString, user, client, 3, Set(dayId, 3, 200), "stale_base_version");
         await ExpectConflict(connectionString, user, client, 3, Set(dayId, 0, 200), "stale_base_version");
-        await ExpectConflict(connectionString, user, client, 3, Set(Guid.NewGuid(), 0, 200), "stale_base_version");
+        // Another id for a stored date is no stale version: retrying cannot resolve it.
+        await ExpectInvalid(connectionString, user, client, 3, Set(Guid.NewGuid(), 0, 200), "water_day_exists");
         await ExpectConflict(connectionString, user, client, 3, Set(Guid.NewGuid(), 1, 200), "resource_not_found");
 
         await using AppDbContext context = Fixture.CreateContext(connectionString, user);
@@ -333,12 +334,17 @@ public sealed class WaterIntakeSyncTests
     }
 
     private static async Task ExpectInvalid(
-        string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
+        string connectionString,
+        Guid user,
+        Guid client,
+        long sequence,
+        ProcessSyncMutationCommand command,
+        string code = "invalid_payload")
     {
         await using AppDbContext context = Fixture.CreateContext(connectionString, user);
         SyncMutationValidationException invalid = await Assert.ThrowsAsync<SyncMutationValidationException>(() =>
             Processor(context, user).ProcessAsync(For(command, client, sequence)));
-        Assert.AreEqual("invalid_payload", invalid.Code);
+        Assert.AreEqual(code, invalid.Code);
     }
 
     private static SyncMutationProcessor Processor(AppDbContext context, Guid userId)

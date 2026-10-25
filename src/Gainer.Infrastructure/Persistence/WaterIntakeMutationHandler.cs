@@ -28,6 +28,10 @@ public sealed class WaterIntakeMutationHandler(
         if (day is null)
         {
             if (mutation.BaseVersion != 0) throw new WaterIntakeNotFoundException();
+            if (await context.WaterIntakeDays.AnyAsync(item => item.LocalDate == mutation.LocalDate, cancellationToken))
+            {
+                throw new WaterIntakeDayExistsException();
+            }
             day = new WaterIntakeDay
             {
                 Id = mutation.WaterIntakeDayId,
@@ -68,8 +72,8 @@ public sealed class WaterIntakeMutationHandler(
         }
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // Another id already holds this local date: a different stored state exists.
-            throw new WaterIntakeConflictException("A water intake already exists for this local date.");
+            // A concurrent insert under another id won the date; not a stale version (lessons, section 6).
+            throw new WaterIntakeDayExistsException();
         }
 
         WaterIntakeDaySnapshot snapshot = Snapshot(day);

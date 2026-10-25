@@ -26,9 +26,6 @@ public sealed record SyncChangeFeedPage(
 
 public interface ISyncChangeFeed
 {
-    /// <summary>Reads every change after <paramref name="after"/> regardless of the client protocol.</summary>
-    Task<SyncChangeFeedPage> GetAsync(long after, int limit, CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Reads changes for a client speaking <paramref name="clientProtocolVersion"/>. The page ends before the first
     /// batch holding a resource type the client does not understand (see <see cref="SyncResourceProtocol"/>).
