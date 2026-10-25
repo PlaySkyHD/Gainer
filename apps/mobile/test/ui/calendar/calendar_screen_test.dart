@@ -4,6 +4,7 @@ import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.d
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
+import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
 import 'package:gainer_mobile/ui/features/calendar/calendar_format.dart';
 import 'package:gainer_mobile/ui/features/calendar/calendar_screen.dart';
@@ -97,6 +98,45 @@ void main() {
     expect(find.byKey(const ValueKey('calendar-today')), findsNothing);
     expect(find.text('Donnerstag, 22. Oktober'), findsOneWidget);
   });
+
+  for (final scale in [1.0, 2.0]) {
+    testWidgets('both day arrows are tappable at 320 pt, text scale $scale', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final harness = await createCalendarHarness(tester);
+      await pumpCalendar(tester, harness, textScale: scale);
+      final pill = find.byKey(const ValueKey('calendar-date-pill'));
+      String pillText() => tester
+          .widget<Text>(find.descendant(of: pill, matching: find.byType(Text)))
+          .data!;
+      // Der Monatskalender hat eigene Pfeile: nur die der Tages-Pille.
+      Finder arrow(IconData icon) => find.descendant(
+        of: find.byType(GainerDayNavigator),
+        matching: find.byIcon(icon),
+      );
+      final previous = arrow(CupertinoIcons.chevron_left);
+      final next = arrow(CupertinoIcons.chevron_right);
+      expect(previous.hitTestable(), findsOneWidget);
+      expect(next.hitTestable(), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('calendar-schedule')).hitTestable(),
+        findsOneWidget,
+      );
+
+      await tester.tap(next);
+      await settle(tester);
+      expect(pillText(), 'Morgen');
+      await tester.tap(previous);
+      await tester.tap(previous);
+      await settle(tester);
+      expect(pillText(), 'Gestern');
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('without a schedule today points to the rhythm editor', (
     tester,

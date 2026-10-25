@@ -1,9 +1,10 @@
 import 'package:flutter/cupertino.dart';
 
 import '../theme.dart';
+import 'gainer_toolbar_slots.dart';
 
 /// Seite mit großem Titel am Listenanfang, der beim Scrollen in eine kompakte Titelleiste übergeht.
-class GainerScaffold extends StatelessWidget {
+class GainerScaffold extends StatefulWidget {
   const GainerScaffold({
     required this.title,
     required this.children,
@@ -26,22 +27,19 @@ class GainerScaffold extends StatelessWidget {
   final Future<void> Function()? onRefresh;
 
   @override
+  State<GainerScaffold> createState() => _GainerScaffoldState();
+}
+
+class _GainerScaffoldState extends State<GainerScaffold> {
+  /// Die linke Aktion nimmt nur den Platz, den die rechten übrig lassen.
+  final _toolbarLink = GainerToolbarLink();
+
+  @override
   Widget build(BuildContext context) {
+    final GainerScaffold(:title, :children, :leading, :trailing, :onRefresh) =
+        widget;
     final colors = GainerDesign.colorsOf(context);
     final theme = CupertinoTheme.of(context);
-    final media = MediaQuery.of(context);
-    // Die linke Aktion darf die rechten nicht überdecken: Sie bekommt nur den
-    // Platz zwischen Rand und Aktionsgruppe.
-    final trailingWidth = trailing.isEmpty
-        ? 0.0
-        : trailing.length * GainerRadii.iconButtonDiameter +
-              (trailing.length - 1) * GainerSpacing.xs;
-    final leadingMaxWidth =
-        media.size.width -
-        media.padding.horizontal -
-        2 * GainerSpacing.m -
-        trailingWidth -
-        (trailing.isEmpty ? 0 : GainerSpacing.xs);
     return CupertinoTheme(
       data: theme.copyWith(
         textTheme: theme.textTheme.copyWith(
@@ -62,25 +60,23 @@ class GainerScaffold extends StatelessWidget {
               largeTitle: Text(title),
               leading: leading == null
                   ? null
-                  : ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: leadingMaxWidth.clamp(
-                          GainerRadii.iconButtonDiameter,
-                          double.infinity,
-                        ),
-                      ),
+                  : GainerToolbarLeadingSlot(
+                      link: _toolbarLink,
                       child: leading,
                     ),
               trailing: trailing.isEmpty
                   ? null
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (var i = 0; i < trailing.length; i++) ...[
-                          if (i > 0) const SizedBox(width: GainerSpacing.xs),
-                          trailing[i],
+                  : GainerToolbarTrailingSlot(
+                      link: _toolbarLink,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var i = 0; i < trailing.length; i++) ...[
+                            if (i > 0) const SizedBox(width: GainerSpacing.xs),
+                            trailing[i],
+                          ],
                         ],
-                      ],
+                      ),
                     ),
             ),
             if (onRefresh case final refresh?)

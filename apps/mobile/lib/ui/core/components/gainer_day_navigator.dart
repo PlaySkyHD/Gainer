@@ -37,45 +37,59 @@ class GainerDayNavigator extends StatelessWidget {
             child: Icon(icon, size: 22, color: colors.primaryText),
           ),
         );
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.elevatedSurface,
-        borderRadius: GainerRadii.pill,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          arrow(CupertinoIcons.chevron_left, 'Vorheriger Tag', onPrevious),
-          Flexible(
-            child: Semantics(
-              button: true,
-              label: 'Tag auswählen',
-              excludeSemantics: true,
-              child: CupertinoButton(
-                key: pillKey,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: GainerSpacing.xs,
-                ),
-                minimumSize: const Size(0, GainerRadii.iconButtonDiameter),
-                onPressed: onPick,
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GainerTypography.body.copyWith(
-                    color: colors.primaryText,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
+    Widget pill() => Semantics(
+      button: true,
+      // Das Datum steht im Label, auch wenn der Text gekürzt ist.
+      label: '$label, Tag auswählen',
+      excludeSemantics: true,
+      child: CupertinoButton(
+        key: pillKey,
+        padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.xs),
+        minimumSize: const Size(0, GainerRadii.iconButtonDiameter),
+        onPressed: onPick,
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GainerTypography.body.copyWith(
+            color: colors.primaryText,
+            fontWeight: FontWeight.w600,
           ),
-          arrow(CupertinoIcons.chevron_right, 'Nächster Tag', onNext),
-        ],
+        ),
       ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Die Pfeile behalten ihre 44 pt. Der Text bekommt den Rest, bei zu
+        // wenig Platz entfällt er; unter unbegrenzter Breite zeigt er sich ganz.
+        final bounded = constraints.hasBoundedWidth;
+        final room =
+            constraints.maxWidth -
+            2 * GainerRadii.iconButtonDiameter -
+            2 * GainerSpacing.xs;
+        final showPill = !bounded || room >= _minPillTextWidth;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.elevatedSurface,
+            borderRadius: GainerRadii.pill,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              arrow(CupertinoIcons.chevron_left, 'Vorheriger Tag', onPrevious),
+              if (showPill)
+                if (bounded) Flexible(child: pill()) else pill(),
+              arrow(CupertinoIcons.chevron_right, 'Nächster Tag', onNext),
+            ],
+          ),
+        );
+      },
     );
   }
 }
+
+/// Kleinste Textbreite, ab der sich die Datumspille noch lohnt.
+const _minPillTextWidth = 24.0;
 
 /// „Heute“, „Gestern“, „Morgen“ oder kurzes Datum wie „Mo. 12. Okt.“.
 String gainerDayLabel(DateTime date, DateTime today) {
