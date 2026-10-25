@@ -243,12 +243,14 @@ class ApiClient {
     String? unknownCategory,
   }) async {
     _validateIdentifier(id, 'id');
+    // Der Server prüft die Kategorie; ein unbekannter Wert stammt von ihm
+    // selbst und darf die Textänderung nicht lokal blockieren.
     if (unknownCategory != null &&
-        !RegExp(r'^[a-z_]{1,16}$').hasMatch(unknownCategory)) {
+        (unknownCategory.isEmpty || unknownCategory.length > 64)) {
       throw ArgumentError.value(
         unknownCategory,
         'unknownCategory',
-        'Expected 1 to 16 lowercase letters.',
+        'Expected 1 to 64 characters.',
       );
     }
     final response = await _mutate(

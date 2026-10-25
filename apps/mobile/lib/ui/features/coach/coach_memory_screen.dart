@@ -424,19 +424,12 @@ class CoachMemoryLengthFormatter extends TextInputFormatter {
     }
     final text = kept.toString();
     int clamp(int offset) => offset.clamp(0, text.length);
-    final composing = newValue.composing;
     return TextEditingValue(
       text: text,
       selection: newValue.selection.copyWith(
         baseOffset: clamp(newValue.selection.baseOffset),
         extentOffset: clamp(newValue.selection.extentOffset),
       ),
-      composing: !composing.isCollapsed && text.length > composing.start
-          ? TextRange(
-              start: composing.start,
-              end: composing.end.clamp(0, text.length),
-            )
-          : TextRange.empty,
     );
   }
 }

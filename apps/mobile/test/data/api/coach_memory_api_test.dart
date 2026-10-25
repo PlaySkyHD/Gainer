@@ -129,7 +129,7 @@ void main() {
           id,
           CoachMemoryCategory.other,
           'x',
-          unknownCategory: 'Not valid!',
+          unknownCategory: 'x' * 65,
         ),
         throwsArgumentError,
       );
