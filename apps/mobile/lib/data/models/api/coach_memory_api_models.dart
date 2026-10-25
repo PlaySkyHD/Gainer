@@ -23,8 +23,19 @@ enum CoachMemoryCategory {
   }
 }
 
-/// Höchstlänge einer Notiz in Zeichen, wie auf dem Server.
+/// Höchstlänge einer Notiz, gemessen mit [coachMemoryTextLength].
 const coachMemoryMaxTextLength = 200;
+
+/// Länge einer Notiz, wie der Server sie prüft: getrimmt und in
+/// UTF-16-Einheiten (`string.Length` dort, `String.length` hier). Ein Emoji
+/// zählt deshalb meist zwei.
+int coachMemoryTextLength(String text) => text.trim().length;
+
+/// True, wenn [text] als Notiz gespeichert werden kann.
+bool isValidCoachMemoryText(String text) {
+  final length = coachMemoryTextLength(text);
+  return length >= 1 && length <= coachMemoryMaxTextLength;
+}
 
 /// Eine vom Nutzer bestätigte oder angelegte Notiz für den Coach.
 class ApiCoachMemory {
@@ -37,22 +48,26 @@ class ApiCoachMemory {
     required this.version,
   });
 
+  /// Eine unbekannte Kategorie (etwa von einem neueren Server) wird zu
+  /// „Sonstiges“: Der Coach liest die Notiz, also muss der Nutzer sie sehen
+  /// und löschen können.
   factory ApiCoachMemory.fromJson(Map<String, dynamic> json) {
     final id = json['id'];
     final text = json['text'];
-    final category = CoachMemoryCategory.fromWire(json['category']);
+    final category = json['category'];
     final created = DateTime.tryParse(json['createdAtUtc'] as String? ?? '');
     final updated = DateTime.tryParse(json['updatedAtUtc'] as String? ?? '');
     if (id is! String ||
         text is! String ||
-        category == null ||
+        category is! String ||
         created == null ||
         updated == null) {
       throw const FormatException('Invalid coach memory.');
     }
     return ApiCoachMemory(
       id: id,
-      category: category,
+      category:
+          CoachMemoryCategory.fromWire(category) ?? CoachMemoryCategory.other,
       text: text,
       createdAtUtc: created.toUtc(),
       updatedAtUtc: updated.toUtc(),

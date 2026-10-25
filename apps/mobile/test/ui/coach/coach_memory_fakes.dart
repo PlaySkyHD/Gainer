@@ -49,16 +49,26 @@ class FakeCoachMemoryRepository implements CoachMemoryRepository {
     return memory;
   }
 
+  /// Basisversionen der `update`-Aufrufe, in Reihenfolge.
+  final baseVersions = <int?>[];
+
   @override
   Future<ApiCoachMemory> update(
     String id,
     CoachMemoryCategory category,
-    String text,
-  ) async {
+    String text, {
+    int? baseVersion,
+  }) async {
     calls.add('update $id ${category.wireName} $text');
+    baseVersions.add(baseVersion);
     _throwIfScripted();
-    final updated = memoryItem(id, category, text, version: 2);
     final index = items.indexWhere((item) => item.id == id);
+    final updated = memoryItem(
+      id,
+      category,
+      text,
+      version: items[index].version + 1,
+    );
     items[index] = updated;
     return updated;
   }
@@ -109,6 +119,18 @@ const limitReached = ApiException(
   statusCode: 409,
   code: 'memory_limit_reached',
   message: 'full',
+);
+
+const memoryConflict = ApiException(
+  statusCode: 409,
+  code: 'memory_conflict',
+  message: 'conflict',
+);
+
+const serverError = ApiException(
+  statusCode: 500,
+  code: 'server_error',
+  message: 'boom',
 );
 
 /// Beispielgedächtnis ohne echte Nutzerdaten.

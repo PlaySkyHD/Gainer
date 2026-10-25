@@ -81,15 +81,18 @@ void main() {
         id,
         CoachMemoryCategory.injury,
         'Knie schonen',
+        baseVersion: 2,
       );
       expect(updated.category, CoachMemoryCategory.injury);
+      await repository.update(id, CoachMemoryCategory.goal, 'Ohne Basis');
       await repository.delete(id);
       await repository.deleteAll();
 
       expect(requests, [
         'GET /api/v1/coach/memories',
         'POST /api/v1/coach/memories {"category":"intolerance","text":"Laktoseintoleranz"}',
-        'PUT /api/v1/coach/memories/$id {"category":"injury","text":"Knie schonen"}',
+        'PUT /api/v1/coach/memories/$id {"category":"injury","text":"Knie schonen","baseVersion":2}',
+        'PUT /api/v1/coach/memories/$id {"category":"goal","text":"Ohne Basis"}',
         'DELETE /api/v1/coach/memories/$id',
         'DELETE /api/v1/coach/memories',
       ]);
@@ -102,11 +105,60 @@ void main() {
         () => repository.create(CoachMemoryCategory.goal, 'a' * 201),
         throwsArgumentError,
       );
+      // 101 Emoji sind 202 UTF-16-Einheiten, wie der Server zählt.
+      expect(
+        () => repository.create(CoachMemoryCategory.goal, '💪' * 101),
+        throwsArgumentError,
+      );
       expect(
         () => repository.update('../x', CoachMemoryCategory.goal, 'x'),
         throwsArgumentError,
       );
       expect(() => repository.delete('nope'), throwsArgumentError);
+    } finally {
+      api.close();
+      await subscription.cancel();
+      await server.close(force: true);
+    }
+  });
+
+  test('deleting an entry that is already gone counts as success', () async {
+    var status = HttpStatus.notFound;
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final subscription = server.listen((request) async {
+      final response = request.response..statusCode = status;
+      response.headers.contentType = ContentType('application', 'problem+json');
+      response.write(
+        jsonEncode({
+          'status': status,
+          'code': status == HttpStatus.notFound
+              ? 'memory_not_found'
+              : 'server_error',
+        }),
+      );
+      await response.close();
+    });
+    final api = ApiClient(
+      configuration: ApiConfiguration(
+        apiOrigin: Uri(
+          scheme: 'http',
+          host: server.address.address,
+          port: server.port,
+        ),
+        allowInsecureLoopbackForDevelopment: true,
+      ),
+    );
+    final repository = ApiCoachMemoryRepository(api);
+    try {
+      await repository.delete(id);
+
+      status = HttpStatus.internalServerError;
+      await expectLater(
+        repository.delete(id),
+        throwsA(
+          isA<ApiException>().having((e) => e.statusCode, 'statusCode', 500),
+        ),
+      );
     } finally {
       api.close();
       await subscription.cancel();
@@ -147,12 +199,22 @@ void main() {
       throwsFormatException,
     );
     expect(
-      () => ApiCoachMemory.fromJson({
-        ...memoryJson('goal', 'x'),
-        'category': 'unknown',
-      }),
+      () =>
+          ApiCoachMemory.fromJson({...memoryJson('goal', 'x'), 'category': 1}),
       throwsFormatException,
     );
+    // Eine unbekannte Kategorie bricht die Liste nicht, sie wird „Sonstiges“.
+    final mixed = ApiCoachMemoryList.fromJson({
+      'items': [
+        {...memoryJson('goal', 'Halbmarathon im Mai')},
+        {...memoryJson('sleep', 'Schläft schlecht')},
+      ],
+    });
+    expect(mixed.items.map((item) => item.category), [
+      CoachMemoryCategory.goal,
+      CoachMemoryCategory.other,
+    ]);
+    expect(mixed.items.last.text, 'Schläft schlecht');
     expect(
       () => ApiCoachMemoryList.fromJson({'items': 'x'}),
       throwsFormatException,
@@ -183,6 +245,18 @@ void main() {
       coachMemoryErrorMessage(problem('memory_not_found')),
       contains('nicht mehr'),
     );
+    expect(
+      coachMemoryErrorMessage(problem('memory_conflict')),
+      contains('anderen Gerät geändert'),
+    );
+    expect(isCoachMemoryStaleError(problem('memory_conflict')), isTrue);
+    expect(isCoachMemoryStaleError(problem('memory_not_found')), isTrue);
+    expect(isCoachMemoryStaleError(problem('memory_duplicate')), isFalse);
+    expect(isCoachMemoryFullError(problem('memory_limit_reached')), isTrue);
+    expect(isCoachMemoryFullError(StateError('x')), isFalse);
+    expect(coachMemoryTextLength('  💪a  '), 3);
+    expect(isValidCoachMemoryText('💪' * 100), isTrue);
+    expect(isValidCoachMemoryText('   '), isFalse);
     expect(
       coachMemoryErrorMessage(problem('network_error')),
       contains('Keine Verbindung'),

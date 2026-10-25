@@ -217,7 +217,8 @@ class ApiClient {
   }
 
   /// Legt eine Notiz an, auch um einen Vorschlag zu übernehmen. Ein schon
-  /// vorhandener Text liefert den bestehenden Eintrag.
+  /// vorhandener Text liefert den bestehenden Eintrag, mit der neuen
+  /// Kategorie.
   Future<ApiCoachMemory> createCoachMemory(
     CoachMemoryCategory category,
     String text,
@@ -230,16 +231,19 @@ class ApiClient {
     return ApiCoachMemory.fromJson(_asObject(response.data));
   }
 
+  /// Ändert eine Notiz. Mit [baseVersion] lehnt der Server mit
+  /// `memory_conflict` ab, wenn sie inzwischen anderswo geändert wurde.
   Future<ApiCoachMemory> updateCoachMemory(
     String id,
     CoachMemoryCategory category,
-    String text,
-  ) async {
+    String text, {
+    int? baseVersion,
+  }) async {
     _validateIdentifier(id, 'id');
     final response = await _mutate(
       'PUT',
       '/api/v1/coach/memories/$id',
-      body: _coachMemoryBody(category, text),
+      body: {..._coachMemoryBody(category, text), 'baseVersion': ?baseVersion},
     );
     return ApiCoachMemory.fromJson(_asObject(response.data));
   }
@@ -258,11 +262,14 @@ class ApiClient {
     CoachMemoryCategory category,
     String text,
   ) {
-    final trimmed = text.trim();
-    if (trimmed.isEmpty || trimmed.length > coachMemoryMaxTextLength) {
-      throw ArgumentError.value(text, 'text', 'Expected 1 to 200 characters.');
+    if (!isValidCoachMemoryText(text)) {
+      throw ArgumentError.value(
+        text,
+        'text',
+        'Expected 1 to 200 UTF-16 code units.',
+      );
     }
-    return {'category': category.wireName, 'text': trimmed};
+    return {'category': category.wireName, 'text': text.trim()};
   }
 
   Future<ApiFoodProduct> lookupFoodByBarcode(String barcode) async {

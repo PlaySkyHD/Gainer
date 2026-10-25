@@ -7,15 +7,20 @@ abstract interface class CoachMemoryRepository {
   Future<ApiCoachMemoryList> list();
 
   /// Legt eine Notiz an; ein bereits gemerkter Text liefert den bestehenden
-  /// Eintrag, sodass „Merken“ doppelt getippt werden darf.
+  /// Eintrag mit der neuen Kategorie, sodass „Merken“ doppelt getippt werden
+  /// darf.
   Future<ApiCoachMemory> create(CoachMemoryCategory category, String text);
 
+  /// Ändert eine Notiz, die zuletzt in [baseVersion] gelesen wurde. Ist sie
+  /// inzwischen anders, scheitert das mit `memory_conflict`.
   Future<ApiCoachMemory> update(
     String id,
     CoachMemoryCategory category,
-    String text,
-  );
+    String text, {
+    int? baseVersion,
+  });
 
+  /// Löscht eine Notiz. Gibt es sie schon nicht mehr, gilt das als Erfolg.
   Future<void> delete(String id);
 
   Future<void> deleteAll();
@@ -37,11 +42,19 @@ class ApiCoachMemoryRepository implements CoachMemoryRepository {
   Future<ApiCoachMemory> update(
     String id,
     CoachMemoryCategory category,
-    String text,
-  ) => api.updateCoachMemory(id, category, text);
+    String text, {
+    int? baseVersion,
+  }) => api.updateCoachMemory(id, category, text, baseVersion: baseVersion);
 
   @override
-  Future<void> delete(String id) => api.deleteCoachMemory(id);
+  Future<void> delete(String id) async {
+    try {
+      await api.deleteCoachMemory(id);
+    } on ApiException catch (error) {
+      // Schon gelöscht, etwa auf einem anderen Gerät: Ziel erreicht.
+      if (error.statusCode != 404) rethrow;
+    }
+  }
 
   @override
   Future<void> deleteAll() => api.deleteAllCoachMemories();
@@ -53,7 +66,10 @@ String coachMemoryErrorMessage(Object error) => switch (error) {
     'Das Gedächtnis ist voll. Lösche zuerst eine Notiz.',
   ApiException(code: 'memory_duplicate') => 'Diese Notiz gibt es schon.',
   ApiException(code: 'memory_not_found') =>
-    'Die Notiz gibt es nicht mehr. Lade die Liste neu.',
+    'Die Notiz gibt es nicht mehr. Die Liste ist neu geladen.',
+  ApiException(code: 'memory_conflict') =>
+    'Die Notiz wurde inzwischen auf einem anderen Gerät geändert. Die Liste '
+        'ist neu geladen; sichere erneut, um deine Fassung zu übernehmen.',
   ApiException(code: 'network_error') =>
     'Keine Verbindung. Das Gedächtnis lässt sich nur online ändern.',
   _ => 'Das hat nicht geklappt. Versuche es erneut.',
@@ -62,3 +78,13 @@ String coachMemoryErrorMessage(Object error) => switch (error) {
 /// True, wenn der Fehler an fehlender Verbindung liegt.
 bool isCoachMemoryOfflineError(Object error) =>
     error is ApiException && error.code == 'network_error';
+
+/// True, wenn der Server das Gedächtnis als voll meldet.
+bool isCoachMemoryFullError(Object error) =>
+    error is ApiException && error.code == 'memory_limit_reached';
+
+/// True, wenn die Liste veraltet ist: Die Notiz wurde anderswo geändert oder
+/// gelöscht.
+bool isCoachMemoryStaleError(Object error) =>
+    error is ApiException &&
+    (error.code == 'memory_conflict' || error.code == 'memory_not_found');

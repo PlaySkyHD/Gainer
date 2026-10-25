@@ -5,7 +5,6 @@ import '../../../data/models/api/api_models.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'coach_memory_screen.dart';
-import 'coach_memory_view_model.dart';
 import 'coach_view_model.dart';
 
 class CoachScreen extends StatefulWidget {
@@ -37,14 +36,18 @@ class _CoachScreenState extends State<CoachScreen> {
                 key: const ValueKey('coach-open-memory'),
                 icon: CupertinoIcons.bookmark,
                 semanticLabel: 'Gedächtnis',
-                onPressed: () => Navigator.of(context).push(
-                  CupertinoPageRoute<void>(
-                    builder: (_) => _OwnedMemoryScreen(
-                      create: () =>
-                          CoachMemoryViewModel(memories, online: model.online),
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    CupertinoPageRoute<void>(
+                      builder: (_) => CoachMemoryScreen(
+                        repository: memories,
+                        online: model.online,
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                  // Dort gelöschte Notizen machen wieder Platz zum Merken.
+                  await model.refreshMemoryUsage();
+                },
               ),
           ],
           children: [
@@ -155,8 +158,26 @@ class _CoachScreenState extends State<CoachScreen> {
                 suggestion: answer.memorySuggestions[index],
                 state: widget.viewModel.suggestionState(index),
                 error: widget.viewModel.suggestionError(index),
-                onRemember: () => widget.viewModel.remember(index),
+                onRemember: widget.viewModel.rememberBlockedReason == null
+                    ? () => widget.viewModel.remember(index)
+                    : null,
                 onDismiss: () => widget.viewModel.dismiss(index),
+              ),
+            if (widget.viewModel.rememberBlockedReason case final reason?)
+              Padding(
+                padding: const EdgeInsets.all(GainerSpacing.m),
+                child: Text(
+                  reason,
+                  key: const ValueKey('coach-remember-blocked'),
+                  style: GainerTypography.body.copyWith(color: colors.warning),
+                ),
+              ),
+            if (widget.viewModel.memoryOffline)
+              GainerListRow(
+                key: const ValueKey('coach-remember-retry'),
+                title: 'Erneut prüfen',
+                leadingIcon: CupertinoIcons.arrow_clockwise,
+                onTap: widget.viewModel.refreshMemoryUsage,
               ),
           ],
         ),
@@ -189,29 +210,6 @@ class _CoachScreenState extends State<CoachScreen> {
   }
 }
 
-/// Besitzt das ViewModel des Gedächtnis-Screens und gibt es beim Schließen frei.
-class _OwnedMemoryScreen extends StatefulWidget {
-  const _OwnedMemoryScreen({required this.create});
-
-  final CoachMemoryViewModel Function() create;
-
-  @override
-  State<_OwnedMemoryScreen> createState() => _OwnedMemoryScreenState();
-}
-
-class _OwnedMemoryScreenState extends State<_OwnedMemoryScreen> {
-  late final CoachMemoryViewModel _model = widget.create();
-
-  @override
-  void dispose() {
-    _model.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => CoachMemoryScreen(viewModel: _model);
-}
-
 /// Ein Vorschlag mit „Merken“ und „Verwerfen“, nach dem Speichern als gemerkt.
 class _MemorySuggestionRow extends StatelessWidget {
   const _MemorySuggestionRow({
@@ -226,7 +224,9 @@ class _MemorySuggestionRow extends StatelessWidget {
   final ApiCoachMemorySuggestion suggestion;
   final CoachSuggestionState state;
   final String? error;
-  final VoidCallback onRemember;
+
+  /// Null, wenn „Merken“ gerade nicht geht; der Abschnitt nennt den Grund.
+  final VoidCallback? onRemember;
   final VoidCallback onDismiss;
 
   @override

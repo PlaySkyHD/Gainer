@@ -26,12 +26,18 @@ void main() {
       ),
     ],
     double textScale = 1,
+    FakeCoachMemoryRepository? memories,
+    bool online = true,
   }) async {
     final api = CoachTestApi(
       (_) async => coachAnswer(memorySuggestions: suggestions),
     );
-    final repository = FakeCoachMemoryRepository();
-    final model = CoachViewModel(CoachRepository(api), memories: repository);
+    final repository = memories ?? FakeCoachMemoryRepository();
+    final model = CoachViewModel(
+      CoachRepository(api),
+      memories: repository,
+      online: online,
+    );
     addTearDown(model.dispose);
     addTearDown(api.close);
     await pumpCoachApp(
@@ -61,7 +67,9 @@ void main() {
     expect(find.text('Merken'), findsNWidgets(2));
     expect(find.text('Verwerfen'), findsNWidgets(2));
     expect(find.textContaining('speichert nichts von selbst'), findsOneWidget);
-    expect(repository.calls, isEmpty);
+    // Nur gelesen, um ein volles Gedächtnis zu erkennen.
+    expect(repository.calls, ['list']);
+    expect(find.byKey(const ValueKey('coach-remember-blocked')), findsNothing);
   });
 
   testWidgets('remember stores the suggestion and marks it as saved', (
@@ -72,7 +80,7 @@ void main() {
     await tester.tap(find.text('Merken').first);
     await tester.pumpAndSettle();
 
-    expect(repository.calls, ['create goal Halbmarathon im Mai']);
+    expect(repository.calls, ['list', 'create goal Halbmarathon im Mai']);
     expect(find.text('Gemerkt'), findsOneWidget);
     expect(find.text('Merken'), findsOneWidget);
     expect(find.text('Halbmarathon im Mai'), findsOneWidget);
@@ -96,7 +104,7 @@ void main() {
 
     repository.createGate!.complete();
     await tester.pumpAndSettle();
-    expect(repository.calls, hasLength(1));
+    expect(repository.calls, hasLength(2));
     expect(find.text('Gemerkt'), findsOneWidget);
   });
 
@@ -113,37 +121,143 @@ void main() {
     await tester.tap(find.text('Verwerfen'));
     await tester.pumpAndSettle();
     expect(find.text('Merken?'), findsNothing);
-    expect(repository.calls, isEmpty);
+    expect(repository.calls, ['list']);
   });
 
-  testWidgets('failed remember explains the reason and allows a retry', (
+  bool rememberEnabled(WidgetTester tester) =>
+      tester
+          .widget<GainerPillButton>(
+            find.widgetWithText(GainerPillButton, 'Merken').first,
+          )
+          .onPressed !=
+      null;
+
+  String? blockedReason(WidgetTester tester) {
+    final finder = find.byKey(const ValueKey('coach-remember-blocked'));
+    return finder.evaluate().isEmpty ? null : tester.widget<Text>(finder).data;
+  }
+
+  testWidgets('other failures explain the reason at the suggestion', (
     tester,
   ) async {
     final (repository, _) = await askWithSuggestions(tester);
-    repository.failWith = limitReached;
+    repository.failWith = serverError;
 
     await tester.tap(find.text('Merken').first);
     await tester.pumpAndSettle();
     expect(
-      find.text('Das Gedächtnis ist voll. Lösche zuerst eine Notiz.'),
+      find.text('Das hat nicht geklappt. Versuche es erneut.'),
       findsOneWidget,
     );
-    expect(find.text('Gemerkt'), findsNothing);
-
-    repository.failWith = networkError;
-    await tester.tap(find.text('Merken').first);
-    await tester.pumpAndSettle();
-    expect(
-      find.text(
-        'Keine Verbindung. Das Gedächtnis lässt sich nur online ändern.',
-      ),
-      findsOneWidget,
-    );
+    expect(rememberEnabled(tester), isTrue);
 
     await tester.tap(find.text('Merken').first);
     await tester.pumpAndSettle();
     expect(find.text('Gemerkt'), findsOneWidget);
-    expect(find.textContaining('Keine Verbindung'), findsNothing);
+    expect(find.textContaining('nicht geklappt'), findsNothing);
+  });
+
+  testWidgets('lost connection locks remember, names it and offers a retry', (
+    tester,
+  ) async {
+    final (repository, _) = await askWithSuggestions(tester);
+    repository.failWith = networkError;
+
+    await tester.tap(find.text('Merken').first);
+    await tester.pumpAndSettle();
+
+    expect(
+      blockedReason(tester),
+      'Keine Verbindung. „Merken“ geht erst wieder online.',
+    );
+    expect(rememberEnabled(tester), isFalse);
+    await tester.tap(find.text('Merken').first);
+    await tester.pumpAndSettle();
+    expect(repository.calls.where((call) => call.startsWith('create')), [
+      'create goal Halbmarathon im Mai',
+    ]);
+    // „Verwerfen“ bleibt möglich.
+    expect(
+      tester
+          .widget<GainerPillButton>(
+            find.widgetWithText(GainerPillButton, 'Verwerfen').first,
+          )
+          .onPressed,
+      isNotNull,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('coach-remember-retry')));
+    await tester.pumpAndSettle();
+    expect(blockedReason(tester), isNull);
+    expect(find.byKey(const ValueKey('coach-remember-retry')), findsNothing);
+    await tester.tap(find.text('Merken').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Gemerkt'), findsOneWidget);
+  });
+
+  testWidgets('without connection while reading the memory remember is off', (
+    tester,
+  ) async {
+    final repository = FakeCoachMemoryRepository()..failListWith = networkError;
+    await askWithSuggestions(tester, memories: repository, online: false);
+
+    expect(rememberEnabled(tester), isFalse);
+    expect(blockedReason(tester), contains('Keine Verbindung'));
+  });
+
+  testWidgets('a full memory locks remember until a note is deleted', (
+    tester,
+  ) async {
+    final repository = FakeCoachMemoryRepository([
+      for (var i = 0; i < 50; i++)
+        memoryItem(
+          '22222222-0000-4000-8000-${i.toString().padLeft(12, '0')}',
+          CoachMemoryCategory.other,
+          'Notiz $i',
+        ),
+    ]);
+    await askWithSuggestions(tester, memories: repository);
+
+    expect(rememberEnabled(tester), isFalse);
+    expect(blockedReason(tester), startsWith('Das Gedächtnis ist voll.'));
+
+    // Auf einem anderen Gerät gelöscht; nach dem Gedächtnis-Screen stimmt
+    // die Belegung wieder.
+    repository.items.removeLast();
+    await tester.tap(find.bySemanticsLabel('Gedächtnis'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CupertinoNavigationBarBackButton));
+    await tester.pumpAndSettle();
+
+    expect(blockedReason(tester), isNull);
+    expect(rememberEnabled(tester), isTrue);
+  });
+
+  testWidgets('memory_limit_reached locks remember and the last free slot '
+      'fills it', (tester) async {
+    final repository = FakeCoachMemoryRepository([
+      for (var i = 0; i < 49; i++)
+        memoryItem(
+          '22222222-0000-4000-8000-${i.toString().padLeft(12, '0')}',
+          CoachMemoryCategory.other,
+          'Notiz $i',
+        ),
+    ]);
+    final (_, model) = await askWithSuggestions(tester, memories: repository);
+
+    await tester.tap(find.text('Merken').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Gemerkt'), findsOneWidget);
+    expect(model.memoryFull, isTrue);
+    expect(rememberEnabled(tester), isFalse);
+
+    // Der Server meldet voll, obwohl die Liste noch Platz zeigte.
+    final (other, _) = await askWithSuggestions(tester);
+    other.failWith = limitReached;
+    await tester.tap(find.text('Merken').first);
+    await tester.pumpAndSettle();
+    expect(blockedReason(tester), startsWith('Das Gedächtnis ist voll.'));
+    expect(find.text('Gemerkt'), findsNothing);
   });
 
   testWidgets('a new question resets the suggestion states', (tester) async {

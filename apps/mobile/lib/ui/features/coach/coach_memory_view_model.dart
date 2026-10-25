@@ -82,24 +82,52 @@ class CoachMemoryViewModel extends ChangeNotifier {
     }
   }
 
-  /// Legt eine Notiz an ([id] null) oder ändert sie. True bei Erfolg.
-  Future<bool> save({
+  /// Legt eine Notiz an ([id] null) oder ändert sie. Liefert null bei Erfolg,
+  /// sonst den Grund. Das Notiz-Sheet zeigt ihn und bleibt dafür offen.
+  /// Wurde die Notiz anderswo geändert oder gelöscht oder ist das Gedächtnis
+  /// voll, lädt die Liste neu.
+  Future<String?> save({
     String? id,
     required CoachMemoryCategory category,
     required String text,
-  }) => _change(() async {
-    if (id == null) {
-      final created = await repository.create(category, text);
-      items = [created, ...items.where((item) => item.id != created.id)];
-    } else {
-      final updated = await repository.update(id, category, text);
-      items = [for (final item in items) item.id == id ? updated : item];
+  }) async {
+    Object? failure;
+    final saved = await _change(() async {
+      if (id == null) {
+        _put(await repository.create(category, text));
+      } else {
+        final base = items.where((item) => item.id == id).firstOrNull;
+        _put(
+          await repository.update(
+            id,
+            category,
+            text,
+            baseVersion: base?.version,
+          ),
+        );
+      }
+    }, onError: (error) => failure = error);
+    if (saved) return null;
+    final error = failure;
+    if (error == null) return isOffline ? _offlineReason : _busyReason;
+    if (isCoachMemoryStaleError(error) || isCoachMemoryFullError(error)) {
+      await load();
     }
-  });
+    return coachMemoryErrorMessage(error);
+  }
+
+  /// Ersetzt einen vorhandenen Eintrag an seiner Stelle (der Server sortiert
+  /// nach Anlage) oder stellt einen neuen an den Anfang.
+  void _put(ApiCoachMemory memory) {
+    items = items.any((item) => item.id == memory.id)
+        ? [for (final item in items) item.id == memory.id ? memory : item]
+        : [memory, ...items];
+  }
 
   /// Löscht auf dem Server; die Zeile entfernt danach [removeLocally], damit
   /// das Wischen zu Ende animieren kann.
-  Future<bool> delete(String id) => _change(() => repository.delete(id));
+  Future<bool> delete(String id) =>
+      _change(() => repository.delete(id), onError: _reportError);
 
   void removeLocally(String id) {
     items = [
@@ -112,9 +140,15 @@ class CoachMemoryViewModel extends ChangeNotifier {
   Future<bool> deleteAll() => _change(() async {
     await repository.deleteAll();
     items = const [];
-  });
+  }, onError: _reportError);
 
-  Future<bool> _change(Future<void> Function() action) async {
+  void _reportError(Object error) =>
+      actionError = coachMemoryErrorMessage(error);
+
+  Future<bool> _change(
+    Future<void> Function() action, {
+    required void Function(Object error) onError,
+  }) async {
     if (_disposed || !canEdit) return false;
     isBusy = true;
     actionError = null;
@@ -125,7 +159,7 @@ class CoachMemoryViewModel extends ChangeNotifier {
     } on Object catch (error) {
       if (_disposed) return false;
       isOffline = isCoachMemoryOfflineError(error);
-      actionError = coachMemoryErrorMessage(error);
+      onError(error);
       return false;
     } finally {
       if (!_disposed) {
@@ -138,6 +172,9 @@ class CoachMemoryViewModel extends ChangeNotifier {
   static const _offlineReason =
       'Keine Verbindung. Dein Gedächtnis lässt sich nur online ansehen und '
       'ändern.';
+
+  static const _busyReason =
+      'Gerade läuft noch eine Änderung. Versuche es gleich erneut.';
 
   void _notify() {
     if (!_disposed) notifyListeners();
