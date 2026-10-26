@@ -1,5 +1,6 @@
 using Gainer.Api.Composition;
 using Gainer.Contracts.System;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -10,6 +11,7 @@ namespace Gainer.Api.Controllers;
 /// version before they sign in. The response holds no user data, and the endpoint is rate limited per client.
 /// </summary>
 [ApiController]
+[AllowAnonymous]
 [Route(ApiConstants.Version1Route + "/system")]
 [EnableRateLimiting(ApiConstants.SystemStatusRateLimitPolicy)]
 [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
