@@ -39,7 +39,7 @@ Jeder Ernährungseintrag MUST eine stabile ID, Produktname, Menge, Mengeneinheit
 
 ### Requirement: Menge und Nährwerte deterministisch berechnen
 
-Das System MUST bei grammbezogenen Produktdaten die Eintragswerte proportional aus Menge und Nährwerten pro 100 Gramm berechnen und mit einer dokumentierten Rundungsregel speichern. Menge und Kilokalorien MUST positiv und endlich sein; optionale Makros MUST nicht negativ und endlich sein. Produkte mit fehlender verwertbarer Energieangabe DÜRFEN nicht ohne manuelle Ergänzung übernommen werden.
+Das System MUST bei grammbezogenen Produktdaten die Eintragswerte proportional aus Menge und Nährwerten pro 100 Gramm berechnen und mit einer dokumentierten Rundungsregel speichern. Die Menge MUST positiv und endlich sein, Kilokalorien MUST endlich und nicht negativ sein, denn 0 kcal sind erlaubt (etwa bei „Selbst gesalzen“). Optionale Makros MUST nicht negativ und endlich sein. Produkte mit fehlender verwertbarer Energieangabe DÜRFEN nicht ohne manuelle Ergänzung übernommen werden.
 
 #### Scenario: Grammmenge ändern
 
