@@ -28,6 +28,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _login() async {
+    if (_busy) return;
     setState(() => _localError = null);
     setState(() => _busy = true);
     if (_acceptingInvitation) {
@@ -45,6 +46,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _loginWithPasskey() async {
+    if (_busy) return;
     setState(() {
       _localError = null;
       _busy = true;

@@ -95,6 +95,31 @@ void main() {
     expect(find.text('Gespeichert.'), findsOneWidget);
   });
 
+  testWidgets('Doppeltipp auf Speichern legt den neuen Plan nur einmal an', (
+    tester,
+  ) async {
+    await tester.runAsync(() => seedExercise(harness, name: 'Bankdrücken'));
+    await pumpEditor(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('plan-name-field')),
+      'Push',
+    );
+    await addExercise(tester, 'Bankdr', 'Bankdrücken');
+
+    await tester.tap(find.text('Speichern'));
+    await tester.tap(find.text('Speichern'));
+    await settle(tester);
+
+    final plans = await tester.runAsync(harness.repository.readPlans);
+    expect(plans!.map((plan) => plan.name), ['Push']);
+    expect(find.textContaining('konnte nicht gespeichert'), findsNothing);
+    expect(find.text('Gespeichert.'), findsOneWidget);
+    final outbox = await tester.runAsync(
+      () => harness.repository.store.readOutbox(aggregateType: 'training-plan'),
+    );
+    expect(outbox, hasLength(1));
+  });
+
   testWidgets('Neuer Eintrag hat 0 Aufwärm- und 3 Arbeitssätze', (
     tester,
   ) async {

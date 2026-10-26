@@ -138,7 +138,26 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
     });
   }
 
-  Future<bool> _save() async {
+  /// Laufendes Speichern. Ein zweiter Tipp (oder „Speichern“ beim Verlassen)
+  /// bekommt dasselbe Ergebnis, statt bei einem neuen Plan zwei
+  /// `create`-Mutationen mit derselben ID zu erzeugen.
+  Future<bool>? _saving;
+
+  Future<bool> _save() {
+    final running = _saving;
+    if (running != null) return running;
+    late final Future<bool> future;
+    future = _persist().whenComplete(() {
+      if (!identical(_saving, future)) return;
+      _saving = null;
+      if (mounted) setState(() {});
+    });
+    _saving = future;
+    setState(() {});
+    return future;
+  }
+
+  Future<bool> _persist() async {
     final draft = _draft();
     try {
       validateTrainingPlan(draft);
@@ -426,7 +445,9 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
         trailing: [
           GainerPillButton(
             label: 'Speichern',
-            onPressed: _dirty || _persisted == null ? _save : null,
+            onPressed: _saving == null && (_dirty || _persisted == null)
+                ? _save
+                : null,
           ),
         ],
         children: _buildChildren(canStart),
