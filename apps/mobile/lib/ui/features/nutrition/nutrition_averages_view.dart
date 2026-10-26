@@ -294,8 +294,9 @@ class _MacroRow extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Flexible(child: labelText),
-                    const SizedBox(width: GainerSpacing.s),
-                    Flexible(child: valueText),
+                    // Der Wert ist kurz und behält seine Breite; die
+                    // Beschriftung nimmt den Rest und bricht um.
+                    valueText,
                   ],
                 ),
         ),
