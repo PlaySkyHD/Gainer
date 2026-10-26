@@ -565,7 +565,7 @@ public sealed class TrainingSyncIsolationTests
         new(
             mutationId,
             new CanonicalMutationContent(
-                3,
+                Gainer.Contracts.Sync.SyncProtocol.CurrentVersion,
                 clientId,
                 sequence,
                 operation,

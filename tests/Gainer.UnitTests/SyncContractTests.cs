@@ -79,10 +79,27 @@ public sealed class SyncContractTests
         Assert.IsFalse(Gainer.Core.Sync.SyncResourceProtocol.Supports(3, "WaterIntakeDay"));
         Assert.IsTrue(Gainer.Core.Sync.SyncResourceProtocol.Supports(4, "WaterIntakeDay"));
         Assert.IsTrue(Gainer.Core.Sync.SyncResourceProtocol.Supports(2, "NutritionDay"));
-        CollectionAssert.AreEqual(
-            new[] { "WaterIntakeDay" },
+        CollectionAssert.AreEquivalent(
+            new[] { "CardioSession", "TrainingSchedule", "NutritionDayTemplate", "WaterIntakeDay" },
             Gainer.Core.Sync.SyncResourceProtocol.TypesNewerThan(3).ToArray());
         Assert.HasCount(0, Gainer.Core.Sync.SyncResourceProtocol.TypesNewerThan(4));
+    }
+
+    [TestMethod]
+    public void EveryResourceKindHasAMinimumProtocolInsideTheWindow()
+    {
+        string[] kinds = Enum.GetNames<Gainer.Core.Mutations.ResourceKind>();
+        CollectionAssert.AreEquivalent(kinds, Gainer.Core.Sync.SyncResourceProtocol.KnownTypes.ToArray());
+        Assert.AreEqual(
+            SyncProtocol.PreviousVersion,
+            kinds.Min(Gainer.Core.Sync.SyncResourceProtocol.MinimumVersionFor));
+        foreach (string kind in kinds)
+        {
+            int minimum = Gainer.Core.Sync.SyncResourceProtocol.MinimumVersionFor(kind);
+            Assert.IsTrue(
+                minimum is >= SyncProtocol.PreviousVersion and <= SyncProtocol.CurrentVersion,
+                $"{kind} needs a minimum protocol between {SyncProtocol.PreviousVersion} and {SyncProtocol.CurrentVersion}.");
+        }
     }
 
     private static List<ValidationResult> Validate(object value)

@@ -388,6 +388,80 @@ public sealed class SyncPersistenceTests
     }
 
     [TestMethod]
+    [DataRow("CardioSession", "saveCardioSession")]
+    [DataRow("TrainingSchedule", "saveTrainingSchedule")]
+    [DataRow("NutritionDayTemplate", "saveNutritionDayTemplate")]
+    public async Task ProtocolThreeClientsMustUpdateForResourcesAddedAfterIt(string resourceType, string operation)
+    {
+        const int oldProtocol = 3;
+        const int currentProtocol = Gainer.Contracts.Sync.SyncProtocol.CurrentVersion;
+        (string connectionString, Guid userId, Guid otherUser) = await CreateDatabaseAsync();
+        Guid clientId = Guid.NewGuid();
+        await RegisterActiveClientAsync(connectionString, userId, clientId);
+
+        // Push: rejected before any payload is read or anything is stored.
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        {
+            var user = new UserContext(userId);
+            var processor = new SyncMutationProcessor(
+                context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
+            var push = new ProcessSyncMutationCommand(
+                Guid.NewGuid(),
+                new CanonicalMutationContent(
+                    oldProtocol,
+                    clientId,
+                    1,
+                    operation,
+                    [new CanonicalResourceVersion(resourceType, Guid.NewGuid(), 0)],
+                    null,
+                    JsonSerializer.SerializeToElement(new { }, JsonOptions)));
+            SyncUpgradeRequiredException rejected = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(
+                () => processor.ProcessAsync(push, TestContext.CancellationToken));
+            Assert.AreEqual("upgrade_required", rejected.Code);
+            context.ChangeTracker.Clear();
+            Assert.AreEqual(0, await context.ProcessedMutations.CountAsync(TestContext.CancellationToken));
+        }
+
+        Guid checkIn = Guid.NewGuid();
+        await InsertFeedBatchAsync(connectionString, userId, 1,
+            ("DailyCheckIn", checkIn, 1, false, "{\"weightKg\":80}"));
+        await InsertFeedBatchAsync(connectionString, userId, 2,
+            (resourceType, Guid.NewGuid(), 1, false, "{\"version\":1}"));
+
+        // Pull: an old client gets the batch before the new type and keeps its cursor there.
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        {
+            var feed = new SyncChangeFeed(context);
+            SyncChangeFeedPage old = await feed.GetAsync(0, 200, oldProtocol, TestContext.CancellationToken);
+            Assert.IsTrue(old.UpgradeRequired);
+            Assert.AreEqual(1, old.NextCursor);
+            Assert.AreEqual(checkIn, old.Batches.Single().Changes.Single().ResourceId);
+            SyncChangeFeedPage blocked = await feed.GetAsync(1, 200, oldProtocol, TestContext.CancellationToken);
+            Assert.IsTrue(blocked.UpgradeRequired);
+            Assert.HasCount(0, blocked.Batches);
+
+            SyncChangeFeedPage current = await feed.GetAsync(0, 200, currentProtocol, TestContext.CancellationToken);
+            Assert.IsFalse(current.UpgradeRequired);
+            Assert.AreEqual(resourceType, current.Batches[1].Changes.Single().ResourceType);
+        }
+
+        // Registration: an old app of this account must update, another account is unaffected.
+        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        {
+            var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
+            SyncUpgradeRequiredException upgrade = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(() =>
+                registry.RegisterAsync(
+                    new RegisterSyncClientCommand(Guid.NewGuid(), "Old phone", oldProtocol, false),
+                    TestContext.CancellationToken));
+            Assert.AreEqual("upgrade_required", upgrade.Code);
+        }
+        await using AppDbContext other = Fixture.CreateContext(connectionString, otherUser);
+        RegisteredSyncClient foreign = await new SyncClientRegistry(other, new UserContext(otherUser), TimeProvider.System)
+            .RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Other account", oldProtocol, false), TestContext.CancellationToken);
+        Assert.AreEqual(oldProtocol, foreign.ProtocolVersion);
+    }
+
+    [TestMethod]
     public async Task BlockedDependencyAndStaleBaseRollBackWhileIndependentMutationCanAdvance()
     {
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
