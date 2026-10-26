@@ -195,7 +195,9 @@ public sealed class OpenFoodFactsCatalogTests
             ContactEmail = "tests@example.test",
         };
         configure?.Invoke(options);
-        return new OpenFoodFactsCatalog(new HttpClient(handler), Options.Create(options), time ?? TimeProvider.System);
+        IOptions<OpenFoodFactsOptions> wrapped = Options.Create(options);
+        TimeProvider clock = time ?? TimeProvider.System;
+        return new OpenFoodFactsCatalog(new HttpClient(handler), wrapped, clock, new OpenFoodFactsCatalogState(wrapped, clock));
     }
 
     private static HttpResponseMessage Response(HttpStatusCode status, string body) => new(status)
