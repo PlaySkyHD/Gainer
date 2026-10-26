@@ -366,6 +366,5 @@ class _SyncActions implements MobileSyncActions {
   Future<String> retryConflictOnCurrentServerVersion({
     required String conflictId,
     required String replacementMutationId,
-    required DateTime createdAtUtc,
   }) => throw UnimplementedError();
 }

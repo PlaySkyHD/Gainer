@@ -426,7 +426,13 @@ void main() {
           detail: {'message': 'Neue Serverversion vorhanden.'},
         ),
       ]
-      ..infos = {'conflict-2': _info(title: 'Push', hasServerState: true)};
+      ..infos = {
+        'conflict-2': _info(
+          title: 'Push',
+          hasServerState: true,
+          canRetry: true,
+        ),
+      };
     await tester.pumpWidget(_app(sync));
     await tester.pumpAndSettle();
 
@@ -446,6 +452,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(sync.retriedConflictIds, ['conflict-2']);
   });
+
+  testWidgets(
+    'permanent rejections offer no resend; unknown entries can be discarded',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final sync = _SyncActions()
+        ..conflicts = [
+          _conflict('c-known', 'daily-check-in', 'invalid_payload'),
+          _conflict('c-new', 'water-intake-day', 'water_day_exists'),
+        ]
+        ..infos = {
+          // Der Server hat eine Kopie, lehnt den lokalen Stand aber dauerhaft
+          // ab: Erneut senden scheiterte immer.
+          'c-known': _info(
+            title: '2026-10-12',
+            hasServerState: true,
+            canForce: false,
+          ),
+          'c-new': _info(
+            title: '2026-10-13',
+            hasServerState: true,
+            canForce: false,
+            discardsLocal: true,
+          ),
+        };
+      await tester.pumpWidget(_app(sync));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Check-in · 2026-10-12'));
+      await tester.pumpAndSettle();
+      expect(find.text('Serverstand nutzen'), findsOneWidget);
+      expect(find.text('Lokale Änderung erneut senden'), findsNothing);
+      expect(find.text('Verwerfen'), findsNothing);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Wasser · 2026-10-13'));
+      await tester.pumpAndSettle();
+      expect(find.text('Serverstand nutzen'), findsNothing);
+      expect(find.text('Lokale Änderung erneut senden'), findsNothing);
+      await tester.tap(find.text('Verwerfen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Eintrag verwerfen?'), findsOneWidget);
+      expect(sync.acceptedConflictIds, isEmpty);
+      await tester.tap(find.text('Verwerfen').last);
+      await tester.pumpAndSettle();
+      expect(sync.acceptedConflictIds, ['c-new']);
+    },
+  );
 
   testWidgets(
     'conflict row names the resource and the reason; no server copy',
@@ -641,11 +699,15 @@ ConflictResourceInfo _info({
   String? title,
   bool hasServerState = false,
   bool canForce = true,
+  bool canRetry = false,
+  bool discardsLocal = false,
   DateTime? queuedAt,
 }) => ConflictResourceInfo(
   title: title,
   hasServerState: hasServerState,
   canForceLocal: canForce,
+  canRetry: canRetry,
+  discardsLocal: discardsLocal,
   firstQueuedAtUtc: queuedAt ?? DateTime.utc(2026, 10, 17, 8),
   firstSequence: 1,
 );
@@ -792,7 +854,6 @@ class _SyncActions implements MobileSyncActions {
   Future<String> retryConflictOnCurrentServerVersion({
     required String conflictId,
     required String replacementMutationId,
-    required DateTime createdAtUtc,
   }) async {
     retriedConflictIds.add(conflictId);
     return replacementMutationId;

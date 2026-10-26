@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:drift/drift.dart';
 
+import '../../../domain/models/training/unknown_wire_value_exception.dart';
 import '../../models/api/sync_api_models.dart';
 import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
@@ -28,6 +29,19 @@ class UnsupportedSyncResourceException implements Exception {
   @override
   String toString() =>
       'UnsupportedSyncResourceException($resourceType): app update required';
+}
+
+/// Der Server lieferte einen Stand, den diese App-Version nicht lesen kann
+/// (z. B. einen unbekannten Übungstyp). Wie bei
+/// [UnsupportedSyncResourceException] bleibt der Cursor stehen.
+class UnreadableSyncSnapshotException implements Exception {
+  const UnreadableSyncSnapshotException(this.resourceType);
+
+  final String resourceType;
+
+  @override
+  String toString() =>
+      'UnreadableSyncSnapshotException($resourceType): app update required';
 }
 
 const _syncLeaseKey = 'sync-lease';
@@ -80,7 +94,6 @@ abstract interface class MobileSyncActions {
   Future<String> retryConflictOnCurrentServerVersion({
     required String conflictId,
     required String replacementMutationId,
-    required DateTime createdAtUtc,
   });
   Future<Map<String, ConflictResourceInfo>> readConflictResourceInfos();
   Future<void> forceLocalState({
@@ -166,11 +179,9 @@ class SyncRepository implements MobileSyncActions {
   Future<String> retryConflictOnCurrentServerVersion({
     required String conflictId,
     required String replacementMutationId,
-    required DateTime createdAtUtc,
   }) => store.retryConflictOnCurrentServerVersion(
     conflictId: conflictId,
     replacementMutationId: replacementMutationId,
-    createdAtUtc: createdAtUtc,
   );
 
   @override
@@ -275,6 +286,7 @@ class SyncRepository implements MobileSyncActions {
   }) async {
     final timestamp = (now ?? DateTime.now()).toUtc();
     await store.ensureAccountBound();
+    await store.conflictLegacyFailedMutations();
     await _refreshSyncLease();
     final session = await api.getSession();
     if (session == null) {
@@ -326,12 +338,9 @@ class SyncRepository implements MobileSyncActions {
         if (blocked == null) rethrow;
         return blocked;
       } on UnsupportedSyncResourceException {
-        // Neuere Daten, als diese App kennt: Update nötig, nichts geht verloren.
-        return SyncRunReport(
-          state: SyncRunState.upgradeRequired,
-          pushed: pushed,
-          pulledBatches: pulled + _appliedInPull,
-        );
+        return _upgradeRequiredDuringPull(pushed, pulled);
+      } on UnreadableSyncSnapshotException {
+        return _upgradeRequiredDuringPull(pushed, pulled);
       }
       if (!registration.isActiveWriter || await _healStaleConflicts() == 0) {
         break;
@@ -350,6 +359,14 @@ class SyncRepository implements MobileSyncActions {
       timestamp: timestamp,
     );
   }
+
+  /// Neuere Daten, als diese App kennt: Update nötig, nichts geht verloren.
+  SyncRunReport _upgradeRequiredDuringPull(int pushed, int pulled) =>
+      SyncRunReport(
+        state: SyncRunState.upgradeRequired,
+        pushed: pushed,
+        pulledBatches: pulled + _appliedInPull,
+      );
 
   Future<SyncRunReport> _blockAuthorization(
     String code, {
@@ -721,6 +738,8 @@ class SyncRepository implements MobileSyncActions {
   Future<void> _applyBatch(SyncChangeBatchResponse batch) async {
     final database = store.database;
     await database.transaction(() async {
+      // Einmal je Batch: Die Herkunft gilt für alle Ressourcen, die er ändert.
+      final own = await _isOwnMutation(batch.originMutationId);
       for (final change in batch.changes) {
         final aggregateType = SyncPayloadCodec.aggregateTypeForResource(
           change.resourceType,
@@ -730,10 +749,10 @@ class SyncRepository implements MobileSyncActions {
           throw UnsupportedSyncResourceException(change.resourceType);
         }
         if (change.isTombstone) {
-          await _applyTombstone(batch, change, aggregateType);
+          await _applyTombstone(batch, change, aggregateType, own: own);
           continue;
         }
-        await _applyUpsert(batch, change, aggregateType);
+        await _applyUpsert(batch, change, aggregateType, own: own);
       }
       if (batch.originMutationId != null) {
         await (database.delete(database.localOutbox)..where(
@@ -757,21 +776,14 @@ class SyncRepository implements MobileSyncActions {
   Future<void> _applyTombstone(
     SyncChangeBatchResponse batch,
     SyncChangeResponse change,
-    String aggregateType,
-  ) async {
+    String aggregateType, {
+    required bool own,
+  }) async {
     final database = store.database;
-    final pending =
-        await (database.select(database.localOutbox)..where(
-              (t) =>
-                  t.accountId.equals(store.accountId) &
-                  t.aggregateType.equals(aggregateType) &
-                  t.aggregateId.equals(change.resourceId) &
-                  t.status.isNotValue(LocalMutationStatus.clean.name),
-            ))
-            .get();
+    final pending = await _waitingRows(aggregateType, change.resourceId);
     if (pending.isNotEmpty &&
         _recreatableAggregateTypes.contains(aggregateType) &&
-        await _isOwnMutation(batch.originMutationId, aggregateType, change)) {
+        own) {
       // Die eigene Löschung ist bestätigt, danach wurde neu gespeichert: kein
       // Konflikt. Der wartende Stand baut auf der Version der Löschung auf.
       await _keepAfterOwnDelete(aggregateType, change, keepWorkingCopy: true);
@@ -815,35 +827,19 @@ class SyncRepository implements MobileSyncActions {
               LocalResourcesCompanion(envelopeJson: Value(conflicted.encode())),
             );
       }
-      await database
-          .into(database.localConflicts)
-          .insertOnConflictUpdate(
-            LocalConflictsCompanion.insert(
-              conflictId:
-                  'tombstone:${change.resourceType}:${change.resourceId}:${batch.revision}',
-              aggregateType: aggregateType,
-              aggregateId: change.resourceId,
-              createdAtUtc: DateTime.now().toUtc().toIso8601String(),
-              code: 'server_deleted_local_pending',
-              detailJson: jsonEncode({
-                'revision': batch.revision,
-                'resourceType': change.resourceType,
-              }),
-            ),
-          );
-      for (final row in pending) {
-        await (database.update(database.localOutbox)..where(
-              (t) =>
-                  t.accountId.equals(store.accountId) &
-                  t.mutationId.equals(row.mutationId),
-            ))
-            .write(
-              const LocalOutboxCompanion(
-                status: Value('conflict'),
-                lastErrorCode: Value('server_deleted'),
-              ),
-            );
-      }
+      await _markResourceConflict(
+        conflictId:
+            'tombstone:${change.resourceType}:${change.resourceId}:${batch.revision}',
+        aggregateType: aggregateType,
+        aggregateId: change.resourceId,
+        code: 'server_deleted_local_pending',
+        rowErrorCode: 'server_deleted',
+        detail: {
+          'revision': batch.revision,
+          'resourceType': change.resourceType,
+        },
+        pending: pending,
+      );
     } else {
       await (database.delete(database.localResources)..where(
             (t) =>
@@ -863,23 +859,74 @@ class SyncRepository implements MobileSyncActions {
         );
   }
 
-  Future<bool> _isOwnMutation(
-    String? originMutationId,
-    String aggregateType,
-    SyncChangeResponse change,
-  ) async {
+  /// Der Batch stammt von einer Mutation dieses Geräts, die noch in der
+  /// Outbox liegt. Der Server setzt die Herkunft bei jedem Batch, auch bei
+  /// denen anderer Geräte; nur die Outbox unterscheidet sie.
+  Future<bool> _isOwnMutation(String? originMutationId) async {
     if (originMutationId == null) return false;
     final database = store.database;
     final row =
         await (database.select(database.localOutbox)..where(
               (t) =>
                   t.accountId.equals(store.accountId) &
-                  t.mutationId.equals(originMutationId) &
-                  t.aggregateType.equals(aggregateType) &
-                  t.aggregateId.equals(change.resourceId),
+                  t.mutationId.equals(originMutationId),
             ))
             .getSingleOrNull();
     return row != null;
+  }
+
+  /// Noch nicht bestätigte Outbox-Zeilen einer Ressource.
+  Future<List<LocalOutboxData>> _waitingRows(
+    String aggregateType,
+    String aggregateId,
+  ) {
+    final database = store.database;
+    return (database.select(database.localOutbox)..where(
+          (t) =>
+              t.accountId.equals(store.accountId) &
+              t.aggregateType.equals(aggregateType) &
+              t.aggregateId.equals(aggregateId) &
+              t.status.isNotValue(LocalMutationStatus.clean.name),
+        ))
+        .get();
+  }
+
+  /// Legt den Konflikt an und hält alle wartenden Zeilen der Ressource an.
+  Future<void> _markResourceConflict({
+    required String conflictId,
+    required String aggregateType,
+    required String aggregateId,
+    required String code,
+    required String rowErrorCode,
+    required Map<String, Object?> detail,
+    required List<LocalOutboxData> pending,
+  }) async {
+    final database = store.database;
+    await database
+        .into(database.localConflicts)
+        .insertOnConflictUpdate(
+          LocalConflictsCompanion.insert(
+            conflictId: conflictId,
+            aggregateType: aggregateType,
+            aggregateId: aggregateId,
+            createdAtUtc: DateTime.now().toUtc().toIso8601String(),
+            code: code,
+            detailJson: jsonEncode(detail),
+          ),
+        );
+    for (final row in pending) {
+      await (database.update(database.localOutbox)..where(
+            (t) =>
+                t.accountId.equals(store.accountId) &
+                t.mutationId.equals(row.mutationId),
+          ))
+          .write(
+            LocalOutboxCompanion(
+              status: Value(LocalMutationStatus.conflict.name),
+              lastErrorCode: Value(rowErrorCode),
+            ),
+          );
+    }
   }
 
   /// Schreibt die Zeile einer gelöschten, neu speicherbaren Ressource mit
@@ -936,8 +983,9 @@ class SyncRepository implements MobileSyncActions {
   Future<void> _applyUpsert(
     SyncChangeBatchResponse batch,
     SyncChangeResponse change,
-    String aggregateType,
-  ) async {
+    String aggregateType, {
+    required bool own,
+  }) async {
     final database = store.database;
     final existing =
         await (database.select(database.localResources)..where(
@@ -946,26 +994,31 @@ class SyncRepository implements MobileSyncActions {
                   t.aggregateId.equals(change.resourceId),
             ))
             .getSingleOrNull();
-    final pending =
-        await (database.select(database.localOutbox)..where(
-              (t) =>
-                  t.accountId.equals(store.accountId) &
-                  t.aggregateType.equals(aggregateType) &
-                  t.aggregateId.equals(change.resourceId) &
-                  t.status.isNotValue(LocalMutationStatus.clean.name),
-            ))
-            .get();
-    await _flagForeignChange(batch, aggregateType, change.resourceId);
-    final snapshot = SyncPayloadCodec.normalizeSnapshot(
-      change.resourceType,
-      change.snapshot,
-    );
-    SyncPayloadCodec.verifyTrainingSnapshot(change.resourceType, snapshot);
+    final pending = await _waitingRows(aggregateType, change.resourceId);
+    final Object? snapshot;
+    try {
+      snapshot = SyncPayloadCodec.normalizeSnapshot(
+        change.resourceType,
+        change.snapshot,
+      );
+      SyncPayloadCodec.verifyTrainingSnapshot(change.resourceType, snapshot);
+    } on UnknownWireValueException {
+      // Nur ein unbekannter Wert verlangt ein Update. Andere Formatfehler
+      // laufen wie bisher als Fehler weiter. Die Transaktion rollt zurück:
+      // Cursor und Daten bleiben unverändert.
+      throw UnreadableSyncSnapshotException(change.resourceType);
+    }
+    await _flagForeignChange(own, aggregateType, change.resourceId);
     LocalAggregateEnvelope<Object?> envelope;
     if (existing != null && pending.isNotEmpty) {
       final old = LocalAggregateEnvelope<Object?>.fromJson(
         jsonDecode(existing.envelopeJson) as Map<String, dynamic>,
       );
+      final foreignConflict =
+          !own && await _conflictOnForeignChange(change, pending);
+      // Die Serverkopie rückt vor, damit „Serverstand nutzen“ und „erneut
+      // senden“ den aktuellen Stand kennen. Die Basis der wartenden Einträge
+      // bleibt bei einem fremden Batch stehen.
       envelope = LocalAggregateEnvelope(
         aggregateId: old.aggregateId,
         serverSnapshot: snapshot,
@@ -973,9 +1026,10 @@ class SyncRepository implements MobileSyncActions {
         serverVersion: change.version,
         optimisticVersion: old.optimisticVersion,
         syncState:
-            pending.any(
-              (row) => row.status == LocalMutationStatus.conflict.name,
-            )
+            foreignConflict ||
+                pending.any(
+                  (row) => row.status == LocalMutationStatus.conflict.name,
+                )
             ? LocalSyncState.conflict
             : LocalSyncState.pending,
       );
@@ -1002,7 +1056,11 @@ class SyncRepository implements MobileSyncActions {
               t.resourceId.equals(change.resourceId),
         ))
         .go();
-    if (batch.originMutationId != null) {
+    // Nur die eigene bestätigte Mutation trägt den nächsten Eintrag auf die
+    // neue Version. Der Server setzt die Herkunft bei jedem Batch, auch bei
+    // denen anderer Geräte; deren Version als Basis zu übernehmen,
+    // überschriebe die fremde Änderung still.
+    if (own) {
       await _advanceNextMutationBase(
         aggregateType: aggregateType,
         aggregateId: change.resourceId,
@@ -1010,6 +1068,41 @@ class SyncRepository implements MobileSyncActions {
         version: change.version,
       );
     }
+  }
+
+  /// Ein anderes Gerät hat die Ressource geändert, während hier ein Stand
+  /// wartet: Das ist ein sichtbarer Konflikt (Spec `offline-sync`, „Parallel
+  /// auf zwei Geräten geändert“), auch wenn dieses Gerät gerade nicht
+  /// schreibt. Gibt `true` zurück, wenn ein Konflikt angelegt wurde.
+  Future<bool> _conflictOnForeignChange(
+    SyncChangeResponse change,
+    List<LocalOutboxData> pending,
+  ) async {
+    final first = pending.reduce(
+      (left, right) => left.sequence <= right.sequence ? left : right,
+    );
+    final baseVersion = first.baseVersion ?? 0;
+    // Bekannter Stand (z. B. erneuter Pull nach einem Cursor-Reset) oder schon
+    // ein Konflikt: nichts Neues anzulegen.
+    if (change.version <= baseVersion ||
+        pending.any((row) => row.status == LocalMutationStatus.conflict.name)) {
+      return false;
+    }
+    await _markResourceConflict(
+      conflictId: first.mutationId,
+      aggregateType: first.aggregateType,
+      aggregateId: first.aggregateId,
+      code: 'stale_base_version',
+      rowErrorCode: 'stale_base_version',
+      detail: {
+        'mutationId': first.mutationId,
+        'baseVersion': baseVersion,
+        'knownServerVersion': change.version,
+        'foreignChange': true,
+      },
+      pending: pending,
+    );
+    return true;
   }
 
   Future<void> _advanceNextMutationBase({
@@ -1182,10 +1275,11 @@ class SyncRepository implements MobileSyncActions {
   /// Hält fest, dass ein anderes Gerät die Ressource geändert hat; die
   /// Selbstheilung von `stale_base_version` greift dann nicht mehr.
   Future<void> _flagForeignChange(
-    SyncChangeBatchResponse batch,
+    bool own,
     String aggregateType,
     String aggregateId,
   ) async {
+    if (own) return;
     final database = store.database;
     final conflicts =
         await (database.select(database.localConflicts)..where(
@@ -1196,17 +1290,6 @@ class SyncRepository implements MobileSyncActions {
             ))
             .get();
     if (conflicts.isEmpty) return;
-    final origin = batch.originMutationId;
-    final own =
-        origin != null &&
-        await (database.select(database.localOutbox)..where(
-                  (t) =>
-                      t.accountId.equals(store.accountId) &
-                      t.mutationId.equals(origin),
-                ))
-                .getSingleOrNull() !=
-            null;
-    if (own) return;
     for (final conflict in conflicts) {
       final detail = jsonDecode(conflict.detailJson);
       if (detail is! Map<String, dynamic>) continue;
@@ -1329,10 +1412,27 @@ class SyncRepository implements MobileSyncActions {
       return null;
     }
     if (error.statusCode == 422) {
+      // Dauerhafte Ablehnung (z. B. `invalid_payload`, `water_day_exists`):
+      // Dieselben Daten scheitern erneut. Ohne Konflikt blockierte der Eintrag
+      // seine Ressource still und dauerhaft.
+      await store.upsertConflict(
+        LocalConflictRecord(
+          conflictId: mutation.mutationId,
+          aggregateType: mutation.aggregateType,
+          aggregateId: mutation.aggregateId,
+          createdAtUtc: now,
+          code: error.code,
+          detail: {
+            'message': error.message,
+            'mutationId': mutation.mutationId,
+            permanentRejectionDetailKey: true,
+          },
+        ),
+      );
       await store.updateMutation(
         _copyMutation(
           mutation,
-          status: LocalMutationStatus.failed,
+          status: LocalMutationStatus.conflict,
           lastErrorCode: error.code,
         ),
       );

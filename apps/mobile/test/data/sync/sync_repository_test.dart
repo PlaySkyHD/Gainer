@@ -21,6 +21,9 @@ const checkInId = 'b1234567-1234-4234-8234-123456789abc';
 const mutationId = 'c1234567-1234-4234-8234-123456789abc';
 const clientId = 'd1234567-1234-4234-8234-123456789abc';
 
+/// Mutation eines anderen Geräts; liegt nie in der lokalen Outbox.
+const foreignMutationId = 'e9234567-1234-4234-8234-123456789abc';
+
 void main() {
   late Directory directory;
   late HttpServer server;
@@ -229,12 +232,14 @@ void main() {
                 {
                   'batchId': 'e1234567-1234-4234-8234-123456789abc',
                   'revision': pullRevision,
+                  // Der Server setzt die Herkunft bei jedem Batch, auch
+                  // bei denen anderer Geräte.
                   'originMutationId':
                       activeWriter &&
                           mutationFailureCode == null &&
                           !failMutation
                       ? mutationId
-                      : null,
+                      : foreignMutationId,
                   'changes': [
                     {
                       'resourceType': pullResourceType,
@@ -432,6 +437,9 @@ void main() {
 
   test('inactive registered client still performs read-only pull and does not push', () async {
     activeWriter = false;
+    // Ein anderes Gerät ändert einen anderen Eintrag; dieselbe Ressource wäre
+    // ein Konflikt (siehe „a foreign batch keeps the pending base …“).
+    pullResourceId = 'b9234567-1234-4234-8234-123456789abc';
     final (store, database, api, repository) = await fixture();
     await store.commitMutation(
       mutationId: mutationId,
@@ -1107,32 +1115,33 @@ void main() {
     );
   });
 
-  test(
-    'a custom exercise with an unknown exercise type rejects the batch',
-    () async {
-      pullResourceType = 'CustomExercise';
-      pullResourceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-      pullSnapshot = {
-        'exerciseId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        'values': {'name': 'Neu', 'exerciseType': 'unknown'},
-        'isArchived': false,
-        'createdAtUtc': '2026-10-17T08:00:00Z',
-        'updatedAtUtc': '2026-10-17T08:00:00Z',
-      };
-      final (store, database, api, repository) = await fixture();
-      await expectLater(repository.synchronize(), throwsFormatException);
-      expect(await store.readSyncMetadata('pull-cursor'), isNull);
-      expect(
-        await store.readAggregate(
-          'custom-exercise',
-          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        ),
-        isNull,
-      );
-      api.close();
-      await database.close();
-    },
-  );
+  test('a custom exercise with an unknown exercise type rejects the batch and asks for an update', () async {
+    pullResourceType = 'CustomExercise';
+    pullResourceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    pullSnapshot = {
+      'exerciseId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'values': {'name': 'Neu', 'exerciseType': 'unknown'},
+      'isArchived': false,
+      'createdAtUtc': '2026-10-17T08:00:00Z',
+      'updatedAtUtc': '2026-10-17T08:00:00Z',
+    };
+    final (store, database, api, repository) = await fixture();
+
+    final report = await repository.synchronize();
+
+    expect(report.state, SyncRunState.upgradeRequired);
+    expect(report.pulledBatches, 0);
+    expect(await store.readSyncMetadata('pull-cursor'), isNull);
+    expect(
+      await store.readAggregate(
+        'custom-exercise',
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      ),
+      isNull,
+    );
+    api.close();
+    await database.close();
+  });
 
   const workoutAggregateId = '44444444-4444-4444-8444-444444444445';
   final workoutWorkingCopy = <String, Object?>{
@@ -1199,7 +1208,6 @@ void main() {
       store.retryConflictOnCurrentServerVersion(
         conflictId: conflict.conflictId,
         replacementMutationId: 'e1234567-1234-4234-8234-123456789abc',
-        createdAtUtc: DateTime.utc(2026, 10, 17),
       ),
       throwsStateError,
     );
@@ -1307,7 +1315,6 @@ void main() {
       store.retryConflictOnCurrentServerVersion(
         conflictId: conflict.conflictId,
         replacementMutationId: 'e1234567-1234-4234-8234-123456789abc',
-        createdAtUtc: DateTime.utc(2026, 10, 17),
       ),
       throwsStateError,
     );
@@ -1371,13 +1378,431 @@ void main() {
       await store.retryConflictOnCurrentServerVersion(
         conflictId: conflict.conflictId,
         replacementMutationId: replacementId,
-        createdAtUtc: DateTime.utc(2026, 10, 12, 0, 1),
       );
       final replacement = (await store.readOutbox()).single;
       expect(replacement.mutationId, replacementId);
       expect(replacement.baseVersion, 4);
       expect(replacement.clientSequence, isNull);
-      expect(replacement.dependsOnMutationId, mutationId);
+      // Die abgelehnte Mutation landet nie in den verarbeiteten Mutationen
+      // des Servers; eine Abhängigkeit darauf scheiterte immer.
+      expect(replacement.dependsOnMutationId, isNull);
+
+      mutationFailureCode = null;
+      lenientMutations = true;
+      await repository.synchronize();
+
+      final sent = receivedMutations.single;
+      expect(sent['dependsOnMutationId'], isNull);
+      expect(sent['resources'].single['baseVersion'], 4);
+      expect(await database.select(database.localConflicts).get(), isEmpty);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test(
+    'a foreign batch keeps the pending base and records a visible conflict',
+    () async {
+      // Dieses Gerät schreibt nicht und ändert offline auf Basis v2; ein
+      // anderes Gerät speichert v3.
+      activeWriter = false;
+      pullVersion = 3;
+      final (store, database, api, repository) = await fixture();
+      await store.commitMutation(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
+        aggregateId: checkInId,
+        operation: LocalMutationOperation.update,
+        baseVersion: 2,
+        body: {'localDate': '2026-10-12', 'weightKg': 82.5},
+        envelope: LocalAggregateEnvelope(
+          aggregateId: checkInId,
+          serverSnapshot: {'weightKg': 80.0},
+          workingCopy: {'weightKg': 82.5},
+          serverVersion: 2,
+          optimisticVersion: 3,
+          syncState: LocalSyncState.pending,
+        ),
+      );
+
+      final report = await repository.synchronize();
+
+      expect(report.state, SyncRunState.inactiveClient);
+      final waiting = (await store.readOutbox()).single;
+      expect(waiting.baseVersion, 2);
+      expect(waiting.status, LocalMutationStatus.conflict);
+      final conflict =
+          (await database.select(database.localConflicts).get()).single;
+      expect(conflict.code, 'stale_base_version');
+      expect(conflict.conflictId, mutationId);
+      expect(jsonDecode(conflict.detailJson), {
+        'mutationId': mutationId,
+        'baseVersion': 2,
+        'knownServerVersion': 3,
+        'foreignChange': true,
+      });
+      final local = await store.readAggregate('daily-check-in', checkInId);
+      expect(local?.workingCopy, {'weightKg': 82.5});
+      expect(local?.serverVersion, 3);
+      expect(local?.syncState, LocalSyncState.conflict);
+
+      // Auch nach dem Übernehmen geht die Änderung nicht still auf v3 hinaus.
+      activeWriter = true;
+      await repository.synchronize(takeOverWriting: true);
+      expect(receivedMutations, isEmpty);
+      final infos = await store.readConflictResourceInfos();
+      expect(infos[conflict.conflictId]?.hasServerState, isTrue);
+      expect(infos[conflict.conflictId]?.canForceLocal, isTrue);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test('422 without validation_failed becomes a conflict that can only be discarded', () async {
+    mutationFailureCode = 'invalid_payload';
+    mutationFailureStatus = 422;
+    final (store, database, api, repository) = await fixture();
+    await store.commitMutation(
+      mutationId: mutationId,
+      aggregateType: 'daily-check-in',
+      aggregateId: checkInId,
+      operation: LocalMutationOperation.create,
+      baseVersion: null,
+      body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+      envelope: localEnvelope(
+        aggregateId: checkInId,
+        workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+      ),
+    );
+
+    await repository.synchronize();
+    await repository.synchronize();
+
+    expect(
+      received.where(
+        (request) => request.uri.path.startsWith('/api/v1/sync/mutations/'),
+      ),
+      hasLength(1),
+    );
+    final conflict =
+        (await database.select(database.localConflicts).get()).single;
+    expect(conflict.code, 'invalid_payload');
+    expect(conflict.aggregateId, checkInId);
+    expect(jsonDecode(conflict.detailJson)['permanent'], isTrue);
+    final waiting = (await store.readOutbox()).single;
+    expect(waiting.status, LocalMutationStatus.conflict);
+    expect(waiting.lastErrorCode, 'invalid_payload');
+
+    // Dieselben Daten scheitern erneut: weder erzwingen noch erneut senden.
+    // Der Server kennt den Eintrag nicht, „Serverstand nutzen“ verwirft ihn.
+    final info = (await store
+        .readConflictResourceInfos())[conflict.conflictId]!;
+    expect(info.canForceLocal, isFalse);
+    expect(info.canRetry, isFalse);
+    expect(info.hasServerState, isTrue);
+    await expectLater(
+      store.retryConflictOnCurrentServerVersion(
+        conflictId: conflict.conflictId,
+        replacementMutationId: 'f1234567-1234-4234-8234-123456789abc',
+      ),
+      throwsStateError,
+    );
+
+    await store.acceptConflictServerState(conflict.conflictId);
+
+    expect(await store.readOutbox(), isEmpty);
+    expect(await database.select(database.localConflicts).get(), isEmpty);
+    expect(await store.readAggregate('daily-check-in', checkInId), isNull);
+    api.close();
+    await database.close();
+  });
+
+  const laterMutationId = 'c2234567-1234-4234-8234-123456789abc';
+  const replacementId = 'f1234567-1234-4234-8234-123456789abc';
+
+  Future<void> commitCheckInUpdate(
+    LocalSyncStore store,
+    String id,
+    double weightKg,
+  ) => store.commitMutation(
+    mutationId: id,
+    aggregateType: 'daily-check-in',
+    aggregateId: checkInId,
+    operation: LocalMutationOperation.update,
+    baseVersion: 2,
+    body: {'localDate': '2026-10-12', 'weightKg': weightKg},
+    envelope: LocalAggregateEnvelope(
+      aggregateId: checkInId,
+      serverSnapshot: {'weightKg': 80.0},
+      workingCopy: {'weightKg': weightKg},
+      serverVersion: 2,
+      optimisticVersion: 3,
+      syncState: LocalSyncState.pending,
+    ),
+  );
+
+  /// Zwei wartende Zeilen derselben Ressource: Ein früherer Sendeversuch
+  /// verhindert, dass die zweite Änderung in die erste übergeht.
+  Future<void> commitTwoCheckInUpdates(
+    LocalSyncStore store,
+    LocalDatabase database,
+  ) async {
+    await commitCheckInUpdate(store, mutationId, 82.5);
+    await (database.update(database.localOutbox)
+          ..where((t) => t.mutationId.equals(mutationId)))
+        .write(const LocalOutboxCompanion(attemptCount: Value(1)));
+    await commitCheckInUpdate(store, laterMutationId, 83.0);
+  }
+
+  test('retry after a foreign change re-queues every waiting row', () async {
+    activeWriter = false;
+    pullVersion = 3;
+    final (store, database, api, repository) = await fixture();
+    await commitTwoCheckInUpdates(store, database);
+
+    await repository.synchronize();
+    expect((await store.readOutbox()).map((row) => row.status), [
+      LocalMutationStatus.conflict,
+      LocalMutationStatus.conflict,
+    ]);
+    final conflict =
+        (await database.select(database.localConflicts).get()).single;
+
+    await store.retryConflictOnCurrentServerVersion(
+      conflictId: conflict.conflictId,
+      replacementMutationId: replacementId,
+    );
+
+    final outbox = {
+      for (final row in await store.readOutbox()) row.mutationId: row,
+    };
+    expect(outbox.keys, unorderedEquals([replacementId, laterMutationId]));
+    expect(outbox[replacementId]!.baseVersion, 3);
+    // Die spätere Zeile bliebe sonst unsichtbar im Konflikt und ginge nie
+    // hinaus; ihre Basis zieht die Bestätigung des Ersatzes nach.
+    expect(outbox[laterMutationId]!.status, LocalMutationStatus.pending);
+    expect(outbox[laterMutationId]!.lastErrorCode, isNull);
+    expect(await database.select(database.localConflicts).get(), isEmpty);
+    expect(
+      (await store.readAggregate('daily-check-in', checkInId))?.syncState,
+      LocalSyncState.pending,
+    );
+    api.close();
+    await database.close();
+  });
+
+  test(
+    'retry re-points later rows that waited on the rejected mutation',
+    () async {
+      mutationFailureCode = 'stale_version';
+      mutationFailureStatus = 409;
+      pullVersion = 4;
+      final (store, database, api, repository) = await fixture();
+      await commitTwoCheckInUpdates(store, database);
+
+      await repository.synchronize();
+      final waiting = (await store.readOutbox()).last;
+      expect(waiting.mutationId, laterMutationId);
+      expect(waiting.dependsOnMutationId, mutationId);
+      final conflict =
+          (await database.select(database.localConflicts).get()).single;
+
+      await store.retryConflictOnCurrentServerVersion(
+        conflictId: conflict.conflictId,
+        replacementMutationId: replacementId,
+      );
+
+      final later = (await store.readOutbox()).singleWhere(
+        (row) => row.mutationId == laterMutationId,
+      );
+      // Auf die verworfene Mutation zu warten, endete mit
+      // `dependency_not_applied`.
+      expect(later.dependsOnMutationId, replacementId);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test('a row an older app marked failed after a 422 becomes a discardable conflict', () async {
+    pullCursor = 1;
+    final (store, database, api, repository) = await fixture();
+    await store.commitMutation(
+      mutationId: mutationId,
+      aggregateType: 'daily-check-in',
+      aggregateId: checkInId,
+      operation: LocalMutationOperation.create,
+      baseVersion: null,
+      body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+      envelope: localEnvelope(
+        aggregateId: checkInId,
+        workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+      ),
+    );
+    await (database.update(
+      database.localOutbox,
+    )..where((t) => t.mutationId.equals(mutationId))).write(
+      LocalOutboxCompanion(
+        status: Value(LocalMutationStatus.failed.name),
+        lastErrorCode: const Value('invalid_payload'),
+      ),
+    );
+
+    await repository.synchronize();
+
+    expect(receivedMutations, isEmpty);
+    final conflict =
+        (await database.select(database.localConflicts).get()).single;
+    expect(conflict.conflictId, mutationId);
+    expect(conflict.code, 'invalid_payload');
+    expect(
+      (await store.readOutbox()).single.status,
+      LocalMutationStatus.conflict,
+    );
+    final info = (await store.readConflictResourceInfos())[mutationId]!;
+    expect(info.permanentRejection, isTrue);
+    expect(info.discardsLocal, isTrue);
+    expect(info.canRetry, isFalse);
+    expect(info.canForceLocal, isFalse);
+
+    await store.acceptConflictServerState(mutationId);
+    expect(await store.readOutbox(), isEmpty);
+    expect(await store.readAggregate('daily-check-in', checkInId), isNull);
+    api.close();
+    await database.close();
+  });
+
+  test(
+    'a malformed snapshot without an unknown value is no update case',
+    () async {
+      pullResourceType = 'TrainingSchedule';
+      pullResourceId = '99999999-9999-4999-8999-999999999999';
+      pullSnapshot = {
+        'scheduleId': '99999999-9999-4999-8999-999999999999',
+        'mode': 'weekly',
+        'anchorDate': null,
+        'validFrom': '2026-02-30',
+        'slots': [
+          for (var i = 0; i < 7; i++) {'planId': null},
+        ],
+        'shifts': <Object?>[],
+        'exceptions': <Object?>[],
+        'updatedAtUtc': '2026-10-17T08:00:00Z',
+      };
+      final (store, database, api, repository) = await fixture();
+
+      // Ein App-Update hilft hier nicht; der Fehler läuft wie bisher weiter.
+      await expectLater(
+        repository.synchronize(),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error,
+            'error',
+            isNot(isA<UnreadableSyncSnapshotException>()),
+          ),
+        ),
+      );
+      expect(await store.readSyncMetadata('pull-cursor'), isNull);
+
+      // Ein unbekannter Modus dagegen verlangt ein Update.
+      pullCursor = 0;
+      pullSnapshot = {...pullSnapshot!, 'validFrom': '2026-10-17', 'mode': 'x'};
+      final report = await repository.synchronize();
+      expect(report.state, SyncRunState.upgradeRequired);
+      expect(await store.readSyncMetadata('pull-cursor'), isNull);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test(
+    'discarding a rejected merge resets the workouts it rewrote locally',
+    () async {
+      const exerciseId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const workoutId = '44444444-4444-4444-8444-444444444446';
+      final serverExercise = {'id': exerciseId, 'name': 'Rudern'};
+      final serverWorkout = {
+        'workoutId': workoutId,
+        'blocks': [
+          {'sourceExerciseId': exerciseId},
+        ],
+      };
+      final (store, database, api, repository) = await fixture();
+      for (final (type, id, snapshot) in [
+        ('custom-exercise', exerciseId, serverExercise),
+        ('workout', workoutId, serverWorkout),
+      ]) {
+        await database
+            .into(database.localResources)
+            .insert(
+              LocalResourcesCompanion.insert(
+                aggregateType: type,
+                aggregateId: id,
+                envelopeJson: serverEnvelope(
+                  aggregateId: id,
+                  snapshot: snapshot,
+                  version: 3,
+                ).encode(),
+                updatedAtEpochMs: 0,
+              ),
+            );
+      }
+      final archived = {...serverExercise, 'isArchived': true};
+      await store.commitMutation(
+        mutationId: mutationId,
+        aggregateType: 'custom-exercise',
+        aggregateId: exerciseId,
+        operation: LocalMutationOperation.merge,
+        baseVersion: 3,
+        body: {...archived, 'targetExerciseId': 'bench-press'},
+        envelope: LocalAggregateEnvelope(
+          aggregateId: exerciseId,
+          serverSnapshot: serverExercise,
+          workingCopy: archived,
+          serverVersion: 3,
+          optimisticVersion: 4,
+          syncState: LocalSyncState.pending,
+        ),
+        relatedEnvelopes: [
+          (
+            'workout',
+            LocalAggregateEnvelope(
+              aggregateId: workoutId,
+              serverSnapshot: serverWorkout,
+              workingCopy: {
+                'workoutId': workoutId,
+                'blocks': [
+                  {'sourceExerciseId': 'bench-press'},
+                ],
+              },
+              serverVersion: 3,
+              optimisticVersion: 3,
+              syncState: LocalSyncState.pending,
+            ),
+          ),
+        ],
+      );
+      await store.upsertConflict(
+        LocalConflictRecord(
+          conflictId: mutationId,
+          aggregateType: 'custom-exercise',
+          aggregateId: exerciseId,
+          createdAtUtc: DateTime.utc(2026, 10, 12),
+          code: 'invalid_merge',
+          detail: {'mutationId': mutationId, permanentRejectionDetailKey: true},
+        ),
+      );
+
+      await store.acceptConflictServerState(mutationId);
+
+      final exercise = await store.readAggregate('custom-exercise', exerciseId);
+      expect(exercise?.workingCopy, serverExercise);
+      expect(exercise?.syncState, LocalSyncState.clean);
+      // Ohne Zurücksetzen zeigte das Training weiter das Ziel der verworfenen
+      // Zusammenführung und hätte keine Zeile, die es je sendet.
+      final workout = await store.readAggregate('workout', workoutId);
+      expect(workout?.workingCopy, serverWorkout);
+      expect(workout?.syncState, LocalSyncState.clean);
+      expect(await store.readOutbox(), isEmpty);
       api.close();
       await database.close();
     },
