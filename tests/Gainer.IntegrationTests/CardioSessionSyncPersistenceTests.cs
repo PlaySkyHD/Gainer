@@ -301,7 +301,7 @@ public sealed class CardioSessionSyncPersistenceTests
         Guid? dependsOn) => new(
             mutationId,
             new CanonicalMutationContent(
-                2,
+                Gainer.Contracts.Sync.SyncProtocol.CurrentVersion,
                 clientId,
                 sequence,
                 operation,

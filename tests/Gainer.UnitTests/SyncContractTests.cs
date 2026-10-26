@@ -2,6 +2,8 @@ using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text.Json;
 using Gainer.Contracts.Sync;
+using Gainer.Core.Mutations;
+using Gainer.Core.Sync;
 
 namespace Gainer.UnitTests;
 
@@ -74,15 +76,58 @@ public sealed class SyncContractTests
     }
 
     [TestMethod]
-    public void ProtocolFourAddsWaterAndKeepsOlderClientsInTheWindow()
+    public void ProtocolsGateTrainingAndTheTypesAddedAfterProtocolThree()
     {
-        Assert.IsFalse(Gainer.Core.Sync.SyncResourceProtocol.Supports(3, "WaterIntakeDay"));
-        Assert.IsTrue(Gainer.Core.Sync.SyncResourceProtocol.Supports(4, "WaterIntakeDay"));
-        Assert.IsTrue(Gainer.Core.Sync.SyncResourceProtocol.Supports(2, "NutritionDay"));
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                nameof(ResourceKind.CustomExercise), nameof(ResourceKind.TrainingPlan), nameof(ResourceKind.Workout),
+                nameof(ResourceKind.ExerciseCategory), nameof(ResourceKind.CardioSession),
+                nameof(ResourceKind.TrainingSchedule), nameof(ResourceKind.NutritionDayTemplate),
+                nameof(ResourceKind.WaterIntakeDay),
+            },
+            SyncResourceProtocol.TypesNewerThan(SyncProtocol.PreviousVersion).ToArray());
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                nameof(ResourceKind.CardioSession), nameof(ResourceKind.TrainingSchedule),
+                nameof(ResourceKind.NutritionDayTemplate), nameof(ResourceKind.WaterIntakeDay),
+            },
+            SyncResourceProtocol.TypesNewerThan(SyncProtocol.TrainingContractVersion).ToArray());
+        Assert.HasCount(0, SyncResourceProtocol.TypesNewerThan(SyncProtocol.CurrentVersion));
+        Assert.IsTrue(SyncResourceProtocol.Supports(SyncProtocol.PreviousVersion, nameof(ResourceKind.NutritionDay)));
+    }
+
+    [TestMethod]
+    public void EveryResourceKindHasAMinimumProtocolInsideTheWindow()
+    {
+        string[] kinds = Enum.GetNames<ResourceKind>();
+        CollectionAssert.AreEquivalent(kinds, SyncResourceProtocol.KnownTypes.ToArray());
+        Assert.AreEqual(SyncProtocol.PreviousVersion, kinds.Min(SyncResourceProtocol.MinimumVersionFor));
+        foreach (string kind in kinds)
+        {
+            int minimum = SyncResourceProtocol.MinimumVersionFor(kind);
+            Assert.IsTrue(
+                minimum is >= SyncProtocol.PreviousVersion and <= SyncProtocol.CurrentVersion,
+                $"{kind} needs a minimum protocol between {SyncProtocol.PreviousVersion} and {SyncProtocol.CurrentVersion}.");
+        }
+    }
+
+    [TestMethod]
+    public void CoreProtocolNumbersMatchTheContract()
+    {
+        // Core cannot reference Contracts, so it repeats the numbers; they must stay equal.
         CollectionAssert.AreEqual(
-            new[] { "WaterIntakeDay" },
-            Gainer.Core.Sync.SyncResourceProtocol.TypesNewerThan(3).ToArray());
-        Assert.HasCount(0, Gainer.Core.Sync.SyncResourceProtocol.TypesNewerThan(4));
+            new[] { SyncProtocol.PreviousVersion, SyncProtocol.TrainingContractVersion, SyncProtocol.CurrentVersion },
+            new[] { SyncResourceProtocol.ProtocolTwo, SyncResourceProtocol.ProtocolThree, SyncResourceProtocol.CurrentVersion });
+    }
+
+    [TestMethod]
+    public void UnknownResourceTypesFailClosed()
+    {
+        Assert.AreEqual(SyncProtocol.CurrentVersion, SyncResourceProtocol.MinimumVersionFor("WorkoutRotation"));
+        Assert.IsFalse(SyncResourceProtocol.Supports(SyncProtocol.TrainingContractVersion, "WorkoutRotation"));
+        Assert.IsFalse(SyncResourceProtocol.Supports(SyncProtocol.TrainingContractVersion, string.Empty));
     }
 
     private static List<ValidationResult> Validate(object value)

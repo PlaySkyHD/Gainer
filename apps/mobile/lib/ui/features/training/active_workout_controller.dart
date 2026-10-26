@@ -34,6 +34,9 @@ class ActiveWorkoutController extends ChangeNotifier {
   Future<void> Function()? openLiveActivitySettings;
   Workout? _active;
   RestTimerController? _restTimer;
+
+  /// Abmelden oder Kontowechsel kann den Controller während eines `await`
+  /// entsorgen; [notifyListeners] ignoriert danach jede Meldung.
   bool _disposed = false;
 
   /// Das aktive Training oder null, wenn keines läuft.
@@ -103,6 +106,12 @@ class ActiveWorkoutController extends ChangeNotifier {
     final timer = factory(workoutId);
     _restTimer = timer;
     unawaited(timer.load().catchError((Object _) {}));
+  }
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
   }
 
   @override

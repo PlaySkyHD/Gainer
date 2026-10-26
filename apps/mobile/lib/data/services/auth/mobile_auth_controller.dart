@@ -398,9 +398,17 @@ class MobileAuthController extends ChangeNotifier
     shell.selectTab(index);
     // Die Live Activity öffnet die laufende Cardio-Einheit, sonst das aktive
     // Training; ohne beides bleibt es beim Tab.
-    final active = routeScope.activeWorkout.active;
     if (request.source == NativeRouteSource.liveActivity &&
         request.destination == NativeAppRoute.training) {
+      // Beim Kaltstart liest `load()` den Cardio-Entwurf noch; erst danach
+      // stimmt `isRunning`.
+      await routeScope.cardioSession.restored;
+      if (_disposed ||
+          !identical(account, routeScope) ||
+          generation != _sessionGeneration) {
+        throw StateError('The account changed before the native route opened.');
+      }
+      final active = routeScope.activeWorkout.active;
       if (routeScope.cardioSession.isRunning) {
         shell.requestOpenCardio();
       } else if (active != null) {
@@ -799,6 +807,8 @@ class AccountScope {
       SyncRunState.retryPending,
       SyncRunState.inactiveClient,
     }.contains(report.state)) {
+      // Gezogene Einheiten anderer Geräte: Listen wie das Tagebuch laden neu.
+      if (report.pulledBatches > 0) cardio.notifyExternalChange();
       await Future.wait([
         bodyViewModel.load(),
         nutritionViewModel.load(),

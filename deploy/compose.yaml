@@ -102,7 +102,13 @@ services:
       - "127.0.0.1:${GAINER_EDGE_PORT:-8081}:80"
     networks: [backend, public]
     read_only: true
-    tmpfs: [/tmp]
+    # The site address is plain HTTP (:80), so Caddy keeps no certificates or state.
+    # tmpfs also replaces the image's anonymous /data and /config volumes, which an old root-owned
+    # container would otherwise pass on to a recreated one.
+    tmpfs:
+      - /tmp
+      - /data:uid=65532,gid=65532
+      - /config:uid=65532,gid=65532
     security_opt: [no-new-privileges:true]
 
   backup:
@@ -132,7 +138,11 @@ services:
       - data-protection:/source/data-protection:ro
     networks: [backend, public]
     read_only: true
-    tmpfs: [/tmp, /work, /restore]
+    # Owned by the backup user (uid 1654, see Dockerfile.backup); a plain tmpfs would be root-owned.
+    tmpfs:
+      - /tmp:uid=1654,gid=1654
+      - /work:uid=1654,gid=1654
+      - /restore:uid=1654,gid=1654
     security_opt: [no-new-privileges:true]
 
 secrets:

@@ -10,6 +10,13 @@ import '../../../domain/models/cardio/cardio_draft.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/cardio/cardio_template.dart';
 
+/// Beim Beenden war die Einheit schon gespeichert und ist inzwischen gelöscht.
+/// Der Entwurf ist aufgeräumt; es wird nichts gespeichert und keine Erholung
+/// gemessen.
+class CardioSessionDeletedException implements Exception {
+  const CardioSessionDeletedException();
+}
+
 /// Erholungsphase nach dem Beenden: 60 s weiter messen, um den Pulsabfall zu
 /// bestimmen. Die Einheit ist dann schon gespeichert.
 class CardioRecovery {
@@ -95,8 +102,19 @@ class CardioSessionController extends ChangeNotifier {
   AppLifecycleListener? _lifecycle;
   bool _foreground = true;
   bool _disposed = false;
-  bool _polling = false;
-  bool _previewing = false;
+
+  /// Laufende Abfrage; weitere Aufrufe warten auf sie statt parallel zu lesen.
+  Future<void>? _pollInFlight;
+
+  /// Offene [watch]-Aufrufe (Start-Sheet, HRV-Messung darüber …).
+  int _watchers = 0;
+
+  /// Ende des Entwurf-Lesens im letzten [load].
+  Completer<void>? _restoring;
+
+  /// Nach Start oder Rückkehr in die App einmal prüfen, ob die Live Activity
+  /// fehlt, und sie dann erneut starten.
+  bool _liveActivityCheckPending = false;
   bool _notificationPermissionAsked = false;
   Timer? _timer;
   DateTime? _lastPersistAt;
@@ -247,19 +265,53 @@ class CardioSessionController extends ChangeNotifier {
   List<HeartRateSensor> get sensors => _sensors;
   bool get isScanning => _scanning;
 
+  /// Live Activities sind in den iOS-Einstellungen aus, während eine Einheit
+  /// läuft. Die Live-Ansicht zeigt dann einen Hinweis mit Weg in die
+  /// Einstellungen ([openSettings]).
+  bool get liveActivitiesOff =>
+      isRunning &&
+      _status.monitoringSessionId == _active?.sessionId &&
+      _status.liveActivityState == CardioLiveActivityState.disabled;
+
+  /// Läuft die zyklische Abfrage gerade?
+  @visibleForTesting
+  bool get hasPollTimer => _timer != null;
+
+  /// Fertig, sobald [load] den Entwurf gelesen hat; sofort fertig ohne [load].
+  /// Ein Kaltstart über die Live Activity wartet darauf, bevor er [isRunning]
+  /// prüft.
+  Future<void> get restored => _restoring?.future ?? Future<void>.value();
+
   /// Stellt eine laufende Einheit aus dem Entwurf wieder her. Hat die native
   /// Seite die Überwachung verloren, startet sie neu; ein gemerkter Gurt wird
-  /// wieder verbunden.
+  /// wieder verbunden. Ist die Einheit schon gespeichert (Abbruch zwischen
+  /// Speichern und Entwurf löschen), wird der Entwurf verworfen.
   Future<void> load() async {
-    final draft = await repository.readDraft();
+    final restoring = _restoring = Completer<void>();
+    try {
+      await _load(restoring);
+    } finally {
+      if (!restoring.isCompleted) restoring.complete();
+    }
+  }
+
+  Future<void> _load(Completer<void> restoring) async {
+    var draft = await repository.readDraft();
+    if (draft != null && await repository.hasSession(draft.sessionId)) {
+      await _clearDraftQuietly();
+      await _stopNative(draft.sessionId);
+      draft = null;
+    }
     if (_disposed) return;
     _active = draft;
+    restoring.complete();
     if (draft == null) {
       _analysis = null;
       notifyListeners();
       return;
     }
     _analysis = _analysisOf(draft);
+    _liveActivityCheckPending = true;
     notifyListeners();
     await poll();
     final current = _active;
@@ -358,7 +410,11 @@ class CardioSessionController extends ChangeNotifier {
     final prefs = await repository.preferences.read();
     final phases = template.resolve(prefs.zones);
     if (!CardioPhase.isValidList(phases)) {
-      throw ArgumentError.value(template, 'template', 'Ungültige Phasen.');
+      throw CardioTemplateResolutionException(
+        'Die Pulszonen ergeben für diese Vorlage keinen gültigen Zielbereich '
+        '(${CardioTargetZone.minBpm} bis ${CardioTargetZone.maxBpm} bpm). '
+        'Maximalpuls und Ruhepuls in den Cardio-Einstellungen prüfen.',
+      );
     }
     return phases;
   }
@@ -423,7 +479,14 @@ class CardioSessionController extends ChangeNotifier {
     if (draft == null) throw StateError('Es läuft keine Cardio-Einheit.');
     _timer?.cancel();
     _timer = null;
-    await poll();
+    // Eine laufende Abfrage zuerst abwarten, dann frisch lesen. Scheitert das
+    // Lesen, reichen die bisherigen Werte; Beenden bleibt möglich.
+    await _settlePoll();
+    try {
+      await poll();
+    } on Object {
+      // Ohne die letzten Messwerte speichern.
+    }
     final current = _active;
     if (current == null || current.sessionId != draft.sessionId) {
       throw StateError('Die Cardio-Einheit wurde inzwischen beendet.');
@@ -451,8 +514,21 @@ class CardioSessionController extends ChangeNotifier {
       updatedAtUtc: endedAt,
     );
     try {
-      final stored = await repository.saveFinished(saved);
-      await repository.clearDraft();
+      final stored = await _saveOrExisting(saved);
+      // Ab hier gilt die Einheit als beendet: keine Abfrage schreibt den
+      // Entwurf mehr zurück.
+      _active = null;
+      _analysis = null;
+      _dirty = false;
+      await _settlePoll();
+      await _clearDraftQuietly();
+      if (stored == null) {
+        // Schon gespeichert und inzwischen gelöscht: nicht wiederbeleben und
+        // keine Erholung auf einer gelöschten Einheit.
+        await _stopNative(current.sessionId);
+        if (!_disposed) notifyListeners();
+        throw const CardioSessionDeletedException();
+      }
       final startBpm = _recoveryStartBpm(stored.endedAtUtc);
       final recovery = startBpm == null
           ? null
@@ -470,9 +546,6 @@ class CardioSessionController extends ChangeNotifier {
                 liveActivityEnabled: false,
               ),
             );
-      _active = null;
-      _analysis = null;
-      _dirty = false;
       if (recovery != null && await _beginRecovery(recovery)) {
         notifyListeners();
         return stored;
@@ -480,9 +553,21 @@ class CardioSessionController extends ChangeNotifier {
       await _stopNative(current.sessionId);
       notifyListeners();
       return stored;
-    } on Object {
+    } finally {
+      // Ein Zurückkehren in die App während der awaits kann den Timer neu
+      // angelegt haben; er richtet sich nach dem Zustand danach.
       _syncTimer();
-      rethrow;
+    }
+  }
+
+  /// Speichert die Einheit. Gibt es sie schon (Abbruch zwischen Speichern und
+  /// Entwurf löschen), gilt sie als gespeichert und es bleibt nur Aufräumen.
+  /// Null, wenn sie schon gespeichert und inzwischen gelöscht ist.
+  Future<CardioSession?> _saveOrExisting(CardioSession session) async {
+    try {
+      return await repository.saveFinished(session);
+    } on CardioSessionExistsException {
+      return repository.readSession(session.sessionId);
     }
   }
 
@@ -518,8 +603,7 @@ class CardioSessionController extends ChangeNotifier {
 
   Future<void> _pollRecovery() async {
     final recovery = _recovery;
-    if (recovery == null || _polling) return;
-    _polling = true;
+    if (recovery == null) return;
     try {
       final status = await platform.readStatus(recovery.lastSequence);
       if (_disposed || !identical(_recovery, recovery)) return;
@@ -545,8 +629,6 @@ class CardioSessionController extends ChangeNotifier {
     } on BluetoothUnavailableException catch (error) {
       _bluetoothException = error.problem;
       if (!_disposed) notifyListeners();
-    } finally {
-      _polling = false;
     }
   }
 
@@ -583,18 +665,42 @@ class CardioSessionController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  /// Verwirft die laufende Einheit ohne zu speichern.
+  /// Verwirft die laufende Einheit ohne zu speichern. Wirft nicht: Scheitert
+  /// das Löschen des Entwurfs, erscheint die Einheit beim nächsten [load]
+  /// wieder und lässt sich erneut verwerfen.
   Future<void> discard() async {
     final draft = _active;
     if (draft == null) return;
     _timer?.cancel();
     _timer = null;
-    await repository.clearDraft();
-    await _stopNative(draft.sessionId);
     _active = null;
     _analysis = null;
     _dirty = false;
-    notifyListeners();
+    // Eine laufende Abfrage könnte den Entwurf sonst nach dem Löschen sichern.
+    await _settlePoll();
+    await _clearDraftQuietly();
+    await _stopNative(draft.sessionId);
+    if (!_disposed) notifyListeners();
+  }
+
+  /// Wartet auf eine laufende Abfrage; ihre Fehler gelten hier nicht.
+  Future<void> _settlePoll() async {
+    final running = _pollInFlight;
+    if (running == null) return;
+    try {
+      await running;
+    } on Object {
+      // Die Abfrage meldet ihre Fehler ihrem eigenen Aufrufer.
+    }
+  }
+
+  Future<void> _clearDraftQuietly() async {
+    try {
+      await repository.clearDraft();
+    } on Object {
+      // Ein übrig gebliebener Entwurf einer gespeicherten Einheit verwirft
+      // der nächste [load]; einer verworfenen lässt sich erneut verwerfen.
+    }
   }
 
   /// Sucht Pulsgurte. Bei Bluetooth-Problemen bleibt die Liste leer und
@@ -657,18 +763,21 @@ class CardioSessionController extends ChangeNotifier {
   }
 
   /// Liest den Gurtstatus außerhalb einer Einheit (Start-Sheet). Mit [watch]
-  /// fragt der Controller im Vordergrund weiter jede Sekunde, bis
-  /// [stopWatching] folgt.
+  /// fragt der Controller im Vordergrund weiter jede Sekunde, bis jeder
+  /// [watch] sein [stopWatching] hat. Gezählt, damit ein zweiter Beobachter
+  /// (HRV-Messung über dem Start-Sheet) beim Schließen den ersten nicht stoppt.
   Future<void> watch() async {
-    _previewing = true;
+    _watchers++;
     await refreshStatus();
     _syncTimer();
   }
 
   void stopWatching() {
-    _previewing = false;
+    if (_watchers > 0) _watchers--;
     _syncTimer();
   }
+
+  bool get _previewing => _watchers > 0;
 
   /// Liest den Status einmal und aktualisiert Anzeige (ohne Verdichtung).
   Future<void> refreshStatus() async {
@@ -685,12 +794,22 @@ class CardioSessionController extends ChangeNotifier {
   /// Eine Abfrage der nativen Überwachung: neue Messwerte lesen, verdichten,
   /// Entwurf ggf. sichern. Startet die native Überwachung neu, wenn sie die
   /// Einheit nicht (mehr) kennt. Öffentlich für Tests und für Aufrufer, die
-  /// beim Zurückkehren in die App sofort aktualisieren wollen.
-  Future<void> poll() async {
+  /// beim Zurückkehren in die App sofort aktualisieren wollen. Läuft schon eine
+  /// Abfrage, wartet der Aufruf auf sie.
+  Future<void> poll() {
+    final running = _pollInFlight;
+    if (running != null) return running;
+    late final Future<void> future;
+    future = _pollOnce().whenComplete(() {
+      if (identical(_pollInFlight, future)) _pollInFlight = null;
+    });
+    _pollInFlight = future;
+    return future;
+  }
+
+  Future<void> _pollOnce() async {
     final draft = _active;
     if (draft == null) return _pollRecovery();
-    if (_polling) return;
-    _polling = true;
     try {
       final sequence = draft.lastSequence;
       final status = await platform.readStatus(sequence);
@@ -707,6 +826,8 @@ class CardioSessionController extends ChangeNotifier {
         // Native Überwachung weg (App beendet): mit dem Entwurf neu starten.
         // Sequenzen beginnen dort wieder bei 1.
         _active = current.copyWith(lastSequence: 0);
+        // Der Neustart startet auch die Live Activity neu.
+        _liveActivityCheckPending = false;
         await platform.startMonitoring(await _config(_active!));
         _dirty = true;
         _afterUpdate();
@@ -735,11 +856,32 @@ class CardioSessionController extends ChangeNotifier {
       _active = next;
       _afterUpdate();
       await _persist();
+      await _retryLiveActivity(status);
     } on BluetoothUnavailableException catch (error) {
       _bluetoothException = error.problem;
       if (!_disposed) notifyListeners();
-    } finally {
-      _polling = false;
+    }
+  }
+
+  /// Fehlt die Live Activity, obwohl sie erlaubt ist (beim Start waren Live
+  /// Activities aus oder iOS hat sie beendet), startet die native Seite sie
+  /// über die unveränderte Konfiguration neu. Nur einmal nach [load] und nach
+  /// jeder Rückkehr in die App, damit ein dauerhafter Fehler nicht jede
+  /// Sekunde anfragt.
+  Future<void> _retryLiveActivity(HeartRateStatus status) async {
+    if (!_liveActivityCheckPending) return;
+    _liveActivityCheckPending = false;
+    final draft = _active;
+    if (!liveActivityEnabled ||
+        draft == null ||
+        status.liveActivityState != CardioLiveActivityState.missing) {
+      return;
+    }
+    try {
+      await platform.updateMonitoring(await _config(draft));
+    } on Object {
+      // Die Einheit läuft ohne Live Activity weiter; nächster Versuch beim
+      // nächsten Zurückkehren in die App.
     }
   }
 
@@ -852,6 +994,8 @@ class CardioSessionController extends ChangeNotifier {
     if (foreground == _foreground) return;
     _foreground = foreground;
     if (foreground) {
+      // Live Activities können inzwischen in den Einstellungen an sein.
+      _liveActivityCheckPending = true;
       _syncTimer();
       unawaited(poll());
     } else {

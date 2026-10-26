@@ -26,4 +26,7 @@ public static class ApiConstants
 
     /// <summary>Rate-limit policy for the per-user data export.</summary>
     public const string AccountExportRateLimitPolicy = "account-export";
+
+    /// <summary>Rate-limit policy for the anonymous system status endpoint.</summary>
+    public const string SystemStatusRateLimitPolicy = "system-status";
 }

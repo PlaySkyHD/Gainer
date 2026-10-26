@@ -19,6 +19,12 @@ public static class SyncProtocol
 
     /// <summary>Lowest protocol that may send training payloads (rebuilt workout, plan and exercise contract).</summary>
     public const int TrainingContractVersion = 3;
+
+    /// <summary>
+    /// Lowest protocol whose clients must send <c>X-Gainer-Account-Id</c> on pulls, mutations and
+    /// client registration. Every app build sends it on all of these calls.
+    /// </summary>
+    public const int AccountHeaderRequiredVersion = 4;
     public const int MaximumResourcesPerMutation = 100;
     public const int MaximumBatchesPerPull = 200;
 }

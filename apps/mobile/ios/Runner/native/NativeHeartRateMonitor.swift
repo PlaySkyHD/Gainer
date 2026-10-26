@@ -152,7 +152,8 @@ final class NativeHeartRateMonitor {
       latestBpm: latestBpm.map { Int64($0) },
       latestAtUtcEpochMilliseconds: latestAtMilliseconds,
       monitoringSessionId: monitoring?.config.sessionId,
-      zoneState: monitoring?.alarm.zoneState.rawValue
+      zoneState: monitoring?.alarm.zoneState.rawValue,
+      liveActivityState: liveActivityStateName
     )
   }
 
@@ -269,9 +270,12 @@ final class NativeHeartRateMonitor {
     handle(events)
 
     if config.liveActivityEnabled {
-      if current.config.liveActivityEnabled {
+      // Fehlt die Activity (beim Start aus oder vom System beendet), erneut starten.
+      // Hat der Nutzer sie weggewischt, bleibt sie für diese Session weg.
+      let activityState = liveActivity.state(sessionId: config.sessionId)
+      if current.config.liveActivityEnabled, activityState == "running" {
         await liveActivity.update(state: liveActivityState(now: now))
-      } else {
+      } else if !current.config.liveActivityEnabled || activityState != "dismissed" {
         await liveActivity.start(
           sessionId: config.sessionId,
           title: config.title,
@@ -300,6 +304,13 @@ final class NativeHeartRateMonitor {
   func endOrphanedLiveActivities() async {
     guard monitoring == nil else { return }
     await liveActivity.end()
+  }
+
+  /// Zustand der Live Activity der laufenden Überwachung; nil ohne Überwachung oder wenn
+  /// sie keine Live Activity nutzt (Erholung, HRV).
+  private var liveActivityStateName: String? {
+    guard let config = monitoring?.config, config.liveActivityEnabled else { return nil }
+    return liveActivity.state(sessionId: config.sessionId)
   }
 
   // MARK: - Central

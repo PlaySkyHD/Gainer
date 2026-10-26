@@ -14,6 +14,98 @@ import 'package:gainer_mobile/ui/features/progress/today_overview.dart';
 DateTime _today() => DateTime(2026, 10, 18);
 
 void main() {
+  group('weightChartPositions', () {
+    const size = Size(100, 80);
+
+    test('places x by date, not by index, and y at the data value', () {
+      final positions = weightChartPositions(const [
+        ApiWeightPoint(date: '2026-10-10', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-11', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-20', weightKg: 90),
+      ], size);
+
+      expect(positions, hasLength(3));
+      // 5 px Rand für den Marker, 90 px nutzbar.
+      expect(positions[0].dx, 5);
+      expect(positions[1].dx, closeTo(14, 1e-9));
+      expect(positions[2].dx, 95);
+      // Mittlerer Punkt liegt auf der Höhe des ersten, nicht dazwischen.
+      expect(positions[1].dy, positions[0].dy);
+      expect(positions[2].dy, lessThan(positions[1].dy));
+    });
+
+    test('falls back to index spacing for identical or invalid dates', () {
+      final same = weightChartPositions(const [
+        ApiWeightPoint(date: '2026-10-10', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-10', weightKg: 81),
+        ApiWeightPoint(date: '2026-10-10', weightKg: 82),
+      ], size);
+      expect(same.map((p) => p.dx), [5, 50, 95]);
+
+      final invalid = weightChartPositions(const [
+        ApiWeightPoint(date: 'kaputt', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-10', weightKg: 81),
+      ], size);
+      expect(invalid.map((p) => p.dx), [5, 95]);
+    });
+
+    test('keeps x inside the chart for an unsorted series', () {
+      final positions = weightChartPositions(const [
+        ApiWeightPoint(date: '2026-10-20', weightKg: 90),
+        ApiWeightPoint(date: '2026-10-10', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-11', weightKg: 80),
+      ], size);
+      expect(positions.map((p) => p.dx), [95, 5, closeTo(14, 1e-9)]);
+      expect(positions.every((p) => p.dx >= 0 && p.dx <= 100), isTrue);
+    });
+
+    test('uses only the date part, ignoring a time offset', () {
+      final positions = weightChartPositions(const [
+        ApiWeightPoint(date: '2026-10-20T23:30:00-02:00', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-21', weightKg: 80),
+      ], size);
+      expect(positions.map((p) => p.dx), [5, 95]);
+      expect(
+        weightPointLabel(
+          const ApiWeightPoint(date: '2026-10-20T23:30:00-02:00', weightKg: 80),
+        ),
+        '20.10.2026: 80,0 kg',
+      );
+    });
+
+    test('centres a flat series on the middle grid line', () {
+      final positions = weightChartPositions(const [
+        ApiWeightPoint(date: '2026-10-10', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-11', weightKg: 80),
+      ], size);
+      expect(positions.every((p) => p.dy == 40), isTrue);
+    });
+
+    test('handles width 0 and a single point', () {
+      final zero = weightChartPositions(const [
+        ApiWeightPoint(date: '2026-10-10', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-12', weightKg: 90),
+      ], Size.zero);
+      expect(zero, hasLength(2));
+      expect(zero.every((p) => p.dx == 0 && p.dx.isFinite), isTrue);
+
+      final single = weightChartPositions(const [
+        ApiWeightPoint(date: '2026-10-10', weightKg: 80),
+      ], size);
+      expect(single.single.dx, 50);
+      expect(weightChartPositions(const [], size), isEmpty);
+    });
+
+    test('formats the spoken label in German', () {
+      expect(
+        weightPointLabel(
+          const ApiWeightPoint(date: '2026-10-20', weightKg: 80.5),
+        ),
+        '20.10.2026: 80,5 kg',
+      );
+    });
+  });
+
   for (final brightness in [Brightness.light, Brightness.dark]) {
     testWidgets('overview matches golden in ${brightness.name} mode', (
       tester,
@@ -57,7 +149,7 @@ void main() {
     expect(find.text('−0,4 kg/Woche'), findsOneWidget);
     expect(find.text('Ziel 82,0 kg'), findsOneWidget);
     expect(
-      _chartLabel('Gewichtsverlauf. 2026-10-12: 82.0 kg, 2026-10-14: 81.5 kg'),
+      _chartLabel('Gewichtsverlauf. 12.10.2026: 82,0 kg, 14.10.2026: 81,5 kg'),
       findsOneWidget,
     );
 
@@ -378,7 +470,7 @@ void main() {
 
     expect(_rich('81,5 kg'), findsOneWidget);
     expect(find.text('vor 4 Tagen'), findsOneWidget);
-    expect(_chartLabel('Gewichtsverlauf. 2026-10-14: 81.5 kg'), findsNothing);
+    expect(_chartLabel('Gewichtsverlauf. 14.10.2026: 81,5 kg'), findsNothing);
   });
 
   testWidgets('weight chart paints a flat series', (tester) async {
@@ -401,7 +493,7 @@ void main() {
 
     expect(
       _chartLabel(
-        'Gewichtsverlauf. 2026-10-10: 80.0 kg, 2026-10-11: 80.0 kg, 2026-10-12: 80.0 kg',
+        'Gewichtsverlauf. 10.10.2026: 80,0 kg, 11.10.2026: 80,0 kg, 12.10.2026: 80,0 kg',
       ),
       findsOneWidget,
     );

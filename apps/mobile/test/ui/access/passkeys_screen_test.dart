@@ -59,6 +59,7 @@ void main() {
     expect(find.text('Passwort bestätigen'), findsOneWidget);
 
     await tester.enterText(find.byType(CupertinoTextField), 'password');
+    await tester.pump();
     await tester.tap(find.text('Weiter'));
     await tester.pumpAndSettle();
 
@@ -76,11 +77,62 @@ void main() {
     await tester.tap(find.text('Passkey hinzufügen'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(CupertinoTextField), 'wrong');
+    await tester.pump();
     await tester.tap(find.text('Weiter'));
     await tester.pumpAndSettle();
 
     expect(server.registeredNames, isEmpty);
     expect(find.text('Das Passwort war falsch.'), findsOneWidget);
+  });
+
+  testWidgets('keeps the password field alive while the dialog fades out', (
+    tester,
+  ) async {
+    final server = _PasskeyServer()..requirePassword = true;
+    final controller = await _signedIn(tester, server, _FakePasskeys());
+
+    await _pumpScreen(tester, controller);
+    await tester.tap(find.text('Passkey hinzufügen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField), 'password');
+    await tester.pump();
+    await tester.tap(find.text('Weiter'));
+    // Mitten in der Ausblend-Animation liegt das Feld noch im Baum.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final field = tester.widget<CupertinoTextField>(
+      find.byType(CupertinoTextField),
+    );
+    // Ein entsorgter Controller wirft bei jeder weiteren Nutzung, etwa wenn
+    // die Tastatur beim Ausblenden einen Neuaufbau auslöst.
+    expect(
+      () => ChangeNotifier.debugAssertNotDisposed(field.controller!),
+      returnsNormally,
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+    expect(server.passwords, [null, 'password']);
+  });
+
+  testWidgets('takes a password that autofill set without onChanged', (
+    tester,
+  ) async {
+    final server = _PasskeyServer()..requirePassword = true;
+    final controller = await _signedIn(tester, server, _FakePasskeys());
+
+    await _pumpScreen(tester, controller);
+    await tester.tap(find.text('Passkey hinzufügen'));
+    await tester.pumpAndSettle();
+    final field = tester.widget<CupertinoTextField>(
+      find.byType(CupertinoTextField),
+    );
+    field.controller!.text = 'password';
+    await tester.pump();
+    await tester.tap(find.text('Weiter'));
+    await tester.pumpAndSettle();
+
+    expect(server.passwords, [null, 'password']);
   });
 
   testWidgets('cancelling the password prompt adds nothing', (tester) async {

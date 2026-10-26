@@ -256,6 +256,7 @@ class PlatformHeartRateStatus {
     this.latestAtUtcEpochMilliseconds,
     this.monitoringSessionId,
     this.zoneState,
+    this.liveActivityState,
   });
 
   /// One of `unknown`, `poweredOn`, `poweredOff`, `unauthorized`, `unsupported`, `resetting`.
@@ -280,6 +281,11 @@ class PlatformHeartRateStatus {
 
   /// One of `none`, `inZone`, `above`, `below`, `noSignal`; null ohne Überwachung.
   final String? zoneState;
+
+  /// One of `running`, `disabled` (in den iOS-Einstellungen aus), `missing`
+  /// (erlaubt, aber keine Activity), `dismissed` (lief und wurde entfernt,
+  /// nicht erneut starten); null ohne Überwachung mit Live Activity.
+  final String? liveActivityState;
 }
 
 /// Beendete Cardio-Einheit für den Export nach Apple Health.
