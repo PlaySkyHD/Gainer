@@ -53,6 +53,11 @@ public sealed partial class AccountResourceIsolationMatrixTests
     {
         await using var api = await TwoUserHttpApp.StartAsync(Fixture, configure: PasskeyConfiguration);
         using var scenario = new PasskeyScenario(api);
+        Guid firstPasskey = await scenario.CreateAsync(api.FirstUser, "first-private-listed");
+        Assert.IsTrue(await scenario.ListContainsAsync(api.FirstUser, firstPasskey));
+        Assert.IsFalse(
+            await scenario.ListContainsAsync(api.SecondUser, firstPasskey),
+            "The second user's passkey list shows the first user's passkey.");
         await TwoUserApiIsolationMatrix.VerifyForeignAccessAsync(scenario);
     }
 
@@ -89,9 +94,11 @@ public sealed partial class AccountResourceIsolationMatrixTests
         builder.Configuration["Strava:ClientId"] = "123";
         builder.Configuration["Strava:ClientSecret"] = "isolation-test-secret";
         // No export may reach the real Strava while the test runs; manual requests only queue a row.
-        ServiceDescriptor? worker = builder.Services.SingleOrDefault(
-            descriptor => descriptor.ImplementationType == typeof(StravaExportWorker));
-        if (worker is not null) builder.Services.Remove(worker);
+        ServiceDescriptor[] workers = builder.Services
+            .Where(descriptor => descriptor.ImplementationType == typeof(StravaExportWorker))
+            .ToArray();
+        Assert.IsNotEmpty(workers, "The StravaExportWorker registration was not found, so it could not be removed.");
+        foreach (ServiceDescriptor worker in workers) builder.Services.Remove(worker);
     }
 
     private static async Task ConnectStravaAsync(TwoUserHttpApp api, Guid user)
@@ -143,7 +150,9 @@ public sealed partial class AccountResourceIsolationMatrixTests
         private readonly Dictionary<Guid, string> credentialIds = [];
         private readonly List<SoftwarePasskeyAuthenticator> authenticators = [];
 
-        // There is no PUT endpoint for passkeys and GET reads the whole list; detail looks the id up in it.
+        // Passkeys have no detail and no update endpoint; GET only lists the caller's own passkeys.
+        public bool SupportsDetail => false;
+
         public bool SupportsUpdate => false;
 
         public async Task<Guid> CreateAsync(Guid actor, string privateMarker)
@@ -165,16 +174,16 @@ public sealed partial class AccountResourceIsolationMatrixTests
             return id;
         }
 
-        public async Task<IsolationApiResponse> DetailAsync(Guid actor, Guid id)
+        public Task<IsolationApiResponse> DetailAsync(Guid actor, Guid id) => throw new NotSupportedException();
+
+        /// <summary>Whether the actor's own passkey list, as served by the API, contains the passkey.</summary>
+        public async Task<bool> ListContainsAsync(Guid actor, Guid id)
         {
             IsolationApiResponse list = await Api.SendAsync(actor, HttpMethod.Get, "/api/v1/auth/passkeys");
             Assert.AreEqual(HttpStatusCode.OK, list.StatusCode, list.Representation);
-            PasskeySummaryResponse? found = JsonSerializer
+            return JsonSerializer
                 .Deserialize<List<PasskeySummaryResponse>>(list.Representation, TwoUserHttpApp.JsonOptions)!
-                .SingleOrDefault(passkey => passkey.Id == CredentialId(id));
-            return found is null
-                ? new IsolationApiResponse(HttpStatusCode.NotFound, string.Empty, string.Empty)
-                : new IsolationApiResponse(HttpStatusCode.OK, string.Empty, JsonSerializer.Serialize(found));
+                .Any(passkey => passkey.Id == CredentialId(id));
         }
 
         public Task<IsolationApiResponse> UpdateAsync(Guid actor, Guid id, string privateMarker) =>
