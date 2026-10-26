@@ -278,6 +278,52 @@ public sealed class CoachServiceTests
     }
 
     [TestMethod]
+    [DataRow("get_weight_summary", """{"days":"30"}""")]
+    [DataRow("get_weight_summary", """{"days":null}""")]
+    [DataRow("get_weight_summary", """{"days":30.5}""")]
+    [DataRow("get_weight_summary", """{"days":99999999999}""")]
+    [DataRow("get_recent_workouts", """{"limit":"5"}""")]
+    [DataRow("get_exercise_progress", """{"exerciseId":5,"days":30}""")]
+    [DataRow("get_exercise_progress", """{"exerciseId":"00000000-0000-0000-0000-000000000001","days":"30"}""")]
+    [DataRow("compare_periods", """{"metric":"weight_average","currentDays":true,"previousDays":30}""")]
+    public async Task ToolArgumentsOfTheWrongTypeFailAsValidationErrors(string tool, string arguments)
+    {
+        await Assert.ThrowsAsync<CoachResponseValidationException>(() => Service(new FakeProvider(
+            Response(FunctionCall("1", tool, arguments)))).AnswerAsync("Analysiere mich"));
+    }
+
+    [TestMethod]
+    [DataRow("""[]""")]
+    [DataRow(""" "text" """)]
+    [DataRow("""{"output":[{"type":7}]}""")]
+    [DataRow("""{"output":["text"]}""")]
+    [DataRow("""{"output":[{"type":"message","content":[{"type":"output_text","text":5}]}]}""")]
+    [DataRow("""{"output":[{"type":"message","content":[7]}]}""")]
+    public async Task ProviderOutputOfUnexpectedStructureFailsAsValidationError(string response)
+    {
+        await Assert.ThrowsAsync<CoachResponseValidationException>(() => Service(new FakeProvider(
+            JsonDocument.Parse(response).RootElement.Clone())).AnswerAsync("Fortschritt?"));
+    }
+
+    [TestMethod]
+    [DataRow("""{"summary":"S","observations":null,"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[],"dataGaps":null,"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[],"dataGaps":[],"suggestions":null}""")]
+    [DataRow("""{"summary":"S","observations":[],"dataGaps":[]}""")]
+    [DataRow("""{"summary":null,"observations":[],"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[null],"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[{"text":null,"factIds":[]}],"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[{"text":"x","factIds":null}],"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[{"text":"x","factIds":[null]}],"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[],"dataGaps":[null],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[],"dataGaps":[],"suggestions":[null]}""")]
+    public async Task ModelAnswersWithNullMembersFailAsValidationErrors(string answer)
+    {
+        await Assert.ThrowsAsync<CoachResponseValidationException>(() =>
+            Service(new FakeProvider(Response(Message(answer)))).AnswerAsync("Fortschritt?"));
+    }
+
+    [TestMethod]
     public async Task ComparisonPeriodEndsWhereTheCurrentPeriodBegins()
     {
         var insights = new FakeInsights();

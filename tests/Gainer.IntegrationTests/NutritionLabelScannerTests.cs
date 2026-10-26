@@ -72,6 +72,34 @@ public sealed class NutritionLabelScannerTests
     }
 
     [TestMethod]
+    [DataRow("""{}""")]
+    [DataRow("""{"output":"x"}""")]
+    [DataRow("""{"output":[{"type":"message"}]}""")]
+    [DataRow("""{"output":[{"type":"message","content":"x"}]}""")]
+    [DataRow("""{"output":[{"type":"message","content":[{"type":"output_text"}]}]}""")]
+    [DataRow("""{"output":[{"type":"message","content":[{"type":"output_text","text":5}]}]}""")]
+    [DataRow("""{"output":[{"type":7}]}""")]
+    [DataRow("""[]""")]
+    public async Task ResponsesOfUnexpectedStructureMapToInvalidProviderResponse(string response)
+    {
+        OpenAiNutritionLabelScanner scanner = Scanner(new FakeProvider(JsonDocument.Parse(response).RootElement.Clone()));
+        MealEstimationException error = await Assert.ThrowsAsync<MealEstimationException>(() =>
+            scanner.ScanAsync(new MealImageInput([1], "image/jpeg")));
+        Assert.AreEqual("invalid_provider_response", error.Code);
+    }
+
+    [TestMethod]
+    [DataRow("""{"isNutritionLabel":true,"basis":null,"servingMassGrams":null,"kilocalories":null,"kilojoules":null,"proteinGrams":null,"carbohydrateGrams":null,"fatGrams":null}""")]
+    [DataRow("""{"isNutritionLabel":true,"servingMassGrams":null,"kilocalories":null,"kilojoules":null,"proteinGrams":null,"carbohydrateGrams":null,"fatGrams":null}""")]
+    public async Task LabelPayloadsWithNullOrMissingRequiredMembersMapToInvalidProviderResponse(string payload)
+    {
+        OpenAiNutritionLabelScanner scanner = Scanner(new FakeProvider(Response(JsonDocument.Parse(payload).RootElement)));
+        MealEstimationException error = await Assert.ThrowsAsync<MealEstimationException>(() =>
+            scanner.ScanAsync(new MealImageInput([1], "image/jpeg")));
+        Assert.AreEqual("invalid_provider_response", error.Code);
+    }
+
+    [TestMethod]
     public void ServingValuesAreConvertedWithServingMassAndOtherwiseLeftOpen()
     {
         NutritionLabelScanDraft withMass = Create(NutritionLabelBasis.PerServing, 30m, kcal: 120m, protein: 3m, carbs: 18m, fat: 4m);
