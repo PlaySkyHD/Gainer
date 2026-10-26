@@ -127,23 +127,28 @@ public sealed class WorkoutSnapshotPersistenceTests
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
         Guid workoutId = Guid.NewGuid();
         Guid blockA = Guid.NewGuid(), blockB = Guid.NewGuid(), blockC = Guid.NewGuid(), blockNew = Guid.NewGuid();
-        Guid setA = Guid.NewGuid(), setB = Guid.NewGuid(), setC = Guid.NewGuid(), setNew = Guid.NewGuid();
+        Guid a1 = Guid.NewGuid(), c1 = Guid.NewGuid(), n1 = Guid.NewGuid();
+        Guid b1 = Guid.NewGuid(), b2 = Guid.NewGuid(), b3 = Guid.NewGuid(), bNew = Guid.NewGuid();
 
         WorkoutExerciseValues B(Guid id, params Guid[] setIds) => new(
             id, exerciseIds[0], "Bench", "strength", null, null,
             setIds.Select(setId => new WorkoutSetValues(setId, "normal", 100m, 8, null, null)).ToArray());
 
-        Guid setB1 = Guid.NewGuid(), setC1 = Guid.NewGuid();
         WorkoutExerciseValues[][] rounds =
         [
-            // Three blocks, the first with three sets.
-            [B(blockA, setA, setB, setC), B(blockB, setB1), B(blockC, setC1)],
+            [B(blockA, a1), B(blockB, b1, b2, b3), B(blockC, c1)],
             // Delete the first block; the others move up.
-            [B(blockB, setB1), B(blockC, setC1)],
-            // Insert a new first block and a new first set.
-            [B(blockNew, setNew, setB1), B(blockB, setA), B(blockC, setC1)],
-            // Swap blocks and sets.
-            [B(blockC, setC1), B(blockB, setA), B(blockNew, setB1, setNew)],
+            [B(blockB, b1, b2, b3), B(blockC, c1)],
+            // Insert a new first block; the others move down.
+            [B(blockNew, n1), B(blockB, b1, b2, b3), B(blockC, c1)],
+            // Swap the first and last block.
+            [B(blockC, c1), B(blockB, b1, b2, b3), B(blockNew, n1)],
+            // Within the remaining block B: delete the first set; the others move up.
+            [B(blockC, c1), B(blockB, b2, b3), B(blockNew, n1)],
+            // Insert a new first set; the others move down.
+            [B(blockC, c1), B(blockB, bNew, b2, b3), B(blockNew, n1)],
+            // Swap two sets.
+            [B(blockC, c1), B(blockB, bNew, b3, b2), B(blockNew, n1)],
         ];
 
         long version = 0;
@@ -163,8 +168,8 @@ public sealed class WorkoutSnapshotPersistenceTests
         List<WorkoutExercise> stored = await read.WorkoutExercises.AsNoTracking().OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
         CollectionAssert.AreEqual(new[] { blockC, blockB, blockNew }, stored.Select(item => item.Id).ToArray());
         List<WorkoutSet> storedSets = await read.WorkoutSets.AsNoTracking()
-            .Where(item => item.WorkoutExerciseId == blockNew).OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
-        CollectionAssert.AreEqual(new[] { setB1, setNew }, storedSets.Select(item => item.Id).ToArray());
+            .Where(item => item.WorkoutExerciseId == blockB).OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
+        CollectionAssert.AreEqual(new[] { bNew, b3, b2 }, storedSets.Select(item => item.Id).ToArray());
     }
 
     [TestMethod]
