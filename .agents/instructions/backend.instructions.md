@@ -33,6 +33,6 @@ Stack: .NET 10, ASP.NET Core mit Controllern, EF Core mit Npgsql, ASP.NET Core I
 
 ## Tests
 
-- Neues Verhalten bekommt einen Test, bevorzugt einen Integrationstest gegen Postgres (`PostgreSqlTestFixture`, Testcontainers). Aufruf: `sg docker -c 'dotnet test … --verbosity quiet'`. Nur die betroffenen Testklassen laufen lassen (`--filter`), die CI prüft den Rest.
+- Neues Verhalten bekommt einen Test, bevorzugt einen Integrationstest gegen Postgres (`PostgreSqlTestFixture`, Testcontainers). Aufruf: `sg docker -c 'dotnet test <testprojekt> --filter <klassen> --logger "console;verbosity=minimal"'`. `minimal` zeigt fehlgeschlagene Tests mit Name und Meldung; `--verbosity quiet` nicht verwenden, sonst ist ein zweiter Lauf nötig. Nur die betroffenen Testklassen laufen lassen (`--filter`), die CI prüft den Rest.
 - Datenzugriffe prüfen Nutzerisolation mit mindestens zwei Testnutzern.
 - Ein Bugfix-Test schlägt ohne den Fix fehl.
