@@ -21,6 +21,9 @@ const checkInId = 'b1234567-1234-4234-8234-123456789abc';
 const mutationId = 'c1234567-1234-4234-8234-123456789abc';
 const clientId = 'd1234567-1234-4234-8234-123456789abc';
 
+/// Mutation eines anderen Geräts; liegt nie in der lokalen Outbox.
+const foreignMutationId = 'e9234567-1234-4234-8234-123456789abc';
+
 void main() {
   late Directory directory;
   late HttpServer server;
@@ -229,12 +232,14 @@ void main() {
                 {
                   'batchId': 'e1234567-1234-4234-8234-123456789abc',
                   'revision': pullRevision,
+                  // Der Server setzt die Herkunft bei jedem Batch, auch
+                  // bei denen anderer Geräte.
                   'originMutationId':
                       activeWriter &&
                           mutationFailureCode == null &&
                           !failMutation
                       ? mutationId
-                      : null,
+                      : foreignMutationId,
                   'changes': [
                     {
                       'resourceType': pullResourceType,
@@ -432,6 +437,9 @@ void main() {
 
   test('inactive registered client still performs read-only pull and does not push', () async {
     activeWriter = false;
+    // Ein anderes Gerät ändert einen anderen Eintrag; dieselbe Ressource wäre
+    // ein Konflikt (siehe „a foreign batch keeps the pending base …“).
+    pullResourceId = 'b9234567-1234-4234-8234-123456789abc';
     final (store, database, api, repository) = await fixture();
     await store.commitMutation(
       mutationId: mutationId,
@@ -1107,32 +1115,33 @@ void main() {
     );
   });
 
-  test(
-    'a custom exercise with an unknown exercise type rejects the batch',
-    () async {
-      pullResourceType = 'CustomExercise';
-      pullResourceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-      pullSnapshot = {
-        'exerciseId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        'values': {'name': 'Neu', 'exerciseType': 'unknown'},
-        'isArchived': false,
-        'createdAtUtc': '2026-10-17T08:00:00Z',
-        'updatedAtUtc': '2026-10-17T08:00:00Z',
-      };
-      final (store, database, api, repository) = await fixture();
-      await expectLater(repository.synchronize(), throwsFormatException);
-      expect(await store.readSyncMetadata('pull-cursor'), isNull);
-      expect(
-        await store.readAggregate(
-          'custom-exercise',
-          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        ),
-        isNull,
-      );
-      api.close();
-      await database.close();
-    },
-  );
+  test('a custom exercise with an unknown exercise type rejects the batch and asks for an update', () async {
+    pullResourceType = 'CustomExercise';
+    pullResourceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    pullSnapshot = {
+      'exerciseId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'values': {'name': 'Neu', 'exerciseType': 'unknown'},
+      'isArchived': false,
+      'createdAtUtc': '2026-10-17T08:00:00Z',
+      'updatedAtUtc': '2026-10-17T08:00:00Z',
+    };
+    final (store, database, api, repository) = await fixture();
+
+    final report = await repository.synchronize();
+
+    expect(report.state, SyncRunState.upgradeRequired);
+    expect(report.pulledBatches, 0);
+    expect(await store.readSyncMetadata('pull-cursor'), isNull);
+    expect(
+      await store.readAggregate(
+        'custom-exercise',
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      ),
+      isNull,
+    );
+    api.close();
+    await database.close();
+  });
 
   const workoutAggregateId = '44444444-4444-4444-8444-444444444445';
   final workoutWorkingCopy = <String, Object?>{
@@ -1377,11 +1386,140 @@ void main() {
       expect(replacement.mutationId, replacementId);
       expect(replacement.baseVersion, 4);
       expect(replacement.clientSequence, isNull);
-      expect(replacement.dependsOnMutationId, mutationId);
+      // Die abgelehnte Mutation landet nie in den verarbeiteten Mutationen
+      // des Servers; eine Abhängigkeit darauf scheiterte immer.
+      expect(replacement.dependsOnMutationId, isNull);
+
+      mutationFailureCode = null;
+      lenientMutations = true;
+      await repository.synchronize();
+
+      final sent = receivedMutations.single;
+      expect(sent['dependsOnMutationId'], isNull);
+      expect(sent['resources'].single['baseVersion'], 4);
+      expect(await database.select(database.localConflicts).get(), isEmpty);
       api.close();
       await database.close();
     },
   );
+
+  test(
+    'a foreign batch keeps the pending base and records a visible conflict',
+    () async {
+      // Dieses Gerät schreibt nicht und ändert offline auf Basis v2; ein
+      // anderes Gerät speichert v3.
+      activeWriter = false;
+      pullVersion = 3;
+      final (store, database, api, repository) = await fixture();
+      await store.commitMutation(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
+        aggregateId: checkInId,
+        operation: LocalMutationOperation.update,
+        baseVersion: 2,
+        body: {'localDate': '2026-10-12', 'weightKg': 82.5},
+        envelope: LocalAggregateEnvelope(
+          aggregateId: checkInId,
+          serverSnapshot: {'weightKg': 80.0},
+          workingCopy: {'weightKg': 82.5},
+          serverVersion: 2,
+          optimisticVersion: 3,
+          syncState: LocalSyncState.pending,
+        ),
+      );
+
+      final report = await repository.synchronize();
+
+      expect(report.state, SyncRunState.inactiveClient);
+      final waiting = (await store.readOutbox()).single;
+      expect(waiting.baseVersion, 2);
+      expect(waiting.status, LocalMutationStatus.conflict);
+      final conflict =
+          (await database.select(database.localConflicts).get()).single;
+      expect(conflict.code, 'stale_base_version');
+      expect(conflict.conflictId, mutationId);
+      expect(jsonDecode(conflict.detailJson), {
+        'mutationId': mutationId,
+        'baseVersion': 2,
+        'knownServerVersion': 3,
+        'foreignChange': true,
+      });
+      final local = await store.readAggregate('daily-check-in', checkInId);
+      expect(local?.workingCopy, {'weightKg': 82.5});
+      expect(local?.serverVersion, 3);
+      expect(local?.syncState, LocalSyncState.conflict);
+
+      // Auch nach dem Übernehmen geht die Änderung nicht still auf v3 hinaus.
+      activeWriter = true;
+      await repository.synchronize(takeOverWriting: true);
+      expect(receivedMutations, isEmpty);
+      final infos = await store.readConflictResourceInfos();
+      expect(infos[conflict.conflictId]?.hasServerState, isTrue);
+      expect(infos[conflict.conflictId]?.canForceLocal, isTrue);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test('422 without validation_failed becomes a conflict that can only be discarded', () async {
+    mutationFailureCode = 'invalid_payload';
+    mutationFailureStatus = 422;
+    final (store, database, api, repository) = await fixture();
+    await store.commitMutation(
+      mutationId: mutationId,
+      aggregateType: 'daily-check-in',
+      aggregateId: checkInId,
+      operation: LocalMutationOperation.create,
+      baseVersion: null,
+      body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+      envelope: localEnvelope(
+        aggregateId: checkInId,
+        workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+      ),
+    );
+
+    await repository.synchronize();
+    await repository.synchronize();
+
+    expect(
+      received.where(
+        (request) => request.uri.path.startsWith('/api/v1/sync/mutations/'),
+      ),
+      hasLength(1),
+    );
+    final conflict =
+        (await database.select(database.localConflicts).get()).single;
+    expect(conflict.code, 'invalid_payload');
+    expect(conflict.aggregateId, checkInId);
+    expect(jsonDecode(conflict.detailJson)['permanent'], isTrue);
+    final waiting = (await store.readOutbox()).single;
+    expect(waiting.status, LocalMutationStatus.conflict);
+    expect(waiting.lastErrorCode, 'invalid_payload');
+
+    // Dieselben Daten scheitern erneut: weder erzwingen noch erneut senden.
+    // Der Server kennt den Eintrag nicht, „Serverstand nutzen“ verwirft ihn.
+    final info = (await store
+        .readConflictResourceInfos())[conflict.conflictId]!;
+    expect(info.canForceLocal, isFalse);
+    expect(info.canRetry, isFalse);
+    expect(info.hasServerState, isTrue);
+    await expectLater(
+      store.retryConflictOnCurrentServerVersion(
+        conflictId: conflict.conflictId,
+        replacementMutationId: 'f1234567-1234-4234-8234-123456789abc',
+        createdAtUtc: DateTime.utc(2026, 10, 12),
+      ),
+      throwsStateError,
+    );
+
+    await store.acceptConflictServerState(conflict.conflictId);
+
+    expect(await store.readOutbox(), isEmpty);
+    expect(await database.select(database.localConflicts).get(), isEmpty);
+    expect(await store.readAggregate('daily-check-in', checkInId), isNull);
+    api.close();
+    await database.close();
+  });
 
   test('second repository instance observes the durable sync lease', () async {
     final (store, database, api, repository) = await fixture();

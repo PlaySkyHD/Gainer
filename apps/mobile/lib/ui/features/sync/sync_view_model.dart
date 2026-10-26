@@ -296,6 +296,10 @@ class SyncViewModel extends ChangeNotifier {
   bool hasServerState(String conflictId) =>
       resourceInfos[conflictId]?.hasServerState ?? false;
 
+  /// Ob „Lokale Änderung erneut senden“ gelingen kann.
+  bool canRetry(String conflictId) =>
+      resourceInfos[conflictId]?.canRetry ?? false;
+
   void startSelecting() {
     if (!_canUpdate || isBusy || conflicts.isEmpty) return;
     isSelecting = true;

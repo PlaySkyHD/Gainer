@@ -225,7 +225,8 @@ void main() {
 
   test('another device writes the same day under the same id', () async {
     final dayId = waterIntakeDayId(_accountId, _day);
-    pullBatches = [batch(1, dayId, 1750, 3)];
+    // Fremde Mutation: Der Server setzt die Herkunft bei jedem Batch.
+    pullBatches = [batch(1, dayId, 1750, 3, origin: _id(0xc01))];
 
     final report = await sync.synchronize(now: DateTime.utc(2026, 10, 25, 9));
 
@@ -245,7 +246,7 @@ void main() {
   Map<String, dynamic> checkInBatch(int revision) => {
     'batchId': _id(0xa00 + revision),
     'revision': revision,
-    'originMutationId': null,
+    'originMutationId': _id(0xc00 + revision),
     'changes': [
       {
         'resourceType': 'DailyCheckIn',
@@ -286,7 +287,7 @@ void main() {
         {
           'batchId': _id(0x9ff),
           'revision': 2,
-          'originMutationId': null,
+          'originMutationId': _id(0xcff),
           'changes': [
             {
               'resourceType': 'FutureResource',

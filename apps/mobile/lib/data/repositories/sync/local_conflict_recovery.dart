@@ -53,13 +53,24 @@ extension LocalConflictRecovery on LocalSyncStore {
                     t.aggregateId.equals(conflict.aggregateId),
               ))
               .getSingleOrNull();
-      if (resource == null) {
-        throw StateError('No retained server state is available.');
+      final envelope = resource == null
+          ? null
+          : LocalAggregateEnvelope<Object?>.fromJson(
+              jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
+            );
+      if (envelope?.serverVersion == null &&
+          _isPermanentRejection(conflict.detailJson)) {
+        // Der Server kennt die Ressource nicht und lehnt sie dauerhaft ab:
+        // Sein Stand ist „nicht vorhanden“, also lokal verwerfen.
+        await _deleteLocalResource(
+          conflict.aggregateType,
+          conflict.aggregateId,
+        );
+        return;
       }
-      final envelope = LocalAggregateEnvelope<Object?>.fromJson(
-        jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
-      );
-      if (envelope.serverSnapshot == null || envelope.serverVersion == null) {
+      if (envelope == null ||
+          envelope.serverSnapshot == null ||
+          envelope.serverVersion == null) {
         throw StateError('No retained server state is available.');
       }
       final accepted = serverEnvelope(
@@ -90,6 +101,8 @@ extension LocalConflictRecovery on LocalSyncStore {
 
   /// Explicitly reapplies a local operation against the retained current
   /// server version with a fresh idempotency key. Tombstones are never revived.
+  /// The replacement keeps the queue position of the rejected row, so
+  /// [createdAtUtc] is not used for ordering.
   Future<String> retryConflictOnCurrentServerVersion({
     required String conflictId,
     required String replacementMutationId,
@@ -151,10 +164,8 @@ extension LocalConflictRecovery on LocalSyncStore {
       }
       final old = rows.first;
       // Resending the same payload cannot fix these; the user must change data first.
-      if (const {
-        'active_workout_exists',
-        'validation_failed',
-      }.contains(conflict.code)) {
+      if (_retryBlockedCodes.contains(conflict.code) ||
+          _isPermanentRejection(conflict.detailJson)) {
         throw StateError('This conflict cannot be retried automatically.');
       }
       final payload = jsonDecode(old.payloadJson) as Map<String, dynamic>;
@@ -175,10 +186,14 @@ extension LocalConflictRecovery on LocalSyncStore {
               aggregateId: old.aggregateId,
               sequence: old.sequence,
               status: LocalMutationStatus.pending.name,
-              createdAtUtc: createdAtUtc.toUtc().toIso8601String(),
+              // Wie bei [_requeueLocalState]: Zeitstempel der ersetzten Zeile,
+              // damit der Ersatz vor späteren Einträgen der Ressource bleibt.
+              createdAtUtc: old.createdAtUtc,
               payloadJson: jsonEncode(payload),
               baseVersion: Value(envelope.serverVersion),
-              dependsOnMutationId: Value(old.mutationId),
+              // Keine Abhängigkeit auf die abgelehnte Mutation: Der Server
+              // verarbeitet sie nie und lehnte den Ersatz sonst mit
+              // `dependency_not_applied` ab.
             ),
           );
       final pending = LocalAggregateEnvelope(
@@ -229,6 +244,9 @@ extension LocalConflictRecovery on LocalSyncStore {
       if (conflict == null) {
         throw StateError('Conflict is no longer available.');
       }
+      if (_isPermanentRejection(conflict.detailJson)) {
+        throw StateError('The server rejects this local state permanently.');
+      }
       await _requeueLocalState(
         conflict.aggregateType,
         conflict.aggregateId,
@@ -268,27 +286,34 @@ extension LocalConflictRecovery on LocalSyncStore {
     String aggregateId,
   ) async {
     await ensureAccountBound();
-    await database.transaction(() async {
-      await (database.delete(database.localOutbox)..where(
-            (t) =>
-                t.accountId.equals(accountId) &
-                t.aggregateType.equals(aggregateType) &
-                t.aggregateId.equals(aggregateId),
-          ))
-          .go();
-      await (database.delete(database.localConflicts)..where(
-            (t) =>
-                t.aggregateType.equals(aggregateType) &
-                t.aggregateId.equals(aggregateId),
-          ))
-          .go();
-      await (database.delete(database.localResources)..where(
-            (t) =>
-                t.aggregateType.equals(aggregateType) &
-                t.aggregateId.equals(aggregateId),
-          ))
-          .go();
-    });
+    await database.transaction(
+      () => _deleteLocalResource(aggregateType, aggregateId),
+    );
+  }
+
+  Future<void> _deleteLocalResource(
+    String aggregateType,
+    String aggregateId,
+  ) async {
+    await (database.delete(database.localOutbox)..where(
+          (t) =>
+              t.accountId.equals(accountId) &
+              t.aggregateType.equals(aggregateType) &
+              t.aggregateId.equals(aggregateId),
+        ))
+        .go();
+    await (database.delete(database.localConflicts)..where(
+          (t) =>
+              t.aggregateType.equals(aggregateType) &
+              t.aggregateId.equals(aggregateId),
+        ))
+        .go();
+    await (database.delete(database.localResources)..where(
+          (t) =>
+              t.aggregateType.equals(aggregateType) &
+              t.aggregateId.equals(aggregateId),
+        ))
+        .go();
   }
 
   Future<void> _requeueLocalState(
@@ -432,19 +457,29 @@ extension LocalConflictRecovery on LocalSyncStore {
                 null
           : false;
       final rows = await _outboxRows(type, conflict.aggregateId);
+      final permanent = _isPermanentRejection(conflict.detailJson);
+      final hasServerCopy =
+          envelope?.serverSnapshot != null && envelope?.serverVersion != null;
       result[conflict.conflictId] = ConflictResourceInfo(
         title: envelope == null
             ? null
             : _resourceTitle(type, envelope.workingCopy),
         hasServerState:
             hasTombstone ||
-            (envelope?.serverSnapshot != null &&
-                envelope?.serverVersion != null),
+            hasServerCopy ||
+            (permanent && envelope?.serverVersion == null),
         canForceLocal:
+            !permanent &&
             envelope != null &&
             !hasTombstone &&
             forceableAggregateTypes.contains(type) &&
             !rows.map(_operationOf).any(_spansResources),
+        canRetry:
+            !permanent &&
+            !hasTombstone &&
+            envelope?.serverVersion != null &&
+            rows.isNotEmpty &&
+            !_retryBlockedCodes.contains(conflict.code),
         firstQueuedAtUtc: rows.isEmpty
             ? null
             : DateTime.parse(rows.first.createdAtUtc).toUtc(),
@@ -468,6 +503,20 @@ extension LocalConflictRecovery on LocalSyncStore {
             ..orderBy([(t) => OrderingTerm.asc(t.sequence)]))
           .get();
 }
+
+/// Kennzeichen im Konfliktdetail: Der Server lehnt diesen Stand dauerhaft ab
+/// (422 außer `validation_failed`). Erneut senden oder erzwingen scheitert
+/// genauso; möglich ist nur der Serverstand bzw. das Verwerfen.
+const permanentRejectionDetailKey = 'permanent';
+
+bool _isPermanentRejection(String detailJson) {
+  final detail = jsonDecode(detailJson);
+  return detail is Map && detail[permanentRejectionDetailKey] == true;
+}
+
+/// Erneutes Senden derselben Nutzlast behebt diese Codes nicht; der Nutzer
+/// muss die Daten zuerst ändern.
+const _retryBlockedCodes = {'active_workout_exists', 'validation_failed'};
 
 /// Lokaler Typ der Tagesvorlagen.
 const nutritionDayTemplateType = 'nutrition-day-template';
@@ -498,15 +547,21 @@ class ConflictResourceInfo {
     required this.canForceLocal,
     required this.firstQueuedAtUtc,
     required this.firstSequence,
+    this.canRetry = false,
   });
 
   /// Anzeigename aus der Arbeitskopie, `null` ohne lokale Kopie.
   final String? title;
 
-  /// Serverkopie oder Löschmarke vorhanden; nur dann ist „Serverstand nutzen“
-  /// möglich.
+  /// Serverkopie oder Löschmarke vorhanden, oder der Server kennt die
+  /// Ressource nach einer dauerhaften Ablehnung nicht; nur dann ist
+  /// „Serverstand nutzen“ möglich (im letzten Fall: lokal verwerfen).
   final bool hasServerState;
   final bool canForceLocal;
+
+  /// „Lokale Änderung erneut senden“ kann gelingen: Es gibt eine aktuelle
+  /// Serverversion, und die Ablehnung hängt nicht an den Daten selbst.
+  final bool canRetry;
 
   /// Alter und Sequenz der ersten wartenden Änderung (Sendereihenfolge).
   final DateTime? firstQueuedAtUtc;
