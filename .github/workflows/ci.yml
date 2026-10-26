@@ -114,7 +114,11 @@ jobs:
       - name: Smoke-test the API edge proxy
         shell: bash
         run: |
-          docker run --rm -d --name gainer-edge-smoke-test -e GAINER_SITE_ADDRESS=:80 -p 127.0.0.1:18081:80 gainer-edge:local
+          # Same runtime restrictions as deploy/compose.yaml.
+          docker run --rm -d --name gainer-edge-smoke-test -e GAINER_SITE_ADDRESS=:80 -p 127.0.0.1:18081:80 \
+            --read-only --security-opt no-new-privileges:true \
+            --tmpfs /tmp --tmpfs /data:uid=65532,gid=65532 --tmpfs /config:uid=65532,gid=65532 \
+            gainer-edge:local
           trap 'docker stop gainer-edge-smoke-test' EXIT
           for _attempt in {1..20}; do
             curl --silent --output /dev/null http://127.0.0.1:18081/ && break
