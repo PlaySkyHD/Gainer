@@ -65,12 +65,19 @@ class ExerciseEditorViewModel extends ChangeNotifier {
   /// die Kategorien der Übung löschen und die Rückfrage beim Typwechsel
   /// überspringen.
   bool isLoaded = false;
+
+  /// True, wenn das letzte [load] gescheitert ist.
+  bool loadFailed = false;
   bool isSaving = false;
   String? errorMessage;
   Map<String, String> fieldErrors = const {};
   bool _disposed = false;
 
   bool get isNew => exercise == null;
+
+  /// Eine neue Übung hat nichts, das ein Speichern ohne Ladestand verlieren
+  /// könnte. Eine bestehende braucht ihre Kategorien und den Verwendungsstand.
+  bool get canSave => isNew || isLoaded;
   bool get isBase => exercise?.isBase ?? false;
   bool get isArchived => exercise?.isArchived ?? false;
 
@@ -81,6 +88,8 @@ class ExerciseEditorViewModel extends ChangeNotifier {
   Future<void> load() async {
     if (_disposed) return;
     isLoading = true;
+    loadFailed = false;
+    errorMessage = null;
     _notify();
     try {
       final loadedCategories = await repository.readCategories();
@@ -102,7 +111,10 @@ class ExerciseEditorViewModel extends ChangeNotifier {
       errorMessage = null;
       isLoaded = true;
     } catch (_) {
-      if (!_disposed) errorMessage = 'Die Übung konnte nicht geladen werden.';
+      if (!_disposed) {
+        loadFailed = true;
+        errorMessage = 'Die Übung konnte nicht geladen werden.';
+      }
     } finally {
       if (!_disposed) {
         isLoading = false;
@@ -165,10 +177,10 @@ class ExerciseEditorViewModel extends ChangeNotifier {
   /// Speichert die Übung. Liefert true bei Erfolg; sonst stehen Fehler in
   /// [fieldErrors] oder [errorMessage].
   Future<bool> save(ExerciseEditorInput input) async {
-    if (!isLoaded) {
+    if (!canSave) {
       _setErrors(
         const {},
-        'Die Übung konnte nicht geladen werden. Bitte den Editor erneut öffnen.',
+        'Die Übung konnte nicht geladen werden. Lade sie erneut, bevor du speicherst.',
       );
       return false;
     }

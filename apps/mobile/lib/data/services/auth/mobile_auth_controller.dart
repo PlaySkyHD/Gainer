@@ -626,8 +626,20 @@ class MobileAuthController extends ChangeNotifier
     ),
   );
 
+  /// Läuft vor dem Entsorgen eines offenen Kontos. Die App schließt hier die
+  /// Vollbilder im Root-Navigator, die sonst gegen den entsorgten Scope
+  /// bauen und ihn beim Schließen noch ansprechen würden.
+  Future<void> Function()? beforeAccountClose;
+
   Future<void> _closeCurrentAccount({bool closeApi = true}) async {
     final current = account;
+    if (current != null) {
+      try {
+        await beforeAccountClose?.call();
+      } catch (_) {
+        // Das Schließen der Oberfläche darf das Abmelden nicht verhindern.
+      }
+    }
     account = null;
     _sessionGeneration++;
     if (current != null) await current.dispose(closeApi: closeApi);

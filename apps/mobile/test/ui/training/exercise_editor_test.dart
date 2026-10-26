@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/training/training_log_repository.dart';
 import 'package:gainer_mobile/domain/models/training/exercise_catalog_model.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
@@ -9,6 +10,22 @@ import 'package:gainer_mobile/ui/features/training/exercise_editor_view_model.da
 import 'exercise_catalog_test_support.dart';
 import 'training_plans_test_support.dart';
 import 'training_test_support.dart';
+
+/// Repository, dessen Kategorien beim ersten Laden scheitern.
+class _FlakyRepository extends TrainingLogRepository {
+  _FlakyRepository(CatalogHarness harness)
+    : super(store: harness.store, catalog: harness.repository.catalog);
+
+  bool failing = true;
+
+  @override
+  Future<List<CatalogCategory>> readCategories({
+    bool includeArchived = false,
+  }) async {
+    if (failing) throw StateError('offline');
+    return super.readCategories(includeArchived: includeArchived);
+  }
+}
 
 Future<CatalogHarness> _harness(WidgetTester tester) async {
   final harness = await tester.runAsync(CatalogHarness.create);
@@ -171,6 +188,50 @@ void main() {
     );
     expect(saved, isFalse);
     expect(viewModel.errorMessage, isNotNull);
+  });
+
+  test('eine neue Übung lässt sich auch nach Ladefehler speichern', () async {
+    final harness = await CatalogHarness.create();
+    addTearDown(harness.dispose);
+    final flaky = _FlakyRepository(harness);
+    final viewModel = ExerciseEditorViewModel(repository: flaky);
+    addTearDown(viewModel.dispose);
+
+    await viewModel.load();
+    expect(viewModel.loadFailed, isTrue);
+    expect(viewModel.canSave, isTrue);
+
+    final saved = await viewModel.save(
+      const ExerciseEditorInput(
+        name: 'Landmine Press',
+        kind: ExerciseKind.strength,
+        categoryIds: [],
+      ),
+    );
+    expect(saved, isTrue);
+  });
+
+  test('Erneut laden hebt die Sperre einer bestehenden Übung auf', () async {
+    final harness = await CatalogHarness.create();
+    addTearDown(harness.dispose);
+    final exercise = await seedOwnExercise(harness, name: 'Ausfallschritt');
+    final flaky = _FlakyRepository(harness);
+    final viewModel = ExerciseEditorViewModel(
+      repository: flaky,
+      exercise: exercise,
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.load();
+    expect(viewModel.loadFailed, isTrue);
+    expect(viewModel.canSave, isFalse);
+
+    flaky.failing = false;
+    await viewModel.load();
+
+    expect(viewModel.loadFailed, isFalse);
+    expect(viewModel.errorMessage, isNull);
+    expect(viewModel.canSave, isTrue);
   });
 
   testWidgets('Körpergewicht 64 % wird als Faktor 0,64 gespeichert', (
