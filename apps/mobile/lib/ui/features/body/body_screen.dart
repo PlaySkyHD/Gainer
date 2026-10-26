@@ -85,9 +85,15 @@ class _BodyScreenState extends State<BodyScreen> {
   /// Öffnet den Check-in eines Tages, den der Kalender angefordert hat. Nach
   /// dem Frame, damit der Tab-Wechsel zuerst sichtbar ist.
   void _onCheckInRequest() {
-    if (widget.viewModel.requestedCheckInDate == null || _editorOpen) return;
+    // Die Anfrage bleibt stehen, bis der Stand geladen ist; der Listener
+    // läuft dann erneut.
+    if (widget.viewModel.requestedCheckInDate == null ||
+        widget.viewModel.snapshot == null ||
+        _editorOpen) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || _editorOpen) return;
+      if (!mounted || _editorOpen || widget.viewModel.snapshot == null) return;
       final date = DateTime.tryParse(
         widget.viewModel.takeCheckInRequest() ?? '',
       );
@@ -116,7 +122,10 @@ class _BodyScreenState extends State<BodyScreen> {
             key: const ValueKey('body-open-checkin'),
             icon: CupertinoIcons.add,
             semanticLabel: 'Check-in eintragen',
-            onPressed: model.isSaving ? null : () => _openCheckIn(model),
+            // Ohne geladenen Stand ist der bestehende Check-in unbekannt.
+            onPressed: model.isSaving || model.snapshot == null
+                ? null
+                : () => _openCheckIn(model),
           ),
         ],
         children: [

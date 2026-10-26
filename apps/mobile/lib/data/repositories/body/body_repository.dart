@@ -397,6 +397,11 @@ class BodyRepository {
     );
     final id = existing?.aggregateId ?? ids();
     final prior = existing == null ? null : _map(existing.workingCopy);
+    // Kalorien, Makros, Schritte, Schlaf: null heißt „nicht übergeben“, der
+    // Wert des gespeicherten Check-ins bleibt. Ein Löschen einzelner Werte
+    // gibt es im Check-in nicht (Nutzer ändern nur Gewicht und Schlaf); das
+    // Zusammenführen liegt hier, damit ein veralteter Stand in der Oberfläche
+    // neuere Werte (Sync, Health-Schritte) nie überschreibt.
     // Ruhewerte: ein wartender Wert des Tages (neuere Messung) gewinnt, sonst
     // der übergebene, sonst der bisherige Wert des Check-ins.
     final pending = await _readPending();
@@ -404,12 +409,16 @@ class BodyRepository {
     final checkIn = DailyCheckIn(
       localDate: localDate,
       weightKg: weightKg,
-      caloriesKcal: caloriesKcal,
-      proteinGrams: proteinGrams,
-      carbohydrateGrams: carbohydrateGrams,
-      fatGrams: fatGrams,
-      steps: steps,
-      sleepMinutes: sleepMinutes,
+      caloriesKcal:
+          caloriesKcal ?? (prior?['caloriesKcal'] as num?)?.toDouble(),
+      proteinGrams:
+          proteinGrams ?? (prior?['proteinGrams'] as num?)?.toDouble(),
+      carbohydrateGrams:
+          carbohydrateGrams ??
+          (prior?['carbohydrateGrams'] as num?)?.toDouble(),
+      fatGrams: fatGrams ?? (prior?['fatGrams'] as num?)?.toDouble(),
+      steps: steps ?? (prior?['steps'] as num?)?.toInt(),
+      sleepMinutes: sleepMinutes ?? (prior?['sleepMinutes'] as num?)?.toInt(),
       restingHeartRateBpm:
           waiting?.heartRate ??
           restingHeartRateBpm ??
