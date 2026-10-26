@@ -179,7 +179,8 @@ class NutritionLabelScanDraft {
 
   NutritionTotals? get confirmedPer100Grams {
     final kcal = kilocalories.per100Grams;
-    if (!canConfirm || kcal == null || !kcal.isFinite || kcal <= 0) return null;
+    // 0 kcal ist gültig (z. B. Mineralwasser); fehlende Energie ist null.
+    if (!canConfirm || kcal == null || !kcal.isFinite || kcal < 0) return null;
     return NutritionTotals(
       kilocalories: kcal,
       proteinGrams: proteinGrams.per100Grams,
