@@ -11,7 +11,8 @@ namespace Gainer.Infrastructure.Catalog;
 public sealed class OpenFoodFactsCatalogState(IOptions<OpenFoodFactsOptions> options, TimeProvider timeProvider)
 {
     private readonly ConcurrentDictionary<string, CacheEntry> cache = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, Lazy<Task<object>>> inFlight = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SharedCall> inFlight = new(StringComparer.Ordinal);
+    private readonly object gate = new();
 
     internal RequestBudget BarcodeBudget { get; } = new(options.Value.BarcodeRequestsPerMinute, timeProvider);
 
@@ -43,24 +44,68 @@ public sealed class OpenFoodFactsCatalogState(IOptions<OpenFoodFactsOptions> opt
     }
 
     /// <summary>
-    /// Runs <paramref name="factory"/> once for concurrent callers with the same key. The shared call must not
-    /// depend on one caller's token; each caller only stops waiting when its own token is cancelled.
+    /// Runs <paramref name="factory"/> once for concurrent callers with the same key. The shared call gets its own
+    /// token: a caller whose token is cancelled only stops waiting, and the call is cancelled once every waiter is gone.
+    /// The key is freed when the call ends or is abandoned, so a later caller never joins a cancelled call.
     /// </summary>
-    internal async Task<T> DeduplicateAsync<T>(string key, Func<Task<T>> factory, CancellationToken cancellationToken) where T : class
+    internal async Task<T> DeduplicateAsync<T>(string key, Func<CancellationToken, Task<T>> factory, CancellationToken cancellationToken) where T : class
     {
-        Lazy<Task<object>> lazy = inFlight.GetOrAdd(key, _ => new Lazy<Task<object>>(async () => await factory(), LazyThreadSafetyMode.ExecutionAndPublication));
-        Task<object> shared = lazy.Value;
-        // Free the key when the shared call ends, not when one waiter gives up; otherwise the next caller starts a duplicate request.
-        _ = shared.ContinueWith(
-            task =>
+        SharedCall call;
+        lock (gate)
+        {
+            if (!inFlight.TryGetValue(key, out call!))
             {
-                _ = task.Exception; // observed by the waiters; marked here so a call nobody waits for raises no unobserved exception
-                ((ICollection<KeyValuePair<string, Lazy<Task<object>>>>)inFlight).Remove(new(key, lazy));
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-        return (T)await shared.WaitAsync(cancellationToken);
+                call = new SharedCall();
+                inFlight[key] = call;
+                call.Task = RunAsync(key, call, factory);
+            }
+            call.Waiters++;
+        }
+        try
+        {
+            return (T)await call.Task.WaitAsync(cancellationToken);
+        }
+        finally
+        {
+            bool abandoned;
+            lock (gate)
+            {
+                abandoned = --call.Waiters == 0 && !call.Task.IsCompleted;
+                if (abandoned) Release(key, call);
+            }
+            if (abandoned)
+            {
+                // Outside the lock: cancellation callbacks run synchronously.
+                try { call.Cancellation.Cancel(); }
+                catch (ObjectDisposedException) { } // the call finished in the meantime
+                _ = call.Task.ContinueWith(static task => task.Exception, TaskScheduler.Default); // nobody awaits it any more
+            }
+        }
+    }
+
+    private async Task<object> RunAsync<T>(string key, SharedCall call, Func<CancellationToken, Task<T>> factory) where T : class
+    {
+        try
+        {
+            return await factory(call.Cancellation.Token);
+        }
+        finally
+        {
+            lock (gate) Release(key, call);
+            call.Cancellation.Dispose();
+        }
+    }
+
+    private void Release(string key, SharedCall call)
+    {
+        if (inFlight.TryGetValue(key, out SharedCall? current) && ReferenceEquals(current, call)) inFlight.Remove(key);
+    }
+
+    private sealed class SharedCall
+    {
+        public CancellationTokenSource Cancellation { get; } = new();
+        public Task<object> Task { get; set; } = null!;
+        public int Waiters { get; set; }
     }
 
     private sealed record CacheEntry(object Value, DateTimeOffset FreshUntil, DateTimeOffset StaleUntil);

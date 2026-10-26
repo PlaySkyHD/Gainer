@@ -45,13 +45,13 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
         if (state.TryFresh(key, now, out FoodCatalogProduct? cached)) return cached;
         try
         {
-            // The call is shared by all concurrent callers of this key, so it only obeys its own timeout.
-            return await state.DeduplicateAsync(key, async () =>
+            // The call is shared by all concurrent callers of this key; it is cancelled only when all of them give up.
+            return await state.DeduplicateAsync(key, async sharedToken =>
             {
                 if (!state.BarcodeBudget.TryAcquire()) throw Temporary("provider_rate_limited", "The food catalog request budget is exhausted.", 429);
                 using JsonDocument document = await SendAsync(
                     $"api/v3/product/{Uri.EscapeDataString(normalized)}.json?fields={ProductFields}",
-                    CancellationToken.None);
+                    sharedToken);
                 FoodCatalogProduct product = ParseProductEnvelope(document.RootElement, normalized, now.UtcDateTime);
                 state.Store(
                     key,
@@ -77,12 +77,12 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
         string key = $"search:{normalized.ToUpperInvariant()}:{page}:{pageSize}";
         DateTimeOffset now = timeProvider.GetUtcNow();
         if (state.TryFresh(key, now, out FoodCatalogSearchResult? cached)) return Task.FromResult(cached);
-        return state.DeduplicateAsync(key, async () =>
+        return state.DeduplicateAsync(key, async sharedToken =>
         {
             if (!state.SearchBudget.TryAcquire()) throw Temporary("provider_rate_limited", "The food catalog search budget is exhausted.", 429);
             string path = "cgi/search.pl?search_simple=1&action=process&json=1" +
                 $"&search_terms={Uri.EscapeDataString(normalized)}&page={page}&page_size={pageSize}&fields={ProductFields}";
-            using JsonDocument document = await SendAsync(path, CancellationToken.None);
+            using JsonDocument document = await SendAsync(path, sharedToken);
             FoodCatalogSearchResult result = ParseSearch(document.RootElement, page, pageSize, now.UtcDateTime);
             state.Store(key, result, now.AddMinutes(settings.SearchCacheMinutes), now.AddMinutes(settings.SearchCacheMinutes));
             return result;

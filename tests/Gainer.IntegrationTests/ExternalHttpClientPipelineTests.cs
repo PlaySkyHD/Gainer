@@ -3,11 +3,14 @@ using System.Text;
 using System.Text.Json;
 using Gainer.Core.Coach;
 using Gainer.Core.Nutrition;
+using Gainer.Infrastructure.Integrations;
 using Gainer.Infrastructure.Persistence;
 using Gainer.ServiceDefaults;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Http.Resilience;
+using Microsoft.Extensions.Options;
 using Polly.CircuitBreaker;
 using Polly.Timeout;
 
@@ -34,22 +37,37 @@ public sealed class ExternalHttpClientPipelineTests
     }
 
     [TestMethod]
-    public async Task OpenAiRequestMayTakeLongerThanTheDefaultAttemptTimeout()
+    [DataRow(nameof(IOpenAiResponsesProvider), "OpenAI:TimeoutSeconds", 60)]
+    [DataRow(nameof(IStravaApiClient), "Strava:TimeoutSeconds", 90)]
+    [DataRow(nameof(IExternalFoodCatalog), "OpenFoodFacts:TimeoutSeconds", 20)]
+    public async Task ProviderClientsAllowTheirConfiguredTimeout(string clientName, string settingKey, int seconds)
     {
-        var handler = new CountingHandler(
-            _ => new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("{\"id\":\"resp_test\",\"output\":[]}", Encoding.UTF8, "application/json"),
-            },
-            delay: TimeSpan.FromSeconds(11));
-        await using ServiceProvider services = BuildServices(handler, ("OpenAI:TimeoutSeconds", "60"));
+        await using ServiceProvider services = BuildServices(
+            new CountingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            (settingKey, seconds.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+
+        HttpStandardResilienceOptions options = services
+            .GetRequiredService<IOptionsMonitor<HttpStandardResilienceOptions>>()
+            .Get($"{clientName}-standard");
+
+        Assert.IsTrue(options.AttemptTimeout.Timeout >= TimeSpan.FromSeconds(seconds));
+        Assert.IsTrue(options.TotalRequestTimeout.Timeout >= TimeSpan.FromSeconds(seconds));
+        Assert.IsTrue(options.CircuitBreaker.SamplingDuration >= options.AttemptTimeout.Timeout * 2);
+        Assert.AreEqual(Timeout.InfiniteTimeSpan, services.GetRequiredService<IHttpClientFactory>().CreateClient(clientName).Timeout);
+    }
+
+    [TestMethod]
+    public async Task OpenFoodFactsServerErrorIsNotRepeated()
+    {
+        var handler = new CountingHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        await using ServiceProvider services = BuildServices(handler);
         using IServiceScope scope = services.CreateScope();
-        IOpenAiResponsesProvider provider = scope.ServiceProvider.GetRequiredService<IOpenAiResponsesProvider>();
 
-        JsonElement response = await provider.CreateResponseAsync(EmptyRequest);
+        FoodCatalogException exception = await Assert.ThrowsAsync<FoodCatalogException>(() =>
+            scope.ServiceProvider.GetRequiredService<IExternalFoodCatalog>().GetByBarcodeAsync("12345678"));
 
-        Assert.AreEqual("resp_test", response.GetProperty("id").GetString());
-        Assert.AreEqual(1, handler.Calls);
+        Assert.AreEqual("provider_unavailable", exception.Code);
+        Assert.AreEqual(1, handler.Calls, "One budget slot must cost one HTTP request.");
     }
 
     [TestMethod]

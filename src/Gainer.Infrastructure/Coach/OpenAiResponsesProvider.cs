@@ -52,11 +52,8 @@ public sealed class OpenAiResponsesProvider(
             LogUsage(document.RootElement);
             return document.RootElement.Clone();
         }
-        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new OpenAiProviderException("provider_timeout", "The AI provider timed out.", innerException: exception);
-        }
-        catch (TimeoutRejectedException exception)
+        catch (Exception exception) when (exception is TimeoutRejectedException ||
+            (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             throw new OpenAiProviderException("provider_timeout", "The AI provider timed out.", innerException: exception);
         }

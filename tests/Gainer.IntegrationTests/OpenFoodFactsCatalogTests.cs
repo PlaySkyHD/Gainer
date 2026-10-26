@@ -182,6 +182,74 @@ public sealed class OpenFoodFactsCatalogTests
         Assert.AreEqual("provider_timeout", timeout.Code);
     }
 
+    [TestMethod]
+    public async Task SharedLookupSurvivesOneWaiterLeavingAndFreesTheKeyAtTheEnd()
+    {
+        var handler = new GateHandler(Response(HttpStatusCode.OK, Product()));
+        OpenFoodFactsCatalog catalog = Create(handler);
+        using var leaver = new CancellationTokenSource();
+
+        Task<FoodCatalogProduct> leaving = catalog.GetByBarcodeAsync("12345678", leaver.Token);
+        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task<FoodCatalogProduct> staying = catalog.GetByBarcodeAsync("12345678");
+        await leaver.CancelAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => leaving);
+
+        Task<FoodCatalogProduct> joining = catalog.GetByBarcodeAsync("12345678");
+        Assert.IsFalse(handler.UpstreamCancelled.Task.IsCompleted, "One remaining waiter keeps the shared call alive.");
+        handler.Release();
+
+        Assert.AreEqual("Test product", (await staying).ProductName);
+        Assert.AreEqual("Test product", (await joining).ProductName);
+        Assert.AreEqual(1, handler.Calls, "Waiters share one upstream request.");
+    }
+
+    [TestMethod]
+    public async Task SharedLookupIsCancelledWhenEveryWaiterLeaves()
+    {
+        var handler = new GateHandler(Response(HttpStatusCode.OK, Product()));
+        OpenFoodFactsCatalog catalog = Create(handler);
+        using var first = new CancellationTokenSource();
+        using var second = new CancellationTokenSource();
+
+        Task<FoodCatalogProduct> a = catalog.GetByBarcodeAsync("12345678", first.Token);
+        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task<FoodCatalogProduct> b = catalog.GetByBarcodeAsync("12345678", second.Token);
+        await first.CancelAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => a);
+        Assert.IsFalse(handler.UpstreamCancelled.Task.IsCompleted);
+        await second.CancelAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => b);
+
+        await handler.UpstreamCancelled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private sealed class GateHandler(HttpResponseMessage response) : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int calls;
+        public int Calls => Volatile.Read(ref calls);
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource UpstreamCancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Release() => released.TrySetResult();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref calls);
+            Started.TrySetResult();
+            try
+            {
+                await released.Task.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                UpstreamCancelled.TrySetResult();
+                throw;
+            }
+            return response;
+        }
+    }
+
     private static OpenFoodFactsCatalog Create(
         HttpMessageHandler handler,
         TimeProvider? time = null,

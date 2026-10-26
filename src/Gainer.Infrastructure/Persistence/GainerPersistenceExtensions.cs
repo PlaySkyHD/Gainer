@@ -12,6 +12,7 @@ using Gainer.Infrastructure.Integrations;
 using Gainer.Core.Integrations;
 using Gainer.Infrastructure.Training;
 using Gainer.Infrastructure.Catalog;
+using Gainer.Infrastructure.Http;
 using Gainer.Infrastructure.Nutrition;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -83,7 +84,8 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<IMuscleSuggester, OpenAiMuscleSuggester>();
         builder.Services.Configure<OpenFoodFactsOptions>(builder.Configuration.GetSection(OpenFoodFactsOptions.SectionName));
         builder.Services.TryAddSingleton<OpenFoodFactsCatalogState>();
-        builder.Services.AddHttpClient<IExternalFoodCatalog, OpenFoodFactsCatalog>();
+        builder.Services.AddHttpClient<IExternalFoodCatalog, OpenFoodFactsCatalog>()
+            .AddProviderResilience(static services => services.GetRequiredService<IOptions<OpenFoodFactsOptions>>().Value.TimeoutSeconds);
         builder.Services.AddScoped<IChangeCollector, ChangeCollector>();
         builder.Services.TryAddScoped<BackgroundUserScope>();
         builder.Services.Configure<StravaOptions>(builder.Configuration.GetSection(StravaOptions.SectionName));
