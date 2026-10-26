@@ -148,8 +148,21 @@ jobs:
       - name: Reject incompatible OpenAPI changes
         shell: pwsh
         env:
-          OPENAPI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: ./scripts/Test-OpenApiCompatibility.ps1 -BaseRef $env:OPENAPI_BASE_SHA
+          OPENAPI_PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          # pull_request.base.sha is frozen when the PR is opened or pushed and can predate
+          # the current main. The checked-out merge ref already contains the current main as
+          # its first parent, so compare against that (full history via fetch-depth: 0).
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+              $parents = @((git rev-list --parents -n 1 HEAD) -split ' ')
+              if ($LASTEXITCODE -ne 0 -or $parents.Count -ne 3) { throw "HEAD is not the pull request merge commit." }
+              $baseSha = $parents[1]
+          }
+          else {
+              # push: github.event.before (all zeros for a new branch; the script then skips).
+              $baseSha = $env:OPENAPI_PUSH_BEFORE_SHA
+          }
+          ./scripts/Test-OpenApiCompatibility.ps1 -BaseRef $baseSha
 
       - name: Upload test reports
         if: ${{ !cancelled() }}

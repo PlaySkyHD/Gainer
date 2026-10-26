@@ -40,6 +40,7 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 ## 4. CI, PRs und Deploy
 
 - **Basis eines PRs umhängen startet keine Checks.** Nach `base`-Wechsel `main` in den Branch mergen und pushen.
+- **Die OpenAPI-Prüfung vergleicht gegen den ersten Elternteil des Merge-Refs** (`git rev-parse HEAD^1`, also den `main`-Stand beim Erzeugen des Merge-Refs), nicht gegen `pull_request.base.sha`. `accepted-breaking-changes.json` erst leeren, wenn alle offenen PRs `main` nach dem Vertragsbruch enthalten. Ein Re-Run desselben Laufs nutzt den alten Merge-Commit und bleibt veraltet; dann einen neuen Lauf auslösen (Push oder `main` in den Branch mergen).
 - **`gh pr edit` und `gh issue view` scheitern hier** mit einem GraphQL-Fehler zu „Projects (classic)“ (gh 2.46.0). Stattdessen REST nutzen: lesen mit `gh api repos/PlaySkyHD/Gainer/issues/<n> --jq .body`, ändern mit `gh api -X PATCH repos/PlaySkyHD/Gainer/pulls/<n> -F body=@<datei>` (oder `-f title=...`).
 - **Simulator-Timeouts** („Insufficient internal simulator boot phase budget“) sind Infrastruktur. Den fehlgeschlagenen Job neu starten (`gh run rerun <id> --failed`), keinen Code ändern.
 - **Deploy sofort auslösen, nicht in einem Warte-Befehl verketten.** Hintergrundbefehle sterben, wenn die Sitzung endet. Nach dem Merge direkt `gh workflow run mobile.yml --ref main -f build_signed_ipa=false -f upload_testflight=true` ausführen und mit `gh run list` bestätigen, dass der Lauf existiert.
