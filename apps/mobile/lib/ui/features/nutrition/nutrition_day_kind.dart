@@ -34,6 +34,9 @@ class NutritionDayKindChip extends StatelessWidget {
     return Semantics(
       container: true,
       button: onTap != null,
+      // Ohne eigene Aktion bliebe der Chip für VoiceOver ein Knopf ohne Wirkung,
+      // weil excludeSemantics die Geste des GestureDetector verbirgt.
+      onTap: onTap,
       label:
           'Tagesart: ${dayKindLabel(kind)}'
           '${manual ? ', manuell festgelegt' : ''}. Ändern',

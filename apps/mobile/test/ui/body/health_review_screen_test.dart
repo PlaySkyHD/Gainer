@@ -189,11 +189,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(viewModel.review, isNotNull);
       await tester.scrollUntilVisible(
-        find.text('71.50 kg'),
+        find.text('71,5 kg'),
         240,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.text('71.50 kg'), findsOneWidget);
+      expect(find.text('71,5 kg'), findsOneWidget);
       final switches = find.byType(CupertinoSwitch);
       expect(switches, findsNWidgets(2));
       await tester.tap(switches.at(1));

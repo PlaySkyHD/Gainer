@@ -43,7 +43,7 @@ void main() {
     expect(find.text('Bankdrücken'), findsOneWidget);
     expect(find.text('Geheimübung'), findsNothing);
     expect(find.text('1RM 128,3 kg'), findsOneWidget);
-    expect(find.text('1RM 70,0 kg'), findsOneWidget);
+    expect(find.text('1RM 70 kg'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('Kniebeuge')).dy,
       lessThan(tester.getTopLeft(find.text('Bankdrücken')).dy),

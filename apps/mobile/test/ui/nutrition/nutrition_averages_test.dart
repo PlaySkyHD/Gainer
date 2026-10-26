@@ -212,6 +212,26 @@ void main() {
     expect(find.textContaining('Ziel Ø'), findsNothing);
   });
 
+  testWidgets('text scale just below the stack threshold does not overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 1480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = await seededRepository();
+    final overview = await repository.readAverages(today);
+    await tester.pumpWidget(
+      app(
+        CupertinoPageScaffold(
+          child: NutritionAveragesSheet(overview: overview),
+        ),
+        textScale: 1.4,
+      ),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('text scale 2 does not overflow', (tester) async {
     tester.view.physicalSize = const Size(390, 1480);
     tester.view.devicePixelRatio = 1;

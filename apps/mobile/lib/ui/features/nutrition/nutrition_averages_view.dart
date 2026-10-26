@@ -272,6 +272,7 @@ class _MacroRow extends StatelessWidget {
     );
     final valueText = Text(
       value,
+      textAlign: TextAlign.right,
       style: GainerTypography.value.copyWith(color: colors.secondaryText),
     );
     return Semantics(
@@ -291,7 +292,11 @@ class _MacroRow extends StatelessWidget {
                 )
               : Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [labelText, valueText],
+                  children: [
+                    Flexible(child: labelText),
+                    const SizedBox(width: GainerSpacing.s),
+                    Flexible(child: valueText),
+                  ],
                 ),
         ),
       ),

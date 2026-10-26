@@ -433,7 +433,10 @@ const _decimalKeyboard = TextInputType.numberWithOptions(decimal: true);
 double? _parse(String input) =>
     double.tryParse(input.trim().replaceAll(',', '.'));
 
-/// Eingabewert ohne Tausenderpunkt, mit Komma und ohne Nullen am Ende.
+/// Eingabewert ohne Tausenderpunkt, mit Komma und ohne Nullen am Ende. Auch für
+/// vorbefüllte Felder anderer Nutzer-Eingaben (z. B. Menge in Gramm).
+String plainNumberInput(double value) => _plain(value);
+
 String _plain(double value) => value
     .toStringAsFixed(2)
     .replaceFirst(RegExp(r'\.?0+$'), '')

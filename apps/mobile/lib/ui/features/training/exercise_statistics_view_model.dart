@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/training_statistics.dart';
+import '../../../domain/models/training/workout_input.dart';
 import 'training_statistics_view_model.dart';
 
 enum ChartMetric { estimatedOneRepMax, maxWeight, volume }
@@ -36,6 +37,9 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
   final Map<String, String> _titles = {};
   ExerciseRecords? records;
   bool includeWarmups = false;
+
+  /// Gewichtseinheit des Kontos für die Anzeige.
+  WeightUnit weightUnit = WeightUnit.kg;
   bool isLoading = false;
   bool hasLoaded = false;
   String? errorMessage;
@@ -76,6 +80,7 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
     _notify();
     try {
       includeWarmups = await readIncludeWarmupSets(repository.store);
+      weightUnit = await readStatisticsWeightUnit(repository.store);
       final inputs = await loadStatisticsInputs(repository);
       if (_disposed) return;
       _apply(inputs);

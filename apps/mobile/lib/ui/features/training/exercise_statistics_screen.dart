@@ -2,11 +2,14 @@ import 'package:flutter/cupertino.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/training_statistics.dart';
+import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import '../progress/bodyweight_missing_hint.dart';
 import 'exercise_statistics_view_model.dart';
+import 'training_statistics_view_model.dart'
+    show formatStatisticsVolume, formatStatisticsWeight;
 import 'warmup_sets_row.dart';
 
 /// Tab der Übungsstatistik. Die Übungskarte öffnet den passenden Tab direkt.
@@ -169,31 +172,21 @@ class _HistoryBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        model.titleOf(session.workoutId),
-                        style: GainerTypography.cardTitle.copyWith(
-                          color: colors.primaryText,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      _formatDate(session.startedAtUtc),
-                      style: GainerTypography.label.copyWith(
-                        color: colors.secondaryText,
-                      ),
-                    ),
-                  ],
+                _SessionHeader(
+                  title: model.titleOf(session.workoutId),
+                  date: _formatDate(session.startedAtUtc),
                 ),
                 const SizedBox(height: GainerSpacing.xs),
                 for (var i = 0; i < session.sets.length; i++)
-                  _SetLine(index: i + 1, result: session.sets[i]),
+                  _SetLine(
+                    index: i + 1,
+                    result: session.sets[i],
+                    unit: model.weightUnit,
+                  ),
                 const SizedBox(height: GainerSpacing.xs),
                 Text(
-                  'Volumen ${session.volumeKg.toStringAsFixed(0)} kg · '
-                  'Max. ${_formatKg(session.maxWeightKg)}',
+                  'Volumen ${formatStatisticsVolume(session.volumeKg, model.weightUnit)} · '
+                  'Max. ${formatStatisticsWeight(session.maxWeightKg, model.weightUnit)}',
                   style: GainerTypography.label.copyWith(
                     color: colors.secondaryText,
                   ),
@@ -208,11 +201,53 @@ class _HistoryBody extends StatelessWidget {
   }
 }
 
+/// Titel links, Datum rechts. Ab Textgröße 1,5 steht das Datum unter dem Titel.
+class _SessionHeader extends StatelessWidget {
+  const _SessionHeader({required this.title, required this.date});
+
+  final String title;
+  final String date;
+
+  static const _stackScale = 1.5;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final stacked = MediaQuery.textScalerOf(context).scale(1) >= _stackScale;
+    final titleText = Text(
+      title,
+      style: GainerTypography.cardTitle.copyWith(color: colors.primaryText),
+    );
+    final dateText = Text(
+      date,
+      style: GainerTypography.label.copyWith(color: colors.secondaryText),
+    );
+    if (stacked) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [titleText, dateText],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(child: titleText),
+        const SizedBox(width: GainerSpacing.s),
+        dateText,
+      ],
+    );
+  }
+}
+
 class _SetLine extends StatelessWidget {
-  const _SetLine({required this.index, required this.result});
+  const _SetLine({
+    required this.index,
+    required this.result,
+    required this.unit,
+  });
 
   final int index;
   final SetResult result;
+  final WeightUnit unit;
 
   @override
   Widget build(BuildContext context) {
@@ -241,11 +276,14 @@ class _SetLine extends StatelessWidget {
               ),
             ),
           ),
-          Text(
-            '${_formatKg(result.effectiveWeightKg)} × ${result.repetitions}',
-            style: GainerTypography.body.copyWith(
-              fontWeight: FontWeight.w600,
-              color: colors.primaryText,
+          Flexible(
+            child: Text(
+              '${formatStatisticsWeight(result.effectiveWeightKg, unit)} × ${result.repetitions}',
+              textAlign: TextAlign.right,
+              style: GainerTypography.body.copyWith(
+                fontWeight: FontWeight.w600,
+                color: colors.primaryText,
+              ),
             ),
           ),
         ],
@@ -305,13 +343,13 @@ class _ChartBody extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Min. ${_formatValue(model.metric, _minOf(points))}',
+                    'Min. ${_formatValue(model.metric, _minOf(points), model.weightUnit)}',
                     style: TextStyle(color: colors.secondaryText, fontSize: 12),
                   ),
                 ),
                 Expanded(
                   child: Text(
-                    'Max. ${_formatValue(model.metric, _maxValueOf(points))}',
+                    'Max. ${_formatValue(model.metric, _maxValueOf(points), model.weightUnit)}',
                     textAlign: TextAlign.right,
                     style: TextStyle(color: colors.secondaryText, fontSize: 12),
                   ),
@@ -319,7 +357,7 @@ class _ChartBody extends StatelessWidget {
               ],
             ),
             Semantics(
-              label: _chartDescription(model.metric, points),
+              label: _chartDescription(model.metric, points, model.weightUnit),
               child: SizedBox(
                 height: 160,
                 width: double.infinity,
@@ -355,13 +393,21 @@ class _ChartBody extends StatelessWidget {
                 Expanded(
                   child: _Figure(
                     label: 'Aktuell',
-                    value: _formatValue(model.metric, points.last.value),
+                    value: _formatValue(
+                      model.metric,
+                      points.last.value,
+                      model.weightUnit,
+                    ),
                   ),
                 ),
                 Expanded(
                   child: _Figure(
                     label: 'Bestwert',
-                    value: _formatValue(model.metric, _maxValueOf(points)),
+                    value: _formatValue(
+                      model.metric,
+                      _maxValueOf(points),
+                      model.weightUnit,
+                    ),
                   ),
                 ),
               ],
@@ -435,7 +481,10 @@ class _RecordsBody extends StatelessWidget {
               for (final threshold in repetitionRecordThresholds)
                 _RecordRow(
                   label: '$threshold Wdh.',
-                  value: _formatKg(records?.repRecords[threshold]),
+                  value: formatStatisticsWeight(
+                    records?.repRecords[threshold],
+                    model.weightUnit,
+                  ),
                 ),
             ],
           ),
@@ -461,7 +510,11 @@ class _RecordsBody extends StatelessWidget {
                 for (final entry in history)
                   _RecordRow(
                     label: _kindLabels[entry.kind]!,
-                    value: _recordValue(entry.kind, entry.event.value),
+                    value: _recordValue(
+                      entry.kind,
+                      entry.event.value,
+                      model.weightUnit,
+                    ),
                     date: model.recordDate(entry.event.workoutId),
                   ),
             ],
@@ -473,7 +526,9 @@ class _RecordsBody extends StatelessWidget {
 
   String _current(ExerciseRecords? records, RecordKind kind) {
     final events = records?.eventsOf(kind) ?? const <RecordEvent>[];
-    return events.isEmpty ? '–' : _recordValue(kind, events.last.value);
+    return events.isEmpty
+        ? '–'
+        : _recordValue(kind, events.last.value, model.weightUnit);
   }
 
   DateTime? _currentDate(ExerciseRecords? records, RecordKind kind) {
@@ -522,24 +577,27 @@ class _RecordRow extends StatelessWidget {
           Expanded(
             child: Text(label, style: TextStyle(color: colors.secondaryText)),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                value,
-                style: GainerTypography.body.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colors.primaryText,
-                ),
-              ),
-              if (date case final day?)
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
                 Text(
-                  _formatDate(day),
-                  style: GainerTypography.label.copyWith(
-                    color: colors.secondaryText,
+                  value,
+                  textAlign: TextAlign.right,
+                  style: GainerTypography.body.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: colors.primaryText,
                   ),
                 ),
-            ],
+                if (date case final day?)
+                  Text(
+                    _formatDate(day),
+                    style: GainerTypography.label.copyWith(
+                      color: colors.secondaryText,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
@@ -655,13 +713,17 @@ class _TrendChartPainter extends CustomPainter {
       old.labelColor != labelColor;
 }
 
-String _chartDescription(ChartMetric metric, List<ChartPoint> points) {
+String _chartDescription(
+  ChartMetric metric,
+  List<ChartPoint> points,
+  WeightUnit unit,
+) {
   final name = switch (metric) {
     ChartMetric.estimatedOneRepMax => 'Geschätztes 1RM',
     ChartMetric.maxWeight => _maxWeightLabel,
     ChartMetric.volume => 'Volumen',
   };
-  return '$name im Verlauf. ${points.map((point) => '${_formatDate(point.startedAtUtc)}: ${_formatValue(metric, point.value)}').join(', ')}';
+  return '$name im Verlauf. ${points.map((point) => '${_formatDate(point.startedAtUtc)}: ${_formatValue(metric, point.value, unit)}').join(', ')}';
 }
 
 double _minOf(List<ChartPoint> points) =>
@@ -670,19 +732,18 @@ double _minOf(List<ChartPoint> points) =>
 double _maxValueOf(List<ChartPoint> points) =>
     points.map((point) => point.value).reduce((a, b) => a > b ? a : b);
 
-String _formatValue(ChartMetric metric, double value) => switch (metric) {
-  ChartMetric.volume => '${value.toStringAsFixed(0)} kg',
-  _ => _formatKg(value),
-};
+String _formatValue(ChartMetric metric, double value, WeightUnit unit) =>
+    switch (metric) {
+      ChartMetric.volume => formatStatisticsVolume(value, unit),
+      _ => formatStatisticsWeight(value, unit),
+    };
 
-String _recordValue(RecordKind kind, double value) => switch (kind) {
-  RecordKind.maxRepetitions => '${value.toInt()} Wdh.',
-  RecordKind.volume => '${value.toStringAsFixed(0)} kg',
-  _ => _formatKg(value),
-};
-
-String _formatKg(double? value) =>
-    value == null ? '–' : '${value.toStringAsFixed(1)} kg';
+String _recordValue(RecordKind kind, double value, WeightUnit unit) =>
+    switch (kind) {
+      RecordKind.maxRepetitions => '${value.toInt()} Wdh.',
+      RecordKind.volume => formatStatisticsVolume(value, unit),
+      _ => formatStatisticsWeight(value, unit),
+    };
 
 String _formatDate(DateTime utc) {
   final local = utc.toLocal();

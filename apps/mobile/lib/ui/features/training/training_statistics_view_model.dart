@@ -3,13 +3,16 @@ import 'package:flutter/foundation.dart';
 import '../../../data/repositories/cardio/cardio_repository.dart';
 import '../../../data/repositories/sync/local_sync_store.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
+import '../../../data/repositories/training/training_preferences.dart';
 import '../../../domain/models/body/body_tracking.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
 import '../../../domain/models/training/training_heatmap.dart';
 import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/training_statistics.dart';
+import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
+import '../progress/today_overview.dart' show formatGermanNumber;
 
 const _includeWarmupsKey = 'trainingStatistics:includeWarmups';
 
@@ -18,6 +21,22 @@ Future<bool> readIncludeWarmupSets(LocalSyncStore store) async {
   final raw = await store.readSyncMetadata(_includeWarmupsKey);
   return raw is bool && raw;
 }
+
+/// Gewichtseinheit des Kontos aus den Trainingseinstellungen.
+Future<WeightUnit> readStatisticsWeightUnit(LocalSyncStore store) async =>
+    (await TrainingPreferences(store: store).read()).weightUnit;
+
+/// Gewicht in der Kontoeinheit auf eine Nachkommastelle gerundet, mit Komma und
+/// ohne überflüssige Null, z. B. „82,5 kg“ oder „100 kg“; ohne Wert „–“.
+String formatStatisticsWeight(double? kg, WeightUnit unit) {
+  if (kg == null) return '–';
+  final rounded = (unit.fromKg(kg) * 10).round() / 10;
+  return '${formatWeight(unit.toKg(rounded), unit)} ${unit.label}';
+}
+
+/// Volumen in der Kontoeinheit mit Tausenderpunkt, z. B. „12.345 kg“.
+String formatStatisticsVolume(double kg, WeightUnit unit) =>
+    '${formatGermanNumber(unit.fromKg(kg))} ${unit.label}';
 
 Future<void> writeIncludeWarmupSets(LocalSyncStore store, bool value) =>
     store.writeSyncMetadata(_includeWarmupsKey, value);
@@ -136,6 +155,9 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
   /// Null, solange nicht geladen oder wenn die Einheiten nicht lesbar sind.
   TrainingHeatmap? heatmap;
   bool includeWarmups = false;
+
+  /// Gewichtseinheit des Kontos für die Anzeige.
+  WeightUnit weightUnit = WeightUnit.kg;
   bool isLoading = false;
   bool hasLoaded = false;
   String? errorMessage;
@@ -169,6 +191,7 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
     _notify();
     try {
       includeWarmups = await readIncludeWarmupSets(repository.store);
+      weightUnit = await readStatisticsWeightUnit(repository.store);
       final inputs = await loadStatisticsInputs(repository);
       if (_disposed) return;
       exercises = summarizeTrainedExercises(

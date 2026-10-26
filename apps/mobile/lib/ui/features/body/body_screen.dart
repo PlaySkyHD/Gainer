@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../cardio/cardio_feature.dart';
 import '../cardio/cardio_format.dart';
 import '../cardio/cardio_hrv_measurement_screen.dart';
+import '../progress/today_overview.dart' show formatGermanNumber;
 import 'body_view_model.dart';
 import 'check_in_format.dart';
 import 'resting_history_card.dart';
@@ -238,7 +239,7 @@ class _BodyScreenState extends State<BodyScreen> {
       if (entry.caloriesKcal case final calories?)
         GainerListRow(
           title: 'Kalorien',
-          value: '${calories.toStringAsFixed(0)} kcal',
+          value: '${formatGermanNumber(calories)} kcal',
         ),
       if (entry.steps case final steps?)
         GainerListRow(title: 'Schritte', value: formatStepCount(steps)),

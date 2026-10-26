@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/training/training_preferences.dart';
+import 'package:gainer_mobile/domain/models/training/workout_input.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/training/exercise_statistics_screen.dart';
@@ -69,10 +71,10 @@ void main() {
     );
 
     expect(find.text('Aktuelle Rekorde'), findsOneWidget);
-    expect(valueInRepetitionRow('1 Wdh.', '100.0 kg'), findsOneWidget);
-    expect(valueInRepetitionRow('3 Wdh.', '100.0 kg'), findsOneWidget);
-    expect(valueInRepetitionRow('5 Wdh.', '100.0 kg'), findsOneWidget);
-    expect(valueInRepetitionRow('8 Wdh.', '100.0 kg'), findsOneWidget);
+    expect(valueInRepetitionRow('1 Wdh.', '100 kg'), findsOneWidget);
+    expect(valueInRepetitionRow('3 Wdh.', '100 kg'), findsOneWidget);
+    expect(valueInRepetitionRow('5 Wdh.', '100 kg'), findsOneWidget);
+    expect(valueInRepetitionRow('8 Wdh.', '100 kg'), findsOneWidget);
     expect(valueInRepetitionRow('10 Wdh.', '–'), findsOneWidget);
     expect(valueInRepetitionRow('12 Wdh.', '–'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -84,8 +86,8 @@ void main() {
 
     await pumpScreen(tester, exerciseId: kneeExerciseId);
 
-    expect(find.text('Max. 128.3 kg'), findsOneWidget);
-    expect(find.text('Min. 126.7 kg'), findsOneWidget);
+    expect(find.text('Max. 128,3 kg'), findsOneWidget);
+    expect(find.text('Min. 126,7 kg'), findsOneWidget);
     expect(find.text('Für diesen Zeitraum gibt es keine Werte.'), findsNothing);
   });
 
@@ -169,6 +171,63 @@ void main() {
 
     expect(find.text('Satz 2'), findsOneWidget);
     expect(find.text('Aufwärmen'), findsOneWidget);
+  });
+
+  for (final scale in [1.3, 2.0]) {
+    testWidgets('Verlauf, Graph und Rekorde laufen bei Textgröße $scale nicht '
+        'über', (tester) async {
+      tester.view.physicalSize = const Size(320, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.runAsync(() => seedSquatScenario(harness));
+
+      await tester.pumpWidget(
+        trainingTestApp(
+          textScale: scale,
+          home: ExerciseStatisticsScreen(
+            repository: harness.repository,
+            exerciseId: kneeExerciseId,
+            initialTab: ExerciseStatisticsTab.history,
+          ),
+        ),
+      );
+      await settle(tester);
+      for (final text in ['Satz 1', 'Beine A']) {
+        await scrollIntoView(tester, find.text(text).last);
+        expect(find.text(text).last, findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+
+      await scrollIntoView(tester, find.text('Rekorde'));
+      await tester.tap(find.text('Rekorde'));
+      await settle(tester);
+      await scrollIntoView(tester, find.text('Rekordverlauf'));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('Gewichte erscheinen in der Kontoeinheit lbs mit Komma', (
+    tester,
+  ) async {
+    _phoneSize(tester);
+    await tester.runAsync(() async {
+      await seedSquatScenario(harness);
+      await TrainingPreferences(store: harness.repository.store)
+          .update((current) => current.copyWith(weightUnit: WeightUnit.lbs));
+    });
+
+    await pumpScreen(
+      tester,
+      exerciseId: kneeExerciseId,
+      initialTab: ExerciseStatisticsTab.history,
+    );
+
+    // 110 kg = 242,5 lbs; Volumen 1.100 kg = 2.425 lbs.
+    expect(find.textContaining('242,5 lbs × 5'), findsWidgets);
+    expect(find.textContaining('Max. 242,5 lbs'), findsWidgets);
+    expect(find.textContaining('Volumen 2.425 lbs'), findsWidgets);
+    expect(find.textContaining(' kg'), findsNothing);
   });
 
   testWidgets('openExerciseStatistics öffnet den gewünschten Tab', (
