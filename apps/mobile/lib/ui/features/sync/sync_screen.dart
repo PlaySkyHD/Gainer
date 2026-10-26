@@ -477,9 +477,7 @@ class _SyncScreenState extends State<SyncScreen> {
     String? title,
   ) async {
     final id = conflict.conflictId;
-    final canRetry =
-        _model.hasServerState(id) &&
-        !_retryBlockedCodes.contains(conflict.code);
+    final discards = _model.discardsLocal(id);
     final action = await showGainerActionSheet<_ConflictAction>(
       context: context,
       title: _conflictTitle(conflict, title),
@@ -492,14 +490,23 @@ class _SyncScreenState extends State<SyncScreen> {
               value: _ConflictAction.force,
               hint: 'Ersetzt wartende Änderungen durch den lokalen Stand',
             ),
-          if (_model.hasServerState(id))
+          // Kennt der Server den Eintrag nicht, gibt es keinen Serverstand,
+          // sondern nur das Verwerfen.
+          if (discards)
+            const GainerSheetAction(
+              label: 'Verwerfen',
+              icon: CupertinoIcons.trash,
+              value: _ConflictAction.discard,
+              destructive: true,
+            )
+          else if (_model.hasServerState(id))
             const GainerSheetAction(
               label: 'Serverstand nutzen',
               icon: CupertinoIcons.cloud_download,
               value: _ConflictAction.server,
               destructive: true,
             ),
-          if (canRetry)
+          if (_model.canRetry(id))
             const GainerSheetAction(
               label: 'Lokale Änderung erneut senden',
               icon: CupertinoIcons.arrow_up_circle,
@@ -514,6 +521,8 @@ class _SyncScreenState extends State<SyncScreen> {
         await _confirmForce([id]);
       case _ConflictAction.server:
         await _confirmAccept([id]);
+      case _ConflictAction.discard:
+        await _confirmDiscard(id);
       case _ConflictAction.retry:
         await _confirmRetry(conflict);
     }
@@ -694,6 +703,17 @@ class _SyncScreenState extends State<SyncScreen> {
     await _model.acceptServerVersions(ids);
   }
 
+  Future<void> _confirmDiscard(String id) async {
+    final confirmed = await _confirm(
+      title: 'Eintrag verwerfen?',
+      message: 'Der Server lehnt diesen Eintrag dauerhaft ab und kennt ihn nicht. Er wird auf diesem Gerät gelöscht.',
+      confirmLabel: 'Verwerfen',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    await _model.acceptServerVersions([id]);
+  }
+
   Future<void> _confirmRetry(LocalConflictRecord conflict) async {
     final confirmed = await _confirm(
       title: 'Lokale Änderung erneut senden?',
@@ -784,10 +804,7 @@ class _SyncScreenState extends State<SyncScreen> {
   };
 }
 
-enum _ConflictAction { force, server, retry }
-
-/// Diese Codes lassen sich durch erneutes Senden derselben Nutzlast nicht beheben.
-const _retryBlockedCodes = {'active_workout_exists', 'validation_failed'};
+enum _ConflictAction { force, server, discard, retry }
 
 class _Footnote extends StatelessWidget {
   const _Footnote(this.text, {this.warning = false});
