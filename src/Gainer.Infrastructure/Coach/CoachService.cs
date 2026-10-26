@@ -63,8 +63,7 @@ public sealed partial class CoachService(
             JsonElement response = await provider.CreateResponseAsync(Request(inputs), cancellationToken);
             JsonElement[] output = ReadOutput(response);
             inputs.AddRange(output.Select(item => item.Clone()));
-            JsonElement[] calls = output.Where(item => item.TryGetProperty("type", out JsonElement type) &&
-                type.GetString() == "function_call").ToArray();
+            JsonElement[] calls = output.Where(item => IsType(item, "function_call")).ToArray();
             if (calls.Length == 0)
             {
                 ModelAnswer model = ParseModelAnswer(output);
@@ -190,7 +189,7 @@ public sealed partial class CoachService(
     private async Task<ToolResult> RecentWorkouts(JsonElement args, CancellationToken cancellationToken)
     {
         RequireProperties(args, "limit");
-        int limit = args.GetProperty("limit").GetInt32();
+        int limit = RequiredInt(args, "limit");
         if (limit is < 1 or > 10) throw new CoachResponseValidationException("Workout limit is invalid.");
         IReadOnlyList<WorkoutHistorySummary> items = await workoutHistory.ListAsync(0, limit, cancellationToken);
         List<CoachFact> facts = items.Select((item, index) => new CoachFact(
@@ -226,9 +225,9 @@ public sealed partial class CoachService(
     private async Task<ToolResult> ExerciseProgress(JsonElement args, CancellationToken cancellationToken)
     {
         RequireProperties(args, "exerciseId", "days");
-        if (!Guid.TryParse(args.GetProperty("exerciseId").GetString(), out Guid exerciseId))
+        if (!Guid.TryParse(RequiredString(args, "exerciseId"), out Guid exerciseId))
             throw new CoachResponseValidationException("Exercise id is invalid.");
-        int? days = args.GetProperty("days").ValueKind == JsonValueKind.Null ? null : args.GetProperty("days").GetInt32();
+        int? days = args.GetProperty("days").ValueKind == JsonValueKind.Null ? null : RequiredInt(args, "days");
         if (days is not (null or 7 or 30 or 90)) throw new CoachResponseValidationException("Exercise window is invalid.");
         // Archived exercises keep their history, so they stay readable; foreign ones resolve to null.
         if (await exercises.ResolveAsync(exerciseId, includeArchived: true, cancellationToken) is null)
@@ -383,10 +382,12 @@ public sealed partial class CoachService(
 
     private static ModelAnswer ParseModelAnswer(IReadOnlyList<JsonElement> output)
     {
-        string? text = output.SelectMany(item => item.TryGetProperty("content", out JsonElement content) && content.ValueKind == JsonValueKind.Array
+        string? text = output.SelectMany(item => item.ValueKind == JsonValueKind.Object &&
+                item.TryGetProperty("content", out JsonElement content) && content.ValueKind == JsonValueKind.Array
                 ? content.EnumerateArray() : [])
-            .Where(item => item.TryGetProperty("type", out JsonElement type) && type.GetString() == "output_text")
-            .Select(item => item.TryGetProperty("text", out JsonElement value) ? value.GetString() : null)
+            .Where(item => IsType(item, "output_text"))
+            .Select(item => item.TryGetProperty("text", out JsonElement value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString() : null)
             .FirstOrDefault(value => value is not null);
         if (text is null) throw new CoachResponseValidationException("The provider returned no structured answer.");
         try { return JsonSerializer.Deserialize<ModelAnswer>(text, JsonOptions) ?? throw new JsonException(); }
@@ -426,9 +427,20 @@ public sealed partial class CoachService(
 
     private static int DaysValue(JsonElement args, string name)
     {
-        int value = args.GetProperty(name).GetInt32();
+        int value = RequiredInt(args, name);
         return value is 7 or 30 or 90 ? value : throw new CoachResponseValidationException("Tool period is invalid.");
     }
+
+    /// <summary>Reads an integer tool argument; a missing, mistyped or out-of-range value is a validation failure, not a crash.</summary>
+    private static int RequiredInt(JsonElement args, string name) =>
+        args.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number)
+            ? number : throw new CoachResponseValidationException($"{name} must be an integer.");
+
+    private static bool IsType(JsonElement item, string type) =>
+        item.ValueKind == JsonValueKind.Object &&
+        item.TryGetProperty("type", out JsonElement value) &&
+        value.ValueKind == JsonValueKind.String &&
+        value.GetString() == type;
 
     private static string RequiredString(JsonElement element, string name) =>
         element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())

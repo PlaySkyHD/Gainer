@@ -95,6 +95,15 @@ public sealed class InvitationApiTests
     }
 
     [TestMethod]
+    public void AnonymousAcceptEndpointHasTheAuthenticationRateLimit()
+    {
+        var limit = (Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute)typeof(Gainer.Api.Controllers.InvitationAcceptanceController)
+            .GetMethod(nameof(Gainer.Api.Controllers.InvitationAcceptanceController.Accept))!
+            .GetCustomAttributes(typeof(Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute), inherit: true).Single();
+        Assert.AreEqual(ApiConstants.AuthenticationRateLimitPolicy, limit.PolicyName);
+    }
+
+    [TestMethod]
     public async Task ExpiredReusedAndUnknownInvitationsReturnTheSameNeutralFailure()
     {
         var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 18, 12, 0, 0, TimeSpan.Zero));

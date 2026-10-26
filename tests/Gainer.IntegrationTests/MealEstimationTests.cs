@@ -51,6 +51,35 @@ public sealed class MealEstimationTests
     }
 
     [TestMethod]
+    [DataRow("""{}""")]
+    [DataRow("""{"output":"x"}""")]
+    [DataRow("""{"output":[{"type":"message"}]}""")]
+    [DataRow("""{"output":[{"type":"message","content":"x"}]}""")]
+    [DataRow("""{"output":[{"type":"message","content":[{"type":"output_text","text":5}]}]}""")]
+    [DataRow("""{"output":[{"type":7}]}""")]
+    [DataRow("""[]""")]
+    public async Task ResponsesOfUnexpectedStructureMapToInvalidProviderResponse(string response)
+    {
+        var estimator = new OpenAiMealEstimator(
+            new FakeProvider(JsonDocument.Parse(response).RootElement.Clone()),
+            new RejectingSanitizer(), new PassQuota(), new UserContext(Guid.NewGuid()), new FixedTimeProvider());
+        MealEstimationException error = await Assert.ThrowsAsync<MealEstimationException>(() =>
+            estimator.EstimateAsync(MealEstimationInput.Create("food", null, false)));
+        Assert.AreEqual("invalid_provider_response", error.Code);
+    }
+
+    [TestMethod]
+    public async Task NullComponentsMapToInvalidProviderResponse()
+    {
+        var estimator = new OpenAiMealEstimator(
+            new FakeProvider(Response(new { components = (object?)null })),
+            new RejectingSanitizer(), new PassQuota(), new UserContext(Guid.NewGuid()), new FixedTimeProvider());
+        MealEstimationException error = await Assert.ThrowsAsync<MealEstimationException>(() =>
+            estimator.EstimateAsync(MealEstimationInput.Create("food", null, false)));
+        Assert.AreEqual("invalid_provider_response", error.Code);
+    }
+
+    [TestMethod]
     public async Task InvalidProviderPayloadAndProviderFailureMapToStableErrors()
     {
         var invalid = new OpenAiMealEstimator(

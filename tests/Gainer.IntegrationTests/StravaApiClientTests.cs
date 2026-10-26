@@ -49,6 +49,19 @@ public sealed class StravaApiClientTests
     }
 
     [TestMethod]
+    [DataRow("""{"access_token":"a","refresh_token":"r","expires_at":"soon"}""")]
+    [DataRow("""{"access_token":1,"refresh_token":"r","expires_at":1893456000}""")]
+    [DataRow("""{"access_token":"a","refresh_token":"r","expires_at":99999999999999}""")]
+    [DataRow("""[1,2]""")]
+    [DataRow("""not json""")]
+    public async Task TokenResponsesWithUnexpectedStructureFailAsStravaErrors(string body)
+    {
+        StravaApiException error = await Assert.ThrowsExactlyAsync<StravaApiException>(() =>
+            Client(new RecordingHandler(_ => Json(HttpStatusCode.OK, body))).RefreshAsync("r"));
+        Assert.AreEqual(StravaFailure.Transient, error.Failure);
+    }
+
+    [TestMethod]
     public async Task UploadSendsMultipartTcxAndReadsTheUpload()
     {
         var handler = new RecordingHandler(_ => Json(HttpStatusCode.Created, """{"id":55,"error":null,"activity_id":null}"""));

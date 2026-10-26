@@ -192,16 +192,10 @@ public sealed class OpenAiMealEstimator(
 
     private static MealEstimateDraft ParseResponse(JsonElement response, DateTime estimatedAtUtc, string[] allowedDomains)
     {
-        string json = response.GetProperty("output").EnumerateArray()
-            .Where(item => item.TryGetProperty("type", out JsonElement type) && type.GetString() == "message")
-            .SelectMany(item => item.GetProperty("content").EnumerateArray())
-            .Where(item => item.TryGetProperty("type", out JsonElement type) && type.GetString() == "output_text")
-            .Select(item => item.GetProperty("text").GetString())
-            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
-            ?? throw new JsonException("The response contains no output text.");
+        string json = OpenAiOutputText.Read(response);
         ProviderEstimate payload = JsonSerializer.Deserialize<ProviderEstimate>(json, JsonOptions)
             ?? throw new JsonException("The estimate payload is missing.");
-        MealEstimateComponentDraft[] components = payload.Components.Select(item =>
+        MealEstimateComponentDraft[] components = (payload.Components ?? throw new JsonException("The estimate has no components.")).Select(item =>
             MealEstimateComponentDraft.Create(
                 item.Name,
                 item.AmountGrams,

@@ -76,13 +76,7 @@ public sealed class OpenAiNutritionLabelScanner(
 
     private static NutritionLabelScanDraft ParseResponse(JsonElement response, DateTime scannedAtUtc)
     {
-        string json = response.GetProperty("output").EnumerateArray()
-            .Where(item => item.TryGetProperty("type", out JsonElement type) && type.GetString() == "message")
-            .SelectMany(item => item.GetProperty("content").EnumerateArray())
-            .Where(item => item.TryGetProperty("type", out JsonElement type) && type.GetString() == "output_text")
-            .Select(item => item.GetProperty("text").GetString())
-            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
-            ?? throw new JsonException("The response contains no output text.");
+        string json = OpenAiOutputText.Read(response);
         ProviderLabel payload = JsonSerializer.Deserialize<ProviderLabel>(json, JsonOptions)
             ?? throw new JsonException("The label payload is missing.");
         if (!payload.IsNutritionLabel)

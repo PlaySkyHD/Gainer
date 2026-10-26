@@ -4,6 +4,7 @@ using Gainer.Contracts.Security;
 using Gainer.Core.Access;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Gainer.Api.Controllers;
 
@@ -16,6 +17,7 @@ public sealed class InvitationAcceptanceController(IAccountInvitationService inv
 {
     /// <summary>Consumes an invitation and sets the invited account's initial password.</summary>
     [HttpPost("accept")]
+    [EnableRateLimiting(ApiConstants.AuthenticationRateLimitPolicy)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
     public async Task<IActionResult> Accept(
