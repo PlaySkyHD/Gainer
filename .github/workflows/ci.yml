@@ -44,6 +44,16 @@ jobs:
         # so no OS-specific package is restored. Direct versions remain centrally pinned.
         run: dotnet restore Gainer.slnx --force-evaluate
 
+      - name: Verify lock files are current
+        # git status also catches lock files of new projects that were never committed.
+        run: |
+          stale="$(git status --porcelain -- '**/packages.lock.json')"
+          if [ -n "$stale" ]; then
+            echo "$stale"
+            echo "::error::Lock-Dateien veraltet: dotnet restore Gainer.slnx --force-evaluate ausführen und committen"
+            exit 1
+          fi
+
       - name: Verify .NET formatting
         run: dotnet format Gainer.slnx --verify-no-changes --no-restore
 
