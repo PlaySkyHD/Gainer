@@ -1,10 +1,5 @@
 {
   "baseRef": null,
-  "reason": "Issue #174: error responses are documented as application/problem+json, which the server already sends, and ProblemDetails.status is an integer. No client is generated from this contract. Empty this list again after merge.",
-  "accepted": [
-    "Removed media type text/plain from response 404 of PUT /api/v1/account-operator/accounts/{accountId}/status",
-    "Removed media type application/json from response 404 of PUT /api/v1/account-operator/accounts/{accountId}/status",
-    "Removed media type text/json from response 404 of PUT /api/v1/account-operator/accounts/{accountId}/status",
-    "Changed type of property: ProblemDetails.status"
-  ]
+  "reason": "No accepted breaking changes. Add exact findings here only for an intentional, coordinated contract break and empty the list again after merge.",
+  "accepted": []
 }
