@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import '../../../data/models/api/api_models.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import '../training/training_format.dart';
 import 'bodyweight_missing_hint.dart';
 import 'progress_view_model.dart';
 import 'weight_age.dart';
@@ -363,15 +364,79 @@ class _Notice extends StatelessWidget {
   );
 }
 
+/// Sprechbarer Text je Messpunkt, z. B. „20.10.2026: 80,5 kg“.
+String weightPointLabel(ApiWeightPoint point) {
+  final day = _calendarDay(point.date);
+  final date = day == null ? point.date : formatGermanDate(day);
+  return '$date: ${formatGermanNumber(point.weightKg, digits: 1)} kg';
+}
+
+final _datePart = RegExp(r'^(\d{4})-(\d{2})-(\d{2})');
+
+/// Kalendertag aus dem Datumsteil `yyyy-MM-dd`, ohne Uhrzeit und Offset.
+DateTime? _calendarDay(String date) {
+  final match = _datePart.firstMatch(date);
+  if (match == null) return null;
+  return DateTime.utc(
+    int.parse(match[1]!),
+    int.parse(match[2]!),
+    int.parse(match[3]!),
+  );
+}
+
+/// Abstand der Marker vom Rand: Radius plus halbe Strichbreite.
+const _markerInset = 5.0;
+
+/// Bildschirmposition je Messpunkt. x folgt dem Datum, y dem Gewicht.
+/// Fehlen gültige oder verschiedene Daten, verteilt x nach Index.
+List<Offset> weightChartPositions(List<ApiWeightPoint> points, Size size) {
+  if (points.isEmpty) return const [];
+  final days = <int>[];
+  for (final point in points) {
+    final day = _calendarDay(point.date);
+    if (day == null) break;
+    days.add(day.millisecondsSinceEpoch ~/ Duration.millisecondsPerDay);
+  }
+  final byDate = days.length == points.length && points.length > 1;
+  final firstDay = byDate ? days.reduce((a, b) => a < b ? a : b) : 0;
+  final lastDay = byDate ? days.reduce((a, b) => a > b ? a : b) : 0;
+  final dateSpan = lastDay - firstDay;
+  final inset = size.width < 2 * _markerInset ? size.width / 2 : _markerInset;
+  final usable = size.width - 2 * inset;
+  var minValue = points.first.weightKg;
+  var maxValue = minValue;
+  for (final point in points) {
+    if (point.weightKg < minValue) minValue = point.weightKg;
+    if (point.weightKg > maxValue) maxValue = point.weightKg;
+  }
+  final range = maxValue - minValue;
+  return [
+    for (var i = 0; i < points.length; i++)
+      Offset(
+        points.length == 1
+            ? size.width / 2
+            : inset +
+                  usable *
+                      (dateSpan > 0
+                          ? (days[i] - firstDay) / dateSpan
+                          : i / (points.length - 1)),
+        range == 0
+            ? size.height / 2
+            : size.height -
+                  12 -
+                  ((points[i].weightKg - minValue) / range) *
+                      (size.height - 24),
+      ),
+  ];
+}
+
 class _WeightChart extends StatelessWidget {
   const _WeightChart({required this.points});
   final List<ApiWeightPoint> points;
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
-    final accessible = points
-        .map((item) => '${item.date}: ${item.weightKg.toStringAsFixed(1)} kg')
-        .join(', ');
+    final accessible = points.map(weightPointLabel).join(', ');
     return Semantics(
       label: 'Gewichtsverlauf. $accessible',
       child: SizedBox(
@@ -394,15 +459,12 @@ class _WeightChartPainter extends CustomPainter {
     if (points.isEmpty) {
       return;
     }
-    final values = points.map((e) => e.weightKg).toList();
-    final minValue = values.reduce((a, b) => a < b ? a : b);
-    final range = (values.reduce((a, b) => a > b ? a : b) - minValue).abs();
+    final positions = weightChartPositions(points, size);
     final paint = Paint()
       ..color = color
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
-    final path = _linePath(values, size, minValue, range);
     final gridPaint = Paint()
       ..color = color.withValues(alpha: .14)
       ..strokeWidth = 1;
@@ -410,60 +472,18 @@ class _WeightChartPainter extends CustomPainter {
       final y = size.height * fraction;
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
-    if (values.length == 1) {
-      canvas.drawCircle(
-        path.getBounds().topLeft,
-        4,
-        paint..style = PaintingStyle.fill,
-      );
-      return;
-    }
-    canvas.drawPath(path, paint);
-    _drawPointMarkers(canvas, path, paint, values.length);
-  }
-
-  Path _linePath(
-    List<double> values,
-    Size size,
-    double minValue,
-    double range,
-  ) {
-    final path = Path();
-    for (var i = 0; i < values.length; i++) {
-      final x = values.length == 1
-          ? size.width / 2
-          : size.width * i / (values.length - 1);
-      final y =
-          size.height -
-          12 -
-          (range == 0
-              ? size.height / 2
-              : ((values[i] - minValue) / range) * (size.height - 24));
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
+    if (positions.length > 1) {
+      final path = Path()..moveTo(positions.first.dx, positions.first.dy);
+      for (final position in positions.skip(1)) {
+        path.lineTo(position.dx, position.dy);
       }
+      canvas.drawPath(path, paint);
     }
-    return path;
-  }
-
-  void _drawPointMarkers(Canvas canvas, Path path, Paint paint, int count) {
-    for (final point in path.computeMetrics()) {
-      for (
-        var distance = 0.0;
-        distance <= point.length;
-        distance += point.length / (count - 1)
-      ) {
-        final tangent = point.getTangentForOffset(distance);
-        if (tangent != null) {
-          canvas.drawCircle(
-            tangent.position,
-            3.5,
-            paint..style = PaintingStyle.fill,
-          );
-        }
-      }
+    final markerPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    for (final position in positions) {
+      canvas.drawCircle(position, positions.length == 1 ? 4 : 3.5, markerPaint);
     }
   }
 

@@ -37,6 +37,12 @@ const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 String formatShortDate(DateTime local) =>
     '${local.day}. ${formatMonthShort(local.month)}';
 
+/// Datum numerisch deutsch: „20.10.2026“.
+String formatGermanDate(DateTime day) =>
+    '${day.day.toString().padLeft(2, '0')}.'
+    '${day.month.toString().padLeft(2, '0')}.'
+    '${day.year.toString().padLeft(4, '0')}';
+
 /// Kurzer Wochentag wie im Datums-Badge: „Do“.
 String formatWeekdayShort(DateTime local) => _weekdays[local.weekday - 1];
 
