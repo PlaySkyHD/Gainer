@@ -739,25 +739,31 @@ void main() {
     expect(tester.takeException(), isNull);
 
     // Lazy-Listen bauen Zeilen außerhalb des Bildes nicht: jede Zeile
-    // einzeln ins Bild holen. Zuletzt liegt der Sheet-Scrollable im Baum.
-    Finder vertical() => find
-        .byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical)
-        .last;
+    // einzeln ins Bild holen. Vor dem Sheet gibt es nur die Liste des Screens.
+    final screenList = find.byType(Scrollable).first;
 
     for (final memory in sampleMemories()) {
       final row = find.text(memory.text);
-      await tester.scrollUntilVisible(row, 200, scrollable: vertical());
+      await tester.scrollUntilVisible(row, 200, scrollable: screenList);
       expect(row, findsOneWidget);
       expect(tester.takeException(), isNull);
     }
 
     await tester.tap(find.byKey(const ValueKey('coach-memory-add')));
     await tester.pumpAndSettle();
+    // Nächster Scrollable über dem Textfeld ist die ListView des Sheets, nicht
+    // das innere Scrollable des mehrzeiligen Textfelds.
+    final sheetList = find
+        .ancestor(
+          of: find.byKey(const ValueKey('coach-memory-text')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
     for (final category in CoachMemoryCategory.values) {
       final row = find.byKey(
         ValueKey('coach-memory-category-${category.name}'),
       );
-      await tester.scrollUntilVisible(row, 200, scrollable: vertical());
+      await tester.scrollUntilVisible(row, 200, scrollable: sheetList);
       expect(row, findsOneWidget);
       expect(tester.takeException(), isNull);
     }

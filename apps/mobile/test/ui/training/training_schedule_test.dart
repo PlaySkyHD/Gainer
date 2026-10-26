@@ -384,9 +384,14 @@ void main() {
       expect(tester.takeException(), isNull);
 
       // Der Editor ist eine Lazy-Liste: jeden Wochentag einzeln ins Bild holen.
+      // Nächster Scrollable über dem (immer gebauten) Segment ist die ListView
+      // des Editors, nicht die Liste des Screens darunter.
       final editorList = find
-          .byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical)
-          .last;
+          .ancestor(
+            of: find.text('Feste Tage'),
+            matching: find.byType(Scrollable),
+          )
+          .first;
       for (var i = 0; i < 7; i++) {
         final row = find.byKey(ValueKey('schedule-weekday-$i'));
         await tester.scrollUntilVisible(row, 200, scrollable: editorList);
