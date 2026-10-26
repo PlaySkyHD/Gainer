@@ -161,6 +161,25 @@ void main() {
     expect(find.text(_inviteLink), findsOneWidget);
   });
 
+  testWidgets('a double tap issues only one invitation', (tester) async {
+    _useTallView(tester);
+    final gate = Completer<void>();
+    final directory = _OperatorDirectory()..createGate = gate;
+    final controller = await _signedInOperator(tester, directory);
+
+    await _pumpScreen(tester, controller);
+    await tester.enterText(
+      find.byType(CupertinoTextField),
+      'double@example.test',
+    );
+    await tester.tap(find.text('Einladung erstellen'));
+    await tester.tap(find.text('Einladung erstellen'), warnIfMissed: false);
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(directory.invitationEmails, ['double@example.test']);
+  });
+
   testWidgets('empty invitation address is rejected without a request', (
     tester,
   ) async {

@@ -26,13 +26,28 @@ class MealDictationController extends ChangeNotifier {
   Timer? _poll;
   bool _reading = false;
   bool _disposed = false;
+  bool _cancelRequested = false;
   Completer<void>? _done;
 
   Future<void> toggle() => isListening ? stop() : start();
 
   Future<void> start() async {
     if (isListening || isStarting) return;
+    final starting = _starting = Completer<void>();
+    try {
+      await _start();
+    } finally {
+      if (identical(_starting, starting)) _starting = null;
+      starting.complete();
+    }
+  }
+
+  /// Läuft, solange [start] auf die Plattform wartet.
+  Completer<void>? _starting;
+
+  Future<void> _start() async {
     isStarting = true;
+    _cancelRequested = false;
     message = null;
     _prefix = text.text.trim();
     _notify();
@@ -46,10 +61,12 @@ class MealDictationController extends ChangeNotifier {
       );
     }
     isStarting = false;
-    if (_disposed) {
+    if (_disposed || _cancelRequested) {
+      _cancelRequested = false;
       if (state.status == DictationStatus.listening) {
-        unawaited(platform.cancelDictation());
+        unawaited(platform.cancelDictation().catchError((Object _) {}));
       }
+      _notify();
       return;
     }
     if (state.status != DictationStatus.listening) {
@@ -74,7 +91,15 @@ class MealDictationController extends ChangeNotifier {
   }
 
   /// Beendet ein laufendes Diktat und wartet kurz auf den endgültigen Text.
+  /// Startet das Diktat gerade noch, bricht [finish] den Start ab und wartet
+  /// auf dessen Ende; danach schreibt kein Diktat mehr in das Feld.
   Future<void> finish({Duration timeout = const Duration(seconds: 2)}) async {
+    final starting = _starting;
+    if (isStarting && starting != null) {
+      _cancelRequested = true;
+      await starting.future;
+      return;
+    }
     final done = _done;
     if (!isListening || done == null) return;
     await stop();
@@ -83,6 +108,12 @@ class MealDictationController extends ChangeNotifier {
 
   /// Bricht ein laufendes Diktat ab, ohne den Text weiter zu ändern.
   void cancel() {
+    if (isStarting) {
+      // Das Mikrofon geht erst nach der Antwort von startDictation an;
+      // start() bricht dann selbst ab.
+      _cancelRequested = true;
+      return;
+    }
     if (!isListening) return;
     unawaited(platform.cancelDictation().catchError((Object _) {}));
     _finish(DictationStatus.idle);

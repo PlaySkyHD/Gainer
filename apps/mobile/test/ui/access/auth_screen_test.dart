@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -99,6 +101,38 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('a double tap on confirm sends the invitation only once', (
+    tester,
+  ) async {
+    _InviteApi? api;
+    final gate = Completer<void>();
+    final controller = MobileAuthController(
+      configuration: MobileAppConfiguration(
+        api: Uri.parse('https://api.example.test'),
+      ),
+      apiFactory: (configuration) =>
+          api = _InviteApi(configuration)..gate = gate,
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      CupertinoApp(home: AuthScreen(controller: controller)),
+    );
+    await tester.tap(find.text('Einladung annehmen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField).first, 'abc123');
+    await tester.enterText(
+      find.byType(CupertinoTextField).last,
+      'new-password',
+    );
+    await tester.tap(find.text('Einladung bestätigen'));
+    await tester.tap(find.text('Einladung bestätigen'), warnIfMissed: false);
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(api?.acceptCalls, 1);
+  });
 }
 
 class _PasskeyOptionsApi extends ApiClient {
@@ -139,9 +173,13 @@ class _InviteApi extends ApiClient {
     : super(configuration: configuration);
 
   String? acceptedToken;
+  int acceptCalls = 0;
+  Completer<void>? gate;
 
   @override
   Future<void> acceptInvitation(ApiAcceptInvitationRequest request) async {
+    acceptCalls++;
+    await gate?.future;
     acceptedToken = request.token;
   }
 }

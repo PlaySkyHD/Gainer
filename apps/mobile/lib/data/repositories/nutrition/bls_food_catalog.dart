@@ -44,12 +44,23 @@ class BlsFoodCatalog implements LocalFoodCatalog {
   Future<FoodSearchResult> search(String query) async =>
       (_ready ?? await _load()).search(query);
 
-  Future<FoodSearchIndex> _load() => _loading ??= () async {
+  Future<FoodSearchIndex> _load() async {
+    final loading = _loading ??= _read();
+    try {
+      return await loading;
+    } catch (_) {
+      // Ein Ladefehler bleibt nicht bis zum Neustart haften.
+      if (identical(_loading, loading)) _loading = null;
+      rethrow;
+    }
+  }
+
+  Future<FoodSearchIndex> _read() async {
     final text = await _bundle!.loadString(asset, cache: false);
     final index = await compute(parseBlsCatalog, text);
     _ready = index;
     return index;
-  }();
+  }
 }
 
 /// Liest das Asset-Format von `tool/extract_bls.py`:

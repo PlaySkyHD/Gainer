@@ -57,6 +57,7 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
   }
 
   Future<void> _createInvitation() async {
+    if (_busy) return;
     final email = _email.text.trim();
     if (email.isEmpty) {
       setState(() => _error = 'Gib die E-Mail-Adresse des neuen Kontos ein.');
@@ -90,6 +91,7 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
   }
 
   Future<void> _setStatus(ApiAccountSummary account, bool active) async {
+    if (_busy) return;
     setState(() {
       _busy = true;
       _error = null;

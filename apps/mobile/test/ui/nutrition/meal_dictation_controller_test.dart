@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
@@ -73,6 +75,65 @@ void main() {
     controller.dispose();
     expect(platform.cancelled, isTrue);
   });
+
+  test('cancel while the microphone is still starting stops it', () async {
+    final platform = _SlowStartDictation();
+    final controller = MealDictationController(
+      platform: platform,
+      text: TextEditingController(),
+      pollInterval: const Duration(milliseconds: 5),
+    );
+    addTearDown(controller.dispose);
+
+    final starting = controller.start();
+    expect(controller.isStarting, isTrue);
+    controller.cancel();
+    platform.release.complete();
+    await starting;
+
+    expect(platform.cancelled, isTrue);
+    expect(controller.isListening, isFalse);
+    expect(controller.isStarting, isFalse);
+  });
+
+  test('finish while the microphone is still starting cancels the start '
+      'and no dictation writes afterwards', () async {
+    final platform = _SlowStartDictation();
+    final text = TextEditingController(text: 'Müsli');
+    final controller = MealDictationController(
+      platform: platform,
+      text: text,
+      pollInterval: const Duration(milliseconds: 5),
+    );
+    addTearDown(controller.dispose);
+
+    final starting = controller.start();
+    var finished = false;
+    final finishing = controller.finish().then((_) => finished = true);
+    await Future<void>.delayed(Duration.zero);
+    // Solange die Plattform noch startet, ist das Ende nicht erreicht.
+    expect(finished, isFalse);
+
+    platform.transcript = 'Spät diktiert';
+    platform.release.complete();
+    await starting;
+    await finishing;
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(platform.cancelled, isTrue);
+    expect(controller.isListening, isFalse);
+    expect(text.text, 'Müsli');
+  });
+}
+
+class _SlowStartDictation extends _ScriptedDictation {
+  final release = Completer<void>();
+
+  @override
+  Future<DictationState> startDictation({required String localeId}) async {
+    await release.future;
+    return super.startDictation(localeId: localeId);
+  }
 }
 
 class _ScriptedDictation implements DictationPlatform {

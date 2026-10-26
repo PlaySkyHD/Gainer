@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:math';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import '../../../domain/models/nutrition/day_target.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
@@ -14,6 +16,16 @@ import 'nutrition_preferences.dart';
 import 'water_intake_repository.dart';
 
 typedef NutritionIdFactory = String Function();
+
+/// Speichern eines Tages ist gescheitert; [message] ist für den Nutzer.
+class NutritionSaveException implements Exception {
+  const NutritionSaveException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 const _nutritionDayType = 'nutrition-day';
 const _reusableMealType = 'reusable-meal';
@@ -435,31 +447,109 @@ class NutritionRepository {
     return List.unmodifiable(result);
   }
 
-  Future<void> saveEntry(String localDate, NutritionEntry entry) async {
-    final current = await read(localDate);
-    await saveDay(current.day.replace(entry));
+  /// Hintereinander laufende Lesen-Ändern-Schreiben-Abläufe auf Ernährungstage.
+  /// Zwei schnelle Aktionen auf denselben Tag lesen sonst denselben Stand, und
+  /// die zweite überschreibt die erste.
+  Future<void>? _dayLock;
+
+  /// Läuft nach dem Lesen und vor dem Commit eines Tages; nur für Tests, die
+  /// ein Wettrennen mit dem Sync nachstellen.
+  @visibleForTesting
+  Future<void> Function()? beforeDayCommitForTesting;
+
+  /// Wie oft ein Tag neu gelesen und erneut geschrieben wird, wenn ein Pull
+  /// oder eine Bestätigung ihn zwischen Lesen und Schreiben ändert.
+  static const _maxDayAttempts = 3;
+
+  /// Wartet auf den vorigen Ablauf, ohne dessen Fehler zu übernehmen.
+  ///
+  /// Bewusst kein `_queue.then(...)` wie in [WaterIntakeRepository]: Dort
+  /// läuft jede Aktion über einen Mikrotask-Umweg, auch ohne wartenden
+  /// Vorgänger. In den Widget-Tests der Vorlagen
+  /// (`nutrition_targets_templates_test`) bleibt dieser Umweg in der
+  /// Fake-Async-Zone hängen. Hier startet die Aktion ohne Vorgänger sofort.
+  Future<T> _serializedDay<T>(Future<T> Function() action) async {
+    final previous = _dayLock;
+    final mine = Completer<void>();
+    _dayLock = mine.future;
+    if (previous != null) await previous;
+    try {
+      return await _retryingDay(action);
+    } finally {
+      if (identical(_dayLock, mine.future)) _dayLock = null;
+      mine.complete();
+    }
   }
 
-  Future<void> removeEntry(String localDate, String entryId) async {
-    final current = await read(localDate);
-    if (!current.day.entries.any((entry) => entry.entryId == entryId)) return;
-    await saveDay(current.day.remove(entryId));
+  /// Wiederholt [action] mit frisch gelesenem Stand, wenn der Tag beim Commit
+  /// nicht mehr dem gelesenen entspricht.
+  Future<T> _retryingDay<T>(Future<T> Function() action) async {
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return await action();
+      } on LocalResourceChangedException {
+        if (attempt >= _maxDayAttempts) {
+          throw const NutritionSaveException(
+            'Der Tag hat sich gerade beim Synchronisieren geändert. '
+            'Bitte versuche es noch einmal.',
+          );
+        }
+      }
+    }
   }
+
+  /// Zeile und Tag von [localDate]. Die Version der Zeile hält fest, auf
+  /// welchem Stand der Aufrufer ändert; [_saveDay] prüft sie beim Commit.
+  Future<({LocalAggregateEnvelope<Object?>? row, NutritionDay day})> _readDay(
+    String localDate,
+  ) async {
+    if (!isValidLocalDate(localDate)) {
+      throw const NutritionValidationException({
+        'localDate': 'Ungültiger Kalendertag.',
+      });
+    }
+    final row = (await store.readAggregates(_nutritionDayType))
+        .where((row) => _map(row.workingCopy)['localDate'] == localDate)
+        .firstOrNull;
+    return (
+      row: row,
+      day: row == null
+          ? NutritionDay(localDate: localDate, entries: const [])
+          : NutritionDay.fromJson(_map(row.workingCopy)),
+    );
+  }
+
+  Future<void> saveEntry(String localDate, NutritionEntry entry) =>
+      _serializedDay(() async {
+        final (:row, :day) = await _readDay(localDate);
+        await _saveDay(day.replace(entry), row);
+      });
+
+  Future<void> removeEntry(String localDate, String entryId) =>
+      _serializedDay(() async {
+        final (:row, :day) = await _readDay(localDate);
+        if (!day.entries.any((entry) => entry.entryId == entryId)) return;
+        await _saveDay(day.remove(entryId), row);
+      });
 
   Future<void> moveEntry(
     String localDate,
     String entryId,
     NutritionMeal meal,
     int position,
-  ) async {
-    final current = await read(localDate);
-    await saveDay(current.day.move(entryId, meal, position));
-  }
+  ) => _serializedDay(() async {
+    final (:row, :day) = await _readDay(localDate);
+    await _saveDay(day.move(entryId, meal, position), row);
+  });
 
-  Future<void> saveDay(NutritionDay day) async {
-    final existing = (await store.readAggregates(_nutritionDayType))
-        .where((row) => _map(row.workingCopy)['localDate'] == day.localDate)
-        .firstOrNull;
+  /// [existing] ist die Zeile, auf der der Aufrufer geändert hat (null für
+  /// einen neuen Tag). Hat sie sich beim Commit geändert, wirft der Store
+  /// [LocalResourceChangedException]; ein neuer Tag erwartet, dass noch keine
+  /// Zeile mit der neuen ID existiert.
+  Future<void> _saveDay(
+    NutritionDay day,
+    LocalAggregateEnvelope<Object?>? existing,
+  ) async {
     final aggregateId = existing?.aggregateId ?? ids();
     final now = clock().toUtc();
     final body = {
@@ -467,6 +557,7 @@ class NutritionRepository {
       'updatedAtUtc': now.toIso8601String(),
       if (existing == null) 'createdAtUtc': now.toIso8601String(),
     };
+    await beforeDayCommitForTesting?.call();
     await store.commitMutation(
       mutationId: ids(),
       aggregateType: _nutritionDayType,
@@ -479,6 +570,16 @@ class NutritionRepository {
       envelope: existing == null
           ? localEnvelope(aggregateId: aggregateId, workingCopy: body)
           : _pending(existing, body),
+      // Hat sich der Tag seit dem Lesen geändert (z. B. durch den Sync),
+      // schlägt das Speichern fehl, statt den neueren Stand zu überschreiben.
+      resourceExpectations: [
+        LocalResourceExpectation(
+          aggregateType: _nutritionDayType,
+          aggregateId: aggregateId,
+          optimisticVersion: existing?.optimisticVersion,
+          serverVersion: existing?.serverVersion,
+        ),
+      ],
       createdAtUtc: now,
     );
   }
@@ -606,7 +707,7 @@ class NutritionRepository {
     required String localDate,
     required NutritionMeal meal,
     double? portionScale,
-  }) async {
+  }) => _serializedDay(() async {
     final row = await _required(_reusableMealType, mealId);
     final reusable = ReusableMeal.fromJson(_map(row.workingCopy));
     if (reusable.status != 'Active') {
@@ -618,8 +719,8 @@ class NutritionRepository {
         'portionScale': 'Portion muss zwischen 0,01 und 100 liegen.',
       });
     }
-    final snapshot = await read(localDate);
-    final entries = [...snapshot.day.entries];
+    final (row: dayRow, :day) = await _readDay(localDate);
+    final entries = [...day.entries];
     var position =
         entries
             .where((item) => item.meal == meal)
@@ -652,16 +753,17 @@ class NutritionRepository {
         ),
       );
     }
-    await saveDay(snapshot.day.withEntries(entries));
-  }
+    await _saveDay(day.withEntries(entries), dayRow);
+  });
 
   /// Legt fest, ob der Tag als Trainings- oder Ruhetag zählt; null hebt die
   /// Festlegung auf. Ein Tag ohne Einträge bleibt mit leerer Liste erhalten.
-  Future<void> setDayKind(String localDate, NutritionDayKind? kind) async {
-    final current = await read(localDate);
-    if (current.day.dayKind == kind) return;
-    await saveDay(current.day.withDayKind(kind));
-  }
+  Future<void> setDayKind(String localDate, NutritionDayKind? kind) =>
+      _serializedDay(() async {
+        final (:row, :day) = await _readDay(localDate);
+        if (day.dayKind == kind) return;
+        await _saveDay(day.withDayKind(kind), row);
+      });
 
   /// Tagesvorlagen ohne gelöschte, zuletzt geänderte zuerst.
   Future<List<NutritionDayTemplate>> readTemplates() async {
@@ -818,10 +920,10 @@ class NutritionRepository {
     String templateId,
     String localDate, {
     TemplateApplyMode mode = TemplateApplyMode.append,
-  }) async {
+  }) => _serializedDay(() async {
     final row = await _required(_dayTemplateType, templateId);
     final template = NutritionDayTemplate.fromJson(_map(row.workingCopy));
-    final day = (await read(localDate)).day;
+    final (row: dayRow, :day) = await _readDay(localDate);
     final kept = mode == TemplateApplyMode.replace
         ? const <NutritionEntry>[]
         : day.entries;
@@ -855,8 +957,8 @@ class NutritionRepository {
         );
       }
     }
-    await saveDay(day.withEntries(next));
-  }
+    await _saveDay(day.withEntries(next), dayRow);
+  });
 
   Future<void> saveTargetSchedule(NutritionTargetSchedule schedule) async {
     final rows = await store.readAggregates(_nutritionTargetScheduleType);
