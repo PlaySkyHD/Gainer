@@ -18,6 +18,9 @@ namespace Gainer.IntegrationTests;
 [TestClass]
 public sealed class FallbackAuthorizationTests
 {
+    private const string UnmarkedProbePath = "/unmarked-probe";
+    private const string AnonymousProbePath = "/anonymous-probe";
+
     private static readonly string[] AnonymousRoutes =
     [
         "/health/live",
@@ -65,8 +68,8 @@ public sealed class FallbackAuthorizationTests
             using HttpResponseMessage ready = await client.GetAsync("/health/ready");
             using HttpResponseMessage status = await client.GetAsync("/api/v1/system/status");
             using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
-            using HttpResponseMessage unmarked = await client.GetAsync("/unmarked-probe");
-            using HttpResponseMessage open = await client.GetAsync("/anonymous-probe");
+            using HttpResponseMessage unmarked = await client.GetAsync(UnmarkedProbePath);
+            using HttpResponseMessage open = await client.GetAsync(AnonymousProbePath);
 
             Assert.AreEqual(HttpStatusCode.OK, live.StatusCode);
             Assert.AreEqual(HttpStatusCode.OK, ready.StatusCode);
@@ -95,7 +98,7 @@ public sealed class FallbackAuthorizationTests
                 .OfType<RouteEndpoint>()
                 .Where(endpoint => endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null)
                 .Select(endpoint => "/" + endpoint.RoutePattern.RawText!.TrimStart('/'))
-                .Where(route => !route.EndsWith("-probe", StringComparison.Ordinal))
+                .Where(route => route != AnonymousProbePath)
                 .Order(StringComparer.Ordinal)
                 .ToArray();
 
@@ -134,8 +137,8 @@ public sealed class FallbackAuthorizationTests
         var app = builder.Build();
         app.MapGainerApi();
         app.MapGainerHealthEndpoints();
-        app.MapGet("/unmarked-probe", () => Results.Ok());
-        app.MapGet("/anonymous-probe", () => Results.Ok()).AllowAnonymous();
+        app.MapGet(UnmarkedProbePath, () => Results.Ok());
+        app.MapGet(AnonymousProbePath, () => Results.Ok()).AllowAnonymous();
         await app.StartAsync();
 
         return app;

@@ -73,7 +73,8 @@ internal static class GainerOpenApiTransformers
     {
         IList<object> metadata = context.Description.ActionDescriptor.EndpointMetadata;
         bool anonymous = metadata.OfType<IAllowAnonymous>().Any();
-        if (!anonymous && metadata.OfType<IAuthorizeData>().Any())
+        // The fallback policy protects every endpoint that is not explicitly anonymous.
+        if (!anonymous)
         {
             operation.Security ??= [];
             operation.Security.Add(new OpenApiSecurityRequirement
