@@ -94,3 +94,4 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 - Merge erst, wenn alle Checks grün sind und das Review erledigt ist, dann sofort TestFlight.
 - Ein Subagent-Brief mit festen Regeln (graphify, keine `.gymapp/`, kein `git restore`, Format nur geänderter Dateien, Tests, Vorschau, Bericht) spart Rückfragen.
 - Ursachen im Code belegen, bevor ein Fix gebaut wird (HealthKit-Ende, Schreibgerät-Registrierung, Konfliktcodes).
+- **Fix an der Stelle des Aufrufs prüfen.** Ein Fix im Repository oder ViewModel braucht einen Test über die Schicht, die der Nutzer auslöst (Controller bzw. Widget), wenn dazwischen eigene Logik liegt (Deduplizierung, Erfolgsauswertung). Beispiele: `MobileAuthController._synchronizeIfWritable` ignorierte die Übernahme des Schreibrechts (#183), `_closeAfterSave` schloss das Sheet nach einem still zurückkehrenden Guard in `NutritionViewModel._run` (#184).

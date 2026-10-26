@@ -15,6 +15,7 @@ Antworte auf Deutsch. Prüfe zuerst den Diff, dann den betroffenen Code drumheru
 - Sync-Risiken: fehlende Basisversion, nicht idempotente Mutation, falsch gemeldeter Konflikt, Outbox ohne atomaren Fachstand.
 - Vertragsbrüche zwischen API, App und `contracts/openapi`.
 - Fehlende Tests für neues Verhalten oder einen Bugfix.
+- Ein Fix in Repository oder ViewModel, dessen Aufrufer (Controller, Screen) eigene Logik hat und nicht mitgetestet ist. Handelt der Aufrufer bei Erfolg (Sheet schließen, navigieren, bestätigen), muss ein Guard, der still zurückkehrt, das Ergebnis melden (z. B. `Future<bool>`); sonst behandelt die UI ihn als Erfolg.
 - Verstöße gegen `backend.instructions.md`, `mobile.instructions.md`, `security.instructions.md` oder `docs/agent-lessons-learned.md`.
 
 Kein Befund: Stil, den Formatter oder Analyzer schon prüfen; Refactoring-Ideen ohne konkretes Risiko; spekulative Optimierungen.
