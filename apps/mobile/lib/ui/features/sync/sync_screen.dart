@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
@@ -41,6 +43,9 @@ class _SyncScreenState extends State<SyncScreen> {
   final _transferBundle = TextEditingController();
   bool _showAdvancedHandoverFields = false;
   HandoverTransferBundle? _parsedTransferBundle;
+  Timer? _expiryTimer;
+  DateTime? _watchedExpiry;
+  DateTime? _reachedExpiry;
 
   @override
   void initState() {
@@ -52,10 +57,38 @@ class _SyncScreenState extends State<SyncScreen> {
       expectedApiOrigin: widget.apiOrigin,
       isScopeActive: widget.isScopeActive,
     )..load();
+    _model.addListener(_scheduleExpiryRebuild);
   }
+
+  /// The expiry is otherwise only evaluated while building, so a handover
+  /// that runs out while the screen is open would keep offering its actions.
+  void _scheduleExpiryRebuild() {
+    final expiry = _model.pendingHandover?.expiresAtUtc;
+    if (expiry == _watchedExpiry) return;
+    _expiryTimer?.cancel();
+    _expiryTimer = null;
+    _watchedExpiry = expiry;
+    if (expiry == null) return;
+    final remaining = expiry.toUtc().difference(DateTime.now().toUtc());
+    if (remaining <= Duration.zero || remaining > handoverMaxLifetime) return;
+    _expiryTimer = Timer(remaining, () {
+      if (!mounted) return;
+      setState(() => _reachedExpiry = expiry);
+    });
+  }
+
+  /// [_reachedExpiry] covers the timer firing slightly before the wall clock
+  /// passes the expiry.
+  bool _hasElapsed(DateTime expiry, {bool legacyCap = false}) =>
+      expiry == _reachedExpiry ||
+      (legacyCap
+          ? isHandoverExpiryElapsed(expiry)
+          : !expiry.toUtc().isAfter(DateTime.now().toUtc()));
 
   @override
   void dispose() {
+    _expiryTimer?.cancel();
+    _model.removeListener(_scheduleExpiryRebuild);
     _model.dispose();
     _handoverId.dispose();
     _oneTimeCode.dispose();
@@ -239,8 +272,8 @@ class _SyncScreenState extends State<SyncScreen> {
   };
 
   List<Widget> _targetCompletePendingSections(PendingHandoverRecord pending) {
-    final expired =
-        pending.expiresAtUtc?.isBefore(DateTime.now().toUtc()) ?? false;
+    final expiry = pending.expiresAtUtc;
+    final expired = expiry != null && _hasElapsed(expiry, legacyCap: true);
     return [
       GainerGroupedSection(
         header: 'Übernahme',
@@ -343,8 +376,8 @@ class _SyncScreenState extends State<SyncScreen> {
     BuildContext context,
     PendingHandoverRecord pending,
   ) {
-    final expired =
-        pending.expiresAtUtc?.isBefore(DateTime.now().toUtc()) ?? true;
+    final expiry = pending.expiresAtUtc;
+    final expired = expiry == null || _hasElapsed(expiry);
     return [
       GainerGroupedSection(
         header: expired ? 'Übergabe abgelaufen' : 'Übergabe bereit',

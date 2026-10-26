@@ -158,6 +158,8 @@ class NativeHandoverRepository {
       oneTimeCode: isReplay ? prior!.oneTimeCode : oneTimeCode,
     );
     await assertSessionMatchesStore();
+    final wasFrozen =
+        await store.readSyncMetadata('local-writes-frozen') == true;
     await store.freezeWritesIfOutboxEmpty();
     await _write(secureStore, record);
     await _prepareVerifiedTarget(
@@ -181,7 +183,9 @@ class NativeHandoverRepository {
       // with the same values. Release the freeze and the record so a corrected
       // entry is accepted instead of being rejected as a different completion.
       if (_isDefinitiveCompleteRejection(error)) {
-        await store.unfreezeWrites();
+        // Only release a freeze this flow set. A device that was already
+        // frozen (e.g. after a recovery that keeps it frozen) stays frozen.
+        if (!wasFrozen || isReplay) await store.unfreezeWrites();
         await secureStore.clear(apiOrigin: origin, accountId: accountId);
       }
       rethrow;
@@ -215,7 +219,7 @@ class NativeHandoverRepository {
         pending.oneTimeCode == null ||
         pending.frozenRevision == null ||
         pending.expiresAtUtc == null ||
-        pending.expiresAtUtc!.isAfter(DateTime.now().toUtc())) {
+        !isHandoverExpiryElapsed(pending.expiresAtUtc!)) {
       throw StateError('No expired target handover can be recovered.');
     }
     await store.freezeWritesIfOutboxEmpty();
@@ -276,24 +280,27 @@ class NativeHandoverRepository {
     return false;
   }
 
-  /// The server issues handovers for 15 minutes. The expiry of a hand-entered
-  /// bundle is untrusted: a far-future value would block recovery until then,
-  /// so the stored expiry never exceeds the server lifetime from now. A
-  /// legitimately later value cannot exist, a too-early recovery attempt is
-  /// harmless because the server decides.
+  /// The expiry of a hand-entered bundle is untrusted: a far-future value
+  /// would block recovery until then, so the stored expiry never exceeds the
+  /// server lifetime from now. A legitimately later value cannot exist.
   DateTime _cappedExpiry(DateTime expiresAtUtc) {
-    final latest = DateTime.now().toUtc().add(_maxHandoverLifetime);
+    final latest = DateTime.now().toUtc().add(handoverMaxLifetime);
     final expiry = expiresAtUtc.toUtc();
     return expiry.isAfter(latest) ? latest : expiry;
   }
 
-  static const _maxHandoverLifetime = Duration(minutes: 15);
-
-  bool _isDefinitiveCompleteRejection(ApiException error) =>
-      error.code == 'invalid_handover_code' ||
-      error.code == 'handover_not_found' ||
-      error.statusCode == 400 ||
-      error.statusCode == 422;
+  /// Rejections caused by what was typed in, decided by the server error code
+  /// (never by a bare status, a proxy may answer 400). Terminal states such as
+  /// `handover_expired`, `handover_not_pending` and `handover_already_consumed`
+  /// are left to [recoverExpiredTargetHandover], which keeps the device frozen
+  /// until a verified transfer. `stale_revision`, `inactive_source` and
+  /// `target_not_registered` can succeed on retry, so they keep the record.
+  bool _isDefinitiveCompleteRejection(ApiException error) => const {
+    'invalid_handover_code',
+    'handover_not_found',
+    'invalid_handover_request',
+    'invalid_handover_target',
+  }.contains(error.code);
 
   Future<SyncClientRegistrationResponse> _registerWithoutTakeover({
     required String clientId,

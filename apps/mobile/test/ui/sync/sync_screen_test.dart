@@ -121,6 +121,46 @@ void main() {
     expect(find.text('Übergabe abbrechen'), findsOneWidget);
   });
 
+  testWidgets('handover expiring while the screen is open locks its actions', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions()
+      ..pending = PendingHandoverRecord(
+        apiOrigin: 'https://gainer.markfort.xyz',
+        accountId: 'a1234567-1234-4234-8234-123456789abc',
+        requestId: 'd1234567-1234-4234-8234-123456789abc',
+        sourceClientId: 'b1234567-1234-4234-8234-123456789abc',
+        phase: 'sourceBegan',
+        expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+        handoverId: 'c1234567-1234-4234-8234-123456789abc',
+        frozenRevision: 41,
+        oneTimeCode: 'one_time-code-123',
+      );
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.light,
+        home: SyncScreen(
+          sync: sync,
+          isOnline: true,
+          accountId: 'a1234567-1234-4234-8234-123456789abc',
+          apiOrigin: 'https://gainer.markfort.xyz',
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Übergabe bereit'), findsOneWidget);
+
+    await tester.pump(const Duration(minutes: 5, seconds: 1));
+
+    expect(find.text('Übergabe abgelaufen'), findsOneWidget);
+    expect(find.textContaining('Brich die Übergabe ab'), findsOneWidget);
+  });
+
   testWidgets('popping during a pending handover stops follow-up view work', (
     tester,
   ) async {

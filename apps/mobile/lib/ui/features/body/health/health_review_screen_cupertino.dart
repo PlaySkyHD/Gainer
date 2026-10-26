@@ -4,6 +4,7 @@ import '../../../../data/repositories/health/health_review_coordinator.dart';
 import '../../../../data/services/platform/platform_ports.dart';
 import '../../../../domain/models/training/training_schedule.dart';
 import '../../../core/components/components.dart';
+import '../../../core/german_date_time.dart';
 import '../../../core/theme.dart';
 import 'health_review_view_model.dart';
 
@@ -325,11 +326,7 @@ String _displayDate(DateTime value) {
   return '${two(value.day)}.${two(value.month)}.${value.year}';
 }
 
-String _localTime(DateTime value) {
-  final local = value.toLocal();
-  String two(int value) => value.toString().padLeft(2, '0');
-  return '${two(local.day)}.${two(local.month)}.${local.year} ${two(local.hour)}:${two(local.minute)}';
-}
+String _localTime(DateTime value) => formatGermanDateTime(value);
 
 String _status(HealthImportReviewStatus status) => switch (status) {
   HealthImportReviewStatus.imported => 'In Gainer übernommen',
