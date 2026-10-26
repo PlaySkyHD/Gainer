@@ -382,6 +382,17 @@ void main() {
       await tester.tap(find.text('Feste Tage'));
       await settle(tester);
       expect(tester.takeException(), isNull);
+
+      // Der Editor ist eine Lazy-Liste: jeden Wochentag einzeln ins Bild holen.
+      final editorList = find
+          .byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical)
+          .last;
+      for (var i = 0; i < 7; i++) {
+        final row = find.byKey(ValueKey('schedule-weekday-$i'));
+        await tester.scrollUntilVisible(row, 200, scrollable: editorList);
+        expect(row, findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
     });
   });
 }

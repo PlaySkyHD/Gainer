@@ -14,6 +14,9 @@ import 'package:gainer_mobile/ui/features/body/body_view_model.dart';
 
 const accountId = '00000000-0000-4000-8000-000000000003';
 
+/// Feste Uhr (mittags, fern von Mitternacht und Zeitumstellung).
+final _fixedNow = DateTime(2026, 10, 14, 12);
+
 void main() {
   for (final brightness in [Brightness.light, Brightness.dark]) {
     testWidgets('check-in screen matches golden in ${brightness.name} mode', (
@@ -64,7 +67,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final database = LocalDatabase(NativeDatabase.memory());
     addTearDown(database.close);
-    final now = DateTime.now();
+    final now = _fixedNow;
     String day(int back) {
       final date = DateTime(now.year, now.month, now.day - back);
       return '${date.year}-${date.month.toString().padLeft(2, '0')}-'
@@ -74,6 +77,7 @@ void main() {
     var id = 700;
     final repository = BodyRepository(
       store: LocalSyncStore(database: database, accountId: accountId),
+      clock: () => _fixedNow,
       ids: () =>
           '00000000-0000-4000-8000-${(id++).toString().padLeft(12, '0')}',
     );
@@ -98,7 +102,7 @@ void main() {
     await tester.pumpWidget(
       CupertinoApp(
         theme: GainerTheme.forBrightness(Brightness.light),
-        home: BodyScreen(viewModel: model),
+        home: BodyScreen(viewModel: model, clock: () => _fixedNow),
       ),
     );
     await tester.pumpAndSettle();
@@ -130,8 +134,9 @@ void main() {
     addTearDown(database.close);
     final repository = BodyRepository(
       store: LocalSyncStore(database: database, accountId: accountId),
+      clock: () => _fixedNow,
     );
-    final now = DateTime.now();
+    final now = _fixedNow;
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-'
         '${now.day.toString().padLeft(2, '0')}';
@@ -147,7 +152,7 @@ void main() {
     await tester.pumpWidget(
       CupertinoApp(
         theme: GainerTheme.forBrightness(Brightness.light),
-        home: BodyScreen(viewModel: model),
+        home: BodyScreen(viewModel: model, clock: () => _fixedNow),
       ),
     );
     await tester.pumpAndSettle();
@@ -265,8 +270,9 @@ void main() {
       addTearDown(database.close);
       final repository = BodyRepository(
         store: LocalSyncStore(database: database, accountId: accountId),
+        clock: () => _fixedNow,
       );
-      final today = DateTime.now();
+      final today = _fixedNow;
       final priorDate = today.subtract(const Duration(days: 1));
       String dateOnly(DateTime date) =>
           '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
@@ -299,7 +305,11 @@ void main() {
         sleepMinutes: null,
       );
       final model = BodyViewModel(repository);
-      await tester.pumpWidget(CupertinoApp(home: BodyScreen(viewModel: model)));
+      await tester.pumpWidget(
+        CupertinoApp(
+          home: BodyScreen(viewModel: model, clock: () => _fixedNow),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
       await tester.pumpAndSettle();
@@ -371,8 +381,9 @@ void main() {
     addTearDown(database.close);
     final repository = BodyRepository(
       store: LocalSyncStore(database: database, accountId: accountId),
+      clock: () => _fixedNow,
     );
-    final today = DateTime.now();
+    final today = _fixedNow;
     final localDate =
         '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
     await repository.saveCheckIn(
@@ -386,7 +397,11 @@ void main() {
       sleepMinutes: 450,
     );
     final model = BodyViewModel(repository);
-    await tester.pumpWidget(CupertinoApp(home: BodyScreen(viewModel: model)));
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: BodyScreen(viewModel: model, clock: () => _fixedNow),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('body-open-checkin')));
     await tester.pumpAndSettle();
@@ -492,8 +507,9 @@ void main() {
     addTearDown(database.close);
     final repository = BodyRepository(
       store: LocalSyncStore(database: database, accountId: accountId),
+      clock: () => _fixedNow,
     );
-    final today = DateTime.now();
+    final today = _fixedNow;
     await repository.saveCheckIn(
       localDate: _localDate(today),
       weightKg: 77.2,
@@ -505,7 +521,11 @@ void main() {
       sleepMinutes: null,
     );
     final model = BodyViewModel(repository);
-    await tester.pumpWidget(CupertinoApp(home: BodyScreen(viewModel: model)));
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: BodyScreen(viewModel: model, clock: () => _fixedNow),
+      ),
+    );
     await tester.pumpAndSettle();
 
     // Heute-Zeile und Verlaufszeile zeigen dasselbe Gewicht.
