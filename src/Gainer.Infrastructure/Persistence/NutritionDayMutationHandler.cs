@@ -109,12 +109,9 @@ public sealed class NutritionDayMutationHandler(
         {
             throw new NutritionDayConflictException("The nutrition day changed concurrently.");
         }
-        // Only the day's own id is a stored stand. Another id on a stored date and reused entry ids cannot be healed
-        // by pulling, so they reach the sync processor as a permanent invalid payload.
-        catch (DbUpdateException exception) when (context.IsKeyViolation<NutritionDay>(exception))
-        {
-            throw new NutritionDayConflictException("A nutrition day already exists for this identifier.");
-        }
+        // Unique violations are not a stale version: the lookup above already found the user's own day, so a key
+        // violation means the id belongs to another user, and another id on a stored date or reused entry ids stay
+        // on every retry. No pull heals them; the sync processor reports them as a permanent invalid payload.
     }
 
     private Guid CurrentUserId() =>

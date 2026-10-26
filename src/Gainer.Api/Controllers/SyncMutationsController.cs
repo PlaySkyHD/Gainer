@@ -35,22 +35,17 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         {
             return SyncProblem(StatusCodes.Status422UnprocessableEntity, "invalid_mutation_id", "Mutation id is required.");
         }
-        if (request.Resources is null || request.Resources.Any(item => item is null))
-        {
-            return SyncProblem(
-                StatusCodes.Status422UnprocessableEntity,
-                "invalid_resources",
-                "The mutation resource expectations are invalid.");
-        }
         try
         {
+            // A missing list or null entries pass through unchanged; the processor rejects them as invalid_resources.
             var content = new CanonicalMutationContent(
                 request.ProtocolVersion,
                 request.ClientId,
                 request.ClientSequence,
                 request.Operation,
-                request.Resources.Select(item => new CanonicalResourceVersion(
-                    item.ResourceType, item.ResourceId, item.BaseVersion)).ToList(),
+                request.Resources?.Select(item => item is null
+                    ? null!
+                    : new CanonicalResourceVersion(item.ResourceType, item.ResourceId, item.BaseVersion)).ToList()!,
                 request.DependsOnMutationId,
                 request.Payload);
             ProcessedSyncMutationResult result = await processor.ProcessAsync(

@@ -3,7 +3,6 @@ using Gainer.Core.Security;
 using Gainer.Core.Values;
 using Gainer.Core.Mutations;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -20,6 +19,13 @@ public sealed class DailyCheckInMutationHandler(
         ArgumentNullException.ThrowIfNull(mutation);
         _ = CurrentUserId();
         Validate(mutation.Values);
+        // Only the user's own stored check-in with this id is a competing stand. Another id on a stored date and a
+        // foreign id stay on every retry and no pull heals them; their unique violations reach the sync processor,
+        // which reports them as a permanent invalid payload (like a nutrition day).
+        if (await context.DailyCheckIns.AsNoTracking().AnyAsync(item => item.Id == mutation.CheckInId, cancellationToken))
+        {
+            throw new DailyCheckInConflictException("A check-in already exists for this id.");
+        }
         DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
         var checkIn = new DailyCheckIn
         {
@@ -31,14 +37,7 @@ public sealed class DailyCheckInMutationHandler(
         };
         Apply(checkIn, mutation.Values);
         context.DailyCheckIns.Add(checkIn);
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
-        {
-            throw new DailyCheckInConflictException("A check-in already exists for this id or local date.");
-        }
+        await context.SaveChangesAsync(cancellationToken);
         DailyCheckInSnapshot snapshot = BodyTrackingSnapshots.CheckIn(checkIn);
         changeCollector?.CaptureUpsert(snapshot);
         return snapshot;
@@ -137,9 +136,6 @@ public sealed class DailyCheckInMutationHandler(
         checkIn.RestingHeartRateBpm = values.RestingHeartRateBpm;
         checkIn.RestingHrvMs = values.RestingHrvMs;
     }
-
-    private static bool IsUniqueViolation(DbUpdateException exception) =>
-        exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     private delegate bool TryCreateDecimal<T>(decimal value, out T result);
 }

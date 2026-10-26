@@ -2,7 +2,6 @@ using Gainer.Core.Nutrition;
 using Gainer.Core.Security;
 using Gainer.Core.Mutations;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -56,9 +55,13 @@ public sealed class NutritionTargetScheduleMutationHandler(
         {
             throw new NutritionTargetScheduleConflictException("The nutrition target schedule changed concurrently.");
         }
-        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        // Only the "one schedule per user" index stands for another stored schedule of this user. The lookup already
+        // found the user's own id, so a key violation means a foreign schedule or version id; that and other unique
+        // violations reach the sync processor as a permanent invalid payload.
+        catch (DbUpdateException exception) when (
+            context.IsUniqueIndexViolation<NutritionTargetSchedule>(exception, nameof(NutritionTargetSchedule.UserId)))
         {
-            throw new NutritionTargetScheduleConflictException("A target schedule or effective date already exists.");
+            throw new NutritionTargetScheduleConflictException("The user already has a nutrition target schedule.");
         }
 
         NutritionTargetScheduleSnapshot snapshot = SmartNutritionSnapshots.TargetSchedule(schedule, materialized);

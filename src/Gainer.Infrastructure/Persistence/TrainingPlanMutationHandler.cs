@@ -21,6 +21,11 @@ public sealed class TrainingPlanMutationHandler(
         ArgumentNullException.ThrowIfNull(mutation);
         Guid userId = CurrentUserId();
         TrainingPlanValues values = TrainingPlanValidation.Normalize(mutation.Plan);
+        // Only the user's own stored plan is a competing stand; a key violation on insert means a foreign id.
+        if (await context.TrainingPlans.AsNoTracking().AnyAsync(item => item.Id == values.PlanId, cancellationToken))
+        {
+            throw new TrainingPlanConflictException("A plan with this identifier already exists.");
+        }
         await EnsureExercisesSelectableAsync(userId, values, [], cancellationToken);
         int sortOrder = await context.TrainingPlans.AsNoTracking()
             .Select(item => (int?)item.SortOrder)
@@ -219,10 +224,6 @@ public sealed class TrainingPlanMutationHandler(
         catch (DbUpdateConcurrencyException)
         {
             throw new TrainingPlanConflictException("The plan changed concurrently.");
-        }
-        catch (DbUpdateException exception) when (context.IsKeyViolation<TrainingPlan>(exception))
-        {
-            throw new TrainingPlanConflictException("A plan with this identifier already exists.");
         }
     }
 

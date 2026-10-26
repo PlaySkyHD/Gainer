@@ -21,6 +21,14 @@ public sealed class CustomExerciseMutationHandler(
         ArgumentNullException.ThrowIfNull(mutation);
         Guid userId = CurrentUserId();
         CustomExerciseValues values = ValidateAndNormalize(mutation.Values);
+        // Only an exercise the user can see (own or catalog) is a competing stand; a key violation on insert means a
+        // foreign id, which the sync processor reports as a permanent invalid payload.
+        if (await context.Exercises.AsNoTracking().AnyAsync(
+                item => item.Id == mutation.ExerciseId && (item.OwnerUserId == null || item.OwnerUserId == userId),
+                cancellationToken))
+        {
+            throw new CustomExerciseConflictException("The exercise identifier already exists.");
+        }
         await EnsureCategoriesAvailableAsync(userId, values.CategoryIds!, cancellationToken);
         DateTime now = timeProvider.GetUtcNow().UtcDateTime;
         var exercise = new Exercise
@@ -38,14 +46,7 @@ public sealed class CustomExerciseMutationHandler(
             ExerciseId = exercise.Id,
             CategoryId = categoryId,
         }));
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException exception) when (context.IsKeyViolation<Exercise>(exception))
-        {
-            throw new CustomExerciseConflictException("The exercise identifier already exists.");
-        }
+        await context.SaveChangesAsync(cancellationToken);
         return Capture(exercise, values.CategoryIds!);
     }
 

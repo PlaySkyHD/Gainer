@@ -317,8 +317,9 @@ public sealed class BodyTrackingPersistenceTests
                 await handler.CreateAsync(CreateCheckInMutation(id, new DailyCheckInValues(83), concurrentDate));
                 return true;
             }
-            catch (DailyCheckInConflictException)
+            catch (DbUpdateException)
             {
+                // Another id on a stored date is no stale version; the sync processor reports it as invalid_payload.
                 return false;
             }
         }

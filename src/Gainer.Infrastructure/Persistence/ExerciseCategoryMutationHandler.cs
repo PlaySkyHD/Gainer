@@ -28,15 +28,16 @@ public sealed class ExerciseCategoryMutationHandler(
             UpdatedAtUtc = now,
             Version = 1,
         };
-        context.ExerciseCategories.Add(category);
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException exception) when (context.IsKeyViolation<ExerciseCategory>(exception))
+        // Only a category the user can see (own or catalog) is a competing stand; a key violation on insert means a
+        // foreign id, which the sync processor reports as a permanent invalid payload.
+        if (await context.ExerciseCategories.AsNoTracking().AnyAsync(
+                item => item.Id == mutation.CategoryId && (item.OwnerUserId == null || item.OwnerUserId == userId),
+                cancellationToken))
         {
             throw new ExerciseCategoryConflictException("The category identifier already exists.");
         }
+        context.ExerciseCategories.Add(category);
+        await context.SaveChangesAsync(cancellationToken);
         return Capture(category);
     }
 

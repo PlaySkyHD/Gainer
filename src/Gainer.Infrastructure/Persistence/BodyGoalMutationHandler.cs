@@ -31,6 +31,12 @@ public sealed class BodyGoalMutationHandler(
             BodyGoal? active = await context.BodyGoals
                 .SingleOrDefaultAsync(goal => goal.EndedAtUtc == null, cancellationToken);
             EnsureExpectedActiveGoal(mutation.ExpectedActiveGoal, active);
+            // Only the user's own stored goal is a competing stand; a key violation on insert means a foreign id,
+            // which the sync processor reports as a permanent invalid payload.
+            if (await context.BodyGoals.AsNoTracking().AnyAsync(goal => goal.Id == mutation.GoalId, cancellationToken))
+            {
+                throw new BodyGoalConflictException("A body goal with this identifier already exists.");
+            }
 
             DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
             if (active is not null)
@@ -62,12 +68,13 @@ public sealed class BodyGoalMutationHandler(
             return snapshot;
         }
         catch (DbUpdateException exception) when (
-            context.IsKeyViolation<BodyGoal>(exception) ||
             context.IsUniqueIndexViolation<BodyGoal>(exception, nameof(BodyGoal.UserId)))
         {
             throw new BodyGoalConflictException("The active body goal changed concurrently.");
         }
-        catch (Exception exception) when (IsConcurrencyConflict(exception))
+        // Only a transaction this handler owns ends here. Inside a sync mutation the processor owns it and reports
+        // serialization failures and deadlocks as a retryable concurrent_mutation, never as a stale base version.
+        catch (Exception exception) when (transaction is not null && IsSerializationConflict(exception))
         {
             throw new BodyGoalConflictException("The active body goal changed concurrently.");
         }
@@ -121,14 +128,7 @@ public sealed class BodyGoalMutationHandler(
         }
     }
 
-    private static bool IsConcurrencyConflict(Exception exception)
-    {
-        for (Exception? current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is PostgresException postgres && postgres.SqlState is
-                PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected)
-                return true;
-        }
-        return false;
-    }
+    private static bool IsSerializationConflict(Exception exception) =>
+        PersistenceErrors.FindPostgres(exception) is
+        { SqlState: PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected };
 }

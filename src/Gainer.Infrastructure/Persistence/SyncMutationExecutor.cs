@@ -418,10 +418,11 @@ public sealed class SyncMutationExecutor(
             return payload.Deserialize<T>(SerializerOptions)
                 ?? throw new JsonException("Payload was null.");
         }
-        catch (JsonException)
+        catch (JsonException exception)
         {
-            // The serializer message can quote payload content, so it never becomes the client-visible title.
-            throw new SyncMutationValidationException(InvalidPayloadCode, "The mutation payload is invalid.");
+            // The serializer message can quote payload content, so it never becomes the client-visible title. The
+            // cause stays attached; SyncMutationProcessor logs its JSON path without values.
+            throw new SyncMutationValidationException(InvalidPayloadCode, "The mutation payload is invalid.", exception);
         }
     }
 

@@ -114,10 +114,8 @@ public sealed class NutritionDayTemplateMutationHandler(
         {
             throw new NutritionDayTemplateConflictException("The day template changed concurrently.");
         }
-        catch (DbUpdateException exception) when (context.IsKeyViolation<NutritionDayTemplate>(exception))
-        {
-            throw new NutritionDayTemplateConflictException("A day template already exists for this identifier.");
-        }
+        // The lookup already found the user's own template, so a key violation means the id belongs to another user or
+        // entry ids are reused. No pull heals that; the sync processor reports it as a permanent invalid payload.
     }
 
     private Guid CurrentUserId() =>

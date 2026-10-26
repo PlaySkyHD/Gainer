@@ -5,9 +5,10 @@ using Npgsql;
 namespace Gainer.Infrastructure.Persistence;
 
 /// <summary>
-/// Classifies database errors. Only a unique violation on a constraint that stands for a competing stored state (the
-/// aggregate's own primary key or a "one per user/date" index) is a conflict; every other database error is left to
-/// <see cref="SyncMutationProcessor"/>, which reports it as a permanent payload error.
+/// Classifies database errors. Only a unique violation on a constraint that stands for a competing stored state of the
+/// same user (a "one per user" index) is a conflict. Handlers look their own identifiers up under the user filter
+/// before inserting, so a primary key violation means the identifier belongs to another user; that and every other
+/// database error is left to <see cref="SyncMutationProcessor"/>, which reports it as a permanent payload error.
 /// </summary>
 internal static class PersistenceErrors
 {
@@ -20,19 +21,16 @@ internal static class PersistenceErrors
         return null;
     }
 
-    /// <summary>
-    /// True when <paramref name="exception"/> is a unique violation of a key of <typeparamref name="TEntity"/> itself
-    /// (primary key or the alternate key on user and id), i.e. a row with this identifier is already stored.
-    /// </summary>
-    public static bool IsKeyViolation<TEntity>(this AppDbContext context, DbUpdateException exception)
+    /// <summary>True when <paramref name="exception"/> is a unique violation of a key of <typeparamref name="TEntity"/>.</summary>
+    public static bool IsKeyViolation<TEntity>(this DbContext context, Exception exception)
         where TEntity : class =>
         UniqueConstraintName(exception) is { } name &&
         EntityType<TEntity>(context).GetKeys().Any(key => string.Equals(key.GetName(), name, StringComparison.Ordinal));
 
     /// <summary>True when <paramref name="exception"/> is a violation of the unique index of <typeparamref name="TEntity"/> on exactly these properties.</summary>
     public static bool IsUniqueIndexViolation<TEntity>(
-        this AppDbContext context,
-        DbUpdateException exception,
+        this DbContext context,
+        Exception exception,
         params string[] propertyNames)
         where TEntity : class =>
         UniqueConstraintName(exception) is { } name &&
@@ -41,10 +39,10 @@ internal static class PersistenceErrors
             index.Properties.Select(property => property.Name).SequenceEqual(propertyNames, StringComparer.Ordinal) &&
             string.Equals(index.GetDatabaseName(), name, StringComparison.Ordinal));
 
-    private static string? UniqueConstraintName(DbUpdateException exception) =>
+    private static string? UniqueConstraintName(Exception exception) =>
         FindPostgres(exception) is { SqlState: PostgresErrorCodes.UniqueViolation } postgres ? postgres.ConstraintName : null;
 
-    private static IEntityType EntityType<TEntity>(AppDbContext context) where TEntity : class =>
+    private static IEntityType EntityType<TEntity>(DbContext context) where TEntity : class =>
         context.Model.FindEntityType(typeof(TEntity))
             ?? throw new InvalidOperationException($"{typeof(TEntity).Name} is not part of the model.");
 }

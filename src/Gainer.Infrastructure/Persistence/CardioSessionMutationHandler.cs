@@ -56,10 +56,8 @@ public sealed class CardioSessionMutationHandler(
         {
             throw new CardioSessionConflictException("The cardio session changed concurrently.");
         }
-        catch (DbUpdateException exception) when (context.IsKeyViolation<CardioSession>(exception))
-        {
-            throw new CardioSessionConflictException("A cardio session already exists for this identifier.");
-        }
+        // The lookup already found the user's own session, so a key violation means the id belongs to another user.
+        // No pull heals that; the sync processor reports it as a permanent invalid payload.
 
         CardioSessionSnapshot snapshot = ToSnapshot(session);
         changeCollector?.CaptureUpsert(snapshot);

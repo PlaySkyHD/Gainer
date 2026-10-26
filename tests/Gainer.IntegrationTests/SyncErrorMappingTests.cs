@@ -5,6 +5,9 @@ using Gainer.Core.Security;
 using Gainer.Core.Sync;
 using Gainer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Gainer.IntegrationTests;
 
@@ -178,6 +181,166 @@ public sealed class SyncErrorMappingTests
         Assert.AreEqual("The mutation payload is invalid.", invalid.Message);
     }
 
+    [TestMethod]
+    public async Task ReusedClientSequenceIsAPermanentEnvelopeError()
+    {
+        (string connectionString, Guid user, Guid client) = await SetupAsync();
+        Guid firstDay = Guid.NewGuid();
+        await Run(connectionString, user, client, 1, Water(firstDay, WaterPayload(firstDay, Day)));
+
+        // A reset sequence counter: another mutation id with the same client sequence fails on every retry.
+        Guid secondDay = Guid.NewGuid();
+        SyncMutationValidationException invalid = await ExpectInvalid(connectionString, user, client, 1,
+            Water(secondDay, WaterPayload(secondDay, Day.AddDays(1))), "invalid_envelope");
+        Assert.IsInstanceOfType<DbUpdateException>(invalid.InnerException);
+    }
+
+    [TestMethod]
+    [DataRow(PostgresErrorCodes.SerializationFailure)]
+    [DataRow(PostgresErrorCodes.DeadlockDetected)]
+    public async Task SerializationFailuresInTheBodyGoalHandlerStayRetryable(string sqlState)
+    {
+        (string connectionString, Guid user, Guid client) = await SetupAsync();
+        Guid goalId = Guid.NewGuid();
+        await using AppDbContext context = Fixture.CreateContextWithInterceptors(
+            connectionString, user, new FailingInsertInterceptor<BodyGoal>(sqlState));
+
+        SyncMutationConflictException conflict = await Assert.ThrowsExactlyAsync<SyncMutationConflictException>(() =>
+            Processor(context, user).ProcessAsync(For(ActivateGoal(goalId), client, 1)));
+        Assert.AreEqual("concurrent_mutation", conflict.Code);
+    }
+
+    [TestMethod]
+    public async Task NewCheckInIdOnAStoredDateIsInvalidPayloadWhileTheSameIdStaysStale()
+    {
+        (string connectionString, Guid user, Guid client) = await SetupAsync();
+        Guid checkInId = Guid.NewGuid();
+        await Run(connectionString, user, client, 1, CheckIn(checkInId, Day));
+
+        await ExpectInvalid(connectionString, user, client, 2, CheckIn(Guid.NewGuid(), Day), "invalid_payload");
+        await ExpectConflict(connectionString, user, client, 2, CheckIn(checkInId, Day.AddDays(1)), "stale_base_version");
+    }
+
+    [TestMethod]
+    public async Task AnIdOwnedByAnotherUserIsInvalidPayloadWithoutDetails()
+    {
+        (string connectionString, Guid owner, Guid ownerClient) = await SetupAsync();
+        (Guid other, Guid otherClient) = await AddUserAsync(connectionString);
+        Guid exerciseId = await BaseExerciseIdAsync(connectionString, owner);
+        Guid dayId = Guid.NewGuid();
+        Guid workoutId = Guid.NewGuid();
+        Guid checkInId = Guid.NewGuid();
+        Guid scheduleId = Guid.NewGuid();
+        await Run(connectionString, owner, ownerClient, 1, NutritionDay(dayId, Day, 0, Entry(Guid.NewGuid())));
+        await Run(connectionString, owner, ownerClient, 2, Command("createWorkout", "Workout", workoutId, 0,
+            new { workout = Workout(workoutId, exerciseId, Guid.NewGuid(), Guid.NewGuid()) }));
+        await Run(connectionString, owner, ownerClient, 3, CheckIn(checkInId, Day));
+        await Run(connectionString, owner, ownerClient, 4, TargetSchedule(scheduleId));
+
+        // The other user's lookup cannot see these ids, so the insert hits the primary key. No pull can heal that.
+        ProcessSyncMutationCommand[] foreign =
+        [
+            NutritionDay(dayId, Day, 0, Entry(Guid.NewGuid())),
+            Command("createWorkout", "Workout", workoutId, 0,
+                new { workout = Workout(workoutId, exerciseId, Guid.NewGuid(), Guid.NewGuid()) }),
+            CheckIn(checkInId, Day),
+            TargetSchedule(scheduleId),
+        ];
+        foreach (ProcessSyncMutationCommand command in foreign)
+        {
+            SyncMutationValidationException invalid =
+                await ExpectInvalid(connectionString, other, otherClient, 1, command, "invalid_payload");
+            Assert.AreEqual("The mutation payload conflicts with stored data.", invalid.Message);
+        }
+
+        await using AppDbContext read = Fixture.CreateContext(connectionString, owner);
+        Assert.AreEqual(1, (await read.NutritionDays.SingleAsync(item => item.Id == dayId)).Version);
+        Assert.AreEqual(1, (await read.Workouts.SingleAsync(item => item.Id == workoutId)).Version);
+    }
+
+    [TestMethod]
+    public async Task DatabaseRejectionsKeepTheirCauseAndLogItWithoutValues()
+    {
+        (string connectionString, Guid user, Guid client) = await SetupAsync();
+        Guid exerciseId = await BaseExerciseIdAsync(connectionString, user);
+        Guid firstWorkout = Guid.NewGuid();
+        Guid workoutExerciseId = Guid.NewGuid();
+        await Run(connectionString, user, client, 1, Command("createWorkout", "Workout", firstWorkout, 0,
+            new { workout = Workout(firstWorkout, exerciseId, workoutExerciseId, Guid.NewGuid()) }));
+
+        var logger = new ListLogger();
+        Guid secondWorkout = Guid.NewGuid();
+        SyncMutationValidationException invalid = await ExpectInvalid(connectionString, user, client, 2,
+            Command("createWorkout", "Workout", secondWorkout, 0,
+                new { workout = Workout(secondWorkout, exerciseId, workoutExerciseId, Guid.NewGuid()) }),
+            "invalid_payload", logger);
+
+        Assert.IsInstanceOfType<DbUpdateException>(invalid.InnerException);
+        string entry = logger.Messages.Single();
+        StringAssert.Contains(entry, PostgresErrorCodes.UniqueViolation);
+        StringAssert.Contains(entry, "workout_exercises");
+        Assert.IsFalse(entry.Contains(workoutExerciseId.ToString(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public async Task PayloadDeserializationErrorsLogThePathWithoutTheValue()
+    {
+        (string connectionString, Guid user, Guid client) = await SetupAsync();
+        Guid dayId = Guid.NewGuid();
+        var logger = new ListLogger();
+        SyncMutationValidationException invalid = await ExpectInvalid(connectionString, user, client, 1,
+            Water(dayId, JsonSerializer.SerializeToElement(
+                new { waterIntakeDayId = dayId, localDate = Day, baseVersion = 0, amountMl = "viel" }, JsonOptions)),
+            "invalid_payload", logger);
+
+        Assert.IsInstanceOfType<JsonException>(invalid.InnerException);
+        string entry = logger.Messages.Single();
+        StringAssert.Contains(entry, "$.amountMl");
+        Assert.IsFalse(entry.Contains("viel", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task SaltAndFiberOutsideTheirRangeAreInvalidPayloads()
+    {
+        (string connectionString, Guid user, Guid client) = await SetupAsync();
+
+        await ExpectInvalid(connectionString, user, client, 1,
+            NutritionDay(Guid.NewGuid(), Day, 0, Entry(Guid.NewGuid(), saltGramsPer100Grams: 1e8m)), "invalid_payload");
+        await ExpectInvalid(connectionString, user, client, 1,
+            NutritionDay(Guid.NewGuid(), Day, 0, Entry(Guid.NewGuid(), fiberGramsPer100Grams: -1m)), "invalid_payload");
+    }
+
+    private static JsonElement WaterPayload(Guid dayId, DateOnly localDate) =>
+        JsonSerializer.SerializeToElement(new { waterIntakeDayId = dayId, localDate, baseVersion = 0, amountMl = 200 }, JsonOptions);
+
+    private static ProcessSyncMutationCommand CheckIn(Guid checkInId, DateOnly localDate) =>
+        Command("createDailyCheckIn", "DailyCheckIn", checkInId, 0,
+            new { checkInId, localDate, values = new DailyCheckInValues(80m) });
+
+    private static ProcessSyncMutationCommand ActivateGoal(Guid goalId) =>
+        Command("activateBodyGoal", "BodyGoal", goalId, 0, new
+        {
+            goalId,
+            kind = "Cut",
+            startWeightKg = 85m,
+            targetWeightKg = 80m,
+            startDate = Day,
+            targetDate = (DateOnly?)null,
+            expectedActiveGoalId = (Guid?)null,
+            expectedActiveGoalVersion = (long?)null,
+        });
+
+    private static ProcessSyncMutationCommand TargetSchedule(Guid scheduleId) =>
+        Command("saveNutritionTargetSchedule", "NutritionTargetSchedule", scheduleId, 0, new
+        {
+            nutritionTargetScheduleId = scheduleId,
+            baseVersion = 0,
+            versions = new[]
+            {
+                new { targetVersionId = Guid.NewGuid(), effectiveFrom = Day, kilocalories = 2500m, proteinGrams = 180m, carbohydrateGrams = 260m, fatGrams = 80m, origin = "Manual" },
+            },
+        });
+
     private static ProcessSyncMutationCommand Water(Guid dayId, JsonElement payload) => new(
         Guid.NewGuid(),
         new CanonicalMutationContent(
@@ -192,7 +355,9 @@ public sealed class SyncErrorMappingTests
         Guid entryId,
         decimal amountGrams = 150m,
         decimal kilocaloriesPer100Grams = 120m,
-        decimal basisGrams = 100m) => new
+        decimal basisGrams = 100m,
+        decimal? saltGramsPer100Grams = null,
+        decimal? fiberGramsPer100Grams = null) => new
         {
             entryId,
             meal = "Lunch",
@@ -204,6 +369,8 @@ public sealed class SyncErrorMappingTests
             proteinGramsPer100Grams = (decimal?)4m,
             carbohydrateGramsPer100Grams = (decimal?)5m,
             fatGramsPer100Grams = (decimal?)3m,
+            saltGramsPer100Grams,
+            fiberGramsPer100Grams,
             source = new { provider = (string?)null, barcode = (string?)null, retrievedAtUtc = (DateTime?)null, basisGrams },
         };
 
@@ -265,28 +432,42 @@ public sealed class SyncErrorMappingTests
     }
 
     private static async Task<SyncMutationValidationException> ExpectInvalid(
-        string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command, string code)
+        string connectionString,
+        Guid user,
+        Guid client,
+        long sequence,
+        ProcessSyncMutationCommand command,
+        string code,
+        ILogger<SyncMutationProcessor>? logger = null)
     {
         SyncMutationValidationException invalid =
-            await ExpectThrows<SyncMutationValidationException>(connectionString, user, client, sequence, command);
+            await ExpectThrows<SyncMutationValidationException>(connectionString, user, client, sequence, command, logger);
         Assert.AreEqual(code, invalid.Code);
         return invalid;
     }
 
     private static async Task<TException> ExpectThrows<TException>(
-        string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
+        string connectionString,
+        Guid user,
+        Guid client,
+        long sequence,
+        ProcessSyncMutationCommand command,
+        ILogger<SyncMutationProcessor>? logger = null)
         where TException : Exception
     {
         await using AppDbContext context = Fixture.CreateContext(connectionString, user);
         return await Assert.ThrowsExactlyAsync<TException>(() =>
-            Processor(context, user).ProcessAsync(For(command, client, sequence)));
+            Processor(context, user, logger).ProcessAsync(For(command, client, sequence)));
     }
 
-    private static SyncMutationProcessor Processor(AppDbContext context, Guid userId)
+    private static SyncMutationProcessor Processor(
+        AppDbContext context,
+        Guid userId,
+        ILogger<SyncMutationProcessor>? logger = null)
     {
         var user = new UserContext(userId);
         var time = new FixedTimeProvider(ServerNow);
-        return new SyncMutationProcessor(context, user, new SyncMutationExecutor(context, user, time), time);
+        return new SyncMutationProcessor(context, user, new SyncMutationExecutor(context, user, time), time, logger);
     }
 
     private static async Task<Guid> BaseExerciseIdAsync(string connectionString, Guid userId)
@@ -299,11 +480,20 @@ public sealed class SyncErrorMappingTests
     private static async Task<(string ConnectionString, Guid User, Guid Client)> SetupAsync()
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
+        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        {
+            await context.Database.MigrateAsync();
+        }
+        (Guid user, Guid client) = await AddUserAsync(connectionString);
+        return (connectionString, user, client);
+    }
+
+    private static async Task<(Guid User, Guid Client)> AddUserAsync(string connectionString)
+    {
         Guid user = Guid.NewGuid();
         Guid client = Guid.NewGuid();
         await using (AppDbContext context = Fixture.CreateContext(connectionString))
         {
-            await context.Database.MigrateAsync();
             context.Users.Add(User(user));
             await context.SaveChangesAsync();
         }
@@ -326,7 +516,7 @@ public sealed class SyncErrorMappingTests
             });
             await context.SaveChangesAsync();
         }
-        return (connectionString, user, client);
+        return (user, client);
     }
 
     private static AppUser User(Guid id) => new()
@@ -349,5 +539,41 @@ public sealed class SyncErrorMappingTests
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
+    /// <summary>Fails the save that inserts a <typeparamref name="TEntity"/> with the given PostgreSQL error.</summary>
+    private sealed class FailingInsertInterceptor<TEntity>(string sqlState) : SaveChangesInterceptor
+        where TEntity : class
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context?.ChangeTracker.Entries<TEntity>().Any(entry => entry.State == EntityState.Added) == true)
+            {
+                throw new DbUpdateException(
+                    "Injected database failure.",
+                    new PostgresException("Injected failure.", "ERROR", "ERROR", sqlState));
+            }
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class ListLogger : ILogger<SyncMutationProcessor>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
     }
 }

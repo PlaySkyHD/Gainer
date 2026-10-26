@@ -222,11 +222,13 @@ public sealed class TrainingScheduleMutationHandler(
         {
             throw new TrainingScheduleConflictException("The schedule changed concurrently.");
         }
+        // Only the "one live schedule per user" index stands for another stored schedule of this user. The lookup already
+        // found the user's own id, so a key violation means the id belongs to another user; the sync processor reports
+        // it as a permanent invalid payload.
         catch (DbUpdateException exception) when (
-            context.IsKeyViolation<TrainingSchedule>(exception) ||
             context.IsUniqueIndexViolation<TrainingSchedule>(exception, nameof(TrainingSchedule.UserId)))
         {
-            throw new TrainingScheduleConflictException("Another live schedule or the same identifier already exists.");
+            throw new TrainingScheduleConflictException("The user already has a live training schedule.");
         }
     }
 

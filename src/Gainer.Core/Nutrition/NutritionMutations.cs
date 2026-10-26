@@ -63,7 +63,7 @@ public sealed record NutritionEntryInput
         if (string.IsNullOrWhiteSpace(productName)) errors[nameof(ProductName)] = "ProductName is required.";
         if (productName.Length > 200) errors[nameof(ProductName)] = "ProductName is too long.";
         if (brand?.Length > 160) errors[nameof(Brand)] = "Brand is too long.";
-        ValidateUpperLimits(amountGrams, per100Grams, source, errors);
+        ValidateRanges(amountGrams, per100Grams, source, errors);
         try
         {
             NutritionTotals totals = NutritionCalculator.Calculate(amountGrams, per100Grams);
@@ -79,8 +79,8 @@ public sealed record NutritionEntryInput
         return new NutritionEntryInput(entryId, meal, position, productName, brand, amountGrams, per100Grams, source, portion);
     }
 
-    /// <summary>The same limits as reusable meal components; they keep every stored value inside its column range.</summary>
-    private static void ValidateUpperLimits(
+    /// <summary>The same per-100-gram ranges as reusable meal components; they keep every stored value inside its column range.</summary>
+    private static void ValidateRanges(
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
         NutritionSourceSnapshot? source,
@@ -88,14 +88,7 @@ public sealed record NutritionEntryInput
     {
         if (amountGrams > NutritionLimits.MaxAmountGrams)
             errors["AmountGrams"] = $"AmountGrams cannot exceed {NutritionLimits.MaxAmountGrams}.";
-        if (per100Grams.Kilocalories > NutritionLimits.MaxKilocaloriesPer100Grams)
-            errors["KilocaloriesPer100Grams"] = "KilocaloriesPer100Grams is outside the allowed range.";
-        if (per100Grams.ProteinGrams > NutritionLimits.MaxMacroGramsPer100Grams)
-            errors["ProteinGramsPer100Grams"] = "ProteinGramsPer100Grams is outside the allowed range.";
-        if (per100Grams.CarbohydrateGrams > NutritionLimits.MaxMacroGramsPer100Grams)
-            errors["CarbohydrateGramsPer100Grams"] = "CarbohydrateGramsPer100Grams is outside the allowed range.";
-        if (per100Grams.FatGrams > NutritionLimits.MaxMacroGramsPer100Grams)
-            errors["FatGramsPer100Grams"] = "FatGramsPer100Grams is outside the allowed range.";
+        NutritionLimits.ValidatePer100Grams(per100Grams, errors);
         if (source is { BasisGrams: <= 0m or > NutritionLimits.MaxSourceBasisGrams })
             errors["BasisGrams"] = $"BasisGrams must be positive and at most {NutritionLimits.MaxSourceBasisGrams}.";
     }

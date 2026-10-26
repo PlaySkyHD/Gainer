@@ -11,6 +11,8 @@ using Gainer.Core.Training;
 using Gainer.Core.Nutrition;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
@@ -19,9 +21,11 @@ public sealed class SyncMutationProcessor(
     AppDbContext context,
     IUserContext userContext,
     ISyncMutationExecutor executor,
-    TimeProvider timeProvider) : ISyncMutationProcessor
+    TimeProvider timeProvider,
+    ILogger<SyncMutationProcessor>? logger = null) : ISyncMutationProcessor
 {
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    private readonly ILogger log = logger ?? NullLogger<SyncMutationProcessor>.Instance;
 
     /// <summary>Operations of the rebuilt training contract and of the contract it replaces; older clients must upgrade before sending them.</summary>
     private static readonly HashSet<string> TrainingOperations = new(StringComparer.Ordinal)
@@ -70,8 +74,7 @@ public sealed class SyncMutationProcessor(
                 throw new SyncMutationConflictException("dependency_not_applied", "The preceding mutation has not been applied.");
             }
 
-            SyncMutationExecutionResult execution = await executor.ExecuteAsync(
-                command.MutationId, command.Content, cancellationToken);
+            SyncMutationExecutionResult execution = await ExecuteDomainAsync(command, cancellationToken);
             if (execution.Changes.Count is < 1 or > 100)
             {
                 throw new InvalidOperationException("A sync mutation must emit between one and 100 changes.");
@@ -140,24 +143,79 @@ public sealed class SyncMutationProcessor(
         {
             throw new SyncMutationConflictException("concurrent_mutation", "Another mutation advanced the user state concurrently.");
         }
-        catch (DbUpdateException exception) when (IsPermanentDataError(exception))
+        catch (DbUpdateException exception) when (IsClientSequenceReuse(exception))
         {
-            // Constraint and range errors the handlers did not classify as a stored stand: resending the same
-            // payload fails again, so it is neither a stale version nor a retryable concurrent mutation.
-            throw new SyncMutationValidationException("invalid_payload", "The mutation payload conflicts with stored data.");
+            // Another mutation id already holds this client sequence (e.g. a reset sequence counter). Resending fails
+            // the same way on every retry, so it is a permanent envelope error, not a concurrent mutation.
+            log.LogWarning(
+                "Sync mutation rejected: client sequence already used (SqlState {SqlState}, constraint {Constraint}).",
+                PersistenceErrors.FindPostgres(exception)?.SqlState,
+                PersistenceErrors.FindPostgres(exception)?.ConstraintName);
+            throw new SyncMutationValidationException(
+                "invalid_envelope",
+                "The client sequence was already used by another mutation.",
+                exception);
         }
     }
 
-    private static byte[] HashOrInvalid(CanonicalMutationContent content)
+    /// <summary>
+    /// Runs the domain handler. Every handler saves its own changes, so a database error raised here comes from the
+    /// domain tables, while the sync tables are written afterwards. Integrity violations (class 23) and data
+    /// exceptions such as numeric overflow (class 22) that the handler did not classify as a stored stand fail the
+    /// same way on every retry: they become a permanent invalid payload. The phase decides instead of the schema of
+    /// the error, because data exceptions carry no schema or table name.
+    /// </summary>
+    private async Task<SyncMutationExecutionResult> ExecuteDomainAsync(
+        ProcessSyncMutationCommand command,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await executor.ExecuteAsync(command.MutationId, command.Content, cancellationToken);
+        }
+        catch (DbUpdateException exception) when (
+            PersistenceErrors.FindPostgres(exception) is { SqlState: { } state } &&
+            (state.StartsWith("23", StringComparison.Ordinal) || state.StartsWith("22", StringComparison.Ordinal)))
+        {
+            PostgresException postgres = PersistenceErrors.FindPostgres(exception)!;
+            // Identifiers of the violated rule only: the message and detail texts can quote stored or sent values.
+            log.LogWarning(
+                "Sync mutation {Operation} rejected by the database: SqlState {SqlState}, constraint {Constraint}, table {Schema}.{Table}, column {Column}.",
+                command.Content.Operation,
+                postgres.SqlState,
+                postgres.ConstraintName,
+                postgres.SchemaName,
+                postgres.TableName,
+                postgres.ColumnName);
+            throw new SyncMutationValidationException(
+                "invalid_payload",
+                "The mutation payload conflicts with stored data.",
+                exception);
+        }
+        catch (SyncMutationValidationException exception) when (exception.InnerException is JsonException json)
+        {
+            // The path names the field only; the serializer message could quote payload values.
+            log.LogWarning(
+                "Sync mutation {Operation} has an invalid payload at {JsonPath}.",
+                command.Content.Operation,
+                json.Path);
+            throw;
+        }
+    }
+
+    private byte[] HashOrInvalid(CanonicalMutationContent content)
     {
         try
         {
             return CanonicalMutationHasher.Hash(content);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException exception)
         {
-            // Missing payload, duplicate keys or numbers outside the decimal range cannot be hashed canonically.
-            throw new SyncMutationValidationException("invalid_payload", "The mutation payload is invalid.");
+            // Missing payload, duplicate keys or numbers outside the decimal range cannot be hashed canonically. The
+            // hasher's messages name the rule without quoting payload values; the operation is not validated yet and
+            // stays out of the log.
+            log.LogWarning("Sync mutation payload cannot be hashed canonically: {Reason}", exception.Message);
+            throw new SyncMutationValidationException("invalid_payload", "The mutation payload is invalid.", exception);
         }
     }
 
@@ -274,24 +332,25 @@ public sealed class SyncMutationProcessor(
     }
 
     /// <summary>
-    /// Serialization failures and deadlocks resolve on retry. A unique violation only does so in the sync tables, where
-    /// a parallel request with the same mutation id or revision won the race; a unique violation in the domain tables
-    /// stays on every retry and is a permanent error.
+    /// Serialization failures and deadlocks resolve on retry. A unique violation only does so where a parallel request
+    /// won a real race: the same mutation id (receipt key or its batch) or the same revision. Every other unique
+    /// violation stays on every retry. Rejections this processor already classified are never retried.
     /// </summary>
-    private static bool IsRetryableConcurrency(Exception exception) =>
+    private bool IsRetryableConcurrency(Exception exception) =>
+        exception is not SyncMutationException &&
         PersistenceErrors.FindPostgres(exception) is { } postgres && (
             postgres.SqlState is PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected ||
-            postgres.SqlState == PostgresErrorCodes.UniqueViolation &&
-            string.Equals(postgres.SchemaName, DatabaseSchemas.Sync, StringComparison.Ordinal));
+            context.IsKeyViolation<ProcessedMutation>(exception) ||
+            context.IsUniqueIndexViolation<ChangeBatch>(exception, nameof(ChangeBatch.UserId), nameof(ChangeBatch.Revision)) ||
+            context.IsUniqueIndexViolation<ChangeBatch>(exception, nameof(ChangeBatch.UserId), nameof(ChangeBatch.MutationId)));
 
-    /// <summary>
-    /// Integrity constraint violations (class 23) and data exceptions such as numeric overflow (class 22) in the domain
-    /// tables. Errors in the sync tables stay server faults.
-    /// </summary>
-    private static bool IsPermanentDataError(DbUpdateException exception) =>
-        PersistenceErrors.FindPostgres(exception) is { SqlState: { } state } postgres &&
-        (state.StartsWith("23", StringComparison.Ordinal) || state.StartsWith("22", StringComparison.Ordinal)) &&
-        !string.Equals(postgres.SchemaName, DatabaseSchemas.Sync, StringComparison.Ordinal);
+    /// <summary>The unique index on user, client and client sequence of the mutation receipts.</summary>
+    private bool IsClientSequenceReuse(DbUpdateException exception) =>
+        context.IsUniqueIndexViolation<ProcessedMutation>(
+            exception,
+            nameof(ProcessedMutation.UserId),
+            nameof(ProcessedMutation.ClientId),
+            nameof(ProcessedMutation.ClientSequence));
 
     private static JsonSerializerOptions CreateJsonOptions()
     {
