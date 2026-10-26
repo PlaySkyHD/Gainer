@@ -122,6 +122,8 @@ class SyncRepository implements MobileSyncActions {
   final String displayName;
   final PendingHandoverSecretStore? handoverSecrets;
   Future<SyncRunReport>? _activeSync;
+  bool _activeSyncTakesOver = false;
+  Future<SyncRunReport>? _queuedTakeOver;
   final String _leaseOwnerId = _newLeaseOwnerId();
 
   late final NativeHandoverRepository _handover = NativeHandoverRepository(
@@ -205,15 +207,34 @@ class SyncRepository implements MobileSyncActions {
     DateTime? now,
   }) {
     final active = _activeSync;
-    if (active != null) return active;
+    if (active != null) {
+      if (!takeOverWriting || _activeSyncTakesOver) return active;
+      // Ein Lauf ohne Übernahme beantwortet die Bitte nicht: Die Übernahme
+      // folgt direkt nach ihm, und der Aufrufer erhält ihren Bericht.
+      return _queuedTakeOver ??= _takeOverAfter(active, now);
+    }
     final run = _synchronizeWithLease(
       takeOverWriting: takeOverWriting,
       now: now,
     );
     _activeSync = run;
+    _activeSyncTakesOver = takeOverWriting;
     return run.whenComplete(() {
       if (identical(_activeSync, run)) _activeSync = null;
     });
+  }
+
+  Future<SyncRunReport> _takeOverAfter(
+    Future<SyncRunReport> active,
+    DateTime? now,
+  ) async {
+    try {
+      await active;
+    } on Object {
+      // Der Fehler gehört dem ersten Aufrufer; die Übernahme läuft trotzdem.
+    }
+    _queuedTakeOver = null;
+    return synchronize(takeOverWriting: true, now: now);
   }
 
   Future<SyncRunReport> _synchronizeWithLease({
@@ -327,21 +348,9 @@ class SyncRepository implements MobileSyncActions {
           return _stopAfterPush(stopState, pushed);
         }
       }
-      try {
-        pulled += await _pullAll();
-      } on ApiException catch (error) {
-        final blocked = await _pullFailureReport(
-          error,
-          pushed,
-          pulled + _appliedInPull,
-        );
-        if (blocked == null) rethrow;
-        return blocked;
-      } on UnsupportedSyncResourceException {
-        return _upgradeRequiredDuringPull(pushed, pulled);
-      } on UnreadableSyncSnapshotException {
-        return _upgradeRequiredDuringPull(pushed, pulled);
-      }
+      final pull = await _pullOrStop(pushed: pushed, pulledBefore: pulled);
+      if (pull.stop case final stop?) return stop;
+      pulled += pull.pulled;
       if (!registration.isActiveWriter || await _healStaleConflicts() == 0) {
         break;
       }
@@ -358,6 +367,36 @@ class SyncRepository implements MobileSyncActions {
       pulled: pulled,
       timestamp: timestamp,
     );
+  }
+
+  /// Pull mit der Fehlerbehandlung, die jeder Aufrufer braucht. Liefert bei
+  /// Abmeldung, Kontowechsel oder nötigem Update einen Abbruchbericht;
+  /// andere [ApiException]s gibt sie weiter.
+  Future<({int pulled, SyncRunReport? stop})> _pullOrStop({
+    required int pushed,
+    required int pulledBefore,
+  }) async {
+    try {
+      return (pulled: await _pullAll(), stop: null);
+    } on ApiException catch (error) {
+      final blocked = await _pullFailureReport(
+        error,
+        pushed,
+        pulledBefore + _appliedInPull,
+      );
+      if (blocked == null) rethrow;
+      return (pulled: _appliedInPull, stop: blocked);
+    } on UnsupportedSyncResourceException {
+      return (
+        pulled: _appliedInPull,
+        stop: _upgradeRequiredDuringPull(pushed, pulledBefore),
+      );
+    } on UnreadableSyncSnapshotException {
+      return (
+        pulled: _appliedInPull,
+        stop: _upgradeRequiredDuringPull(pushed, pulledBefore),
+      );
+    }
   }
 
   /// Neuere Daten, als diese App kennt: Update nötig, nichts geht verloren.
@@ -508,8 +547,26 @@ class SyncRepository implements MobileSyncActions {
   }
 
   Future<SyncRunReport> _stopAfterPush(SyncRunState state, int pushed) async {
-    final pulled = state == SyncRunState.authBlocked ? 0 : await _pullAll();
-    return SyncRunReport(state: state, pushed: pushed, pulledBatches: pulled);
+    if (state == SyncRunState.authBlocked) {
+      return SyncRunReport(state: state, pushed: pushed, pulledBatches: 0);
+    }
+    try {
+      final pull = await _pullOrStop(pushed: pushed, pulledBefore: 0);
+      return pull.stop ??
+          SyncRunReport(
+            state: state,
+            pushed: pushed,
+            pulledBatches: pull.pulled,
+          );
+    } on ApiException {
+      // Der Push hat den Lauf schon beendet; ein sonstiger Pull-Fehler darf
+      // dessen Bericht nicht verdrängen.
+      return SyncRunReport(
+        state: state,
+        pushed: pushed,
+        pulledBatches: _appliedInPull,
+      );
+    }
   }
 
   Future<SyncRunReport> _reportAfterPull({
@@ -1411,10 +1468,10 @@ class SyncRepository implements MobileSyncActions {
       );
       return null;
     }
-    if (error.statusCode == 422) {
-      // Dauerhafte Ablehnung (z. B. `invalid_payload`, `water_day_exists`):
-      // Dieselben Daten scheitern erneut. Ohne Konflikt blockierte der Eintrag
-      // seine Ressource still und dauerhaft.
+    if (_isPermanentRejection(error.statusCode)) {
+      // Dauerhafte Ablehnung (z. B. 422 `invalid_payload`, 400, 403, 404,
+      // 413, 415): Dieselben Daten scheitern erneut. Ohne Konflikt blockierte
+      // der Eintrag seine Ressource still und dauerhaft, mit Backoff ohne Ende.
       await store.upsertConflict(
         LocalConflictRecord(
           conflictId: mutation.mutationId,
@@ -1441,6 +1498,15 @@ class SyncRepository implements MobileSyncActions {
     await _scheduleRetry(mutation, error, now);
     return null;
   }
+
+  /// 4xx außer 408 (Timeout) und 429 (Rate Limit) wiederholen sich mit
+  /// denselben Daten. 401 und 409 behandelt [_handlePushError] vorher.
+  static bool _isPermanentRejection(int? statusCode) =>
+      statusCode != null &&
+      statusCode >= 400 &&
+      statusCode < 500 &&
+      statusCode != 408 &&
+      statusCode != 429;
 
   Future<void> _scheduleRetry(
     LocalMutation mutation,

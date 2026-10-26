@@ -56,6 +56,7 @@ void main() {
   late int handoverCompleteSideEffects;
   late bool serverHandoverAlreadyCompleted;
   late List<Map<String, dynamic>> registrationRequests;
+  late bool takeOverGrantsWriting;
   late Set<String> acceptedMutationIds;
   late bool lenientMutations;
   late List<Map<String, dynamic>> receivedMutations;
@@ -95,6 +96,7 @@ void main() {
     handoverCompleteSideEffects = 0;
     serverHandoverAlreadyCompleted = false;
     registrationRequests = [];
+    takeOverGrantsWriting = false;
     acceptedMutationIds = <String>{};
     lenientMutations = false;
     receivedMutations = [];
@@ -137,9 +139,12 @@ void main() {
         );
       } else if (path.startsWith('/api/v1/sync/clients/') &&
           request.method == 'PUT') {
-        registrationRequests.add(
-          jsonDecode(await _readBody(request)) as Map<String, dynamic>,
-        );
+        final registration =
+            jsonDecode(await _readBody(request)) as Map<String, dynamic>;
+        registrationRequests.add(registration);
+        if (takeOverGrantsWriting && registration['takeOverWriting'] == true) {
+          activeWriter = true;
+        }
         request.response.statusCode = registrationStatus;
         request.response.headers.contentType = ContentType.json;
         if (registrationStatus == 200) {
@@ -1513,6 +1518,179 @@ void main() {
     expect(await store.readOutbox(), isEmpty);
     expect(await database.select(database.localConflicts).get(), isEmpty);
     expect(await store.readAggregate('daily-check-in', checkInId), isNull);
+    api.close();
+    await database.close();
+  });
+
+  Future<void> commitCheckInCreate(LocalSyncStore store) =>
+      store.commitMutation(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
+        aggregateId: checkInId,
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        ),
+      );
+
+  int mutationRequestCount() => received
+      .where((r) => r.uri.path.startsWith('/api/v1/sync/mutations/'))
+      .length;
+
+  for (final status in [400, 403, 404, 413, 415]) {
+    test('a permanent $status push becomes a discardable conflict and is not '
+        'resent', () async {
+      mutationFailureCode = 'http_$status';
+      mutationFailureStatus = status;
+      final (store, database, api, repository) = await fixture();
+      await commitCheckInCreate(store);
+
+      await repository.synchronize(now: DateTime.utc(2026, 10, 12));
+      // Weit nach jedem Backoff: Ein Wiederholungsversuch würde jetzt senden.
+      await repository.synchronize(now: DateTime.utc(2026, 10, 13));
+
+      expect(mutationRequestCount(), 1);
+      final conflict =
+          (await database.select(database.localConflicts).get()).single;
+      expect(conflict.code, 'http_$status');
+      expect(
+        jsonDecode(conflict.detailJson)[permanentRejectionDetailKey],
+        isTrue,
+      );
+      final waiting = (await store.readOutbox()).single;
+      expect(waiting.status, LocalMutationStatus.conflict);
+      expect(waiting.lastErrorCode, 'http_$status');
+      final info = (await store.readConflictResourceInfos())[mutationId]!;
+      expect(info.permanentRejection, isTrue);
+      expect(info.discardsLocal, isTrue);
+      api.close();
+      await database.close();
+    });
+  }
+
+  for (final status in [408, 429]) {
+    test('a $status push stays a retry without a conflict', () async {
+      mutationFailureCode = 'http_$status';
+      mutationFailureStatus = status;
+      final (store, database, api, repository) = await fixture();
+      await commitCheckInCreate(store);
+
+      final report = await repository.synchronize(
+        now: DateTime.utc(2026, 10, 12),
+      );
+
+      expect(report.state, SyncRunState.retryPending);
+      expect(await database.select(database.localConflicts).get(), isEmpty);
+      final waiting = (await store.readOutbox()).single;
+      expect(waiting.status, LocalMutationStatus.pending);
+      expect(waiting.attemptCount, 1);
+      api.close();
+      await database.close();
+    });
+  }
+
+  test(
+    'a 401 push still pauses the outbox instead of creating a conflict',
+    () async {
+      mutationFailureCode = 'authentication_required';
+      mutationFailureStatus = 401;
+      final (store, database, api, repository) = await fixture();
+      await commitCheckInCreate(store);
+
+      final report = await repository.synchronize();
+
+      expect(report.state, SyncRunState.authBlocked);
+      expect(await database.select(database.localConflicts).get(), isEmpty);
+      expect(
+        (await store.readOutbox()).single.status,
+        LocalMutationStatus.authBlocked,
+      );
+      api.close();
+      await database.close();
+    },
+  );
+
+  test('a failing pull after an upgrade_required push keeps the update '
+      'report', () async {
+    mutationFailureCode = 'upgrade_required';
+    mutationFailureStatus = 409;
+    pullFailureCode = 'temporary_unavailable';
+    pullFailureStatus = 503;
+    final (store, database, api, repository) = await fixture();
+    await commitCheckInCreate(store);
+
+    final report = await repository.synchronize();
+
+    expect(report.state, SyncRunState.upgradeRequired);
+    expect(report.pulledBatches, 0);
+    expect(
+      (await store.readOutbox()).single.status,
+      LocalMutationStatus.upgradeRequired,
+    );
+    expect(await store.readSyncMetadata('pull-cursor'), isNull);
+    api.close();
+    await database.close();
+  });
+
+  test('a pull asking for an update after an upgrade_required push reports '
+      'the update', () async {
+    mutationFailureCode = 'upgrade_required';
+    mutationFailureStatus = 409;
+    pullFailureCode = 'upgrade_required';
+    final (store, database, api, repository) = await fixture();
+    await commitCheckInCreate(store);
+
+    final report = await repository.synchronize();
+
+    expect(report.state, SyncRunState.upgradeRequired);
+    expect(await store.readSyncMetadata('pull-cursor'), isNull);
+    api.close();
+    await database.close();
+  });
+
+  test('account_changed on the pull after an inactive_client push pauses '
+      'sync', () async {
+    mutationFailureCode = 'inactive_client';
+    mutationFailureStatus = 409;
+    pullFailureCode = 'account_changed';
+    final (store, database, api, repository) = await fixture();
+    await commitCheckInCreate(store);
+
+    final report = await repository.synchronize();
+
+    expect(report.state, SyncRunState.authBlocked);
+    expect(await store.readSyncMetadata('pull-cursor'), isNull);
+    api.close();
+    await database.close();
+  });
+
+  test('a takeover requested during a running sync runs after it with its '
+      'own report', () async {
+    activeWriter = false;
+    takeOverGrantsWriting = true;
+    final (store, database, api, repository) = await fixture();
+    sessionGate = Completer<void>();
+    sessionEntered = Completer<void>();
+    final background = repository.synchronize();
+    await sessionEntered!.future;
+    final gate = sessionGate!;
+    sessionGate = null;
+
+    final takeOver = repository.synchronize(takeOverWriting: true);
+    final repeatedTap = repository.synchronize(takeOverWriting: true);
+    gate.complete();
+
+    expect((await background).state, SyncRunState.inactiveClient);
+    final report = await takeOver;
+    expect(report.state, isNot(SyncRunState.inactiveClient));
+    expect(identical(await repeatedTap, report), isTrue);
+    expect(registrationRequests.map((r) => r['takeOverWriting']), [
+      false,
+      true,
+    ]);
     api.close();
     await database.close();
   });
