@@ -59,23 +59,14 @@ class _TrainingHomeScreenState extends State<TrainingHomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _viewModel.loadDiary());
     // Cardio-Einheiten ändern sich auch außerhalb dieses Screens: Beenden in
     // der Live-Ansicht (auch über die Live Activity geöffnet), Löschen in der
-    // Detailansicht.
+    // Detailansicht, Sync von anderen Geräten. Das Repository wechselt nicht:
+    // Die Shell ist je Konto und Generation geschlüsselt, ein Kontowechsel
+    // baut diesen Screen samt View-Model neu.
     widget.cardio?.repository.changes.addListener(_onCardioChanged);
   }
 
   void _onCardioChanged() {
     if (mounted) _viewModel.loadDiary();
-  }
-
-  @override
-  void didUpdateWidget(TrainingHomeScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final before = oldWidget.cardio?.repository;
-    final after = widget.cardio?.repository;
-    if (!identical(before, after)) {
-      before?.changes.removeListener(_onCardioChanged);
-      after?.changes.addListener(_onCardioChanged);
-    }
   }
 
   @override
@@ -97,25 +88,24 @@ class _TrainingHomeScreenState extends State<TrainingHomeScreen> {
     if (mounted) await _viewModel.loadDiary();
   }
 
+  // Nach Cardio-Ansichten lädt [_onCardioChanged] das Tagebuch, sobald sich
+  // eine Einheit geändert hat; ein zweites Laden hier liefe parallel.
   Future<void> _startCardio() async {
     final cardio = widget.cardio;
     if (cardio == null) return;
     await startOrOpenCardio(context, cardio);
-    if (mounted) await _viewModel.loadDiary();
   }
 
   Future<void> _openCardio(CardioSession session) async {
     final cardio = widget.cardio;
     if (cardio == null) return;
     await openCardioDetail(context, cardio, session.sessionId);
-    if (mounted) await _viewModel.loadDiary();
   }
 
   Future<void> _openRunningCardio() async {
     final cardio = widget.cardio;
     if (cardio == null) return;
     await openCardioLive(context, cardio);
-    if (mounted) await _viewModel.loadDiary();
   }
 
   Future<void> _startWorkout() async {

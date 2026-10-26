@@ -283,7 +283,8 @@ class PlatformHeartRateStatus {
   final String? zoneState;
 
   /// One of `running`, `disabled` (in den iOS-Einstellungen aus), `missing`
-  /// (erlaubt, aber keine Activity); null ohne Überwachung mit Live Activity.
+  /// (erlaubt, aber keine Activity), `dismissed` (lief und wurde entfernt,
+  /// nicht erneut starten); null ohne Überwachung mit Live Activity.
   final String? liveActivityState;
 }
 

@@ -795,6 +795,8 @@ class AccountScope {
       SyncRunState.retryPending,
       SyncRunState.inactiveClient,
     }.contains(report.state)) {
+      // Gezogene Einheiten anderer Geräte: Listen wie das Tagebuch laden neu.
+      if (report.pulledBatches > 0) cardio.notifyExternalChange();
       await Future.wait([
         bodyViewModel.load(),
         nutritionViewModel.load(),

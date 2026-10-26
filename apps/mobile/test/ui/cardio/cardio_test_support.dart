@@ -21,6 +21,22 @@ const accountId = '00000000-0000-4000-8000-000000000001';
 String testId(int value) =>
     '00000000-0000-4000-8000-${value.toString().padLeft(12, '0')}';
 
+/// Speichert die Einheit wie schon gesendet (kein wartender Eintrag) und
+/// löscht sie danach. Es bleibt eine gelöschte Einheit im Speicher; ohne das
+/// Senden fasst die Outbox Anlegen und Löschen zu nichts zusammen.
+Future<void> saveSyncedThenDelete(
+  CardioRepository repository,
+  CardioSession session,
+) async {
+  await repository.saveFinished(session);
+  for (final mutation in await repository.store.readOutbox(
+    aggregateType: cardioSessionAggregateType,
+  )) {
+    await repository.store.deleteMutation(mutation.mutationId);
+  }
+  await repository.deleteSession(session.sessionId);
+}
+
 class FakeHeartRate implements HeartRatePlatform {
   HeartRateMonitoringConfig? monitoring;
   final started = <HeartRateMonitoringConfig>[];

@@ -289,6 +289,73 @@ void main() {
       expect(await repository.readSessions(), hasLength(1));
     });
 
+    test('eine gespeicherte und danach gelöschte Einheit wird nicht '
+        'wiederbelebt', () async {
+      final controller = newController();
+      final draft = await controller.start();
+      // Mit Puls vor dem Beenden gäbe es sonst eine Erholung.
+      platform.samples.add(sample(1, 295, 150));
+      platform.latestBpm = 150;
+      platform.latestAt = t0.add(const Duration(seconds: 295));
+      now = t0.add(const Duration(minutes: 5));
+      await saveSyncedThenDelete(
+        repository,
+        CardioSession(
+          sessionId: draft.sessionId,
+          startedAtUtc: draft.startedAtUtc,
+          endedAtUtc: now,
+          heartRateBpm: const [],
+          rrIntervalsMs: const [],
+          createdAtUtc: now,
+          updatedAtUtc: now,
+        ),
+      );
+
+      await expectLater(
+        controller.finish(),
+        throwsA(isA<CardioSessionDeletedException>()),
+      );
+
+      expect(controller.isRunning, isFalse);
+      expect(controller.isRecovering, isFalse);
+      expect(await repository.readDraft(), isNull);
+      expect(await repository.readSessions(), isEmpty);
+      expect(platform.stopped, [draft.sessionId]);
+    });
+
+    test('Rückkehr in die App während des Beendens lässt keinen Timer '
+        'zurück', () async {
+      final controller = CardioSessionController(
+        repository: repository,
+        platform: platform,
+        notifications: notifications,
+        trainingPreferences: trainingPreferences,
+        pollInterval: const Duration(milliseconds: 10),
+        clock: () => now,
+      );
+      controllers.add(controller);
+      final binding = TestWidgetsFlutterBinding.instance;
+      await controller.start();
+      expect(controller.hasPollTimer, isTrue);
+      now = t0.add(const Duration(minutes: 5));
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      expect(controller.hasPollTimer, isFalse);
+
+      // Beenden hängt in der letzten Abfrage, die App kommt zurück.
+      final gate = platform.statusGate = Completer<void>();
+      final finishing = controller.finish();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(controller.hasPollTimer, isTrue);
+      platform.statusGate = null;
+      gate.complete();
+      await finishing;
+
+      expect(controller.isRunning, isFalse);
+      expect(controller.isRecovering, isFalse);
+      expect(controller.hasPollTimer, isFalse);
+    });
+
     test('Beenden wartet auf eine laufende Abfrage', () async {
       final controller = newController();
       final draft = await controller.start();
@@ -393,6 +460,19 @@ void main() {
     },
   );
 
+  test('eine weggewischte Live Activity startet nicht erneut', () async {
+    await newController().start();
+    platform.liveActivity = CardioLiveActivityState.dismissed;
+
+    // Wiederherstellen prüft die Live Activity wie die Rückkehr in die App.
+    final controller = newController();
+    await controller.load();
+
+    expect(controller.isRunning, isTrue);
+    expect(platform.updated, isEmpty);
+    expect(controller.liveActivitiesOff, isFalse);
+  });
+
   test(
     'Kaltstart: restored ist fertig, sobald der Entwurf gelesen ist',
     () async {
@@ -445,7 +525,13 @@ void main() {
       final controller = newController();
       await expectLater(
         controller.start(template: template),
-        throwsA(isA<CardioTemplateResolutionException>()),
+        throwsA(
+          isA<CardioTemplateResolutionException>().having(
+            (e) => e.message,
+            'message',
+            contains('40 bis 230 bpm'),
+          ),
+        ),
       );
       expect(controller.isRunning, isFalse);
     });

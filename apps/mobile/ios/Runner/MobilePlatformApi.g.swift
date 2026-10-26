@@ -922,7 +922,8 @@ struct PlatformHeartRateStatus: Hashable, CustomStringConvertible {
   /// One of `none`, `inZone`, `above`, `below`, `noSignal`; null ohne Überwachung.
   var zoneState: String? = nil
   /// One of `running`, `disabled` (in den iOS-Einstellungen aus), `missing`
-  /// (erlaubt, aber keine Activity); null ohne Überwachung mit Live Activity.
+  /// (erlaubt, aber keine Activity), `dismissed` (lief und wurde entfernt,
+  /// nicht erneut starten); null ohne Überwachung mit Live Activity.
   var liveActivityState: String? = nil
 
 

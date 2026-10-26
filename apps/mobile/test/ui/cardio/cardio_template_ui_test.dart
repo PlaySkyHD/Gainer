@@ -489,6 +489,52 @@ void main() {
         hasLength(CardioPreferenceValues.maxTemplates),
       );
     });
+
+    testWidgets('Limit beim Sichern erreicht: Hinweis, Editor bleibt offen', (
+      tester,
+    ) async {
+      final almost = [
+        for (var i = 0; i < CardioPreferenceValues.maxTemplates - 1; i++)
+          CardioTemplate.zone2.copyWith(id: 'tpl-$i', name: 'Vorlage $i'),
+      ];
+      await writePrefs(tester, CardioPreferenceValues(templates: almost));
+      await openList(tester);
+      await tester.tap(find.bySemanticsLabel('Neue Vorlage'));
+      await pumpUi(tester);
+
+      // Während der Editor offen ist, kommt die 50. Vorlage hinzu (etwa per
+      // Sync).
+      await writePrefs(
+        tester,
+        CardioPreferenceValues(
+          templates: [
+            ...almost,
+            CardioTemplate.zone2.copyWith(id: 'tpl-last', name: 'Letzte'),
+          ],
+        ),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('cardio-template-name')),
+        'Neu',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('cardio-template-save')));
+      await pumpUi(tester);
+
+      expect(
+        find.byKey(const ValueKey('cardio-template-save')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('cardio-template-error')))
+            .data,
+        contains('Höchstens 50 eigene'),
+      );
+      final values = await stored(tester);
+      expect(values.templates, hasLength(CardioPreferenceValues.maxTemplates));
+      expect(values.templates.map((t) => t.name), isNot(contains('Neu')));
+    });
   });
 
   group('Einstellungen', () {

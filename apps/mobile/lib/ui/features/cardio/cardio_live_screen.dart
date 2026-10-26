@@ -111,6 +111,16 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
       ],
     );
     if (!mounted || action == null || action == _FinishAction.cancel) return;
+    // Eine längere Einheit geht nicht mit einem einzigen Tipp verloren.
+    if (action == _FinishAction.discard && !short) {
+      final confirmed = await confirmGainerDelete(
+        context,
+        title: 'Einheit verwerfen?',
+        message: 'Die Daten gehen verloren.',
+        deleteLabel: 'Verwerfen',
+      );
+      if (!mounted || !confirmed) return;
+    }
     setState(() {
       _finishing = true;
       _error = null;
@@ -132,6 +142,20 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
         return;
       }
       await _openDetail(saved.sessionId);
+    } on CardioSessionDeletedException {
+      // Die Einheit war schon gespeichert und ist inzwischen gelöscht; der
+      // Entwurf ist aufgeräumt. Erklären und schließen.
+      if (!mounted) return;
+      _closing = true;
+      await showGainerStackedDialog<void>(
+        context: context,
+        title: 'Einheit gelöscht',
+        message:
+            'Diese Einheit wurde bereits gespeichert und danach gelöscht. '
+            'Sie wird nicht erneut gespeichert.',
+        actions: const [GainerDialogAction(label: 'OK', value: null)],
+      );
+      if (mounted) Navigator.of(context).pop();
     } on Object {
       if (mounted) {
         setState(() {

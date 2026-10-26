@@ -54,11 +54,16 @@ class CardioRepository {
 
   final ValueNotifier<int> _revision = ValueNotifier(0);
 
-  /// Meldet jede lokale Änderung an Einheiten (Speichern, Ändern, Löschen),
-  /// damit Listen wie das Tagebuch neu laden.
+  /// Meldet jede lokale Änderung an Einheiten (Speichern, Ändern, Löschen)
+  /// und gezogene Änderungen ([notifyExternalChange]), damit Listen wie das
+  /// Tagebuch neu laden.
   ValueListenable<int> get changes => _revision;
 
   void _changed() => _revision.value++;
+
+  /// Einheiten haben sich außerhalb dieses Repositorys geändert, etwa durch
+  /// einen Sync-Pull von einem anderen Gerät.
+  void notifyExternalChange() => _changed();
 
   /// Neue Einheiten-ID (UUID v4).
   String newSessionId() => ids();

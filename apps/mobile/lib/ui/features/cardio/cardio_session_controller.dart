@@ -10,6 +10,13 @@ import '../../../domain/models/cardio/cardio_draft.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/cardio/cardio_template.dart';
 
+/// Beim Beenden war die Einheit schon gespeichert und ist inzwischen gelöscht.
+/// Der Entwurf ist aufgeräumt; es wird nichts gespeichert und keine Erholung
+/// gemessen.
+class CardioSessionDeletedException implements Exception {
+  const CardioSessionDeletedException();
+}
+
 /// Erholungsphase nach dem Beenden: 60 s weiter messen, um den Pulsabfall zu
 /// bestimmen. Die Einheit ist dann schon gespeichert.
 class CardioRecovery {
@@ -266,6 +273,10 @@ class CardioSessionController extends ChangeNotifier {
       _status.monitoringSessionId == _active?.sessionId &&
       _status.liveActivityState == CardioLiveActivityState.disabled;
 
+  /// Läuft die zyklische Abfrage gerade?
+  @visibleForTesting
+  bool get hasPollTimer => _timer != null;
+
   /// Fertig, sobald [load] den Entwurf gelesen hat; sofort fertig ohne [load].
   /// Ein Kaltstart über die Live Activity wartet darauf, bevor er [isRunning]
   /// prüft.
@@ -399,10 +410,10 @@ class CardioSessionController extends ChangeNotifier {
     final prefs = await repository.preferences.read();
     final phases = template.resolve(prefs.zones);
     if (!CardioPhase.isValidList(phases)) {
-      throw const CardioTemplateResolutionException(
+      throw CardioTemplateResolutionException(
         'Die Pulszonen ergeben für diese Vorlage keinen gültigen Zielbereich '
-        '(40 bis 230 bpm). Maximalpuls und Ruhepuls in den '
-        'Cardio-Einstellungen prüfen.',
+        '(${CardioTargetZone.minBpm} bis ${CardioTargetZone.maxBpm} bpm). '
+        'Maximalpuls und Ruhepuls in den Cardio-Einstellungen prüfen.',
       );
     }
     return phases;
@@ -511,6 +522,13 @@ class CardioSessionController extends ChangeNotifier {
       _dirty = false;
       await _settlePoll();
       await _clearDraftQuietly();
+      if (stored == null) {
+        // Schon gespeichert und inzwischen gelöscht: nicht wiederbeleben und
+        // keine Erholung auf einer gelöschten Einheit.
+        await _stopNative(current.sessionId);
+        if (!_disposed) notifyListeners();
+        throw const CardioSessionDeletedException();
+      }
       final startBpm = _recoveryStartBpm(stored.endedAtUtc);
       final recovery = startBpm == null
           ? null
@@ -535,20 +553,21 @@ class CardioSessionController extends ChangeNotifier {
       await _stopNative(current.sessionId);
       notifyListeners();
       return stored;
-    } on Object {
+    } finally {
+      // Ein Zurückkehren in die App während der awaits kann den Timer neu
+      // angelegt haben; er richtet sich nach dem Zustand danach.
       _syncTimer();
-      rethrow;
     }
   }
 
   /// Speichert die Einheit. Gibt es sie schon (Abbruch zwischen Speichern und
   /// Entwurf löschen), gilt sie als gespeichert und es bleibt nur Aufräumen.
-  Future<CardioSession> _saveOrExisting(CardioSession session) async {
+  /// Null, wenn sie schon gespeichert und inzwischen gelöscht ist.
+  Future<CardioSession?> _saveOrExisting(CardioSession session) async {
     try {
       return await repository.saveFinished(session);
     } on CardioSessionExistsException {
-      return await repository.readSession(session.sessionId) ??
-          CardioRepository.sanitize(session);
+      return repository.readSession(session.sessionId);
     }
   }
 

@@ -518,6 +518,10 @@ enum CardioLiveActivityState {
 
   /// Erlaubt, aber keine Activity (beim Start aus oder von iOS beendet).
   missing,
+
+  /// Die Activity dieser Einheit lief und wurde entfernt, meist vom Nutzer
+  /// weggewischt. Für diese Einheit nicht erneut starten.
+  dismissed,
 }
 
 /// Pulsgurt und native Cardio-Überwachung. Bluetooth-Probleme melden sich als

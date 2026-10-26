@@ -214,11 +214,25 @@ void main() {
     expect(find.text('Kennzahlen'), findsOneWidget);
   });
 
-  testWidgets('ab 60 s lässt sich die Einheit auch verwerfen', (tester) async {
+  testWidgets('ab 60 s verwirft erst eine zweite Bestätigung', (tester) async {
     await startRunning(tester, bpm: 130, after: const Duration(minutes: 5));
     await openLive(tester);
 
+    // Abbrechen in der Rückfrage lässt die Einheit laufen.
     await tester.tap(find.byKey(const ValueKey('cardio-finish')));
+    await pumpUi(tester);
+    await tester.tap(inDialog('Verwerfen'));
+    await pumpUi(tester);
+    expect(find.text('Einheit verwerfen?'), findsOneWidget);
+    expect(find.text('Die Daten gehen verloren.'), findsOneWidget);
+    await tester.tap(inDialog('Abbrechen'));
+    await pumpUi(tester);
+    expect(harness.controller.isRunning, isTrue);
+    expect(find.byType(CardioLiveScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('cardio-finish')));
+    await pumpUi(tester);
+    await tester.tap(inDialog('Verwerfen'));
     await pumpUi(tester);
     await tester.tap(inDialog('Verwerfen'));
     await pumpUi(tester);
@@ -263,6 +277,45 @@ void main() {
     expect(harness.controller.isRunning, isFalse);
     expect(find.byType(CardioDetailScreen), findsOneWidget);
     expect(await tester.runAsync(harness.repository.readDraft), isNull);
+  });
+
+  testWidgets('eine inzwischen gelöschte Einheit erklärt und schließt', (
+    tester,
+  ) async {
+    await startRunning(tester, bpm: 130, after: const Duration(minutes: 5));
+    await tester.runAsync(() async {
+      final draft = harness.controller.active!;
+      await saveSyncedThenDelete(
+        harness.repository,
+        CardioSession(
+          sessionId: draft.sessionId,
+          startedAtUtc: draft.startedAtUtc,
+          endedAtUtc: harness.now,
+          heartRateBpm: const [],
+          rrIntervalsMs: const [],
+          createdAtUtc: harness.now,
+          updatedAtUtc: harness.now,
+        ),
+      );
+    });
+    await openLive(tester);
+
+    await tester.tap(find.byKey(const ValueKey('cardio-finish')));
+    await pumpUi(tester);
+    await tester.tap(inDialog('Beenden'));
+    await pumpUi(tester);
+
+    expect(find.text('Einheit gelöscht'), findsOneWidget);
+    expect(find.byType(CardioLiveScreen), findsOneWidget);
+    await tester.tap(inDialog('OK'));
+    await pumpUi(tester);
+    await pumpUi(tester);
+
+    expect(find.byType(CardioLiveScreen), findsNothing);
+    expect(find.byType(CardioDetailScreen), findsNothing);
+    expect(harness.controller.isRunning, isFalse);
+    expect(await tester.runAsync(harness.repository.readDraft), isNull);
+    expect(await tester.runAsync(harness.repository.readSessions), isEmpty);
   });
 
   testWidgets('Live-Aktivitäten aus: Hinweis mit Weg in die Einstellungen', (

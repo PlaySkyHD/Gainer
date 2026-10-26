@@ -271,11 +271,11 @@ final class NativeHeartRateMonitor {
 
     if config.liveActivityEnabled {
       // Fehlt die Activity (beim Start aus oder vom System beendet), erneut starten.
-      if current.config.liveActivityEnabled,
-        liveActivity.state(sessionId: config.sessionId) == "running"
-      {
+      // Hat der Nutzer sie weggewischt, bleibt sie für diese Session weg.
+      let activityState = liveActivity.state(sessionId: config.sessionId)
+      if current.config.liveActivityEnabled, activityState == "running" {
         await liveActivity.update(state: liveActivityState(now: now))
-      } else {
+      } else if !current.config.liveActivityEnabled || activityState != "dismissed" {
         await liveActivity.start(
           sessionId: config.sessionId,
           title: config.title,
