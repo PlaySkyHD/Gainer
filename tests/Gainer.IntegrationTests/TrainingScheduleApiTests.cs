@@ -463,7 +463,9 @@ public sealed class TrainingScheduleApiTests
 
     private async Task<PullChangesResponse> PullAsync(Device device)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/sync/changes?after=0&limit=200");
+        // Training schedules need protocol 4; a pull without a version counts as protocol 3.
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get, $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion}");
         device.Session.Apply(request);
         using HttpResponseMessage response = await device.Client.SendAsync(request, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
