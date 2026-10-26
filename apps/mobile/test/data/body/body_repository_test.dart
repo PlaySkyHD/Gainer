@@ -91,8 +91,10 @@ void main() {
       expect(again, originalId);
       final checkIn = (await repository.read()).checkIns.single.value;
       expect(checkIn.weightKg, 70.8);
-      expect(checkIn.caloriesKcal, isNull);
-      expect(checkIn.steps, isNull);
+      // null heißt „nicht übergeben“: die bisherigen Werte bleiben.
+      expect(checkIn.caloriesKcal, 2200);
+      expect(checkIn.steps, 8500);
+      expect(checkIn.sleepMinutes, 420);
       expect(checkIn.createdAtUtc, now.toIso8601String());
       expect(checkIn.updatedAtUtc, now.toIso8601String());
     },

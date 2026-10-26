@@ -792,7 +792,9 @@ class _BodyScreenState extends State<BodyScreen> {
         _parseEditableDouble(_checkInWeight) ?? double.nan,
         _unit,
       ),
-      sleepMinutes: sleep?.minutes ?? _existingSleepMinutes,
+      // Nur ein im Editor gesetzter oder aus Health übernommener Schlaf;
+      // sonst bleibt der gespeicherte Wert (Repository).
+      sleepMinutes: sleep?.minutes,
       bedtime: sleep?.bedtime,
       wake: sleep?.wake,
     );
