@@ -44,6 +44,9 @@ jobs:
         # so no OS-specific package is restored. Direct versions remain centrally pinned.
         run: dotnet restore Gainer.slnx --force-evaluate
 
+      - name: Verify lock files are current
+        run: git diff --exit-code -- '**/packages.lock.json' || { echo "::error::Lock-Dateien veraltet: dotnet restore Gainer.slnx --force-evaluate ausführen und committen"; exit 1; }
+
       - name: Verify .NET formatting
         run: dotnet format Gainer.slnx --verify-no-changes --no-restore
 
