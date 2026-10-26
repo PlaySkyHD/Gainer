@@ -164,7 +164,7 @@ Fehlende Berechtigungen oder Fehler beim Lesen oder Schreiben von Apple Health M
 
 ### Requirement: Getrennte freiwillige Health-Berechtigungen
 
-Die App MUST Gewicht-Lesezugriff und Workout-Schreibzugriff getrennt und nur nach Nutzeraktion anfordern. Ablehnung, Entzug oder nicht verfügbare Health-Daten MUST die Kernreise unverändert nutzbar lassen. Fehlende Leseergebnisse DÜRFEN nicht als sicher erkannte Berechtigungsverweigerung oder als Nullgewicht behandelt werden. Nutzung von HealthKit DARF keine automatische Serverübermittlung oder Ernährungsentscheidung auslösen. Ausnahme sind Schritte aus Apple Health, siehe Szenario.
+Die App MUST Health-Berechtigungen nur nach einer Nutzeraktion anfordern. Gewichtsimport und Workout-Export MUST eigene Anforderungen sein. Ablehnung oder nicht verfügbare Health-Daten MUST die Kernreise unverändert lassen. Fehlende Leseergebnisse DÜRFEN nicht als sichere Verweigerung oder Nullgewicht gelten. HealthKit DARF keine automatische Serverübermittlung oder Ernährungsentscheidung auslösen. Ausnahme sind Schritte aus Apple Health, siehe Szenario.
 
 #### Scenario: Health-Zugriff nicht erteilt
 - **GIVEN** der Nutzer erlaubt keinen Health-Zugriff oder es werden keine Werte geliefert
@@ -175,6 +175,16 @@ Die App MUST Gewicht-Lesezugriff und Workout-Schreibzugriff getrennt und nur nac
 - **GIVEN** der Check-in von gestern hat 1.200 Schritte und Apple Health meldet für gestern 11.800
 - **WHEN** die Übersicht lädt
 - **THEN** speichert der Check-in 11.800 Schritte, die Änderung wird synchronisiert, und Gewicht und Schlaf bleiben unverändert
+
+#### Scenario: Gewichtsimport fordert Gewicht-Lesezugriff gesondert an
+- **GIVEN** der Nutzer hat den Gewichtsimport für einen Zeitraum noch nicht gestartet
+- **WHEN** er den Import ausdrücklich startet
+- **THEN** fordert die App den Gewicht-Lesezugriff getrennt an, bevor die Gewichtsproben geladen werden
+
+#### Scenario: Workout-Export fordert Schreibzugriff erst nach Bestätigung an
+- **GIVEN** ein abgeschlossenes Gainer-Workout und der Dialog „Workout nach Apple Health exportieren?“ ist offen
+- **WHEN** der Nutzer „Abbrechen“ wählt
+- **THEN** fordert die App keinen Workout-Schreibzugriff an und das Workout bleibt unverändert
 
 ### Requirement: Gewichtsimport mit Prüfung und Duplikatschutz
 
@@ -208,3 +218,22 @@ Die App MUST ausschließlich eigene abgeschlossene Workouts nach ausdrücklicher
 - **GIVEN** ein abgeschlossenes Gainer-Workout ohne Health-Schreibzugriff
 - **WHEN** der Nutzer exportieren möchte
 - **THEN** zeigt die App einen fehlgeschlagenen oder nicht erlaubten Export mit Wiederholungsmöglichkeit und behält Workout, Historie und Sync unverändert
+
+### Requirement: Gemeinsamer Health-Dialog für Check-in-Typen
+
+Die App MUST alle Check-in-Typen in einer einzigen Systemanforderung abfragen: Gewicht, Schritte und Schlaf lesen sowie Gewicht und Schlaf schreiben. Die Anforderung MUST nur beim Öffnen eines Check-ins oder beim Wechsel des Check-in-Datums erfolgen, nie beim Lesen der Übersicht. Das Ergebnis DARF NICHT als Zusage eines Lesezugriffs gewertet werden.
+
+#### Scenario: Ein Systemdialog für alle Check-in-Typen
+- **GIVEN** Apple Health ist auf dem Gerät verfügbar
+- **WHEN** der Nutzer einen Check-in öffnet oder im Check-in das Datum wechselt
+- **THEN** stellt die App genau eine Anforderung für Gewicht, Schritte und Schlaf (lesen) sowie Gewicht und Schlaf (schreiben)
+
+#### Scenario: Kein Berechtigungsdialog beim Lesen der Übersicht
+- **GIVEN** der Nutzer hat noch keinen Check-in geöffnet
+- **WHEN** die Übersicht die Schritte für heute liest
+- **THEN** erscheint kein Berechtigungsdialog
+
+#### Scenario: Check-in ohne verfügbares Health
+- **GIVEN** Apple Health ist auf dem Gerät nicht verfügbar
+- **WHEN** der Nutzer einen Check-in öffnet
+- **THEN** fordert die App keine Berechtigung an und der Check-in bleibt manuell nutzbar
