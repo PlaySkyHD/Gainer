@@ -453,9 +453,9 @@ public sealed class CoachMemoryTests
             Task.FromResult<WorkoutSnapshot?>(null);
     }
 
-    private sealed class NoExercises : IExerciseCatalogQueries
+    private sealed class NoExercises : IExerciseResolver
     {
-        public Task<ExerciseCatalogPage> SearchAsync(ExerciseCatalogFilter filter, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ExerciseCatalogPage([], 0, filter.Limit, 0, []));
+        public Task<ExerciseCatalogItem?> ResolveAsync(Guid exerciseId, bool includeArchived, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ExerciseCatalogItem?>(null);
     }
 }
