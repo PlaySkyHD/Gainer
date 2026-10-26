@@ -77,6 +77,90 @@ void main() {
     expect(clipboardText, contains('gainer-sync-handover'));
   });
 
+  testWidgets('expired source handover disables copy and code reveal', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions()
+      ..pending = PendingHandoverRecord(
+        apiOrigin: 'https://gainer.markfort.xyz',
+        accountId: 'a1234567-1234-4234-8234-123456789abc',
+        requestId: 'd1234567-1234-4234-8234-123456789abc',
+        sourceClientId: 'b1234567-1234-4234-8234-123456789abc',
+        phase: 'sourceBegan',
+        expiresAtUtc: DateTime.now().toUtc().subtract(const Duration(hours: 1)),
+        handoverId: 'c1234567-1234-4234-8234-123456789abc',
+        frozenRevision: 41,
+        oneTimeCode: 'one_time-code-123',
+      );
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.light,
+        home: SyncScreen(
+          sync: sync,
+          isOnline: true,
+          accountId: 'a1234567-1234-4234-8234-123456789abc',
+          apiOrigin: 'https://gainer.markfort.xyz',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Übergabe abgelaufen'), findsOneWidget);
+    expect(find.textContaining('Brich die Übergabe ab'), findsOneWidget);
+    await tester.ensureVisible(find.text('Übergabedaten kopieren'));
+    await tester.tap(find.text('Übergabedaten kopieren'));
+    await tester.pumpAndSettle();
+    expect(find.text('Übergabedaten kopieren?'), findsNothing);
+    await tester.tap(find.text('Einmalcode'));
+    await tester.pumpAndSettle();
+    expect(find.text('Einmalcode anzeigen'), findsNothing);
+    expect(find.text('Übergabe abbrechen'), findsOneWidget);
+  });
+
+  testWidgets('handover expiring while the screen is open locks its actions', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions()
+      ..pending = PendingHandoverRecord(
+        apiOrigin: 'https://gainer.markfort.xyz',
+        accountId: 'a1234567-1234-4234-8234-123456789abc',
+        requestId: 'd1234567-1234-4234-8234-123456789abc',
+        sourceClientId: 'b1234567-1234-4234-8234-123456789abc',
+        phase: 'sourceBegan',
+        expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+        handoverId: 'c1234567-1234-4234-8234-123456789abc',
+        frozenRevision: 41,
+        oneTimeCode: 'one_time-code-123',
+      );
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.light,
+        home: SyncScreen(
+          sync: sync,
+          isOnline: true,
+          accountId: 'a1234567-1234-4234-8234-123456789abc',
+          apiOrigin: 'https://gainer.markfort.xyz',
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Übergabe bereit'), findsOneWidget);
+
+    await tester.pump(const Duration(minutes: 5, seconds: 1));
+
+    expect(find.text('Übergabe abgelaufen'), findsOneWidget);
+    expect(find.textContaining('Brich die Übergabe ab'), findsOneWidget);
+  });
+
   testWidgets('popping during a pending handover stops follow-up view work', (
     tester,
   ) async {
@@ -342,7 +426,13 @@ void main() {
           detail: {'message': 'Neue Serverversion vorhanden.'},
         ),
       ]
-      ..infos = {'conflict-2': _info(title: 'Push', hasServerState: true)};
+      ..infos = {
+        'conflict-2': _info(
+          title: 'Push',
+          hasServerState: true,
+          canRetry: true,
+        ),
+      };
     await tester.pumpWidget(_app(sync));
     await tester.pumpAndSettle();
 
@@ -362,6 +452,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(sync.retriedConflictIds, ['conflict-2']);
   });
+
+  testWidgets(
+    'permanent rejections offer no resend; unknown entries can be discarded',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final sync = _SyncActions()
+        ..conflicts = [
+          _conflict('c-known', 'daily-check-in', 'invalid_payload'),
+          _conflict('c-new', 'water-intake-day', 'water_day_exists'),
+        ]
+        ..infos = {
+          // Der Server hat eine Kopie, lehnt den lokalen Stand aber dauerhaft
+          // ab: Erneut senden scheiterte immer.
+          'c-known': _info(
+            title: '2026-10-12',
+            hasServerState: true,
+            canForce: false,
+          ),
+          'c-new': _info(
+            title: '2026-10-13',
+            hasServerState: true,
+            canForce: false,
+            discardsLocal: true,
+          ),
+        };
+      await tester.pumpWidget(_app(sync));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Check-in · 2026-10-12'));
+      await tester.pumpAndSettle();
+      expect(find.text('Serverstand nutzen'), findsOneWidget);
+      expect(find.text('Lokale Änderung erneut senden'), findsNothing);
+      expect(find.text('Verwerfen'), findsNothing);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Wasser · 2026-10-13'));
+      await tester.pumpAndSettle();
+      expect(find.text('Serverstand nutzen'), findsNothing);
+      expect(find.text('Lokale Änderung erneut senden'), findsNothing);
+      await tester.tap(find.text('Verwerfen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Eintrag verwerfen?'), findsOneWidget);
+      expect(sync.acceptedConflictIds, isEmpty);
+      await tester.tap(find.text('Verwerfen').last);
+      await tester.pumpAndSettle();
+      expect(sync.acceptedConflictIds, ['c-new']);
+    },
+  );
 
   testWidgets(
     'conflict row names the resource and the reason; no server copy',
@@ -557,11 +699,15 @@ ConflictResourceInfo _info({
   String? title,
   bool hasServerState = false,
   bool canForce = true,
+  bool canRetry = false,
+  bool discardsLocal = false,
   DateTime? queuedAt,
 }) => ConflictResourceInfo(
   title: title,
   hasServerState: hasServerState,
   canForceLocal: canForce,
+  canRetry: canRetry,
+  discardsLocal: discardsLocal,
   firstQueuedAtUtc: queuedAt ?? DateTime.utc(2026, 10, 17, 8),
   firstSequence: 1,
 );
@@ -708,7 +854,6 @@ class _SyncActions implements MobileSyncActions {
   Future<String> retryConflictOnCurrentServerVersion({
     required String conflictId,
     required String replacementMutationId,
-    required DateTime createdAtUtc,
   }) async {
     retriedConflictIds.add(conflictId);
     return replacementMutationId;

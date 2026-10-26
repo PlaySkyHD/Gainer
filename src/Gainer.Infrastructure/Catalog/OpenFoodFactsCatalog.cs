@@ -1,10 +1,10 @@
-using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Gainer.Core.Nutrition;
 using Microsoft.Extensions.Options;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 namespace Gainer.Infrastructure.Catalog;
 
@@ -15,27 +15,24 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
     private readonly HttpClient httpClient;
     private readonly OpenFoodFactsOptions settings;
     private readonly TimeProvider timeProvider;
-    private readonly ConcurrentDictionary<string, CacheEntry> cache = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, Lazy<Task<object>>> inFlight = new(StringComparer.Ordinal);
-    private readonly RequestBudget barcodeBudget;
-    private readonly RequestBudget searchBudget;
+    private readonly OpenFoodFactsCatalogState state;
 
     public OpenFoodFactsCatalog(
         HttpClient httpClient,
         IOptions<OpenFoodFactsOptions> options,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        OpenFoodFactsCatalogState state)
     {
         this.httpClient = httpClient;
         settings = Validate(options.Value);
         this.timeProvider = timeProvider;
+        this.state = state;
         this.httpClient.BaseAddress ??= new Uri(settings.BaseUrl, UriKind.Absolute);
         if (this.httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
         {
             this.httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(
                 $"{settings.ApplicationName}/{settings.ApplicationVersion} ({settings.ContactEmail})");
         }
-        barcodeBudget = new RequestBudget(settings.BarcodeRequestsPerMinute, timeProvider);
-        searchBudget = new RequestBudget(settings.SearchRequestsPerMinute, timeProvider);
     }
 
     public async Task<FoodCatalogProduct> GetByBarcodeAsync(
@@ -45,24 +42,26 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
         string normalized = ValidateBarcode(barcode);
         string key = $"barcode:{normalized}";
         DateTimeOffset now = timeProvider.GetUtcNow();
-        if (TryFresh(key, now, out FoodCatalogProduct? cached)) return cached;
+        if (state.TryFresh(key, now, out FoodCatalogProduct? cached)) return cached;
         try
         {
-            return await DeduplicateAsync(key, async () =>
+            // The call is shared by all concurrent callers of this key; it is cancelled only when all of them give up.
+            return await state.DeduplicateAsync(key, async sharedToken =>
             {
-                if (!barcodeBudget.TryAcquire()) throw Temporary("provider_rate_limited", "The food catalog request budget is exhausted.", 429);
+                if (!state.BarcodeBudget.TryAcquire()) throw Temporary("provider_rate_limited", "The food catalog request budget is exhausted.", 429);
                 using JsonDocument document = await SendAsync(
                     $"api/v3/product/{Uri.EscapeDataString(normalized)}.json?fields={ProductFields}",
-                    cancellationToken);
+                    sharedToken);
                 FoodCatalogProduct product = ParseProductEnvelope(document.RootElement, normalized, now.UtcDateTime);
-                cache[key] = new CacheEntry(
+                state.Store(
+                    key,
                     product,
                     now.AddMinutes(settings.BarcodeCacheMinutes),
                     now.AddHours(settings.BarcodeStaleHours));
                 return product;
-            });
+            }, cancellationToken);
         }
-        catch (FoodCatalogException exception) when (exception.IsTemporary && TryStale(key, now, out cached))
+        catch (FoodCatalogException exception) when (exception.IsTemporary && state.TryStale(key, now, out cached))
         {
             return cached with { IsStale = true };
         }
@@ -77,17 +76,17 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
         string normalized = ValidateSearch(query, page, pageSize);
         string key = $"search:{normalized.ToUpperInvariant()}:{page}:{pageSize}";
         DateTimeOffset now = timeProvider.GetUtcNow();
-        if (TryFresh(key, now, out FoodCatalogSearchResult? cached)) return Task.FromResult(cached);
-        return DeduplicateAsync(key, async () =>
+        if (state.TryFresh(key, now, out FoodCatalogSearchResult? cached)) return Task.FromResult(cached);
+        return state.DeduplicateAsync(key, async sharedToken =>
         {
-            if (!searchBudget.TryAcquire()) throw Temporary("provider_rate_limited", "The food catalog search budget is exhausted.", 429);
+            if (!state.SearchBudget.TryAcquire()) throw Temporary("provider_rate_limited", "The food catalog search budget is exhausted.", 429);
             string path = "cgi/search.pl?search_simple=1&action=process&json=1" +
                 $"&search_terms={Uri.EscapeDataString(normalized)}&page={page}&page_size={pageSize}&fields={ProductFields}";
-            using JsonDocument document = await SendAsync(path, cancellationToken);
+            using JsonDocument document = await SendAsync(path, sharedToken);
             FoodCatalogSearchResult result = ParseSearch(document.RootElement, page, pageSize, now.UtcDateTime);
-            cache[key] = new CacheEntry(result, now.AddMinutes(settings.SearchCacheMinutes), now.AddMinutes(settings.SearchCacheMinutes));
+            state.Store(key, result, now.AddMinutes(settings.SearchCacheMinutes), now.AddMinutes(settings.SearchCacheMinutes));
             return result;
-        });
+        }, cancellationToken);
     }
 
     private async Task<JsonDocument> SendAsync(string path, CancellationToken cancellationToken)
@@ -127,11 +126,12 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
             bounded.Position = 0;
             return await JsonDocument.ParseAsync(bounded, cancellationToken: timeout.Token);
         }
-        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (exception is TimeoutRejectedException ||
+            (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             throw Temporary("provider_timeout", "The food catalog provider timed out.", innerException: exception);
         }
-        catch (HttpRequestException exception)
+        catch (Exception exception) when (exception is HttpRequestException or BrokenCircuitException)
         {
             throw Temporary("provider_unavailable", "The food catalog provider is unavailable.", innerException: exception);
         }
@@ -231,35 +231,6 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
 
     private const decimal SaltPerSodium = 2.5m;
 
-    private async Task<T> DeduplicateAsync<T>(string key, Func<Task<T>> factory) where T : class
-    {
-        Lazy<Task<object>> lazy = inFlight.GetOrAdd(key, _ => new Lazy<Task<object>>(async () => await factory(), LazyThreadSafetyMode.ExecutionAndPublication));
-        try { return (T)await lazy.Value; }
-        finally { ((ICollection<KeyValuePair<string, Lazy<Task<object>>>>)inFlight).Remove(new(key, lazy)); }
-    }
-
-    private bool TryFresh<T>(string key, DateTimeOffset now, [NotNullWhen(true)] out T? value) where T : class
-    {
-        if (cache.TryGetValue(key, out CacheEntry? entry) && entry.FreshUntil > now && entry.Value is T typed)
-        {
-            value = typed;
-            return true;
-        }
-        value = null;
-        return false;
-    }
-
-    private bool TryStale<T>(string key, DateTimeOffset now, [NotNullWhen(true)] out T? value) where T : class
-    {
-        if (cache.TryGetValue(key, out CacheEntry? entry) && entry.StaleUntil > now && entry.Value is T typed)
-        {
-            value = typed;
-            return true;
-        }
-        value = null;
-        return false;
-    }
-
     private static string ValidateBarcode(string barcode)
     {
         if (string.IsNullOrWhiteSpace(barcode) || barcode.Length is < 4 or > 32 || barcode.Any(character => !char.IsAsciiDigit(character)))
@@ -325,24 +296,4 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
     private static decimal? NonNegative(decimal? value) => value is >= 0m ? value : null;
     private static FoodCatalogException Temporary(string code, string message, int? status = null, Exception? innerException = null) =>
         new(code, message, true, status, innerException);
-
-    private sealed record CacheEntry(object Value, DateTimeOffset FreshUntil, DateTimeOffset StaleUntil);
-
-    private sealed class RequestBudget(int capacity, TimeProvider timeProvider)
-    {
-        private readonly Queue<DateTimeOffset> requests = new();
-        private readonly object gate = new();
-
-        public bool TryAcquire()
-        {
-            DateTimeOffset now = timeProvider.GetUtcNow();
-            lock (gate)
-            {
-                while (requests.TryPeek(out DateTimeOffset timestamp) && now - timestamp >= TimeSpan.FromMinutes(1)) requests.Dequeue();
-                if (requests.Count >= capacity) return false;
-                requests.Enqueue(now);
-                return true;
-            }
-        }
-    }
 }

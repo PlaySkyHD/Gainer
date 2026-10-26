@@ -395,7 +395,8 @@ void main() {
           {
             'batchId': nextId(),
             'revision': 1,
-            'originMutationId': null,
+            // Fremde Mutation: Der Server setzt die Herkunft immer.
+            'originMutationId': nextId(),
             'changes': [
               {
                 'resourceType': 'TrainingPlan',

@@ -228,7 +228,7 @@ public sealed class SyncMutationExecutor(
                 {
                     SaveNutritionDayPayload payload = Deserialize<SaveNutritionDayPayload>(content.Payload);
                     ValidateExpectation(content, ResourceKind.NutritionDay, payload.NutritionDayId, payload.BaseVersion);
-                    NutritionEntryInput[] entries = ToEntryInputs(payload.Entries);
+                    NutritionEntryInput[] entries = ToEntryInputs(Required(payload.Entries, "The nutrition entries are missing."));
                     NutritionDaySnapshot snapshot = await new NutritionDayMutationHandler(context, userContext, timeProvider, collector)
                         .SaveAsync(SaveNutritionDayMutation.Create(
                             Metadata(mutationId, content), payload.NutritionDayId, payload.LocalDate,
@@ -242,7 +242,8 @@ public sealed class SyncMutationExecutor(
                     NutritionDayTemplateSnapshot snapshot = await new NutritionDayTemplateMutationHandler(context, userContext, timeProvider, collector)
                         .SaveAsync(SaveNutritionDayTemplateMutation.Create(
                             Metadata(mutationId, content), payload.TemplateId, payload.BaseVersion, payload.Name,
-                            ParseDayKind(payload.DayKind), ToEntryInputs(payload.Entries ?? [])), cancellationToken);
+                            ParseDayKind(payload.DayKind),
+                            ToEntryInputs(Required(payload.Entries ?? [], "The nutrition entries are missing."))), cancellationToken);
                     return Result(collector, snapshot);
                 }
             case "deleteNutritionDayTemplate":
@@ -297,7 +298,7 @@ public sealed class SyncMutationExecutor(
                 {
                     SaveReusableMealPayload payload = Deserialize<SaveReusableMealPayload>(content.Payload);
                     ValidateExpectation(content, ResourceKind.ReusableMeal, payload.ReusableMealId, payload.BaseVersion);
-                    ReusableMealComponentDraft[] components = payload.Components.Select(item =>
+                    ReusableMealComponentDraft[] components = Required(payload.Components, "The meal components are missing.").Select(item =>
                         ReusableMealComponentDraft.Create(
                             item.ComponentId,
                             item.Position,
@@ -333,7 +334,7 @@ public sealed class SyncMutationExecutor(
                 {
                     SaveNutritionTargetSchedulePayload payload = Deserialize<SaveNutritionTargetSchedulePayload>(content.Payload);
                     ValidateExpectation(content, ResourceKind.NutritionTargetSchedule, payload.NutritionTargetScheduleId, payload.BaseVersion);
-                    NutritionTargetVersionPayload[] orderedPayloads = payload.Versions
+                    NutritionTargetVersionPayload[] orderedPayloads = Required(payload.Versions, "The target versions are missing.")
                         .OrderBy(item => item.EffectiveFrom)
                         .ToArray();
                     NutritionTargetVersionDraft[] versions = ToTargetVersionDrafts(orderedPayloads);
@@ -347,6 +348,12 @@ public sealed class SyncMutationExecutor(
                 throw new SyncMutationValidationException("unsupported_operation", "The mutation operation is not supported.");
         }
     }
+
+    /// <summary>A missing list or a null element is an invalid payload; without this check it would surface as a 500.</summary>
+    private static IReadOnlyList<T> Required<T>(IReadOnlyList<T>? items, string message) where T : class =>
+        items is not null && items.All(item => item is not null)
+            ? items
+            : throw new SyncMutationValidationException(InvalidPayloadCode, message);
 
     private static WorkoutValues RequiredWorkout(WorkoutValues? workout) =>
         workout ?? throw new SyncMutationValidationException(InvalidPayloadCode, "The workout is missing.");
@@ -413,7 +420,9 @@ public sealed class SyncMutationExecutor(
         }
         catch (JsonException exception)
         {
-            throw new SyncMutationValidationException(InvalidPayloadCode, exception.Message);
+            // The serializer message can quote payload content, so it never becomes the client-visible title. The
+            // cause stays attached; SyncMutationProcessor logs its JSON path without values.
+            throw new SyncMutationValidationException(InvalidPayloadCode, "The mutation payload is invalid.", exception);
         }
     }
 

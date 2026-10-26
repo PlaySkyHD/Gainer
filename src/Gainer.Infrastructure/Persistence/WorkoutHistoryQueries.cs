@@ -11,6 +11,8 @@ public sealed class WorkoutHistoryQueries(AppDbContext context) : IWorkoutHistor
         CancellationToken cancellationToken = default)
     {
         if (offset < 0 || limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        // Die Satzregel in der Zählung unten spiegelt TrainingStatistics.IsRecorded (Core): Wiederholungen >= 1,
+        // Gewicht nur bei Kraft- und Assisted-Übungen nötig. Beide Stellen gemeinsam pflegen.
         return await context.Workouts.AsNoTracking()
             .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null)
             .OrderByDescending(item => item.EndedAtUtc)
@@ -21,10 +23,15 @@ public sealed class WorkoutHistoryQueries(AppDbContext context) : IWorkoutHistor
                 item.Title,
                 item.StartedAtUtc,
                 item.EndedAtUtc!.Value,
-                context.WorkoutSets.Count(set => set.WorkoutId == item.Id
+                (from set in context.WorkoutSets
+                 join block in context.WorkoutExercises on set.WorkoutExerciseId equals block.Id
+                 where set.WorkoutId == item.Id
                     && set.SetType != WorkoutSetType.Warmup
-                    && set.WeightKg != null
-                    && set.Repetitions > 0),
+                    && set.Repetitions >= 1
+                    && (set.WeightKg != null
+                        || (block.ExerciseTypeSnapshot != ExerciseType.Strength
+                            && block.ExerciseTypeSnapshot != ExerciseType.Assisted))
+                 select set.Id).Count(),
                 item.Version))
             .ToListAsync(cancellationToken);
     }

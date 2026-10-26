@@ -1,6 +1,7 @@
 using Gainer.Core.Security;
 using Gainer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -38,15 +39,27 @@ internal sealed class PostgreSqlTestFixture : IAsyncDisposable
     public AppDbContext CreateContext(string connectionString, Guid? userId = null) =>
         CreateContext(connectionString, new FixtureUserContext(userId));
 
-    public AppDbContext CreateContext(string connectionString, IUserContext userContext)
+    public AppDbContext CreateContext(string connectionString, IUserContext userContext) =>
+        CreateContextWithInterceptors(connectionString, userContext);
+
+    /// <summary>A context with additional interceptors, e.g. to inject a database failure.</summary>
+    public AppDbContext CreateContextWithInterceptors(
+        string connectionString,
+        Guid userId,
+        params IInterceptor[] interceptors) =>
+        CreateContextWithInterceptors(connectionString, new FixtureUserContext(userId), interceptors);
+
+    private static AppDbContext CreateContextWithInterceptors(
+        string connectionString,
+        IUserContext userContext,
+        params IInterceptor[] interceptors)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(connectionString, npgsql => npgsql.MigrationsHistoryTable(
                 DatabaseSchemaVersion.MigrationHistoryTable,
                 DatabaseSchemaVersion.MigrationHistorySchema))
             .AddInterceptors(
-                new UtcTimestampInterceptor(),
-                new UserOwnershipInterceptor(userContext))
+                [new UtcTimestampInterceptor(), new UserOwnershipInterceptor(userContext), .. interceptors])
             .Options;
         return new AppDbContext(options, userContext);
     }

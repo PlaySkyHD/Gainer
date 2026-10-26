@@ -1,6 +1,22 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+/// Lifetime of a handover on the server. Keep in sync with
+/// `SyncHandoverService.HandoverLifetime` (15 minutes); the API does not
+/// report it, so the client cannot derive it.
+const handoverMaxLifetime = Duration(minutes: 15);
+
+/// Whether a stored handover expiry counts as elapsed. An expiry further away
+/// than the server lifetime cannot be genuine (older versions stored
+/// hand-entered values unchecked), so it counts as elapsed too and does not
+/// block recovery. The server still decides whether a handover is terminal.
+bool isHandoverExpiryElapsed(DateTime expiresAtUtc, {DateTime? now}) {
+  final current = (now ?? DateTime.now()).toUtc();
+  final expiry = expiresAtUtc.toUtc();
+  return !expiry.isAfter(current) ||
+      expiry.isAfter(current.add(handoverMaxLifetime));
+}
+
 /// Versioned crash-recovery record for the single in-flight account handover.
 /// It contains the one-time code and therefore must only live in a
 /// purpose-bound Keychain/Keystore item, never SQLite or preferences.

@@ -4,6 +4,8 @@ using System.Text.Json;
 using Gainer.Core.Coach;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 namespace Gainer.Infrastructure.Coach;
 
@@ -50,11 +52,12 @@ public sealed class OpenAiResponsesProvider(
             LogUsage(document.RootElement);
             return document.RootElement.Clone();
         }
-        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (exception is TimeoutRejectedException ||
+            (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             throw new OpenAiProviderException("provider_timeout", "The AI provider timed out.", innerException: exception);
         }
-        catch (HttpRequestException exception)
+        catch (Exception exception) when (exception is HttpRequestException or BrokenCircuitException)
         {
             throw new OpenAiProviderException("provider_unavailable", "The AI provider is unavailable.", innerException: exception);
         }

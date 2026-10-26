@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../data/models/api/api_models.dart';
 import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../core/components/components.dart';
+import '../../core/german_date_time.dart';
 import '../../core/theme.dart';
 
 class AccountOperatorScreen extends StatefulWidget {
@@ -134,7 +135,7 @@ class _AccountOperatorScreenState extends State<AccountOperatorScreen> {
           GainerSpacing.s,
         ),
         child: Text(
-          'Gültig bis ${expires.toLocal()}',
+          'Gültig bis ${formatGermanDateTime(expires)}',
           style: GainerTypography.label.copyWith(color: colors.secondaryText),
         ),
       ),

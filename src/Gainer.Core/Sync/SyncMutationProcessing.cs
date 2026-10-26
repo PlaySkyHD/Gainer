@@ -86,7 +86,8 @@ public sealed class SyncHandoverException(string code, string message, int statu
     public int StatusCode { get; } = statusCode;
 }
 
-public abstract class SyncMutationException(string code, string message) : Exception(message)
+public abstract class SyncMutationException(string code, string message, Exception? innerException = null)
+    : Exception(message, innerException)
 {
     public string Code { get; } = code;
 }
@@ -94,8 +95,9 @@ public abstract class SyncMutationException(string code, string message) : Excep
 public class SyncMutationConflictException(string code, string message)
     : SyncMutationException(code, message);
 
-public sealed class SyncMutationValidationException(string code, string message)
-    : SyncMutationException(code, message);
+/// <summary>A permanent rejection; <paramref name="innerException"/> keeps the server-side cause for logs only.</summary>
+public sealed class SyncMutationValidationException(string code, string message, Exception? innerException = null)
+    : SyncMutationException(code, message, innerException);
 
 public sealed class SyncUpgradeRequiredException()
     : SyncMutationConflictException("upgrade_required", "The client protocol is no longer supported.");

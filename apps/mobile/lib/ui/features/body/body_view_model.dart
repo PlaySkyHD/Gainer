@@ -83,8 +83,10 @@ class BodyViewModel extends ChangeNotifier {
     return loaded;
   }
 
-  /// Speichert den Check-in. Kalorien und Makros eines vorhandenen Check-ins
-  /// bleiben erhalten; Schritte kommen aus Health (sonst der alte Wert).
+  /// Speichert den Check-in. Übergeben werden nur Gewicht, Schlaf und die
+  /// Health-Schritte; alles andere (Kalorien, Makros, bisherige Schritte)
+  /// übernimmt das Repository aus dem gespeicherten Check-in, nicht aus dem
+  /// möglicherweise veralteten `snapshot`.
   /// Schreiben nach Health ist best effort und blockiert das Speichern nie.
   Future<void> saveCheckIn({
     required String localDate,
@@ -93,21 +95,13 @@ class BodyViewModel extends ChangeNotifier {
     DateTime? bedtime,
     DateTime? wake,
   }) => _run(() async {
-    final existing = snapshot?.checkIns
-        .where((item) => item.value.localDate == localDate)
-        .firstOrNull
-        ?.value;
     final healthSnapshot = _checkInHealthDate == localDate
         ? checkInHealth
         : null;
     await repository.saveCheckIn(
       localDate: localDate,
       weightKg: weightKg,
-      caloriesKcal: existing?.caloriesKcal,
-      proteinGrams: existing?.proteinGrams,
-      carbohydrateGrams: existing?.carbohydrateGrams,
-      fatGrams: existing?.fatGrams,
-      steps: healthSnapshot?.steps ?? existing?.steps,
+      steps: healthSnapshot?.steps,
       sleepMinutes: sleepMinutes,
     );
     if (_disposed) return;

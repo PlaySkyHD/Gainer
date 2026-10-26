@@ -2,7 +2,6 @@ using Gainer.Core.Mutations;
 using Gainer.Core.Nutrition;
 using Gainer.Core.Security;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -115,10 +114,8 @@ public sealed class NutritionDayTemplateMutationHandler(
         {
             throw new NutritionDayTemplateConflictException("The day template changed concurrently.");
         }
-        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-        {
-            throw new NutritionDayTemplateConflictException("A day template or entry already exists for this identifier or position.");
-        }
+        // The lookup already found the user's own template, so a key violation means the id belongs to another user or
+        // entry ids are reused. No pull heals that; the sync processor reports it as a permanent invalid payload.
     }
 
     private Guid CurrentUserId() =>

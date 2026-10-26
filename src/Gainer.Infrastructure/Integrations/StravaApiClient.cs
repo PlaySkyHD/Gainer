@@ -8,6 +8,8 @@ using Gainer.Core.Integrations;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 namespace Gainer.Infrastructure.Integrations;
 
@@ -222,11 +224,12 @@ public sealed partial class StravaApiClient(
             await response.Content.LoadIntoBufferAsync(timeout.Token);
             return response;
         }
-        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (exception is TimeoutRejectedException ||
+            (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             throw new StravaApiException(StravaFailure.Transient, "Strava timed out.", innerException: exception);
         }
-        catch (HttpRequestException exception)
+        catch (Exception exception) when (exception is HttpRequestException or BrokenCircuitException)
         {
             throw new StravaApiException(StravaFailure.Transient, "Strava is unavailable.", innerException: exception);
         }

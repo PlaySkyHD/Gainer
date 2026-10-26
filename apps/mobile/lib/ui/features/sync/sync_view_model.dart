@@ -282,7 +282,6 @@ class SyncViewModel extends ChangeNotifier {
     await sync.retryConflictOnCurrentServerVersion(
       conflictId: conflictId,
       replacementMutationId: _newUuidV4(),
-      createdAtUtc: DateTime.now().toUtc(),
     );
     _requireActiveScope();
     await _refreshConflicts();
@@ -295,6 +294,15 @@ class SyncViewModel extends ChangeNotifier {
   /// Ob für den Konflikt ein Serverstand (Kopie oder Löschmarke) existiert.
   bool hasServerState(String conflictId) =>
       resourceInfos[conflictId]?.hasServerState ?? false;
+
+  /// Ob „Lokale Änderung erneut senden“ gelingen kann.
+  bool canRetry(String conflictId) =>
+      resourceInfos[conflictId]?.canRetry ?? false;
+
+  /// Ob der Server den Eintrag nie hatte: „Serverstand nutzen“ heißt dann
+  /// „Verwerfen“.
+  bool discardsLocal(String conflictId) =>
+      resourceInfos[conflictId]?.discardsLocal ?? false;
 
   void startSelecting() {
     if (!_canUpdate || isBusy || conflicts.isEmpty) return;
