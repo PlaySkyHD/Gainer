@@ -55,6 +55,8 @@ check_pr() {
     | cut -d/ -f3- | paste -sd, - || true)
   if [ -n "$failed" ]; then
     echo "#$n: checks failed: $failed"; attention=1
+  elif [ "$mstate" = "unknown" ]; then
+    return 0                                       # GitHub still computes mergeability
   else
     echo "#$n: checks passed (mergeable_state: $mstate)"
   fi
