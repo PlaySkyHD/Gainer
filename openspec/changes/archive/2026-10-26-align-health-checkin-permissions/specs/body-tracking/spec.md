@@ -1,8 +1,13 @@
+## RENAMED Requirements
+
+- FROM: `### Requirement: Getrennte freiwillige Health-Berechtigungen`
+- TO: `### Requirement: Freiwillige Health-Berechtigungen nach Nutzeraktion`
+
 ## MODIFIED Requirements
 
-### Requirement: Getrennte freiwillige Health-Berechtigungen
+### Requirement: Freiwillige Health-Berechtigungen nach Nutzeraktion
 
-Die App MUST Health-Berechtigungen nur nach einer Nutzeraktion anfordern. Gewichtsimport (Gewicht-Lesezugriff) und Workout-Export (Workout-Schreibzugriff) MUST jeweils eigene Anforderungen sein. Ablehnung, Entzug oder nicht verfügbare Health-Daten MUST die Kernreise unverändert nutzbar lassen. Fehlende Leseergebnisse DÜRFEN nicht als sicher erkannte Berechtigungsverweigerung oder als Nullgewicht behandelt werden. Nutzung von HealthKit DARF keine automatische Serverübermittlung oder Ernährungsentscheidung auslösen. Ausnahme sind Schritte aus Apple Health, siehe Szenario.
+Die App MUST Health-Berechtigungen nur nach einer Nutzeraktion anfordern. Gewichtsimport und Workout-Export MUST jeweils eigene Anforderungen sein. Ablehnung, Entzug oder nicht verfügbare Health-Daten MUST die Kernreise unverändert nutzbar lassen. Fehlende Leseergebnisse DÜRFEN nicht als sichere Verweigerung oder Nullgewicht gelten. HealthKit DARF keine automatische Serverübermittlung oder Ernährungsentscheidung auslösen. Ausnahme sind Schritte aus Apple Health, siehe Szenario.
 
 #### Scenario: Health-Zugriff nicht erteilt
 - **GIVEN** der Nutzer erlaubt keinen Health-Zugriff oder es werden keine Werte geliefert
@@ -26,21 +31,21 @@ Die App MUST Health-Berechtigungen nur nach einer Nutzeraktion anfordern. Gewich
 
 ## ADDED Requirements
 
-### Requirement: Gemeinsamer Health-Dialog für Check-in-Typen
+### Requirement: Gemeinsamer Health-Dialog im Check-in-Formular
 
-Die App MUST alle Check-in-Typen in einer einzigen Systemanforderung abfragen: Gewicht, Schritte und Schlaf lesen sowie Gewicht und Schlaf schreiben. Die Anforderung MUST nur beim Öffnen eines Check-ins oder beim Wechsel des Check-in-Datums erfolgen, nie beim Lesen der Übersicht. Das Ergebnis DARF NICHT als Zusage eines Lesezugriffs gewertet werden.
+Für das Check-in-Formular MUST das Öffnen oder der Wechsel des Check-in-Datums genau eine Systemanforderung für Gewicht, Schritte und Schlaf (lesen) sowie Gewicht und Schlaf (schreiben) auslösen. Das Lesen der Übersicht MUST keine Berechtigungsanforderung auslösen. Das Ergebnis DARF NICHT als Zusage eines Lesezugriffs gewertet werden.
 
-#### Scenario: Ein Systemdialog für alle Check-in-Typen
+#### Scenario: Ein Systemdialog im Check-in-Formular
 - **GIVEN** Apple Health ist auf dem Gerät verfügbar
-- **WHEN** der Nutzer einen Check-in öffnet oder im Check-in das Datum wechselt
+- **WHEN** der Nutzer ein Check-in-Formular öffnet oder im Formular das Datum wechselt
 - **THEN** stellt die App genau eine Anforderung für Gewicht, Schritte und Schlaf (lesen) sowie Gewicht und Schlaf (schreiben)
 
 #### Scenario: Kein Berechtigungsdialog beim Lesen der Übersicht
-- **GIVEN** der Nutzer hat noch keinen Check-in geöffnet
+- **GIVEN** der Nutzer hat noch kein Check-in-Formular geöffnet
 - **WHEN** die Übersicht die Schritte für heute liest
 - **THEN** erscheint kein Berechtigungsdialog
 
-#### Scenario: Check-in ohne verfügbares Health
+#### Scenario: Check-in-Formular ohne verfügbares Health
 - **GIVEN** Apple Health ist auf dem Gerät nicht verfügbar
-- **WHEN** der Nutzer einen Check-in öffnet
+- **WHEN** der Nutzer ein Check-in-Formular öffnet
 - **THEN** fordert die App keine Berechtigung an und der Check-in bleibt manuell nutzbar
