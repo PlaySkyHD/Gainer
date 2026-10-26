@@ -63,6 +63,7 @@ void main() {
       tester,
     ) async {
       final viewModel = await _openManualEntry(tester, scale);
+      addTearDown(viewModel.dispose);
 
       for (final key in [
         'nutrition-piece-grams',
@@ -72,9 +73,14 @@ void main() {
       ]) {
         await _scrollTo(tester, key);
       }
+      // Die Einheit bleibt bei der Zahl: daneben oder gestapelt in der
+      // Beschriftung.
+      expect(
+        scale > 1.5 ? find.text('Anzahl in Stk') : find.text('Stk'),
+        findsOneWidget,
+      );
 
       expect(tester.takeException(), isNull);
-      viewModel.dispose();
     });
   }
 }
