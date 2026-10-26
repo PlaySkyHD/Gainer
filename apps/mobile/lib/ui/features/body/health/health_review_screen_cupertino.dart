@@ -3,6 +3,8 @@ import 'package:flutter/cupertino.dart';
 import '../../../../data/repositories/health/health_review_coordinator.dart';
 import '../../../../data/services/platform/platform_ports.dart';
 import '../../../../domain/models/training/training_schedule.dart';
+import '../../../../domain/models/training/workout_input.dart'
+    show WeightUnit, formatWeight;
 import '../../../core/components/components.dart';
 import '../../../core/german_date_time.dart';
 import '../../../core/theme.dart';
@@ -130,7 +132,7 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
           ),
         for (final sample in review.samples)
           GainerListRow(
-            title: '${sample.weightKilograms.toStringAsFixed(2)} kg',
+            title: '${formatWeight(sample.weightKilograms, WeightUnit.kg)} kg',
             subtitle:
                 '${_localTime(sample.measuredAtUtc)} · ${sample.sourceName}',
             trailing: CupertinoSwitch(
@@ -174,7 +176,7 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
           _dataRow(
             context,
             _status(result.status),
-            '${result.sample.weightKilograms.toStringAsFixed(2)} kg · ${_localTime(result.sample.measuredAtUtc)}',
+            '${formatWeight(result.sample.weightKilograms, WeightUnit.kg)} kg · ${_localTime(result.sample.measuredAtUtc)}',
           ),
       ],
     ),
@@ -225,7 +227,7 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
         context: context,
         title: 'Check-in an diesem Tag vorhanden',
         message:
-            'Für ${HealthReviewCoordinator.localDateForSample(conflict.sample)} gibt es bereits einen Check-in. Soll nur das Gewicht durch ${conflict.sample.weightKilograms.toStringAsFixed(2)} kg ersetzt werden? Andere Check-in-Werte bleiben erhalten.',
+            'Für ${HealthReviewCoordinator.localDateForSample(conflict.sample)} gibt es bereits einen Check-in. Soll nur das Gewicht durch ${formatWeight(conflict.sample.weightKilograms, WeightUnit.kg)} kg ersetzt werden? Andere Check-in-Werte bleiben erhalten.',
         actions: const [
           GainerDialogAction(label: 'Überspringen', value: false),
           GainerDialogAction(

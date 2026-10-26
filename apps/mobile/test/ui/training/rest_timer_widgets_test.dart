@@ -141,6 +141,36 @@ void main() {
     });
   });
 
+  for (final scale in [1.3, 2.0]) {
+    testWidgets('große Ansicht läuft bei Textgröße $scale nicht über', (
+      tester,
+    ) {
+      return runRestTimerTest((fixture) async {
+        tester.view.physicalSize = const Size(320, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final controller = fixture.controllerFor();
+        await controller.load();
+        await tester.pumpWidget(
+          trainingTestApp(
+            textScale: scale,
+            home: Align(
+              alignment: Alignment.bottomCenter,
+              child: RestTimerSheet(controller: controller),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('03:00'), findsWidgets);
+        expect(find.text('+15s'), findsOneWidget);
+        expect(find.text('−15s'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    });
+  }
+
   testWidgets('Wischen nach unten minimiert, der Timer läuft weiter', (tester) {
     return runRestTimerTest((fixture) async {
       final controller = fixture.controllerFor();

@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
@@ -213,6 +214,45 @@ void main() {
     );
     expect(eaten.top, greaterThanOrEqualTo(ring.bottom));
     expect(protein.top, greaterThanOrEqualTo(carbs.bottom));
+  });
+
+  testWidgets('the day kind chip is its own reachable semantics node', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    var cardTaps = 0;
+    var kindTaps = 0;
+    await tester.pumpWidget(
+      trainingTestApp(
+        home: CalendarNutritionOverview(
+          nutrition: _restDay,
+          onTap: () => cardTaps++,
+          onDayKind: () => kindTaps++,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final chip = find.bySemanticsLabel(
+      'Tagesart: Ruhetag, manuell festgelegt. Ändern',
+    );
+    expect(chip, findsOneWidget);
+    final chipData = tester.getSemantics(chip).getSemanticsData();
+    expect(chipData.flagsCollection.isButton, isTrue);
+    expect(chipData.hasAction(SemanticsAction.tap), isTrue);
+    // Die Karte nennt den Chip nicht ein zweites Mal.
+    expect(_label(tester), isNot(contains('Tagesart')));
+    expect(_label(tester), startsWith('Ernährung:'));
+
+    tester.semantics.tap(find.semantics.byLabel(RegExp('^Tagesart')));
+    await tester.pump();
+    expect(kindTaps, 1);
+    expect(cardTaps, 0);
+
+    tester.semantics.tap(find.semantics.byLabel(RegExp('^Ernährung:')));
+    await tester.pump();
+    expect(cardTaps, 1);
+    handle.dispose();
   });
 
   testWidgets('tapping the card opens the nutrition day', (tester) async {

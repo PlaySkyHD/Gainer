@@ -1,11 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/training/training_preferences.dart';
 import 'package:gainer_mobile/domain/models/training/training_statistics.dart';
+import 'package:gainer_mobile/domain/models/training/workout_input.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/training/exercise_statistics_view_model.dart';
 import 'package:gainer_mobile/ui/features/training/training_statistics_view_model.dart';
 
 import 'training_statistics_test_support.dart';
 import 'training_test_support.dart';
+
+class _BrokenPreferences extends TrainingPreferences {
+  _BrokenPreferences(TrainingHarness harness) : super(store: harness.store);
+
+  @override
+  Future<TrainingPreferenceValues> read() async =>
+      throw StateError('Einstellungen nicht lesbar');
+}
 
 void main() {
   late TrainingHarness harness;
@@ -187,6 +197,27 @@ void main() {
     expect(later.chartPoints, hasLength(3));
     later.selectPeriod(ChartPeriod.all);
     expect(later.chartPoints, hasLength(3));
+  });
+
+  test('Nicht lesbare Einstellungen fallen auf kg zurück', () async {
+    final broken = _BrokenPreferences(harness);
+    expect(await readStatisticsWeightUnit(broken), WeightUnit.kg);
+  });
+
+  test('Die Einheit folgt der gemeinsamen Einstellung', () async {
+    await seedSquatScenario(harness);
+    final model = await loadExercise(kneeExerciseId);
+    addTearDown(model.dispose);
+    expect(model.weightUnit, WeightUnit.kg);
+
+    var notified = 0;
+    model.addListener(() => notified++);
+    await harness.repository.preferences.update(
+      (current) => current.copyWith(weightUnit: WeightUnit.lbs),
+    );
+
+    expect(model.weightUnit, WeightUnit.lbs);
+    expect(notified, 1);
   });
 
   test('Verlaufswerte sind identisch zu exerciseTotalsPerWorkout', () async {

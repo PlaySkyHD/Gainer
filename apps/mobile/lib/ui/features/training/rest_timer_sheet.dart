@@ -120,13 +120,18 @@ class _RestTimerSheetState extends State<RestTimerSheet> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CupertinoButton(
-                        onPressed: () =>
-                            controller.adjust(-restTimerAdjustStepSeconds),
-                        child: Text(
-                          '−15s',
-                          style: GainerTypography.body.copyWith(
-                            color: colors.accent,
+                      Flexible(
+                        child: CupertinoButton(
+                          onPressed: () =>
+                              controller.adjust(-restTimerAdjustStepSeconds),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '−15s',
+                              style: GainerTypography.body.copyWith(
+                                color: colors.accent,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -138,13 +143,18 @@ class _RestTimerSheetState extends State<RestTimerSheet> {
                             running ? controller.stop() : controller.start(),
                       ),
                       const SizedBox(width: GainerSpacing.l),
-                      CupertinoButton(
-                        onPressed: () =>
-                            controller.adjust(restTimerAdjustStepSeconds),
-                        child: Text(
-                          '+15s',
-                          style: GainerTypography.body.copyWith(
-                            color: colors.accent,
+                      Flexible(
+                        child: CupertinoButton(
+                          onPressed: () =>
+                              controller.adjust(restTimerAdjustStepSeconds),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '+15s',
+                              style: GainerTypography.body.copyWith(
+                                color: colors.accent,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -270,11 +280,19 @@ class _RingCountdown extends StatelessWidget {
                 color: colors.accent,
               ),
             ),
-            Text(
-              formatRestTimerCountdown(seconds),
-              style: GainerTypography.timer.copyWith(
-                fontSize: 56,
-                color: colors.primaryText,
+            // Der Ring hat feste Größe: bei großer Schrift schrumpft die Zahl
+            // auf die Innenbreite, statt über den Ring zu laufen.
+            SizedBox(
+              width: _diameter - 2 * 36,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  formatRestTimerCountdown(seconds),
+                  style: GainerTypography.timer.copyWith(
+                    fontSize: 56,
+                    color: colors.primaryText,
+                  ),
+                ),
               ),
             ),
           ],

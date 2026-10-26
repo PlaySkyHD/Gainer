@@ -3,13 +3,17 @@ import 'package:flutter/foundation.dart';
 import '../../../data/repositories/cardio/cardio_repository.dart';
 import '../../../data/repositories/sync/local_sync_store.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
+import '../../../data/repositories/training/training_preferences.dart';
 import '../../../domain/models/body/body_tracking.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/training/exercise_catalog_model.dart';
 import '../../../domain/models/training/training_heatmap.dart';
 import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/training_statistics.dart';
+import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
+import '../cardio/cardio_format.dart' show formatCardioNumber;
+import '../progress/today_overview.dart' show formatGermanNumber;
 
 const _includeWarmupsKey = 'trainingStatistics:includeWarmups';
 
@@ -18,6 +22,30 @@ Future<bool> readIncludeWarmupSets(LocalSyncStore store) async {
   final raw = await store.readSyncMetadata(_includeWarmupsKey);
   return raw is bool && raw;
 }
+
+/// Gewichtseinheit des Kontos aus den gemeinsamen Trainingseinstellungen. Sind
+/// sie nicht lesbar, gilt kg, damit die Statistik trotzdem angezeigt wird.
+Future<WeightUnit> readStatisticsWeightUnit(
+  TrainingPreferences preferences,
+) async {
+  try {
+    return (await preferences.read()).weightUnit;
+  } catch (_) {
+    return WeightUnit.kg;
+  }
+}
+
+/// Gewicht in der Kontoeinheit auf eine Nachkommastelle gerundet, mit Komma,
+/// Tausenderpunkt und ohne überflüssige Null, z. B. „82,5 kg“ oder
+/// „1.102,3 lbs“; ohne Wert „–“.
+String formatStatisticsWeight(double? kg, WeightUnit unit) {
+  if (kg == null) return '–';
+  return '${formatCardioNumber(unit.fromKg(kg))} ${unit.label}';
+}
+
+/// Volumen in der Kontoeinheit mit Tausenderpunkt, z. B. „12.345 kg“.
+String formatStatisticsVolume(double kg, WeightUnit unit) =>
+    '${formatGermanNumber(unit.fromKg(kg))} ${unit.label}';
 
 Future<void> writeIncludeWarmupSets(LocalSyncStore store, bool value) =>
     store.writeSyncMetadata(_includeWarmupsKey, value);
@@ -124,7 +152,9 @@ TrainingHeatmap trainingHeatmapOf(
 /// Liste der trainierten Übungen mit Suche und Aufwärmsatz-Schalter sowie
 /// die Heatmap der Trainingstage.
 class TrainingStatisticsViewModel extends ChangeNotifier {
-  TrainingStatisticsViewModel({required this.repository, this.cardio});
+  TrainingStatisticsViewModel({required this.repository, this.cardio}) {
+    repository.preferences.weightUnit.addListener(_onWeightUnitChanged);
+  }
 
   final TrainingLogRepository repository;
 
@@ -136,6 +166,9 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
   /// Null, solange nicht geladen oder wenn die Einheiten nicht lesbar sind.
   TrainingHeatmap? heatmap;
   bool includeWarmups = false;
+
+  /// Gewichtseinheit des Kontos für die Anzeige.
+  WeightUnit weightUnit = WeightUnit.kg;
   bool isLoading = false;
   bool hasLoaded = false;
   String? errorMessage;
@@ -167,6 +200,8 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
     isLoading = true;
     errorMessage = null;
     _notify();
+    weightUnit = await readStatisticsWeightUnit(repository.preferences);
+    if (_disposed) return;
     try {
       includeWarmups = await readIncludeWarmupSets(repository.store);
       final inputs = await loadStatisticsInputs(repository);
@@ -229,6 +264,13 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
     await _load(withHeatmap: false);
   }
 
+  void _onWeightUnitChanged() {
+    final unit = repository.preferences.weightUnit.value;
+    if (unit == weightUnit) return;
+    weightUnit = unit;
+    _notify();
+  }
+
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -236,6 +278,7 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    repository.preferences.weightUnit.removeListener(_onWeightUnitChanged);
     super.dispose();
   }
 }

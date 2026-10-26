@@ -108,11 +108,14 @@ class RestingHistoryCard extends StatelessWidget {
                     Flexible(
                       child: Text(formatShortDate(from), style: labelStyle),
                     ),
-                    Text(
-                      latest.entry.isPending
-                          ? 'wartet auf Check-in'
-                          : 'zuletzt ${formatShortDate(latest.date)}',
-                      style: labelStyle,
+                    Flexible(
+                      child: Text(
+                        latest.entry.isPending
+                            ? 'wartet auf Check-in'
+                            : 'zuletzt ${formatShortDate(latest.date)}',
+                        textAlign: TextAlign.right,
+                        style: labelStyle,
+                      ),
                     ),
                   ],
                 ),
@@ -157,9 +160,11 @@ class _Legend extends StatelessWidget {
           child: const SizedBox(width: 10, height: 10),
         ),
         const SizedBox(width: GainerSpacing.xxs),
-        Text(
-          text,
-          style: GainerTypography.label.copyWith(color: colors.primaryText),
+        Flexible(
+          child: Text(
+            text,
+            style: GainerTypography.label.copyWith(color: colors.primaryText),
+          ),
         ),
       ],
     );

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/training/training_statistics.dart';
+import '../../../domain/models/training/workout_input.dart';
 import 'training_statistics_view_model.dart';
 
 enum ChartMetric { estimatedOneRepMax, maxWeight, volume }
@@ -22,7 +23,9 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
     required this.repository,
     required this.exerciseId,
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+  }) : _clock = clock ?? DateTime.now {
+    repository.preferences.weightUnit.addListener(_onWeightUnitChanged);
+  }
 
   final TrainingLogRepository repository;
   final String exerciseId;
@@ -36,6 +39,9 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
   final Map<String, String> _titles = {};
   ExerciseRecords? records;
   bool includeWarmups = false;
+
+  /// Gewichtseinheit des Kontos für die Anzeige.
+  WeightUnit weightUnit = WeightUnit.kg;
   bool isLoading = false;
   bool hasLoaded = false;
   String? errorMessage;
@@ -74,6 +80,8 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
     isLoading = true;
     errorMessage = null;
     _notify();
+    weightUnit = await readStatisticsWeightUnit(repository.preferences);
+    if (_disposed) return;
     try {
       includeWarmups = await readIncludeWarmupSets(repository.store);
       final inputs = await loadStatisticsInputs(repository);
@@ -139,6 +147,13 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
     };
   }
 
+  void _onWeightUnitChanged() {
+    final unit = repository.preferences.weightUnit.value;
+    if (unit == weightUnit) return;
+    weightUnit = unit;
+    _notify();
+  }
+
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -146,6 +161,7 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    repository.preferences.weightUnit.removeListener(_onWeightUnitChanged);
     super.dispose();
   }
 }

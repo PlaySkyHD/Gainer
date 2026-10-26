@@ -47,7 +47,9 @@ class CalendarNutritionOverview extends StatelessWidget {
       button: true,
       label: summary.semanticsLabel(nutrition),
       onTap: onTap,
-      excludeSemantics: true,
+      // Kein excludeSemantics: Der Chip ist ein eigener Knoten (siehe
+      // NutritionDayKindChip) und muss für VoiceOver erreichbar bleiben. Der
+      // übrige Karteninhalt steht schon in der Beschriftung.
       child: CupertinoButton(
         key: const ValueKey('calendar-nutrition-card'),
         padding: EdgeInsets.zero,
@@ -63,10 +65,12 @@ class CalendarNutritionOverview extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        'Ernährung',
-                        style: GainerTypography.cardTitle.copyWith(
-                          color: colors.primaryText,
+                      child: ExcludeSemantics(
+                        child: Text(
+                          'Ernährung',
+                          style: GainerTypography.cardTitle.copyWith(
+                            color: colors.primaryText,
+                          ),
                         ),
                       ),
                     ),
@@ -87,9 +91,9 @@ class CalendarNutritionOverview extends StatelessWidget {
                   Align(alignment: Alignment.centerLeft, child: chip),
                 ],
                 const SizedBox(height: GainerSpacing.s),
-                _energy(summary, stacked),
+                ExcludeSemantics(child: _energy(summary, stacked)),
                 const SizedBox(height: GainerSpacing.l),
-                _macros(stacked),
+                ExcludeSemantics(child: _macros(stacked)),
               ],
             ),
           ),

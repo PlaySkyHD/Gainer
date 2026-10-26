@@ -1191,7 +1191,7 @@ void main() {
     );
 
     expect(find.text('60 von 2.000 kcal'), findsOneWidget);
-    expect(find.text('1.940 übrig'), findsOneWidget);
+    expect(find.text('1.940 kcal übrig'), findsOneWidget);
     expect(find.text('Tagesziele festlegen'), findsNothing);
     expect(harness.viewModel.snapshot!.targetSchedule, isNotNull);
   });

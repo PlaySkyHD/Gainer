@@ -510,7 +510,7 @@ void main() {
 
     // Heute-Zeile und Verlaufszeile zeigen dasselbe Gewicht.
     expect(find.text('77,2 kg'), findsNWidgets(2));
-    expect(find.text('1980 kcal'), findsOneWidget);
+    expect(find.text('1.980 kcal'), findsOneWidget);
     expect(find.text('8.000'), findsOneWidget);
     expect(find.text(_prettyDay(today)), findsOneWidget);
     expect(find.text('Verlauf'), findsOneWidget);

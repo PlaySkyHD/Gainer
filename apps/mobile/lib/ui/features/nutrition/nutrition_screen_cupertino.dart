@@ -3214,8 +3214,8 @@ class _DayCard extends StatelessWidget {
                 const SizedBox(height: GainerSpacing.xs),
                 Text(
                   remaining >= 0
-                      ? '${_fmtKcal(remaining)} übrig'
-                      : '${_fmtKcal(-remaining)} über',
+                      ? '${_fmtKcal(remaining)} kcal übrig'
+                      : '${_fmtKcal(-remaining)} kcal über',
                   style: GainerTypography.label.copyWith(
                     color: remaining >= 0
                         ? colors.secondaryText
@@ -3788,8 +3788,7 @@ String _mealName(NutritionMeal meal) => switch (meal) {
 double? _parse(String input) =>
     double.tryParse(input.trim().replaceAll(',', '.'));
 double? _nullable(String input) => input.trim().isEmpty ? null : _parse(input);
-String _grams(double value) =>
-    value.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+String _grams(double value) => plainNumberInput(value);
 
 /// Anzeige-Format: deutsches Komma, Tausenderpunkt, keine Nullen am Ende.
 /// „4 Stk“, wenn in Stück erfasst, sonst „200 g“.
