@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Gainer.Api.Composition;
 using Gainer.Api.Errors;
+using Gainer.ServiceDefaults;
 using Microsoft.Extensions.Primitives;
 
 namespace Gainer.Api.Middleware;
@@ -30,7 +31,8 @@ internal sealed class CorrelationIdMiddleware(RequestDelegate next, ILogger<Corr
             {
                 logger.RequestCompleted(
                     context.Request.Method,
-                    context.Request.Path.Value ?? string.Empty,
+                    // Route template, not the path: barcodes and dates in the path are private.
+                    RequestRouteTemplate.Get(context),
                     context.Response.StatusCode,
                     Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds,
                     correlationId,
@@ -60,11 +62,11 @@ internal static partial class RequestLog
     [LoggerMessage(
         EventId = 1000,
         Level = LogLevel.Information,
-        Message = "HTTP {Method} {Path} completed {StatusCode} in {ElapsedMilliseconds} ms; correlation {CorrelationId}; trace {TraceId}")]
+        Message = "HTTP {Method} {Route} completed {StatusCode} in {ElapsedMilliseconds} ms; correlation {CorrelationId}; trace {TraceId}")]
     public static partial void RequestCompleted(
         this ILogger logger,
         string method,
-        string path,
+        string route,
         int statusCode,
         double elapsedMilliseconds,
         string correlationId,

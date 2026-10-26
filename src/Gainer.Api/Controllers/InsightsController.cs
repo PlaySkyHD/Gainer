@@ -14,6 +14,7 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
 {
     [HttpGet("dashboard")]
     [ProducesResponseType<DashboardInsightsResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<DashboardInsightsResponse>> Dashboard(
         [FromQuery] DateOnly? through = null,
         [FromQuery] int days = 30,
@@ -28,6 +29,7 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
 
     [HttpGet("exercises/{exerciseId:guid}/progress")]
     [ProducesResponseType<ExerciseProgressResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ExerciseProgressResponse>> ExerciseProgress(
         Guid exerciseId,
         [FromQuery] string window = "30",

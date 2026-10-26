@@ -1,3 +1,5 @@
+using Gainer.Api.Controllers;
+using Gainer.Contracts.Sync;
 using Gainer.Core.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -5,8 +7,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace Gainer.Api.Security;
 
 /// <summary>
-/// Optionally binds a scoped sync request to the account the client expects.
-/// Legacy clients may omit the header; when present it is checked against the
+/// Binds a scoped sync request to the account the client expects. Clients that declare
+/// <see cref="SyncProtocol.AccountHeaderRequiredVersion"/> or newer must send the header;
+/// older or unversioned clients may omit it. When present it is checked against the
 /// authenticated identity attached to this same HTTP request.
 /// </summary>
 internal static class SyncAccountIdentityGuard
@@ -14,11 +17,20 @@ internal static class SyncAccountIdentityGuard
     internal const string HeaderName = "X-Gainer-Account-Id";
 
     internal static ObjectResult? Validate(
-        IHeaderDictionary headers,
-        IUserContext userContext)
+        HttpContext httpContext,
+        IUserContext userContext,
+        int? clientProtocolVersion = null)
     {
-        if (!headers.TryGetValue(HeaderName, out var values))
-            return null;
+        if (!httpContext.Request.Headers.TryGetValue(HeaderName, out var values))
+        {
+            return clientProtocolVersion >= SyncProtocol.AccountHeaderRequiredVersion
+                ? SyncProblemResults.Create(
+                    httpContext,
+                    StatusCodes.Status422UnprocessableEntity,
+                    "account_header_required",
+                    "The account header is required for this protocol version.")
+                : null;
+        }
 
         string? value = values.Count == 1 ? values[0] : null;
         if (!Guid.TryParseExact(value, "D", out Guid expectedUserId) ||
@@ -26,18 +38,11 @@ internal static class SyncAccountIdentityGuard
             userContext.UserId is not Guid authenticatedUserId ||
             authenticatedUserId != expectedUserId)
         {
-            var problem = new ProblemDetails
-            {
-                Status = StatusCodes.Status409Conflict,
-                Title = "The authenticated account does not match this sync profile.",
-                Type = "https://gainer.local/problems/account_changed",
-            };
-            problem.Extensions["code"] = "account_changed";
-            return new ObjectResult(problem)
-            {
-                StatusCode = StatusCodes.Status409Conflict,
-                ContentTypes = { "application/problem+json" },
-            };
+            return SyncProblemResults.Create(
+                httpContext,
+                StatusCodes.Status409Conflict,
+                "account_changed",
+                "The authenticated account does not match this sync profile.");
         }
 
         return null;
