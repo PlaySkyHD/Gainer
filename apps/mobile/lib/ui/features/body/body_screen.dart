@@ -85,15 +85,9 @@ class _BodyScreenState extends State<BodyScreen> {
   /// Öffnet den Check-in eines Tages, den der Kalender angefordert hat. Nach
   /// dem Frame, damit der Tab-Wechsel zuerst sichtbar ist.
   void _onCheckInRequest() {
-    // Die Anfrage bleibt stehen, bis der Stand geladen ist; der Listener
-    // läuft dann erneut.
-    if (widget.viewModel.requestedCheckInDate == null ||
-        widget.viewModel.snapshot == null ||
-        _editorOpen) {
-      return;
-    }
+    if (widget.viewModel.requestedCheckInDate == null || _editorOpen) return;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || _editorOpen || widget.viewModel.snapshot == null) return;
+      if (!mounted || _editorOpen) return;
       final date = DateTime.tryParse(
         widget.viewModel.takeCheckInRequest() ?? '',
       );
@@ -122,10 +116,7 @@ class _BodyScreenState extends State<BodyScreen> {
             key: const ValueKey('body-open-checkin'),
             icon: CupertinoIcons.add,
             semanticLabel: 'Check-in eintragen',
-            // Ohne geladenen Stand ist der bestehende Check-in unbekannt.
-            onPressed: model.isSaving || model.snapshot == null
-                ? null
-                : () => _openCheckIn(model),
+            onPressed: model.isSaving ? null : () => _openCheckIn(model),
           ),
         ],
         children: [
@@ -801,7 +792,9 @@ class _BodyScreenState extends State<BodyScreen> {
         _parseEditableDouble(_checkInWeight) ?? double.nan,
         _unit,
       ),
-      sleepMinutes: sleep?.minutes ?? _existingSleepMinutes,
+      // Nur ein im Editor gesetzter oder aus Health übernommener Schlaf;
+      // sonst bleibt der gespeicherte Wert (Repository).
+      sleepMinutes: sleep?.minutes,
       bedtime: sleep?.bedtime,
       wake: sleep?.wake,
     );

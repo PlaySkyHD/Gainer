@@ -101,10 +101,6 @@ class BodyViewModel extends ChangeNotifier {
     await repository.saveCheckIn(
       localDate: localDate,
       weightKg: weightKg,
-      caloriesKcal: null,
-      proteinGrams: null,
-      carbohydrateGrams: null,
-      fatGrams: null,
       steps: healthSnapshot?.steps,
       sleepMinutes: sleepMinutes,
     );

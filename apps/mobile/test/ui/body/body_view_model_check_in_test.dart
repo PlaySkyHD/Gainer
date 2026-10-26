@@ -57,6 +57,24 @@ void main() {
     expect(saved.sleepMinutes, 450);
   });
 
+  test('steps read by the editor never lower a newer stored total', () async {
+    await storeFullCheckIn();
+    // Der Editor liest 9000, danach speichert HealthStepsSync 12000.
+    const readByEditor = 9000;
+    await repository.updateSteps(localDate: '2026-10-24', steps: 12000);
+
+    await repository.saveCheckIn(
+      localDate: '2026-10-24',
+      weightKg: 81.5,
+      steps: readByEditor,
+    );
+
+    final saved = (await repository.read()).checkIns.single.value;
+    expect(saved.steps, 12000);
+    expect(saved.caloriesKcal, 2400);
+    expect(saved.sleepMinutes, 450);
+  });
+
   test('a check-in changed after loading is not overwritten by the old '
       'snapshot', () async {
     await storeFullCheckIn();
