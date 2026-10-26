@@ -230,6 +230,81 @@ void main() {
     expect(find.textContaining(' kg'), findsNothing);
   });
 
+  testWidgets('Gewichte haben Tausenderpunkt: 1.102,3 lbs', (tester) async {
+    _phoneSize(tester);
+    await tester.runAsync(() async {
+      await harness.seedWorkout(
+        title: 'Schwer',
+        start: DateTime(2026, 10, 1, 18).toUtc(),
+        end: DateTime(2026, 10, 1, 19).toUtc(),
+        blocks: [
+          statBlock(
+            exerciseId: kneeExerciseId,
+            name: 'Kniebeuge',
+            sets: [statSet('h', kg: 500, reps: 1)],
+          ),
+        ],
+      );
+      await harness.repository.preferences.update(
+        (current) => current.copyWith(weightUnit: WeightUnit.lbs),
+      );
+    });
+
+    await pumpScreen(
+      tester,
+      exerciseId: kneeExerciseId,
+      initialTab: ExerciseStatisticsTab.history,
+    );
+
+    // 500 kg = 1.102,3 lbs.
+    expect(find.textContaining('1.102,3 lbs × 1'), findsWidgets);
+  });
+
+  testWidgets('Satzzeile bleibt bei Textgröße 1,3 mit lbs einzeilig', (
+    tester,
+  ) async {
+    _phoneSize(tester);
+    await tester.runAsync(() async {
+      await harness.seedWorkout(
+        title: 'Beine',
+        start: DateTime(2026, 10, 1, 18).toUtc(),
+        end: DateTime(2026, 10, 1, 19).toUtc(),
+        blocks: [
+          statBlock(
+            exerciseId: kneeExerciseId,
+            name: 'Kniebeuge',
+            sets: [statSet('a', kg: 46.5, reps: 12)],
+          ),
+        ],
+      );
+      await harness.repository.preferences.update(
+        (current) => current.copyWith(weightUnit: WeightUnit.lbs),
+      );
+    });
+
+    await tester.pumpWidget(
+      trainingTestApp(
+        textScale: 1.3,
+        home: ExerciseStatisticsScreen(
+          repository: harness.repository,
+          exerciseId: kneeExerciseId,
+          initialTab: ExerciseStatisticsTab.history,
+        ),
+      ),
+    );
+    await settle(tester);
+
+    final value = find.text('102,5 lbs × 12');
+    await scrollIntoView(tester, value);
+    expect(value, findsOneWidget);
+    // Einzeilig: so hoch wie die Zeile „Satz 1“ daneben.
+    expect(
+      tester.getSize(value).height,
+      tester.getSize(find.text('Satz 1')).height,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('openExerciseStatistics öffnet den gewünschten Tab', (
     tester,
   ) async {

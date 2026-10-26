@@ -259,34 +259,40 @@ class _SetLine extends StatelessWidget {
     };
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 72,
-            child: Text(
-              'Satz $index',
-              style: TextStyle(color: colors.secondaryText),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              typeLabel ?? '',
-              style: GainerTypography.label.copyWith(
-                color: colors.secondaryText,
+      // Die Beschriftung nimmt nur so viel Platz, wie sie braucht (höchstens
+      // ein Drittel der Zeile); der Wert bekommt den Rest und bricht erst dann um.
+      child: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          children: [
+            SizedBox(
+              width: 72,
+              child: Text(
+                'Satz $index',
+                style: TextStyle(color: colors.secondaryText),
               ),
             ),
-          ),
-          Flexible(
-            child: Text(
-              '${formatStatisticsWeight(result.effectiveWeightKg, unit)} × ${result.repetitions}',
-              textAlign: TextAlign.right,
-              style: GainerTypography.body.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colors.primaryText,
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth / 3),
+              child: Text(
+                typeLabel ?? '',
+                style: GainerTypography.label.copyWith(
+                  color: colors.secondaryText,
+                ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${formatStatisticsWeight(result.effectiveWeightKg, unit)} × ${result.repetitions}',
+                textAlign: TextAlign.right,
+                style: GainerTypography.body.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: colors.primaryText,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -571,35 +577,41 @@ class _RecordRow extends StatelessWidget {
     final colors = GainerDesign.colorsOf(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(label, style: TextStyle(color: colors.secondaryText)),
-          ),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  value,
-                  textAlign: TextAlign.right,
-                  style: GainerTypography.body.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: colors.primaryText,
-                  ),
-                ),
-                if (date case final day?)
+      // Die Beschriftung nimmt nur so viel Platz, wie sie braucht (höchstens
+      // die halbe Zeile); der Wert bekommt den Rest und bricht erst dann um.
+      child: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth / 2),
+              child: Text(label, style: TextStyle(color: colors.secondaryText)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
                   Text(
-                    _formatDate(day),
-                    style: GainerTypography.label.copyWith(
-                      color: colors.secondaryText,
+                    value,
+                    textAlign: TextAlign.right,
+                    style: GainerTypography.body.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: colors.primaryText,
                     ),
                   ),
-              ],
+                  if (date case final day?)
+                    Text(
+                      _formatDate(day),
+                      style: GainerTypography.label.copyWith(
+                        color: colors.secondaryText,
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

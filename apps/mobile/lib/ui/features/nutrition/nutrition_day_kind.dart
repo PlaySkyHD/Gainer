@@ -39,7 +39,8 @@ class NutritionDayKindChip extends StatelessWidget {
       onTap: onTap,
       label:
           'Tagesart: ${dayKindLabel(kind)}'
-          '${manual ? ', manuell festgelegt' : ''}. Ändern',
+          '${manual ? ', manuell festgelegt' : ''}'
+          '${onTap != null ? '. Ändern' : ''}',
       excludeSemantics: true,
       child: GestureDetector(
         key: const ValueKey('nutrition-day-kind-chip'),

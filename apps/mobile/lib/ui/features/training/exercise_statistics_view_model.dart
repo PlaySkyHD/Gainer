@@ -23,7 +23,9 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
     required this.repository,
     required this.exerciseId,
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+  }) : _clock = clock ?? DateTime.now {
+    repository.preferences.weightUnit.addListener(_onWeightUnitChanged);
+  }
 
   final TrainingLogRepository repository;
   final String exerciseId;
@@ -78,9 +80,10 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
     isLoading = true;
     errorMessage = null;
     _notify();
+    weightUnit = await readStatisticsWeightUnit(repository.preferences);
+    if (_disposed) return;
     try {
       includeWarmups = await readIncludeWarmupSets(repository.store);
-      weightUnit = await readStatisticsWeightUnit(repository.store);
       final inputs = await loadStatisticsInputs(repository);
       if (_disposed) return;
       _apply(inputs);
@@ -144,6 +147,13 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
     };
   }
 
+  void _onWeightUnitChanged() {
+    final unit = repository.preferences.weightUnit.value;
+    if (unit == weightUnit) return;
+    weightUnit = unit;
+    _notify();
+  }
+
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -151,6 +161,7 @@ class ExerciseStatisticsViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    repository.preferences.weightUnit.removeListener(_onWeightUnitChanged);
     super.dispose();
   }
 }
