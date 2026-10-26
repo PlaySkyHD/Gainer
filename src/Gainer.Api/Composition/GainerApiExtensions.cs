@@ -24,6 +24,11 @@ public static class GainerApiExtensions
     /// <summary>Adds the API composition-root services.</summary>
     public static WebApplicationBuilder AddGainerApi(this WebApplicationBuilder builder)
     {
+        // The hosting diagnostics open a log scope with RequestPath for every request, and its
+        // "Request starting" and "Request finished" messages carry path and query. Paths hold barcodes
+        // and dates that belong to the user. CorrelationIdMiddleware logs the route template instead,
+        // so this category is switched off rather than rewritten.
+        builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.None);
         builder.WebHost.ConfigureKestrel(options =>
             options.Limits.MaxRequestBodySize = ApiConstants.MaximumRequestBodyBytes);
         builder.Services.Configure<FormOptions>(options =>
@@ -47,7 +52,7 @@ public static class GainerApiExtensions
         builder.Services.AddExceptionHandler<UnexpectedExceptionHandler>();
         builder.Services.AddProblemDetails(options =>
             options.CustomizeProblemDetails = ProblemDetailsConfiguration.Customize);
-        builder.Services.AddOpenApi("v1");
+        builder.Services.AddOpenApi("v1", options => options.AddGainerTransformers());
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddRateLimiter(options =>
         {
@@ -68,6 +73,9 @@ public static class GainerApiExtensions
             options.AddPolicy(
                 ApiConstants.AuthenticationRateLimitPolicy,
                 context => PerClientWindow(context, ApiConstants.AuthenticationRateLimitPolicy, permitLimit: 30));
+            options.AddPolicy(
+                ApiConstants.SystemStatusRateLimitPolicy,
+                context => PerClientWindow(context, ApiConstants.SystemStatusRateLimitPolicy, permitLimit: 60));
             options.AddPolicy(
                 ApiConstants.InvitationAcceptRateLimitPolicy,
                 context => PerClientWindow(context, ApiConstants.InvitationAcceptRateLimitPolicy, permitLimit: 30));
@@ -108,11 +116,8 @@ public static class GainerApiExtensions
         app.UseForwardedHeaders();
         app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseExceptionHandler();
-        app.UseMiddleware<RequestSizeLimitMiddleware>();
-        app.UseAuthentication();
-        app.UseMiddleware<DeviceSessionValidationMiddleware>();
-        app.UseRateLimiter();
-        app.UseAuthorization();
+        // Before authentication, the rate limiter and authorization: they end the request with a bare
+        // 401, 403 or 429, and only status code pages wrap them into ProblemDetails with a stable code.
         app.UseStatusCodePages(async statusCodeContext =>
         {
             HttpContext httpContext = statusCodeContext.HttpContext;
@@ -121,6 +126,11 @@ public static class GainerApiExtensions
                     title: ProblemDetailsConfiguration.GetTitle(httpContext.Response.StatusCode))
                 .ExecuteAsync(httpContext);
         });
+        app.UseMiddleware<RequestSizeLimitMiddleware>();
+        app.UseAuthentication();
+        app.UseMiddleware<DeviceSessionValidationMiddleware>();
+        app.UseRateLimiter();
+        app.UseAuthorization();
         app.MapControllers();
 
         return app;

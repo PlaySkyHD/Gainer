@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Gainer.Api.Controllers;
 
+// Handover requests carry no protocol version on purpose: the endpoints exist only from protocol 4
+// on, so the account header is checked whenever it is sent, but never demanded by version.
 [ApiController]
 [Authorize]
 [Route(ApiConstants.Version1Route + "/sync/handovers")]
@@ -23,7 +25,7 @@ public sealed class SyncHandoversController(ISyncHandoverService service, IUserC
         BeginSyncHandoverRequest request,
         CancellationToken cancellationToken)
     {
-        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext) is { } identityProblem)
+        if (SyncAccountIdentityGuard.Validate(HttpContext, userContext) is { } identityProblem)
             return identityProblem;
 
         try
@@ -50,7 +52,7 @@ public sealed class SyncHandoversController(ISyncHandoverService service, IUserC
         CompleteSyncHandoverRequest request,
         CancellationToken cancellationToken)
     {
-        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext) is { } identityProblem)
+        if (SyncAccountIdentityGuard.Validate(HttpContext, userContext) is { } identityProblem)
             return identityProblem;
 
         try
@@ -82,7 +84,7 @@ public sealed class SyncHandoversController(ISyncHandoverService service, IUserC
         CancelSyncHandoverRequest request,
         CancellationToken cancellationToken)
     {
-        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext) is { } identityProblem)
+        if (SyncAccountIdentityGuard.Validate(HttpContext, userContext) is { } identityProblem)
             return identityProblem;
 
         try

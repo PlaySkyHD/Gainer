@@ -70,7 +70,9 @@ public static class GainerServiceDefaultsExtensions
         builder.Logging.AddOpenTelemetry(static logging =>
         {
             logging.IncludeFormattedMessage = true;
-            logging.IncludeScopes = true;
+            // Scopes would export whatever a framework puts into them (RequestPath, for one), and
+            // no Gainer code opens a scope. Trace and span ids come from the activity, not from scopes.
+            logging.IncludeScopes = false;
         });
 
         var openTelemetry = builder.Services
@@ -88,10 +90,20 @@ public static class GainerServiceDefaultsExtensions
                     .AddSource(builder.Environment.ApplicationName)
                     .AddAspNetCoreInstrumentation(options =>
                     {
-                        options.EnrichWithHttpRequest = static (activity, request) =>
+                        // Paths such as /foods/barcode/{barcode} or /nutrition/days/{date} are private.
+                        // The route is known only after routing, so the request path is dropped at the
+                        // start and the response enrichment sets the route template.
+                        options.EnrichWithHttpRequest = static (activity, _) =>
                         {
                             activity.SetTag("url.query", null);
-                            activity.SetTag("http.target", request.Path.Value);
+                            activity.SetTag("url.path", RequestRouteTemplate.Unmatched);
+                            activity.SetTag("http.target", RequestRouteTemplate.Unmatched);
+                        };
+                        options.EnrichWithHttpResponse = static (activity, response) =>
+                        {
+                            string route = RequestRouteTemplate.Get(response.HttpContext);
+                            activity.SetTag("url.path", route);
+                            activity.SetTag("http.target", route);
                         };
                     })
                     .AddHttpClientInstrumentation(options =>

@@ -97,37 +97,12 @@ class _PasskeysScreenState extends State<PasskeysScreen> {
   }
 
   Future<String?> _askPassword() async {
-    final field = TextEditingController();
-    try {
-      final colors = GainerDesign.colorsOf(context);
-      final confirmed = await showCupertinoDialog<bool>(
-        context: context,
-        builder: (context) => GainerStackedDialog<bool>(
-          title: 'Passwort bestätigen',
-          message: 'Gib dein Passwort ein, um einen neuen Passkey anzulegen.',
-          content: CupertinoTextField(
-            controller: field,
-            placeholder: 'Passwort',
-            obscureText: true,
-            autofocus: true,
-            autocorrect: false,
-            autofillHints: const [AutofillHints.password],
-            style: GainerTypography.body.copyWith(color: colors.primaryText),
-            placeholderStyle: GainerTypography.body.copyWith(
-              color: colors.placeholderText,
-            ),
-            onSubmitted: (_) => Navigator.of(context).pop(true),
-          ),
-          actions: const [
-            GainerDialogAction(label: 'Weiter', value: true),
-            GainerDialogAction(label: 'Abbrechen', value: false),
-          ],
-        ),
-      );
-      return confirmed == true && field.text.isNotEmpty ? field.text : null;
-    } finally {
-      field.dispose();
-    }
+    // Der Dialog besitzt das Textfeld und liefert den Text beim Schließen.
+    final password = await showCupertinoDialog<String>(
+      context: context,
+      builder: (_) => const _PasswordDialog(),
+    );
+    return password == null || password.isEmpty ? null : password;
   }
 
   Future<void> _remove(ApiPasskey passkey) async {
@@ -230,3 +205,57 @@ class _PasskeysScreenState extends State<PasskeysScreen> {
 }
 
 final class _PasswordRejected implements Exception {}
+
+/// Hält den Controller des Passwortfelds im State, damit er erst mit dem Dialog
+/// entsorgt wird. Die Ausblend-Animation zeigt das Feld noch nach dem `pop`.
+class _PasswordDialog extends StatefulWidget {
+  const _PasswordDialog();
+
+  @override
+  State<_PasswordDialog> createState() => _PasswordDialogState();
+}
+
+class _PasswordDialogState extends State<_PasswordDialog> {
+  final _field = TextEditingController();
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    // Die Aktion „Weiter“ trägt den aktuellen Text als Ergebnis. Der Controller
+    // meldet auch Autofill, das `onChanged` nicht auslöst.
+    return ListenableBuilder(
+      listenable: _field,
+      builder: (context, _) => GainerStackedDialog<String?>(
+        title: 'Passwort bestätigen',
+        message: 'Gib dein Passwort ein, um einen neuen Passkey anzulegen.',
+        content: _passwordField(context, colors),
+        actions: [
+          GainerDialogAction(label: 'Weiter', value: _field.text),
+          const GainerDialogAction(label: 'Abbrechen', value: null),
+        ],
+      ),
+    );
+  }
+
+  Widget _passwordField(BuildContext context, GainerColors colors) {
+    return CupertinoTextField(
+      controller: _field,
+      placeholder: 'Passwort',
+      obscureText: true,
+      autofocus: true,
+      autocorrect: false,
+      autofillHints: const [AutofillHints.password],
+      style: GainerTypography.body.copyWith(color: colors.primaryText),
+      placeholderStyle: GainerTypography.body.copyWith(
+        color: colors.placeholderText,
+      ),
+      onSubmitted: (_) => Navigator.of(context).pop(_field.text),
+    );
+  }
+}

@@ -4,7 +4,7 @@ namespace Gainer.Core.Access;
 public interface IAccountStatusService
 {
     /// <summary>Sets an account's active state and revokes its existing sessions.</summary>
-    Task<bool> SetActiveAsync(Guid accountId, bool isActive);
+    Task<bool> SetActiveAsync(Guid accountId, bool isActive, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Identity-only account metadata used by the operator boundary.</summary>

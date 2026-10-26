@@ -85,7 +85,7 @@ void main() {
     );
     await settle(tester);
 
-    expect(find.text('Erlaubt sind 100 bis 250.'), findsOneWidget);
+    expect(find.text('Erlaubt sind 100 bis 230.'), findsOneWidget);
     expect((await stored(tester)).maxHeartRate, isNull);
 
     await tester.enterText(
@@ -93,8 +93,80 @@ void main() {
       '',
     );
     await settle(tester);
-    expect(find.text('Erlaubt sind 100 bis 250.'), findsNothing);
+    expect(find.text('Erlaubt sind 100 bis 230.'), findsNothing);
   });
+
+  testWidgets('Maximalpuls über 230 wird abgelehnt und der Grund steht da', (
+    tester,
+  ) async {
+    await openSettings(tester);
+    expect(find.textContaining('höchstens mit 230 bpm'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('cardio-settings-max')),
+      '240',
+    );
+    await settle(tester);
+
+    expect(find.text('Erlaubt sind 100 bis 230.'), findsOneWidget);
+    expect((await stored(tester)).maxHeartRate, isNull);
+  });
+
+  testWidgets('ein älterer Maximalpuls über 230 endet in Zone 5 bei 230', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => harness.repository.preferences.write(
+        const CardioPreferenceValues(maxHeartRate: 245),
+      ),
+    );
+    await openSettings(tester);
+    await scrollIntoView(tester, find.text('Zone 5'));
+
+    expect(find.text('207–230 bpm'), findsOneWidget);
+  });
+
+  // Die Feldzeilen stapeln Beschriftung und Eingabe erst über 1,5.
+  for (final scale in [1.3, 1.5, 2.0]) {
+    testWidgets('Textgröße $scale läuft nicht über', (tester) async {
+      await tester.runAsync(
+        () => harness.repository.preferences.write(
+          const CardioPreferenceValues(
+            maxHeartRate: 190,
+            age: 40,
+            restingHeartRate: 60,
+          ),
+        ),
+      );
+      phoneSize(tester);
+      await tester.pumpWidget(
+        trainingTestApp(
+          textScale: scale,
+          home: CardioSettingsScreen(
+            preferences: harness.repository.preferences,
+          ),
+        ),
+      );
+      await settle(tester);
+
+      for (final finder in [
+        find.byKey(const ValueKey('cardio-settings-max')),
+        find.byKey(const ValueKey('cardio-settings-age')),
+        find.byKey(const ValueKey('cardio-settings-rest')),
+        find.byKey(const ValueKey('cardio-settings-templates')),
+        find.byKey(const ValueKey('cardio-settings-offer')),
+        find.byKey(const ValueKey('cardio-settings-weekly')),
+        find.byKey(const ValueKey('cardio-settings-alerts')),
+        find.byKey(const ValueKey('cardio-settings-voice')),
+        find.byKey(const ValueKey('cardio-settings-voice-interval')),
+        find.text('Zone 5'),
+      ]) {
+        await scrollIntoView(tester, finder);
+        expect(finder, findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
 
   testWidgets('Alarm und Aufwärmzeit werden gespeichert', (tester) async {
     await openSettings(tester);

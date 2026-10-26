@@ -29,6 +29,8 @@ You plan, brief, verify, open the pull requests and merge. Subagents only implem
   - `haiku` for docs and skill texts.
   - `opus` only for the sync protocol, migrations with a data-model decision, native code and Pigeon.
   - At most two Opus agents at once. Work further Opus issues one after another.
+- At most four agents at once in total. More parallel agents do not lower the total, but they hit the 5-hour quota sooner and slow the host's test runs.
+- An issue with more than about three independent points goes to several agents, not one. Give Opus only the native or sync part. One Opus agent for five points of #166 reached 258k context and 16 % of a whole round.
 
 ## 3. Brief
 
@@ -64,7 +66,8 @@ Start agents in the background with worktree isolation. Do not touch their files
 
 - Open one PR per issue with `gh pr create`, body via the `pr` skill, `Fixes #<n>` in the body. Register it with T3 if `link_pull_request` exists.
 - Review right after `gh pr create`: run `code-review <PR>`.
-  - First review of a fresh PR: `medium`. After a rework: `low` on the new state. Sync protocol or migrations: full review (`high`).
+  - First review of a fresh PR: `medium --max-findings 5`. After a rework: `low --max-findings 3` on the new state. Sync protocol or migrations: full review (`high`).
+  - Triage before sending anything back: only correctness bugs inside the issue's scope. Extensions, refactorings and style hints are rejected with a reason or filed as a new issue. Rework rounds were about 30 % of a round's quota when every finding was fixed.
   - Send findings back via `SendMessage` to the same agent only if its context is small: under about 150k tokens and at most one review round so far. Otherwise start a fresh agent with a compact brief: branch, list of findings, checks. The branch holds the state, the old transcript is not needed.
   - Pure style or refactoring hints from follow-up rounds may stay open, so the loop ends.
 - Watch checks (`watch_pull_request` if available, otherwise `gh pr checks <n>`). Never poll in a sleep loop.

@@ -332,7 +332,7 @@ public sealed class TrainingRestDayNutritionSyncTests
         string operation, string resourceType, Guid resourceId, long baseVersion, object payload) => new(
             Guid.NewGuid(),
             new CanonicalMutationContent(
-                2,
+                Gainer.Contracts.Sync.SyncProtocol.CurrentVersion,
                 Guid.Empty,
                 0,
                 operation,

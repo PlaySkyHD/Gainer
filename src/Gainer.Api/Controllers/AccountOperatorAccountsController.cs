@@ -2,6 +2,7 @@ using Gainer.Api.Composition;
 using Gainer.Api.Security;
 using Gainer.Contracts.Security;
 using Gainer.Core.Access;
+using Gainer.Core.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,7 +15,8 @@ namespace Gainer.Api.Controllers;
 [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
 public sealed class AccountOperatorAccountsController(
     IAccountStatusService accounts,
-    IAccountDirectoryService directory) : ControllerBase
+    IAccountDirectoryService directory,
+    IUserContext userContext) : ControllerBase
 {
     /// <summary>Lists only the Identity metadata required for account management.</summary>
     [HttpGet]
@@ -32,12 +34,24 @@ public sealed class AccountOperatorAccountsController(
     /// <summary>Activates or deactivates an account and revokes its existing sessions.</summary>
     [HttpPut("{accountId:guid}/status")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict, "application/problem+json")]
     public async Task<IActionResult> SetStatus(
         Guid accountId,
-        SetAccountStatusRequest request)
+        SetAccountStatusRequest request,
+        CancellationToken cancellationToken)
     {
-        bool found = await accounts.SetActiveAsync(accountId, request.IsActive);
+        // An operator who deactivates their own account would lock out the only operator.
+        if (!request.IsActive && userContext.UserId == accountId)
+        {
+            return SyncProblemResults.Create(
+                HttpContext,
+                StatusCodes.Status409Conflict,
+                "operator_self_deactivation",
+                "An operator cannot deactivate their own account.");
+        }
+
+        bool found = await accounts.SetActiveAsync(accountId, request.IsActive, cancellationToken);
         return found ? NoContent() : NotFound();
     }
 }

@@ -55,6 +55,7 @@ public sealed class SyncMutationProcessor(
             ProcessedMutation? existing = await context.ProcessedMutations.AsNoTracking()
                 .SingleOrDefaultAsync(item => item.MutationId == command.MutationId, cancellationToken);
             if (existing is not null) return await ReplayAsync(command, existing, hash, transaction, cancellationToken);
+            EnsureProtocolCoversMutation(command);
 
             SyncClient client = await context.SyncClients.SingleOrDefaultAsync(
                 item => item.Id == command.Content.ClientId,
@@ -313,14 +314,7 @@ public sealed class SyncMutationProcessor(
         {
             throw new SyncMutationValidationException("invalid_envelope", "The mutation envelope is invalid.");
         }
-        if (command.Content.ProtocolVersion is < SyncProtocol.PreviousVersion or > SyncProtocol.CurrentVersion ||
-            command.Content.Resources.Any(item =>
-                !SyncResourceProtocol.Supports(command.Content.ProtocolVersion, item.ResourceType ?? string.Empty)))
-        {
-            throw new SyncUpgradeRequiredException();
-        }
-        if (command.Content.ProtocolVersion < SyncProtocol.TrainingContractVersion &&
-            TrainingOperations.Contains(command.Content.Operation))
+        if (command.Content.ProtocolVersion is < SyncProtocol.PreviousVersion or > SyncProtocol.CurrentVersion)
         {
             throw new SyncUpgradeRequiredException();
         }
@@ -328,6 +322,23 @@ public sealed class SyncMutationProcessor(
             command.Content.Resources.Any(item => item.ResourceId == Guid.Empty || item.BaseVersion < 0 || string.IsNullOrWhiteSpace(item.ResourceType)))
         {
             throw new SyncMutationValidationException("invalid_resources", "The mutation resource expectations are invalid.");
+        }
+    }
+
+    /// <summary>
+    /// Rejects a new mutation whose resources or operation its protocol does not cover. Runs after the receipt
+    /// lookup: a retry of a mutation that was applied before a type got its minimum protocol must still get its
+    /// receipt, or the updated app would resend the id with another protocol and hit <c>mutation_id_reused</c>.
+    /// The operation check stays next to the resource check because it does not depend on the declared resources
+    /// and also covers operations of removed types.
+    /// </summary>
+    private static void EnsureProtocolCoversMutation(ProcessSyncMutationCommand command)
+    {
+        int protocol = command.Content.ProtocolVersion;
+        if (command.Content.Resources.Any(item => !SyncResourceProtocol.Supports(protocol, item.ResourceType)) ||
+            (protocol < SyncProtocol.TrainingContractVersion && TrainingOperations.Contains(command.Content.Operation)))
+        {
+            throw new SyncUpgradeRequiredException();
         }
     }
 

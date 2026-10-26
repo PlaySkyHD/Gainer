@@ -119,7 +119,9 @@ public sealed class NutritionController(
     [ProducesResponseType<MealEstimateResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status504GatewayTimeout)]
     public async Task<ActionResult<MealEstimateResponse>> EstimateMeal(
         [FromForm] string? text,
         [FromForm] IFormFile? image,
@@ -171,7 +173,9 @@ public sealed class NutritionController(
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status504GatewayTimeout)]
     public async Task<ActionResult<NutritionLabelScanResponse>> ScanLabel(
         [FromForm] IFormFile? image,
         CancellationToken cancellationToken = default)

@@ -102,6 +102,20 @@ public sealed class AuthenticationApiTests
     }
 
     [TestMethod]
+    public async Task UnauthenticatedRequestReturnsProblemDetailsWithStableCode()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        using HttpClient client = CreateClient(app);
+
+        using HttpResponseMessage response = await client.GetAsync("/api/v1/auth/session");
+        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.AreEqual("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.AreEqual("authentication_required", payload.RootElement.GetProperty("code").GetString());
+    }
+
+    [TestMethod]
     public async Task CookiesAndAntiforgeryAreNoLongerPartOfTheApi()
     {
         await using WebApplication app = await CreateApplicationAsync();

@@ -9,8 +9,9 @@ public sealed class AccountStatusService(
     IDeviceSessionService deviceSessions) : IAccountStatusService
 {
     /// <inheritdoc />
-    public async Task<bool> SetActiveAsync(Guid accountId, bool isActive)
+    public async Task<bool> SetActiveAsync(Guid accountId, bool isActive, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         AppUser? user = await userManager.FindByIdAsync(accountId.ToString());
         if (user is null)
         {
@@ -26,7 +27,8 @@ public sealed class AccountStatusService(
 
         if (!isActive)
         {
-            await deviceSessions.RevokeAllAsync(accountId);
+            // Not cancellable: the account is already deactivated, its sessions must not outlive that.
+            await deviceSessions.RevokeAllAsync(accountId, CancellationToken.None);
         }
 
         return true;

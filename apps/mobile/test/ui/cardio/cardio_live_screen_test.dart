@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_draft.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_session.dart';
+import 'package:gainer_mobile/domain/models/cardio/cardio_template.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_detail_screen.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_live_screen.dart';
@@ -204,13 +205,192 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('cardio-finish')));
     await pumpUi(tester);
     expect(find.text('Einheit beenden?'), findsOneWidget);
-    expect(inDialog('Verwerfen'), findsNothing);
+    expect(inDialog('Verwerfen'), findsOneWidget);
     await tester.tap(inDialog('Beenden'));
     await pumpUi(tester);
 
     expect(harness.controller.isRunning, isFalse);
     expect(find.byType(CardioDetailScreen), findsOneWidget);
     expect(find.text('Kennzahlen'), findsOneWidget);
+  });
+
+  testWidgets('ab 60 s verwirft erst eine zweite Bestätigung', (tester) async {
+    await startRunning(tester, bpm: 130, after: const Duration(minutes: 5));
+    await openLive(tester);
+
+    // Abbrechen in der Rückfrage lässt die Einheit laufen.
+    await tester.tap(find.byKey(const ValueKey('cardio-finish')));
+    await pumpUi(tester);
+    await tester.tap(inDialog('Verwerfen'));
+    await pumpUi(tester);
+    expect(find.text('Einheit verwerfen?'), findsOneWidget);
+    expect(find.text('Die Daten gehen verloren.'), findsOneWidget);
+    await tester.tap(inDialog('Abbrechen'));
+    await pumpUi(tester);
+    expect(harness.controller.isRunning, isTrue);
+    expect(find.byType(CardioLiveScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('cardio-finish')));
+    await pumpUi(tester);
+    await tester.tap(inDialog('Verwerfen'));
+    await pumpUi(tester);
+    await tester.tap(inDialog('Verwerfen'));
+    await pumpUi(tester);
+    await pumpUi(tester);
+
+    expect(harness.controller.isRunning, isFalse);
+    expect(find.byType(CardioLiveScreen), findsNothing);
+    expect(await tester.runAsync(harness.repository.readSessions), isEmpty);
+    expect(await tester.runAsync(harness.repository.readDraft), isNull);
+  });
+
+  testWidgets('eine schon gespeicherte Einheit lässt sich beenden', (
+    tester,
+  ) async {
+    await startRunning(tester, bpm: 130, after: const Duration(minutes: 5));
+    // Ein früherer Versuch hat gespeichert, aber den Entwurf nicht gelöscht.
+    await tester.runAsync(() async {
+      final draft = harness.controller.active!;
+      await harness.repository.saveFinished(
+        CardioSession(
+          sessionId: draft.sessionId,
+          startedAtUtc: draft.startedAtUtc,
+          endedAtUtc: harness.now,
+          heartRateBpm: const [],
+          rrIntervalsMs: const [],
+          createdAtUtc: harness.now,
+          updatedAtUtc: harness.now,
+        ),
+      );
+    });
+    await openLive(tester);
+
+    await tester.tap(find.byKey(const ValueKey('cardio-finish')));
+    await pumpUi(tester);
+    await tester.tap(inDialog('Beenden'));
+    await pumpUi(tester);
+
+    expect(
+      find.text('Die Einheit konnte nicht gespeichert werden.'),
+      findsNothing,
+    );
+    expect(harness.controller.isRunning, isFalse);
+    expect(find.byType(CardioDetailScreen), findsOneWidget);
+    expect(await tester.runAsync(harness.repository.readDraft), isNull);
+  });
+
+  testWidgets('eine inzwischen gelöschte Einheit erklärt und schließt', (
+    tester,
+  ) async {
+    await startRunning(tester, bpm: 130, after: const Duration(minutes: 5));
+    await tester.runAsync(() async {
+      final draft = harness.controller.active!;
+      await saveSyncedThenDelete(
+        harness.repository,
+        CardioSession(
+          sessionId: draft.sessionId,
+          startedAtUtc: draft.startedAtUtc,
+          endedAtUtc: harness.now,
+          heartRateBpm: const [],
+          rrIntervalsMs: const [],
+          createdAtUtc: harness.now,
+          updatedAtUtc: harness.now,
+        ),
+      );
+    });
+    await openLive(tester);
+
+    await tester.tap(find.byKey(const ValueKey('cardio-finish')));
+    await pumpUi(tester);
+    await tester.tap(inDialog('Beenden'));
+    await pumpUi(tester);
+
+    expect(find.text('Einheit gelöscht'), findsOneWidget);
+    expect(find.byType(CardioLiveScreen), findsOneWidget);
+    await tester.tap(inDialog('OK'));
+    await pumpUi(tester);
+    await pumpUi(tester);
+
+    expect(find.byType(CardioLiveScreen), findsNothing);
+    expect(find.byType(CardioDetailScreen), findsNothing);
+    expect(harness.controller.isRunning, isFalse);
+    expect(await tester.runAsync(harness.repository.readDraft), isNull);
+    expect(await tester.runAsync(harness.repository.readSessions), isEmpty);
+  });
+
+  testWidgets('Live-Aktivitäten aus: Hinweis mit Weg in die Einstellungen', (
+    tester,
+  ) async {
+    var opened = 0;
+    harness.controller.openSettings = () async => opened++;
+    harness.platform.liveActivity = CardioLiveActivityState.disabled;
+    await startRunning(tester, bpm: 130);
+    await openLive(tester);
+
+    expect(find.text('Live-Aktivitäten sind aus'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('cardio-live-activities-settings')),
+    );
+    await pumpUi(tester);
+    expect(opened, 1);
+
+    harness.platform.liveActivity = CardioLiveActivityState.running;
+    await tester.runAsync(harness.controller.poll);
+    await tester.pump();
+    expect(find.text('Live-Aktivitäten sind aus'), findsNothing);
+  });
+
+  testWidgets('Live-Aktivitäten-Hinweis bei Textgröße 2 läuft nicht über', (
+    tester,
+  ) async {
+    harness.controller.openSettings = () async {};
+    harness.platform.liveActivity = CardioLiveActivityState.disabled;
+    await startRunning(tester, bpm: 130);
+    await openLive(tester, textScale: 2);
+
+    expect(find.text('Einstellungen öffnen'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  group('Phasenkarte', () {
+    const template = CardioTemplate(
+      id: 'tpl-long',
+      name: 'Schwellenintervalle lang',
+      phases: [
+        CardioTemplatePhase(
+          name: 'Einrollen locker',
+          durationSeconds: 600,
+          target: CardioBpmTarget(110, 125),
+        ),
+        CardioTemplatePhase(
+          name: 'Schwelle',
+          durationSeconds: 600,
+          target: CardioBpmTarget(150, 165),
+        ),
+      ],
+    );
+
+    // Die Karte stapelt Titel und Restzeit erst über 1,5.
+    for (final scale in [1.3, 1.5, 2.0]) {
+      testWidgets('Textgröße $scale läuft nicht über', (tester) async {
+        await tester.runAsync(() async {
+          await harness.controller.start(template: template);
+          harness.now = t0.add(const Duration(seconds: 90));
+          await harness.controller.poll();
+        });
+        await openLive(tester, textScale: scale);
+
+        expect(
+          find.byKey(const ValueKey('cardio-phase-title')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('cardio-phase-countdown')),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   group('Erholung', () {

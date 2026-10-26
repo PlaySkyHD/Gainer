@@ -226,6 +226,41 @@ public sealed class InvitationApiTests
         await LoginAsync(client, memberAuth, "member@example.test", InviteePassword);
     }
 
+    [TestMethod]
+    public async Task OperatorCannotDeactivateTheirOwnAccount()
+    {
+        await using TestApplication test = await CreateApplicationAsync();
+        await CreateOperatorAsync(test.App);
+        using HttpClient client = CreateClient(test.App);
+        var operatorAuth = new TestSession();
+        await LoginAsync(client, operatorAuth, OperatorEmail, OperatorPassword);
+
+        Guid operatorId;
+        await using (AsyncServiceScope scope = test.App.Services.CreateAsyncScope())
+        {
+            UserManager<AppUser> users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+            operatorId = (await users.FindByEmailAsync(OperatorEmail))?.Id
+                ?? throw new InvalidOperationException("The operator was not created.");
+        }
+
+        using HttpResponseMessage self = await SetAccountStatusAsync(
+            client,
+            operatorAuth,
+            operatorId,
+            isActive: false);
+        using JsonDocument problem = JsonDocument.Parse(await self.Content.ReadAsStringAsync());
+        Assert.AreEqual(HttpStatusCode.Conflict, self.StatusCode);
+        Assert.AreEqual("operator_self_deactivation", problem.RootElement.GetProperty("code").GetString());
+        Assert.AreEqual(
+            self.Headers.GetValues("X-Correlation-Id").Single(),
+            problem.RootElement.GetProperty("correlationId").GetString());
+        Assert.IsFalse(string.IsNullOrWhiteSpace(problem.RootElement.GetProperty("traceId").GetString()));
+
+        // The operator stays active and can keep using the session.
+        using HttpResponseMessage session = await SendGetAsync(client, operatorAuth, "/api/v1/auth/session");
+        Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
+    }
+
     private async Task<TestApplication> CreateApplicationAsync(TimeProvider? timeProvider = null)
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
