@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 import '../../../domain/models/training/unknown_wire_value_exception.dart';
 import '../../models/api/sync_api_models.dart';
@@ -121,7 +123,8 @@ class SyncRepository implements MobileSyncActions {
   final InstallationIdentityStore installationIdentity;
   final String displayName;
   final PendingHandoverSecretStore? handoverSecrets;
-  Future<SyncRunReport>? _activeSync;
+  ({Future<SyncRunReport> run, bool takesOver})? _activeSync;
+  ({Completer<SyncRunReport> report, DateTime? now})? _queuedTakeOver;
   final String _leaseOwnerId = _newLeaseOwnerId();
 
   late final NativeHandoverRepository _handover = NativeHandoverRepository(
@@ -205,14 +208,37 @@ class SyncRepository implements MobileSyncActions {
     DateTime? now,
   }) {
     final active = _activeSync;
-    if (active != null) return active;
+    if (active != null) {
+      if (!takeOverWriting || active.takesOver) return active.run;
+      // Ein Lauf ohne Übernahme beantwortet die Bitte nicht: Die Übernahme
+      // folgt direkt nach ihm, und der Aufrufer erhält ihren Bericht.
+      final queued = _queuedTakeOver ??= (
+        report: Completer<SyncRunReport>(),
+        now: now,
+      );
+      return queued.report.future;
+    }
+    return _startRun(takeOverWriting: takeOverWriting, now: now);
+  }
+
+  Future<SyncRunReport> _startRun({
+    required bool takeOverWriting,
+    DateTime? now,
+  }) {
     final run = _synchronizeWithLease(
       takeOverWriting: takeOverWriting,
       now: now,
     );
-    _activeSync = run;
+    _activeSync = (run: run, takesOver: takeOverWriting);
     return run.whenComplete(() {
-      if (identical(_activeSync, run)) _activeSync = null;
+      if (!identical(_activeSync?.run, run)) return;
+      _activeSync = null;
+      final queued = _queuedTakeOver;
+      if (queued == null) return;
+      // Synchron starten: Kein anderer Lauf kann sich dazwischenschieben,
+      // auch wenn der vorige Lauf mit einem Fehler endete.
+      _queuedTakeOver = null;
+      queued.report.complete(_startRun(takeOverWriting: true, now: queued.now));
     });
   }
 
@@ -327,21 +353,9 @@ class SyncRepository implements MobileSyncActions {
           return _stopAfterPush(stopState, pushed);
         }
       }
-      try {
-        pulled += await _pullAll();
-      } on ApiException catch (error) {
-        final blocked = await _pullFailureReport(
-          error,
-          pushed,
-          pulled + _appliedInPull,
-        );
-        if (blocked == null) rethrow;
-        return blocked;
-      } on UnsupportedSyncResourceException {
-        return _upgradeRequiredDuringPull(pushed, pulled);
-      } on UnreadableSyncSnapshotException {
-        return _upgradeRequiredDuringPull(pushed, pulled);
-      }
+      final stop = await _pullOrStop(pushed: pushed, pulledBefore: pulled);
+      if (stop != null) return stop;
+      pulled += _appliedInPull;
       if (!registration.isActiveWriter || await _healStaleConflicts() == 0) {
         break;
       }
@@ -358,6 +372,32 @@ class SyncRepository implements MobileSyncActions {
       pulled: pulled,
       timestamp: timestamp,
     );
+  }
+
+  /// Pull mit der Fehlerbehandlung, die jeder Aufrufer braucht. Liefert bei
+  /// Abmeldung, Kontowechsel oder nötigem Update einen Abbruchbericht;
+  /// andere [ApiException]s gibt sie weiter. Ohne Abbruch steht die Zahl der
+  /// angewendeten Batches in [_appliedInPull].
+  Future<SyncRunReport?> _pullOrStop({
+    required int pushed,
+    required int pulledBefore,
+  }) async {
+    try {
+      await _pullAll();
+      return null;
+    } on ApiException catch (error) {
+      final blocked = await _pullFailureReport(
+        error,
+        pushed,
+        pulledBefore + _appliedInPull,
+      );
+      if (blocked == null) rethrow;
+      return blocked;
+    } on UnsupportedSyncResourceException {
+      return _upgradeRequiredDuringPull(pushed, pulledBefore);
+    } on UnreadableSyncSnapshotException {
+      return _upgradeRequiredDuringPull(pushed, pulledBefore);
+    }
   }
 
   /// Neuere Daten, als diese App kennt: Update nötig, nichts geht verloren.
@@ -508,8 +548,32 @@ class SyncRepository implements MobileSyncActions {
   }
 
   Future<SyncRunReport> _stopAfterPush(SyncRunState state, int pushed) async {
-    final pulled = state == SyncRunState.authBlocked ? 0 : await _pullAll();
-    return SyncRunReport(state: state, pushed: pushed, pulledBatches: pulled);
+    if (state == SyncRunState.authBlocked) {
+      return SyncRunReport(state: state, pushed: pushed, pulledBatches: 0);
+    }
+    try {
+      return await _pullOrStop(pushed: pushed, pulledBefore: 0) ??
+          SyncRunReport(
+            state: state,
+            pushed: pushed,
+            pulledBatches: _appliedInPull,
+          );
+    } on Object catch (error) {
+      // Der Push hat den Lauf schon beendet; ein sonstiger Pull-Fehler
+      // (Netz, ungültige Antwort, verlorene Lease) darf dessen Bericht nicht
+      // verdrängen. Geloggt wird nur die Art des Fehlers, keine Daten.
+      if (kDebugMode) {
+        final code = error is ApiException ? ' ${error.code}' : '';
+        debugPrint(
+          'Sync: pull after push stop failed: ${error.runtimeType}$code',
+        );
+      }
+      return SyncRunReport(
+        state: state,
+        pushed: pushed,
+        pulledBatches: _appliedInPull,
+      );
+    }
   }
 
   Future<SyncRunReport> _reportAfterPull({
@@ -1339,7 +1403,9 @@ class SyncRepository implements MobileSyncActions {
       );
       return SyncRunState.upgradeRequired;
     }
-    if ((error.statusCode == 409 || error.statusCode == 422) &&
+    // Fachliche Ablehnungen (auch ein 404 mit fachlichem Code) versuchen
+    // zuerst die Selbstheilung, bevor ein Konflikt entsteht.
+    if ((error.statusCode == 409 || _isPermanentRejection(error)) &&
         _healableCodes.contains(error.code) &&
         await _tryAutoHeal(mutation, error)) {
       return null;
@@ -1385,9 +1451,11 @@ class SyncRepository implements MobileSyncActions {
       );
       return null;
     }
-    if (error.statusCode == 422 && error.code == 'validation_failed') {
+    if ((error.statusCode == 422 || error.statusCode == 400) &&
+        error.code == 'validation_failed') {
       // Field errors cannot be fixed by resending the same payload, so they
       // stay visible as a conflict on the aggregate until the user decides.
+      // A 400 comes from model binding before the sync handler runs.
       await store.upsertConflict(
         LocalConflictRecord(
           conflictId: mutation.mutationId,
@@ -1411,10 +1479,10 @@ class SyncRepository implements MobileSyncActions {
       );
       return null;
     }
-    if (error.statusCode == 422) {
-      // Dauerhafte Ablehnung (z. B. `invalid_payload`, `water_day_exists`):
+    if (_isPermanentRejection(error)) {
+      // Dauerhafte Ablehnung (z. B. 422 `invalid_payload`, 400, 413, 415):
       // Dieselben Daten scheitern erneut. Ohne Konflikt blockierte der Eintrag
-      // seine Ressource still und dauerhaft.
+      // seine Ressource still und dauerhaft, mit Backoff ohne Ende.
       await store.upsertConflict(
         LocalConflictRecord(
           conflictId: mutation.mutationId,
@@ -1441,6 +1509,27 @@ class SyncRepository implements MobileSyncActions {
     await _scheduleRetry(mutation, error, now);
     return null;
   }
+
+  /// Ablehnungen, die sich mit denselben Daten wiederholen: 422, 400, 413 und
+  /// 415 sowie 403/404 mit fachlichem Code. Ein 403/404 mit generischem Code
+  /// stammt von Proxy, WAF, Routing oder einem älteren Server beim Deploy und
+  /// bleibt wiederholbar, ebenso 408, 423, 425 und 429. Der Sync-Endpunkt
+  /// meldet fehlende Ressourcen als 409 `resource_conflict`.
+  static bool _isPermanentRejection(ApiException error) =>
+      switch (error.statusCode) {
+        400 || 413 || 415 || 422 => true,
+        403 || 404 => !_genericRejectionCodes.contains(error.code),
+        _ => false,
+      };
+
+  /// Codes, die `ProblemDetailsConfiguration` oder [ApiClient] für jede
+  /// Antwort ohne fachlichen Code setzen.
+  static const _genericRejectionCodes = {
+    'forbidden',
+    'resource_not_found',
+    'http_403',
+    'http_404',
+  };
 
   Future<void> _scheduleRetry(
     LocalMutation mutation,

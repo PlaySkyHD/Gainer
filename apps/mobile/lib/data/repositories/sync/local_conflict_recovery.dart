@@ -580,7 +580,9 @@ extension LocalConflictRecovery on LocalSyncStore {
 }
 
 /// Kennzeichen im Konfliktdetail: Der Server lehnt diesen Stand dauerhaft ab
-/// (422 außer `validation_failed`). Erneut senden oder erzwingen scheitert
+/// (422 und 400 außer `validation_failed`, 413, 415, 403/404 mit fachlichem
+/// Code; siehe `SyncRepository._isPermanentRejection`). Erneut senden oder
+/// erzwingen scheitert
 /// genauso; möglich ist nur der Serverstand bzw. das Verwerfen. Gelesen wird
 /// es nur in [LocalConflictRecovery], Ergebnis ist
 /// [ConflictResourceInfo.permanentRejection].

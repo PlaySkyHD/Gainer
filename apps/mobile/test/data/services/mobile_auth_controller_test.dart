@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
+import 'package:gainer_mobile/data/models/api/sync_api_models.dart';
+import 'package:gainer_mobile/data/repositories/sync/sync_repository.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
 import 'package:gainer_mobile/data/services/auth/mobile_auth_controller.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
@@ -69,6 +72,38 @@ void main() {
       expect(controller.state, MobileAuthState.signedOut);
       expect(secure.value, isNull);
     } finally {
+      controller.dispose();
+    }
+  });
+
+  test('a takeover tap during a running sync takes over writing', () async {
+    final apiFactory = _FakeApiFactory();
+    final controller = _controller(
+      secure: _MemorySecureSession(),
+      databases: {},
+      apiFactory: apiFactory,
+    );
+    try {
+      await controller.initialize();
+      await controller.login('a@example.test', 'password');
+      final account = controller.account!;
+      // Ein Lauf, den die Anmeldung angestoßen hat, ist danach vorbei.
+      await account.synchronize();
+      apiFactory.syncRegistrations.clear();
+      final gate = apiFactory.registrationGate = Completer<void>();
+      final entered = apiFactory.registrationEntered = Completer<void>();
+
+      final background = account.synchronize();
+      await entered.future;
+      final takeOver = account.synchronize(takeOverWriting: true);
+      apiFactory.registrationGate = null;
+      gate.complete();
+
+      expect((await background).state, SyncRunState.inactiveClient);
+      expect((await takeOver).state, isNot(SyncRunState.inactiveClient));
+      expect(apiFactory.syncRegistrations, [false, true]);
+    } finally {
+      await controller.logout();
       controller.dispose();
     }
   });
@@ -501,6 +536,12 @@ class _FakeApiFactory {
   bool rejectLogoutAll = false;
   int logoutAllCalls = 0;
 
+  /// `takeOverWriting` jeder Sync-Registrierung; nur eine Übernahme macht
+  /// das Gerät zum Schreibgerät.
+  final syncRegistrations = <bool>[];
+  Completer<void>? registrationGate;
+  Completer<void>? registrationEntered;
+
   ApiClient call(ApiConfiguration configuration) =>
       _FakeApiClient(configuration: configuration, factory: this);
 }
@@ -543,6 +584,42 @@ class _FakeApiClient extends ApiClient {
     }
     return factory.activeSession;
   }
+
+  @override
+  Future<SyncClientRegistrationResponse> registerSyncClient(
+    SyncClientRegistrationRequest request, {
+    required String expectedAccountId,
+  }) async {
+    factory.syncRegistrations.add(request.takeOverWriting);
+    final gate = factory.registrationGate;
+    if (gate != null) {
+      final entered = factory.registrationEntered;
+      if (entered != null && !entered.isCompleted) entered.complete();
+      await gate.future;
+    }
+    final now = DateTime.utc(2026, 10, 12, 10);
+    return SyncClientRegistrationResponse(
+      clientId: request.clientId,
+      displayName: request.displayName,
+      protocolVersion: request.protocolVersion,
+      isActiveWriter: request.takeOverWriting,
+      registeredAtUtc: now,
+      lastSeenAtUtc: now,
+    );
+  }
+
+  @override
+  Future<SyncPullResponse> pullChanges({
+    required int after,
+    required String expectedAccountId,
+    int limit = 200,
+    int? protocolVersion,
+  }) async => SyncPullResponse(
+    protocolVersion: protocolVersion ?? nativeSyncProtocolVersion,
+    nextCursor: after,
+    hasMore: false,
+    batches: const [],
+  );
 
   @override
   Uint8List createSecureCheckpoint(ApiSession session) =>
