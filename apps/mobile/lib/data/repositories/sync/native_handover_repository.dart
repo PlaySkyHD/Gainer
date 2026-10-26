@@ -152,7 +152,9 @@ class NativeHandoverRepository {
       targetClientId: clientId,
       frozenRevision: frozenRevision,
       phase: 'targetCompletePending',
-      expiresAtUtc: (isReplay ? prior!.expiresAtUtc! : expiresAtUtc).toUtc(),
+      expiresAtUtc: isReplay
+          ? prior!.expiresAtUtc!.toUtc()
+          : _cappedExpiry(expiresAtUtc),
       oneTimeCode: isReplay ? prior!.oneTimeCode : oneTimeCode,
     );
     await assertSessionMatchesStore();
@@ -163,15 +165,27 @@ class NativeHandoverRepository {
       accountId: accountId,
       frozenRevision: frozenRevision,
     );
-    final response = await api.completeSyncHandover(
-      handoverId: handoverId,
-      request: CompleteSyncHandoverRequest(
-        oneTimeCode: record.oneTimeCode!,
-        targetClientId: clientId,
-        caughtUpRevision: frozenRevision,
-      ),
-      expectedAccountId: accountId,
-    );
+    final CompleteSyncHandoverResponse response;
+    try {
+      response = await api.completeSyncHandover(
+        handoverId: handoverId,
+        request: CompleteSyncHandoverRequest(
+          oneTimeCode: record.oneTimeCode!,
+          targetClientId: clientId,
+          caughtUpRevision: frozenRevision,
+        ),
+        expectedAccountId: accountId,
+      );
+    } on ApiException catch (error) {
+      // A wrong code or id is typed by hand and can never succeed on retry
+      // with the same values. Release the freeze and the record so a corrected
+      // entry is accepted instead of being rejected as a different completion.
+      if (_isDefinitiveCompleteRejection(error)) {
+        await store.unfreezeWrites();
+        await secureStore.clear(apiOrigin: origin, accountId: accountId);
+      }
+      rethrow;
+    }
     if (!response.isActiveWriter ||
         response.frozenRevision != frozenRevision ||
         response.targetClientId != clientId) {
@@ -224,7 +238,8 @@ class NativeHandoverRepository {
       );
     } on ApiException catch (error) {
       if (error.code != 'handover_expired' &&
-          error.code != 'handover_not_pending') {
+          error.code != 'handover_not_pending' &&
+          error.code != 'handover_not_found') {
         rethrow;
       }
       await _registerWithoutTakeover(clientId: clientId, accountId: accountId);
@@ -260,6 +275,25 @@ class NativeHandoverRepository {
     await secureStore.clear(apiOrigin: origin, accountId: accountId);
     return false;
   }
+
+  /// The server issues handovers for 15 minutes. The expiry of a hand-entered
+  /// bundle is untrusted: a far-future value would block recovery until then,
+  /// so the stored expiry never exceeds the server lifetime from now. A
+  /// legitimately later value cannot exist, a too-early recovery attempt is
+  /// harmless because the server decides.
+  DateTime _cappedExpiry(DateTime expiresAtUtc) {
+    final latest = DateTime.now().toUtc().add(_maxHandoverLifetime);
+    final expiry = expiresAtUtc.toUtc();
+    return expiry.isAfter(latest) ? latest : expiry;
+  }
+
+  static const _maxHandoverLifetime = Duration(minutes: 15);
+
+  bool _isDefinitiveCompleteRejection(ApiException error) =>
+      error.code == 'invalid_handover_code' ||
+      error.code == 'handover_not_found' ||
+      error.statusCode == 400 ||
+      error.statusCode == 422;
 
   Future<SyncClientRegistrationResponse> _registerWithoutTakeover({
     required String clientId,

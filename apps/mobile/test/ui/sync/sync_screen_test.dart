@@ -77,6 +77,50 @@ void main() {
     expect(clipboardText, contains('gainer-sync-handover'));
   });
 
+  testWidgets('expired source handover disables copy and code reveal', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions()
+      ..pending = PendingHandoverRecord(
+        apiOrigin: 'https://gainer.markfort.xyz',
+        accountId: 'a1234567-1234-4234-8234-123456789abc',
+        requestId: 'd1234567-1234-4234-8234-123456789abc',
+        sourceClientId: 'b1234567-1234-4234-8234-123456789abc',
+        phase: 'sourceBegan',
+        expiresAtUtc: DateTime.now().toUtc().subtract(const Duration(hours: 1)),
+        handoverId: 'c1234567-1234-4234-8234-123456789abc',
+        frozenRevision: 41,
+        oneTimeCode: 'one_time-code-123',
+      );
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.light,
+        home: SyncScreen(
+          sync: sync,
+          isOnline: true,
+          accountId: 'a1234567-1234-4234-8234-123456789abc',
+          apiOrigin: 'https://gainer.markfort.xyz',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Übergabe abgelaufen'), findsOneWidget);
+    expect(find.textContaining('Brich die Übergabe ab'), findsOneWidget);
+    await tester.ensureVisible(find.text('Übergabedaten kopieren'));
+    await tester.tap(find.text('Übergabedaten kopieren'));
+    await tester.pumpAndSettle();
+    expect(find.text('Übergabedaten kopieren?'), findsNothing);
+    await tester.tap(find.text('Einmalcode'));
+    await tester.pumpAndSettle();
+    expect(find.text('Einmalcode anzeigen'), findsNothing);
+    expect(find.text('Übergabe abbrechen'), findsOneWidget);
+  });
+
   testWidgets('popping during a pending handover stops follow-up view work', (
     tester,
   ) async {

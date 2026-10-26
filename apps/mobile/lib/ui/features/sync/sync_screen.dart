@@ -7,6 +7,7 @@ import '../../../data/repositories/sync/local_conflict_recovery.dart'
 import '../../../data/repositories/sync/sync_repository.dart';
 import '../../../data/services/local/pending_handover_secret_store.dart';
 import '../../core/components/components.dart';
+import '../../core/german_date_time.dart';
 import '../../core/theme.dart';
 import 'sync_view_model.dart';
 
@@ -277,7 +278,7 @@ class _SyncScreenState extends State<SyncScreen> {
         _bundlePasteField(context),
         if (_parsedTransferBundle case final bundle?)
           _Footnote(
-            'Quellgerät ${bundle.sourceClientId} · Revision ${bundle.frozenRevision} · Ablauf ${bundle.expiresAtUtc.toLocal()} · Einmalcode erkannt',
+            'Quellgerät ${bundle.sourceClientId} · Revision ${bundle.frozenRevision} · Ablauf ${formatGermanDateTime(bundle.expiresAtUtc)} · Einmalcode erkannt',
           ),
         GainerListRow(
           title: 'Übergabedaten einfügen',
@@ -347,10 +348,17 @@ class _SyncScreenState extends State<SyncScreen> {
     return [
       GainerGroupedSection(
         header: expired ? 'Übergabe abgelaufen' : 'Übergabe bereit',
-        footer: 'Teile diese Daten nur direkt mit deinem neuen Gerät. Der Einmalcode ist ein Geheimnis und wird nach kurzer Zeit ungültig.',
+        footer: expired
+            ? 'Die Übergabe ist abgelaufen und der Einmalcode nicht mehr gültig. Brich die Übergabe ab und starte sie neu.'
+            : 'Teile diese Daten nur direkt mit deinem neuen Gerät. Der Einmalcode ist ein Geheimnis und wird nach kurzer Zeit ungültig.',
         children: [
           _copyRow('Übergabe-ID', pending.handoverId),
-          _copyRow('Einmalcode', pending.oneTimeCode, secret: true),
+          _copyRow(
+            'Einmalcode',
+            pending.oneTimeCode,
+            secret: true,
+            enabled: !expired,
+          ),
           _copyRow('Quellgerät-ID', pending.sourceClientId),
           _copyRow('Eingefrorene Revision', pending.frozenRevision?.toString()),
           _copyRow(
@@ -361,7 +369,7 @@ class _SyncScreenState extends State<SyncScreen> {
             title: 'Übergabedaten kopieren',
             leadingIcon: CupertinoIcons.doc_on_doc,
             showChevron: true,
-            onTap: _model.isBusy ? null : _confirmAndCopyBundle,
+            onTap: _model.isBusy || expired ? null : _confirmAndCopyBundle,
           ),
         ],
       ),
@@ -388,14 +396,18 @@ class _SyncScreenState extends State<SyncScreen> {
     );
   }
 
-  GainerListRow _copyRow(String label, String? value, {bool secret = false}) {
+  GainerListRow _copyRow(
+    String label,
+    String? value, {
+    bool secret = false,
+    bool enabled = true,
+  }) {
+    final canReveal = secret && value != null && enabled;
     return GainerListRow(
       title: label,
       value: _copyValueText(value, secret: secret),
-      showChevron: secret && value != null,
-      onTap: secret && value != null && !_model.isBusy
-          ? () => _revealCode(value)
-          : null,
+      showChevron: canReveal,
+      onTap: canReveal && !_model.isBusy ? () => _revealCode(value) : null,
     );
   }
 
