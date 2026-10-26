@@ -4068,7 +4068,9 @@ class _PieceCountRow extends StatelessWidget {
     final style = GainerTypography.body.copyWith(color: colors.primaryText);
     // Bei sehr großer Schrift steht die Beschriftung über den Knöpfen.
     final stacked = MediaQuery.textScalerOf(context).scale(1) > 1.5;
-    final label = Text('Anzahl', style: style);
+    // Gestapelt steht die Einheit in der Beschriftung, damit sie nicht von der
+    // Zahl wegbricht und die Knöpfe in eine Zeile passen.
+    final label = Text(stacked ? 'Anzahl in Stk' : 'Anzahl', style: style);
     final controls = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -4097,8 +4099,10 @@ class _PieceCountRow extends StatelessWidget {
           semanticLabel: 'Ein Stück mehr',
           onPressed: () => _step(1),
         ),
-        const SizedBox(width: GainerSpacing.xs),
-        Text('Stk', style: style.copyWith(color: colors.secondaryText)),
+        if (!stacked) ...[
+          const SizedBox(width: GainerSpacing.xs),
+          Text('Stk', style: style.copyWith(color: colors.secondaryText)),
+        ],
       ],
     );
     return Padding(
