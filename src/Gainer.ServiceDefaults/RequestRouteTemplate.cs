@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
@@ -13,6 +14,10 @@ public static class RequestRouteTemplate
     public const string Unmatched = "unmatched";
 
     /// <summary>Returns the route pattern of the matched endpoint, or <see cref="Unmatched"/>.</summary>
-    public static string Get(HttpContext context) =>
-        (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? Unmatched;
+    public static string Get(HttpContext context)
+    {
+        // The exception handler re-runs the request without an endpoint; it keeps the original one.
+        Endpoint? endpoint = context.GetEndpoint() ?? context.Features.Get<IExceptionHandlerFeature>()?.Endpoint;
+        return (endpoint as RouteEndpoint)?.RoutePattern.RawText ?? Unmatched;
+    }
 }

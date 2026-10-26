@@ -27,7 +27,8 @@ public sealed class AccountStatusService(
 
         if (!isActive)
         {
-            await deviceSessions.RevokeAllAsync(accountId, cancellationToken);
+            // Not cancellable: the account is already deactivated, its sessions must not outlive that.
+            await deviceSessions.RevokeAllAsync(accountId, CancellationToken.None);
         }
 
         return true;
