@@ -46,6 +46,7 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
   RestTimerShortcuts _shortcuts = RestTimerShortcuts.defaults;
   bool _observingLifecycle = false;
   bool _ended = false;
+  bool _disposed = false;
   bool _foreground = true;
   bool? _permissionGranted;
   bool _notificationsUnavailable = false;
@@ -228,6 +229,7 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     _ended = true;
+    _disposed = true;
     _ticker?.cancel();
     _ticker = null;
     if (_observingLifecycle) WidgetsBinding.instance.removeObserver(this);
@@ -365,7 +367,8 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
     final unavailable = !granted;
     if (_notificationsUnavailable != unavailable) {
       _notificationsUnavailable = unavailable;
-      notifyListeners();
+      // Die Berechtigungsabfrage kann den Controller überleben.
+      if (!_disposed) notifyListeners();
     }
     return granted;
   }

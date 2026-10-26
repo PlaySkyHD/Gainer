@@ -76,7 +76,8 @@ class ActiveWorkoutController extends ChangeNotifier {
     if (timer == null || timer.workoutId != workoutId) return;
     _restTimer = null;
     await _endTimer(timer);
-    notifyListeners();
+    // Abmelden oder Kontowechsel kann den Controller währenddessen entsorgen.
+    if (!_disposed) notifyListeners();
   }
 
   /// Setzt den Timer zurück und gibt ihn frei; das meldet auch den
