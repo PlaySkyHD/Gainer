@@ -41,12 +41,12 @@ Every prompt contains:
 - `git fetch origin`, then as a separate command `git switch -c fix/issue-<n>-<slug> origin/main`; if the fetch fails, stop and report instead of branching from a stale `origin/main` (worktrees do not start on main),
 - the graphify rule: if `graphify-out/graph.json` is missing run `graphify update .`, then `graphify query` before grep,
 - no `git restore`, `git stash`, `git reset --hard`; no pull request; no push to main,
-- file edits go through the Read, Edit and Write tools, not `sed -i`, heredocs or `cat >` in Bash, because worktree isolation blocks those; longer probe scripts are written with Write and then executed; exception: `dart format` and `dotnet format` may write files,
+- file edits go through the Read, Edit and Write tools, not `sed -i`, heredocs or `cat >` in Bash, because worktree isolation blocks those; longer probe scripts are written with Write and then executed; exception: formatters and generators may write files (`dart format`, `dotnet format`, Pigeon, `dotnet ef migrations add`, `tool/preview_goldens.sh`),
 - the shell rules for isolated worktrees from `docs/agent-lessons-learned.md` section 1 (separate git setup commands, no `git -C` outside the worktree, `cd apps/mobile && <check>` for app checks),
 - "the repository is public: no secrets, personal data or content about other private projects",
 - the exact scope and anchors, and which files not to touch,
 - the checks to run (format, analyzer, tests, golden preview) for the touched area; name the exact commands from the instructions (`mobile.instructions.md`, `backend.instructions.md`, section "Prüfen" and "Tests"): only the touched folders, quiet reporters, `flutter pub get` first in a fresh worktree, never the whole suite (CI runs it); do not return unfiltered test output,
-- before the push: commit, then run the skill `code-review` on the own diff against `origin/main` (`code-review low`, diff `origin/main...HEAD`, not the local `main`) and fix the findings or state why not,
+- before the push: commit, then run the skill `code-review` on the own diff against `origin/main` (`code-review low`, diff `origin/main...HEAD`, not the local `main`) and fix the findings (amend the commit, so `Fixes #<n>` stays in it) or state why not,
 - the commit: Conventional Commits, body ends with `Fixes #<n>` and the Co-Authored-By line,
 - `git push -u origin <branch>`,
 - the report: branch, SHA, what changed, check output, and **Umwege** (anything done differently than expected, missing or wrong skills and rules, failed commands; "keine" if none).
@@ -69,7 +69,7 @@ Start agents in the background with worktree isolation. Do not touch their files
   - First review of a fresh PR: `medium --max-findings 5`. After a rework: `low --max-findings 3` on the new state. Sync protocol or migrations: full review (`high`).
   - Triage before sending anything back: only correctness bugs inside the issue's scope. Extensions, refactorings and style hints are rejected with a reason or filed as a new issue. Rework rounds were about 30 % of a round's quota when every finding was fixed.
   - Send findings back via `SendMessage` to the same agent only if its context is small: under about 150k tokens and at most one review round so far. Otherwise start a fresh agent with a compact brief: branch, list of findings, checks. The branch holds the state, the old transcript is not needed.
-    - Setup for an existing branch: `git fetch origin`, then `git switch -c <helper-name> origin/<branch>`, then `git merge --no-edit origin/main`; push with `git push origin HEAD:<branch>` (no force). The local branch is still checked out in the first agent's worktree.
+    - Setup for an existing branch: `git fetch origin`, then `git switch -c <helper-name> origin/<branch>`, then `git merge --no-edit origin/main` (stop and report if the fetch fails; resolve conflicts and commit the merge, or `git merge --abort` and report); push with `git push origin HEAD:<branch>` (no force). The local branch is still checked out in the first agent's worktree.
   - Pure style or refactoring hints from follow-up rounds may stay open, so the loop ends.
 - Watch checks (`watch_pull_request` if available, otherwise `gh pr checks <n>`). Never poll in a sleep loop.
 - Merge only when all checks are green, `mergeable_state` is `clean` and the review findings are fixed or rejected with a reason: `gh pr merge <n> --merge`.
