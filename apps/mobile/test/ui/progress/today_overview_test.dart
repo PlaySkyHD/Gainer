@@ -25,9 +25,10 @@ void main() {
       ], size);
 
       expect(positions, hasLength(3));
-      expect(positions[0].dx, 0);
-      expect(positions[1].dx, closeTo(10, 1e-9));
-      expect(positions[2].dx, 100);
+      // 5 px Rand für den Marker, 90 px nutzbar.
+      expect(positions[0].dx, 5);
+      expect(positions[1].dx, closeTo(14, 1e-9));
+      expect(positions[2].dx, 95);
       // Mittlerer Punkt liegt auf der Höhe des ersten, nicht dazwischen.
       expect(positions[1].dy, positions[0].dy);
       expect(positions[2].dy, lessThan(positions[1].dy));
@@ -39,13 +40,45 @@ void main() {
         ApiWeightPoint(date: '2026-10-10', weightKg: 81),
         ApiWeightPoint(date: '2026-10-10', weightKg: 82),
       ], size);
-      expect(same.map((p) => p.dx), [0, 50, 100]);
+      expect(same.map((p) => p.dx), [5, 50, 95]);
 
       final invalid = weightChartPositions(const [
         ApiWeightPoint(date: 'kaputt', weightKg: 80),
         ApiWeightPoint(date: '2026-10-10', weightKg: 81),
       ], size);
-      expect(invalid.map((p) => p.dx), [0, 100]);
+      expect(invalid.map((p) => p.dx), [5, 95]);
+    });
+
+    test('keeps x inside the chart for an unsorted series', () {
+      final positions = weightChartPositions(const [
+        ApiWeightPoint(date: '2026-10-20', weightKg: 90),
+        ApiWeightPoint(date: '2026-10-10', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-11', weightKg: 80),
+      ], size);
+      expect(positions.map((p) => p.dx), [95, 5, closeTo(14, 1e-9)]);
+      expect(positions.every((p) => p.dx >= 0 && p.dx <= 100), isTrue);
+    });
+
+    test('uses only the date part, ignoring a time offset', () {
+      final positions = weightChartPositions(const [
+        ApiWeightPoint(date: '2026-10-20T23:30:00-02:00', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-21', weightKg: 80),
+      ], size);
+      expect(positions.map((p) => p.dx), [5, 95]);
+      expect(
+        weightPointLabel(
+          const ApiWeightPoint(date: '2026-10-20T23:30:00-02:00', weightKg: 80),
+        ),
+        '20.10.2026: 80,0 kg',
+      );
+    });
+
+    test('centres a flat series on the middle grid line', () {
+      final positions = weightChartPositions(const [
+        ApiWeightPoint(date: '2026-10-10', weightKg: 80),
+        ApiWeightPoint(date: '2026-10-11', weightKg: 80),
+      ], size);
+      expect(positions.every((p) => p.dy == 40), isTrue);
     });
 
     test('handles width 0 and a single point', () {
@@ -54,7 +87,7 @@ void main() {
         ApiWeightPoint(date: '2026-10-12', weightKg: 90),
       ], Size.zero);
       expect(zero, hasLength(2));
-      expect(zero.every((p) => p.dx == 0), isTrue);
+      expect(zero.every((p) => p.dx == 0 && p.dx.isFinite), isTrue);
 
       final single = weightChartPositions(const [
         ApiWeightPoint(date: '2026-10-10', weightKg: 80),

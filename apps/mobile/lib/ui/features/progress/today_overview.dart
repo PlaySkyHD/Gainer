@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import '../../../data/models/api/api_models.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
+import '../training/training_format.dart';
 import 'bodyweight_missing_hint.dart';
 import 'progress_view_model.dart';
 import 'weight_age.dart';
@@ -365,13 +366,26 @@ class _Notice extends StatelessWidget {
 
 /// Sprechbarer Text je Messpunkt, z. B. „20.10.2026: 80,5 kg“.
 String weightPointLabel(ApiWeightPoint point) {
-  final parsed = DateTime.tryParse(point.date);
-  final date = parsed == null
-      ? point.date
-      : '${parsed.day.toString().padLeft(2, '0')}.'
-            '${parsed.month.toString().padLeft(2, '0')}.${parsed.year}';
+  final day = _calendarDay(point.date);
+  final date = day == null ? point.date : formatGermanDate(day);
   return '$date: ${formatGermanNumber(point.weightKg, digits: 1)} kg';
 }
+
+final _datePart = RegExp(r'^(\d{4})-(\d{2})-(\d{2})');
+
+/// Kalendertag aus dem Datumsteil `yyyy-MM-dd`, ohne Uhrzeit und Offset.
+DateTime? _calendarDay(String date) {
+  final match = _datePart.firstMatch(date);
+  if (match == null) return null;
+  return DateTime.utc(
+    int.parse(match[1]!),
+    int.parse(match[2]!),
+    int.parse(match[3]!),
+  );
+}
+
+/// Abstand der Marker vom Rand: Radius plus halbe Strichbreite.
+const _markerInset = 5.0;
 
 /// Bildschirmposition je Messpunkt. x folgt dem Datum, y dem Gewicht.
 /// Fehlen gültige oder verschiedene Daten, verteilt x nach Index.
@@ -379,15 +393,16 @@ List<Offset> weightChartPositions(List<ApiWeightPoint> points, Size size) {
   if (points.isEmpty) return const [];
   final days = <int>[];
   for (final point in points) {
-    final parsed = DateTime.tryParse(point.date);
-    if (parsed == null) break;
-    final utc = DateTime.utc(parsed.year, parsed.month, parsed.day);
-    days.add(utc.millisecondsSinceEpoch ~/ Duration.millisecondsPerDay);
+    final day = _calendarDay(point.date);
+    if (day == null) break;
+    days.add(day.millisecondsSinceEpoch ~/ Duration.millisecondsPerDay);
   }
-  final byDate =
-      days.length == points.length &&
-      points.length > 1 &&
-      days.last > days.first;
+  final byDate = days.length == points.length && points.length > 1;
+  final firstDay = byDate ? days.reduce((a, b) => a < b ? a : b) : 0;
+  final lastDay = byDate ? days.reduce((a, b) => a > b ? a : b) : 0;
+  final dateSpan = lastDay - firstDay;
+  final inset = size.width < 2 * _markerInset ? size.width / 2 : _markerInset;
+  final usable = size.width - 2 * inset;
   var minValue = points.first.weightKg;
   var maxValue = minValue;
   for (final point in points) {
@@ -400,16 +415,17 @@ List<Offset> weightChartPositions(List<ApiWeightPoint> points, Size size) {
       Offset(
         points.length == 1
             ? size.width / 2
-            : size.width *
-                  (byDate
-                      ? (days[i] - days.first) / (days.last - days.first)
-                      : i / (points.length - 1)),
-        size.height -
-            12 -
-            (range == 0
-                ? size.height / 2
-                : ((points[i].weightKg - minValue) / range) *
-                      (size.height - 24)),
+            : inset +
+                  usable *
+                      (dateSpan > 0
+                          ? (days[i] - firstDay) / dateSpan
+                          : i / (points.length - 1)),
+        range == 0
+            ? size.height / 2
+            : size.height -
+                  12 -
+                  ((points[i].weightKg - minValue) / range) *
+                      (size.height - 24),
       ),
   ];
 }
