@@ -1223,6 +1223,24 @@ void main() {
     expect(find.text('Zuletzt verwendet'), findsNothing);
   });
 
+  testWidgets('closing the recipe editor keeps controllers alive until the '
+      'route is gone', (tester) async {
+    await _pumpDiary(tester, []);
+
+    await _openPlanning(tester);
+    await tester.tap(find.text('Neues Gericht anlegen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField).at(0), 'Bowl');
+    await tester.tap(find.byKey(const ValueKey('nutrition-recipe-close')));
+    // Während der Ausblend-Animation liegen die Felder noch im Baum.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+    expect(find.text('Neues Gericht'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'meal component is added through the shared dialog without touching a day',
     (tester) async {
