@@ -196,8 +196,17 @@ public sealed partial class StravaApiClient(
             throw new StravaApiException(StravaFailure.Unauthorized, "Strava rejected the authorization.", (int)response.StatusCode);
         }
         await EnsureSuccessAsync(response);
-        TokenResponse token = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken)
-            ?? throw new StravaApiException(StravaFailure.Transient, "Strava returned an empty token response.");
+        TokenResponse token;
+        try
+        {
+            token = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken)
+                ?? throw new StravaApiException(StravaFailure.Transient, "Strava returned an empty token response.");
+        }
+        catch (Exception exception) when (exception is JsonException or NotSupportedException)
+        {
+            // A body of an unexpected shape or media type must not surface as a server error.
+            throw new StravaApiException(StravaFailure.Transient, "Strava returned an unreadable token response.", innerException: exception);
+        }
         if (string.IsNullOrEmpty(token.AccessToken) || string.IsNullOrEmpty(token.RefreshToken))
         {
             throw new StravaApiException(StravaFailure.Transient, "Strava returned an incomplete token response.");
@@ -205,6 +214,10 @@ public sealed partial class StravaApiClient(
         string? name = token.Athlete is { } athlete
             ? string.Join(' ', new[] { athlete.FirstName, athlete.LastName }.Where(part => !string.IsNullOrWhiteSpace(part))).Trim()
             : null;
+        if (token.ExpiresAt is <= 0 or > 253402300799)
+        {
+            throw new StravaApiException(StravaFailure.Transient, "Strava returned an invalid token expiry.");
+        }
         return new StravaTokens(
             token.AccessToken,
             token.RefreshToken,
@@ -267,7 +280,7 @@ public sealed partial class StravaApiClient(
             string? error = string.IsNullOrWhiteSpace(upload.Error) ? null : upload.Error;
             return new StravaUploadState(upload.Id, upload.ActivityId, error, ParseDuplicateActivityId(error));
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {
             return null;
         }

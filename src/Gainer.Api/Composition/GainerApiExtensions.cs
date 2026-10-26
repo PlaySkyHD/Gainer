@@ -71,6 +71,9 @@ public static class GainerApiExtensions
             options.AddPolicy(
                 ApiConstants.SystemStatusRateLimitPolicy,
                 context => PerClientWindow(context, ApiConstants.SystemStatusRateLimitPolicy, permitLimit: 60));
+            options.AddPolicy(
+                ApiConstants.InvitationAcceptRateLimitPolicy,
+                context => PerClientWindow(context, ApiConstants.InvitationAcceptRateLimitPolicy, permitLimit: 30));
             options.AddPolicy(ApiConstants.AccountExportRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
                 $"{ApiConstants.AccountExportRateLimitPolicy}:{context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
                 _ => new FixedWindowRateLimiterOptions
