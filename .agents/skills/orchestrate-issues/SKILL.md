@@ -15,7 +15,8 @@ You plan, brief, verify, open the pull requests and merge. Subagents only implem
 ## 2. Plan
 
 - Map each issue to the files it changes.
-- Docs or skill changes of up to about ten lines in one file you make yourself; a subagent costs more than the change. Longer docs and skill texts go to a `haiku` subagent.
+- For a bug about a value the app receives (scanner, API, sync), trace the value to where it is produced before scoping. The file named in the issue is a starting point, not the scope (#222/PR #226: `NutritionLabelScanDraft.Create` rejected 0 kcal before the app saw it).
+- Docs or skill changes of up to about ten lines in one file you make yourself; a subagent costs more than the change. Longer docs and skill texts go to a `haiku` subagent. OpenSpec changes always go to a `sonnet` subagent, whatever their size (see Model).
   - Same steps as the brief in section 3: `git fetch origin`, `git switch -c fix/issue-<n>-<slug> origin/main`, Conventional Commit with `Fixes #<n>` and Co-Authored-By, `git push -u origin <branch>`.
   - Not while a subagent edits the same file. Note your own Umwege for the retro.
   - Then switch back to your planning branch and continue with section 5.
@@ -26,7 +27,8 @@ You plan, brief, verify, open the pull requests and merge. Subagents only implem
 - Large features that touch backend, sync and app: plan stacked subtasks, not one agent. Example: agent A for backend and protocol, agent B for the app on branch A. Each agent keeps a small context.
 - Model: set `model` explicitly on every Agent call. Without it the agent inherits the orchestrator's model (Opus) and burns quota.
   - Default `sonnet`.
-  - `haiku` for docs and skill texts.
+  - `haiku` for docs and skill texts, not for OpenSpec changes.
+  - `sonnet` for OpenSpec changes (delta, validate, archive, code check); `haiku` struggled with the archive step (PR #227, 69 turns).
   - `opus` only for the sync protocol, migrations with a data-model decision, native code and Pigeon.
   - At most two Opus agents at once. Work further Opus issues one after another.
 - At most four agents at once in total. More parallel agents do not lower the total, but they hit the 5-hour quota sooner and slow the host's test runs.
