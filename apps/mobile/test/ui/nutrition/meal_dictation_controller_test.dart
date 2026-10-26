@@ -23,7 +23,7 @@ void main() {
       expect(platform.localeId, 'de-DE');
 
       platform.transcript = 'Müsli mit Milch';
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await _until(text, () => text.text == 'Frühstück: Müsli mit Milch');
       expect(text.text, 'Frühstück: Müsli mit Milch');
 
       platform.onStop = () => platform.transcript = 'Müsli mit Milch, 300 g.';
@@ -60,7 +60,7 @@ void main() {
     addTearDown(controller.dispose);
     await controller.start();
     platform.status = DictationStatus.failed;
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await _until(controller, () => !controller.isListening);
     expect(controller.isListening, isFalse);
     expect(controller.message, contains('nichts erkannt'));
   });
@@ -124,6 +124,21 @@ void main() {
     expect(controller.isListening, isFalse);
     expect(text.text, 'Müsli');
   });
+}
+
+/// Wartet ohne feste Zeit, bis [done] wahr wird; prüft bei jeder Änderung von
+/// [source]. Die Obergrenze verhindert nur ein Hängen bei einem echten Fehler.
+Future<void> _until(Listenable source, bool Function() done) {
+  if (done()) return Future.value();
+  final completer = Completer<void>();
+  void check() {
+    if (done() && !completer.isCompleted) completer.complete();
+  }
+
+  source.addListener(check);
+  return completer.future
+      .timeout(const Duration(seconds: 10))
+      .whenComplete(() => source.removeListener(check));
 }
 
 class _SlowStartDictation extends _ScriptedDictation {
