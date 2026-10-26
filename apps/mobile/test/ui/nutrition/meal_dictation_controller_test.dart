@@ -27,7 +27,9 @@ void main() {
       expect(text.text, 'Frühstück: Müsli mit Milch');
 
       platform.onStop = () => platform.transcript = 'Müsli mit Milch, 300 g.';
-      await controller.finish();
+      // Großzügige Grenze: auf einem langsamen Runner darf das Warten auf das
+      // finale Transkript nicht still nach 2 s enden.
+      await controller.finish(timeout: const Duration(seconds: 10));
       expect(controller.isListening, isFalse);
       expect(text.text, 'Frühstück: Müsli mit Milch, 300 g.');
       expect(controller.message, isNull);
