@@ -197,6 +197,29 @@ public sealed class TrainingStatisticsIsolationTests
     }
 
     [TestMethod]
+    public async Task SevenDayFiguresIgnoreAShorterWindow()
+    {
+        (string connectionString, Guid owner, _) = await CreateDatabaseAsync();
+        Guid exerciseId = BaseExercise(ExerciseType.Strength);
+        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        {
+            AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 17, 21), Utc(2026, 8, 17, 22).AddMinutes(30), null, (200m, 1));
+            AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 14, 11), Utc(2026, 8, 14, 12), null, (100m, 1));
+            seed.DailyCheckIns.AddRange(CheckIn(new DateOnly(2026, 8, 14), 80m), CheckIn(new DateOnly(2026, 8, 18), 81m));
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
+        DashboardInsightSnapshot dashboard = await new InsightQueries(context, new TestUserContext(owner))
+            .DashboardAsync(new DateOnly(2026, 8, 18), 1, Berlin, TestContext.CancellationToken);
+
+        Assert.AreEqual(1, dashboard.Training.WorkoutCount);
+        Assert.AreEqual(200m, dashboard.Training.VolumeKgRepetitions);
+        Assert.AreEqual(2, dashboard.WorkoutsLast7Days);
+        Assert.AreEqual(2, dashboard.SevenDayWeight.ObservedDays);
+    }
+
+    [TestMethod]
     public async Task RecentWorkoutsCountSetsLikeTheStatisticsDo()
     {
         (string connectionString, Guid owner, _) = await CreateDatabaseAsync();

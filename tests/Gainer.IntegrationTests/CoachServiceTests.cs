@@ -284,6 +284,24 @@ public sealed class CoachServiceTests
     }
 
     [TestMethod]
+    public async Task TrainingVolumeComparisonUsesPerDayMeansForUnequalPeriods()
+    {
+        var provider = new FakeProvider(
+            Response(FunctionCall("call_1", "compare_periods",
+                """{"metric":"training_volume","currentDays":7,"previousDays":30}""")),
+            Response(Message(EmptyAnswer)));
+
+        CoachAnswer answer = await new CoachService(
+            provider, new VolumeInsights(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new FixedTimeProvider())
+            .AnswerAsync("Vergleiche mein Volumen");
+
+        // 70 kg·rep over 7 days and 300 over 30 days are both 10 per day.
+        Assert.HasCount(2, answer.Facts);
+        Assert.IsTrue(answer.Facts.All(item => item.NumericValue == 10m));
+        Assert.IsTrue(answer.Facts.All(item => item.Unit!.EndsWith("/day", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
     public async Task CoachUsesTheLocalDayAroundMidnight()
     {
         var insights = new FakeInsights();
@@ -370,6 +388,19 @@ public sealed class CoachServiceTests
 
         public Task<ExerciseProgressSnapshot> ExerciseProgressAsync(Guid exerciseId, int? windowDays, DateTime throughUtc, TimeZoneInfo timeZone, CancellationToken cancellationToken = default) =>
             Task.FromResult(new ExerciseProgressSnapshot(5, exerciseId, windowDays, DateTime.UnixEpoch, throughUtc, [], null, EmptyRecords));
+    }
+
+    /// <summary>Reports a constant 10 kg·rep per day, so the volume is ten times the window length.</summary>
+    private sealed class VolumeInsights : IInsightQueries
+    {
+        public async Task<DashboardInsightSnapshot> DashboardAsync(DateOnly through, int days, TimeZoneInfo timeZone, CancellationToken cancellationToken = default)
+        {
+            DashboardInsightSnapshot empty = await new NoDataInsights().DashboardAsync(through, days, timeZone, cancellationToken);
+            return empty with { Training = empty.Training with { VolumeKgRepetitions = days * 10m } };
+        }
+
+        public Task<ExerciseProgressSnapshot> ExerciseProgressAsync(Guid exerciseId, int? windowDays, DateTime throughUtc, TimeZoneInfo timeZone, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class NoDataInsights : IInsightQueries

@@ -33,7 +33,7 @@ public sealed partial class CoachService(
     };
 
     /// <summary>Gleiche Zeitzone wie die Insights-Endpunkte ohne expliziten Parameter.</summary>
-    private static TimeZoneInfo CoachTimeZone { get; } = TimeZoneInfo.FindSystemTimeZoneById(TrainingStatistics.DefaultTimeZoneId);
+    private static TimeZoneInfo CoachTimeZone => LocalDays.Default;
 
     public async Task<CoachAnswer> AnswerAsync(string question, CancellationToken cancellationToken = default)
     {
@@ -260,27 +260,24 @@ public sealed partial class CoachService(
         if (metric is not ("weight_average" or "calories_average" or "protein_average" or "training_volume"))
             throw new CoachResponseValidationException("Comparison metric is invalid.");
         // The comparison period ends where the current one begins, so the two never overlap.
-        DashboardInsightSnapshot current = await Dashboard(currentDays, 0, cancellationToken);
-        DashboardInsightSnapshot previous = await Dashboard(previousDays, currentDays, cancellationToken);
-        decimal? currentValue = MetricValue(current, metric);
-        decimal? previousValue = MetricValue(previous, metric);
+        DashboardInsightSnapshot current = await Dashboard(currentDays, cancellationToken);
+        DashboardInsightSnapshot previous = await Dashboard(previousDays, cancellationToken, endOffsetDays: currentDays);
+        // Volume is a sum, so periods of different length are only comparable as a per-day mean.
+        string? unit = metric == "training_volume" ? $"{current.Training.VolumeUnit}/day" : null;
+        decimal? currentValue = MetricValue(current, metric, currentDays);
+        decimal? previousValue = MetricValue(previous, metric, previousDays);
         var facts = new List<CoachFact>();
-        AddComparisonFact(facts, current, metric, "current", currentDays, $"last {currentDays} days", currentValue);
+        AddComparisonFact(facts, current, metric, "current", currentDays, $"last {currentDays} days", unit, currentValue);
         AddComparisonFact(facts, previous, metric, "comparison", previousDays,
-            $"{previousDays} days before the last {currentDays} days", previousValue);
+            $"{previousDays} days before the last {currentDays} days", unit, previousValue);
         return new ToolResult(Math.Max(current.AsOfRevision, previous.AsOfRevision), facts,
             facts.Count < 2 ? ["The selected periods do not both contain enough data."] : []);
     }
 
-    private async Task<DashboardInsightSnapshot> Dashboard(int days, CancellationToken cancellationToken) =>
-        await Dashboard(days, 0, cancellationToken);
-
     /// <summary>Window of <paramref name="days"/> local days that ends <paramref name="endOffsetDays"/> days before today.</summary>
-    private async Task<DashboardInsightSnapshot> Dashboard(int days, int endOffsetDays, CancellationToken cancellationToken)
-    {
-        DateOnly today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(timeProvider.GetUtcNow().UtcDateTime, CoachTimeZone));
-        return await insights.DashboardAsync(today.AddDays(-endOffsetDays), days, CoachTimeZone, cancellationToken);
-    }
+    private async Task<DashboardInsightSnapshot> Dashboard(int days, CancellationToken cancellationToken, int endOffsetDays = 0) =>
+        await insights.DashboardAsync(
+            timeProvider.Today(CoachTimeZone).AddDays(-endOffsetDays), days, CoachTimeZone, cancellationToken);
 
     private static IReadOnlyList<string> BodyweightGaps(bool missing) => missing
         ? ["Body weight is missing for some sessions; a check-in is needed for complete values."]
@@ -447,20 +444,20 @@ public sealed partial class CoachService(
         if (value is { } number) facts.Add(Fact(data, suffix, "nutrition", label, number, null, unit, $"last {days} days", algorithm));
     }
 
-    private static decimal? MetricValue(DashboardInsightSnapshot value, string metric) => metric switch
+    private static decimal? MetricValue(DashboardInsightSnapshot value, string metric, int days) => metric switch
     {
         "weight_average" => value.Weight.AverageKg,
         "calories_average" => value.Nutrition.CaloriesKcal.Value,
         "protein_average" => value.Nutrition.ProteinGrams.Value,
-        "training_volume" => value.Training.VolumeKgRepetitions,
+        "training_volume" => value.Training.VolumeKgRepetitions / days,
         _ => null,
     };
 
     private static void AddComparisonFact(List<CoachFact> facts, DashboardInsightSnapshot data, string metric,
-        string side, int days, string period, decimal? value)
+        string side, int days, string period, string? unit, decimal? value)
     {
         if (value is { } number) facts.Add(Fact(data, $"compare.{metric}.{side}.{days}", "comparison", metric,
-            number, null, null, period, null));
+            number, null, unit, period, null));
     }
 
     private sealed record ToolResult(long AsOfRevision, IReadOnlyList<CoachFact> Facts, IReadOnlyList<string> DataGaps);

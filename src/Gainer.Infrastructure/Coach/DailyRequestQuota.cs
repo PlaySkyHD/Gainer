@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Gainer.Core.Insights;
 
 namespace Gainer.Infrastructure.Coach;
 
@@ -15,7 +16,7 @@ internal sealed class DailyRequestQuota(int dailyRequestsPerUser, int maximumCon
         CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty) throw new UnauthorizedAccessException("An authenticated user is required.");
-        DateOnly today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+        DateOnly today = timeProvider.Today(LocalDays.Default);
         DailyUsage current = usage.AddOrUpdate(
             userId,
             _ => new DailyUsage(today, 1),
