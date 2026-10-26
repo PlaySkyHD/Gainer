@@ -75,7 +75,7 @@ Der Gerichtseditor MUST zum Hinzufügen einer Komponente dasselbe Hinzufügen-Sh
 
 - **GIVEN** ein Nutzer startet aus einem Gerichtsentwurf eine AI-Schätzung und erhält mehrere Komponenten
 - **WHEN** er ausgewählte Komponenten prüft, korrigiert und ausdrücklich bestätigt
-- **THEN** werden sie als getrennte, geordnete Komponentenzeilen in den Gerichtsentwurf übernommen und weder ein Nutrition Day noch ein persistierter AI-Entwurf erzeugt
+- **THEN** werden sie als getrennte, geordnete Komponentenzeilen in den Gerichtsentwurf übernommen und weder ein Ernährungstag noch ein persistierter AI-Entwurf erzeugt
 
 #### Scenario: Online-Erfassungsweg ist offline nicht verfügbar
 
@@ -95,7 +95,7 @@ Das Sheet MUST Erfassung und Speicherziel trennen: Derselbe geprüfte Entwurf wi
 
 ### Requirement: Gericht als atomare Deep Copy hinzufügen
 
-Beim Hinzufügen eines Gerichts MUST der Nutzer Zieltag, eine der vier Mahlzeiten und einen positiven Portionsfaktor wählen können. Die Anwendung MUST jede Gerichtskomponente deterministisch skalieren und mit neuer stabiler ID als selbständigen Nutrition-Entry-Snapshot in die gewählte Mahlzeit kopieren. Es DARF keine Live-Referenz vom Ernährungstag zum Gericht entstehen; die gesamte Übernahme MUST lokal atomar mit der Outbox-Mutation des Ernährungstags gespeichert werden.
+Beim Hinzufügen eines Gerichts MUST der Nutzer Zieltag, eine der vier Mahlzeiten und einen positiven Portionsfaktor wählen können. Die Anwendung MUST jede Gerichtskomponente deterministisch skalieren und mit neuer stabiler ID als selbständigen Snapshot des Ernährungseintrags in die gewählte Mahlzeit kopieren. Es DARF keine Live-Referenz vom Ernährungstag zum Gericht entstehen; die gesamte Übernahme MUST lokal atomar mit der Outbox-Mutation des Ernährungstags gespeichert werden.
 
 #### Scenario: Gericht mit halber Portion hinzufügen
 
@@ -123,7 +123,7 @@ Beim Hinzufügen eines Gerichts MUST der Nutzer Zieltag, eine der vier Mahlzeite
 
 - **GIVEN** ein Gericht wurde gestern zum Mittagessen hinzugefügt
 - **WHEN** der Nutzer heute die Reismenge der Vorlage erhöht
-- **THEN** bleibt der gestrige Nutrition-Entry-Snapshot unverändert und nur zukünftige Übernahmen verwenden die neue Menge
+- **THEN** bleibt der gestrige Snapshot des Ernährungseintrags unverändert und nur zukünftige Übernahmen verwenden die neue Menge
 
 #### Scenario: Kopierte Komponente anpassen
 
