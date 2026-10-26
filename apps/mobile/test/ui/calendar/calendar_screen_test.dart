@@ -404,6 +404,46 @@ void main() {
     expect(areas, [MobileArea.training]);
   });
 
+  // Die Check-in-Zeilen stapeln den Wert ab `> 1.4`: 1,3 und 1,4 liegen
+  // darunter bzw. genau an der Schwelle, 1,5 darüber.
+  for (final scale in [1.3, 1.4, 1.5]) {
+    testWidgets('check-in rows at 320 pt and text scale $scale', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final harness = await createCalendarHarness(tester);
+      await tester.runAsync(
+        () => harness.checkIn(calendarToday, steps: 12345, sleepMinutes: 455),
+      );
+      await pumpCalendar(tester, harness, textScale: scale);
+
+      final card = find.byKey(const ValueKey('calendar-checkin-card'));
+      await tester.scrollUntilVisible(
+        card,
+        200,
+        scrollable: find
+            .byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(card, findsOneWidget);
+      for (final label in ['Schritte', 'Schlaf']) {
+        expect(
+          find.descendant(of: card, matching: find.text(label)),
+          findsOneWidget,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('today without food still offers the nutrition tab', (
     tester,
   ) async {

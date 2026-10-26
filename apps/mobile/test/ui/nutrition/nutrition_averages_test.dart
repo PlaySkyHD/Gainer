@@ -212,25 +212,44 @@ void main() {
     expect(find.textContaining('Ziel Ø'), findsNothing);
   });
 
-  testWidgets('text scale just below the stack threshold does not overflow', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(320, 1480);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final repository = await seededRepository();
-    final overview = await repository.readAverages(today);
-    await tester.pumpWidget(
-      app(
-        CupertinoPageScaffold(
-          child: NutritionAveragesSheet(overview: overview),
+  // Die Makrozeilen stapeln ab `>= 1.5`: 1,3 und 1,4 liegen darunter, 1,5
+  // genau an der Schwelle.
+  for (final scale in [1.3, 1.4, 1.5]) {
+    testWidgets('text scale $scale at 320 pt does not overflow', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 1480);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = await seededRepository();
+      final overview = await repository.readAverages(today);
+      await tester.pumpWidget(
+        app(
+          CupertinoPageScaffold(
+            child: NutritionAveragesSheet(overview: overview),
+          ),
+          textScale: scale,
         ),
-        textScale: 1.4,
-      ),
-    );
-    expect(tester.takeException(), isNull);
-  });
+      );
+      for (final label in ['Ballaststoffe', 'Salz']) {
+        final finder = find.text(label);
+        await tester.scrollUntilVisible(
+          finder,
+          100,
+          scrollable: find
+              .byWidgetPredicate(
+                (widget) =>
+                    widget is Scrollable &&
+                    widget.axisDirection == AxisDirection.down,
+              )
+              .first,
+        );
+        expect(finder, findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('text scale 2 does not overflow', (tester) async {
     tester.view.physicalSize = const Size(390, 1480);

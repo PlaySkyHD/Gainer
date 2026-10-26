@@ -193,6 +193,45 @@ void main() {
     );
   });
 
+  // Ring und Makros stapeln ab `> 1.4`: 1,3 und 1,4 liegen darunter bzw. genau
+  // an der Schwelle, 1,5 darüber.
+  for (final scale in [1.3, 1.4, 1.5]) {
+    for (final (name, nutrition) in [
+      ('with a rest day chip', _restDay),
+      ('under target', _underTarget),
+    ]) {
+      testWidgets('card $name at 320 pt and text scale $scale', (tester) async {
+        tester.view.physicalSize = const Size(320, 568);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await _pumpCard(tester, nutrition, textScale: scale);
+
+        for (final key in [
+          'calendar-nutrition-ring',
+          'calendar-nutrition-eaten',
+          'calendar-nutrition-target',
+          'calendar-nutrition-protein',
+        ]) {
+          final finder = find.byKey(ValueKey(key));
+          await tester.scrollUntilVisible(
+            finder,
+            100,
+            scrollable: find
+                .byWidgetPredicate(
+                  (widget) =>
+                      widget is Scrollable &&
+                      widget.axisDirection == AxisDirection.down,
+                )
+                .first,
+          );
+          expect(finder, findsOneWidget);
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets('text size 2 stacks the figures and macros without overflow', (
     tester,
   ) async {
