@@ -242,4 +242,44 @@ void main() {
       await directory.delete(recursive: true);
     }
   });
+
+  group('label scan confirmation', () {
+    NutritionLabelFieldDraft field(double? per100) => NutritionLabelFieldDraft(
+      originalValue: per100,
+      per100Grams: per100,
+      status: per100 == null ? 'Missing' : 'Read',
+      evidence: per100 == null ? null : '$per100',
+    );
+
+    NutritionLabelScanDraft draft({
+      required double? kcal,
+      bool canConfirm = true,
+    }) => NutritionLabelScanDraft(
+      basis: 'Per100Grams',
+      servingMassGrams: null,
+      kilocalories: field(kcal),
+      proteinGrams: field(null),
+      carbohydrateGrams: field(null),
+      fatGrams: field(null),
+      canConfirm: canConfirm,
+      provider: 'OpenAI',
+      providerModelVersion: 'model',
+      parserVersion: 'nutrition-label-v1',
+      scannedAtUtc: now,
+    );
+
+    test('accepts 0 kcal per 100 g, e.g. a zero drink', () {
+      final totals = draft(kcal: 0).confirmedPer100Grams;
+      expect(totals, isNotNull);
+      expect(totals!.kilocalories, 0);
+    });
+
+    test('rejects negative, non-finite and missing energy', () {
+      expect(draft(kcal: -1).confirmedPer100Grams, isNull);
+      expect(draft(kcal: double.nan).confirmedPer100Grams, isNull);
+      expect(draft(kcal: double.infinity).confirmedPer100Grams, isNull);
+      expect(draft(kcal: null).confirmedPer100Grams, isNull);
+      expect(draft(kcal: 0, canConfirm: false).confirmedPer100Grams, isNull);
+    });
+  });
 }

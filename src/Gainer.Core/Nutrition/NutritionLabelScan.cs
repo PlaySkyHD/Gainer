@@ -112,7 +112,6 @@ public sealed record NutritionLabelScanDraft(
         }
 
         NutritionLabelFieldDraft kcal = Field(energy, factor, converted, 0, MaxPlausibleKilocaloriesPer100Grams);
-        if (kcal.Per100Grams == 0m) kcal = kcal with { Per100Grams = null, Status = NutritionLabelFieldStatus.Implausible };
         converted = basis != NutritionLabelBasis.Per100Grams;
         NutritionLabelFieldDraft protein = Field(proteinGrams, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
         NutritionLabelFieldDraft carbohydrate = Field(carbohydrateGrams, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
