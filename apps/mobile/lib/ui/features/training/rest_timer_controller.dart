@@ -46,6 +46,10 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
   RestTimerShortcuts _shortcuts = RestTimerShortcuts.defaults;
   bool _observingLifecycle = false;
   bool _ended = false;
+
+  /// Anders als `_ended` (Training beendet, Controller lebt und meldet weiter)
+  /// heißt `_disposed`: Der Controller ist freigegeben und darf nichts mehr
+  /// melden. Läuft ein `await` darüber hinaus, ignoriert [notifyListeners] das.
   bool _disposed = false;
   bool _foreground = true;
   bool? _permissionGranted;
@@ -227,6 +231,12 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
+  @override
   void dispose() {
     _ended = true;
     _disposed = true;
@@ -367,8 +377,7 @@ class RestTimerController extends ChangeNotifier with WidgetsBindingObserver {
     final unavailable = !granted;
     if (_notificationsUnavailable != unavailable) {
       _notificationsUnavailable = unavailable;
-      // Die Berechtigungsabfrage kann den Controller überleben.
-      if (!_disposed) notifyListeners();
+      notifyListeners();
     }
     return granted;
   }
