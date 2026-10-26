@@ -33,7 +33,7 @@ public sealed class ExerciseCategoryMutationHandler(
         {
             await context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception) when (context.IsKeyViolation<ExerciseCategory>(exception))
         {
             throw new ExerciseCategoryConflictException("The category identifier already exists.");
         }

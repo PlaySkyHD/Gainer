@@ -525,6 +525,37 @@ public sealed class SyncHandoverApiTests
         Assert.IsTrue(replay.IsActiveWriter);
     }
 
+    [TestMethod]
+    public async Task NullResourceExpectationIsUnprocessable()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        await CreateUserAsync(app, UserAEmail);
+        using HttpClient client = app.GetTestClient();
+        client.BaseAddress = new Uri(TestOrigin);
+        TestSession auth = await LoginAsync(client, UserAEmail);
+        Guid source = Guid.NewGuid();
+        await RegisterAsync(client, auth, source, "Source", takeOverWriting: false, HttpStatusCode.OK);
+
+        using HttpResponseMessage response = await SendMutationAsync(
+            client,
+            auth,
+            HttpMethod.Put,
+            $"/api/v1/sync/mutations/{Guid.NewGuid()}",
+            new
+            {
+                protocolVersion = SyncProtocol.CurrentVersion,
+                clientId = source,
+                clientSequence = 1,
+                operation = "setWaterIntake",
+                resources = new object?[] { null },
+                dependsOnMutationId = (Guid?)null,
+                payload = new { waterIntakeDayId = Guid.NewGuid(), localDate = new DateOnly(2026, 10, 25), baseVersion = 0, amountMl = 250 },
+            });
+
+        Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode, await response.Content.ReadAsStringAsync());
+        Assert.AreEqual("invalid_resources", await ProblemCodeAsync(response));
+    }
+
     private async Task<WebApplication> CreateApplicationAsync(TestTimeProvider? clock = null)
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();

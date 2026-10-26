@@ -81,14 +81,15 @@ public sealed class DailyCheckInMutationHandler(
     private static void Validate(DailyCheckInValues values)
     {
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (!Kilograms.TryCreate(values.WeightKg, out Kilograms weight) || !weight.IsPositive)
+        if (!Kilograms.TryCreate(values.WeightKg, out Kilograms weight) || !weight.IsPositive ||
+            values.WeightKg > BodyTrackingLimits.MaxWeightKg)
         {
-            errors[nameof(values.WeightKg)] = "Weight must be positive.";
+            errors[nameof(values.WeightKg)] = $"Weight must be positive and at most {BodyTrackingLimits.MaxWeightKg} kg.";
         }
-        ValidateOptional<Kilocalories>(values.CaloriesKcal, nameof(values.CaloriesKcal), Kilocalories.TryCreate, errors);
-        ValidateOptional<Grams>(values.ProteinGrams, nameof(values.ProteinGrams), Grams.TryCreate, errors);
-        ValidateOptional<Grams>(values.CarbohydrateGrams, nameof(values.CarbohydrateGrams), Grams.TryCreate, errors);
-        ValidateOptional<Grams>(values.FatGrams, nameof(values.FatGrams), Grams.TryCreate, errors);
+        ValidateOptional<Kilocalories>(values.CaloriesKcal, nameof(values.CaloriesKcal), BodyTrackingLimits.MaxCheckInKilocalories, Kilocalories.TryCreate, errors);
+        ValidateOptional<Grams>(values.ProteinGrams, nameof(values.ProteinGrams), BodyTrackingLimits.MaxCheckInMacroGrams, Grams.TryCreate, errors);
+        ValidateOptional<Grams>(values.CarbohydrateGrams, nameof(values.CarbohydrateGrams), BodyTrackingLimits.MaxCheckInMacroGrams, Grams.TryCreate, errors);
+        ValidateOptional<Grams>(values.FatGrams, nameof(values.FatGrams), BodyTrackingLimits.MaxCheckInMacroGrams, Grams.TryCreate, errors);
         if (values.Steps is { } steps && !Gainer.Core.Values.Steps.TryCreate(steps, out _))
         {
             errors[nameof(values.Steps)] = "Steps cannot be negative.";
@@ -114,12 +115,13 @@ public sealed class DailyCheckInMutationHandler(
     private static void ValidateOptional<T>(
         decimal? value,
         string field,
+        decimal maximum,
         TryCreateDecimal<T> tryCreate,
         Dictionary<string, string> errors)
     {
-        if (value is { } number && !tryCreate(number, out _))
+        if (value is { } number && (!tryCreate(number, out _) || number > maximum))
         {
-            errors[field] = $"{field} cannot be negative.";
+            errors[field] = $"{field} must be between 0 and {maximum}.";
         }
     }
 

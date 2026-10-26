@@ -42,7 +42,7 @@ public sealed class CustomExerciseMutationHandler(
         {
             await context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception) when (context.IsKeyViolation<Exercise>(exception))
         {
             throw new CustomExerciseConflictException("The exercise identifier already exists.");
         }

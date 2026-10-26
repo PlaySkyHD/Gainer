@@ -385,7 +385,8 @@ public sealed partial class CoachService(
             .FirstOrDefault(value => value is not null);
         if (text is null) throw new CoachResponseValidationException("The provider returned no structured answer.");
         try { return JsonSerializer.Deserialize<ModelAnswer>(text, JsonOptions) ?? throw new JsonException(); }
-        catch (JsonException exception) { throw new CoachResponseValidationException($"The structured answer is invalid: {exception.Message}"); }
+        // The parser message can quote model output; the client only gets a fixed text.
+        catch (JsonException) { throw new CoachResponseValidationException("The structured answer is invalid."); }
     }
 
     private static JsonElement[] ReadOutput(JsonElement response)
@@ -403,7 +404,7 @@ public sealed partial class CoachService(
             if (document.RootElement.ValueKind != JsonValueKind.Object) { document.Dispose(); throw new JsonException(); }
             return document;
         }
-        catch (JsonException exception) { throw new CoachResponseValidationException($"Tool arguments are invalid: {exception.Message}"); }
+        catch (JsonException) { throw new CoachResponseValidationException("Tool arguments are invalid."); }
     }
 
     private static void RequireProperties(JsonElement args, params string[] allowed)

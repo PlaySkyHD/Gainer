@@ -65,15 +65,16 @@ public sealed record ReusableMealComponentDraft(
     public static ReusableMealComponentDraft Create(
         Guid componentId,
         int position,
-        string name,
+        string? name,
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
         string? brand = null,
         NutritionSourceSnapshot? source = null,
         NutritionPortion? portion = null)
     {
-        ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(per100Grams);
+        // A missing name in a sync payload is a validation error, not a server fault.
+        name ??= string.Empty;
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
         if (componentId == Guid.Empty) errors[nameof(ComponentId)] = "ComponentId cannot be empty.";
         if (position < 0) errors[nameof(Position)] = "Position cannot be negative.";
@@ -132,14 +133,14 @@ public sealed record ReusableMealDraft(
     IReadOnlyList<ReusableMealComponentDraft> Components)
 {
     public static ReusableMealDraft Create(
-        string name,
+        string? name,
         string? description,
         decimal standardPortion,
         IEnumerable<ReusableMealComponentDraft> components)
     {
-        ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(components);
-        string normalizedName = name.Trim();
+        // A missing name in a sync payload is a validation error, not a server fault.
+        string normalizedName = name?.Trim() ?? string.Empty;
         string? normalizedDescription = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         ReusableMealComponentDraft[] ordered = components.OrderBy(item => item.Position).ToArray();
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);

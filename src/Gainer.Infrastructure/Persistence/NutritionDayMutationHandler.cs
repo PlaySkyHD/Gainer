@@ -3,7 +3,6 @@ using Gainer.Core.Nutrition;
 using Gainer.Core.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -110,9 +109,11 @@ public sealed class NutritionDayMutationHandler(
         {
             throw new NutritionDayConflictException("The nutrition day changed concurrently.");
         }
-        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        // Only the day's own id is a stored stand. Another id on a stored date and reused entry ids cannot be healed
+        // by pulling, so they reach the sync processor as a permanent invalid payload.
+        catch (DbUpdateException exception) when (context.IsKeyViolation<NutritionDay>(exception))
         {
-            throw new NutritionDayConflictException("A nutrition day or entry already exists for this identifier, date, or position.");
+            throw new NutritionDayConflictException("A nutrition day already exists for this identifier.");
         }
     }
 

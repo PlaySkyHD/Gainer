@@ -41,7 +41,7 @@ public sealed class SyncMutationProcessor(
         ArgumentNullException.ThrowIfNull(command);
         Guid userId = userContext.UserId ?? throw new UnauthorizedAccessException("An authenticated user is required.");
         ValidateCommand(command);
-        byte[] hash = CanonicalMutationHasher.Hash(command.Content);
+        byte[] hash = HashOrInvalid(command.Content);
 
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
@@ -140,6 +140,25 @@ public sealed class SyncMutationProcessor(
         {
             throw new SyncMutationConflictException("concurrent_mutation", "Another mutation advanced the user state concurrently.");
         }
+        catch (DbUpdateException exception) when (IsPermanentDataError(exception))
+        {
+            // Constraint and range errors the handlers did not classify as a stored stand: resending the same
+            // payload fails again, so it is neither a stale version nor a retryable concurrent mutation.
+            throw new SyncMutationValidationException("invalid_payload", "The mutation payload conflicts with stored data.");
+        }
+    }
+
+    private static byte[] HashOrInvalid(CanonicalMutationContent content)
+    {
+        try
+        {
+            return CanonicalMutationHasher.Hash(content);
+        }
+        catch (InvalidOperationException)
+        {
+            // Missing payload, duplicate keys or numbers outside the decimal range cannot be hashed canonically.
+            throw new SyncMutationValidationException("invalid_payload", "The mutation payload is invalid.");
+        }
     }
 
     private async Task EnsureNoHandoverInProgressAsync(Guid userId, DateTime now, CancellationToken cancellationToken)
@@ -227,6 +246,10 @@ public sealed class SyncMutationProcessor(
 
     private static void ValidateCommand(ProcessSyncMutationCommand command)
     {
+        if (command.Content.Resources is null || command.Content.Resources.Any(item => item is null))
+        {
+            throw new SyncMutationValidationException("invalid_resources", "The mutation resource expectations are invalid.");
+        }
         if (command.MutationId == Guid.Empty || command.Content.ClientId == Guid.Empty ||
             command.Content.ClientSequence <= 0 || string.IsNullOrWhiteSpace(command.Content.Operation))
         {
@@ -250,16 +273,25 @@ public sealed class SyncMutationProcessor(
         }
     }
 
-    private static bool IsRetryableConcurrency(Exception exception)
-    {
-        for (Exception? current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is PostgresException postgres && postgres.SqlState is
-                PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected)
-                return true;
-        }
-        return false;
-    }
+    /// <summary>
+    /// Serialization failures and deadlocks resolve on retry. A unique violation only does so in the sync tables, where
+    /// a parallel request with the same mutation id or revision won the race; a unique violation in the domain tables
+    /// stays on every retry and is a permanent error.
+    /// </summary>
+    private static bool IsRetryableConcurrency(Exception exception) =>
+        PersistenceErrors.FindPostgres(exception) is { } postgres && (
+            postgres.SqlState is PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected ||
+            postgres.SqlState == PostgresErrorCodes.UniqueViolation &&
+            string.Equals(postgres.SchemaName, DatabaseSchemas.Sync, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Integrity constraint violations (class 23) and data exceptions such as numeric overflow (class 22) in the domain
+    /// tables. Errors in the sync tables stay server faults.
+    /// </summary>
+    private static bool IsPermanentDataError(DbUpdateException exception) =>
+        PersistenceErrors.FindPostgres(exception) is { SqlState: { } state } postgres &&
+        (state.StartsWith("23", StringComparison.Ordinal) || state.StartsWith("22", StringComparison.Ordinal)) &&
+        !string.Equals(postgres.SchemaName, DatabaseSchemas.Sync, StringComparison.Ordinal);
 
     private static JsonSerializerOptions CreateJsonOptions()
     {

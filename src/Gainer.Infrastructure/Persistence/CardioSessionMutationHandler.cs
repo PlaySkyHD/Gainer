@@ -2,7 +2,6 @@ using Gainer.Core.Mutations;
 using Gainer.Core.Security;
 using Gainer.Core.Training;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -57,7 +56,7 @@ public sealed class CardioSessionMutationHandler(
         {
             throw new CardioSessionConflictException("The cardio session changed concurrently.");
         }
-        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException exception) when (context.IsKeyViolation<CardioSession>(exception))
         {
             throw new CardioSessionConflictException("A cardio session already exists for this identifier.");
         }

@@ -2,7 +2,6 @@ using Gainer.Core.Mutations;
 using Gainer.Core.Nutrition;
 using Gainer.Core.Security;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -115,9 +114,9 @@ public sealed class NutritionDayTemplateMutationHandler(
         {
             throw new NutritionDayTemplateConflictException("The day template changed concurrently.");
         }
-        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException exception) when (context.IsKeyViolation<NutritionDayTemplate>(exception))
         {
-            throw new NutritionDayTemplateConflictException("A day template or entry already exists for this identifier or position.");
+            throw new NutritionDayTemplateConflictException("A day template already exists for this identifier.");
         }
     }
 

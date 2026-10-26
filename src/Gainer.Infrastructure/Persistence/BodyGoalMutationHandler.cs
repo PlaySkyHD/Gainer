@@ -61,6 +61,12 @@ public sealed class BodyGoalMutationHandler(
             changeCollector?.CaptureUpsert(snapshot);
             return snapshot;
         }
+        catch (DbUpdateException exception) when (
+            context.IsKeyViolation<BodyGoal>(exception) ||
+            context.IsUniqueIndexViolation<BodyGoal>(exception, nameof(BodyGoal.UserId)))
+        {
+            throw new BodyGoalConflictException("The active body goal changed concurrently.");
+        }
         catch (Exception exception) when (IsConcurrencyConflict(exception))
         {
             throw new BodyGoalConflictException("The active body goal changed concurrently.");
@@ -74,13 +80,15 @@ public sealed class BodyGoalMutationHandler(
         {
             errors[nameof(mutation.Kind)] = "Goal kind must be Bulk, Maintain, or Cut.";
         }
-        if (!Kilograms.TryCreate(mutation.StartWeightKg, out Kilograms startWeight) || !startWeight.IsPositive)
+        if (!Kilograms.TryCreate(mutation.StartWeightKg, out Kilograms startWeight) || !startWeight.IsPositive ||
+            mutation.StartWeightKg > BodyTrackingLimits.MaxWeightKg)
         {
-            errors[nameof(mutation.StartWeightKg)] = "Start weight must be positive.";
+            errors[nameof(mutation.StartWeightKg)] = $"Start weight must be positive and at most {BodyTrackingLimits.MaxWeightKg} kg.";
         }
-        if (!Kilograms.TryCreate(mutation.TargetWeightKg, out Kilograms targetWeight) || !targetWeight.IsPositive)
+        if (!Kilograms.TryCreate(mutation.TargetWeightKg, out Kilograms targetWeight) || !targetWeight.IsPositive ||
+            mutation.TargetWeightKg > BodyTrackingLimits.MaxWeightKg)
         {
-            errors[nameof(mutation.TargetWeightKg)] = "Target weight must be positive.";
+            errors[nameof(mutation.TargetWeightKg)] = $"Target weight must be positive and at most {BodyTrackingLimits.MaxWeightKg} kg.";
         }
         if (mutation.TargetDate < mutation.StartDate)
         {
@@ -118,7 +126,7 @@ public sealed class BodyGoalMutationHandler(
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
             if (current is PostgresException postgres && postgres.SqlState is
-                PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected)
+                PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected)
                 return true;
         }
         return false;

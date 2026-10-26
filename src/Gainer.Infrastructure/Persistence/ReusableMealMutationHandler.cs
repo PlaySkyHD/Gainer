@@ -3,7 +3,6 @@ using Gainer.Core.Nutrition;
 using Gainer.Core.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -97,9 +96,9 @@ public sealed class ReusableMealMutationHandler(
         {
             throw new ReusableMealConflictException("The reusable meal changed concurrently.");
         }
-        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException exception) when (context.IsKeyViolation<ReusableMeal>(exception))
         {
-            throw new ReusableMealConflictException("A reusable meal component identifier or position already exists.");
+            throw new ReusableMealConflictException("A reusable meal already exists for this identifier.");
         }
     }
 

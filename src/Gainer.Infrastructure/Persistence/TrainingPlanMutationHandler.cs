@@ -220,9 +220,9 @@ public sealed class TrainingPlanMutationHandler(
         {
             throw new TrainingPlanConflictException("The plan changed concurrently.");
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception) when (context.IsKeyViolation<TrainingPlan>(exception))
         {
-            throw new TrainingPlanConflictException("The plan conflicts with stored data.");
+            throw new TrainingPlanConflictException("A plan with this identifier already exists.");
         }
     }
 

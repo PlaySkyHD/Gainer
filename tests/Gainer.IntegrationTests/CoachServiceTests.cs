@@ -264,6 +264,19 @@ public sealed class CoachServiceTests
         Assert.IsEmpty(medical.MemorySuggestions);
     }
 
+    [TestMethod]
+    public async Task UnreadableProviderOutputFailsWithAFixedMessage()
+    {
+        CoachResponseValidationException answer = await Assert.ThrowsAsync<CoachResponseValidationException>(() =>
+            Service(new FakeProvider(Response(Message("Gewicht 99 kg {")))).AnswerAsync("Fortschritt?"));
+        Assert.AreEqual("The structured answer is invalid.", answer.Message);
+
+        CoachResponseValidationException arguments = await Assert.ThrowsAsync<CoachResponseValidationException>(() =>
+            Service(new FakeProvider(Response(FunctionCall("1", "get_weight_summary", "{\"days\":30 Gewicht"))))
+                .AnswerAsync("Analysiere mich"));
+        Assert.AreEqual("Tool arguments are invalid.", arguments.Message);
+    }
+
     private const string EmptyAnswer = """
         {"summary":"Noch nichts.","observations":[],"dataGaps":[],"suggestions":[],"memorySuggestions":[]}
         """;

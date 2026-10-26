@@ -35,6 +35,13 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         {
             return SyncProblem(StatusCodes.Status422UnprocessableEntity, "invalid_mutation_id", "Mutation id is required.");
         }
+        if (request.Resources is null || request.Resources.Any(item => item is null))
+        {
+            return SyncProblem(
+                StatusCodes.Status422UnprocessableEntity,
+                "invalid_resources",
+                "The mutation resource expectations are invalid.");
+        }
         try
         {
             var content = new CanonicalMutationContent(

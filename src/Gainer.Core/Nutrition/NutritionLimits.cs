@@ -18,6 +18,10 @@ public static class NutritionLimits
     public const decimal MinPortionFactor = 0.01m;
     public const decimal MaxPortionFactor = 100m;
     public const decimal MaxKilocaloriesPer100Grams = 10_000m;
+    /// <summary>Keeps the energy of one diary or template entry inside its numeric(9,2) column.</summary>
+    public const decimal MaxEntryKilocalories = 1_000_000m;
+    /// <summary>Reference amount of a product source; keeps the per-basis values inside their columns.</summary>
+    public const decimal MaxSourceBasisGrams = 10_000m;
     public const decimal MaxMacroGramsPer100Grams = 1_000m;
     public const decimal MaxDailyKilocalories = 20_000m;
     public const decimal MaxDailyMacroGrams = 2_000m;

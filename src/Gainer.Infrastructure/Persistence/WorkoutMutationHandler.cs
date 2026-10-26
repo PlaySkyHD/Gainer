@@ -215,9 +215,13 @@ public sealed class WorkoutMutationHandler(
         {
             throw new WorkoutConflictException("The workout changed concurrently.");
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception) when (context.IsKeyViolation<Workout>(exception))
         {
-            throw new WorkoutConflictException("The workout snapshot conflicts with stored data.");
+            throw new WorkoutConflictException("A workout with this identifier already exists.");
+        }
+        catch (DbUpdateException exception) when (context.IsUniqueIndexViolation<Workout>(exception, nameof(Workout.UserId)))
+        {
+            throw new ActiveWorkoutExistsException();
         }
     }
 

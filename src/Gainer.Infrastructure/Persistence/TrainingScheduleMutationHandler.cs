@@ -222,9 +222,11 @@ public sealed class TrainingScheduleMutationHandler(
         {
             throw new TrainingScheduleConflictException("The schedule changed concurrently.");
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception) when (
+            context.IsKeyViolation<TrainingSchedule>(exception) ||
+            context.IsUniqueIndexViolation<TrainingSchedule>(exception, nameof(TrainingSchedule.UserId)))
         {
-            throw new TrainingScheduleConflictException("The schedule conflicts with stored data.");
+            throw new TrainingScheduleConflictException("Another live schedule or the same identifier already exists.");
         }
     }
 
