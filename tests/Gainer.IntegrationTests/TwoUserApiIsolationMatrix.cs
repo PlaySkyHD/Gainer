@@ -78,6 +78,65 @@ internal static class TwoUserApiIsolationMatrix
         Assert.AreEqual(firstIds.Length, await scenario.CountAsync(scenario.FirstUser));
     }
 
+    /// <summary>
+    /// For resources without list, update or delete endpoints: the second user must be unable to read
+    /// or change what the first user owns, and the answer must match the answer for an unknown id.
+    /// Operations the resource does not offer are switched off through the scenario's Supports flags.
+    /// </summary>
+    public static async Task VerifyForeignAccessAsync<TActor>(ITwoUserApiIsolationScenario<TActor> scenario)
+    {
+        Assert.IsTrue(
+            scenario.SupportsDetail || scenario.SupportsUpdate || scenario.SupportsDelete,
+            "The scenario offers no operation to verify.");
+        Guid firstId = await scenario.CreateAsync(scenario.FirstUser, "first-private-one");
+        Guid secondId = await scenario.CreateAsync(scenario.SecondUser, "second-private-one");
+        Guid unknownId = Guid.NewGuid();
+
+        IsolationApiResponse? ownerBefore = null;
+        if (scenario.SupportsDetail)
+        {
+            ownerBefore = await scenario.DetailAsync(scenario.FirstUser, firstId);
+            Assert.IsTrue(ownerBefore.IsSuccessStatusCode, "The owner cannot read the resource.");
+            await AssertForeignResponseIsNeutralAsync(
+                () => scenario.DetailAsync(scenario.SecondUser, firstId),
+                () => scenario.DetailAsync(scenario.SecondUser, unknownId),
+                scenario);
+            Assert.IsTrue(
+                (await scenario.DetailAsync(scenario.SecondUser, secondId)).IsSuccessStatusCode,
+                "The second user cannot read their own resource.");
+        }
+
+        if (scenario.SupportsUpdate)
+        {
+            await AssertForeignResponseIsNeutralAsync(
+                () => scenario.UpdateAsync(scenario.SecondUser, firstId, "second-user-overwrite"),
+                () => scenario.UpdateAsync(scenario.SecondUser, unknownId, "second-user-overwrite"),
+                scenario);
+        }
+
+        if (scenario.SupportsDelete)
+        {
+            await AssertForeignResponseIsNeutralAsync(
+                () => scenario.DeleteAsync(scenario.SecondUser, firstId),
+                () => scenario.DeleteAsync(scenario.SecondUser, unknownId),
+                scenario);
+        }
+
+        if (ownerBefore is not null)
+        {
+            Assert.AreEqual(
+                ownerBefore.Representation,
+                (await scenario.DetailAsync(scenario.FirstUser, firstId)).Representation,
+                "A foreign operation changed the owner's representation.");
+        }
+
+        // Positive control: the foreign attempts above did not damage the owner's resource.
+        IsolationApiResponse control = scenario.SupportsUpdate
+            ? await scenario.UpdateAsync(scenario.FirstUser, firstId, "first-private-updated")
+            : await scenario.DeleteAsync(scenario.FirstUser, firstId);
+        Assert.IsTrue(control.IsSuccessStatusCode, $"The owner's own operation failed with {control.StatusCode}.");
+    }
+
     private static async Task AssertForeignResponseIsNeutralAsync<TActor>(
         Func<Task<IsolationApiResponse>> foreignOperation,
         Func<Task<IsolationApiResponse>> unknownOperation,
@@ -103,6 +162,13 @@ internal interface ITwoUserApiIsolationScenario<TActor>
     System.Text.RegularExpressions.Regex FirstUserSecretPattern { get; }
 
     System.Text.RegularExpressions.Regex SecondUserSecretPattern { get; }
+
+    /// <summary>Whether the resource can be read by id; only <c>VerifyForeignAccessAsync</c> honours the Supports flags.</summary>
+    bool SupportsDetail => true;
+
+    bool SupportsUpdate => true;
+
+    bool SupportsDelete => true;
 
     Task<Guid> CreateAsync(TActor actor, string privateMarker);
 
