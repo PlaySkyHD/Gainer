@@ -169,6 +169,65 @@ public sealed class NutritionLabelScannerTests
     }
 
     [TestMethod]
+    public void KilocaloriesFarBelowMacroEnergyAreImplausibleAndBlockConfirmation()
+    {
+        NutritionLabelScanDraft muesli = Create(NutritionLabelBasis.Per100Grams, null, kcal: 0m, protein: 10m, carbs: 65m, fat: 5m);
+        Assert.AreEqual(NutritionLabelFieldStatus.Implausible, muesli.Kilocalories.Status);
+        Assert.AreEqual(0m, muesli.Kilocalories.OriginalValue);
+        Assert.IsNull(muesli.Kilocalories.Per100Grams);
+        Assert.IsFalse(muesli.CanConfirm);
+
+        // Macro energy 4*0.7 + 4*10 + 9*0.2 = 45 kcal.
+        NutritionLabelScanDraft juice = Create(NutritionLabelBasis.Per100Milliliters, null, kcal: 0m, protein: 0.7m, carbs: 10m, fat: 0.2m);
+        Assert.AreEqual(NutritionLabelFieldStatus.Implausible, juice.Kilocalories.Status);
+        Assert.IsFalse(juice.CanConfirm);
+    }
+
+    [TestMethod]
+    public void UnreadableMacrosCountAsZeroInTheEnergyCheck()
+    {
+        NutritionLabelScanDraft draft = NutritionLabelScanDraft.Create(
+            new NutritionLabelReadings(
+                NutritionLabelBasis.Per100Grams,
+                null,
+                new NutritionLabelReading(0m, null),
+                NutritionLabelReading.Empty,
+                new NutritionLabelReading(10m, null),
+                new NutritionLabelReading(65m, null),
+                NutritionLabelReading.Empty),
+            "OpenAI", "model", "v1", ScannedAt);
+        Assert.AreEqual(NutritionLabelFieldStatus.Missing, draft.FatGrams.Status);
+        Assert.AreEqual(NutritionLabelFieldStatus.Implausible, draft.Kilocalories.Status);
+        Assert.IsFalse(draft.CanConfirm);
+    }
+
+    [TestMethod]
+    public void NegligibleMacroEnergyKeepsZeroKilocaloriesConfirmable()
+    {
+        NutritionLabelScanDraft water = Create(NutritionLabelBasis.Per100Milliliters, null, kcal: 0m, protein: 0m, carbs: 0m, fat: 0m);
+        Assert.AreEqual(NutritionLabelFieldStatus.Converted, water.Kilocalories.Status);
+        Assert.AreEqual(0m, water.Kilocalories.Per100Grams);
+        Assert.IsTrue(water.CanConfirm);
+
+        NutritionLabelScanDraft cola = Create(NutritionLabelBasis.Per100Milliliters, null, kcal: 0.3m, protein: 0m, carbs: 0m, fat: 0m);
+        Assert.IsTrue(cola.CanConfirm);
+        NutritionLabelScanDraft colaWithTraces = Create(NutritionLabelBasis.Per100Milliliters, null, kcal: 0m, protein: 0.1m, carbs: 0.5m, fat: 0m);
+        Assert.IsTrue(colaWithTraces.CanConfirm);
+    }
+
+    [TestMethod]
+    public void PlausibleDeviationFromMacroEnergyStaysConfirmable()
+    {
+        // Macro energy 4*10 + 4*65 + 9*5 = 345 kcal; fiber and rounding explain 290 kcal.
+        NutritionLabelScanDraft normal = Create(NutritionLabelBasis.Per100Grams, null, kcal: 290m, protein: 10m, carbs: 65m, fat: 5m);
+        Assert.AreEqual(NutritionLabelFieldStatus.Confirmed, normal.Kilocalories.Status);
+        Assert.IsTrue(normal.CanConfirm);
+
+        NutritionLabelScanDraft sweetened = Create(NutritionLabelBasis.Per100Grams, null, kcal: 120m, protein: 10m, carbs: 65m, fat: 5m);
+        Assert.IsTrue(sweetened.CanConfirm);
+    }
+
+    [TestMethod]
     public void SaltIsReadPer100GramsAndDerivedFromSodium()
     {
         NutritionLabelScanDraft salt = NutritionLabelScanDraft.Create(
