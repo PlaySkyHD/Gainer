@@ -1,7 +1,7 @@
 namespace Gainer.ArchitectureTests;
 
 [TestClass]
-public sealed class DependencyDirectionSmokeTests
+public sealed class DependencyDirectionTests
 {
     [TestMethod]
     public void CoreDoesNotReferenceInfrastructure()
