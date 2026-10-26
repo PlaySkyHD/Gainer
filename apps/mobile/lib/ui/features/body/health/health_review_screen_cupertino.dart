@@ -176,7 +176,7 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
           _dataRow(
             context,
             _status(result.status),
-            '${formatWeight(result.sample.weightKilograms, WeightUnit.kg)} kg ·${_localTime(result.sample.measuredAtUtc)}',
+            '${formatWeight(result.sample.weightKilograms, WeightUnit.kg)} kg · ${_localTime(result.sample.measuredAtUtc)}',
           ),
       ],
     ),
