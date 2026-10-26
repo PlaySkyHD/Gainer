@@ -59,10 +59,6 @@ void main() {
   }
 
   for (final scale in _entryScales) {
-    // BEFUND: `_PieceCountRow` (nutrition_screen_cupertino.dart) läuft ab der
-    // Stapel-Schwelle `> 1.5` bei 320 pt um 34 pt (1,6) bzw. 54 pt (2,0) über:
-    // Die Knöpfe stehen in einer `Row` ohne Umbruch. Die Datei baut PR #206
-    // um, daher hier nur der Test (`skip`); er läuft, sobald die Zeile passt.
     testWidgets('piece count row at 320 pt and text scale $scale', (
       tester,
     ) async {
@@ -79,7 +75,7 @@ void main() {
 
       expect(tester.takeException(), isNull);
       viewModel.dispose();
-    }, skip: scale > 1.5);
+    });
   }
 }
 

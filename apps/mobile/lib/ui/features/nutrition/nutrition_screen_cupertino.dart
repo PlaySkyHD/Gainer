@@ -4069,38 +4069,44 @@ class _PieceCountRow extends StatelessWidget {
     // Bei sehr großer Schrift steht die Beschriftung über den Knöpfen.
     final stacked = MediaQuery.textScalerOf(context).scale(1) > 1.5;
     final label = Text('Anzahl', style: style);
-    final controls = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _RoundIconButton(
-          key: const ValueKey('piece-minus'),
-          icon: CupertinoIcons.minus,
-          semanticLabel: 'Ein Stück weniger',
-          onPressed: () => _step(-1),
+    final controlChildren = [
+      _RoundIconButton(
+        key: const ValueKey('piece-minus'),
+        icon: CupertinoIcons.minus,
+        semanticLabel: 'Ein Stück weniger',
+        onPressed: () => _step(-1),
+      ),
+      SizedBox(
+        width: stacked ? 96 : 64,
+        child: CupertinoTextField.borderless(
+          key: const ValueKey('piece-count-field'),
+          controller: controller,
+          textAlign: TextAlign.center,
+          placeholder: '–',
+          keyboardType: _decimalKeyboard,
+          onChanged: onChanged,
+          style: style,
+          placeholderStyle: style.copyWith(color: colors.placeholderText),
         ),
-        SizedBox(
-          width: stacked ? 96 : 64,
-          child: CupertinoTextField.borderless(
-            key: const ValueKey('piece-count-field'),
-            controller: controller,
-            textAlign: TextAlign.center,
-            placeholder: '–',
-            keyboardType: _decimalKeyboard,
-            onChanged: onChanged,
-            style: style,
-            placeholderStyle: style.copyWith(color: colors.placeholderText),
-          ),
-        ),
-        _RoundIconButton(
-          key: const ValueKey('piece-plus'),
-          icon: CupertinoIcons.plus,
-          semanticLabel: 'Ein Stück mehr',
-          onPressed: () => _step(1),
-        ),
-        const SizedBox(width: GainerSpacing.xs),
-        Text('Stk', style: style.copyWith(color: colors.secondaryText)),
-      ],
-    );
+      ),
+      _RoundIconButton(
+        key: const ValueKey('piece-plus'),
+        icon: CupertinoIcons.plus,
+        semanticLabel: 'Ein Stück mehr',
+        onPressed: () => _step(1),
+      ),
+      const SizedBox(width: GainerSpacing.xs),
+      Text('Stk', style: style.copyWith(color: colors.secondaryText)),
+    ];
+    // Bei großer Schrift dürfen die Bedienelemente umbrechen, statt die Zeile
+    // zu sprengen.
+    final controls = stacked
+        ? Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: GainerSpacing.xxs,
+            children: controlChildren,
+          )
+        : Row(mainAxisSize: MainAxisSize.min, children: controlChildren);
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: GainerSpacing.m,
