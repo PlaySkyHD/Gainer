@@ -88,17 +88,22 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
       message: short
           ? 'Die Einheit läuft erst seit ${session.elapsed.inSeconds} s. '
                 'Verwerfen oder trotzdem speichern?'
-          : 'Die Einheit wird gespeichert.',
+          : 'Die Einheit wird gespeichert. „Verwerfen“ beendet sie ohne '
+                'Speichern.',
       actions: [
-        if (short) ...const [
-          GainerDialogAction(label: 'Speichern', value: _FinishAction.save),
-          GainerDialogAction(
-            label: 'Verwerfen',
-            value: _FinishAction.discard,
-            destructive: true,
-          ),
-        ] else
+        if (short)
+          const GainerDialogAction(
+            label: 'Speichern',
+            value: _FinishAction.save,
+          )
+        else
           const GainerDialogAction(label: 'Beenden', value: _FinishAction.save),
+        // Immer anbieten: Scheitert das Speichern, bleibt so ein Ausweg.
+        const GainerDialogAction(
+          label: 'Verwerfen',
+          value: _FinishAction.discard,
+          destructive: true,
+        ),
         const GainerDialogAction(
           label: 'Abbrechen',
           value: _FinishAction.cancel,
@@ -269,6 +274,10 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
     final max = analysis?.maxBpm;
     final problem = session.bluetoothProblem;
     return [
+      if (session.liveActivitiesOff) ...[
+        _LiveActivitiesOffHint(onOpenSettings: session.openSettings),
+        const SizedBox(height: GainerSpacing.m),
+      ],
       _Hero(
         bpm: session.liveBpm,
         state: session.zoneState,
@@ -359,6 +368,60 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
 }
 
 enum _FinishAction { save, discard, cancel }
+
+/// Hinweis, wenn Live Activities in den iOS-Einstellungen aus sind: Puls und
+/// Zielbereich fehlen dann auf dem Sperrbildschirm. Nach dem Einschalten
+/// startet die Activity bei der Rückkehr in die App.
+class _LiveActivitiesOffHint extends StatelessWidget {
+  const _LiveActivitiesOffHint({required this.onOpenSettings});
+
+  final Future<void> Function()? onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    final open = onOpenSettings;
+    return GainerCard(
+      key: const ValueKey('cardio-live-activities-off'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(CupertinoIcons.lock_circle, color: colors.warning),
+              const SizedBox(width: GainerSpacing.s),
+              Flexible(
+                child: Text(
+                  'Live-Aktivitäten sind aus',
+                  style: GainerTypography.body.copyWith(
+                    color: colors.primaryText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: GainerSpacing.xxs),
+          Text(
+            'Puls und Zielbereich fehlen auf dem Sperrbildschirm.',
+            style: GainerTypography.label.copyWith(color: colors.secondaryText),
+          ),
+          if (open != null) ...[
+            const SizedBox(height: GainerSpacing.s),
+            GainerPillButton(
+              key: const ValueKey('cardio-live-activities-settings'),
+              label: 'Einstellungen öffnen',
+              variant: GainerPillVariant.tonal,
+              expand: true,
+              onPressed: open,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 /// Phase einer laufenden Vorlage: Nummer und Name, Restzeit, Ziel und die
 /// nächste Phase. Nach der letzten Phase der Hinweis, dass die Einheit ohne

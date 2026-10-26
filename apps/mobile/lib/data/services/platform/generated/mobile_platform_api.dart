@@ -1002,6 +1002,7 @@ class PlatformHeartRateStatus {
     this.latestAtUtcEpochMilliseconds,
     this.monitoringSessionId,
     this.zoneState,
+    this.liveActivityState,
   });
 
   /// One of `unknown`, `poweredOn`, `poweredOff`, `unauthorized`, `unsupported`, `resetting`.
@@ -1032,6 +1033,10 @@ class PlatformHeartRateStatus {
   /// One of `none`, `inZone`, `above`, `below`, `noSignal`; null ohne Überwachung.
   String? zoneState;
 
+  /// One of `running`, `disabled` (in den iOS-Einstellungen aus), `missing`
+  /// (erlaubt, aber keine Activity); null ohne Überwachung mit Live Activity.
+  String? liveActivityState;
+
   List<Object?> _toList() {
     return <Object?>[
       bluetoothState,
@@ -1045,6 +1050,7 @@ class PlatformHeartRateStatus {
       latestAtUtcEpochMilliseconds,
       monitoringSessionId,
       zoneState,
+      liveActivityState,
     ];
   }
 
@@ -1066,6 +1072,7 @@ class PlatformHeartRateStatus {
       latestAtUtcEpochMilliseconds: result[8] as int?,
       monitoringSessionId: result[9] as String?,
       zoneState: result[10] as String?,
+      liveActivityState: result[11] as String?,
     );
   }
 
@@ -1091,7 +1098,8 @@ class PlatformHeartRateStatus {
           other.latestAtUtcEpochMilliseconds,
         ) &&
         _deepEquals(monitoringSessionId, other.monitoringSessionId) &&
-        _deepEquals(zoneState, other.zoneState);
+        _deepEquals(zoneState, other.zoneState) &&
+        _deepEquals(liveActivityState, other.liveActivityState);
   }
 
   @override
@@ -1100,7 +1108,7 @@ class PlatformHeartRateStatus {
 
   @override
   String toString() {
-    return 'PlatformHeartRateStatus(bluetoothState: $bluetoothState, connectionState: $connectionState, lastSequence: $lastSequence, samples: $samples, sensorId: $sensorId, sensorName: $sensorName, batteryPercent: $batteryPercent, latestBpm: $latestBpm, latestAtUtcEpochMilliseconds: $latestAtUtcEpochMilliseconds, monitoringSessionId: $monitoringSessionId, zoneState: $zoneState)';
+    return 'PlatformHeartRateStatus(bluetoothState: $bluetoothState, connectionState: $connectionState, lastSequence: $lastSequence, samples: $samples, sensorId: $sensorId, sensorName: $sensorName, batteryPercent: $batteryPercent, latestBpm: $latestBpm, latestAtUtcEpochMilliseconds: $latestAtUtcEpochMilliseconds, monitoringSessionId: $monitoringSessionId, zoneState: $zoneState, liveActivityState: $liveActivityState)';
   }
 }
 

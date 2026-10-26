@@ -485,6 +485,7 @@ class HeartRateStatus {
     this.latestAtUtc,
     this.monitoringSessionId,
     this.zoneState,
+    this.liveActivityState,
   });
 
   final HeartRateBluetoothState bluetoothState;
@@ -502,6 +503,21 @@ class HeartRateStatus {
   /// Session der laufenden nativen Überwachung; null, wenn keine läuft.
   final String? monitoringSessionId;
   final HeartRateZoneState? zoneState;
+
+  /// Live Activity der Überwachung; null ohne Überwachung mit Live Activity.
+  final CardioLiveActivityState? liveActivityState;
+}
+
+/// Zustand der Live Activity einer laufenden Cardio-Einheit.
+enum CardioLiveActivityState {
+  /// Die Activity läuft.
+  running,
+
+  /// Live Activities sind in den iOS-Einstellungen aus.
+  disabled,
+
+  /// Erlaubt, aber keine Activity (beim Start aus oder von iOS beendet).
+  missing,
 }
 
 /// Pulsgurt und native Cardio-Überwachung. Bluetooth-Probleme melden sich als

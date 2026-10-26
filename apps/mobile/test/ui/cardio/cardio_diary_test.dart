@@ -111,6 +111,40 @@ void main() {
     expect(find.text('2 Trainings'), findsOneWidget);
   });
 
+  testWidgets('Löschen außerhalb des Tagebuchs kommt sofort an', (
+    tester,
+  ) async {
+    await seedMixed(tester);
+    await pumpHome(tester);
+    expect(find.text('Rad-Ergometer'), findsOneWidget);
+
+    // Etwa in der Detailansicht, die über eine andere Route offen war.
+    await tester.runAsync(() async {
+      final session = (await cardio.repository.readSessions()).single;
+      await cardio.repository.deleteSession(session.sessionId);
+    });
+    await pumpUi(tester);
+
+    expect(find.text('Rad-Ergometer'), findsNothing);
+  });
+
+  testWidgets('eine über die Live Activity beendete Einheit erscheint', (
+    tester,
+  ) async {
+    await pumpHome(tester);
+    expect(find.text('Rad-Ergometer'), findsNothing);
+
+    // Die Live-Ansicht wurde nicht aus dem Tagebuch geöffnet.
+    await tester.runAsync(() async {
+      await cardio.controller.start();
+      cardio.now = cardio.now.add(const Duration(minutes: 20));
+      await cardio.controller.finish();
+    });
+    await pumpUi(tester);
+
+    expect(find.text('Rad-Ergometer'), findsOneWidget);
+  });
+
   testWidgets('Tippen öffnet das Detail', (tester) async {
     await seedMixed(tester);
     await pumpHome(tester);

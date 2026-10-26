@@ -461,6 +461,34 @@ void main() {
       values = await stored(tester);
       expect(values.templates.map((t) => t.name), ['Umbenannt', 'Neu']);
     });
+
+    testWidgets('am Limit von 50 sind Neu und Duplizieren gesperrt', (
+      tester,
+    ) async {
+      final full = [
+        for (var i = 0; i < CardioPreferenceValues.maxTemplates; i++)
+          CardioTemplate.zone2.copyWith(id: 'tpl-$i', name: 'Vorlage $i'),
+      ];
+      await writePrefs(tester, CardioPreferenceValues(templates: full));
+      await openList(tester);
+
+      final add = tester.widget<GainerToolbarButton>(
+        find.byKey(const ValueKey('cardio-template-add')),
+      );
+      expect(add.onPressed, isNull);
+      await scrollIntoView(tester, find.textContaining('Höchstens 50 eigene'));
+      expect(find.textContaining('Höchstens 50 eigene'), findsOneWidget);
+
+      await scrollIntoView(tester, find.text('4×4 (Norwegisch)'));
+      await tester.longPress(find.text('4×4 (Norwegisch)'));
+      await pumpUi(tester);
+      await tester.tap(find.text('Duplizieren'));
+      await pumpUi(tester);
+      expect(
+        (await stored(tester)).templates,
+        hasLength(CardioPreferenceValues.maxTemplates),
+      );
+    });
   });
 
   group('Einstellungen', () {

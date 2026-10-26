@@ -61,6 +61,14 @@ final class NativeCardioLiveActivity {
       zoneState: state.zoneState, bpm: state.bpm, phaseIndex: state.phaseIndex, now: state.updatedAt)
   }
 
+  /// Zustand für den Status an Dart: `running`, `disabled` (in den iOS-Einstellungen aus)
+  /// oder `missing` (erlaubt, aber keine Activity, etwa weil sie beim Start aus waren).
+  func state(sessionId: String) -> String {
+    guard ActivityAuthorizationInfo().areActivitiesEnabled else { return "disabled" }
+    let running = Activity.activities.contains { $0.attributes.sessionId == sessionId }
+    return running ? "running" : "missing"
+  }
+
   /// Aktualisiert die Activity, sofern der Drosselregler es zulässt.
   func update(state: GainerCardioActivityAttributes.ContentState) async {
     guard let sessionId,

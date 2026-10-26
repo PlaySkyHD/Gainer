@@ -921,6 +921,9 @@ struct PlatformHeartRateStatus: Hashable, CustomStringConvertible {
   var monitoringSessionId: String? = nil
   /// One of `none`, `inZone`, `above`, `below`, `noSignal`; null ohne Überwachung.
   var zoneState: String? = nil
+  /// One of `running`, `disabled` (in den iOS-Einstellungen aus), `missing`
+  /// (erlaubt, aber keine Activity); null ohne Überwachung mit Live Activity.
+  var liveActivityState: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -936,6 +939,7 @@ struct PlatformHeartRateStatus: Hashable, CustomStringConvertible {
     let latestAtUtcEpochMilliseconds: Int64? = nilOrValue(pigeonVar_list[8])
     let monitoringSessionId: String? = nilOrValue(pigeonVar_list[9])
     let zoneState: String? = nilOrValue(pigeonVar_list[10])
+    let liveActivityState: String? = nilOrValue(pigeonVar_list[11])
 
     return PlatformHeartRateStatus(
       bluetoothState: bluetoothState,
@@ -948,7 +952,8 @@ struct PlatformHeartRateStatus: Hashable, CustomStringConvertible {
       latestBpm: latestBpm,
       latestAtUtcEpochMilliseconds: latestAtUtcEpochMilliseconds,
       monitoringSessionId: monitoringSessionId,
-      zoneState: zoneState
+      zoneState: zoneState,
+      liveActivityState: liveActivityState
     )
   }
   func toList() -> [Any?] {
@@ -964,13 +969,14 @@ struct PlatformHeartRateStatus: Hashable, CustomStringConvertible {
       latestAtUtcEpochMilliseconds,
       monitoringSessionId,
       zoneState,
+      liveActivityState,
     ]
   }
   static func == (lhs: PlatformHeartRateStatus, rhs: PlatformHeartRateStatus) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return MobilePlatformApiPigeonInternal.deepEquals(lhs.bluetoothState, rhs.bluetoothState) && MobilePlatformApiPigeonInternal.deepEquals(lhs.connectionState, rhs.connectionState) && MobilePlatformApiPigeonInternal.deepEquals(lhs.lastSequence, rhs.lastSequence) && MobilePlatformApiPigeonInternal.deepEquals(lhs.samples, rhs.samples) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sensorId, rhs.sensorId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sensorName, rhs.sensorName) && MobilePlatformApiPigeonInternal.deepEquals(lhs.batteryPercent, rhs.batteryPercent) && MobilePlatformApiPigeonInternal.deepEquals(lhs.latestBpm, rhs.latestBpm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.latestAtUtcEpochMilliseconds, rhs.latestAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.monitoringSessionId, rhs.monitoringSessionId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneState, rhs.zoneState)
+    return MobilePlatformApiPigeonInternal.deepEquals(lhs.bluetoothState, rhs.bluetoothState) && MobilePlatformApiPigeonInternal.deepEquals(lhs.connectionState, rhs.connectionState) && MobilePlatformApiPigeonInternal.deepEquals(lhs.lastSequence, rhs.lastSequence) && MobilePlatformApiPigeonInternal.deepEquals(lhs.samples, rhs.samples) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sensorId, rhs.sensorId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.sensorName, rhs.sensorName) && MobilePlatformApiPigeonInternal.deepEquals(lhs.batteryPercent, rhs.batteryPercent) && MobilePlatformApiPigeonInternal.deepEquals(lhs.latestBpm, rhs.latestBpm) && MobilePlatformApiPigeonInternal.deepEquals(lhs.latestAtUtcEpochMilliseconds, rhs.latestAtUtcEpochMilliseconds) && MobilePlatformApiPigeonInternal.deepEquals(lhs.monitoringSessionId, rhs.monitoringSessionId) && MobilePlatformApiPigeonInternal.deepEquals(lhs.zoneState, rhs.zoneState) && MobilePlatformApiPigeonInternal.deepEquals(lhs.liveActivityState, rhs.liveActivityState)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -986,10 +992,11 @@ struct PlatformHeartRateStatus: Hashable, CustomStringConvertible {
     MobilePlatformApiPigeonInternal.deepHash(value: latestAtUtcEpochMilliseconds, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: monitoringSessionId, hasher: &hasher)
     MobilePlatformApiPigeonInternal.deepHash(value: zoneState, hasher: &hasher)
+    MobilePlatformApiPigeonInternal.deepHash(value: liveActivityState, hasher: &hasher)
   }
 
   public var description: String {
-    return "PlatformHeartRateStatus(bluetoothState: \(String(describing: bluetoothState)), connectionState: \(String(describing: connectionState)), lastSequence: \(String(describing: lastSequence)), samples: \(String(describing: samples)), sensorId: \(String(describing: sensorId)), sensorName: \(String(describing: sensorName)), batteryPercent: \(String(describing: batteryPercent)), latestBpm: \(String(describing: latestBpm)), latestAtUtcEpochMilliseconds: \(String(describing: latestAtUtcEpochMilliseconds)), monitoringSessionId: \(String(describing: monitoringSessionId)), zoneState: \(String(describing: zoneState)))"
+    return "PlatformHeartRateStatus(bluetoothState: \(String(describing: bluetoothState)), connectionState: \(String(describing: connectionState)), lastSequence: \(String(describing: lastSequence)), samples: \(String(describing: samples)), sensorId: \(String(describing: sensorId)), sensorName: \(String(describing: sensorName)), batteryPercent: \(String(describing: batteryPercent)), latestBpm: \(String(describing: latestBpm)), latestAtUtcEpochMilliseconds: \(String(describing: latestAtUtcEpochMilliseconds)), monitoringSessionId: \(String(describing: monitoringSessionId)), zoneState: \(String(describing: zoneState)), liveActivityState: \(String(describing: liveActivityState)))"
   }
 }
 

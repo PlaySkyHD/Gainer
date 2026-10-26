@@ -57,10 +57,30 @@ class _TrainingHomeScreenState extends State<TrainingHomeScreen> {
       cardio: widget.cardio?.repository,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _viewModel.loadDiary());
+    // Cardio-Einheiten ändern sich auch außerhalb dieses Screens: Beenden in
+    // der Live-Ansicht (auch über die Live Activity geöffnet), Löschen in der
+    // Detailansicht.
+    widget.cardio?.repository.changes.addListener(_onCardioChanged);
+  }
+
+  void _onCardioChanged() {
+    if (mounted) _viewModel.loadDiary();
+  }
+
+  @override
+  void didUpdateWidget(TrainingHomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final before = oldWidget.cardio?.repository;
+    final after = widget.cardio?.repository;
+    if (!identical(before, after)) {
+      before?.changes.removeListener(_onCardioChanged);
+      after?.changes.addListener(_onCardioChanged);
+    }
   }
 
   @override
   void dispose() {
+    widget.cardio?.repository.changes.removeListener(_onCardioChanged);
     _viewModel.dispose();
     super.dispose();
   }

@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gainer_mobile/data/repositories/cardio/cardio_repository.dart';
+import 'package:gainer_mobile/data/repositories/cardio/cardio_preferences.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/repositories/training/training_preferences.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_draft.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_session.dart';
+import 'package:gainer_mobile/domain/models/cardio/cardio_template.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_session_controller.dart';
 
 import 'cardio_test_support.dart';
@@ -16,7 +20,7 @@ void main() {
 
   late LocalDatabase database;
   late LocalSyncStore store;
-  late CardioRepository repository;
+  late FlakyCardioRepository repository;
   late FakeHeartRate platform;
   late FakeNotifications notifications;
   late TrainingPreferences trainingPreferences;
@@ -51,7 +55,7 @@ void main() {
     store = LocalSyncStore(database: database, accountId: accountId);
     nextId = 100;
     now = t0;
-    repository = CardioRepository(
+    repository = FlakyCardioRepository(
       store: store,
       ids: () => testId(nextId++),
       clock: () => now,
@@ -232,6 +236,219 @@ void main() {
     final controller = newController();
     await controller.forget();
     expect(platform.disconnects, 1);
+  });
+
+  group('Beenden nach Teilfehler', () {
+    test('scheitert das Löschen des Entwurfs, ist die Einheit trotzdem '
+        'beendet und der nächste Start verwirft den Rest', () async {
+      final controller = newController();
+      final draft = await controller.start();
+      now = t0.add(const Duration(minutes: 5));
+      repository.clearDraftFailures = 1;
+
+      final session = await controller.finish();
+
+      expect(session.sessionId, draft.sessionId);
+      expect(controller.isRunning, isFalse);
+      expect(platform.stopped, [draft.sessionId]);
+      // Der Entwurf blieb liegen; der nächste Start verwirft ihn.
+      expect(await repository.readDraft(), isNotNull);
+      final next = newController();
+      await next.load();
+      expect(next.isRunning, isFalse);
+      expect(await repository.readDraft(), isNull);
+      expect(
+        (await repository.readSessions()).single.sessionId,
+        draft.sessionId,
+      );
+    });
+
+    test('eine schon gespeicherte Einheit gilt beim Beenden als '
+        'gespeichert', () async {
+      final controller = newController();
+      final draft = await controller.start();
+      now = t0.add(const Duration(minutes: 5));
+      // Ein früherer Versuch hat gespeichert, aber den Entwurf nicht gelöscht.
+      await repository.saveFinished(
+        CardioSession(
+          sessionId: draft.sessionId,
+          startedAtUtc: draft.startedAtUtc,
+          endedAtUtc: now,
+          heartRateBpm: const [],
+          rrIntervalsMs: const [],
+          createdAtUtc: now,
+          updatedAtUtc: now,
+        ),
+      );
+
+      final session = await controller.finish();
+
+      expect(session.sessionId, draft.sessionId);
+      expect(controller.isRunning, isFalse);
+      expect(await repository.readDraft(), isNull);
+      expect(await repository.readSessions(), hasLength(1));
+    });
+
+    test('Beenden wartet auf eine laufende Abfrage', () async {
+      final controller = newController();
+      final draft = await controller.start();
+      now = t0.add(const Duration(minutes: 2));
+      platform.samples.add(sample(1, 100, 130));
+      final gate = platform.statusGate = Completer<void>();
+      final polling = controller.poll();
+      var finished = false;
+      final finishing = controller.finish().whenComplete(() => finished = true);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(finished, isFalse);
+
+      platform.statusGate = null;
+      gate.complete();
+      await polling;
+      final session = await finishing;
+      expect(session.sessionId, draft.sessionId);
+      expect(session.heartRateBpm, contains(130));
+      expect(controller.isRunning, isFalse);
+      expect(await repository.readDraft(), isNull);
+    });
+
+    test('Verwerfen wartet auf eine laufende Abfrage', () async {
+      final controller = newController();
+      final draft = await controller.start();
+      final gate = platform.statusGate = Completer<void>();
+      final polling = controller.poll();
+      var discarded = false;
+      final discarding = controller.discard().whenComplete(
+        () => discarded = true,
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(discarded, isFalse);
+      // Schon während des Wartens gilt die Einheit als beendet.
+      expect(controller.isRunning, isFalse);
+
+      platform.statusGate = null;
+      gate.complete();
+      await polling;
+      await discarding;
+      expect(await repository.readDraft(), isNull);
+      expect(platform.stopped, [draft.sessionId]);
+    });
+  });
+
+  test(
+    'ein zweiter Beobachter stoppt beim Schließen nicht den ersten',
+    () async {
+      final controller = CardioSessionController(
+        repository: repository,
+        platform: platform,
+        notifications: notifications,
+        trainingPreferences: trainingPreferences,
+        pollInterval: const Duration(milliseconds: 10),
+        clock: () => now,
+      );
+      controllers.add(controller);
+      await controller.watch(); // Start-Sheet
+      await controller.watch(); // HRV-Messung darüber
+      controller.stopWatching(); // HRV-Messung geschlossen
+
+      final before = platform.statusReads;
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(platform.statusReads, greaterThan(before));
+
+      controller.stopWatching(); // Start-Sheet geschlossen
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      final stopped = platform.statusReads;
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(platform.statusReads, stopped);
+    },
+  );
+
+  test(
+    'Live Activity aus: Zustand melden und nach Rückkehr neu starten',
+    () async {
+      final controller = newController();
+      platform.liveActivity = CardioLiveActivityState.disabled;
+      final draft = await controller.start();
+      await controller.poll();
+      expect(controller.liveActivitiesOff, isTrue);
+      expect(platform.updated, isEmpty);
+
+      // Live Activities in den Einstellungen eingeschaltet, zurück in die App.
+      platform.liveActivity = CardioLiveActivityState.missing;
+      final binding = TestWidgetsFlutterBinding.instance;
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await controller.poll();
+
+      expect(controller.liveActivitiesOff, isFalse);
+      final retry = platform.updated.single;
+      expect(retry.sessionId, draft.sessionId);
+      expect(retry.liveActivityEnabled, isTrue);
+      expect(retry.startedAtUtc, draft.startedAtUtc);
+
+      // Nur einmal je Rückkehr, nicht bei jeder Abfrage.
+      await controller.poll();
+      expect(platform.updated, hasLength(1));
+    },
+  );
+
+  test(
+    'Kaltstart: restored ist fertig, sobald der Entwurf gelesen ist',
+    () async {
+      final first = newController();
+      final draft = await first.start();
+      await first.close();
+      platform.monitoring = null;
+
+      final second = newController();
+      final gate = platform.statusGate = Completer<void>();
+      final loading = second.load();
+      await second.restored;
+      // Die Abfrage hängt noch, die Einheit ist aber schon bekannt.
+      expect(second.isRunning, isTrue);
+      expect(second.active!.sessionId, draft.sessionId);
+      platform.statusGate = null;
+      gate.complete();
+      await loading;
+    },
+  );
+
+  group('Vorlage mit Zone 5', () {
+    const template = CardioTemplate(
+      id: 'tpl-z5',
+      name: 'Spitze',
+      phases: [
+        CardioTemplatePhase(
+          name: 'Hart',
+          durationSeconds: 60,
+          target: CardioZoneTarget(5),
+        ),
+      ],
+    );
+
+    test('startet auch mit einem Maximalpuls über 230', () async {
+      // Ältere Versionen erlaubten bis 250.
+      await repository.preferences.write(
+        const CardioPreferenceValues(maxHeartRate: 250),
+      );
+      final controller = newController();
+      final draft = await controller.start(template: template);
+      expect(draft.phases.single.highBpm, 230);
+    });
+
+    test('ungültige Zonen nennen den Grund', () async {
+      // Ruhepuls über dem Maximalpuls ergibt fallende Zonengrenzen.
+      await repository.preferences.write(
+        const CardioPreferenceValues(maxHeartRate: 100, restingHeartRate: 120),
+      );
+      final controller = newController();
+      await expectLater(
+        controller.start(template: template),
+        throwsA(isA<CardioTemplateResolutionException>()),
+      );
+      expect(controller.isRunning, isFalse);
+    });
   });
 
   group('Erholung', () {

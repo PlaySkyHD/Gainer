@@ -16,6 +16,12 @@ CardioSession session(List<int> bpm, {List<int> rr = const []}) =>
       updatedAtUtc: DateTime.utc(2026, 10, 18, 10, 1),
     );
 
+final _isValidTarget = predicate<CardioZone>(
+  (zone) =>
+      CardioTargetZone(lowBpm: zone.lowBpm, highBpm: zone.highBpm).isValid,
+  'is a valid target zone',
+);
+
 void main() {
   group('CardioSession', () {
     test('json round trip omits null optionals', () {
@@ -91,6 +97,15 @@ void main() {
     test('Karvonen with resting heart rate', () {
       final zone2 = CardioZones.compute(190, 60)[1];
       expect((zone2.lowBpm, zone2.highBpm), (138, 151));
+    });
+
+    test('maximum above 230 counts as 230 so zone 5 stays valid', () {
+      for (final rest in [null, 60]) {
+        final zones = CardioZones.compute(250, rest);
+        expect(zones.last.highBpm, 230);
+        expect(zones, everyElement(_isValidTarget));
+        expect(zones, CardioZones.compute(230, rest));
+      }
     });
 
     test('from age', () {

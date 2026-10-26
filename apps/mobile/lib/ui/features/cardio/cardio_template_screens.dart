@@ -27,6 +27,10 @@ String _newTemplateId() => 'tpl-${DateTime.now().microsecondsSinceEpoch}';
 
 enum _TemplateAction { edit, duplicate, delete }
 
+const _limitText =
+    'Höchstens ${CardioPreferenceValues.maxTemplates} eigene Vorlagen. '
+    'Lösche eine, um eine neue anzulegen.';
+
 /// Liste der Vorlagen: mitgelieferte (nicht löschbar, duplizierbar) und eigene
 /// (Tippen bearbeitet, Wischen oder langes Drücken löscht).
 class CardioTemplatesScreen extends StatefulWidget {
@@ -47,10 +51,15 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
     _preferences.read();
   }
 
+  /// Mehr eigene Vorlagen verwirft das Lesen still; am Limit gibt es keine neue.
+  static bool _atLimit(CardioPreferenceValues values) =>
+      values.templates.length >= CardioPreferenceValues.maxTemplates;
+
   Future<void> _save(CardioTemplate template) {
     return _preferences.update((current) {
       final index = current.templates.indexWhere((e) => e.id == template.id);
       if (index < 0) {
+        if (_atLimit(current)) return current;
         return current.copyWith(templates: [...current.templates, template]);
       }
       final next = [...current.templates]..[index] = template;
@@ -87,10 +96,7 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
   }
 
   Future<void> _duplicate(CardioTemplate template) async {
-    if (_preferences.values.value.templates.length >=
-        CardioPreferenceValues.maxTemplates) {
-      return;
-    }
+    if (_atLimit(_preferences.values.value)) return;
     await _save(
       template.copyWith(id: _newTemplateId(), name: '${template.name} Kopie'),
     );
@@ -105,6 +111,7 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
   }
 
   Future<void> _showActions(CardioTemplate template) async {
+    final full = _atLimit(_preferences.values.value);
     final action = await showGainerActionSheet<_TemplateAction>(
       context: context,
       title: template.name,
@@ -120,7 +127,10 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
             label: 'Duplizieren',
             icon: CupertinoIcons.doc_on_doc,
             value: _TemplateAction.duplicate,
-            hint: template.builtIn
+            enabled: !full,
+            hint: full
+                ? _limitText
+                : template.builtIn
                 ? 'Mitgelieferte Vorlagen sind fest. Die Kopie lässt sich '
                       'ändern.'
                 : null,
@@ -148,21 +158,20 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GainerScaffold(
-      title: 'Vorlagen',
-      trailing: [
-        GainerToolbarButton(
-          icon: CupertinoIcons.add,
-          semanticLabel: 'Neue Vorlage',
-          onPressed: _create,
-        ),
-      ],
-      children: [
-        ValueListenableBuilder<CardioPreferenceValues>(
-          valueListenable: _preferences.values,
-          builder: (context, values, _) => _content(values),
-        ),
-      ],
+    return ValueListenableBuilder<CardioPreferenceValues>(
+      valueListenable: _preferences.values,
+      builder: (context, values, _) => GainerScaffold(
+        title: 'Vorlagen',
+        trailing: [
+          GainerToolbarButton(
+            key: const ValueKey('cardio-template-add'),
+            icon: CupertinoIcons.add,
+            semanticLabel: 'Neue Vorlage',
+            onPressed: _atLimit(values) ? null : _create,
+          ),
+        ],
+        children: [_content(values)],
+      ),
     );
   }
 
@@ -224,6 +233,7 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
         else
           GainerGroupedSection(
             header: 'Eigene',
+            footer: _atLimit(values) ? _limitText : null,
             children: [
               for (final template in values.templates) _row(template, values),
             ],

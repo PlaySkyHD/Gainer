@@ -342,6 +342,9 @@ class PigeonNativeFeaturesPlatform
       zoneState: HeartRateZoneState.values
           .where((v) => v.name == status.zoneState)
           .firstOrNull,
+      liveActivityState: CardioLiveActivityState.values
+          .where((v) => v.name == status.liveActivityState)
+          .firstOrNull,
     );
   });
 
