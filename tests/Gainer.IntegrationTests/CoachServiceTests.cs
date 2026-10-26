@@ -264,6 +264,42 @@ public sealed class CoachServiceTests
         Assert.IsEmpty(medical.MemorySuggestions);
     }
 
+    [TestMethod]
+    public async Task ComparisonPeriodEndsWhereTheCurrentPeriodBegins()
+    {
+        var insights = new FakeInsights();
+        var provider = new FakeProvider(
+            Response(FunctionCall("call_1", "compare_periods",
+                """{"metric":"weight_average","currentDays":7,"previousDays":30}""")),
+            Response(Message(EmptyAnswer)));
+
+        CoachAnswer answer = await new CoachService(
+            provider, insights, new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new FixedTimeProvider())
+            .AnswerAsync("Vergleiche die Woche mit dem Monat");
+
+        CollectionAssert.AreEqual(
+            new[] { (new DateOnly(2026, 8, 18), 7), (new DateOnly(2026, 8, 11), 30) },
+            insights.Calls.ToArray());
+        Assert.HasCount(2, answer.Facts);
+    }
+
+    [TestMethod]
+    public async Task CoachUsesTheLocalDayAroundMidnight()
+    {
+        var insights = new FakeInsights();
+        var provider = new FakeProvider(
+            Response(FunctionCall("call_1", "get_weight_summary", "{\"days\":30}")),
+            Response(Message(EmptyAnswer)));
+        // 00:30 on 18 August in Berlin (CEST) is still 17 August in UTC.
+        var now = new DateTimeOffset(2026, 8, 17, 22, 30, 0, TimeSpan.Zero);
+
+        await new CoachService(
+            provider, insights, new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new FixedTimeProvider(now))
+            .AnswerAsync("Wie entwickelt sich mein Gewicht?");
+
+        Assert.AreEqual(new DateOnly(2026, 8, 18), insights.Calls[0].Through);
+    }
+
     private const string EmptyAnswer = """
         {"summary":"Noch nichts.","observations":[],"dataGaps":[],"suggestions":[],"memorySuggestions":[]}
         """;
@@ -316,8 +352,11 @@ public sealed class CoachServiceTests
 
     private sealed class FakeInsights : IInsightQueries
     {
+        public List<(DateOnly Through, int Days)> Calls { get; } = [];
+
         public Task<DashboardInsightSnapshot> DashboardAsync(DateOnly through, int days, TimeZoneInfo timeZone, CancellationToken cancellationToken = default)
         {
+            Calls.Add((through, days));
             DateOnly from = through.AddDays(1 - days);
             WeightInsights weight = InsightAlgorithms.Weight([
                 new(through.AddDays(-2), 79m), new(through.AddDays(-1), 80m), new(through, 81m),
@@ -377,16 +416,16 @@ public sealed class CoachServiceTests
         public Task<WorkoutSnapshot?> GetAsync(Guid workoutId, CancellationToken cancellationToken = default) => Task.FromResult<WorkoutSnapshot?>(null);
     }
 
-    private sealed class FakeExercises : IExerciseCatalogQueries
+    private sealed class FakeExercises : IExerciseResolver
     {
-        public Task<ExerciseCatalogPage> SearchAsync(ExerciseCatalogFilter filter, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ExerciseCatalogPage([], 0, filter.Limit, 0, []));
+        public Task<ExerciseCatalogItem?> ResolveAsync(Guid exerciseId, bool includeArchived, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ExerciseCatalogItem?>(null);
     }
 
     private static readonly ExerciseRecords EmptyRecords = new([], [], [], [], []);
 
-    private sealed class FixedTimeProvider : TimeProvider
+    private sealed class FixedTimeProvider(DateTimeOffset? now = null) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => new(2026, 8, 18, 12, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => now ?? new(2026, 8, 18, 12, 0, 0, TimeSpan.Zero);
     }
 }

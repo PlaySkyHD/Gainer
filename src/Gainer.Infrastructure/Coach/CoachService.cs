@@ -12,7 +12,7 @@ public sealed partial class CoachService(
     IOpenAiResponsesProvider provider,
     IInsightQueries insights,
     IWorkoutHistoryQueries workoutHistory,
-    IExerciseCatalogQueries exercises,
+    IExerciseResolver exercises,
     ICoachMemoryQueries memories,
     TimeProvider timeProvider) : ICoachService
 {
@@ -230,8 +230,8 @@ public sealed partial class CoachService(
             throw new CoachResponseValidationException("Exercise id is invalid.");
         int? days = args.GetProperty("days").ValueKind == JsonValueKind.Null ? null : args.GetProperty("days").GetInt32();
         if (days is not (null or 7 or 30 or 90)) throw new CoachResponseValidationException("Exercise window is invalid.");
-        ExerciseCatalogPage allowed = await exercises.SearchAsync(new ExerciseCatalogFilter(Limit: 200), cancellationToken);
-        if (!allowed.Items.Any(item => item.Id == exerciseId))
+        // Archived exercises keep their history, so they stay readable; foreign ones resolve to null.
+        if (await exercises.ResolveAsync(exerciseId, includeArchived: true, cancellationToken) is null)
             throw new CoachResponseValidationException("Exercise id is not approved for this user.");
         ExerciseProgressSnapshot data = await insights.ExerciseProgressAsync(
             exerciseId, days, timeProvider.GetUtcNow().UtcDateTime, CoachTimeZone, cancellationToken);
@@ -259,20 +259,28 @@ public sealed partial class CoachService(
         int previousDays = DaysValue(args, "previousDays");
         if (metric is not ("weight_average" or "calories_average" or "protein_average" or "training_volume"))
             throw new CoachResponseValidationException("Comparison metric is invalid.");
-        DashboardInsightSnapshot current = await Dashboard(currentDays, cancellationToken);
-        DashboardInsightSnapshot previous = await Dashboard(previousDays, cancellationToken);
+        // The comparison period ends where the current one begins, so the two never overlap.
+        DashboardInsightSnapshot current = await Dashboard(currentDays, 0, cancellationToken);
+        DashboardInsightSnapshot previous = await Dashboard(previousDays, currentDays, cancellationToken);
         decimal? currentValue = MetricValue(current, metric);
         decimal? previousValue = MetricValue(previous, metric);
         var facts = new List<CoachFact>();
-        AddComparisonFact(facts, current, metric, "current", currentDays, currentValue);
-        AddComparisonFact(facts, previous, metric, "comparison", previousDays, previousValue);
+        AddComparisonFact(facts, current, metric, "current", currentDays, $"last {currentDays} days", currentValue);
+        AddComparisonFact(facts, previous, metric, "comparison", previousDays,
+            $"{previousDays} days before the last {currentDays} days", previousValue);
         return new ToolResult(Math.Max(current.AsOfRevision, previous.AsOfRevision), facts,
             facts.Count < 2 ? ["The selected periods do not both contain enough data."] : []);
     }
 
     private async Task<DashboardInsightSnapshot> Dashboard(int days, CancellationToken cancellationToken) =>
-        await insights.DashboardAsync(
-            DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime), days, CoachTimeZone, cancellationToken);
+        await Dashboard(days, 0, cancellationToken);
+
+    /// <summary>Window of <paramref name="days"/> local days that ends <paramref name="endOffsetDays"/> days before today.</summary>
+    private async Task<DashboardInsightSnapshot> Dashboard(int days, int endOffsetDays, CancellationToken cancellationToken)
+    {
+        DateOnly today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(timeProvider.GetUtcNow().UtcDateTime, CoachTimeZone));
+        return await insights.DashboardAsync(today.AddDays(-endOffsetDays), days, CoachTimeZone, cancellationToken);
+    }
 
     private static IReadOnlyList<string> BodyweightGaps(bool missing) => missing
         ? ["Body weight is missing for some sessions; a check-in is needed for complete values."]
@@ -449,10 +457,10 @@ public sealed partial class CoachService(
     };
 
     private static void AddComparisonFact(List<CoachFact> facts, DashboardInsightSnapshot data, string metric,
-        string side, int days, decimal? value)
+        string side, int days, string period, decimal? value)
     {
         if (value is { } number) facts.Add(Fact(data, $"compare.{metric}.{side}.{days}", "comparison", metric,
-            number, null, null, $"last {days} days", null));
+            number, null, null, period, null));
     }
 
     private sealed record ToolResult(long AsOfRevision, IReadOnlyList<CoachFact> Facts, IReadOnlyList<string> DataGaps);

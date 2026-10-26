@@ -20,8 +20,9 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
         Guid userId = CurrentUser();
         DateOnly from = through.AddDays(1 - days);
         DateOnly sevenDayFrom = through.AddDays(-6);
-        DateTime workoutFromUtc = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        DateTime workoutThroughUtc = through.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        // Lokale Tagesgrenzen des Nutzers, wie bei den Check-ins und der Ernährung.
+        DateTime workoutFromUtc = LocalMidnightToUtc(from, timeZone);
+        DateTime workoutThroughUtc = LocalMidnightToUtc(through.AddDays(1), timeZone);
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.RepeatableRead, cancellationToken);
         long revision = await CurrentRevisionAsync(cancellationToken);
@@ -71,7 +72,8 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             weight,
             nutrition,
             training,
-            workouts.Count(item => DateOnly.FromDateTime(item.EndedAtUtc!.Value) >= sevenDayFrom));
+            workouts.Count(item => DateOnly.FromDateTime(
+                TimeZoneInfo.ConvertTimeFromUtc(item.EndedAtUtc!.Value, timeZone)) >= sevenDayFrom));
     }
 
     public async Task<ExerciseProgressSnapshot> ExerciseProgressAsync(
@@ -87,11 +89,8 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
         Guid userId = CurrentUser();
         DateOnly localThrough = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(throughUtc, timeZone));
         DateOnly? localFrom = windowDays is { } days ? localThrough.AddDays(1 - days) : null;
-        DateTime fromUtc = localFrom is { } from
-            ? TimeZoneInfo.ConvertTimeToUtc(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), timeZone)
-            : DateTime.UnixEpoch;
-        DateTime endExclusiveUtc = TimeZoneInfo.ConvertTimeToUtc(
-            localThrough.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), timeZone);
+        DateTime fromUtc = localFrom is { } from ? LocalMidnightToUtc(from, timeZone) : DateTime.UnixEpoch;
+        DateTime endExclusiveUtc = LocalMidnightToUtc(localThrough.AddDays(1), timeZone);
 
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.RepeatableRead, cancellationToken);
@@ -132,6 +131,14 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             points,
             TrainingStatistics.BestOf(window.Select(item => item.Best)),
             history.Records());
+    }
+
+    /// <summary>Beginn des lokalen Tages in UTC; fällt Mitternacht in eine Zeitumstellungslücke, gilt die erste gültige Zeit danach.</summary>
+    private static DateTime LocalMidnightToUtc(DateOnly date, TimeZoneInfo timeZone)
+    {
+        DateTime local = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        while (timeZone.IsInvalidTime(local)) local = local.AddMinutes(30);
+        return TimeZoneInfo.ConvertTimeToUtc(local, timeZone);
     }
 
     private Guid CurrentUser() =>

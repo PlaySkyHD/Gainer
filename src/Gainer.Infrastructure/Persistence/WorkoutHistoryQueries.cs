@@ -23,8 +23,12 @@ public sealed class WorkoutHistoryQueries(AppDbContext context) : IWorkoutHistor
                 item.EndedAtUtc!.Value,
                 context.WorkoutSets.Count(set => set.WorkoutId == item.Id
                     && set.SetType != WorkoutSetType.Warmup
-                    && set.WeightKg != null
-                    && set.Repetitions > 0),
+                    && set.Repetitions >= 1
+                    // Wie TrainingStatistics.IsRecorded: nur Kraft- und Assisted-Übungen brauchen ein Gewicht.
+                    && (set.WeightKg != null || context.WorkoutExercises.Any(block =>
+                        block.Id == set.WorkoutExerciseId
+                        && block.ExerciseTypeSnapshot != ExerciseType.Strength
+                        && block.ExerciseTypeSnapshot != ExerciseType.Assisted))),
                 item.Version))
             .ToListAsync(cancellationToken);
     }

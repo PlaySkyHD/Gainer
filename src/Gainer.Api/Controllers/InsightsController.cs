@@ -22,7 +22,7 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
     {
         if (days is < 1 or > 365) return Validation("days", "Days must be between 1 and 365.");
         if (ResolveTimeZone(timeZone, out TimeZoneInfo zone) is { } error) return error;
-        DateOnly end = through ?? DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+        DateOnly end = through ?? DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(timeProvider.GetUtcNow().UtcDateTime, zone));
         return Ok(ToResponse(await queries.DashboardAsync(end, days, zone, cancellationToken)));
     }
 
