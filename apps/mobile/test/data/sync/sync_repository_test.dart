@@ -45,6 +45,7 @@ void main() {
   String? pullResourceId;
   Map<String, Object?>? pullSnapshot;
   bool pullTombstone = false;
+  bool pullWrongProtocol = false;
   late int pullVersion;
   late int handoverBeginStatus;
   late List<Map<String, dynamic>> handoverBeginRequests;
@@ -85,6 +86,7 @@ void main() {
     pullResourceId = null;
     pullSnapshot = null;
     pullTombstone = false;
+    pullWrongProtocol = false;
     pullVersion = 1;
     handoverBeginStatus = 200;
     handoverBeginRequests = [];
@@ -214,7 +216,16 @@ void main() {
           request.uri.queryParameters['protocolVersion']!,
         );
         request.response.headers.contentType = ContentType.json;
-        if (pullFailureCode != null) {
+        if (pullWrongProtocol) {
+          request.response.write(
+            jsonEncode({
+              'protocolVersion': protocol + 1,
+              'nextCursor': after,
+              'hasMore': false,
+              'batches': [],
+            }),
+          );
+        } else if (pullFailureCode != null) {
           request.response.statusCode = pullFailureStatus;
           request.response.write(
             jsonEncode({
@@ -1540,10 +1551,16 @@ void main() {
       .where((r) => r.uri.path.startsWith('/api/v1/sync/mutations/'))
       .length;
 
-  for (final status in [400, 403, 404, 413, 415]) {
-    test('a permanent $status push becomes a discardable conflict and is not '
-        'resent', () async {
-      mutationFailureCode = 'http_$status';
+  for (final (status, code) in [
+    (400, 'http_400'),
+    (413, 'request_too_large'),
+    (415, 'http_415'),
+    (403, 'plan_locked'),
+    (404, 'plan_missing'),
+  ]) {
+    test('a permanent $status $code push becomes a discardable conflict and '
+        'is not resent', () async {
+      mutationFailureCode = code;
       mutationFailureStatus = status;
       final (store, database, api, repository) = await fixture();
       await commitCheckInCreate(store);
@@ -1555,14 +1572,14 @@ void main() {
       expect(mutationRequestCount(), 1);
       final conflict =
           (await database.select(database.localConflicts).get()).single;
-      expect(conflict.code, 'http_$status');
+      expect(conflict.code, code);
       expect(
         jsonDecode(conflict.detailJson)[permanentRejectionDetailKey],
         isTrue,
       );
       final waiting = (await store.readOutbox()).single;
       expect(waiting.status, LocalMutationStatus.conflict);
-      expect(waiting.lastErrorCode, 'http_$status');
+      expect(waiting.lastErrorCode, code);
       final info = (await store.readConflictResourceInfos())[mutationId]!;
       expect(info.permanentRejection, isTrue);
       expect(info.discardsLocal, isTrue);
@@ -1571,9 +1588,47 @@ void main() {
     });
   }
 
-  for (final status in [408, 429]) {
-    test('a $status push stays a retry without a conflict', () async {
-      mutationFailureCode = 'http_$status';
+  test('a 400 validation_failed keeps the field errors like a 422', () async {
+    mutationFailureCode = 'validation_failed';
+    mutationFailureStatus = 400;
+    mutationFailureErrors = {
+      'localDate': ['The localDate field is required.'],
+    };
+    final (store, database, api, repository) = await fixture();
+    await commitCheckInCreate(store);
+
+    await repository.synchronize(now: DateTime.utc(2026, 10, 12));
+
+    final conflict =
+        (await database.select(database.localConflicts).get()).single;
+    expect(conflict.code, 'validation_failed');
+    final detail = jsonDecode(conflict.detailJson) as Map<String, dynamic>;
+    expect(detail['errors'], {
+      'localDate': ['The localDate field is required.'],
+    });
+    expect(detail[permanentRejectionDetailKey], isNull);
+    expect(
+      (await store.readOutbox()).single.status,
+      LocalMutationStatus.conflict,
+    );
+    api.close();
+    await database.close();
+  });
+
+  // Generische Codes kommen von Proxy, WAF, Routing oder einem älteren
+  // Server beim Deploy; die wartende Änderung darf nicht verloren gehen.
+  for (final (status, code) in [
+    (408, 'http_408'),
+    (423, 'http_423'),
+    (425, 'http_425'),
+    (429, 'http_429'),
+    (403, 'forbidden'),
+    (403, 'http_403'),
+    (404, 'resource_not_found'),
+    (404, 'http_404'),
+  ]) {
+    test('a $status $code push stays a retry without a conflict', () async {
+      mutationFailureCode = code;
       mutationFailureStatus = status;
       final (store, database, api, repository) = await fixture();
       await commitCheckInCreate(store);
@@ -1635,6 +1690,22 @@ void main() {
     await database.close();
   });
 
+  test('an invalid pull response after an inactive_client push keeps the '
+      'inactive report', () async {
+    mutationFailureCode = 'inactive_client';
+    mutationFailureStatus = 409;
+    pullWrongProtocol = true;
+    final (store, database, api, repository) = await fixture();
+    await commitCheckInCreate(store);
+
+    final report = await repository.synchronize();
+
+    expect(report.state, SyncRunState.inactiveClient);
+    expect(report.pulledBatches, 0);
+    api.close();
+    await database.close();
+  });
+
   test('a pull asking for an update after an upgrade_required push reports '
       'the update', () async {
     mutationFailureCode = 'upgrade_required';
@@ -1681,12 +1752,15 @@ void main() {
 
     final takeOver = repository.synchronize(takeOverWriting: true);
     final repeatedTap = repository.synchronize(takeOverWriting: true);
+    // Ein Lauf, der direkt nach dem ersten startet, sieht schon die Übernahme.
+    final follower = background.then((_) => repository.synchronize());
     gate.complete();
 
     expect((await background).state, SyncRunState.inactiveClient);
     final report = await takeOver;
     expect(report.state, isNot(SyncRunState.inactiveClient));
     expect(identical(await repeatedTap, report), isTrue);
+    expect(identical(await follower, report), isTrue);
     expect(registrationRequests.map((r) => r['takeOverWriting']), [
       false,
       true,

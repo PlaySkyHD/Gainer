@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 import '../../../domain/models/training/unknown_wire_value_exception.dart';
 import '../../models/api/sync_api_models.dart';
@@ -121,9 +123,8 @@ class SyncRepository implements MobileSyncActions {
   final InstallationIdentityStore installationIdentity;
   final String displayName;
   final PendingHandoverSecretStore? handoverSecrets;
-  Future<SyncRunReport>? _activeSync;
-  bool _activeSyncTakesOver = false;
-  Future<SyncRunReport>? _queuedTakeOver;
+  ({Future<SyncRunReport> run, bool takesOver})? _activeSync;
+  ({Completer<SyncRunReport> report, DateTime? now})? _queuedTakeOver;
   final String _leaseOwnerId = _newLeaseOwnerId();
 
   late final NativeHandoverRepository _handover = NativeHandoverRepository(
@@ -208,33 +209,37 @@ class SyncRepository implements MobileSyncActions {
   }) {
     final active = _activeSync;
     if (active != null) {
-      if (!takeOverWriting || _activeSyncTakesOver) return active;
+      if (!takeOverWriting || active.takesOver) return active.run;
       // Ein Lauf ohne Übernahme beantwortet die Bitte nicht: Die Übernahme
       // folgt direkt nach ihm, und der Aufrufer erhält ihren Bericht.
-      return _queuedTakeOver ??= _takeOverAfter(active, now);
+      final queued = _queuedTakeOver ??= (
+        report: Completer<SyncRunReport>(),
+        now: now,
+      );
+      return queued.report.future;
     }
+    return _startRun(takeOverWriting: takeOverWriting, now: now);
+  }
+
+  Future<SyncRunReport> _startRun({
+    required bool takeOverWriting,
+    DateTime? now,
+  }) {
     final run = _synchronizeWithLease(
       takeOverWriting: takeOverWriting,
       now: now,
     );
-    _activeSync = run;
-    _activeSyncTakesOver = takeOverWriting;
+    _activeSync = (run: run, takesOver: takeOverWriting);
     return run.whenComplete(() {
-      if (identical(_activeSync, run)) _activeSync = null;
+      if (!identical(_activeSync?.run, run)) return;
+      _activeSync = null;
+      final queued = _queuedTakeOver;
+      if (queued == null) return;
+      // Synchron starten: Kein anderer Lauf kann sich dazwischenschieben,
+      // auch wenn der vorige Lauf mit einem Fehler endete.
+      _queuedTakeOver = null;
+      queued.report.complete(_startRun(takeOverWriting: true, now: queued.now));
     });
-  }
-
-  Future<SyncRunReport> _takeOverAfter(
-    Future<SyncRunReport> active,
-    DateTime? now,
-  ) async {
-    try {
-      await active;
-    } on Object {
-      // Der Fehler gehört dem ersten Aufrufer; die Übernahme läuft trotzdem.
-    }
-    _queuedTakeOver = null;
-    return synchronize(takeOverWriting: true, now: now);
   }
 
   Future<SyncRunReport> _synchronizeWithLease({
@@ -348,9 +353,9 @@ class SyncRepository implements MobileSyncActions {
           return _stopAfterPush(stopState, pushed);
         }
       }
-      final pull = await _pullOrStop(pushed: pushed, pulledBefore: pulled);
-      if (pull.stop case final stop?) return stop;
-      pulled += pull.pulled;
+      final stop = await _pullOrStop(pushed: pushed, pulledBefore: pulled);
+      if (stop != null) return stop;
+      pulled += _appliedInPull;
       if (!registration.isActiveWriter || await _healStaleConflicts() == 0) {
         break;
       }
@@ -371,13 +376,15 @@ class SyncRepository implements MobileSyncActions {
 
   /// Pull mit der Fehlerbehandlung, die jeder Aufrufer braucht. Liefert bei
   /// Abmeldung, Kontowechsel oder nötigem Update einen Abbruchbericht;
-  /// andere [ApiException]s gibt sie weiter.
-  Future<({int pulled, SyncRunReport? stop})> _pullOrStop({
+  /// andere [ApiException]s gibt sie weiter. Ohne Abbruch steht die Zahl der
+  /// angewendeten Batches in [_appliedInPull].
+  Future<SyncRunReport?> _pullOrStop({
     required int pushed,
     required int pulledBefore,
   }) async {
     try {
-      return (pulled: await _pullAll(), stop: null);
+      await _pullAll();
+      return null;
     } on ApiException catch (error) {
       final blocked = await _pullFailureReport(
         error,
@@ -385,17 +392,11 @@ class SyncRepository implements MobileSyncActions {
         pulledBefore + _appliedInPull,
       );
       if (blocked == null) rethrow;
-      return (pulled: _appliedInPull, stop: blocked);
+      return blocked;
     } on UnsupportedSyncResourceException {
-      return (
-        pulled: _appliedInPull,
-        stop: _upgradeRequiredDuringPull(pushed, pulledBefore),
-      );
+      return _upgradeRequiredDuringPull(pushed, pulledBefore);
     } on UnreadableSyncSnapshotException {
-      return (
-        pulled: _appliedInPull,
-        stop: _upgradeRequiredDuringPull(pushed, pulledBefore),
-      );
+      return _upgradeRequiredDuringPull(pushed, pulledBefore);
     }
   }
 
@@ -551,16 +552,22 @@ class SyncRepository implements MobileSyncActions {
       return SyncRunReport(state: state, pushed: pushed, pulledBatches: 0);
     }
     try {
-      final pull = await _pullOrStop(pushed: pushed, pulledBefore: 0);
-      return pull.stop ??
+      return await _pullOrStop(pushed: pushed, pulledBefore: 0) ??
           SyncRunReport(
             state: state,
             pushed: pushed,
-            pulledBatches: pull.pulled,
+            pulledBatches: _appliedInPull,
           );
-    } on ApiException {
-      // Der Push hat den Lauf schon beendet; ein sonstiger Pull-Fehler darf
-      // dessen Bericht nicht verdrängen.
+    } on Object catch (error) {
+      // Der Push hat den Lauf schon beendet; ein sonstiger Pull-Fehler
+      // (Netz, ungültige Antwort, verlorene Lease) darf dessen Bericht nicht
+      // verdrängen. Geloggt wird nur die Art des Fehlers, keine Daten.
+      if (kDebugMode) {
+        final code = error is ApiException ? ' ${error.code}' : '';
+        debugPrint(
+          'Sync: pull after push stop failed: ${error.runtimeType}$code',
+        );
+      }
       return SyncRunReport(
         state: state,
         pushed: pushed,
@@ -1396,7 +1403,9 @@ class SyncRepository implements MobileSyncActions {
       );
       return SyncRunState.upgradeRequired;
     }
-    if ((error.statusCode == 409 || error.statusCode == 422) &&
+    // Fachliche Ablehnungen (auch ein 404 mit fachlichem Code) versuchen
+    // zuerst die Selbstheilung, bevor ein Konflikt entsteht.
+    if ((error.statusCode == 409 || _isPermanentRejection(error)) &&
         _healableCodes.contains(error.code) &&
         await _tryAutoHeal(mutation, error)) {
       return null;
@@ -1442,9 +1451,11 @@ class SyncRepository implements MobileSyncActions {
       );
       return null;
     }
-    if (error.statusCode == 422 && error.code == 'validation_failed') {
+    if ((error.statusCode == 422 || error.statusCode == 400) &&
+        error.code == 'validation_failed') {
       // Field errors cannot be fixed by resending the same payload, so they
       // stay visible as a conflict on the aggregate until the user decides.
+      // A 400 comes from model binding before the sync handler runs.
       await store.upsertConflict(
         LocalConflictRecord(
           conflictId: mutation.mutationId,
@@ -1468,10 +1479,10 @@ class SyncRepository implements MobileSyncActions {
       );
       return null;
     }
-    if (_isPermanentRejection(error.statusCode)) {
-      // Dauerhafte Ablehnung (z. B. 422 `invalid_payload`, 400, 403, 404,
-      // 413, 415): Dieselben Daten scheitern erneut. Ohne Konflikt blockierte
-      // der Eintrag seine Ressource still und dauerhaft, mit Backoff ohne Ende.
+    if (_isPermanentRejection(error)) {
+      // Dauerhafte Ablehnung (z. B. 422 `invalid_payload`, 400, 413, 415):
+      // Dieselben Daten scheitern erneut. Ohne Konflikt blockierte der Eintrag
+      // seine Ressource still und dauerhaft, mit Backoff ohne Ende.
       await store.upsertConflict(
         LocalConflictRecord(
           conflictId: mutation.mutationId,
@@ -1499,14 +1510,26 @@ class SyncRepository implements MobileSyncActions {
     return null;
   }
 
-  /// 4xx außer 408 (Timeout) und 429 (Rate Limit) wiederholen sich mit
-  /// denselben Daten. 401 und 409 behandelt [_handlePushError] vorher.
-  static bool _isPermanentRejection(int? statusCode) =>
-      statusCode != null &&
-      statusCode >= 400 &&
-      statusCode < 500 &&
-      statusCode != 408 &&
-      statusCode != 429;
+  /// Ablehnungen, die sich mit denselben Daten wiederholen: 422, 400, 413 und
+  /// 415 sowie 403/404 mit fachlichem Code. Ein 403/404 mit generischem Code
+  /// stammt von Proxy, WAF, Routing oder einem älteren Server beim Deploy und
+  /// bleibt wiederholbar, ebenso 408, 423, 425 und 429. Der Sync-Endpunkt
+  /// meldet fehlende Ressourcen als 409 `resource_conflict`.
+  static bool _isPermanentRejection(ApiException error) =>
+      switch (error.statusCode) {
+        400 || 413 || 415 || 422 => true,
+        403 || 404 => !_genericRejectionCodes.contains(error.code),
+        _ => false,
+      };
+
+  /// Codes, die `ProblemDetailsConfiguration` oder [ApiClient] für jede
+  /// Antwort ohne fachlichen Code setzen.
+  static const _genericRejectionCodes = {
+    'forbidden',
+    'resource_not_found',
+    'http_403',
+    'http_404',
+  };
 
   Future<void> _scheduleRetry(
     LocalMutation mutation,

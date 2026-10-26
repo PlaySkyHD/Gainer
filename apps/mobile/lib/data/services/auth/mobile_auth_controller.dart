@@ -724,7 +724,7 @@ class AccountScope {
   final CoachViewModel coachViewModel;
   final NativeFeatureLifecycleCoordinator nativeLifecycle;
   final TrainingLiveActivityCoordinator trainingLiveActivity;
-  Future<SyncRunReport>? _syncInFlight;
+  ({Future<SyncRunReport> run, bool takesOver})? _syncInFlight;
   late final StreamSubscription<LocalMutation> _localCommitSubscription;
   late final SyncStatusTracker _syncStatusTracker;
 
@@ -761,11 +761,15 @@ class AccountScope {
     }
     syncScheduler.allow();
     final active = _syncInFlight;
-    if (active != null) return active;
+    // Eine Übernahme darf nicht im Lauf ohne Übernahme aufgehen: Das
+    // Repository hängt sie an diesen an und liefert ihren eigenen Bericht.
+    if (active != null && (!takeOverWriting || active.takesOver)) {
+      return active.run;
+    }
     final run = _synchronizeAndRefresh(takeOverWriting: takeOverWriting);
-    _syncInFlight = run;
+    _syncInFlight = (run: run, takesOver: takeOverWriting);
     return run.whenComplete(() {
-      if (identical(_syncInFlight, run)) _syncInFlight = null;
+      if (identical(_syncInFlight?.run, run)) _syncInFlight = null;
     });
   }
 
@@ -800,7 +804,8 @@ class AccountScope {
     cardioSession.dispose();
     activeWorkout.dispose();
     await syncScheduler.dispose();
-    final syncRun = _syncInFlight;
+    // Eine angehängte Übernahme wartet selbst auf den Lauf davor.
+    final syncRun = _syncInFlight?.run;
     if (syncRun != null) {
       try {
         await syncRun;
