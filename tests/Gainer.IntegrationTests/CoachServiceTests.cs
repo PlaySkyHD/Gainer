@@ -293,6 +293,8 @@ public sealed class CoachServiceTests
     }
 
     [TestMethod]
+    [DataRow("""[]""")]
+    [DataRow(""" "text" """)]
     [DataRow("""{"output":[{"type":7}]}""")]
     [DataRow("""{"output":["text"]}""")]
     [DataRow("""{"output":[{"type":"message","content":[{"type":"output_text","text":5}]}]}""")]
@@ -301,6 +303,24 @@ public sealed class CoachServiceTests
     {
         await Assert.ThrowsAsync<CoachResponseValidationException>(() => Service(new FakeProvider(
             JsonDocument.Parse(response).RootElement.Clone())).AnswerAsync("Fortschritt?"));
+    }
+
+    [TestMethod]
+    [DataRow("""{"summary":"S","observations":null,"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[],"dataGaps":null,"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[],"dataGaps":[],"suggestions":null}""")]
+    [DataRow("""{"summary":"S","observations":[],"dataGaps":[]}""")]
+    [DataRow("""{"summary":null,"observations":[],"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[null],"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[{"text":null,"factIds":[]}],"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[{"text":"x","factIds":null}],"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[{"text":"x","factIds":[null]}],"dataGaps":[],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[],"dataGaps":[null],"suggestions":[]}""")]
+    [DataRow("""{"summary":"S","observations":[],"dataGaps":[],"suggestions":[null]}""")]
+    public async Task ModelAnswersWithNullMembersFailAsValidationErrors(string answer)
+    {
+        await Assert.ThrowsAsync<CoachResponseValidationException>(() =>
+            Service(new FakeProvider(Response(Message(answer)))).AnswerAsync("Fortschritt?"));
     }
 
     [TestMethod]

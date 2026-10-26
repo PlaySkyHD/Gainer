@@ -31,7 +31,7 @@ internal static class OpenAiOutputText
         throw new JsonException("The response contains no output text.");
     }
 
-    private static bool IsType(JsonElement item, string type) =>
+    internal static bool IsType(JsonElement item, string type) =>
         item.ValueKind == JsonValueKind.Object &&
         item.TryGetProperty("type", out JsonElement value) &&
         value.ValueKind == JsonValueKind.String &&

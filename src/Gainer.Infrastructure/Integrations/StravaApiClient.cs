@@ -214,7 +214,7 @@ public sealed partial class StravaApiClient(
         string? name = token.Athlete is { } athlete
             ? string.Join(' ', new[] { athlete.FirstName, athlete.LastName }.Where(part => !string.IsNullOrWhiteSpace(part))).Trim()
             : null;
-        if (token.ExpiresAt is < 0 or > 253402300799)
+        if (token.ExpiresAt is <= 0 or > 253402300799)
         {
             throw new StravaApiException(StravaFailure.Transient, "Strava returned an invalid token expiry.");
         }
@@ -280,7 +280,7 @@ public sealed partial class StravaApiClient(
             string? error = string.IsNullOrWhiteSpace(upload.Error) ? null : upload.Error;
             return new StravaUploadState(upload.Id, upload.ActivityId, error, ParseDuplicateActivityId(error));
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {
             return null;
         }

@@ -89,6 +89,17 @@ public sealed class NutritionLabelScannerTests
     }
 
     [TestMethod]
+    [DataRow("""{"isNutritionLabel":true,"basis":null,"servingMassGrams":null,"kilocalories":null,"kilojoules":null,"proteinGrams":null,"carbohydrateGrams":null,"fatGrams":null}""")]
+    [DataRow("""{"isNutritionLabel":true,"servingMassGrams":null,"kilocalories":null,"kilojoules":null,"proteinGrams":null,"carbohydrateGrams":null,"fatGrams":null}""")]
+    public async Task LabelPayloadsWithNullOrMissingRequiredMembersMapToInvalidProviderResponse(string payload)
+    {
+        OpenAiNutritionLabelScanner scanner = Scanner(new FakeProvider(Response(JsonDocument.Parse(payload).RootElement)));
+        MealEstimationException error = await Assert.ThrowsAsync<MealEstimationException>(() =>
+            scanner.ScanAsync(new MealImageInput([1], "image/jpeg")));
+        Assert.AreEqual("invalid_provider_response", error.Code);
+    }
+
+    [TestMethod]
     public void ServingValuesAreConvertedWithServingMassAndOtherwiseLeftOpen()
     {
         NutritionLabelScanDraft withMass = Create(NutritionLabelBasis.PerServing, 30m, kcal: 120m, protein: 3m, carbs: 18m, fat: 4m);

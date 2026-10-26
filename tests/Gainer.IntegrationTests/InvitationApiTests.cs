@@ -95,12 +95,25 @@ public sealed class InvitationApiTests
     }
 
     [TestMethod]
-    public void AnonymousAcceptEndpointHasTheAuthenticationRateLimit()
+    public async Task AnonymousAcceptEndpointIsRateLimitedWithoutSharingTheLoginBudget()
     {
-        var limit = (Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute)typeof(Gainer.Api.Controllers.InvitationAcceptanceController)
-            .GetMethod(nameof(Gainer.Api.Controllers.InvitationAcceptanceController.Accept))!
-            .GetCustomAttributes(typeof(Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute), inherit: true).Single();
-        Assert.AreEqual(ApiConstants.AuthenticationRateLimitPolicy, limit.PolicyName);
+        await using TestApplication test = await CreateApplicationAsync();
+        using HttpClient client = CreateClient(test.App);
+        var anonymousAuth = new TestSession();
+
+        for (int attempt = 0; attempt < 30; attempt++)
+        {
+            using HttpResponseMessage rejected = await AcceptInvalidAsync(client, anonymousAuth, "unknown-token");
+            Assert.AreEqual(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+
+        using HttpResponseMessage limited = await AcceptInvalidAsync(client, anonymousAuth, "unknown-token");
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+
+        // The sign-in budget is a separate partition, so accept attempts cannot lock out login.
+        using HttpResponseMessage login = await SendMutationAsync(
+            client, anonymousAuth, "/api/v1/auth/login", new { email = "nobody@example.test", password = "wrong-password-42!" });
+        Assert.AreNotEqual(HttpStatusCode.TooManyRequests, login.StatusCode);
     }
 
     [TestMethod]

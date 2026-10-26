@@ -195,7 +195,10 @@ public sealed class OpenAiMealEstimator(
         string json = OpenAiOutputText.Read(response);
         ProviderEstimate payload = JsonSerializer.Deserialize<ProviderEstimate>(json, JsonOptions)
             ?? throw new JsonException("The estimate payload is missing.");
-        MealEstimateComponentDraft[] components = (payload.Components ?? throw new JsonException("The estimate has no components.")).Select(item =>
+        // The serializer checks members but not the elements of lists.
+        if (payload.Components.Any(item => item is null || item.DataGaps.Any(gap => gap is null)))
+            throw new JsonException("The estimate contains a null element.");
+        MealEstimateComponentDraft[] components = payload.Components.Select(item =>
             MealEstimateComponentDraft.Create(
                 item.Name,
                 item.AmountGrams,
@@ -231,7 +234,11 @@ public sealed class OpenAiMealEstimator(
             ? confidence
             : throw new JsonException("The estimate confidence is invalid.");
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        RespectNullableAnnotations = true,
+        RespectRequiredConstructorParameters = true,
+    };
     private const string NumberType = "number";
     private static readonly string[] NullableNumberType = [NumberType, "null"];
     private static readonly object NullableNumberSchema = new

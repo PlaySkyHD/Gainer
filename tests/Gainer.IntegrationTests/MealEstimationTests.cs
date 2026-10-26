@@ -69,10 +69,16 @@ public sealed class MealEstimationTests
     }
 
     [TestMethod]
-    public async Task NullComponentsMapToInvalidProviderResponse()
+    [DataRow("""{"components":null}""")]
+    [DataRow("""{"components":[null]}""")]
+    [DataRow("""{"components":[{"name":null,"amountGrams":100,"kilocalories":100,"proteinGrams":1,"carbohydrateGrams":1,"fatGrams":1,"confidence":"low","dataGaps":[]}]}""")]
+    [DataRow("""{"components":[{"name":"x","amountGrams":100,"kilocalories":100,"proteinGrams":1,"carbohydrateGrams":1,"fatGrams":1,"confidence":"low","dataGaps":null}]}""")]
+    [DataRow("""{"components":[{"name":"x","amountGrams":100,"kilocalories":100,"proteinGrams":1,"carbohydrateGrams":1,"fatGrams":1,"confidence":"low","dataGaps":[null]}]}""")]
+    [DataRow("""{"components":[{"name":"x","amountGrams":100,"kilocalories":100,"proteinGrams":1,"carbohydrateGrams":1,"fatGrams":1,"confidence":null,"dataGaps":[]}]}""")]
+    public async Task NullMembersMapToInvalidProviderResponse(string payload)
     {
         var estimator = new OpenAiMealEstimator(
-            new FakeProvider(Response(new { components = (object?)null })),
+            new FakeProvider(Response(JsonDocument.Parse(payload).RootElement)),
             new RejectingSanitizer(), new PassQuota(), new UserContext(Guid.NewGuid()), new FixedTimeProvider());
         MealEstimationException error = await Assert.ThrowsAsync<MealEstimationException>(() =>
             estimator.EstimateAsync(MealEstimationInput.Create("food", null, false)));

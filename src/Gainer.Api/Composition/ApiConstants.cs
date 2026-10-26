@@ -18,6 +18,9 @@ public static class ApiConstants
     /// <summary>Rate-limit policy for anonymous sign-in requests.</summary>
     public const string AuthenticationRateLimitPolicy = "authentication";
 
+    /// <summary>Rate-limit policy for accepting an invitation, separate so it shares no budget with sign-in.</summary>
+    public const string InvitationAcceptRateLimitPolicy = "invitation-accept";
+
     /// <summary>Rate-limit policy for token refresh, separate so a sign-in flood cannot end sessions.</summary>
     public const string TokenRefreshRateLimitPolicy = "token-refresh";
 

@@ -52,12 +52,27 @@ public sealed class StravaApiClientTests
     [DataRow("""{"access_token":"a","refresh_token":"r","expires_at":"soon"}""")]
     [DataRow("""{"access_token":1,"refresh_token":"r","expires_at":1893456000}""")]
     [DataRow("""{"access_token":"a","refresh_token":"r","expires_at":99999999999999}""")]
+    [DataRow("""{"access_token":"a","refresh_token":"r"}""")]
+    [DataRow("""{"access_token":"a","refresh_token":"r","expires_at":0}""")]
     [DataRow("""[1,2]""")]
     [DataRow("""not json""")]
     public async Task TokenResponsesWithUnexpectedStructureFailAsStravaErrors(string body)
     {
         StravaApiException error = await Assert.ThrowsExactlyAsync<StravaApiException>(() =>
             Client(new RecordingHandler(_ => Json(HttpStatusCode.OK, body))).RefreshAsync("r"));
+        Assert.AreEqual(StravaFailure.Transient, error.Failure);
+    }
+
+    [TestMethod]
+    public async Task UploadStatusWithAnUnsupportedMediaTypeFailsAsStravaError()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("<html/>", Encoding.UTF8, "text/html"),
+        });
+
+        StravaApiException error = await Assert.ThrowsExactlyAsync<StravaApiException>(() =>
+            Client(handler).GetUploadAsync("token", 9));
         Assert.AreEqual(StravaFailure.Transient, error.Failure);
     }
 

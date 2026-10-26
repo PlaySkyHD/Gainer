@@ -115,7 +115,11 @@ public sealed class OpenAiNutritionLabelScanner(
     private static NutritionLabelReading Reading(ProviderReading? value) =>
         value is null ? NutritionLabelReading.Empty : new NutritionLabelReading(value.Value, value.Evidence);
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        RespectNullableAnnotations = true,
+        RespectRequiredConstructorParameters = true,
+    };
     private static readonly object ReadingSchema = new
     {
         type = "object",
