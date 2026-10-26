@@ -1965,6 +1965,194 @@ void main() {
       await database.close();
     },
   );
+
+  for (final (label, status, code) in [
+    // Status codes as the API sends them (SyncHandoverService).
+    ('wrong code', 409, 'invalid_handover_code'),
+    ('wrong id', 404, 'handover_not_found'),
+    ('invalid request', 422, 'invalid_handover_request'),
+    ('same device as target', 409, 'invalid_handover_target'),
+  ]) {
+    test('definitive $label on complete releases freeze and record, '
+        'a corrected entry is then accepted', () async {
+      handoverCompleteStatus = status;
+      handoverCompleteFailureCode = code;
+      final secretStore = _MemoryPendingHandoverSecretStore();
+      final (store, database, api, repository) = await fixture(
+        handoverSecrets: secretStore,
+      );
+      Future<void> complete(String oneTimeCode) => repository
+          .completeHandover(
+            handoverId: 'f1234567-1234-4234-8234-123456789abc',
+            oneTimeCode: oneTimeCode,
+            frozenRevision: 1,
+            sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+            expiresAtUtc: DateTime.now().toUtc().add(
+              const Duration(minutes: 10),
+            ),
+          )
+          .then((_) {});
+
+      await expectLater(
+        complete('wrong-code'),
+        throwsA(
+          isA<ApiException>().having((e) => e.statusCode, 'status', status),
+        ),
+      );
+      expect(secretStore.value, isNull);
+      expect(await store.readSyncMetadata('local-writes-frozen'), isFalse);
+
+      handoverCompleteStatus = 200;
+      await complete('target-one-time-code');
+      expect(
+        handoverCompleteRequests.last['oneTimeCode'],
+        'target-one-time-code',
+      );
+      expect(secretStore.value, isNull);
+      expect(await store.readSyncMetadata('local-writes-frozen'), isFalse);
+      api.close();
+      await database.close();
+    });
+  }
+
+  test('a bare 400 without a handover code keeps record and freeze', () async {
+    handoverCompleteStatus = 400;
+    handoverCompleteFailureCode = 'bad_gateway_html';
+    final secretStore = _MemoryPendingHandoverSecretStore();
+    final (store, database, api, repository) = await fixture(
+      handoverSecrets: secretStore,
+    );
+    await expectLater(
+      repository.completeHandover(
+        handoverId: 'f1234567-1234-4234-8234-123456789abc',
+        oneTimeCode: 'target-one-time-code',
+        frozenRevision: 1,
+        sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+        expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      ),
+      throwsA(isA<ApiException>()),
+    );
+    expect(secretStore.value, isNotNull);
+    expect(await store.readSyncMetadata('local-writes-frozen'), isTrue);
+    api.close();
+    await database.close();
+  });
+
+  test(
+    'a rejection does not unfreeze a device that was already frozen',
+    () async {
+      handoverCompleteStatus = 409;
+      handoverCompleteFailureCode = 'invalid_handover_code';
+      final secretStore = _MemoryPendingHandoverSecretStore();
+      final (store, database, api, repository) = await fixture(
+        handoverSecrets: secretStore,
+      );
+      await store.freezeWritesIfOutboxEmpty();
+      await expectLater(
+        repository.completeHandover(
+          handoverId: 'f1234567-1234-4234-8234-123456789abc',
+          oneTimeCode: 'wrong-code',
+          frozenRevision: 1,
+          sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+        ),
+        throwsA(isA<ApiException>()),
+      );
+      expect(secretStore.value, isNull);
+      expect(await store.readSyncMetadata('local-writes-frozen'), isTrue);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test(
+    'a legacy record with a far-future expiry can still be recovered',
+    () async {
+      handoverCompleteStatus = 409;
+      handoverCompleteFailureCode = 'handover_expired';
+      activeWriter = false;
+      final secretStore = _MemoryPendingHandoverSecretStore();
+      final (store, database, api, repository) = await fixture(
+        handoverSecrets: secretStore,
+      );
+      secretStore.value = PendingHandoverRecord(
+        apiOrigin: api.configuration.canonicalApiOrigin,
+        accountId: accountId,
+        requestId: 'f1234567-1234-4234-8234-123456789abc',
+        sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+        targetClientId: clientId,
+        handoverId: 'f1234567-1234-4234-8234-123456789abc',
+        phase: 'targetCompletePending',
+        frozenRevision: 1,
+        expiresAtUtc: DateTime.now().toUtc().add(const Duration(days: 3650)),
+        oneTimeCode: 'target-one-time-code',
+      ).encode();
+      await store.freezeWritesIfOutboxEmpty();
+
+      expect(await repository.recoverExpiredTargetHandover(), isFalse);
+      expect(secretStore.value, isNull);
+      api.close();
+      await database.close();
+    },
+  );
+
+  test('transient completion failure keeps the record but caps a far-future '
+      'expiry to the server lifetime', () async {
+    handoverCompleteStatus = 503;
+    handoverCompleteFailureCode = 'temporary_unavailable';
+    final secretStore = _MemoryPendingHandoverSecretStore();
+    final (store, database, api, repository) = await fixture(
+      handoverSecrets: secretStore,
+    );
+    await expectLater(
+      repository.completeHandover(
+        handoverId: 'f1234567-1234-4234-8234-123456789abc',
+        oneTimeCode: 'target-one-time-code',
+        frozenRevision: 1,
+        sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+        expiresAtUtc: DateTime.now().toUtc().add(const Duration(days: 3650)),
+      ),
+      throwsA(isA<ApiException>()),
+    );
+    expect(await store.readSyncMetadata('local-writes-frozen'), isTrue);
+    final stored = PendingHandoverRecord.decode(secretStore.value!);
+    expect(
+      stored.expiresAtUtc!.isBefore(
+        DateTime.now().toUtc().add(const Duration(minutes: 16)),
+      ),
+      isTrue,
+    );
+    api.close();
+    await database.close();
+  });
+
+  test('recovery treats 404 handover_not_found as terminal', () async {
+    handoverCompleteStatus = 404;
+    handoverCompleteFailureCode = 'handover_not_found';
+    activeWriter = false;
+    final secretStore = _MemoryPendingHandoverSecretStore();
+    final (store, database, api, repository) = await fixture(
+      handoverSecrets: secretStore,
+    );
+    secretStore.value = PendingHandoverRecord(
+      apiOrigin: api.configuration.canonicalApiOrigin,
+      accountId: accountId,
+      requestId: 'f1234567-1234-4234-8234-123456789abc',
+      sourceClientId: 'e1234567-1234-4234-8234-123456789abc',
+      targetClientId: clientId,
+      handoverId: 'f1234567-1234-4234-8234-123456789abc',
+      phase: 'targetCompletePending',
+      frozenRevision: 1,
+      expiresAtUtc: DateTime.now().toUtc().subtract(const Duration(minutes: 1)),
+      oneTimeCode: 'target-one-time-code',
+    ).encode();
+    await store.freezeWritesIfOutboxEmpty();
+
+    expect(await repository.recoverExpiredTargetHandover(), isFalse);
+    expect(secretStore.value, isNull);
+    api.close();
+    await database.close();
+  });
 }
 
 Future<String> _readBody(HttpRequest request) async =>
