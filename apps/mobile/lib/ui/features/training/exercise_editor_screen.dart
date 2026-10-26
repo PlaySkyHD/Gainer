@@ -481,7 +481,9 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                 key: const ValueKey('exercise-save'),
                 label: 'Speichern',
                 isLoading: _viewModel.isSaving,
-                onPressed: _viewModel.isSaving ? null : _save,
+                onPressed: _viewModel.isSaving || !_viewModel.canSave
+                    ? null
+                    : _save,
               ),
           ],
           children: [
@@ -501,6 +503,16 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     final errors = _viewModel.fieldErrors;
     return [
       if (_viewModel.errorMessage != null) _ErrorText(_viewModel.errorMessage!),
+      if (_viewModel.loadFailed && !_viewModel.isNew)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: CupertinoButton(
+            key: const ValueKey('exercise-reload'),
+            padding: EdgeInsets.zero,
+            onPressed: _viewModel.isLoading ? null : _viewModel.load,
+            child: const Text('Erneut laden'),
+          ),
+        ),
       _Section(
         header: 'Name',
         child: _textField(

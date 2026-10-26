@@ -290,6 +290,47 @@ void main() {
       expect(days, ['2026-10-22']);
     });
 
+    testWidgets('a failed day kind change is reported to the user', (
+      tester,
+    ) async {
+      usePhoneSize(tester);
+      final harness = await createCalendarHarness(tester);
+      await tester.runAsync(() async {
+        await harness.target(
+          from: '2026-10-01',
+          rest: const NutritionDayTarget(
+            inputMode: NutritionTargetInputMode.grams,
+            kilocalories: 2200,
+            proteinGrams: 180,
+            carbohydrateGrams: 190,
+            fatGrams: 80,
+          ),
+        );
+        await harness.food(LocalDay(2026, 10, 14), kcal: 2100, protein: 150);
+        await harness.nutrition.setDayKind(
+          '2026-10-14',
+          NutritionDayKind.training,
+        );
+      });
+      await pumpCalendar(tester, harness);
+      await tapDay(tester, LocalDay(2026, 10, 14));
+      final chip = find.byKey(const ValueKey('nutrition-day-kind-chip'));
+      await scrollIntoView(tester, chip);
+
+      // Eine geschlossene Datenbank lässt das Speichern scheitern.
+      await tester.runAsync(harness.training.database.close);
+      await tester.tap(chip);
+      await settle(tester);
+      await tester.tap(find.text('Automatisch (Ruhetag)'));
+      await settle(tester);
+
+      expect(
+        find.text('Die Tagesart konnte nicht gespeichert werden.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('a past day shows its day kind and it can be changed', (
       tester,
     ) async {

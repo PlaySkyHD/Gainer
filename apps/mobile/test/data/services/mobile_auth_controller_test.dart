@@ -164,6 +164,36 @@ void main() {
     }
   });
 
+  test('a rejected session closes the UI before the account scope', () async {
+    final controller = _controller(
+      secure: _MemorySecureSession(),
+      databases: <String, LocalDatabase>{},
+      apiFactory: _FakeApiFactory(),
+    );
+    try {
+      await controller.initialize();
+      await controller.login('a@example.test', 'password');
+      final scope = controller.account!;
+      var calls = 0;
+      var accountStillOpen = false;
+      controller.beforeAccountClose = () async {
+        calls++;
+        accountStillOpen =
+            identical(controller.account, scope) && scope.isSessionActive();
+      };
+
+      scope.api.onSessionRejected!();
+      await pumpEventQueue();
+
+      expect(calls, 1);
+      expect(accountStillOpen, isTrue);
+      expect(controller.account, isNull);
+    } finally {
+      await controller.logout();
+      controller.dispose();
+    }
+  });
+
   test(
     'a rejected device session signs out with a hint to sign in again',
     () async {

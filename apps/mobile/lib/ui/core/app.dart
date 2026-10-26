@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../data/services/auth/mobile_auth_controller.dart';
 import '../../data/services/platform/pigeon_native_route_dispatcher.dart';
 import '../features/access/auth_screen.dart';
+import 'navigation/close_root_routes.dart';
 import 'shell/mobile_shell.dart';
 import 'theme.dart';
 
@@ -22,6 +23,7 @@ class _GainerMobileAppState extends State<GainerMobileApp>
       WidgetsBinding.instance.platformDispatcher.platformBrightness;
   MobileAuthController? _auth;
   PigeonNativeRouteDispatcher? _routes;
+  final _rootRoutes = RootRouteCloser();
 
   @override
   void initState() {
@@ -30,6 +32,7 @@ class _GainerMobileAppState extends State<GainerMobileApp>
     final configuration = widget.configuration;
     if (configuration != null) {
       final auth = MobileAuthController(configuration: configuration);
+      auth.beforeAccountClose = _rootRoutes.closeAll;
       _auth = auth;
       _routes = PigeonNativeRouteDispatcher(consumer: auth);
       auth.initialize();
@@ -56,6 +59,7 @@ class _GainerMobileAppState extends State<GainerMobileApp>
   Widget build(BuildContext context) {
     return CupertinoApp(
       title: 'Gainer',
+      navigatorObservers: [_rootRoutes],
       theme: GainerTheme.forBrightness(_brightness),
       builder: (context, child) => GainerDesign(child: child!),
       supportedLocales: const [Locale('de')],

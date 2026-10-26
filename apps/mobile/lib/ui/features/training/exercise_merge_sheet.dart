@@ -18,6 +18,7 @@ Future<bool> showExerciseMergeSheet(
     repository: repository,
     allowSuperset: false,
     title: 'Zielübung wählen',
+    excludedExerciseId: source.id,
   );
   if (picked == null || picked.exercises.isEmpty || !context.mounted) {
     return false;

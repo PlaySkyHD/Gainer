@@ -214,14 +214,22 @@ class CardioPreferences {
     values.value = next;
   }
 
+  Future<void> _queue = Future.value();
+
   /// Liest, wendet [change] an und schreibt nur bei Änderung zurück.
+  /// Änderungen laufen nacheinander, damit zwei schnelle Eingaben nicht vom
+  /// selben alten Stand ausgehen und sich überschreiben.
   Future<CardioPreferenceValues> update(
     CardioPreferenceValues Function(CardioPreferenceValues current) change,
-  ) async {
-    final current = await read();
-    final next = change(current);
-    if (next != current) await write(next);
-    return next;
+  ) {
+    final result = _queue.then((_) async {
+      final current = await read();
+      final next = change(current);
+      if (next != current) await write(next);
+      return next;
+    });
+    _queue = result.then((_) {}, onError: (_) {});
+    return result;
   }
 
   static CardioPreferenceValues _decode(Object? raw) {

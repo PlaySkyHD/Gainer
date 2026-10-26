@@ -132,14 +132,21 @@ class TrainingPreferences {
     _publish(values);
   }
 
+  Future<void> _queue = Future.value();
+
   /// Liest die gespeicherten Werte, wendet [change] an und schreibt sie zurück.
-  /// So überschreibt keine Ansicht Werte, die eine andere geändert hat.
+  /// Änderungen laufen nacheinander: Zwei schnelle Eingaben gehen sonst vom
+  /// selben alten Stand aus, und die zweite verwirft die erste.
   Future<void> update(
     TrainingPreferenceValues Function(TrainingPreferenceValues current) change,
-  ) async {
-    final current = await read();
-    final next = change(current);
-    if (next != current) await write(next);
+  ) {
+    final result = _queue.then((_) async {
+      final current = await read();
+      final next = change(current);
+      if (next != current) await write(next);
+    });
+    _queue = result.then((_) {}, onError: (_) {});
+    return result;
   }
 
   void _publish(TrainingPreferenceValues values) {

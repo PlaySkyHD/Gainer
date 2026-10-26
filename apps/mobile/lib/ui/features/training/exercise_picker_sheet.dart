@@ -25,6 +25,7 @@ Future<ExercisePickerResult?> showExercisePicker(
   required TrainingLogRepository repository,
   bool allowSuperset = true,
   String title = 'Übung auswählen',
+  String? excludedExerciseId,
 }) {
   return showCupertinoModalPopup<ExercisePickerResult>(
     context: context,
@@ -33,6 +34,7 @@ Future<ExercisePickerResult?> showExercisePicker(
         repository: repository,
         allowSuperset: allowSuperset,
         title: title,
+        excludedExerciseId: excludedExerciseId,
       ),
     ),
   );
@@ -59,11 +61,15 @@ class _ExercisePickerSheet extends StatefulWidget {
     required this.repository,
     required this.allowSuperset,
     required this.title,
+    this.excludedExerciseId,
   });
 
   final TrainingLogRepository repository;
   final bool allowSuperset;
   final String title;
+
+  /// Übung, die nicht wählbar ist, z. B. die Quelle einer Zusammenführung.
+  final String? excludedExerciseId;
 
   @override
   State<_ExercisePickerSheet> createState() => _ExercisePickerSheetState();
@@ -96,7 +102,10 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
 
   Future<void> _load() async {
     try {
-      final exercises = await widget.repository.readExercises();
+      final exercises = [
+        for (final exercise in await widget.repository.readExercises())
+          if (exercise.id != widget.excludedExerciseId) exercise,
+      ];
       final categories = await widget.repository.readCategories();
       final recent = await _recentExercises(exercises);
       if (!mounted) return;

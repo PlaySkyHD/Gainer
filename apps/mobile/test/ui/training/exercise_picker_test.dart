@@ -22,6 +22,7 @@ void main() {
   Future<List<ExercisePickerResult?>> pumpPicker(
     WidgetTester tester, {
     bool allowSuperset = true,
+    String? excludedExerciseId,
   }) async {
     usePhoneSize(tester);
     final results = <ExercisePickerResult?>[];
@@ -35,6 +36,7 @@ void main() {
                   context,
                   repository: harness.repository,
                   allowSuperset: allowSuperset,
+                  excludedExerciseId: excludedExerciseId,
                 );
                 results.add(result);
               },
@@ -70,6 +72,19 @@ void main() {
     expect(pickerRow('Kniebeuge'), findsOneWidget);
     expect(pickerRow('Bulgarische Kniebeuge'), findsOneWidget);
     expect(pickerRow('Bankdrücken'), findsNothing);
+  });
+
+  testWidgets('ausgeschlossene Übung ist nicht wählbar', (tester) async {
+    final source = (await tester.runAsync(
+      () => seedExercise(harness, name: 'Kniebeuge LH'),
+    ))!;
+    await tester.runAsync(() => seedExercise(harness, name: 'Kniebeuge'));
+    await pumpPicker(tester, excludedExerciseId: source.id);
+
+    await search(tester, 'kniebeu');
+
+    expect(pickerRow('Kniebeuge'), findsOneWidget);
+    expect(pickerRow('Kniebeuge LH'), findsNothing);
   });
 
   testWidgets('Umlaut-Schreibweise findet Rücken und Ruecken gleichermaßen', (

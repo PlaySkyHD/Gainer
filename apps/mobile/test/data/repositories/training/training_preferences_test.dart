@@ -28,6 +28,23 @@ void main() {
     expect((await preferences.read()).liveActivityDetails, isFalse);
   });
 
+  test('zwei schnelle Änderungen verwerfen sich nicht gegenseitig', () async {
+    final database = LocalDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final preferences = TrainingPreferences(
+      store: LocalSyncStore(database: database, accountId: _accountA),
+    );
+
+    await Future.wait([
+      preferences.update((values) => values.copyWith(showRir: true)),
+      preferences.update((values) => values.copyWith(autoStartRestTimer: true)),
+    ]);
+
+    final stored = await preferences.read();
+    expect(stored.showRir, isTrue);
+    expect(stored.autoStartRestTimer, isTrue);
+  });
+
   test('ein gespeichertes Aus bleibt aus, auch mit neuem Standard', () async {
     final database = LocalDatabase(NativeDatabase.memory());
     addTearDown(database.close);

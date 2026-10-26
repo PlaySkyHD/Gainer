@@ -95,9 +95,12 @@ class _StravaScreenState extends State<StravaScreen> {
       exportCardio: cardio ?? previous.exportCardio,
       exportStrength: strength ?? previous.exportStrength,
     );
+    // Sperrt beide Schalter, bis die Antwort da ist. Sonst setzt ein
+    // fehlgeschlagener erster Request auch die Änderung des zweiten zurück.
     setState(() {
       _status = next;
       _error = null;
+      _busy = true;
     });
     try {
       final saved = await widget.service.updateSettings(
@@ -112,6 +115,8 @@ class _StravaScreenState extends State<StravaScreen> {
           _error = 'Die Einstellung konnte nicht gespeichert werden.';
         });
       }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
