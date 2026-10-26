@@ -24,6 +24,11 @@ public static class GainerApiExtensions
     /// <summary>Adds the API composition-root services.</summary>
     public static WebApplicationBuilder AddGainerApi(this WebApplicationBuilder builder)
     {
+        // The hosting diagnostics open a log scope with RequestPath for every request, and its
+        // "Request starting" and "Request finished" messages carry path and query. Paths hold barcodes
+        // and dates that belong to the user. CorrelationIdMiddleware logs the route template instead,
+        // so this category is switched off rather than rewritten.
+        builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.None);
         builder.WebHost.ConfigureKestrel(options =>
             options.Limits.MaxRequestBodySize = ApiConstants.MaximumRequestBodyBytes);
         builder.Services.Configure<FormOptions>(options =>

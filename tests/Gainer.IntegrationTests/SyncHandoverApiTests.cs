@@ -749,6 +749,11 @@ public sealed class SyncHandoverApiTests
     private static async Task<string?> ProblemCodeAsync(HttpResponseMessage response)
     {
         using JsonDocument problem = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        // Every problem carries the ids a support request needs.
+        Assert.AreEqual(
+            response.Headers.GetValues("X-Correlation-ID").Single(),
+            problem.RootElement.GetProperty("correlationId").GetString());
+        Assert.IsFalse(string.IsNullOrWhiteSpace(problem.RootElement.GetProperty("traceId").GetString()));
         return problem.RootElement.GetProperty("code").GetString();
     }
 

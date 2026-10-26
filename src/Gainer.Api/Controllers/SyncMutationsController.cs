@@ -28,7 +28,7 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         PushMutationRequest request,
         CancellationToken cancellationToken)
     {
-        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext, request.ProtocolVersion) is { } identityProblem)
+        if (SyncAccountIdentityGuard.Validate(HttpContext, userContext, request.ProtocolVersion) is { } identityProblem)
             return identityProblem;
 
         if (mutationId == Guid.Empty)
@@ -120,8 +120,8 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         }
     }
 
-    private static ObjectResult SyncProblem(int status, string code, string title) =>
-        SyncProblemResults.Create(status, code, title);
+    private ObjectResult SyncProblem(int status, string code, string title) =>
+        SyncProblemResults.Create(HttpContext, status, code, title);
 
     private ObjectResult SyncValidationProblem(string title, IReadOnlyDictionary<string, string> errors)
     {

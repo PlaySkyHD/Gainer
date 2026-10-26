@@ -251,6 +251,10 @@ public sealed class InvitationApiTests
         using JsonDocument problem = JsonDocument.Parse(await self.Content.ReadAsStringAsync());
         Assert.AreEqual(HttpStatusCode.Conflict, self.StatusCode);
         Assert.AreEqual("operator_self_deactivation", problem.RootElement.GetProperty("code").GetString());
+        Assert.AreEqual(
+            self.Headers.GetValues("X-Correlation-Id").Single(),
+            problem.RootElement.GetProperty("correlationId").GetString());
+        Assert.IsFalse(string.IsNullOrWhiteSpace(problem.RootElement.GetProperty("traceId").GetString()));
 
         // The operator stays active and can keep using the session.
         using HttpResponseMessage session = await SendGetAsync(client, operatorAuth, "/api/v1/auth/session");

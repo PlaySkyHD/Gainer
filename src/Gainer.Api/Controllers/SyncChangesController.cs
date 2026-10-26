@@ -25,7 +25,7 @@ public sealed class SyncChangesController(ISyncChangeFeed feed, IUserContext use
         [FromQuery] int? protocolVersion = null,
         CancellationToken cancellationToken = default)
     {
-        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext, protocolVersion) is { } identityProblem)
+        if (SyncAccountIdentityGuard.Validate(HttpContext, userContext, protocolVersion) is { } identityProblem)
             return identityProblem;
 
         if (after < 0 || limit is < 1 or > SyncProtocol.MaximumBatchesPerPull)
@@ -61,9 +61,9 @@ public sealed class SyncChangesController(ISyncChangeFeed feed, IUserContext use
                     change.Snapshot)).ToList())).ToList()));
     }
 
-    private static ObjectResult UpgradeRequired()
+    private ObjectResult UpgradeRequired()
     {
         var upgrade = new SyncUpgradeRequiredException();
-        return SyncProblemResults.Create(StatusCodes.Status409Conflict, upgrade.Code, upgrade.Message);
+        return SyncProblemResults.Create(HttpContext, StatusCodes.Status409Conflict, upgrade.Code, upgrade.Message);
     }
 }

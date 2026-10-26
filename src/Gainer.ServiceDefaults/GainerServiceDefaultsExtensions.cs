@@ -70,7 +70,9 @@ public static class GainerServiceDefaultsExtensions
         builder.Logging.AddOpenTelemetry(static logging =>
         {
             logging.IncludeFormattedMessage = true;
-            logging.IncludeScopes = true;
+            // Scopes would export whatever a framework puts into them (RequestPath, for one), and
+            // no Gainer code opens a scope. Trace and span ids come from the activity, not from scopes.
+            logging.IncludeScopes = false;
         });
 
         var openTelemetry = builder.Services

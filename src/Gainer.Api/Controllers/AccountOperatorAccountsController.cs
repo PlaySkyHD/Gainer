@@ -44,18 +44,11 @@ public sealed class AccountOperatorAccountsController(
         // An operator who deactivates their own account would lock out the only operator.
         if (!request.IsActive && userContext.UserId == accountId)
         {
-            ProblemDetails problem = new()
-            {
-                Status = StatusCodes.Status409Conflict,
-                Title = "An operator cannot deactivate their own account.",
-                Type = "https://gainer.local/problems/operator_self_deactivation",
-            };
-            problem.Extensions["code"] = "operator_self_deactivation";
-            return new ObjectResult(problem)
-            {
-                StatusCode = StatusCodes.Status409Conflict,
-                ContentTypes = { "application/problem+json" },
-            };
+            return SyncProblemResults.Create(
+                HttpContext,
+                StatusCodes.Status409Conflict,
+                "operator_self_deactivation",
+                "An operator cannot deactivate their own account.");
         }
 
         bool found = await accounts.SetActiveAsync(accountId, request.IsActive, cancellationToken);

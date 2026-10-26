@@ -23,7 +23,7 @@ public sealed class SyncClientsController(ISyncClientRegistry registry, IUserCon
         RegisterSyncClientRequest request,
         CancellationToken cancellationToken)
     {
-        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext, request.ProtocolVersion) is { } identityProblem)
+        if (SyncAccountIdentityGuard.Validate(HttpContext, userContext, request.ProtocolVersion) is { } identityProblem)
             return identityProblem;
 
         if (clientId == Guid.Empty || request.ClientId != clientId)
@@ -57,6 +57,6 @@ public sealed class SyncClientsController(ISyncClientRegistry registry, IUserCon
         }
     }
 
-    private static ObjectResult Problem(int status, string code, string title) =>
-        SyncProblemResults.Create(status, code, title);
+    private ObjectResult Problem(int status, string code, string title) =>
+        SyncProblemResults.Create(HttpContext, status, code, title);
 }

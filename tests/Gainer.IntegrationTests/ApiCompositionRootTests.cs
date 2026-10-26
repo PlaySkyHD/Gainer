@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -11,6 +12,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Gainer.ServiceDefaults;
+using OpenTelemetry;
+using OpenTelemetry.Logs;
 
 namespace Gainer.IntegrationTests;
 
@@ -174,17 +178,124 @@ public sealed class ApiCompositionRootTests
     public async Task RequestLogContainsTheRouteTemplateNotTheRequestedPath()
     {
         var logProvider = new CollectingLoggerProvider();
-        await using var app = await CreateApplicationAsync(logProvider);
+        var exported = new List<string>();
+        var activityValues = new List<string>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = _ => true,
+            Sample = static (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activity =>
+            {
+                lock (activityValues)
+                {
+                    activityValues.Add(activity.DisplayName);
+                    activityValues.AddRange(activity.TagObjects.Select(tag => $"{tag.Key}={tag.Value}"));
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        await using var app = await CreateApplicationAsync(logProvider, builder =>
+        {
+            // The exporter pipeline of production: OpenTelemetry logging and tracing with their scope settings.
+            builder.AddGainerServiceDefaults();
+            builder.Logging.AddOpenTelemetry(logging => logging.AddProcessor(new CapturingLogProcessor(exported)));
+        });
         using var client = app.GetTestClient();
 
-        using HttpResponseMessage response = await client.GetAsync("/probe/4006381333931");
+        using HttpResponseMessage response = await client.GetAsync("/probe/4006381333931?token=query-secret");
         using HttpResponseMessage unmatched = await client.GetAsync("/nowhere/2026-10-26");
+        using HttpResponseMessage attribute = await client.GetAsync("/api/v1/system/status");
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         Assert.AreEqual(HttpStatusCode.NotFound, unmatched.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, attribute.StatusCode);
+        await WaitForAsync(() =>
+        {
+            lock (activityValues)
+            {
+                return activityValues.Contains("url.path=/probe/{value}");
+            }
+        });
+
+        // Messages, structured state values and scopes of the ordinary logger provider.
         Assert.IsTrue(logProvider.Messages.Any(message => message.Contains("GET /probe/{value}", StringComparison.Ordinal)));
-        Assert.IsFalse(logProvider.Messages.Any(message => message.Contains("4006381333931", StringComparison.Ordinal)));
-        Assert.IsFalse(logProvider.Messages.Any(message => message.Contains("2026-10-26", StringComparison.Ordinal)));
+        // Attribute routes are stored without a leading slash; the template always has one.
+        Assert.IsTrue(logProvider.Messages.Any(message => message.Contains("GET /api/v1/system/status", StringComparison.Ordinal)));
+        Assert.IsTrue(logProvider.Messages.Any(message => message.Contains("GET /unmatched", StringComparison.Ordinal)));
+        AssertNoRequestedPath(logProvider.Messages);
+        // What the OpenTelemetry log exporter would send, attributes and scopes included.
+        Assert.IsTrue(exported.Any(value => value.Contains("GET /probe/{value}", StringComparison.Ordinal)));
+        AssertNoRequestedPath(exported);
+        // Span names and tags.
+        lock (activityValues)
+        {
+            AssertNoRequestedPath(activityValues);
+        }
+    }
+
+    [TestMethod]
+    public void RouteTemplatesAlwaysStartWithASlash()
+    {
+        Assert.AreEqual("/api/v1/system/status", RequestRouteTemplate.Normalize("api/v1/system/status"));
+        Assert.AreEqual("/probe/{value}", RequestRouteTemplate.Normalize("/probe/{value}"));
+        Assert.AreEqual("/unmatched", RequestRouteTemplate.Normalize(null));
+        Assert.AreEqual("/unmatched", RequestRouteTemplate.Normalize(string.Empty));
+    }
+
+    [TestMethod]
+    public async Task UploadOperationsAreDescribedAsMultipartInTheOpenApiDocument()
+    {
+        await using var app = await CreateApplicationAsync();
+        using var client = app.GetTestClient();
+
+        using JsonDocument document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
+        JsonElement paths = document.RootElement.GetProperty("paths");
+
+        // Every operation that takes an uploaded file must be multipart, not only the two known paths.
+        string[] uploads = ["/api/v1/nutrition/meal-estimates", "/api/v1/nutrition/label-scans"];
+        foreach (string upload in uploads)
+        {
+            JsonElement content = paths.GetProperty(upload).GetProperty("post").GetProperty("requestBody").GetProperty("content");
+            Assert.IsTrue(content.TryGetProperty("multipart/form-data", out JsonElement multipart), upload);
+            Assert.AreEqual(
+                "binary",
+                multipart.GetProperty("schema").GetProperty("properties").GetProperty("image").GetProperty("format").GetString(),
+                upload);
+        }
+
+        foreach (JsonProperty path in paths.EnumerateObject())
+        {
+            foreach (JsonProperty operation in path.Value.EnumerateObject())
+            {
+                if (operation.Value.TryGetProperty("requestBody", out JsonElement body)
+                    && body.GetProperty("content").EnumerateObject().Any(media =>
+                        media.Value.GetRawText().Contains("\"binary\"", StringComparison.Ordinal))
+                    && !body.GetProperty("content").TryGetProperty("multipart/form-data", out _))
+                {
+                    Assert.Fail($"{path.Name} takes a file but is not described as multipart/form-data.");
+                }
+            }
+        }
+    }
+
+    private static void AssertNoRequestedPath(IEnumerable<string> values)
+    {
+        string[] snapshot = values.ToArray();
+        foreach (string privateValue in new[] { "4006381333931", "2026-10-26", "query-secret", "/nowhere" })
+        {
+            Assert.IsFalse(
+                snapshot.Any(value => value.Contains(privateValue, StringComparison.Ordinal)),
+                $"'{privateValue}' leaked: " + string.Join(" | ", snapshot.Where(value => value.Contains(privateValue, StringComparison.Ordinal))));
+        }
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(25);
+        }
     }
 
     private static async Task<HttpResponseMessage> SystemStatusAsync(HttpClient client, string clientAddress)
@@ -201,7 +312,9 @@ public sealed class ApiCompositionRootTests
         return await client.SendAsync(request);
     }
 
-    private static async Task<WebApplication> CreateApplicationAsync(ILoggerProvider? loggerProvider = null)
+    private static async Task<WebApplication> CreateApplicationAsync(
+        ILoggerProvider? loggerProvider = null,
+        Action<WebApplicationBuilder>? configure = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
@@ -211,10 +324,12 @@ public sealed class ApiCompositionRootTests
         }
 
         builder.WebHost.UseTestServer();
+        configure?.Invoke(builder);
         builder.AddGainerApi();
 
         var app = builder.Build();
         app.MapGainerApi();
+        app.MapOpenApi();
         app.MapGet("/health/ready", () => Results.Ok());
         app.MapGet("/probe/{value}", (string value) => Results.Ok());
         app.MapGet("/forwarded-probe", (HttpContext context) => Results.Json(new
@@ -242,13 +357,46 @@ public sealed class ApiCompositionRootTests
         }
     }
 
+    private sealed class CapturingLogProcessor(List<string> records) : BaseProcessor<LogRecord>
+    {
+        public override void OnEnd(LogRecord data)
+        {
+            lock (records)
+            {
+                records.Add(data.FormattedMessage ?? string.Empty);
+                foreach (KeyValuePair<string, object?> attribute in data.Attributes ?? [])
+                {
+                    records.Add($"{attribute.Key}={attribute.Value}");
+                }
+
+                data.ForEachScope(
+                    static (scope, state) =>
+                    {
+                        state.Add(scope.Scope?.ToString() ?? string.Empty);
+                        foreach (KeyValuePair<string, object?> item in scope)
+                        {
+                            state.Add($"{item.Key}={item.Value}");
+                        }
+                    },
+                    records);
+            }
+        }
+    }
+
     private sealed class CollectingLogger(List<string> messages) : ILogger
     {
         public IDisposable BeginScope<TState>(TState state)
             where TState : notnull
         {
+            messages.Add(Describe(state));
             return EmptyScope.Instance;
         }
+
+        // Scope and state values, not only the formatted message: structured values are exported too.
+        private static string Describe<TState>(TState state) =>
+            state is IEnumerable<KeyValuePair<string, object?>> values
+                ? string.Join(" ", values.Select(value => $"{value.Key}={value.Value}"))
+                : state?.ToString() ?? string.Empty;
 
         public bool IsEnabled(LogLevel logLevel)
         {
@@ -263,6 +411,7 @@ public sealed class ApiCompositionRootTests
             Func<TState, Exception?, string> formatter)
         {
             messages.Add(formatter(state, exception));
+            messages.Add(Describe(state));
         }
     }
 

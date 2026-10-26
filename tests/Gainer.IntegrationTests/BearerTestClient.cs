@@ -31,7 +31,6 @@ internal static class BearerTestClient
         TokenResponse tokens = await LoginAsync(client, email, password);
         client.UseAccessToken(tokens.AccessToken);
         // Sync requests of protocol 4 and newer must name the account, as the app does.
-        client.DefaultRequestHeaders.Remove(AccountHeaderName);
         client.DefaultRequestHeaders.Add(
             AccountHeaderName,
             (await ResolveAccountIdAsync(client, tokens.AccessToken)).ToString("D"));
@@ -53,6 +52,8 @@ internal static class BearerTestClient
 
     public static void UseAccessToken(this HttpClient client, string? accessToken)
     {
+        // The account header names the account of the previous token; a new token or a logout drops it.
+        client.DefaultRequestHeaders.Remove(AccountHeaderName);
         client.DefaultRequestHeaders.Authorization = accessToken is null
             ? null
             : new AuthenticationHeaderValue("Bearer", accessToken);
