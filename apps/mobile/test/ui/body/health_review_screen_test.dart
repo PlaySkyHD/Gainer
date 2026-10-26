@@ -151,7 +151,7 @@ void main() {
       final database = LocalDatabase(NativeDatabase.memory());
       addTearDown(database.close);
       final store = LocalSyncStore(database: database, accountId: accountId);
-      final body = BodyRepository(store: store);
+      final body = BodyRepository(store: store, clock: () => _fixedNow);
       await body.saveCheckIn(
         localDate: _today(),
         weightKg: 70,
@@ -166,7 +166,8 @@ void main() {
         ..samples = [
           BodyMassSample(
             uuid: 'health-probe-test',
-            measuredAtUtc: DateTime.now().toUtc(),
+            // Das Ende des Abfragefensters ist „jetzt“ und schließt es aus.
+            measuredAtUtc: _fixedNow.subtract(const Duration(hours: 1)).toUtc(),
             weightKilograms: 71.5,
             sourceName: 'Test Apple Watch',
           ),
@@ -178,10 +179,16 @@ void main() {
         accountId: accountId,
         currentSessionIdentity: () =>
             const HealthSessionIdentity(accountId: accountId, generation: 3),
+        clock: () => _fixedNow,
       );
       final viewModel = HealthReviewViewModel(coordinator);
       await tester.pumpWidget(
-        CupertinoApp(home: HealthReviewScreen(viewModel: viewModel)),
+        CupertinoApp(
+          home: HealthReviewScreen(
+            viewModel: viewModel,
+            clock: () => _fixedNow,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -226,19 +233,25 @@ void main() {
       final health = _HealthFake();
       final coordinator = HealthReviewCoordinator(
         store: store,
-        bodyRepository: BodyRepository(store: store),
+        bodyRepository: BodyRepository(store: store, clock: () => _fixedNow),
         platform: health,
         accountId: accountId,
         currentSessionIdentity: () =>
             const HealthSessionIdentity(accountId: accountId, generation: 1),
+        clock: () => _fixedNow,
       );
       final viewModel = HealthReviewViewModel(coordinator);
       await tester.pumpWidget(
-        CupertinoApp(home: HealthReviewScreen(viewModel: viewModel)),
+        CupertinoApp(
+          home: HealthReviewScreen(
+            viewModel: viewModel,
+            clock: () => _fixedNow,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
-      final today = DateTime.now();
+      final today = _fixedNow;
       final threeDaysAgo = DateTime(today.year, today.month, today.day - 3);
       await tester.tap(find.byKey(const ValueKey('health-from')));
       await tester.pumpAndSettle();
@@ -309,4 +322,7 @@ String _formatDate(DateTime value) =>
 String _displayDate(DateTime value) =>
     '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')}.${value.year}';
 
-String _today() => _formatDate(DateTime.now());
+/// Feste Uhr (mittags, fern von Mitternacht und Zeitumstellung).
+final _fixedNow = DateTime(2026, 10, 14, 12);
+
+String _today() => _formatDate(_fixedNow);

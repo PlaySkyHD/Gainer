@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/local/local_aggregate.dart';
@@ -97,12 +99,29 @@ void main() {
   );
 
   test('a scheduled refresh is dropped when the tracker is disposed', () async {
-    tracker.scheduleRefresh();
+    final timers = <Timer>[];
+    void schedule() => runZoned(
+      () => tracker.scheduleRefresh(),
+      zoneSpecification: ZoneSpecification(
+        createTimer: (self, parent, zone, duration, callback) {
+          final timer = parent.createTimer(zone, duration, callback);
+          timers.add(timer);
+          return timer;
+        },
+      ),
+    );
+
+    schedule();
+    expect(timers, hasLength(1));
+    expect(timers.single.isActive, isTrue);
+
     tracker.dispose();
     disposed = true;
-    tracker.scheduleRefresh();
+    expect(timers.single.isActive, isFalse);
 
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    // Nach dem Schließen startet kein neuer Timer mehr.
+    schedule();
+    expect(timers, hasLength(1));
   });
 
   test('a finished run stores the time and survives a restart', () async {
@@ -181,12 +200,18 @@ void main() {
   });
 
   test('a late result after dispose is ignored without error', () async {
+    await commitPlan('c1234567-1234-4234-8234-123456789abc');
     tracker.dispose();
     disposed = true;
 
     await tracker.recordRun(_report(SyncRunState.synced), now);
     await tracker.load();
     await tracker.refreshPending();
+
+    // Nichts davon darf den Status ändern oder den Zeitpunkt speichern.
+    expect(tracker.value.pendingCount, 0);
+    expect(tracker.value.lastSyncedAtUtc, isNull);
+    expect(await store.readSyncMetadata('last-synced-at'), isNull);
   });
 
   test('an unreadable store does not throw out of the tracker', () async {
