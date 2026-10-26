@@ -96,7 +96,8 @@ public sealed class NutritionPersistenceTests
         {
             NutritionDaySnapshot first = await new NutritionQueries(firstContext).GetDayAsync(new DateOnly(2026, 8, 19)) ?? throw new AssertFailedException();
             Assert.AreEqual("First food", first.Entries.Single().ProductName);
-            await Assert.ThrowsAsync<NutritionDayConflictException>(() =>
+            // Another day id on a stored date is no newer stand of this day; the sync processor reports it as invalid_payload.
+            await Assert.ThrowsExactlyAsync<DbUpdateException>(() =>
                 new NutritionDayMutationHandler(firstContext, new TestUserContext(firstUser), TimeProvider.System)
                     .SaveAsync(Save(Guid.NewGuid(), 0, Entry(Guid.NewGuid(), MealType.Dinner, 0, "Duplicate", 100m, 100m, null))));
         }

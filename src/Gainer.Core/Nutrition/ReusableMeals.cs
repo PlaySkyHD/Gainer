@@ -65,15 +65,16 @@ public sealed record ReusableMealComponentDraft(
     public static ReusableMealComponentDraft Create(
         Guid componentId,
         int position,
-        string name,
+        string? name,
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
         string? brand = null,
         NutritionSourceSnapshot? source = null,
         NutritionPortion? portion = null)
     {
-        ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(per100Grams);
+        // A missing name in a sync payload is a validation error, not a server fault.
+        name ??= string.Empty;
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
         if (componentId == Guid.Empty) errors[nameof(ComponentId)] = "ComponentId cannot be empty.";
         if (position < 0) errors[nameof(Position)] = "Position cannot be negative.";
@@ -84,7 +85,7 @@ public sealed record ReusableMealComponentDraft(
         if (normalizedBrand?.Length > 160) errors[nameof(Brand)] = "Brand is too long.";
         if (amountGrams is < NutritionLimits.MinAmountGrams or > NutritionLimits.MaxAmountGrams)
             errors[nameof(AmountGrams)] = $"AmountGrams must be between {NutritionLimits.MinAmountGrams} and {NutritionLimits.MaxAmountGrams}.";
-        ValidatePer100Grams(per100Grams, errors);
+        NutritionLimits.ValidatePer100Grams(per100Grams, errors);
         portion?.Validate(amountGrams, errors);
 
         NutritionTotals? totals = null;
@@ -102,27 +103,6 @@ public sealed record ReusableMealComponentDraft(
             componentId, position, normalizedName, normalizedBrand, amountGrams,
             per100Grams, totals!, source, portion);
     }
-
-    private static void ValidatePer100Grams(
-        NutritionPer100Grams values,
-        Dictionary<string, string> errors)
-    {
-        if (values.Kilocalories is < 0m or > NutritionLimits.MaxKilocaloriesPer100Grams)
-            errors["KilocaloriesPer100Grams"] = "KilocaloriesPer100Grams is outside the allowed range.";
-        ValidateOptional(values.ProteinGrams, "ProteinGramsPer100Grams", errors);
-        ValidateOptional(values.CarbohydrateGrams, "CarbohydrateGramsPer100Grams", errors);
-        ValidateOptional(values.FatGrams, "FatGramsPer100Grams", errors);
-        if (values.SaltGrams is < 0m or > NutritionLimits.MaxSaltGramsPer100Grams)
-            errors["SaltGramsPer100Grams"] = "SaltGramsPer100Grams is outside the allowed range.";
-        if (values.FiberGrams is < 0m or > NutritionLimits.MaxFiberGramsPer100Grams)
-            errors["FiberGramsPer100Grams"] = "FiberGramsPer100Grams is outside the allowed range.";
-    }
-
-    private static void ValidateOptional(decimal? value, string field, Dictionary<string, string> errors)
-    {
-        if (value is < 0m or > NutritionLimits.MaxMacroGramsPer100Grams)
-            errors[field] = $"{field} is outside the allowed range.";
-    }
 }
 
 public sealed record ReusableMealDraft(
@@ -132,14 +112,14 @@ public sealed record ReusableMealDraft(
     IReadOnlyList<ReusableMealComponentDraft> Components)
 {
     public static ReusableMealDraft Create(
-        string name,
+        string? name,
         string? description,
         decimal standardPortion,
         IEnumerable<ReusableMealComponentDraft> components)
     {
-        ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(components);
-        string normalizedName = name.Trim();
+        // A missing name in a sync payload is a validation error, not a server fault.
+        string normalizedName = name?.Trim() ?? string.Empty;
         string? normalizedDescription = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         ReusableMealComponentDraft[] ordered = components.OrderBy(item => item.Position).ToArray();
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);

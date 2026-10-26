@@ -21,6 +21,11 @@ public sealed class WorkoutMutationHandler(
         ArgumentNullException.ThrowIfNull(mutation);
         Guid userId = CurrentUserId();
         WorkoutValues values = WorkoutValidation.Normalize(mutation.Workout);
+        // Only the user's own stored workout is a competing stand; a key violation on insert means a foreign id.
+        if (await context.Workouts.AsNoTracking().AnyAsync(item => item.Id == values.WorkoutId, cancellationToken))
+        {
+            throw new WorkoutConflictException("A workout with this identifier already exists.");
+        }
         await EnsureReferencesAvailableAsync(userId, values, cancellationToken);
         if (values.EndedAtUtc is null) await EnsureNoOtherActiveWorkoutAsync(values.WorkoutId, cancellationToken);
 
@@ -215,9 +220,9 @@ public sealed class WorkoutMutationHandler(
         {
             throw new WorkoutConflictException("The workout changed concurrently.");
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception) when (context.IsUniqueIndexViolation<Workout>(exception, nameof(Workout.UserId)))
         {
-            throw new WorkoutConflictException("The workout snapshot conflicts with stored data.");
+            throw new ActiveWorkoutExistsException();
         }
     }
 

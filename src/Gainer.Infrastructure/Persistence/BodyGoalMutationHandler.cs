@@ -31,6 +31,12 @@ public sealed class BodyGoalMutationHandler(
             BodyGoal? active = await context.BodyGoals
                 .SingleOrDefaultAsync(goal => goal.EndedAtUtc == null, cancellationToken);
             EnsureExpectedActiveGoal(mutation.ExpectedActiveGoal, active);
+            // Only the user's own stored goal is a competing stand; a key violation on insert means a foreign id,
+            // which the sync processor reports as a permanent invalid payload.
+            if (await context.BodyGoals.AsNoTracking().AnyAsync(goal => goal.Id == mutation.GoalId, cancellationToken))
+            {
+                throw new BodyGoalConflictException("A body goal with this identifier already exists.");
+            }
 
             DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
             if (active is not null)
@@ -61,7 +67,14 @@ public sealed class BodyGoalMutationHandler(
             changeCollector?.CaptureUpsert(snapshot);
             return snapshot;
         }
-        catch (Exception exception) when (IsConcurrencyConflict(exception))
+        catch (DbUpdateException exception) when (
+            context.IsUniqueIndexViolation<BodyGoal>(exception, nameof(BodyGoal.UserId)))
+        {
+            throw new BodyGoalConflictException("The active body goal changed concurrently.");
+        }
+        // Only a transaction this handler owns ends here. Inside a sync mutation the processor owns it and reports
+        // serialization failures and deadlocks as a retryable concurrent_mutation, never as a stale base version.
+        catch (Exception exception) when (transaction is not null && IsSerializationConflict(exception))
         {
             throw new BodyGoalConflictException("The active body goal changed concurrently.");
         }
@@ -74,13 +87,15 @@ public sealed class BodyGoalMutationHandler(
         {
             errors[nameof(mutation.Kind)] = "Goal kind must be Bulk, Maintain, or Cut.";
         }
-        if (!Kilograms.TryCreate(mutation.StartWeightKg, out Kilograms startWeight) || !startWeight.IsPositive)
+        if (!Kilograms.TryCreate(mutation.StartWeightKg, out Kilograms startWeight) || !startWeight.IsPositive ||
+            mutation.StartWeightKg > BodyTrackingLimits.MaxWeightKg)
         {
-            errors[nameof(mutation.StartWeightKg)] = "Start weight must be positive.";
+            errors[nameof(mutation.StartWeightKg)] = $"Start weight must be positive and at most {BodyTrackingLimits.MaxWeightKg} kg.";
         }
-        if (!Kilograms.TryCreate(mutation.TargetWeightKg, out Kilograms targetWeight) || !targetWeight.IsPositive)
+        if (!Kilograms.TryCreate(mutation.TargetWeightKg, out Kilograms targetWeight) || !targetWeight.IsPositive ||
+            mutation.TargetWeightKg > BodyTrackingLimits.MaxWeightKg)
         {
-            errors[nameof(mutation.TargetWeightKg)] = "Target weight must be positive.";
+            errors[nameof(mutation.TargetWeightKg)] = $"Target weight must be positive and at most {BodyTrackingLimits.MaxWeightKg} kg.";
         }
         if (mutation.TargetDate < mutation.StartDate)
         {
@@ -113,14 +128,7 @@ public sealed class BodyGoalMutationHandler(
         }
     }
 
-    private static bool IsConcurrencyConflict(Exception exception)
-    {
-        for (Exception? current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is PostgresException postgres && postgres.SqlState is
-                PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected)
-                return true;
-        }
-        return false;
-    }
+    private static bool IsSerializationConflict(Exception exception) =>
+        PersistenceErrors.FindPostgres(exception) is
+        { SqlState: PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected };
 }

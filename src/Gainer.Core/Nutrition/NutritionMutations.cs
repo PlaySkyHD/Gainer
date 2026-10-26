@@ -46,15 +46,16 @@ public sealed record NutritionEntryInput
         Guid entryId,
         MealType meal,
         int position,
-        string productName,
+        string? productName,
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
         string? brand = null,
         NutritionSourceSnapshot? source = null,
         NutritionPortion? portion = null)
     {
-        ArgumentNullException.ThrowIfNull(productName);
         ArgumentNullException.ThrowIfNull(per100Grams);
+        // A missing name in a sync payload is a validation error, not a server fault.
+        productName ??= string.Empty;
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
         if (entryId == Guid.Empty) errors[nameof(EntryId)] = "EntryId cannot be empty.";
         if (!Enum.IsDefined(meal)) errors[nameof(Meal)] = "Meal is invalid.";
@@ -62,9 +63,12 @@ public sealed record NutritionEntryInput
         if (string.IsNullOrWhiteSpace(productName)) errors[nameof(ProductName)] = "ProductName is required.";
         if (productName.Length > 200) errors[nameof(ProductName)] = "ProductName is too long.";
         if (brand?.Length > 160) errors[nameof(Brand)] = "Brand is too long.";
+        ValidateRanges(amountGrams, per100Grams, source, errors);
         try
         {
-            _ = NutritionCalculator.Calculate(amountGrams, per100Grams);
+            NutritionTotals totals = NutritionCalculator.Calculate(amountGrams, per100Grams);
+            if (totals.Kilocalories > NutritionLimits.MaxEntryKilocalories)
+                errors["Kilocalories"] = $"An entry can contain at most {NutritionLimits.MaxEntryKilocalories} kcal.";
         }
         catch (NutritionValidationException exception)
         {
@@ -73,6 +77,20 @@ public sealed record NutritionEntryInput
         portion?.Validate(amountGrams, errors);
         if (errors.Count > 0) throw new NutritionValidationException(errors);
         return new NutritionEntryInput(entryId, meal, position, productName, brand, amountGrams, per100Grams, source, portion);
+    }
+
+    /// <summary>The same per-100-gram ranges as reusable meal components; they keep every stored value inside its column range.</summary>
+    private static void ValidateRanges(
+        decimal amountGrams,
+        NutritionPer100Grams per100Grams,
+        NutritionSourceSnapshot? source,
+        Dictionary<string, string> errors)
+    {
+        if (amountGrams > NutritionLimits.MaxAmountGrams)
+            errors["AmountGrams"] = $"AmountGrams cannot exceed {NutritionLimits.MaxAmountGrams}.";
+        NutritionLimits.ValidatePer100Grams(per100Grams, errors);
+        if (source is { BasisGrams: <= 0m or > NutritionLimits.MaxSourceBasisGrams })
+            errors["BasisGrams"] = $"BasisGrams must be positive and at most {NutritionLimits.MaxSourceBasisGrams}.";
     }
 }
 

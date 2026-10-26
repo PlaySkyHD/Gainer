@@ -37,13 +37,15 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         }
         try
         {
+            // A missing list or null entries pass through unchanged; the processor rejects them as invalid_resources.
             var content = new CanonicalMutationContent(
                 request.ProtocolVersion,
                 request.ClientId,
                 request.ClientSequence,
                 request.Operation,
-                request.Resources.Select(item => new CanonicalResourceVersion(
-                    item.ResourceType, item.ResourceId, item.BaseVersion)).ToList(),
+                request.Resources?.Select(item => item is null
+                    ? null!
+                    : new CanonicalResourceVersion(item.ResourceType, item.ResourceId, item.BaseVersion)).ToList()!,
                 request.DependsOnMutationId,
                 request.Payload);
             ProcessedSyncMutationResult result = await processor.ProcessAsync(

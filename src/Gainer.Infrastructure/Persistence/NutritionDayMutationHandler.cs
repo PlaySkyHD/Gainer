@@ -3,7 +3,6 @@ using Gainer.Core.Nutrition;
 using Gainer.Core.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -110,10 +109,9 @@ public sealed class NutritionDayMutationHandler(
         {
             throw new NutritionDayConflictException("The nutrition day changed concurrently.");
         }
-        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-        {
-            throw new NutritionDayConflictException("A nutrition day or entry already exists for this identifier, date, or position.");
-        }
+        // Unique violations are not a stale version: the lookup above already found the user's own day, so a key
+        // violation means the id belongs to another user, and another id on a stored date or reused entry ids stay
+        // on every retry. No pull heals them; the sync processor reports them as a permanent invalid payload.
     }
 
     private Guid CurrentUserId() =>
