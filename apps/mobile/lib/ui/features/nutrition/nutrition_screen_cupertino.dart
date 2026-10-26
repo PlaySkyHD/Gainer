@@ -170,6 +170,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _estimateText = TextEditingController();
   final _saltAmount = TextEditingController();
   MealDictationController? _dictation;
+
+  /// Wahr, solange „Mahlzeit schätzen“ das Diktat beendet und anfragt.
+  final _estimating = ValueNotifier<bool>(false);
   Timer? _localSearch;
   late final AppLifecycleListener _lifecycle;
   Timer? _midnight;
@@ -256,6 +259,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     widget.visibility?.removeListener(_onVisibility);
     widget.refresh?.removeListener(_onRefresh);
     _dictation?.dispose();
+    _estimating.dispose();
     _localSearch?.cancel();
     _lifecycle.dispose();
     _midnight?.cancel();
@@ -694,7 +698,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
   /// Nach erfolgreichem Speichern in eine Mahlzeit schließt das Sheet. Beim
   /// Hinzufügen mehrerer bleibt es offen und ist bereit für das nächste.
   void _closeAfterSave() {
-    if (widget.viewModel.errorMessage != null) return;
+    // Ein abgewiesener zweiter Tipp schließt nicht; der erste schließt selbst.
+    if (widget.viewModel.errorMessage != null || widget.viewModel.isSaving) {
+      return;
+    }
     if (!_addingMultiple) {
       _closeEntrySheet?.call();
       return;
@@ -933,7 +940,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               '1 Stk = ${_fmtGrams(grams)} g',
           ].join(' · '),
           trailing: const _AddGlyph(),
-          onTap: () => onSelect(food),
+          onTap: widget.viewModel.isSaving ? null : () => onSelect(food),
         ),
     ],
   );
@@ -1222,20 +1229,31 @@ class _NutritionScreenState extends State<NutritionScreen> {
       ),
     ),
     const SizedBox(height: GainerSpacing.m),
-    ValueListenableBuilder<TextEditingValue>(
-      valueListenable: _estimateText,
-      builder: (context, value, _) => GainerPillButton(
-        label: 'Mahlzeit schätzen',
-        icon: CupertinoIcons.sparkles,
-        expand: true,
-        isLoading: vm.isOnlineOperation,
-        onPressed: vm.isOnlineOperation || value.text.trim().isEmpty
-            ? null
-            : () async {
-                await _dictation?.finish();
-                await vm.estimateMeal(_estimateText.text);
-              },
-      ),
+    ListenableBuilder(
+      listenable: Listenable.merge([_estimateText, _estimating]),
+      builder: (context, _) {
+        final busy = vm.isOnlineOperation || _estimating.value;
+        return GainerPillButton(
+          label: 'Mahlzeit schätzen',
+          icon: CupertinoIcons.sparkles,
+          expand: true,
+          isLoading: busy,
+          onPressed: busy || _estimateText.text.trim().isEmpty
+              ? null
+              : () async {
+                  // Das Beenden des Diktats dauert bis zu 2 s; in der Zeit
+                  // darf ein zweiter Tipp keine zweite Anfrage starten.
+                  _estimating.value = true;
+                  try {
+                    await _dictation?.finish();
+                    if (!mounted) return;
+                    await vm.estimateMeal(_estimateText.text);
+                  } finally {
+                    if (mounted) _estimating.value = false;
+                  }
+                },
+        );
+      },
     ),
     if (vm.mealEstimateDraft case final estimate?) ...[
       const SizedBox(height: GainerSpacing.l),
@@ -1248,7 +1266,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
               title: estimate.components[index].name,
               subtitle: _estimateSubtitle(estimate.components[index]),
               trailing: const _AddGlyph(),
-              onTap: () => vm.confirmEstimatedComponent(index),
+              onTap: vm.isSaving
+                  ? null
+                  : () => vm.confirmEstimatedComponent(
+                      estimate.components[index],
+                    ),
             ),
         ],
       ),
@@ -1323,9 +1345,17 @@ class _NutritionScreenState extends State<NutritionScreen> {
       );
       return;
     }
+    final grams = _parse(_amount.text);
+    if (pieces == null && grams == null) {
+      widget.viewModel.reportInputError(
+        'Bitte eine Menge in g eingeben.',
+        operation: NutritionErrorOperation.entry,
+      );
+      return;
+    }
     final amount = pieces != null && pieceGrams != null
         ? gramsForPieces(pieces, pieceGrams)
-        : _parse(_amount.text) ?? 100;
+        : grams!;
     switch (target) {
       case DayMealTarget():
         await widget.viewModel.addFood(
@@ -2445,7 +2475,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       onSave:
           draft.confirmedPer100Grams == null ||
               name.text.trim().isEmpty ||
-              _parse(amount.text) == null
+              (_parse(amount.text) ?? 0) <= 0
           ? null
           : () => Navigator.pop(context, target.value),
       children: [

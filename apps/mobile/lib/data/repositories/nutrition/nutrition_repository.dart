@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -435,28 +436,54 @@ class NutritionRepository {
     return List.unmodifiable(result);
   }
 
-  Future<void> saveEntry(String localDate, NutritionEntry entry) async {
-    final current = await read(localDate);
-    await saveDay(current.day.replace(entry));
+  /// Hintereinander laufende Lesen-Ändern-Schreiben-Abläufe auf Ernährungstage.
+  /// Zwei schnelle Aktionen auf denselben Tag lesen sonst denselben Stand, und
+  /// die zweite überschreibt die erste.
+  Future<void>? _dayLock;
+
+  Future<T> _serializedDay<T>(Future<T> Function() action) async {
+    final previous = _dayLock;
+    final mine = Completer<void>();
+    _dayLock = mine.future;
+    // Ohne laufenden Ablauf startet die Aktion sofort, ohne Umweg über die
+    // Warteschlange.
+    if (previous != null) await previous;
+    try {
+      return await action();
+    } finally {
+      if (identical(_dayLock, mine.future)) _dayLock = null;
+      mine.complete();
+    }
   }
 
-  Future<void> removeEntry(String localDate, String entryId) async {
-    final current = await read(localDate);
-    if (!current.day.entries.any((entry) => entry.entryId == entryId)) return;
-    await saveDay(current.day.remove(entryId));
-  }
+  Future<void> saveEntry(String localDate, NutritionEntry entry) =>
+      _serializedDay(() async {
+        final current = await read(localDate);
+        await _saveDay(current.day.replace(entry));
+      });
+
+  Future<void> removeEntry(String localDate, String entryId) =>
+      _serializedDay(() async {
+        final current = await read(localDate);
+        if (!current.day.entries.any((entry) => entry.entryId == entryId)) {
+          return;
+        }
+        await _saveDay(current.day.remove(entryId));
+      });
 
   Future<void> moveEntry(
     String localDate,
     String entryId,
     NutritionMeal meal,
     int position,
-  ) async {
+  ) => _serializedDay(() async {
     final current = await read(localDate);
-    await saveDay(current.day.move(entryId, meal, position));
-  }
+    await _saveDay(current.day.move(entryId, meal, position));
+  });
 
-  Future<void> saveDay(NutritionDay day) async {
+  Future<void> saveDay(NutritionDay day) => _serializedDay(() => _saveDay(day));
+
+  Future<void> _saveDay(NutritionDay day) async {
     final existing = (await store.readAggregates(_nutritionDayType))
         .where((row) => _map(row.workingCopy)['localDate'] == day.localDate)
         .firstOrNull;
@@ -479,6 +506,16 @@ class NutritionRepository {
       envelope: existing == null
           ? localEnvelope(aggregateId: aggregateId, workingCopy: body)
           : _pending(existing, body),
+      // Hat sich der Tag seit dem Lesen geändert (z. B. durch den Sync),
+      // schlägt das Speichern fehl, statt den neueren Stand zu überschreiben.
+      resourceExpectations: [
+        LocalResourceExpectation(
+          aggregateType: _nutritionDayType,
+          aggregateId: aggregateId,
+          optimisticVersion: existing?.optimisticVersion,
+          serverVersion: existing?.serverVersion,
+        ),
+      ],
       createdAtUtc: now,
     );
   }
@@ -606,7 +643,7 @@ class NutritionRepository {
     required String localDate,
     required NutritionMeal meal,
     double? portionScale,
-  }) async {
+  }) => _serializedDay(() async {
     final row = await _required(_reusableMealType, mealId);
     final reusable = ReusableMeal.fromJson(_map(row.workingCopy));
     if (reusable.status != 'Active') {
@@ -652,16 +689,17 @@ class NutritionRepository {
         ),
       );
     }
-    await saveDay(snapshot.day.withEntries(entries));
-  }
+    await _saveDay(snapshot.day.withEntries(entries));
+  });
 
   /// Legt fest, ob der Tag als Trainings- oder Ruhetag zählt; null hebt die
   /// Festlegung auf. Ein Tag ohne Einträge bleibt mit leerer Liste erhalten.
-  Future<void> setDayKind(String localDate, NutritionDayKind? kind) async {
-    final current = await read(localDate);
-    if (current.day.dayKind == kind) return;
-    await saveDay(current.day.withDayKind(kind));
-  }
+  Future<void> setDayKind(String localDate, NutritionDayKind? kind) =>
+      _serializedDay(() async {
+        final current = await read(localDate);
+        if (current.day.dayKind == kind) return;
+        await _saveDay(current.day.withDayKind(kind));
+      });
 
   /// Tagesvorlagen ohne gelöschte, zuletzt geänderte zuerst.
   Future<List<NutritionDayTemplate>> readTemplates() async {
@@ -818,7 +856,7 @@ class NutritionRepository {
     String templateId,
     String localDate, {
     TemplateApplyMode mode = TemplateApplyMode.append,
-  }) async {
+  }) => _serializedDay(() async {
     final row = await _required(_dayTemplateType, templateId);
     final template = NutritionDayTemplate.fromJson(_map(row.workingCopy));
     final day = (await read(localDate)).day;
@@ -855,8 +893,8 @@ class NutritionRepository {
         );
       }
     }
-    await saveDay(day.withEntries(next));
-  }
+    await _saveDay(day.withEntries(next));
+  });
 
   Future<void> saveTargetSchedule(NutritionTargetSchedule schedule) async {
     final rows = await store.readAggregates(_nutritionTargetScheduleType);

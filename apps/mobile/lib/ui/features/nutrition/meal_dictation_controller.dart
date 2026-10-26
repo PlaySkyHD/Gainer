@@ -26,6 +26,7 @@ class MealDictationController extends ChangeNotifier {
   Timer? _poll;
   bool _reading = false;
   bool _disposed = false;
+  bool _cancelRequested = false;
   Completer<void>? _done;
 
   Future<void> toggle() => isListening ? stop() : start();
@@ -33,6 +34,7 @@ class MealDictationController extends ChangeNotifier {
   Future<void> start() async {
     if (isListening || isStarting) return;
     isStarting = true;
+    _cancelRequested = false;
     message = null;
     _prefix = text.text.trim();
     _notify();
@@ -46,10 +48,12 @@ class MealDictationController extends ChangeNotifier {
       );
     }
     isStarting = false;
-    if (_disposed) {
+    if (_disposed || _cancelRequested) {
+      _cancelRequested = false;
       if (state.status == DictationStatus.listening) {
-        unawaited(platform.cancelDictation());
+        unawaited(platform.cancelDictation().catchError((Object _) {}));
       }
+      _notify();
       return;
     }
     if (state.status != DictationStatus.listening) {
@@ -83,6 +87,12 @@ class MealDictationController extends ChangeNotifier {
 
   /// Bricht ein laufendes Diktat ab, ohne den Text weiter zu ändern.
   void cancel() {
+    if (isStarting) {
+      // Das Mikrofon geht erst nach der Antwort von startDictation an;
+      // start() bricht dann selbst ab.
+      _cancelRequested = true;
+      return;
+    }
     if (!isListening) return;
     unawaited(platform.cancelDictation().catchError((Object _) {}));
     _finish(DictationStatus.idle);

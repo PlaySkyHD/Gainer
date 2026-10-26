@@ -197,14 +197,14 @@ class NutritionViewModel extends ChangeNotifier {
         pieceCount: pieceCount,
       ),
     );
-    snapshot = await repository.read(localDate);
+    await _refresh();
     statusMessage = '„$productName“ hinzugefügt.';
   }, saving: true);
 
   Future<void> removeEntry(String entryId) => _run(
     () async {
       await repository.removeEntry(localDate, entryId);
-      snapshot = await repository.read(localDate);
+      await _refresh();
       statusMessage = 'Eintrag entfernt.';
     },
     saving: true,
@@ -236,7 +236,7 @@ class NutritionViewModel extends ChangeNotifier {
           clearPieces: true,
         ),
       );
-      snapshot = await repository.read(localDate);
+      await _refresh();
       statusMessage =
           'Eintrag aktualisiert; Quelle und Nährwertsnapshot bleiben erhalten.';
     },
@@ -248,7 +248,7 @@ class NutritionViewModel extends ChangeNotifier {
       _run(
         () async {
           await repository.moveEntry(localDate, entryId, meal, position);
-          snapshot = await repository.read(localDate);
+          await _refresh();
         },
         saving: true,
         operation: NutritionErrorOperation.diary,
@@ -265,7 +265,7 @@ class NutritionViewModel extends ChangeNotifier {
       meal: meal,
       portionScale: portionScale,
     );
-    snapshot = await repository.read(localDate);
+    await _refresh();
     statusMessage = 'Gericht als unabhängige Mahlzeit übernommen.';
   }, saving: true);
 
@@ -276,7 +276,7 @@ class NutritionViewModel extends ChangeNotifier {
   }) => _run(
     () async {
       await repository.saveReusableMeal(meal, id: id);
-      snapshot = await repository.read(localDate);
+      await _refresh();
       statusMessage = 'Gespeichertes Gericht lokal aktualisiert.';
     },
     saving: true,
@@ -286,7 +286,7 @@ class NutritionViewModel extends ChangeNotifier {
   Future<void> archiveReusableMeal(String id) => _run(
     () async {
       await repository.archiveReusableMeal(id);
-      snapshot = await repository.read(localDate);
+      await _refresh();
       statusMessage = 'Gericht archiviert. Bereits gespeicherte Tages-Snapshots bleiben unverändert.';
     },
     saving: true,
@@ -307,7 +307,7 @@ class NutritionViewModel extends ChangeNotifier {
         saltGrams: saltGrams,
         fiberGrams: fiberGrams,
       );
-      snapshot = await repository.read(localDate);
+      await _refresh();
       statusMessage = 'Ziele gespeichert. Sie gelten ab heute.';
     },
     saving: true,
@@ -318,7 +318,7 @@ class NutritionViewModel extends ChangeNotifier {
   Future<void> setDayKind(NutritionDayKind? kind) => _run(
     () async {
       await repository.setDayKind(localDate, kind);
-      snapshot = await repository.read(localDate);
+      await _refresh();
     },
     saving: true,
     operation: NutritionErrorOperation.diary,
@@ -337,7 +337,7 @@ class NutritionViewModel extends ChangeNotifier {
         name: name,
         dayKind: dayKind,
       );
-      snapshot = await repository.read(localDate);
+      await _refresh();
       statusMessage = overwriteId == null
           ? 'Tag als Vorlage gespeichert.'
           : 'Vorlage überschrieben.';
@@ -353,7 +353,7 @@ class NutritionViewModel extends ChangeNotifier {
   }) => _run(
     () async {
       await repository.applyTemplate(templateId, localDate, mode: mode);
-      snapshot = await repository.read(localDate);
+      await _refresh();
       statusMessage = 'Vorlage übernommen.';
     },
     saving: true,
@@ -373,7 +373,7 @@ class NutritionViewModel extends ChangeNotifier {
         dayKind: dayKind,
         entries: entries,
       );
-      snapshot = await repository.read(localDate);
+      await _refresh();
       statusMessage = 'Vorlage gespeichert.';
     },
     saving: true,
@@ -383,7 +383,7 @@ class NutritionViewModel extends ChangeNotifier {
   Future<void> deleteTemplate(String templateId) => _run(
     () async {
       await repository.deleteTemplate(templateId);
-      snapshot = await repository.read(localDate);
+      await _refresh();
       statusMessage = 'Vorlage gelöscht. Befüllte Tage bleiben unverändert.';
     },
     saving: true,
@@ -505,18 +505,19 @@ class NutritionViewModel extends ChangeNotifier {
         pieceCount: pieceCount,
       ),
     );
-    snapshot = await repository.read(localDate);
+    await _refresh();
     statusMessage = '„${food.name}“ hinzugefügt.';
   }, saving: true);
 
-  Future<void> confirmEstimatedComponent(int componentIndex) async {
+  /// Übernimmt [item] aus dem Schätzvorschlag. Das Objekt statt eines Index
+  /// zu nehmen verhindert, dass ein später Tipp nach dem Entfernen einen
+  /// anderen Bestandteil bucht; ist [item] nicht mehr im Vorschlag, passiert
+  /// nichts.
+  Future<void> confirmEstimatedComponent(
+    NutritionEstimateComponent item,
+  ) async {
     final draft = mealEstimateDraft;
-    if (draft == null ||
-        componentIndex < 0 ||
-        componentIndex >= draft.components.length) {
-      throw StateError('Die Schätzung ist nicht verfügbar.');
-    }
-    final item = draft.components[componentIndex];
+    if (draft == null || !draft.components.contains(item)) return;
     // 0 kcal ist gültig, z. B. für den Bestandteil „Salz“.
     if (item.amountGrams <= 0 || item.totals.kilocalories < 0) {
       throw StateError(
@@ -528,6 +529,8 @@ class NutritionViewModel extends ChangeNotifier {
       totals: item.totals,
     );
     await _run(() async {
+      final open = mealEstimateDraft;
+      if (open == null || !open.components.contains(item)) return;
       final current = snapshot ?? await repository.read(localDate);
       final position =
           current.day.entries
@@ -560,12 +563,12 @@ class NutritionViewModel extends ChangeNotifier {
           pieceCount: item.pieceGrams == null ? null : item.pieceCount,
         ),
       );
-      snapshot = await repository.read(localDate);
+      await _refresh();
       // Nur den übernommenen Bestandteil entfernen; die übrigen bleiben
       // zum Prüfen stehen.
       final remaining = [
-        for (var i = 0; i < draft.components.length; i++)
-          if (i != componentIndex) draft.components[i],
+        for (final component in open.components)
+          if (!identical(component, item)) component,
       ];
       mealEstimateDraft = remaining.isEmpty
           ? null
@@ -670,7 +673,7 @@ class NutritionViewModel extends ChangeNotifier {
           ),
         ),
       );
-      snapshot = await repository.read(localDate);
+      await _refresh();
       labelDraft = null;
       statusMessage = 'Eintrag lokal gespeichert und für den Sync vorgemerkt.';
     }, saving: true);
@@ -711,7 +714,7 @@ class NutritionViewModel extends ChangeNotifier {
           ],
         ),
       );
-      snapshot = await repository.read(localDate);
+      await _refresh();
       labelDraft = null;
       statusMessage =
           'Gericht lokal gespeichert. Es wurde kein Ernährungstag geändert.';
@@ -730,7 +733,11 @@ class NutritionViewModel extends ChangeNotifier {
     bool saving = false,
     NutritionErrorOperation operation = NutritionErrorOperation.entry,
   }) async {
-    if (_disposed) return;
+    // Ein zweiter Tipp (oder ein Speichern während des Tageswechsels) startet
+    // keine zweite Aktion. Ein Tageswechsel blockiert nur das Speichern, nicht
+    // Suche und Schätzung.
+    if (_disposed || _running || (saving && isLoading)) return;
+    _running = true;
     isLoading = !saving;
     isSaving = saving;
     isOnlineOperation = false;
@@ -746,11 +753,35 @@ class NutritionViewModel extends ChangeNotifier {
         errorOperation = operation;
       }
     } finally {
+      _running = false;
       isLoading = false;
       isSaving = false;
       isOnlineOperation = false;
       _notify();
     }
+  }
+
+  /// Läuft gerade eine über [_run] gestartete Aktion?
+  bool _running = false;
+
+  /// Liest den angezeigten Tag neu und übernimmt ihn nur, wenn weder Tag noch
+  /// Ladegeneration gewechselt haben; sonst stünde der Stand von Tag A unter
+  /// Tag B. Eine inzwischen gespeicherte Wasseränderung bleibt erhalten.
+  Future<void> _refresh() async {
+    final date = localDate;
+    final generation = _dayLoadGeneration;
+    final waterRevision = _waterRevision;
+    var next = await repository.read(date);
+    if (_disposed || date != localDate || generation != _dayLoadGeneration) {
+      return;
+    }
+    final current = snapshot;
+    if (_waterRevision != waterRevision &&
+        current != null &&
+        current.day.localDate == date) {
+      next = next.withWater(current.waterMl);
+    }
+    snapshot = next;
   }
 
   /// Addiert [addedMl] Wasser zum angezeigten Tag (Schnellknöpfe).
