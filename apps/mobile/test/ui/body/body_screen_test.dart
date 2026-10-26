@@ -770,12 +770,12 @@ class _DeferredSaveBodyRepository extends BodyRepository {
   Future<String> saveCheckIn({
     required String localDate,
     required double weightKg,
-    required double? caloriesKcal,
-    required double? proteinGrams,
-    required double? carbohydrateGrams,
-    required double? fatGrams,
-    required int? steps,
-    required int? sleepMinutes,
+    double? caloriesKcal,
+    double? proteinGrams,
+    double? carbohydrateGrams,
+    double? fatGrams,
+    int? steps,
+    int? sleepMinutes,
     int? restingHeartRateBpm,
     int? restingHrvMs,
   }) => completion.future;

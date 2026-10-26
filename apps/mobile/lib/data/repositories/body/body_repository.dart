@@ -366,15 +366,20 @@ class BodyRepository {
     return goalId;
   }
 
+  /// Speichert den Check-in des Tages. Für Kalorien, Makros, Schritte, Schlaf
+  /// und Ruhewerte gilt: null = gespeicherten Wert behalten. Schritte sind
+  /// Tagessummen und steigen nur, also gewinnt der größere Wert; so
+  /// überschreibt ein älterer Health-Stand aus dem offenen Editor keinen
+  /// neueren Wert von `HealthStepsSync`.
   Future<String> saveCheckIn({
     required String localDate,
     required double weightKg,
-    required double? caloriesKcal,
-    required double? proteinGrams,
-    required double? carbohydrateGrams,
-    required double? fatGrams,
-    required int? steps,
-    required int? sleepMinutes,
+    double? caloriesKcal,
+    double? proteinGrams,
+    double? carbohydrateGrams,
+    double? fatGrams,
+    int? steps,
+    int? sleepMinutes,
     int? restingHeartRateBpm,
     int? restingHrvMs,
   }) async {
@@ -396,7 +401,13 @@ class BodyRepository {
       localDate,
     );
     final id = existing?.aggregateId ?? ids();
-    final prior = existing == null ? null : _map(existing.workingCopy);
+    final prior = existing == null
+        ? null
+        : DailyCheckIn.fromJson(_map(existing.workingCopy));
+    final storedSteps = prior?.steps;
+    final mergedSteps = steps == null || (storedSteps ?? 0) > steps
+        ? storedSteps
+        : steps;
     // Ruhewerte: ein wartender Wert des Tages (neuere Messung) gewinnt, sonst
     // der übergebene, sonst der bisherige Wert des Check-ins.
     final pending = await _readPending();
@@ -404,21 +415,18 @@ class BodyRepository {
     final checkIn = DailyCheckIn(
       localDate: localDate,
       weightKg: weightKg,
-      caloriesKcal: caloriesKcal,
-      proteinGrams: proteinGrams,
-      carbohydrateGrams: carbohydrateGrams,
-      fatGrams: fatGrams,
-      steps: steps,
-      sleepMinutes: sleepMinutes,
+      caloriesKcal: caloriesKcal ?? prior?.caloriesKcal,
+      proteinGrams: proteinGrams ?? prior?.proteinGrams,
+      carbohydrateGrams: carbohydrateGrams ?? prior?.carbohydrateGrams,
+      fatGrams: fatGrams ?? prior?.fatGrams,
+      steps: mergedSteps,
+      sleepMinutes: sleepMinutes ?? prior?.sleepMinutes,
       restingHeartRateBpm:
           waiting?.heartRate ??
           restingHeartRateBpm ??
-          (prior?['restingHeartRateBpm'] as num?)?.toInt(),
-      restingHrvMs:
-          waiting?.hrv ??
-          restingHrvMs ??
-          (prior?['restingHrvMs'] as num?)?.toInt(),
-      createdAtUtc: prior?['createdAtUtc'] as String? ?? now.toIso8601String(),
+          prior?.restingHeartRateBpm,
+      restingHrvMs: waiting?.hrv ?? restingHrvMs ?? prior?.restingHrvMs,
+      createdAtUtc: prior?.createdAtUtc ?? now.toIso8601String(),
       updatedAtUtc: now.toIso8601String(),
     );
     await store.commitMutation(
