@@ -39,9 +39,10 @@ public sealed class EndpointAuthorizationTests
                     violations.Add($"{name} is anonymous but not in the allow list.");
                 }
 
-                if (!HasAttribute<EnableRateLimitingAttribute>(controller, action))
+                if (!HasAttribute<EnableRateLimitingAttribute>(controller, action)
+                    || HasAttribute<DisableRateLimitingAttribute>(controller, action))
                 {
-                    violations.Add($"{name} is anonymous without [EnableRateLimiting].");
+                    violations.Add($"{name} is anonymous without an effective [EnableRateLimiting] (or has [DisableRateLimiting]).");
                 }
             }
             else if (!authorized)
@@ -79,10 +80,14 @@ public sealed class EndpointAuthorizationTests
 
         foreach (Type controller in controllers)
         {
-            foreach (MethodInfo method in controller.GetMethods(
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            // Every public instance method counts as an action (also inherited ones and ones with only
+            // [Route] or [AcceptVerbs]), except [NonAction] and members that ControllerBase or object define.
+            foreach (MethodInfo method in controller.GetMethods(BindingFlags.Public | BindingFlags.Instance))
             {
-                if (method.GetCustomAttributes<HttpMethodAttribute>(inherit: true).Any()
+                Type? origin = method.GetBaseDefinition().DeclaringType;
+                if (!method.IsSpecialName
+                    && origin != typeof(ControllerBase)
+                    && origin != typeof(object)
                     && !method.IsDefined(typeof(NonActionAttribute), inherit: true))
                 {
                     yield return (controller, method);
