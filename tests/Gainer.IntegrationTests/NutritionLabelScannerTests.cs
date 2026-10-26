@@ -147,6 +147,28 @@ public sealed class NutritionLabelScannerTests
     }
 
     [TestMethod]
+    public void ZeroKilocaloriesAreConfirmableButMissingEnergyIsNot()
+    {
+        NutritionLabelScanDraft zero = Create(NutritionLabelBasis.Per100Grams, null, kcal: 0m, protein: 0m, carbs: 0m, fat: 0m);
+        Assert.AreEqual(0m, zero.Kilocalories.Per100Grams);
+        Assert.AreEqual(NutritionLabelFieldStatus.Confirmed, zero.Kilocalories.Status);
+        Assert.IsTrue(zero.CanConfirm);
+
+        NutritionLabelScanDraft missing = NutritionLabelScanDraft.Create(
+            new NutritionLabelReadings(
+                NutritionLabelBasis.Per100Grams,
+                null,
+                NutritionLabelReading.Empty,
+                NutritionLabelReading.Empty,
+                new NutritionLabelReading(0m, null),
+                new NutritionLabelReading(0m, null),
+                new NutritionLabelReading(0m, null)),
+            "OpenAI", "model", "v1", ScannedAt);
+        Assert.IsNull(missing.Kilocalories.Per100Grams);
+        Assert.IsFalse(missing.CanConfirm);
+    }
+
+    [TestMethod]
     public void SaltIsReadPer100GramsAndDerivedFromSodium()
     {
         NutritionLabelScanDraft salt = NutritionLabelScanDraft.Create(
