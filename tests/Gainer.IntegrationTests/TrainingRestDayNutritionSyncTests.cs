@@ -236,6 +236,39 @@ public sealed class TrainingRestDayNutritionSyncTests
     }
 
     [TestMethod]
+    public async Task DayTemplateEntriesWithStableIdsCanBeDeletedInsertedAndSwapped()
+    {
+        (string connectionString, Guid user, _) = await CreateDatabaseAsync();
+        Guid client = Guid.NewGuid();
+        await RegisterAsync(connectionString, user, client);
+        Guid templateId = Guid.NewGuid();
+        Guid a = Guid.NewGuid(), b = Guid.NewGuid(), c = Guid.NewGuid(), added = Guid.NewGuid();
+        object[][] saves =
+        [
+            [Entry("Breakfast", 0, "A", 80m, a), Entry("Breakfast", 1, "B", 80m, b), Entry("Breakfast", 2, "C", 80m, c)],
+            // Deleting the first entry moves the others up.
+            [Entry("Breakfast", 0, "B", 80m, b), Entry("Breakfast", 1, "C", 80m, c)],
+            // A new first entry moves the others down.
+            [Entry("Breakfast", 0, "Neu", 80m, added), Entry("Breakfast", 1, "B", 80m, b), Entry("Breakfast", 2, "C", 80m, c)],
+            // Swapping two entries.
+            [Entry("Breakfast", 0, "Neu", 80m, added), Entry("Breakfast", 1, "C", 80m, c), Entry("Breakfast", 2, "B", 80m, b)],
+        ];
+
+        for (int index = 0; index < saves.Length; index++)
+        {
+            await Apply(connectionString, user, client, index + 1,
+                TemplateCommand(templateId, index, "Trainingstag", "Training", saves[index]));
+        }
+
+        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        NutritionDayTemplate template = await context.NutritionDayTemplates.Include(item => item.Entries).SingleAsync();
+        Assert.AreEqual(saves.Length, template.Version);
+        CollectionAssert.AreEqual(
+            new[] { added, c, b },
+            template.Entries.OrderBy(item => item.Position).Select(item => item.Id).ToArray());
+    }
+
+    [TestMethod]
     public async Task DayTemplatesAreValidated()
     {
         (string connectionString, Guid user, _) = await CreateDatabaseAsync();

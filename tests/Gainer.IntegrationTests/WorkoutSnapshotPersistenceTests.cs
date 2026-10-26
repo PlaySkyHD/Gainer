@@ -121,6 +121,75 @@ public sealed class WorkoutSnapshotPersistenceTests
     }
 
     [TestMethod]
+    public async Task ReplacingBlocksAndSetsWithStableIdsIsNotAConflict()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
+        Guid workoutId = Guid.NewGuid();
+        Guid blockA = Guid.NewGuid(), blockB = Guid.NewGuid(), blockC = Guid.NewGuid(), blockNew = Guid.NewGuid();
+        Guid setA = Guid.NewGuid(), setB = Guid.NewGuid(), setC = Guid.NewGuid(), setNew = Guid.NewGuid();
+
+        WorkoutExerciseValues B(Guid id, params Guid[] setIds) => new(
+            id, exerciseIds[0], "Bench", "strength", null, null,
+            setIds.Select(setId => new WorkoutSetValues(setId, "normal", 100m, 8, null, null)).ToArray());
+
+        Guid setB1 = Guid.NewGuid(), setC1 = Guid.NewGuid();
+        WorkoutExerciseValues[][] rounds =
+        [
+            // Three blocks, the first with three sets.
+            [B(blockA, setA, setB, setC), B(blockB, setB1), B(blockC, setC1)],
+            // Delete the first block; the others move up.
+            [B(blockB, setB1), B(blockC, setC1)],
+            // Insert a new first block and a new first set.
+            [B(blockNew, setNew, setB1), B(blockB, setA), B(blockC, setC1)],
+            // Swap blocks and sets.
+            [B(blockC, setC1), B(blockB, setA), B(blockNew, setB1, setNew)],
+        ];
+
+        long version = 0;
+        for (int index = 0; index < rounds.Length; index++)
+        {
+            await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+            var handler = Handler(context, userId);
+            WorkoutValues values = Values(workoutId, "Push", Started, Started.AddHours(1), rounds[index]);
+            WorkoutSnapshot saved = index == 0
+                ? await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), values), TestContext.CancellationToken)
+                : await handler.SaveAsync(SaveWorkoutMutation.Create(Metadata(), version, values), TestContext.CancellationToken);
+            version = saved.Version;
+            Assert.AreEqual(index + 1, saved.Version);
+        }
+
+        await using AppDbContext read = Fixture.CreateContext(connectionString, userId);
+        List<WorkoutExercise> stored = await read.WorkoutExercises.AsNoTracking().OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
+        CollectionAssert.AreEqual(new[] { blockC, blockB, blockNew }, stored.Select(item => item.Id).ToArray());
+        List<WorkoutSet> storedSets = await read.WorkoutSets.AsNoTracking()
+            .Where(item => item.WorkoutExerciseId == blockNew).OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
+        CollectionAssert.AreEqual(new[] { setB1, setNew }, storedSets.Select(item => item.Id).ToArray());
+    }
+
+    [TestMethod]
+    public async Task StaleBaseVersionRaisesWorkoutConflictAndKeepsStoredState()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid workoutId = Guid.NewGuid();
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        var handler = Handler(context, userId);
+        await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Push", Started, null, [])), TestContext.CancellationToken);
+        await handler.SaveAsync(SaveWorkoutMutation.Create(Metadata(), 1, Values(workoutId, "Push 2", Started, null, [])), TestContext.CancellationToken);
+
+        await Assert.ThrowsAsync<WorkoutConflictException>(() => handler.SaveAsync(
+            SaveWorkoutMutation.Create(Metadata(), 1, Values(workoutId, "Stale", Started, null, [])), TestContext.CancellationToken));
+        await Assert.ThrowsAsync<WorkoutConflictException>(() => handler.DeleteAsync(
+            DeleteWorkoutMutation.Create(Metadata(), workoutId, 1), TestContext.CancellationToken));
+
+        context.ChangeTracker.Clear();
+        Workout stored = await context.Workouts.SingleAsync(TestContext.CancellationToken);
+        Assert.AreEqual("Push 2", stored.Title);
+        Assert.AreEqual(2, stored.Version);
+        Assert.IsNull(stored.DeletedAtUtc);
+    }
+
+    [TestMethod]
     public async Task EndsAndResumesWorkoutThroughEndedAt()
     {
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
