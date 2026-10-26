@@ -39,6 +39,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The iOS job skips goldens (macOS rasterizes differently) and sonar-app.yml, which runs them
+  # on Linux under TZ=Europe/Berlin, is skipped for Dependabot. This job closes that gap for
+  # Dependabot only, so regular pull requests do not run the suite twice. No secrets are used.
+  linux-tests:
+    name: Flutter tests with goldens (Dependabot)
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install verified Flutter stable SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import json; print(json.load(open("apps/mobile/tool/toolchain.json"))["flutter"]["version"])')"
+          if [[ "$version" != '3.47.7' ]]; then
+            echo "::error::apps/mobile/tool/toolchain.json pins Flutter $version; update the archive and SHA-256 in this workflow."
+            exit 1
+          fi
+          archive="$RUNNER_TEMP/flutter_linux_${version}-stable.tar.xz"
+          expected_sha256='af7455f540df951184c7953fbe3cf884766e7541dacf8571f9f582db03dd6230'
+          curl --fail --location --retry 3 --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${version}-stable.tar.xz" \
+            --output "$archive"
+          printf '%s  %s\n' "$expected_sha256" "$archive" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/flutter-sdk"
+          tar -xf "$archive" -C "$RUNNER_TEMP/flutter-sdk"
+          echo "$RUNNER_TEMP/flutter-sdk/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Dart packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.pub-cache/hosted/pub.dev
+            ~/.pub-cache/hosted-hashes/pub.dev
+          key: ${{ runner.os }}-dart-pub-${{ hashFiles('apps/mobile/pubspec.yaml', 'apps/mobile/pubspec.lock') }}
+
+      - name: Resolve dependencies
+        run: flutter pub get --enforce-lockfile
+        working-directory: apps/mobile
+
+      # The runner defaults to UTC, where no clock change happens.
+      - name: Run tests including goldens
+        run: flutter test
+        working-directory: apps/mobile
+        env:
+          TZ: Europe/Berlin
+
   ios-simulator:
     name: Stable Flutter checks and iOS Simulator build
     runs-on: macos-15

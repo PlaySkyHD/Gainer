@@ -85,10 +85,12 @@ jobs:
 
       - name: Verify non-root application images
         run: |
-          test "$(docker image inspect gainer-api:local --format '{{.Config.User}}')" != "" 
-          test "$(docker image inspect gainer-api:local --format '{{.Config.User}}')" != "0"
-          test "$(docker image inspect gainer-migrator:local --format '{{.Config.User}}')" != ""
-          test "$(docker image inspect gainer-migrator:local --format '{{.Config.User}}')" != "0"
+          for image in gainer-api:local gainer-migrator:local gainer-edge:local gainer-backup:local; do
+            user="$(docker image inspect "$image" --format '{{.Config.User}}')"
+            case "$user" in
+              ""|0|0:*|root|root:*) echo "::error::$image runs as root (USER='$user')"; exit 1 ;;
+            esac
+          done
 
       - name: Scan image metadata, history, and rendered Compose
         shell: pwsh

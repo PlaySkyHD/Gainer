@@ -567,7 +567,8 @@ function Invoke-FlutterChecksPhase {
     Push-Location $mobileRoot
     try {
         Invoke-Checked $flutterCommand @('pub', 'get', '--enforce-lockfile')
-        Invoke-Checked $dartCommand @('format', '--output=none', '--set-exit-if-changed', 'lib', 'test', 'pigeons')
+        $extraFormatPaths = @(@('integration_test', 'test_driver') | Where-Object { Test-Path -LiteralPath $_ -PathType Container })
+        Invoke-Checked $dartCommand (@('format', '--output=none', '--set-exit-if-changed', 'lib', 'test', 'pigeons') + $extraFormatPaths)
         $codegenRoot = Join-Path $repositoryRoot 'artifacts/mobile-codegen-check'
         New-Item -ItemType Directory -Force -Path $codegenRoot | Out-Null
         $candidateDart = Join-Path $codegenRoot 'mobile_platform_api.dart'
@@ -600,7 +601,7 @@ function Invoke-FlutterChecksPhase {
                 throw "Pigeon bindings are stale: '$($pair.Expected)'. Regenerate with the pinned toolchain and include the result."
             }
         }
-        Invoke-Checked $dartCommand @('format', '--output=none', '--set-exit-if-changed', 'lib', 'test', 'pigeons')
+        Invoke-Checked $dartCommand (@('format', '--output=none', '--set-exit-if-changed', 'lib', 'test', 'pigeons') + $extraFormatPaths)
         Invoke-Checked $flutterCommand @('analyze', '--fatal-infos')
         # Goldens are Linux references; rasterization differs on macOS, so the
         # Sonar app pipeline (ubuntu) runs them instead.

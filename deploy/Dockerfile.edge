@@ -1,3 +1,9 @@
 FROM caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
+# Port 80 stays: Docker lowers net.ipv4.ip_unprivileged_port_start to 0 in container network
+# namespaces, so a non-root user can bind it. /data and /config are the image volumes Caddy writes to.
+RUN addgroup -g 65532 -S edge \
+    && adduser -u 65532 -S -G edge -H -s /sbin/nologin edge \
+    && chown -R edge:edge /data /config
+USER 65532:65532
 EXPOSE 80

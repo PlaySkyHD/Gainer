@@ -9,3 +9,8 @@
 **/test-results
 artifacts
 openspec
+.env
+**/.data-protection-keys/
+.apple/
+.aspire/
+.gymapp/
