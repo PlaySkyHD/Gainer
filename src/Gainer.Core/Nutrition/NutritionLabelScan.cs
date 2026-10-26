@@ -128,6 +128,7 @@ public sealed record NutritionLabelScanDraft(
         // Fiber is optional for confirmation and scaled like the macros.
         NutritionLabelFieldDraft fiberField = Field(
             fiberGrams ?? NutritionLabelReading.Empty, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
+        kcal = CheckAgainstMacroEnergy(kcal, protein, carbohydrate, fat);
         decimal macroSum = (protein.Per100Grams ?? 0m) + (carbohydrate.Per100Grams ?? 0m) + (fat.Per100Grams ?? 0m);
         bool canConfirm = kcal.Per100Grams is not null && macroSum <= MaxPlausibleMacroSumPer100Grams;
 
@@ -145,6 +146,27 @@ public sealed record NutritionLabelScanDraft(
             normalizedModel,
             normalizedParser,
             scannedAtUtc);
+    }
+
+    private static NutritionLabelFieldDraft CheckAgainstMacroEnergy(
+        NutritionLabelFieldDraft kcal,
+        NutritionLabelFieldDraft protein,
+        NutritionLabelFieldDraft carbohydrate,
+        NutritionLabelFieldDraft fat)
+    {
+        // Below this macro energy (water, diet drinks) rounding makes the comparison meaningless; juice (about 45 kcal) is still checked.
+        const decimal minMacroEnergy = 20m;
+        // Fiber, polyols and rounding let labels undercut 4/4/9 a lot, so only energy below a quarter of it is a misread.
+        const decimal minShareOfMacroEnergy = 0.25m;
+        if (kcal.Per100Grams is not { } energyPer100) return kcal;
+        // Unreadable macros count as 0: that only lowers the macro energy, so the check stays conservative.
+        decimal macroEnergy = NutritionCalculator.CalculateMacroEnergy(
+            protein.Per100Grams ?? 0m, carbohydrate.Per100Grams ?? 0m, fat.Per100Grams ?? 0m);
+        bool farBelowMacroEnergy = macroEnergy >= minMacroEnergy
+            && energyPer100 < macroEnergy * minShareOfMacroEnergy;
+        return farBelowMacroEnergy
+            ? kcal with { Per100Grams = null, Status = NutritionLabelFieldStatus.Implausible }
+            : kcal;
     }
 
     private static NutritionLabelFieldDraft Field(
