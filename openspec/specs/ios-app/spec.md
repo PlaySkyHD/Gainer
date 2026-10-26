@@ -91,7 +91,7 @@ Jeder Pull Request MUST in der CI Format, Analyse, Flutter-Tests, einen iOS-Simu
 
 ### Requirement: Kein Web-Client
 
-Das Repository SHALL keinen Web-Client mehr enthalten. Die iOS-App MUST der einzige Client der API sein. Build und Deploy MUST ohne Node.js und npm auskommen. Nur der Workflow „OpenSpec“ nutzt Node.js und npm, ausschließlich für die gepinnte OpenSpec-CLI in `tools/openspec`.
+Das Repository SHALL keinen Web-Client mehr enthalten. Die iOS-App MUST der einzige Client der API sein. Build, CI und Deploy MUST ohne Node.js und npm auskommen, ausgenommen der Workflow „OpenSpec“, der beides nur für die gepinnte OpenSpec-CLI in `tools/openspec` nutzt.
 
 #### Scenario: CI ohne Node
 - **GIVEN** ein Pull Request gegen `main`
