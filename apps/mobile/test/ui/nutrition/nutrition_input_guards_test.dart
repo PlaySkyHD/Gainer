@@ -4,10 +4,12 @@ import 'dart:typed_data';
 import 'package:drift/native.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/nutrition/bls_food_catalog.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/domain/models/nutrition/food_search.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/nutrition/nutrition_screen.dart';
@@ -58,12 +60,14 @@ void main() {
   _GatedRepository newRepository({
     NutritionOnlineProvider? online,
     CapturePlatform? capture,
+    LocalFoodCatalog? localFoods,
   }) => repository = _GatedRepository(
     store: LocalSyncStore(database: database, accountId: _accountId),
     ids: () => _id(nextId++),
     clock: () => DateTime.utc(2026, 10, 12, 10),
     online: online,
     capture: capture,
+    localFoods: localFoods,
   );
 
   group('view model', () {
@@ -125,6 +129,127 @@ void main() {
 
       expect(viewModel.snapshot!.day.entries, isEmpty);
       expect(viewModel.localDate, '2026-10-13');
+    });
+
+    test(
+      'a running estimate does not block saving; the save reports true',
+      () async {
+        final online = _EstimateOnline([_component('Pizza')])
+          ..gate = Completer<void>();
+        final viewModel = NutritionViewModel(
+          repository: newRepository(online: online),
+          localDate: _date,
+        );
+        addTearDown(viewModel.dispose);
+        await viewModel.load();
+
+        final estimating = viewModel.estimateMeal('Pizza');
+        await Future<void>.delayed(Duration.zero);
+        expect(viewModel.isOnlineOperation, isTrue);
+        final saved = await viewModel.addFood(_food('Apfel'), amountGrams: 100);
+        online.gate!.complete();
+        await estimating;
+
+        expect(saved, isTrue);
+        expect(viewModel.snapshot!.day.entries.map((e) => e.productName), [
+          'Apfel',
+        ]);
+        expect(viewModel.mealEstimateDraft!.components.single.name, 'Pizza');
+      },
+    );
+
+    test('a rejected second save reports false', () async {
+      final viewModel = NutritionViewModel(
+        repository: newRepository(),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      repository.saveGate = Completer<void>();
+
+      final first = viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      final second = await viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      repository.saveGate!.complete();
+
+      expect(second, isFalse);
+      expect(await first, isTrue);
+    });
+
+    test('a failed save reports false', () async {
+      final viewModel = NutritionViewModel(
+        repository: newRepository(),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      repository.saveError = LocalResourceChangedException();
+
+      final saved = await viewModel.addFood(_food('Apfel'), amountGrams: 100);
+
+      expect(saved, isFalse);
+      // Deutsche Meldung statt der englischen des Stores.
+      expect(
+        viewModel.errorMessage,
+        'Der Tag hat sich gerade beim Synchronisieren geändert. '
+        'Bitte versuche es noch einmal.',
+      );
+    });
+
+    test('a save is rejected while the day changes, also after an earlier '
+        'save ended', () async {
+      final viewModel = NutritionViewModel(
+        repository: newRepository(),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      repository.saveGate = Completer<void>();
+      final nextDay = repository.readGates['2026-10-13'] = Completer<void>();
+
+      final saving = viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      final loading = viewModel.selectDate('2026-10-13');
+      repository.saveGate!.complete();
+      await saving;
+
+      // Das erste Speichern ist fertig, der Tageswechsel läuft noch.
+      expect(viewModel.canSave, isFalse);
+      final rejected = await viewModel.addFood(
+        _food('Birne'),
+        amountGrams: 100,
+      );
+      expect(rejected, isFalse);
+      expect(repository.saveCalls, 1);
+
+      nextDay.complete();
+      await loading;
+      expect(viewModel.localDate, '2026-10-13');
+      expect(viewModel.canSave, isTrue);
+      expect(viewModel.snapshot!.day.entries, isEmpty);
+    });
+
+    test('reloading the same day while saving keeps the new entry', () async {
+      final viewModel = NutritionViewModel(
+        repository: newRepository(),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      repository.saveGate = Completer<void>();
+      final staleRead = repository.holdNextRead = Completer<void>();
+
+      final saving = viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      // Das Neuladen liest den Stand vor dem Speichern und kommt zuletzt an.
+      final loading = viewModel.load();
+      await Future<void>.delayed(Duration.zero);
+      repository.saveGate!.complete();
+      await saving;
+      expect(viewModel.snapshot!.day.entries, hasLength(1));
+      staleRead.complete();
+      await loading;
+
+      expect(viewModel.snapshot!.day.entries.map((e) => e.productName), [
+        'Apfel',
+      ]);
     });
 
     test(
@@ -237,6 +362,47 @@ void main() {
 
       expect(repository.saveCalls, 1);
       expect(viewModel.snapshot!.day.entries, hasLength(2));
+    });
+
+    testWidgets('a local hit saves and closes while an online search runs', (
+      tester,
+    ) async {
+      final online = _EstimateOnline(const [])..searchGate = Completer<void>();
+      newRepository(online: online, localFoods: _FakeCatalog());
+      final viewModel = await pump(tester);
+      await tester.tap(find.byKey(const ValueKey('nutrition-add-food')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('nutrition-mode-search')),
+      );
+      await tester.tap(find.byKey(const ValueKey('nutrition-mode-search')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-entry-search')),
+        'Apfel',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump();
+      expect(viewModel.isOnlineOperation, isTrue);
+
+      await tester.tap(find.textContaining('kcal / 100 g'));
+      // Der Ladekreis der laufenden Suche animiert endlos: kein pumpAndSettle.
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(repository.saveCalls, 1);
+      expect(viewModel.snapshot!.day.entries.map((e) => e.productName), [
+        'Apfel',
+      ]);
+      // Das Sheet schloss, weil gespeichert wurde.
+      expect(
+        find.byKey(const ValueKey('nutrition-entry-search')),
+        findsNothing,
+      );
+      online.searchGate!.complete();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('an empty amount reports an error instead of adding 100 g', (
@@ -359,18 +525,27 @@ class _GatedRepository extends NutritionRepository {
     super.clock,
     super.online,
     super.capture,
+    super.localFoods,
   });
 
   Completer<void>? saveGate;
+  Object? saveError;
   int saveCalls = 0;
   bool holdReadAfterSave = false;
   Completer<NutritionSnapshot>? heldRead;
   bool readHeld = false;
 
+  /// Hält Lesen des Tages an, bis der Completer fertig ist.
+  final readGates = <String, Completer<void>>{};
+
+  /// Das nächste Lesen liefert den Stand von jetzt, aber erst nach dem Gate.
+  Completer<void>? holdNextRead;
+
   @override
   Future<void> saveEntry(String localDate, NutritionEntry entry) async {
     saveCalls++;
     await saveGate?.future;
+    if (saveError case final error?) throw error;
     await super.saveEntry(localDate, entry);
     if (holdReadAfterSave) {
       heldRead = Completer<NutritionSnapshot>();
@@ -378,14 +553,37 @@ class _GatedRepository extends NutritionRepository {
   }
 
   @override
-  Future<NutritionSnapshot> read(String localDate) {
+  Future<NutritionSnapshot> read(String localDate) async {
     final held = heldRead;
     if (held != null && !readHeld) {
       readHeld = true;
       return held.future;
     }
+    final stale = holdNextRead;
+    if (stale != null) {
+      holdNextRead = null;
+      final snapshot = await super.read(localDate);
+      await stale.future;
+      return snapshot;
+    }
+    await readGates[localDate]?.future;
     return super.read(localDate);
   }
+}
+
+class _FakeCatalog implements LocalFoodCatalog {
+  @override
+  String get provider => 'BLS';
+
+  @override
+  Future<FoodSearchResult> search(String query) async =>
+      const FoodSearchResult([
+        LocalFood(
+          code: 'B1',
+          name: 'Apfel',
+          per100Grams: NutritionTotals(kilocalories: 52),
+        ),
+      ]);
 }
 
 class _EstimateOnline implements NutritionOnlineProvider {
@@ -394,6 +592,13 @@ class _EstimateOnline implements NutritionOnlineProvider {
   final List<NutritionEstimateComponent> components;
   int calls = 0;
   Completer<void>? gate;
+  Completer<void>? searchGate;
+
+  @override
+  Future<List<NutritionFood>> searchFoods(String query) async {
+    await searchGate?.future;
+    return const [];
+  }
 
   @override
   Future<MealEstimateDraft> estimateMeal(String description) async {

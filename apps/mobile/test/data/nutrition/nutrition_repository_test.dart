@@ -89,9 +89,8 @@ void main() {
       per100Grams: const NutritionTotals(kilocalories: 65),
       source: null,
     );
-    await repository.saveDay(
-      NutritionDay(localDate: '2026-10-12', entries: [one, two]),
-    );
+    await repository.saveEntry('2026-10-12', one);
+    await repository.saveEntry('2026-10-12', two);
     final id = (await repository.store.readAggregates('nutrition-day'))
         .single
         .aggregateId;
@@ -114,7 +113,7 @@ void main() {
     expect(
       (await repository.store.readOutbox(aggregateType: 'nutrition-day'))
           .map((m) => m.sequence),
-      // Drei lokale Änderungen vor dem Senden bleiben ein wartender Eintrag.
+      // Vier lokale Änderungen vor dem Senden bleiben ein wartender Eintrag.
       [1],
     );
   });

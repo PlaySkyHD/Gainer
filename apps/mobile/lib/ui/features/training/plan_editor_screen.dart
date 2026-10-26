@@ -140,12 +140,19 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
 
   /// Laufendes Speichern. Ein zweiter Tipp (oder „Speichern“ beim Verlassen)
   /// bekommt dasselbe Ergebnis, statt bei einem neuen Plan zwei
-  /// `create`-Mutationen mit derselben ID zu erzeugen.
+  /// `create`-Mutationen mit derselben ID zu erzeugen. Wurde der Entwurf seit
+  /// dem Start des laufenden Speicherns geändert, speichert der zweite Aufruf
+  /// danach den neuen Stand, statt Erfolg für den alten zu melden.
   Future<bool>? _saving;
 
   Future<bool> _save() {
     final running = _saving;
-    if (running != null) return running;
+    if (running != null) {
+      return running.then((saved) {
+        if (saved && mounted && _dirty) return _save();
+        return saved;
+      });
+    }
     late final Future<bool> future;
     future = _persist().whenComplete(() {
       if (!identical(_saving, future)) return;

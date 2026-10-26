@@ -397,15 +397,12 @@ void main() {
         '2026-10-22',
         name: 'Trainingstag',
       );
-      await repository.saveDay(
-        NutritionDay(
-          localDate: '2026-10-24',
-          entries: [
-            for (var index = 0; index < 198; index++)
-              _entry(testId(1000 + index), NutritionMeal.snacks, index, 'Nuss'),
-          ],
-        ),
-      );
+      for (var index = 0; index < 198; index++) {
+        await repository.saveEntry(
+          '2026-10-24',
+          _entry(testId(1000 + index), NutritionMeal.snacks, index, 'Nuss'),
+        );
+      }
       expect(
         () => repository.applyTemplate(id, '2026-10-24'),
         throwsA(isA<NutritionValidationException>()),

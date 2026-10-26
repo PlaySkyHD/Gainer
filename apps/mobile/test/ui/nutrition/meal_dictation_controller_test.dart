@@ -95,6 +95,35 @@ void main() {
     expect(controller.isListening, isFalse);
     expect(controller.isStarting, isFalse);
   });
+
+  test('finish while the microphone is still starting cancels the start '
+      'and no dictation writes afterwards', () async {
+    final platform = _SlowStartDictation();
+    final text = TextEditingController(text: 'Müsli');
+    final controller = MealDictationController(
+      platform: platform,
+      text: text,
+      pollInterval: const Duration(milliseconds: 5),
+    );
+    addTearDown(controller.dispose);
+
+    final starting = controller.start();
+    var finished = false;
+    final finishing = controller.finish().then((_) => finished = true);
+    await Future<void>.delayed(Duration.zero);
+    // Solange die Plattform noch startet, ist das Ende nicht erreicht.
+    expect(finished, isFalse);
+
+    platform.transcript = 'Spät diktiert';
+    platform.release.complete();
+    await starting;
+    await finishing;
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(platform.cancelled, isTrue);
+    expect(controller.isListening, isFalse);
+    expect(text.text, 'Müsli');
+  });
 }
 
 class _SlowStartDictation extends _ScriptedDictation {

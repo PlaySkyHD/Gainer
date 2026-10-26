@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/training/training_log_repository.dart';
 import 'package:gainer_mobile/domain/models/training/training_plan_model.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
@@ -316,6 +319,56 @@ void main() {
     expect(plans, isEmpty);
   });
 
+  testWidgets('Speichern beim Verlassen sichert Änderungen nach dem '
+      'laufenden Speichern', (tester) async {
+    final slow = _SlowPlans(harness.repository);
+    await tester.pumpWidget(
+      trainingTestApp(
+        home: Builder(
+          builder: (context) => Center(
+            child: CupertinoButton(
+              onPressed: () => Navigator.of(context).push<void>(
+                CupertinoPageRoute<void>(
+                  builder: (_) => PlanEditorScreen(
+                    repository: slow,
+                    activeWorkout: activeWorkout,
+                  ),
+                ),
+              ),
+              child: const Text('Öffnen'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await settle(tester);
+    await tester.tap(find.text('Öffnen'));
+    await settle(tester);
+    final name = find.byKey(const ValueKey('plan-name-field'));
+    await tester.enterText(name, 'Push');
+    await tester.pump();
+
+    // Das Speichern hängt, während der Entwurf sich ändert und der Nutzer
+    // zurückgeht.
+    await tester.tap(find.text('Speichern'));
+    await tester.pump();
+    expect(slow.createCalls, 1);
+    await tester.enterText(name, 'Push 2');
+    await tester.pump();
+    await tester.pageBack();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Ungespeicherte Änderungen'), findsOneWidget);
+    await tester.tap(find.text('Speichern').last);
+    await tester.pump();
+    slow.gate.complete();
+    await settle(tester);
+
+    final plans = await tester.runAsync(harness.repository.readPlans);
+    expect(plans!.map((plan) => plan.name), ['Push 2']);
+    expect(find.text('Öffnen'), findsOneWidget);
+  });
+
   Future<TrainingPlanModel> seedThreeEntryPlan(WidgetTester tester) async {
     final plan = await tester.runAsync(() async {
       final pulldown = await seedExercise(harness, name: 'Latzug');
@@ -461,4 +514,21 @@ void main() {
     expect(find.text('Verschieben'), findsNothing);
     expect(find.text('Ersetzen'), findsOneWidget);
   });
+}
+
+/// Hält das Anlegen eines Plans an, damit der Test Änderungen währenddessen
+/// machen kann.
+class _SlowPlans extends TrainingLogRepository {
+  _SlowPlans(TrainingLogRepository base)
+    : super(store: base.store, catalog: base.catalog);
+
+  final gate = Completer<void>();
+  int createCalls = 0;
+
+  @override
+  Future<TrainingPlanModel> createPlan(TrainingPlanModel draft) async {
+    createCalls++;
+    await gate.future;
+    return super.createPlan(draft);
+  }
 }

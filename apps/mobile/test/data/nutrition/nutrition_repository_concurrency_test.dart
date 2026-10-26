@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/models/local/local_aggregate.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/bls_food_catalog.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
@@ -99,6 +100,81 @@ void main() {
     );
 
     expect((await repository.read('2026-10-12')).day.entries, hasLength(1));
+  });
+
+  /// Ein Pull ersetzt den Tag, wie nach einer Serverbestätigung.
+  Future<void> pull(
+    int version, {
+    List<NutritionEntry> entries = const [],
+  }) async {
+    final row = (await repository.store.readAggregates('nutrition-day')).single;
+    final snapshot = Map<String, Object?>.from(row.workingCopy! as Map)
+      ..['entries'] = [for (final entry in entries) entry.toJson()];
+    await database
+        .into(database.localResources)
+        .insertOnConflictUpdate(
+          LocalResourcesCompanion.insert(
+            aggregateType: 'nutrition-day',
+            aggregateId: row.aggregateId,
+            envelopeJson: serverEnvelope(
+              aggregateId: row.aggregateId,
+              snapshot: snapshot,
+              version: version,
+            ).encode(),
+            updatedAtEpochMs: 0,
+          ),
+        );
+    await database.delete(database.localOutbox).go();
+  }
+
+  test('a pull between reading and writing is respected on retry', () async {
+    await repository.saveEntry(
+      '2026-10-12',
+      _entry(1, NutritionMeal.breakfast, 1),
+    );
+    var pulled = false;
+    repository.beforeDayCommitForTesting = () async {
+      if (pulled) return;
+      pulled = true;
+      await pull(
+        1,
+        entries: [
+          _entry(1, NutritionMeal.breakfast, 1),
+          _entry(7, NutritionMeal.lunch, 1),
+        ],
+      );
+    };
+
+    await repository.saveEntry(
+      '2026-10-12',
+      _entry(2, NutritionMeal.breakfast, 2),
+    );
+
+    final ids = (await repository.read('2026-10-12')).day.entries
+        .map((entry) => entry.entryId);
+    expect(ids, containsAll([_id(1), _id(2), _id(7)]));
+  });
+
+  test('a day that keeps changing gives up with a German message', () async {
+    await repository.saveEntry(
+      '2026-10-12',
+      _entry(1, NutritionMeal.breakfast, 1),
+    );
+    var version = 0;
+    repository.beforeDayCommitForTesting = () => pull(++version);
+
+    await expectLater(
+      repository.saveEntry('2026-10-12', _entry(2, NutritionMeal.lunch, 1)),
+      throwsA(
+        isA<NutritionSaveException>().having(
+          (error) => error.toString(),
+          'message',
+          'Der Tag hat sich gerade beim Synchronisieren geändert. '
+              'Bitte versuche es noch einmal.',
+        ),
+      ),
+    );
+    expect(version, 3);
   });
 
   test('the BLS catalog retries after a failed load', () async {

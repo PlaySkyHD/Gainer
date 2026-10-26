@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../../../data/repositories/nutrition/nutrition_preferences.dart';
 import '../../../data/repositories/nutrition/nutrition_repository.dart';
+import '../../../data/repositories/sync/local_sync_store.dart'
+    show LocalResourceChangedException;
 import '../../../data/services/platform/platform_ports.dart';
 import '../../../domain/models/nutrition/nutrition.dart';
 
@@ -47,9 +49,26 @@ class NutritionViewModel extends ChangeNotifier {
   FoodSourceFilter searchSource = FoodSourceFilter.all;
   int _localSearchGeneration = 0;
   NutritionFood? barcodeFood;
-  bool isLoading = false;
+
+  /// Tag oder Suche/Schätzung laden gerade.
+  bool get isLoading => _dayLoading || _reading;
   bool isSaving = false;
   bool isOnlineOperation = false;
+
+  /// Wechselt der Tag gerade? Währenddessen würde ein Speichern auf dem alten
+  /// Tag landen.
+  bool _dayLoading = false;
+
+  /// Läuft eine Suche, Schätzung oder Aufnahme? Sie blockiert kein Speichern.
+  bool _reading = false;
+
+  /// Läuft ein Speichern, das ein Tipp starten dürfte? Sonst sind Zeilen, die
+  /// speichern würden, deaktiviert.
+  bool get canSave => !_disposed && !isSaving && !_dayLoading;
+
+  /// Zählt übernommene Tagesstände; ein Laden, das davor gelesen hat, liest
+  /// neu, statt einen älteren Stand über einen gespeicherten zu legen.
+  int _dayRevision = 0;
   String? errorMessage;
   NutritionErrorOperation? errorOperation;
   String? statusMessage;
@@ -92,14 +111,21 @@ class NutritionViewModel extends ChangeNotifier {
   Future<void> _loadDay(String date) async {
     final generation = ++_dayLoadGeneration;
     _pendingDate = date;
-    isLoading = true;
+    _dayLoading = true;
     errorMessage = null;
     errorOperation = null;
     statusMessage = null;
     _notify();
     final waterRevision = _waterRevision;
     try {
+      var dayRevision = _dayRevision;
       var next = await repository.read(date);
+      // Ein Speichern, das während des Lesens fertig wurde, ist neuer als
+      // dieser Stand.
+      while (dayRevision != _dayRevision && !_disposed) {
+        dayRevision = _dayRevision;
+        next = await repository.read(date);
+      }
       await repository.preferences.read();
       if (_disposed || generation != _dayLoadGeneration) return;
       // Kam während des Ladens eine Wasseränderung für diesen Tag an, ist ihr
@@ -122,7 +148,7 @@ class NutritionViewModel extends ChangeNotifier {
     } finally {
       if (!_disposed && generation == _dayLoadGeneration) {
         _pendingDate = null;
-        isLoading = false;
+        _dayLoading = false;
         _notify();
       }
     }
@@ -153,7 +179,8 @@ class NutritionViewModel extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> addManualEntry({
+  /// Liefert true, wenn der Eintrag gespeichert wurde.
+  Future<bool> addManualEntry({
     required String productName,
     String? brand,
     required double amountGrams,
@@ -476,7 +503,8 @@ class NutritionViewModel extends ChangeNotifier {
 
   /// [pieceCount] gesetzt: Menge wurde in Stück eingegeben ([amountGrams] ist
   /// dann Stückzahl × Stückgewicht des Lebensmittels).
-  Future<void> addFood(
+  /// Liefert true, wenn der Eintrag gespeichert wurde.
+  Future<bool> addFood(
     NutritionFood food, {
     required double amountGrams,
     double? pieceCount,
@@ -512,12 +540,12 @@ class NutritionViewModel extends ChangeNotifier {
   /// Übernimmt [item] aus dem Schätzvorschlag. Das Objekt statt eines Index
   /// zu nehmen verhindert, dass ein später Tipp nach dem Entfernen einen
   /// anderen Bestandteil bucht; ist [item] nicht mehr im Vorschlag, passiert
-  /// nichts.
-  Future<void> confirmEstimatedComponent(
+  /// nichts. Liefert true, wenn der Bestandteil gespeichert wurde.
+  Future<bool> confirmEstimatedComponent(
     NutritionEstimateComponent item,
   ) async {
     final draft = mealEstimateDraft;
-    if (draft == null || !draft.components.contains(item)) return;
+    if (draft == null || !draft.components.contains(item)) return false;
     // 0 kcal ist gültig, z. B. für den Bestandteil „Salz“.
     if (item.amountGrams <= 0 || item.totals.kilocalories < 0) {
       throw StateError(
@@ -528,7 +556,8 @@ class NutritionViewModel extends ChangeNotifier {
       amountGrams: item.amountGrams,
       totals: item.totals,
     );
-    await _run(() async {
+    var saved = false;
+    final ran = await _run(() async {
       final open = mealEstimateDraft;
       if (open == null || !open.components.contains(item)) return;
       final current = snapshot ?? await repository.read(localDate);
@@ -563,24 +592,28 @@ class NutritionViewModel extends ChangeNotifier {
           pieceCount: item.pieceGrams == null ? null : item.pieceCount,
         ),
       );
+      saved = true;
       await _refresh();
       // Nur den übernommenen Bestandteil entfernen; die übrigen bleiben
-      // zum Prüfen stehen.
-      final remaining = [
-        for (final component in open.components)
-          if (!identical(component, item)) component,
-      ];
-      mealEstimateDraft = remaining.isEmpty
-          ? null
-          : MealEstimateDraft(
-              components: List.unmodifiable(remaining),
-              provider: draft.provider,
-              schemaVersion: draft.schemaVersion,
-              estimatedAtUtc: draft.estimatedAtUtc,
-            );
+      // zum Prüfen stehen. Eine inzwischen neue Schätzung bleibt unberührt.
+      if (identical(mealEstimateDraft, open)) {
+        final remaining = [
+          for (final component in open.components)
+            if (!identical(component, item)) component,
+        ];
+        mealEstimateDraft = remaining.isEmpty
+            ? null
+            : MealEstimateDraft(
+                components: List.unmodifiable(remaining),
+                provider: draft.provider,
+                schemaVersion: draft.schemaVersion,
+                estimatedAtUtc: draft.estimatedAtUtc,
+              );
+      }
       statusMessage = 'Geprüfte Schätzung als Eintrag gespeichert.';
       _notify();
     }, saving: true);
+    return ran && saved;
   }
 
   /// Verwirft einen offenen Vorschlag ohne Statusmeldung, z. B. beim Schließen.
@@ -728,53 +761,62 @@ class NutritionViewModel extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> _run(
+  /// Führt [action] aus und liefert true, wenn sie lief und ohne Fehler
+  /// endete. Eine abgewiesene Aktion (zweiter Tipp, Speichern während des
+  /// Tageswechsels) liefert false; Aufrufer schließen oder leeren Eingaben nur
+  /// bei true.
+  ///
+  /// Speichernde Aktionen schließen sich gegenseitig und den Tageswechsel
+  /// aus. Suche, Schätzung und Aufnahme laufen unabhängig davon parallel zu
+  /// einem Speichern.
+  Future<bool> _run(
     Future<void> Function() action, {
     bool saving = false,
     NutritionErrorOperation operation = NutritionErrorOperation.entry,
   }) async {
-    // Ein zweiter Tipp (oder ein Speichern während des Tageswechsels) startet
-    // keine zweite Aktion. Ein Tageswechsel blockiert nur das Speichern, nicht
-    // Suche und Schätzung.
-    if (_disposed || _running || (saving && isLoading)) return;
-    _running = true;
-    isLoading = !saving;
-    isSaving = saving;
-    isOnlineOperation = false;
+    if (_disposed) return false;
+    if (saving ? !canSave : _reading) return false;
+    if (saving) {
+      isSaving = true;
+    } else {
+      _reading = true;
+      isOnlineOperation = false;
+    }
     errorMessage = null;
     errorOperation = null;
     statusMessage = null;
     _notify();
+    var succeeded = false;
     try {
       await action();
+      succeeded = true;
     } catch (error) {
       if (!_disposed) {
         errorMessage = _messageFor(error);
         errorOperation = operation;
       }
     } finally {
-      _running = false;
-      isLoading = false;
-      isSaving = false;
-      isOnlineOperation = false;
+      if (saving) {
+        isSaving = false;
+      } else {
+        _reading = false;
+        isOnlineOperation = false;
+      }
       _notify();
     }
+    return succeeded && !_disposed;
   }
 
-  /// Läuft gerade eine über [_run] gestartete Aktion?
-  bool _running = false;
-
-  /// Liest den angezeigten Tag neu und übernimmt ihn nur, wenn weder Tag noch
-  /// Ladegeneration gewechselt haben; sonst stünde der Stand von Tag A unter
-  /// Tag B. Eine inzwischen gespeicherte Wasseränderung bleibt erhalten.
+  /// Liest den angezeigten Tag neu und übernimmt ihn, solange er noch
+  /// angezeigt wird; sonst stünde der Stand von Tag A unter Tag B. Ein
+  /// Neuladen desselben Tages währenddessen verwirft ihn nicht: Das Laden
+  /// liest bei einem übernommenen Stand selbst neu ([_dayRevision]). Eine
+  /// inzwischen gespeicherte Wasseränderung bleibt erhalten.
   Future<void> _refresh() async {
     final date = localDate;
-    final generation = _dayLoadGeneration;
     final waterRevision = _waterRevision;
     var next = await repository.read(date);
-    if (_disposed || date != localDate || generation != _dayLoadGeneration) {
-      return;
-    }
+    if (_disposed || date != localDate) return;
     final current = snapshot;
     if (_waterRevision != waterRevision &&
         current != null &&
@@ -782,6 +824,7 @@ class NutritionViewModel extends ChangeNotifier {
       next = next.withWater(current.waterMl);
     }
     snapshot = next;
+    _dayRevision++;
   }
 
   /// Addiert [addedMl] Wasser zum angezeigten Tag (Schnellknöpfe).
@@ -840,6 +883,9 @@ class NutritionViewModel extends ChangeNotifier {
     StateError(:final message) when message.contains('Onlineverbindung') =>
       '$message Bitte später erneut versuchen.',
     PlatformException() => _captureMessage(error),
+    LocalResourceChangedException() =>
+      'Der Tag hat sich gerade beim Synchronisieren geändert. '
+          'Bitte versuche es noch einmal.',
     NutritionValidationException(:final fields) when fields.isNotEmpty =>
       fields.values.first,
     _ => error.toString(),

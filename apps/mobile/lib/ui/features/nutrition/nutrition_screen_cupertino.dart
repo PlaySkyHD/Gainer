@@ -415,9 +415,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
               trailing: GainerPillButton(
                 label: _applyLabel,
                 variant: GainerPillVariant.tonal,
-                onPressed: vm.isSaving
-                    ? null
-                    : () => vm.applyTemplate(template.templateId),
+                onPressed: vm.canSave
+                    ? () => vm.applyTemplate(template.templateId)
+                    : null,
               ),
             ),
           ],
@@ -697,11 +697,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   /// Nach erfolgreichem Speichern in eine Mahlzeit schließt das Sheet. Beim
   /// Hinzufügen mehrerer bleibt es offen und ist bereit für das nächste.
-  void _closeAfterSave() {
-    // Ein abgewiesener zweiter Tipp schließt nicht; der erste schließt selbst.
-    if (widget.viewModel.errorMessage != null || widget.viewModel.isSaving) {
-      return;
-    }
+  void _closeAfterSave(bool saved) {
+    // Nur ein tatsächlich gespeicherter Eintrag schließt; ein abgewiesener
+    // Tipp (läuft schon ein Speichern oder der Tageswechsel) oder ein Fehler
+    // lässt das Sheet offen.
+    if (!saved) return;
     if (!_addingMultiple) {
       _closeEntrySheet?.call();
       return;
@@ -885,7 +885,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
           key: const ValueKey('nutrition-entry-save'),
           label: target is DayMealTarget ? 'Manuell speichern' : _applyLabel,
           expand: true,
-          onPressed: vm.isSaving ? null : () => _addManual(target, onDraft),
+          onPressed: target is DayMealTarget && !vm.canSave
+              ? null
+              : () => _addManual(target, onDraft),
         ),
       ],
       _NutritionEntryMode.recent => _recentTools(vm, submit),
@@ -940,7 +942,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               '1 Stk = ${_fmtGrams(grams)} g',
           ].join(' · '),
           trailing: const _AddGlyph(),
-          onTap: widget.viewModel.isSaving ? null : () => onSelect(food),
+          onTap: widget.viewModel.canSave ? () => onSelect(food) : null,
         ),
     ],
   );
@@ -1169,7 +1171,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
   ) async {
     switch (target) {
       case DayMealTarget():
-        await widget.viewModel.addManualEntry(
+        final saved = await widget.viewModel.addManualEntry(
           productName: _saltName,
           amountGrams: grams,
           kilocaloriesPer100Grams: _saltPer100.kilocalories,
@@ -1178,8 +1180,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
           fatGramsPer100: _saltPer100.fatGrams,
           saltGramsPer100: _saltPer100.saltGrams,
         );
-        if (widget.viewModel.errorMessage == null) _saltAmount.clear();
-        _closeAfterSave();
+        if (saved) _saltAmount.clear();
+        _closeAfterSave(saved);
       case MealDraftTarget():
         final accepted = _commitDraft(
           FoodComponentDraft(
@@ -1266,11 +1268,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
               title: estimate.components[index].name,
               subtitle: _estimateSubtitle(estimate.components[index]),
               trailing: const _AddGlyph(),
-              onTap: vm.isSaving
-                  ? null
-                  : () => vm.confirmEstimatedComponent(
-                      estimate.components[index],
-                    ),
+              onTap: vm.canSave
+                  ? () =>
+                        vm.confirmEstimatedComponent(estimate.components[index])
+                  : null,
             ),
         ],
       ),
@@ -1358,12 +1359,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
         : grams!;
     switch (target) {
       case DayMealTarget():
-        await widget.viewModel.addFood(
+        final saved = await widget.viewModel.addFood(
           food,
           amountGrams: amount,
           pieceCount: pieces,
         );
-        _closeAfterSave();
+        _closeAfterSave(saved);
       case MealDraftTarget():
         _commitDraft(
           FoodComponentDraft(
@@ -1777,7 +1778,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _parse(c.amount.text) == null ||
       _parse(c.kcal.text) == null ||
       c.name.text.trim().isEmpty ||
-      widget.viewModel.isSaving;
+      !widget.viewModel.canSave;
 
   Future<void> _saveEntryEdit(
     BuildContext routeContext,
@@ -2327,7 +2328,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     }
     switch (target) {
       case DayMealTarget():
-        await widget.viewModel.addManualEntry(
+        final saved = await widget.viewModel.addManualEntry(
           productName: _name.text,
           brand: _brand.text.trim().isEmpty ? null : _brand.text,
           amountGrams: amount,
@@ -2340,13 +2341,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
           pieceGrams: _nullable(_pieceGrams.text),
           pieceCount: _nullable(_pieceCount.text),
         );
-        if (widget.viewModel.errorMessage == null) {
+        if (saved) {
           _name.clear();
           _brand.clear();
           _pieceGrams.clear();
           _pieceCount.clear();
         }
-        _closeAfterSave();
+        _closeAfterSave(saved);
       case MealDraftTarget():
         final accepted = _commitDraft(
           FoodComponentDraft(

@@ -33,6 +33,19 @@ class MealDictationController extends ChangeNotifier {
 
   Future<void> start() async {
     if (isListening || isStarting) return;
+    final starting = _starting = Completer<void>();
+    try {
+      await _start();
+    } finally {
+      if (identical(_starting, starting)) _starting = null;
+      starting.complete();
+    }
+  }
+
+  /// Läuft, solange [start] auf die Plattform wartet.
+  Completer<void>? _starting;
+
+  Future<void> _start() async {
     isStarting = true;
     _cancelRequested = false;
     message = null;
@@ -78,7 +91,15 @@ class MealDictationController extends ChangeNotifier {
   }
 
   /// Beendet ein laufendes Diktat und wartet kurz auf den endgültigen Text.
+  /// Startet das Diktat gerade noch, bricht [finish] den Start ab und wartet
+  /// auf dessen Ende; danach schreibt kein Diktat mehr in das Feld.
   Future<void> finish({Duration timeout = const Duration(seconds: 2)}) async {
+    final starting = _starting;
+    if (isStarting && starting != null) {
+      _cancelRequested = true;
+      await starting.future;
+      return;
+    }
     final done = _done;
     if (!isListening || done == null) return;
     await stop();
