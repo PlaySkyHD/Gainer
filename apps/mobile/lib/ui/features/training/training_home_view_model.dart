@@ -101,9 +101,11 @@ class TrainingHomeViewModel extends ChangeNotifier {
     try {
       await repository.deleteWorkout(workoutId);
     } catch (_) {
-      errorMessage = 'Das Training konnte nicht gelöscht werden.';
       await loadDiary();
       await activeWorkout.load();
+      // Nach dem Neuladen setzen, sonst löscht loadDiary die Meldung wieder.
+      errorMessage = 'Das Training konnte nicht gelöscht werden.';
+      _notify();
       return;
     }
     await activeWorkout.endRestTimer(workoutId);
@@ -123,8 +125,9 @@ class TrainingHomeViewModel extends ChangeNotifier {
     try {
       await repository.deleteSession(sessionId);
     } catch (_) {
-      errorMessage = 'Die Cardio-Einheit konnte nicht gelöscht werden.';
       await loadDiary();
+      errorMessage = 'Die Cardio-Einheit konnte nicht gelöscht werden.';
+      _notify();
     }
   }
 

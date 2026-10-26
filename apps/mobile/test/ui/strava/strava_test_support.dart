@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:gainer_mobile/data/models/api/strava_api_models.dart';
 import 'package:gainer_mobile/data/repositories/strava/strava_service.dart';
 
@@ -24,6 +26,9 @@ class FakeStravaService implements StravaService {
   StravaConnectResult connectResult = StravaConnectResult.connected;
   ApiStravaStatus? afterConnect;
   bool failSettings = false;
+
+  /// Hält `updateSettings` an, bis der Completer abgeschlossen wird.
+  Completer<void>? settingsGate;
   int connects = 0;
   int disconnects = 0;
   final settings = <(bool, bool)>[];
@@ -50,6 +55,7 @@ class FakeStravaService implements StravaService {
     required bool exportCardio,
     required bool exportStrength,
   }) async {
+    await settingsGate?.future;
     if (failSettings) throw StateError('offline');
     settings.add((exportCardio, exportStrength));
     current = stravaStatus(

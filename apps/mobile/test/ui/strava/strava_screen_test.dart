@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/strava/strava_service.dart';
@@ -66,6 +68,27 @@ void main() {
           .value,
       isTrue,
     );
+  });
+
+  testWidgets('sperrt beide Schalter, während ein Speichern läuft', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final service = FakeStravaService(stravaStatus())..settingsGate = gate;
+    await open(tester, service);
+
+    await tester.tap(find.byKey(const ValueKey('strava-export-cardio')));
+    await tester.pump();
+
+    CupertinoSwitch switchOf(String key) =>
+        tester.widget<CupertinoSwitch>(find.byKey(ValueKey(key)));
+    expect(switchOf('strava-export-cardio').onChanged, isNull);
+    expect(switchOf('strava-export-strength').onChanged, isNull);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(switchOf('strava-export-strength').onChanged, isNotNull);
   });
 
   testWidgets('setzt den Schalter zurück, wenn Speichern scheitert', (

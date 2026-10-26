@@ -117,7 +117,7 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
           checkIns: checkIns,
           catalog: catalog,
         ),
-        counts: workoutCounts(diary, now: workout.endedAtUtc!),
+        counts: workoutCounts(diary, now: workout.startedAtUtc),
         unit: settings.weightUnit,
         bodyweightMissing: stats.any((stat) => stat.bodyweightMissing),
       );

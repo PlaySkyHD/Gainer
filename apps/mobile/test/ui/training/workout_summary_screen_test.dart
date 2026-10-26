@@ -140,6 +140,26 @@ void main() {
     expect(find.text('Dein 3. Training · 2. diese Woche'), findsOneWidget);
   });
 
+  testWidgets('Training über Mitternacht zählt für die Woche des Starts', (
+    tester,
+  ) async {
+    final workout = await tester.runAsync(
+      () => harness.seedWorkout(
+        title: 'Spät',
+        // Sonntag 23:30 bis Montag 00:20 Ortszeit.
+        start: DateTime(2026, 10, 18, 23, 30).toUtc(),
+        end: DateTime(2026, 10, 19, 0, 20).toUtc(),
+        blocks: [
+          _bench(const [LoggedSet(setId: 's', weightKg: 40, repetitions: 5)]),
+        ],
+      ),
+    );
+
+    await pumpSummary(tester, workout!.workoutId);
+
+    expect(find.text('Dein 1. Training · 1. diese Woche'), findsOneWidget);
+  });
+
   testWidgets('Training fortsetzen öffnet das Training ohne Endzeit', (
     tester,
   ) async {

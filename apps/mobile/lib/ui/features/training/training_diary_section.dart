@@ -227,11 +227,14 @@ class _DiaryRow extends StatelessWidget {
       title: workout.title,
       groups: [
         [
-          const GainerSheetAction(
-            label: 'Wiederholen',
-            icon: CupertinoIcons.arrow_2_circlepath,
-            value: _DiaryAction.repeat,
-          ),
+          // Das laufende Training lässt sich nicht wiederholen: Es kann nur ein
+          // aktives Training geben.
+          if (workout.endedAtUtc != null)
+            const GainerSheetAction(
+              label: 'Wiederholen',
+              icon: CupertinoIcons.arrow_2_circlepath,
+              value: _DiaryAction.repeat,
+            ),
           const GainerSheetAction(
             label: 'Als Trainingsplan speichern',
             icon: CupertinoIcons.square_list,

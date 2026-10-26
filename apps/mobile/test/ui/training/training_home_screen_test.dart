@@ -215,6 +215,24 @@ void main() {
     expect(find.text('Löschen'), findsOneWidget);
   });
 
+  testWidgets('Kontextmenü des laufenden Trainings bietet kein Wiederholen', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => harness.seedWorkout(
+        title: 'Läuft',
+        start: DateTime(2026, 10, 15, 18).toUtc(),
+      ),
+    );
+    await pumpHome(tester);
+
+    await tester.longPress(find.text('Läuft'));
+    await settle(tester);
+
+    expect(find.text('Als Trainingsplan speichern'), findsOneWidget);
+    expect(find.text('Wiederholen'), findsNothing);
+  });
+
   testWidgets('Kontextmenü Wiederholen öffnet das Wiederholen-Sheet', (
     tester,
   ) async {

@@ -481,7 +481,9 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                 key: const ValueKey('exercise-save'),
                 label: 'Speichern',
                 isLoading: _viewModel.isSaving,
-                onPressed: _viewModel.isSaving ? null : _save,
+                onPressed: _viewModel.isSaving || !_viewModel.isLoaded
+                    ? null
+                    : _save,
               ),
           ],
           children: [

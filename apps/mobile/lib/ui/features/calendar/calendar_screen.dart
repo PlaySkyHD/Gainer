@@ -243,7 +243,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
       current: target.manual ? target.kind : null,
     );
     if (!result.changed || !mounted) return;
-    await nutrition.setDayKind(day.date.toIso(), result.kind);
+    try {
+      await nutrition.setDayKind(day.date.toIso(), result.kind);
+    } catch (_) {
+      if (!mounted) return;
+      await showGainerStackedDialog<bool>(
+        context: context,
+        title: 'Hinweis',
+        message: 'Die Tagesart konnte nicht gespeichert werden.',
+        actions: const [GainerDialogAction(label: 'OK', value: true)],
+      );
+      return;
+    }
     if (mounted) await _viewModel.load();
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../data/services/auth/mobile_auth_controller.dart';
 import '../../data/services/platform/pigeon_native_route_dispatcher.dart';
 import '../features/access/auth_screen.dart';
+import 'navigation/pop_routes_on_mount.dart';
 import 'shell/mobile_shell.dart';
 import 'theme.dart';
 
@@ -74,7 +75,13 @@ class _GainerMobileAppState extends State<GainerMobileApp>
                   return const _StartupScreen();
                 }
                 final account = _auth!.account;
-                if (account == null) return AuthScreen(controller: _auth!);
+                if (account == null) {
+                  // Offene Vollbilder des geschlossenen Kontos (Training,
+                  // Cardio) liegen im Root-Navigator und müssen weg.
+                  return PopRoutesOnMount(
+                    child: AuthScreen(controller: _auth!),
+                  );
+                }
                 return MobileShell(
                   key: ValueKey(
                     '${account.session.userId}:${account.generation}',

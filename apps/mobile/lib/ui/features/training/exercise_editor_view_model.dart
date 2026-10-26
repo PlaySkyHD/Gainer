@@ -59,6 +59,12 @@ class ExerciseEditorViewModel extends ChangeNotifier {
   TrainingPreferenceValues settings = const TrainingPreferenceValues();
 
   bool isLoading = false;
+
+  /// True, sobald Kategorien und Verwendung geladen sind. Vorher darf nicht
+  /// gespeichert werden: Leere Kategorien und `isUsed == false` würden sonst
+  /// die Kategorien der Übung löschen und die Rückfrage beim Typwechsel
+  /// überspringen.
+  bool isLoaded = false;
   bool isSaving = false;
   String? errorMessage;
   Map<String, String> fieldErrors = const {};
@@ -93,6 +99,8 @@ class ExerciseEditorViewModel extends ChangeNotifier {
       ];
       isUsed = used;
       settings = loadedSettings;
+      errorMessage = null;
+      isLoaded = true;
     } catch (_) {
       if (!_disposed) errorMessage = 'Die Übung konnte nicht geladen werden.';
     } finally {
@@ -157,6 +165,13 @@ class ExerciseEditorViewModel extends ChangeNotifier {
   /// Speichert die Übung. Liefert true bei Erfolg; sonst stehen Fehler in
   /// [fieldErrors] oder [errorMessage].
   Future<bool> save(ExerciseEditorInput input) async {
+    if (!isLoaded) {
+      _setErrors(
+        const {},
+        'Die Übung konnte nicht geladen werden. Bitte den Editor erneut öffnen.',
+      );
+      return false;
+    }
     final original = exercise;
     final fields = <String, String>{};
     final bodyweightFactor = _parseBodyweight(input.bodyweightPercent, fields);

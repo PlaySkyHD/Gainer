@@ -2,7 +2,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/domain/models/training/exercise_catalog_model.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
+import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/training/exercise_editor_screen.dart';
+import 'package:gainer_mobile/ui/features/training/exercise_editor_view_model.dart';
 
 import 'exercise_catalog_test_support.dart';
 import 'training_plans_test_support.dart';
@@ -136,6 +138,40 @@ void main() {
       expect(stored!.exerciseType, ExerciseKind.bodyweightOnly);
     },
   );
+
+  testWidgets('Speichern ist gesperrt, solange das Laden nicht gelang', (
+    tester,
+  ) async {
+    final harness = await _harness(tester);
+    final exercise = await tester.runAsync(
+      () => seedOwnExercise(harness, name: 'Ausfallschritt'),
+    );
+    // Eine geschlossene Datenbank lässt readCategories scheitern.
+    await tester.runAsync(harness.database.close);
+    await _openEditor(tester, harness, exercise: exercise);
+
+    expect(find.text('Die Übung konnte nicht geladen werden.'), findsOneWidget);
+    final save = tester.widget<GainerPillButton>(
+      find.byKey(const ValueKey('exercise-save')),
+    );
+    expect(save.onPressed, isNull);
+
+    final viewModel = ExerciseEditorViewModel(
+      repository: harness.repository,
+      exercise: exercise,
+    );
+    addTearDown(viewModel.dispose);
+    await tester.runAsync(viewModel.load);
+    final saved = await viewModel.save(
+      const ExerciseEditorInput(
+        name: 'Ausfallschritt',
+        kind: ExerciseKind.strength,
+        categoryIds: [],
+      ),
+    );
+    expect(saved, isFalse);
+    expect(viewModel.errorMessage, isNotNull);
+  });
 
   testWidgets('Körpergewicht 64 % wird als Faktor 0,64 gespeichert', (
     tester,
