@@ -46,10 +46,11 @@ Every prompt contains:
 - "the repository is public: no secrets, personal data or content about other private projects",
 - the exact scope and anchors, and which files not to touch,
 - the checks to run (format, analyzer, tests, golden preview) for the touched area; name the exact commands from the instructions (`mobile.instructions.md`, `backend.instructions.md`, section "Prüfen" and "Tests"): only the touched folders, quiet reporters, `flutter pub get` first in a fresh worktree, never the whole suite (CI runs it); do not return unfiltered test output,
+- for a bug fix: show that the new test fails without the fix (undo the fix temporarily with Edit, run the test, redo it; no `git stash`/`git restore`) and put the red line in the report,
 - before the push: commit, then run the skill `code-review` on the own diff against `origin/main` (`code-review low`, diff `origin/main...HEAD`, not the local `main`) and fix the findings (amend the commit, so `Fixes #<n>` stays in it) or state why not,
 - the commit: Conventional Commits, body ends with `Fixes #<n>` and the Co-Authored-By line,
 - `git push -u origin <branch>`,
-- the report: branch, SHA, what changed, check output, and **Umwege** (anything done differently than expected, missing or wrong skills and rules, failed commands; "keine" if none).
+- the report: branch, SHA, what changed, check output, the red test line for a bug fix, and **Umwege** (anything done differently than expected, missing or wrong skills and rules, failed commands; "keine" if none).
 
 Start agents in the background with worktree isolation. Do not touch their files while they run.
 
@@ -59,6 +60,7 @@ Start agents in the background with worktree isolation. Do not touch their files
 
 - `git diff origin/main origin/<branch> --stat` matches the scope; read the diff.
 - Run the relevant checks yourself if the area has any.
+- For a bug fix: the report contains the red test line; without it, ask for it.
 - `git merge-tree --write-tree origin/<a> origin/<b>` for every pair of branches that touch the same file.
 - Fix small gaps yourself (amend and `git push --force-with-lease`); send larger ones back to the agent (how: section 5, review findings).
 
