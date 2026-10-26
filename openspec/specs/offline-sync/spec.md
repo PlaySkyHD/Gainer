@@ -183,7 +183,7 @@ Die App MUST Fachänderung und Outbox atomar vor der Speicherbestätigung sicher
 
 ### Requirement: Sync-Protokoll-Parität
 
-Die App MUST Protokoll v3, stabile Mutation-IDs, Reihenfolge/Dependencies, aktive Writer-Regeln, idempotenten Replay, Tombstones und atomare Batch-/Cursor-Übernahme respektieren. Timeout, Prozessabbruch, 401, 409, Serverfehler und inkompatibles Protokoll MUST nachvollziehbar behandelt werden. Garantierter iOS-Hintergrund-Sync DARF nicht vorausgesetzt werden.
+Die App MUST die aktuelle Protokollversion verwenden, stabile Mutation-IDs, Reihenfolge/Dependencies, aktive Writer-Regeln, idempotenten Replay, Tombstones und atomare Batch-/Cursor-Übernahme respektieren. Timeout, Prozessabbruch, 401, 409, Serverfehler und inkompatibles Protokoll MUST nachvollziehbar behandelt werden. Garantierter iOS-Hintergrund-Sync DARF nicht vorausgesetzt werden.
 
 #### Scenario: Antwort nach Serverannahme geht verloren
 - **GIVEN** der Server hat eine Mutation angewendet

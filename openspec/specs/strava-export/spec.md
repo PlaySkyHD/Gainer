@@ -64,7 +64,7 @@ Der Server MUST je Einheit und Strava-Athlet höchstens eine Aktivität anlegen.
 
 ### Requirement: Fehler und Wiederholung
 
-Der Server SHALL vorübergehende Fehler mit Backoff höchstens sechsmal wiederholen und danach `Failed` speichern. Lehnt Strava den Zugriff ab, MUST der Server die Verbindung als „erneut verbinden“ markieren und keine weiteren Exporte versuchen.
+Bei vorübergehenden Fehlern SHALL der Server mit Backoff höchstens sechs Versuche unternehmen (einschließlich des ersten) und danach `Failed` speichern. Lehnt Strava den Zugriff ab, MUST der Server die Verbindung als „erneut verbinden“ markieren und keine weiteren Exporte versuchen.
 
 #### Scenario: Strava nicht erreichbar
 - **GIVEN** Strava antwortet mit 503

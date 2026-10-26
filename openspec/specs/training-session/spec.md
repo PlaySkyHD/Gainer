@@ -63,16 +63,16 @@ Eine aktive Session MUST keine Pausenfunktion besitzen. Der Nutzer SHALL sie min
 
 ### Requirement: Training beenden mit Fehlwerte-Dialog
 
-Beim Beenden MUST das System prüfen, ob Sätze fehlende Pflichtwerte haben. Gibt es solche Sätze, SHALL ein Dialog die Optionen „Vorwerte übernehmen“, „Trotzdem beenden“ und „Weitertrainieren“ anbieten. Ohne fehlende Werte wird direkt beendet.
+Beim Beenden MUST das System prüfen, ob Sätze fehlende Pflichtwerte haben. Gibt es solche Sätze, SHALL ein Dialog die Optionen „Ja, Vorwerte verwenden“, „Trotzdem beenden“ und „Weitertrainieren“ anbieten. Ohne fehlende Werte wird direkt beendet.
 
 #### Scenario: Vorwerte übernehmen
 - **GIVEN** ein Satz ohne Wiederholungen und mit vorhandenem Vorwert 100 kg × 8
-- **WHEN** der Nutzer beendet und „Vorwerte übernehmen“ wählt
+- **WHEN** der Nutzer beendet und „Ja, Vorwerte verwenden“ wählt
 - **THEN** werden nur die leeren Felder mit 100 kg beziehungsweise 8 gefüllt, bereits eingetragene Werte bleiben unverändert und die Endzeit wird gesetzt
 
 #### Scenario: Vorwert fehlt bei Übernahme
 - **GIVEN** ein leerer Satz ohne passenden Vorwert
-- **WHEN** der Nutzer „Vorwerte übernehmen“ wählt
+- **WHEN** der Nutzer „Ja, Vorwerte verwenden“ wählt
 - **THEN** bleiben dessen Felder leer und es wird weder 0 noch ein geschätzter Wert eingesetzt
 
 #### Scenario: Trotzdem beenden
@@ -310,7 +310,7 @@ Leere Satzfelder SHALL den positionsgleichen Satz desselben Satztyps der Vorwert
 
 ### Requirement: Vorwertquelle
 
-Jedes Training SHALL eine Vorwertquelle besitzen: „nach Übung“ (Standard), „nach Plan“ oder „nach Training“. Die Suche MUST nur nicht gelöschte eigene Trainings mit Start vor dem aktuellen Training berücksichtigen, neuestes zuerst, und bei Kraftübungen nur Blöcke mit mindestens einem Satz mit Wiederholungen größer 0.
+Jedes Training SHALL eine Vorwertquelle besitzen: „nach Übung“ (Standard), „nach Training“ oder „nach Plan“ (nur bei Trainings aus einem Plan). Die Suche MUST nur nicht gelöschte eigene Trainings mit Start vor dem aktuellen Training berücksichtigen, neuestes zuerst, und bei Kraftübungen nur Blöcke mit mindestens einem Satz mit Wiederholungen größer 0.
 
 #### Scenario: Nach Plan mit Fallback
 - **GIVEN** ein aus Plan „Push“ gestartetes Training mit Quelle „nach Plan“ und keine frühere Einheit von „Push“ mit Seitheben
@@ -457,7 +457,7 @@ Der Fehlwerte-Dialog SHALL den Titel „Gewicht oder Wiederholungen fehlen“, e
 
 ### Requirement: Plan- und Wiederholen-Ansichten
 
-Der Planeditor SHALL einen großen Titel, darunter eine Karte „Training beginnen“, eine Karte mit Name, Vorwertquelle und Notizen, je eine Karte pro Eintrag mit Satzanzahl und „+ Übung hinzufügen“ zeigen. „Training wiederholen“ ist ein Sheet mit „Training beginnen“ und den drei erklärten Vorwertquellen mit Haken an der gewählten.
+Der Planeditor SHALL einen großen Titel, darunter eine Karte „Training beginnen“, eine Karte mit Name, Vorwertquelle und Notizen, je eine Karte pro Eintrag mit Satzanzahl und „+ Übung hinzufügen“ zeigen. „Training wiederholen“ ist ein Sheet mit „Training beginnen“ und den Vorwertquellen „Aktuellste“, „Wiederholtes Training“ sowie, nur bei einem Training aus einem Plan, „Trainingsplan“, mit Haken an der gewählten.
 
 #### Scenario: Vorwertquelle beim Wiederholen
 - **GIVEN** das Sheet „Training wiederholen“ für ein Training vom 9. Oktober

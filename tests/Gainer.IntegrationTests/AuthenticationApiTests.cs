@@ -122,7 +122,13 @@ public sealed class AuthenticationApiTests
         await CreateUserAsync(app, Email, Password);
         using HttpClient client = CreateClient(app);
 
-        using HttpResponseMessage antiforgery = await client.GetAsync("/api/v1/auth/antiforgery");
+        // The fallback policy answers 401 for every unknown route without a session; the route is gone for a signed-in user.
+        using HttpResponseMessage anonymousAntiforgery = await client.GetAsync("/api/v1/auth/antiforgery");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousAntiforgery.StatusCode);
+        TokenResponse tokens = await BearerTestClient.LoginAsync(client, Email, Password);
+        using var antiforgeryRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/antiforgery");
+        antiforgeryRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tokens.AccessToken);
+        using HttpResponseMessage antiforgery = await client.SendAsync(antiforgeryRequest);
         Assert.AreEqual(HttpStatusCode.NotFound, antiforgery.StatusCode);
 
         using var foreignOriginLogin = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login")
@@ -347,7 +353,13 @@ public sealed class AuthenticationApiTests
             wrongPasswordBody.RootElement.GetProperty("code").GetString());
         Assert.IsFalse((await unknown.Content.ReadAsStringAsync()).Contains("unknown@example.test", StringComparison.Ordinal));
 
-        using HttpResponseMessage registration = await client.GetAsync("/api/v1/auth/register");
+        // Unknown routes answer 401 without a session (fallback policy) and 404 for a signed-in user.
+        using HttpResponseMessage anonymousRegistration = await client.GetAsync("/api/v1/auth/register");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousRegistration.StatusCode);
+        TokenResponse tokens = await BearerTestClient.LoginAsync(client, Email, Password);
+        using var registrationRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/register");
+        registrationRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tokens.AccessToken);
+        using HttpResponseMessage registration = await client.SendAsync(registrationRequest);
         Assert.AreEqual(HttpStatusCode.NotFound, registration.StatusCode);
     }
 

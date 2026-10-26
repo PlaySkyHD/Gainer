@@ -1223,6 +1223,42 @@ void main() {
     expect(find.text('Zuletzt verwendet'), findsNothing);
   });
 
+  testWidgets('closing the recipe editor keeps controllers alive until the '
+      'route is gone', (tester) async {
+    await _pumpDiary(tester, []);
+
+    await _openPlanning(tester);
+    await tester.tap(find.text('Neues Gericht anlegen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField).at(0), 'Bowl');
+    await tester.tap(find.byKey(const ValueKey('nutrition-recipe-close')));
+    await _rebuildWhileClosing(tester);
+    expect(find.text('Neues Gericht'), findsNothing);
+  });
+
+  testWidgets('saving an entry edit keeps controllers alive while the route '
+      'animates out and rebuilds', (tester) async {
+    await _pumpDiary(tester, ['Joghurt']);
+    final row = find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'nutrition-entry-',
+          ),
+    );
+    await tester.ensureVisible(row.first);
+    await tester.tap(row.first);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('nutrition-edit-amount')),
+      '175',
+    );
+    await tester.ensureVisible(find.text('Sichern'));
+    await tester.tap(find.text('Sichern'));
+    await _rebuildWhileClosing(tester);
+    expect(find.text('Eintrag bearbeiten'), findsNothing);
+  });
+
   testWidgets(
     'meal component is added through the shared dialog without touching a day',
     (tester) async {
@@ -1761,6 +1797,30 @@ void _usePhoneViewport(WidgetTester tester) {
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+/// Läuft die Ausblend-Animation einer Route in Schritten ab und löst dabei
+/// Rebuilds und Eingaben (Größenwechsel, Autofill/IME) aus, solange die Felder
+/// noch im Baum liegen. Ein zu früh entsorgter Controller wirft dabei „used
+/// after being disposed“.
+Future<void> _rebuildWhileClosing(WidgetTester tester) async {
+  for (var step = 0; step < 5; step++) {
+    await tester.pump(const Duration(milliseconds: 40));
+    tester.view.physicalSize = Size(390, 844.0 - step * 10);
+    if (step == 1) {
+      // Ein spätes Tastatur-Ereignis (z. B. Autokorrektur) schreibt noch in
+      // das ausblendende Feld.
+      tester
+          .state<EditableTextState>(find.byType(EditableText).first)
+          .userUpdateTextEditingValue(
+            const TextEditingValue(text: 'x'),
+            SelectionChangedCause.keyboard,
+          );
+    }
+  }
+  expect(tester.takeException(), isNull);
+  await tester.pumpAndSettle();
+  expect(tester.takeException(), isNull);
 }
 
 NutritionSnapshot _snapshotFor(String date) => NutritionSnapshot(
