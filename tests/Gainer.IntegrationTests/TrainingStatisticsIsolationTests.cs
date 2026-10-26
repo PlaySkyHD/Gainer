@@ -151,7 +151,7 @@ public sealed class TrainingStatisticsIsolationTests
             provider,
             new InsightQueries(context, new TestUserContext(owner)),
             new EmptyHistory(),
-            new SingleExercise(exerciseId),
+            new ExerciseCatalogQueries(context, new TestUserContext(owner)),
             new FixedCoachMemories(),
             new FixedTimeProvider(ThroughUtc));
         CoachAnswer answer = await coach.AnswerAsync("Wie entwickelt sich meine Übung?", TestContext.CancellationToken);
@@ -165,6 +165,78 @@ public sealed class TrainingStatisticsIsolationTests
             TrainingStatistics.RoundForOutput(query.Records.Current(RecordKind.EstimatedOneRepMax)!.Value),
             coachRecord);
         Assert.AreEqual(116.67m, coachBest);
+    }
+
+    [TestMethod]
+    public async Task DashboardWindowAndSevenDayCountFollowLocalMidnight()
+    {
+        (string connectionString, Guid owner, _) = await CreateDatabaseAsync();
+        Guid exerciseId = BaseExercise(ExerciseType.Strength);
+        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        {
+            // 00:30 local time (CEST) on 12 August: first day of the window, but 11 August in UTC.
+            AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 11, 22), Utc(2026, 8, 11, 23).AddMinutes(30), null, (100m, 1));
+            // 00:30 local time on 18 August: the last day, but 17 August in UTC.
+            AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 17, 22), Utc(2026, 8, 17, 22).AddMinutes(30), null, (200m, 1));
+            // 00:30 local time on 19 August: after the window although it is 18 August in UTC.
+            AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 22), Utc(2026, 8, 18, 22).AddMinutes(30), null, (400m, 1));
+            // 23:30 local time on 11 August: before the window.
+            AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 11, 20), Utc(2026, 8, 11, 21).AddMinutes(30), null, (800m, 1));
+            seed.DailyCheckIns.Add(CheckIn(new DateOnly(2026, 8, 18), 81m));
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
+        DashboardInsightSnapshot dashboard = await new InsightQueries(context, new TestUserContext(owner))
+            .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin, TestContext.CancellationToken);
+
+        Assert.AreEqual(2, dashboard.Training.WorkoutCount);
+        Assert.AreEqual(300m, dashboard.Training.VolumeKgRepetitions);
+        Assert.AreEqual(2, dashboard.WorkoutsLast7Days);
+        Assert.AreEqual(new DateOnly(2026, 8, 18), dashboard.LatestWeight!.Date);
+    }
+
+    [TestMethod]
+    public async Task SevenDayFiguresIgnoreAShorterWindow()
+    {
+        (string connectionString, Guid owner, _) = await CreateDatabaseAsync();
+        Guid exerciseId = BaseExercise(ExerciseType.Strength);
+        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        {
+            AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 17, 21), Utc(2026, 8, 17, 22).AddMinutes(30), null, (200m, 1));
+            AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 14, 11), Utc(2026, 8, 14, 12), null, (100m, 1));
+            seed.DailyCheckIns.AddRange(CheckIn(new DateOnly(2026, 8, 14), 80m), CheckIn(new DateOnly(2026, 8, 18), 81m));
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
+        DashboardInsightSnapshot dashboard = await new InsightQueries(context, new TestUserContext(owner))
+            .DashboardAsync(new DateOnly(2026, 8, 18), 1, Berlin, TestContext.CancellationToken);
+
+        Assert.AreEqual(1, dashboard.Training.WorkoutCount);
+        Assert.AreEqual(200m, dashboard.Training.VolumeKgRepetitions);
+        Assert.AreEqual(2, dashboard.WorkoutsLast7Days);
+        Assert.AreEqual(2, dashboard.SevenDayWeight.ObservedDays);
+    }
+
+    [TestMethod]
+    public async Task RecentWorkoutsCountSetsLikeTheStatisticsDo()
+    {
+        (string connectionString, Guid owner, _) = await CreateDatabaseAsync();
+        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        {
+            AddFinishedWorkout(seed, PushUp, ExerciseType.BodyweightOnly, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (null, 10), (null, 12), (null, 0));
+            AddFinishedWorkout(seed, BenchPress, ExerciseType.Strength, Utc(2026, 8, 17, 18), Utc(2026, 8, 17, 19), null, (null, 5), (100m, 5));
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
+        IReadOnlyList<WorkoutHistorySummary> items = await new WorkoutHistoryQueries(context)
+            .ListAsync(0, 10, TestContext.CancellationToken);
+
+        Assert.HasCount(2, items);
+        Assert.AreEqual(2, items[0].CompletedSetCount);
+        Assert.AreEqual(1, items[1].CompletedSetCount);
     }
 
     private static DateTime Utc(int year, int month, int day, int hour) => new(year, month, day, hour, 0, 0, DateTimeKind.Utc);
@@ -295,15 +367,6 @@ public sealed class TrainingStatisticsIsolationTests
 
         public Task<WorkoutSnapshot?> GetAsync(Guid workoutId, CancellationToken cancellationToken = default) =>
             Task.FromResult<WorkoutSnapshot?>(null);
-    }
-
-    private sealed class SingleExercise(Guid exerciseId) : IExerciseCatalogQueries
-    {
-        public Task<ExerciseCatalogPage> SearchAsync(ExerciseCatalogFilter filter, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ExerciseCatalogPage(
-                [new ExerciseCatalogItem(exerciseId, "Basisübung", null, null, null, null, false, "test-catalog", 1,
-                    ExerciseType.Strength, null, null, null, [], [], [])],
-                0, filter.Limit, 1, []));
     }
 
     private sealed class FixedTimeProvider(DateTime utcNow) : TimeProvider

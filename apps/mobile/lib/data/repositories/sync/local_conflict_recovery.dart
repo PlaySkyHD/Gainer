@@ -11,89 +11,52 @@ import 'local_sync_store.dart';
 extension LocalConflictRecovery on LocalSyncStore {
   /// Replaces the local working copy with the last known server copy and
   /// removes all queued edits for that aggregate atomically.
+  ///
+  /// Hat der Server die Ressource gelöscht oder nach einer dauerhaften
+  /// Ablehnung nie gekannt, ist sein Stand „nicht vorhanden“: Die Ressource
+  /// wird lokal verworfen. Ressourcen, die eine verworfene Zusammenführung
+  /// oder Umsortierung lokal mitgeändert hat, gehen ebenfalls auf den
+  /// Serverstand zurück.
   Future<void> acceptConflictServerState(String conflictId) async {
     await ensureAccountBound();
     await database.transaction(() async {
-      final conflict = await (database.select(
-        database.localConflicts,
-      )..where((t) => t.conflictId.equals(conflictId))).getSingleOrNull();
-      if (conflict == null) {
-        throw StateError('Conflict is no longer available.');
+      final state = await _conflictState(conflictId);
+      final info = state.info;
+      if (!info.hasServerState) {
+        throw StateError('No retained server state is available.');
       }
-      final hasTombstone =
-          await (database.select(database.localTombstones)..where(
-                (t) =>
-                    t.resourceType.equals(_serverType(conflict.aggregateType)) &
-                    t.resourceId.equals(conflict.aggregateId),
-              ))
-              .getSingleOrNull();
-      if (hasTombstone != null) {
-        await (database.delete(database.localResources)..where(
-              (t) =>
-                  t.aggregateType.equals(conflict.aggregateType) &
-                  t.aggregateId.equals(conflict.aggregateId),
-            ))
-            .go();
-        await (database.delete(database.localOutbox)..where(
-              (t) =>
-                  t.accountId.equals(accountId) &
-                  t.aggregateType.equals(conflict.aggregateType) &
-                  t.aggregateId.equals(conflict.aggregateId),
-            ))
-            .go();
-        await (database.delete(
-          database.localConflicts,
-        )..where((t) => t.conflictId.equals(conflictId))).go();
+      final type = state.conflict.aggregateType;
+      final id = state.conflict.aggregateId;
+      await _resetSpannedResources(state.rows);
+      await _redirectDependencies(state.rows, null);
+      if (info.serverDeleted || info.discardsLocal) {
+        await _deleteLocalResource(type, id);
         return;
       }
-      final resource =
-          await (database.select(database.localResources)..where(
-                (t) =>
-                    t.aggregateType.equals(conflict.aggregateType) &
-                    t.aggregateId.equals(conflict.aggregateId),
-              ))
-              .getSingleOrNull();
-      if (resource == null) {
-        throw StateError('No retained server state is available.');
-      }
-      final envelope = LocalAggregateEnvelope<Object?>.fromJson(
-        jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
-      );
-      if (envelope.serverSnapshot == null || envelope.serverVersion == null) {
-        throw StateError('No retained server state is available.');
-      }
+      final envelope = state.envelope!;
       final accepted = serverEnvelope(
         aggregateId: envelope.aggregateId,
         snapshot: envelope.serverSnapshot,
         version: envelope.serverVersion!,
       );
       await (database.update(database.localResources)..where(
-            (t) =>
-                t.aggregateType.equals(conflict.aggregateType) &
-                t.aggregateId.equals(conflict.aggregateId),
+            (t) => t.aggregateType.equals(type) & t.aggregateId.equals(id),
           ))
           .write(
             LocalResourcesCompanion(envelopeJson: Value(accepted.encode())),
           );
-      await (database.delete(database.localOutbox)..where(
-            (t) =>
-                t.accountId.equals(accountId) &
-                t.aggregateType.equals(conflict.aggregateType) &
-                t.aggregateId.equals(conflict.aggregateId),
-          ))
-          .go();
-      await (database.delete(
-        database.localConflicts,
-      )..where((t) => t.conflictId.equals(conflictId))).go();
+      await _deleteQueueAndConflicts(type, id);
     });
   }
 
   /// Explicitly reapplies a local operation against the retained current
   /// server version with a fresh idempotency key. Tombstones are never revived.
+  /// The replacement keeps the queue position of the rejected row. All later
+  /// rows of the resource return to the queue behind it; their base follows
+  /// once the server confirms the replacement.
   Future<String> retryConflictOnCurrentServerVersion({
     required String conflictId,
     required String replacementMutationId,
-    required DateTime createdAtUtc,
   }) async {
     await ensureAccountBound();
     if (!RegExp(LocalDatabase.accountIdPattern)
@@ -101,62 +64,13 @@ extension LocalConflictRecovery on LocalSyncStore {
       throw ArgumentError.value(replacementMutationId, 'replacementMutationId');
     }
     return database.transaction(() async {
-      final conflict = await (database.select(
-        database.localConflicts,
-      )..where((t) => t.conflictId.equals(conflictId))).getSingleOrNull();
-      if (conflict == null) {
-        throw StateError('Conflict is no longer available.');
+      final state = await _conflictState(conflictId);
+      if (!state.info.canRetry) {
+        throw StateError('This conflict cannot be retried.');
       }
-      final resourceType = _serverType(conflict.aggregateType);
-      final tombstone =
-          await (database.select(database.localTombstones)..where(
-                (t) =>
-                    t.resourceType.equals(resourceType) &
-                    t.resourceId.equals(conflict.aggregateId),
-              ))
-              .getSingleOrNull();
-      if (tombstone != null) {
-        throw StateError(
-          'A server-deleted resource cannot be restored silently.',
-        );
-      }
-      final resource =
-          await (database.select(database.localResources)..where(
-                (t) =>
-                    t.aggregateType.equals(conflict.aggregateType) &
-                    t.aggregateId.equals(conflict.aggregateId),
-              ))
-              .getSingleOrNull();
-      if (resource == null) {
-        throw StateError('Local conflict copy is unavailable.');
-      }
-      final envelope = LocalAggregateEnvelope<Object?>.fromJson(
-        jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
-      );
-      if (envelope.serverVersion == null) {
-        throw StateError('No current server version is available.');
-      }
-      final rows =
-          await (database.select(database.localOutbox)
-                ..where(
-                  (t) =>
-                      t.accountId.equals(accountId) &
-                      t.aggregateType.equals(conflict.aggregateType) &
-                      t.aggregateId.equals(conflict.aggregateId),
-                )
-                ..orderBy([(t) => OrderingTerm.asc(t.sequence)]))
-              .get();
-      if (rows.isEmpty) {
-        throw StateError('Local mutation is no longer available.');
-      }
-      final old = rows.first;
-      // Resending the same payload cannot fix these; the user must change data first.
-      if (const {
-        'active_workout_exists',
-        'validation_failed',
-      }.contains(conflict.code)) {
-        throw StateError('This conflict cannot be retried automatically.');
-      }
+      final conflict = state.conflict;
+      final envelope = state.envelope!;
+      final old = state.rows.first;
       final payload = jsonDecode(old.payloadJson) as Map<String, dynamic>;
       payload['baseVersion'] = envelope.serverVersion;
       await (database.delete(database.localOutbox)..where(
@@ -175,12 +89,34 @@ extension LocalConflictRecovery on LocalSyncStore {
               aggregateId: old.aggregateId,
               sequence: old.sequence,
               status: LocalMutationStatus.pending.name,
-              createdAtUtc: createdAtUtc.toUtc().toIso8601String(),
+              // Wie bei [_requeueLocalState]: Zeitstempel der ersetzten Zeile,
+              // damit der Ersatz vor späteren Einträgen der Ressource bleibt.
+              createdAtUtc: old.createdAtUtc,
               payloadJson: jsonEncode(payload),
               baseVersion: Value(envelope.serverVersion),
-              dependsOnMutationId: Value(old.mutationId),
+              // Keine Abhängigkeit auf die abgelehnte Mutation: Der Server
+              // verarbeitet sie nie und lehnte den Ersatz sonst mit
+              // `dependency_not_applied` ab.
             ),
           );
+      // Ein fremder Batch hält alle wartenden Zeilen an. Blieben die späteren
+      // im Konflikt, würden sie nie gesendet und blockierten die Ressource.
+      for (final row in state.rows.skip(1)) {
+        if (row.status != LocalMutationStatus.conflict.name) continue;
+        await (database.update(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(accountId) &
+                  t.mutationId.equals(row.mutationId),
+            ))
+            .write(
+              LocalOutboxCompanion(
+                status: Value(LocalMutationStatus.pending.name),
+                lastErrorCode: const Value(null),
+                nextAttemptAtUtc: const Value(null),
+              ),
+            );
+      }
+      await _redirectDependencies([old], replacementMutationId);
       final pending = LocalAggregateEnvelope(
         aggregateId: envelope.aggregateId,
         serverSnapshot: envelope.serverSnapshot,
@@ -197,9 +133,14 @@ extension LocalConflictRecovery on LocalSyncStore {
           .write(
             LocalResourcesCompanion(envelopeJson: Value(pending.encode())),
           );
-      await (database.delete(
-        database.localConflicts,
-      )..where((t) => t.conflictId.equals(conflictId))).go();
+      // Alle Zeilen sind wieder in der Warteschlange; kein Konflikt der
+      // Ressource bleibt offen.
+      await (database.delete(database.localConflicts)..where(
+            (t) =>
+                t.aggregateType.equals(conflict.aggregateType) &
+                t.aggregateId.equals(conflict.aggregateId),
+          ))
+          .go();
       return replacementMutationId;
     });
   }
@@ -223,15 +164,13 @@ extension LocalConflictRecovery on LocalSyncStore {
       throw ArgumentError.value(replacementMutationId, 'replacementMutationId');
     }
     await database.transaction(() async {
-      final conflict = await (database.select(
-        database.localConflicts,
-      )..where((t) => t.conflictId.equals(conflictId))).getSingleOrNull();
-      if (conflict == null) {
-        throw StateError('Conflict is no longer available.');
+      final state = await _conflictState(conflictId);
+      if (!state.info.canForceLocal) {
+        throw StateError('This conflict cannot be forced.');
       }
       await _requeueLocalState(
-        conflict.aggregateType,
-        conflict.aggregateId,
+        state.conflict.aggregateType,
+        state.conflict.aggregateId,
         replacementMutationId,
         createdAtUtc,
       );
@@ -269,26 +208,177 @@ extension LocalConflictRecovery on LocalSyncStore {
   ) async {
     await ensureAccountBound();
     await database.transaction(() async {
-      await (database.delete(database.localOutbox)..where(
-            (t) =>
-                t.accountId.equals(accountId) &
-                t.aggregateType.equals(aggregateType) &
-                t.aggregateId.equals(aggregateId),
-          ))
-          .go();
-      await (database.delete(database.localConflicts)..where(
-            (t) =>
-                t.aggregateType.equals(aggregateType) &
-                t.aggregateId.equals(aggregateId),
-          ))
-          .go();
-      await (database.delete(database.localResources)..where(
-            (t) =>
-                t.aggregateType.equals(aggregateType) &
-                t.aggregateId.equals(aggregateId),
-          ))
-          .go();
+      await _redirectDependencies(
+        await _outboxRows(aggregateType, aggregateId),
+        null,
+      );
+      await _deleteLocalResource(aggregateType, aggregateId);
     });
+  }
+
+  Future<void> _deleteQueueAndConflicts(
+    String aggregateType,
+    String aggregateId,
+  ) async {
+    await (database.delete(database.localOutbox)..where(
+          (t) =>
+              t.accountId.equals(accountId) &
+              t.aggregateType.equals(aggregateType) &
+              t.aggregateId.equals(aggregateId),
+        ))
+        .go();
+    await (database.delete(database.localConflicts)..where(
+          (t) =>
+              t.aggregateType.equals(aggregateType) &
+              t.aggregateId.equals(aggregateId),
+        ))
+        .go();
+  }
+
+  /// Spätere Zeilen, die auf eine entfernte Mutation warten, warten auf deren
+  /// Ersatz bzw. auf nichts mehr. Der Server verarbeitet die entfernte
+  /// Mutation nie und lehnte sie sonst mit `dependency_not_applied` ab.
+  Future<void> _redirectDependencies(
+    Iterable<LocalOutboxData> removed,
+    String? replacementMutationId,
+  ) async {
+    final ids = [for (final row in removed) row.mutationId];
+    if (ids.isEmpty) return;
+    await (database.update(database.localOutbox)..where(
+          (t) =>
+              t.accountId.equals(accountId) & t.dependsOnMutationId.isIn(ids),
+        ))
+        .write(
+          LocalOutboxCompanion(
+            dependsOnMutationId: Value(replacementMutationId),
+          ),
+        );
+  }
+
+  /// Zusammenführen und Umsortieren ändern lokal weitere Ressourcen, ohne
+  /// für sie eine Outbox-Zeile anzulegen. Wird eine solche Mutation
+  /// verworfen, gehen diese Ressourcen auf ihren Serverstand zurück. Hat eine
+  /// davon eigene wartende Änderungen, bleibt sie, wie sie ist: Diese
+  /// Änderungen senden ihren Stand ohnehin.
+  Future<void> _resetSpannedResources(List<LocalOutboxData> discarded) async {
+    final candidates = <(String, String)>{};
+    for (final row in discarded) {
+      final payload = jsonDecode(row.payloadJson) as Map<String, dynamic>;
+      final body = payload['body'];
+      if (payload['operation'] == LocalMutationOperation.reorder.name) {
+        final plans = body is Map ? body['plans'] : null;
+        for (final plan in plans is List ? plans : const []) {
+          final planId = plan is Map ? plan['planId'] : null;
+          if (planId is String) candidates.add(('training-plan', planId));
+        }
+      } else if (payload['operation'] == LocalMutationOperation.merge.name) {
+        // Der Body nennt die umgeschriebenen Trainings und Pläne nicht.
+        // Kandidaten sind alle; zurück gehen nur die ohne eigene Zeile, deren
+        // Stand nur lokal abweicht.
+        for (final type in const ['workout', 'training-plan']) {
+          final resources = await (database.select(
+            database.localResources,
+          )..where((t) => t.aggregateType.equals(type))).get();
+          for (final resource in resources) {
+            candidates.add((type, resource.aggregateId));
+          }
+        }
+      }
+    }
+    if (candidates.isEmpty) return;
+    final queued = {
+      for (final row in await (database.select(
+        database.localOutbox,
+      )..where((t) => t.accountId.equals(accountId))).get())
+        if (!discarded.any((gone) => gone.mutationId == row.mutationId))
+          (row.aggregateType, row.aggregateId),
+    };
+    for (final (type, id) in candidates) {
+      if (queued.contains((type, id))) continue;
+      final resource =
+          await (database.select(database.localResources)..where(
+                (t) => t.aggregateType.equals(type) & t.aggregateId.equals(id),
+              ))
+              .getSingleOrNull();
+      if (resource == null) continue;
+      final envelope = LocalAggregateEnvelope<Object?>.fromJson(
+        jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
+      );
+      final version = envelope.serverVersion;
+      if (envelope.syncState != LocalSyncState.pending ||
+          envelope.serverSnapshot == null ||
+          version == null) {
+        continue;
+      }
+      final reset = serverEnvelope(
+        aggregateId: envelope.aggregateId,
+        snapshot: envelope.serverSnapshot,
+        version: version,
+      );
+      await (database.update(database.localResources)..where(
+            (t) => t.aggregateType.equals(type) & t.aggregateId.equals(id),
+          ))
+          .write(LocalResourcesCompanion(envelopeJson: Value(reset.encode())));
+    }
+  }
+
+  /// Ältere App-Versionen setzten dauerhaft abgelehnte Einträge (422) auf
+  /// `failed`, ohne Konflikt. Sie blockierten ihre Ressource unsichtbar und
+  /// ließen sich nicht auflösen. Hier werden sie zu dauerhaften Konflikten.
+  /// Neuere Versionen setzen `failed` nicht mehr, der Aufruf ist danach leer.
+  Future<int> conflictLegacyFailedMutations() async {
+    await ensureAccountBound();
+    return database.transaction(() async {
+      final failed =
+          await (database.select(database.localOutbox)..where(
+                (t) =>
+                    t.accountId.equals(accountId) &
+                    t.status.equals(LocalMutationStatus.failed.name),
+              ))
+              .get();
+      final now = DateTime.now().toUtc().toIso8601String();
+      for (final row in failed) {
+        await database
+            .into(database.localConflicts)
+            .insertOnConflictUpdate(
+              LocalConflictsCompanion.insert(
+                conflictId: row.mutationId,
+                aggregateType: row.aggregateType,
+                aggregateId: row.aggregateId,
+                createdAtUtc: now,
+                code: row.lastErrorCode ?? 'rejected',
+                detailJson: jsonEncode({
+                  'mutationId': row.mutationId,
+                  permanentRejectionDetailKey: true,
+                }),
+              ),
+            );
+        await (database.update(database.localOutbox)..where(
+              (t) =>
+                  t.accountId.equals(accountId) &
+                  t.mutationId.equals(row.mutationId),
+            ))
+            .write(
+              LocalOutboxCompanion(
+                status: Value(LocalMutationStatus.conflict.name),
+              ),
+            );
+      }
+      return failed.length;
+    });
+  }
+
+  Future<void> _deleteLocalResource(
+    String aggregateType,
+    String aggregateId,
+  ) async {
+    await _deleteQueueAndConflicts(aggregateType, aggregateId);
+    await (database.delete(database.localResources)..where(
+          (t) =>
+              t.aggregateType.equals(aggregateType) &
+              t.aggregateId.equals(aggregateId),
+        ))
+        .go();
   }
 
   Future<void> _requeueLocalState(
@@ -336,21 +426,10 @@ extension LocalConflictRecovery on LocalSyncStore {
         (workingCopy is Map && workingCopy['deletedAtUtc'] != null);
     final serverVersion = envelope.serverVersion;
 
-    await (database.delete(database.localOutbox)..where(
-          (t) =>
-              t.accountId.equals(accountId) &
-              t.aggregateType.equals(aggregateType) &
-              t.aggregateId.equals(aggregateId),
-        ))
-        .go();
-    await (database.delete(database.localConflicts)..where(
-          (t) =>
-              t.aggregateType.equals(aggregateType) &
-              t.aggregateId.equals(aggregateId),
-        ))
-        .go();
+    await _deleteQueueAndConflicts(aggregateType, aggregateId);
 
     if (deleted && serverVersion == null) {
+      await _redirectDependencies(rows, null);
       await (database.delete(database.localResources)..where(
             (t) =>
                 t.aggregateType.equals(aggregateType) &
@@ -359,6 +438,7 @@ extension LocalConflictRecovery on LocalSyncStore {
           .go();
       return;
     }
+    await _redirectDependencies(rows, replacementMutationId);
 
     final operation = deleted
         ? LocalMutationOperation.delete
@@ -407,51 +487,81 @@ extension LocalConflictRecovery on LocalSyncStore {
   Future<Map<String, ConflictResourceInfo>> readConflictResourceInfos() async {
     await ensureAccountBound();
     final conflicts = await database.select(database.localConflicts).get();
-    final result = <String, ConflictResourceInfo>{};
-    for (final conflict in conflicts) {
-      final type = conflict.aggregateType;
-      final resource =
-          await (database.select(database.localResources)..where(
-                (t) =>
-                    t.aggregateType.equals(type) &
-                    t.aggregateId.equals(conflict.aggregateId),
-              ))
-              .getSingleOrNull();
-      final envelope = resource == null
-          ? null
-          : LocalAggregateEnvelope<Object?>.fromJson(
-              jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
-            );
-      final hasTombstone = _hasServerType(type)
-          ? await (database.select(database.localTombstones)..where(
-                      (t) =>
-                          t.resourceType.equals(_serverType(type)) &
-                          t.resourceId.equals(conflict.aggregateId),
-                    ))
-                    .getSingleOrNull() !=
-                null
-          : false;
-      final rows = await _outboxRows(type, conflict.aggregateId);
-      result[conflict.conflictId] = ConflictResourceInfo(
-        title: envelope == null
-            ? null
-            : _resourceTitle(type, envelope.workingCopy),
-        hasServerState:
-            hasTombstone ||
-            (envelope?.serverSnapshot != null &&
-                envelope?.serverVersion != null),
-        canForceLocal:
-            envelope != null &&
-            !hasTombstone &&
-            forceableAggregateTypes.contains(type) &&
-            !rows.map(_operationOf).any(_spansResources),
-        firstQueuedAtUtc: rows.isEmpty
-            ? null
-            : DateTime.parse(rows.first.createdAtUtc).toUtc(),
-        firstSequence: rows.isEmpty ? 0 : rows.first.sequence,
-      );
+    return {
+      for (final conflict in conflicts)
+        conflict.conflictId: (await _stateOf(conflict)).info,
+    };
+  }
+
+  Future<_ConflictState> _conflictState(String conflictId) async {
+    final conflict = await (database.select(
+      database.localConflicts,
+    )..where((t) => t.conflictId.equals(conflictId))).getSingleOrNull();
+    if (conflict == null) {
+      throw StateError('Conflict is no longer available.');
     }
-    return result;
+    return _stateOf(conflict);
+  }
+
+  /// Einzige Stelle, die entscheidet, welche Aktionen ein Konflikt erlaubt.
+  /// Anzeige und Aktionen lesen beide dieses Ergebnis.
+  Future<_ConflictState> _stateOf(LocalConflict conflict) async {
+    final type = conflict.aggregateType;
+    final resource =
+        await (database.select(database.localResources)..where(
+              (t) =>
+                  t.aggregateType.equals(type) &
+                  t.aggregateId.equals(conflict.aggregateId),
+            ))
+            .getSingleOrNull();
+    final envelope = resource == null
+        ? null
+        : LocalAggregateEnvelope<Object?>.fromJson(
+            jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
+          );
+    final hasTombstone = _hasServerType(type)
+        ? await (database.select(database.localTombstones)..where(
+                    (t) =>
+                        t.resourceType.equals(_serverType(type)) &
+                        t.resourceId.equals(conflict.aggregateId),
+                  ))
+                  .getSingleOrNull() !=
+              null
+        : false;
+    final rows = await _outboxRows(type, conflict.aggregateId);
+    final detail = jsonDecode(conflict.detailJson);
+    final permanent =
+        detail is Map && detail[permanentRejectionDetailKey] == true;
+    final serverVersion = envelope?.serverVersion;
+    final hasServerCopy =
+        envelope?.serverSnapshot != null && serverVersion != null;
+    final discardsLocal = permanent && !hasTombstone && serverVersion == null;
+    final info = ConflictResourceInfo(
+      title: envelope == null
+          ? null
+          : _resourceTitle(type, envelope.workingCopy),
+      hasServerState: hasTombstone || hasServerCopy || discardsLocal,
+      discardsLocal: discardsLocal,
+      serverDeleted: hasTombstone,
+      permanentRejection: permanent,
+      canForceLocal:
+          !permanent &&
+          envelope != null &&
+          !hasTombstone &&
+          forceableAggregateTypes.contains(type) &&
+          !rows.map(_operationOf).any(_spansResources),
+      canRetry:
+          !permanent &&
+          !hasTombstone &&
+          serverVersion != null &&
+          rows.isNotEmpty &&
+          !_retryBlockedCodes.contains(conflict.code),
+      firstQueuedAtUtc: rows.isEmpty
+          ? null
+          : DateTime.parse(rows.first.createdAtUtc).toUtc(),
+      firstSequence: rows.isEmpty ? 0 : rows.first.sequence,
+    );
+    return _ConflictState(conflict, envelope, rows, info);
   }
 
   Future<List<LocalOutboxData>> _outboxRows(
@@ -467,6 +577,28 @@ extension LocalConflictRecovery on LocalSyncStore {
             )
             ..orderBy([(t) => OrderingTerm.asc(t.sequence)]))
           .get();
+}
+
+/// Kennzeichen im Konfliktdetail: Der Server lehnt diesen Stand dauerhaft ab
+/// (422 außer `validation_failed`). Erneut senden oder erzwingen scheitert
+/// genauso; möglich ist nur der Serverstand bzw. das Verwerfen. Gelesen wird
+/// es nur in [LocalConflictRecovery], Ergebnis ist
+/// [ConflictResourceInfo.permanentRejection].
+const permanentRejectionDetailKey = 'permanent';
+
+/// Erneutes Senden derselben Nutzlast behebt diese Codes nicht; der Nutzer
+/// muss die Daten zuerst ändern.
+const _retryBlockedCodes = {'active_workout_exists', 'validation_failed'};
+
+class _ConflictState {
+  const _ConflictState(this.conflict, this.envelope, this.rows, this.info);
+
+  final LocalConflict conflict;
+  final LocalAggregateEnvelope<Object?>? envelope;
+
+  /// Alle Outbox-Zeilen der Ressource, nach Sequenz.
+  final List<LocalOutboxData> rows;
+  final ConflictResourceInfo info;
 }
 
 /// Lokaler Typ der Tagesvorlagen.
@@ -498,15 +630,35 @@ class ConflictResourceInfo {
     required this.canForceLocal,
     required this.firstQueuedAtUtc,
     required this.firstSequence,
+    this.canRetry = false,
+    this.discardsLocal = false,
+    this.serverDeleted = false,
+    this.permanentRejection = false,
   });
 
   /// Anzeigename aus der Arbeitskopie, `null` ohne lokale Kopie.
   final String? title;
 
-  /// Serverkopie oder Löschmarke vorhanden; nur dann ist „Serverstand nutzen“
-  /// möglich.
+  /// Serverkopie oder Löschmarke vorhanden, oder der Server kennt die
+  /// Ressource nach einer dauerhaften Ablehnung nicht; nur dann ist
+  /// „Serverstand nutzen“ möglich (im letzten Fall: [discardsLocal]).
   final bool hasServerState;
+
+  /// Der Server hatte die Ressource nie und lehnt sie dauerhaft ab. „Serverstand
+  /// nutzen“ heißt hier „Verwerfen“: Die Ressource verschwindet lokal.
+  final bool discardsLocal;
+
+  /// Der Server hat die Ressource gelöscht (Löschmarke).
+  final bool serverDeleted;
+
+  /// Der Server lehnt diesen Stand dauerhaft ab; erneut senden und erzwingen
+  /// scheitern genauso.
+  final bool permanentRejection;
   final bool canForceLocal;
+
+  /// „Lokale Änderung erneut senden“ kann gelingen: Es gibt eine aktuelle
+  /// Serverversion, und die Ablehnung hängt nicht an den Daten selbst.
+  final bool canRetry;
 
   /// Alter und Sequenz der ersten wartenden Änderung (Sendereihenfolge).
   final DateTime? firstQueuedAtUtc;

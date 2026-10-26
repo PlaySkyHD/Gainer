@@ -1,3 +1,5 @@
+import 'unknown_wire_value_exception.dart';
+
 typedef IdFactory = String Function();
 
 enum ExerciseKind {
@@ -11,7 +13,7 @@ enum ExerciseKind {
   static ExerciseKind fromWireValue(String value) {
     final kind = _enumByName(values, value);
     if (kind == null) {
-      throw FormatException('Unbekannter Übungstyp: $value');
+      throw UnknownWireValueException('Unbekannter Übungstyp: $value');
     }
     return kind;
   }
@@ -39,7 +41,7 @@ enum PreviousValueSource {
   static PreviousValueSource fromWireValue(String value) {
     final source = _enumByName(values, value);
     if (source == null) {
-      throw FormatException('Unbekannte Vorwertquelle: $value');
+      throw UnknownWireValueException('Unbekannte Vorwertquelle: $value');
     }
     return source;
   }

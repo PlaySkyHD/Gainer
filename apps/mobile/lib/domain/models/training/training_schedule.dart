@@ -1,4 +1,5 @@
 import 'training_plan_model.dart';
+import 'unknown_wire_value_exception.dart';
 import 'workout_model.dart';
 
 /// Lokaler Kalendertag ohne Uhrzeit. Rechnet mit Kalendertagen statt mit
@@ -95,7 +96,8 @@ enum TrainingScheduleMode {
 
   static TrainingScheduleMode fromWire(Object? value) => values.firstWhere(
     (mode) => mode.wireName == value,
-    orElse: () => throw FormatException('Unknown schedule mode.', value),
+    orElse: () =>
+        throw UnknownWireValueException('Unknown schedule mode.', value),
   );
 }
 

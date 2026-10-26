@@ -20,8 +20,11 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
         Guid userId = CurrentUser();
         DateOnly from = through.AddDays(1 - days);
         DateOnly sevenDayFrom = through.AddDays(-6);
-        DateTime workoutFromUtc = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        DateTime workoutThroughUtc = through.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        // Lokale Tagesgrenzen des Nutzers, wie bei den Check-ins und der Ernährung.
+        DateTime workoutFromUtc = LocalDays.StartOfDayUtc(from, timeZone);
+        DateTime workoutThroughUtc = LocalDays.StartOfDayUtc(through.AddDays(1), timeZone);
+        // Die 7-Tage-Zahl braucht die letzten 7 lokalen Tage, auch wenn das Fenster kürzer ist.
+        DateTime loadFromUtc = LocalDays.StartOfDayUtc(DateOnly.FromDayNumber(Math.Min(from.DayNumber, sevenDayFrom.DayNumber)), timeZone);
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.RepeatableRead, cancellationToken);
         long revision = await CurrentRevisionAsync(cancellationToken);
@@ -41,18 +44,25 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             .OrderByDescending(item => item.StartDate)
             .ThenByDescending(item => item.Id)
             .FirstOrDefaultAsync(cancellationToken);
-        List<TrainingWorkoutInput> workouts = await FinishedWorkoutsAsync(
-            workoutFromUtc, workoutThroughUtc, exerciseId: null, cancellationToken);
-        Dictionary<Guid, ExerciseFactorInput> factors = await ExerciseFactorsAsync(workouts, userId, cancellationToken);
+        List<TrainingWorkoutInput> loadedWorkouts = await FinishedWorkoutsAsync(
+            loadFromUtc, workoutThroughUtc, exerciseId: null, cancellationToken);
+        Dictionary<Guid, ExerciseFactorInput> factors = await ExerciseFactorsAsync(loadedWorkouts, userId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        List<TrainingWorkoutInput> workouts = loadedWorkouts
+            .Where(item => item.EndedAtUtc >= workoutFromUtc)
+            .ToList();
         CheckInWeight[] bodyweights = ToCheckInWeights(checkIns);
         List<DailyCheckIn> windowCheckIns = checkIns
             .Where(item => item.LocalDate >= from && item.LocalDate <= through)
             .ToList();
         WeightPoint[] windowWeights = windowCheckIns.Select(item => new WeightPoint(item.LocalDate, item.WeightKg)).ToArray();
         WeightInsights weight = InsightAlgorithms.Weight(windowWeights, from, through);
-        WeightInsights sevenDayWeight = InsightAlgorithms.Weight(windowWeights, sevenDayFrom, through);
+        WeightPoint[] sevenDayWeights = checkIns
+            .Where(item => item.LocalDate >= sevenDayFrom && item.LocalDate <= through)
+            .Select(item => new WeightPoint(item.LocalDate, item.WeightKg))
+            .ToArray();
+        WeightInsights sevenDayWeight = InsightAlgorithms.Weight(sevenDayWeights, sevenDayFrom, through);
         NutritionInsights nutrition = InsightAlgorithms.Nutrition(
             ProjectNutrition(windowCheckIns, nutritionDays), from, through);
         List<BlockStatistics> blocks = workouts
@@ -71,7 +81,8 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             weight,
             nutrition,
             training,
-            workouts.Count(item => DateOnly.FromDateTime(item.EndedAtUtc!.Value) >= sevenDayFrom));
+            loadedWorkouts.Count(item => DateOnly.FromDateTime(
+                TimeZoneInfo.ConvertTimeFromUtc(item.EndedAtUtc!.Value, timeZone)) >= sevenDayFrom));
     }
 
     public async Task<ExerciseProgressSnapshot> ExerciseProgressAsync(
@@ -87,11 +98,8 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
         Guid userId = CurrentUser();
         DateOnly localThrough = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(throughUtc, timeZone));
         DateOnly? localFrom = windowDays is { } days ? localThrough.AddDays(1 - days) : null;
-        DateTime fromUtc = localFrom is { } from
-            ? TimeZoneInfo.ConvertTimeToUtc(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), timeZone)
-            : DateTime.UnixEpoch;
-        DateTime endExclusiveUtc = TimeZoneInfo.ConvertTimeToUtc(
-            localThrough.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), timeZone);
+        DateTime fromUtc = localFrom is { } from ? LocalDays.StartOfDayUtc(from, timeZone) : DateTime.UnixEpoch;
+        DateTime endExclusiveUtc = LocalDays.StartOfDayUtc(localThrough.AddDays(1), timeZone);
 
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.RepeatableRead, cancellationToken);

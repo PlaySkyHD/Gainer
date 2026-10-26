@@ -12,11 +12,13 @@ using Gainer.Infrastructure.Integrations;
 using Gainer.Core.Integrations;
 using Gainer.Infrastructure.Training;
 using Gainer.Infrastructure.Catalog;
+using Gainer.Infrastructure.Http;
 using Gainer.Infrastructure.Nutrition;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -66,7 +68,8 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<IInsightQueries, InsightQueries>();
         builder.Services.Configure<OpenAiProviderOptions>(builder.Configuration.GetSection(OpenAiProviderOptions.SectionName));
         builder.Services.AddHttpClient<IOpenAiResponsesProvider, OpenAiResponsesProvider>(client =>
-            client.BaseAddress = new Uri(OpenAiBaseAddress));
+            client.BaseAddress = new Uri(OpenAiBaseAddress))
+            .AddProviderResilience(static services => services.GetRequiredService<IOptions<OpenAiProviderOptions>>().Value.TimeoutSeconds);
         builder.Services.AddScoped<ICoachMemoryStore, CoachMemoryStore>();
         builder.Services.AddScoped<ICoachMemoryQueries>(services => services.GetRequiredService<ICoachMemoryStore>());
         builder.Services.AddScoped<ICoachService, CoachService>();
@@ -80,11 +83,14 @@ public static class GainerPersistenceExtensions
         builder.Services.AddSingleton<IMuscleSuggestionQuota, MuscleSuggestionQuota>();
         builder.Services.AddScoped<IMuscleSuggester, OpenAiMuscleSuggester>();
         builder.Services.Configure<OpenFoodFactsOptions>(builder.Configuration.GetSection(OpenFoodFactsOptions.SectionName));
-        builder.Services.AddHttpClient<IExternalFoodCatalog, OpenFoodFactsCatalog>();
+        builder.Services.TryAddSingleton<OpenFoodFactsCatalogState>();
+        builder.Services.AddHttpClient<IExternalFoodCatalog, OpenFoodFactsCatalog>()
+            .AddProviderResilience(static services => services.GetRequiredService<IOptions<OpenFoodFactsOptions>>().Value.TimeoutSeconds);
         builder.Services.AddScoped<IChangeCollector, ChangeCollector>();
         builder.Services.TryAddScoped<BackgroundUserScope>();
         builder.Services.Configure<StravaOptions>(builder.Configuration.GetSection(StravaOptions.SectionName));
-        builder.Services.AddHttpClient<IStravaApiClient, StravaApiClient>();
+        builder.Services.AddHttpClient<IStravaApiClient, StravaApiClient>()
+            .AddProviderResilience(static services => services.GetRequiredService<IOptions<StravaOptions>>().Value.TimeoutSeconds);
         builder.Services.TryAddSingleton<StravaExportSignal>();
         builder.Services.AddScoped<StravaTokenVault>();
         builder.Services.AddScoped<IStravaIntegrationService, StravaIntegrationService>();
