@@ -16,14 +16,16 @@ public sealed class SyncChangesController(ISyncChangeFeed feed, IUserContext use
 {
     [HttpGet]
     [ProducesResponseType<PullChangesResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity, "application/problem+json")]
     public async Task<ActionResult<PullChangesResponse>> Get(
         [FromQuery] long after = 0,
         [FromQuery] int limit = 200,
         [FromQuery] int? protocolVersion = null,
         CancellationToken cancellationToken = default)
     {
-        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext) is { } identityProblem)
+        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext, protocolVersion) is { } identityProblem)
             return identityProblem;
 
         if (after < 0 || limit is < 1 or > SyncProtocol.MaximumBatchesPerPull)

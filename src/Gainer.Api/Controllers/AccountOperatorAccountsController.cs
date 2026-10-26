@@ -2,6 +2,7 @@ using Gainer.Api.Composition;
 using Gainer.Api.Security;
 using Gainer.Contracts.Security;
 using Gainer.Core.Access;
+using Gainer.Core.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,7 +15,8 @@ namespace Gainer.Api.Controllers;
 [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
 public sealed class AccountOperatorAccountsController(
     IAccountStatusService accounts,
-    IAccountDirectoryService directory) : ControllerBase
+    IAccountDirectoryService directory,
+    IUserContext userContext) : ControllerBase
 {
     /// <summary>Lists only the Identity metadata required for account management.</summary>
     [HttpGet]
@@ -32,12 +34,31 @@ public sealed class AccountOperatorAccountsController(
     /// <summary>Activates or deactivates an account and revokes its existing sessions.</summary>
     [HttpPut("{accountId:guid}/status")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict, "application/problem+json")]
     public async Task<IActionResult> SetStatus(
         Guid accountId,
-        SetAccountStatusRequest request)
+        SetAccountStatusRequest request,
+        CancellationToken cancellationToken)
     {
-        bool found = await accounts.SetActiveAsync(accountId, request.IsActive);
+        // An operator who deactivates their own account would lock out the only operator.
+        if (!request.IsActive && userContext.UserId == accountId)
+        {
+            ProblemDetails problem = new()
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "An operator cannot deactivate their own account.",
+                Type = "https://gainer.local/problems/operator_self_deactivation",
+            };
+            problem.Extensions["code"] = "operator_self_deactivation";
+            return new ObjectResult(problem)
+            {
+                StatusCode = StatusCodes.Status409Conflict,
+                ContentTypes = { "application/problem+json" },
+            };
+        }
+
+        bool found = await accounts.SetActiveAsync(accountId, request.IsActive, cancellationToken);
         return found ? NoContent() : NotFound();
     }
 }

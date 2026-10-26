@@ -147,6 +147,53 @@ public sealed class ApiCompositionRootTests
         Assert.AreEqual(HttpStatusCode.OK, otherPath.StatusCode);
     }
 
+    [TestMethod]
+    public async Task RateLimitedRequestReturnsProblemDetailsWithStableCode()
+    {
+        await using var app = await CreateApplicationAsync();
+        using var client = app.GetTestClient();
+
+        for (int attempt = 0; attempt < 60; attempt++)
+        {
+            using HttpResponseMessage allowed = await SystemStatusAsync(client, "203.0.113.30");
+            Assert.AreEqual(HttpStatusCode.OK, allowed.StatusCode);
+            Assert.IsTrue(allowed.Headers.CacheControl?.NoStore);
+        }
+
+        using HttpResponseMessage limited = await SystemStatusAsync(client, "203.0.113.30");
+        using JsonDocument payload = JsonDocument.Parse(await limited.Content.ReadAsStringAsync());
+        using HttpResponseMessage otherClient = await SystemStatusAsync(client, "203.0.113.31");
+
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        Assert.AreEqual("application/problem+json", limited.Content.Headers.ContentType?.MediaType);
+        Assert.AreEqual("rate_limited", payload.RootElement.GetProperty("code").GetString());
+        Assert.AreEqual(HttpStatusCode.OK, otherClient.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task RequestLogContainsTheRouteTemplateNotTheRequestedPath()
+    {
+        var logProvider = new CollectingLoggerProvider();
+        await using var app = await CreateApplicationAsync(logProvider);
+        using var client = app.GetTestClient();
+
+        using HttpResponseMessage response = await client.GetAsync("/probe/4006381333931");
+        using HttpResponseMessage unmatched = await client.GetAsync("/nowhere/2026-10-26");
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(HttpStatusCode.NotFound, unmatched.StatusCode);
+        Assert.IsTrue(logProvider.Messages.Any(message => message.Contains("GET /probe/{value}", StringComparison.Ordinal)));
+        Assert.IsFalse(logProvider.Messages.Any(message => message.Contains("4006381333931", StringComparison.Ordinal)));
+        Assert.IsFalse(logProvider.Messages.Any(message => message.Contains("2026-10-26", StringComparison.Ordinal)));
+    }
+
+    private static async Task<HttpResponseMessage> SystemStatusAsync(HttpClient client, string clientAddress)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/system/status");
+        request.Headers.Add("X-Forwarded-For", clientAddress);
+        return await client.SendAsync(request);
+    }
+
     private static async Task<HttpResponseMessage> ReadinessAsync(HttpClient client, string clientAddress)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/health/ready");
@@ -169,6 +216,7 @@ public sealed class ApiCompositionRootTests
         var app = builder.Build();
         app.MapGainerApi();
         app.MapGet("/health/ready", () => Results.Ok());
+        app.MapGet("/probe/{value}", (string value) => Results.Ok());
         app.MapGet("/forwarded-probe", (HttpContext context) => Results.Json(new
         {
             scheme = context.Request.Scheme,

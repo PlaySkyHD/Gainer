@@ -137,9 +137,48 @@ public sealed class SyncHandoverApiTests
         }
         using (var legacyPull = new HttpRequestMessage(HttpMethod.Get, "/api/v1/sync/changes?after=0&limit=200"))
         {
-            authB.Apply(legacyPull);
+            authB.WithoutAccountHeader().Apply(legacyPull);
             using HttpResponseMessage response = await clientB.SendAsync(legacyPull);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        // From protocol 4 on, the account header is mandatory on pulls, registration and mutations.
+        using (var headerlessPull = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion}"))
+        {
+            authB.WithoutAccountHeader().Apply(headerlessPull);
+            using HttpResponseMessage response = await clientB.SendAsync(headerlessPull);
+            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+            Assert.AreEqual("account_header_required", await ProblemCodeAsync(response));
+        }
+        Guid headerlessClientId = Guid.NewGuid();
+        using (HttpResponseMessage headerlessRegistration = await SendMutationAsync(
+            clientB,
+            authB.WithoutAccountHeader(),
+            HttpMethod.Put,
+            $"/api/v1/sync/clients/{headerlessClientId}",
+            new RegisterSyncClientRequest(headerlessClientId, "Headerless", SyncProtocol.CurrentVersion, false)))
+        {
+            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, headerlessRegistration.StatusCode);
+            Assert.AreEqual("account_header_required", await ProblemCodeAsync(headerlessRegistration));
+        }
+        using (HttpResponseMessage headerlessMutation = await SendMutationAsync(
+            clientB,
+            authB.WithoutAccountHeader(),
+            HttpMethod.Put,
+            $"/api/v1/sync/mutations/{Guid.NewGuid()}",
+            new PushMutationRequest(
+                SyncProtocol.CurrentVersion,
+                headerlessClientId,
+                1,
+                "createDailyCheckIn",
+                [new ResourceVersionRequest("DailyCheckIn", Guid.NewGuid(), 0)],
+                null,
+                JsonSerializer.SerializeToElement(new { }))))
+        {
+            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, headerlessMutation.StatusCode);
+            Assert.AreEqual("account_header_required", await ProblemCodeAsync(headerlessMutation));
         }
 
         Guid source = Guid.NewGuid();

@@ -9,8 +9,9 @@ public sealed class AccountStatusService(
     IDeviceSessionService deviceSessions) : IAccountStatusService
 {
     /// <inheritdoc />
-    public async Task<bool> SetActiveAsync(Guid accountId, bool isActive)
+    public async Task<bool> SetActiveAsync(Guid accountId, bool isActive, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         AppUser? user = await userManager.FindByIdAsync(accountId.ToString());
         if (user is null)
         {
@@ -26,7 +27,7 @@ public sealed class AccountStatusService(
 
         if (!isActive)
         {
-            await deviceSessions.RevokeAllAsync(accountId);
+            await deviceSessions.RevokeAllAsync(accountId, cancellationToken);
         }
 
         return true;

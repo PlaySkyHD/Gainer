@@ -17,7 +17,9 @@ public sealed class MuscleSuggestionsController(IMuscleSuggester muscleSuggester
     [ProducesResponseType<MuscleSuggestionResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status504GatewayTimeout)]
     public async Task<ActionResult<MuscleSuggestionResponse>> SuggestMuscles(
         [FromBody] MuscleSuggestionRequest request,
         CancellationToken cancellationToken = default)

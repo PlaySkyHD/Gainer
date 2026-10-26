@@ -16,6 +16,7 @@ public sealed class FoodCatalogController(IExternalFoodCatalog catalog) : Contro
     [HttpGet("barcode/{barcode}")]
     [ProducesResponseType<FoodCatalogProductResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<FoodCatalogProductResponse>> Barcode(
@@ -36,6 +37,7 @@ public sealed class FoodCatalogController(IExternalFoodCatalog catalog) : Contro
 
     [HttpGet("search")]
     [ProducesResponseType<FoodCatalogSearchResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<FoodCatalogSearchResponse>> Search(

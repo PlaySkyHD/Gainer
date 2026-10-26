@@ -28,7 +28,7 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         PushMutationRequest request,
         CancellationToken cancellationToken)
     {
-        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext) is { } identityProblem)
+        if (SyncAccountIdentityGuard.Validate(Request.Headers, userContext, request.ProtocolVersion) is { } identityProblem)
             return identityProblem;
 
         if (mutationId == Guid.Empty)

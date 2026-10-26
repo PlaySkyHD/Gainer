@@ -30,7 +30,25 @@ internal static class BearerTestClient
     {
         TokenResponse tokens = await LoginAsync(client, email, password);
         client.UseAccessToken(tokens.AccessToken);
+        // Sync requests of protocol 4 and newer must name the account, as the app does.
+        client.DefaultRequestHeaders.Remove(AccountHeaderName);
+        client.DefaultRequestHeaders.Add(
+            AccountHeaderName,
+            (await ResolveAccountIdAsync(client, tokens.AccessToken)).ToString("D"));
         return tokens;
+    }
+
+    public const string AccountHeaderName = "X-Gainer-Account-Id";
+
+    public static async Task<Guid> ResolveAccountIdAsync(HttpClient client, string accessToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/session");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using HttpResponseMessage response = await client.SendAsync(request);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+        SessionResponse session = await response.Content.ReadFromJsonAsync<SessionResponse>()
+            ?? throw new InvalidOperationException("The session response was empty.");
+        return session.UserId;
     }
 
     public static void UseAccessToken(this HttpClient client, string? accessToken)
@@ -49,19 +67,39 @@ internal sealed class TestSession
 {
     public string? AccessToken { get; set; }
 
-    public TestSession Clone() => new() { AccessToken = AccessToken };
+    /// <summary>The account of a session created by <see cref="SignInAsync"/>.</summary>
+    public Guid? AccountId { get; private set; }
 
-    public void Apply(HttpRequestMessage request)
+    public TestSession Clone() => new() { AccessToken = AccessToken, AccountId = AccountId };
+
+    /// <summary>The same sign-in as a client that never sends the account header.</summary>
+    public TestSession WithoutAccountHeader() => new() { AccessToken = AccessToken };
+
+    /// <summary>
+    /// Applies the access token and, like the app, the account header that sync requests of
+    /// protocol 4 and newer must carry. A header already set on the request is kept.
+    /// </summary>
+    public void Apply(HttpRequestMessage request, bool includeAccountHeader = true)
     {
         if (AccessToken is not null)
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AccessToken);
+        }
+
+        if (includeAccountHeader && AccountId is Guid accountId
+            && !request.Headers.Contains(BearerTestClient.AccountHeaderName))
+        {
+            request.Headers.Add(BearerTestClient.AccountHeaderName, accountId.ToString("D"));
         }
     }
 
     public static async Task<TestSession> SignInAsync(HttpClient client, string email, string password)
     {
         TokenResponse tokens = await BearerTestClient.LoginAsync(client, email, password);
-        return new TestSession { AccessToken = tokens.AccessToken };
+        return new TestSession
+        {
+            AccessToken = tokens.AccessToken,
+            AccountId = await BearerTestClient.ResolveAccountIdAsync(client, tokens.AccessToken),
+        };
     }
 }

@@ -47,7 +47,7 @@ public static class GainerApiExtensions
         builder.Services.AddExceptionHandler<UnexpectedExceptionHandler>();
         builder.Services.AddProblemDetails(options =>
             options.CustomizeProblemDetails = ProblemDetailsConfiguration.Customize);
-        builder.Services.AddOpenApi("v1");
+        builder.Services.AddOpenApi("v1", options => options.AddGainerTransformers());
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddRateLimiter(options =>
         {
@@ -68,6 +68,9 @@ public static class GainerApiExtensions
             options.AddPolicy(
                 ApiConstants.AuthenticationRateLimitPolicy,
                 context => PerClientWindow(context, ApiConstants.AuthenticationRateLimitPolicy, permitLimit: 30));
+            options.AddPolicy(
+                ApiConstants.SystemStatusRateLimitPolicy,
+                context => PerClientWindow(context, ApiConstants.SystemStatusRateLimitPolicy, permitLimit: 60));
             options.AddPolicy(ApiConstants.AccountExportRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
                 $"{ApiConstants.AccountExportRateLimitPolicy}:{context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
                 _ => new FixedWindowRateLimiterOptions
@@ -105,11 +108,8 @@ public static class GainerApiExtensions
         app.UseForwardedHeaders();
         app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseExceptionHandler();
-        app.UseMiddleware<RequestSizeLimitMiddleware>();
-        app.UseAuthentication();
-        app.UseMiddleware<DeviceSessionValidationMiddleware>();
-        app.UseRateLimiter();
-        app.UseAuthorization();
+        // Before authentication, the rate limiter and authorization: they end the request with a bare
+        // 401, 403 or 429, and only status code pages wrap them into ProblemDetails with a stable code.
         app.UseStatusCodePages(async statusCodeContext =>
         {
             HttpContext httpContext = statusCodeContext.HttpContext;
@@ -118,6 +118,11 @@ public static class GainerApiExtensions
                     title: ProblemDetailsConfiguration.GetTitle(httpContext.Response.StatusCode))
                 .ExecuteAsync(httpContext);
         });
+        app.UseMiddleware<RequestSizeLimitMiddleware>();
+        app.UseAuthentication();
+        app.UseMiddleware<DeviceSessionValidationMiddleware>();
+        app.UseRateLimiter();
+        app.UseAuthorization();
         app.MapControllers();
 
         return app;
