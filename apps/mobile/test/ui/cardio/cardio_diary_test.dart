@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/repositories/cardio/cardio_repository.dart';
+import 'package:gainer_mobile/domain/models/cardio/cardio_session.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_detail_screen.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_live_screen.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_start_sheet.dart';
@@ -109,6 +111,69 @@ void main() {
     expect(find.textContaining('in Zone'), findsNothing);
     expect(find.text('Ø 132 bpm'), findsOneWidget);
     expect(find.text('2 Trainings'), findsOneWidget);
+  });
+
+  testWidgets('Löschen außerhalb des Tagebuchs kommt sofort an', (
+    tester,
+  ) async {
+    await seedMixed(tester);
+    await pumpHome(tester);
+    expect(find.text('Rad-Ergometer'), findsOneWidget);
+
+    // Etwa in der Detailansicht, die über eine andere Route offen war.
+    await tester.runAsync(() async {
+      final session = (await cardio.repository.readSessions()).single;
+      await cardio.repository.deleteSession(session.sessionId);
+    });
+    await pumpUi(tester);
+
+    expect(find.text('Rad-Ergometer'), findsNothing);
+  });
+
+  testWidgets('eine per Sync gezogene Einheit erscheint nach dem Pull', (
+    tester,
+  ) async {
+    await pumpHome(tester);
+    expect(find.text('Rad-Ergometer'), findsNothing);
+
+    // Der Pull schreibt am Repository vorbei in denselben Speicher.
+    await tester.runAsync(() async {
+      final other = CardioRepository(store: cardio.store);
+      await other.saveFinished(
+        CardioSession(
+          sessionId: other.newSessionId(),
+          startedAtUtc: DateTime(2026, 10, 18, 9).toUtc(),
+          endedAtUtc: DateTime(2026, 10, 18, 9, 30).toUtc(),
+          heartRateBpm: diaryHeartRate(),
+          rrIntervalsMs: const [],
+          createdAtUtc: DateTime(2026, 10, 18, 9, 30).toUtc(),
+          updatedAtUtc: DateTime(2026, 10, 18, 9, 30).toUtc(),
+        ),
+      );
+    });
+    await pumpUi(tester);
+    expect(find.text('Rad-Ergometer'), findsNothing);
+
+    cardio.repository.notifyExternalChange();
+    await pumpUi(tester);
+    expect(find.text('Rad-Ergometer'), findsOneWidget);
+  });
+
+  testWidgets('eine über die Live Activity beendete Einheit erscheint', (
+    tester,
+  ) async {
+    await pumpHome(tester);
+    expect(find.text('Rad-Ergometer'), findsNothing);
+
+    // Die Live-Ansicht wurde nicht aus dem Tagebuch geöffnet.
+    await tester.runAsync(() async {
+      await cardio.controller.start();
+      cardio.now = cardio.now.add(const Duration(minutes: 20));
+      await cardio.controller.finish();
+    });
+    await pumpUi(tester);
+
+    expect(find.text('Rad-Ergometer'), findsOneWidget);
   });
 
   testWidgets('Tippen öffnet das Detail', (tester) async {

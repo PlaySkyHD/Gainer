@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+
 import '../../../domain/models/cardio/cardio_draft.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/cardio/cardio_template.dart';
@@ -23,6 +25,15 @@ const maxEnergyKcal = 20000.0;
 
 typedef CardioIdFactory = String Function();
 
+/// Die Einheit ist schon gespeichert, etwa weil nach dem Speichern das Löschen
+/// des Entwurfs scheiterte. Aufrufer behandeln sie als gespeichert.
+class CardioSessionExistsException extends StateError {
+  CardioSessionExistsException(this.sessionId)
+    : super('Die Cardio-Einheit existiert bereits.');
+
+  final String sessionId;
+}
+
 /// Local-first Cardio-Einheiten über die Outbox des kontogebundenen Speichers
 /// sowie der laufende Entwurf.
 class CardioRepository {
@@ -41,8 +52,25 @@ class CardioRepository {
   /// Cardio-Einstellungen desselben Kontos.
   final CardioPreferences preferences;
 
+  final ValueNotifier<int> _revision = ValueNotifier(0);
+
+  /// Meldet jede lokale Änderung an Einheiten (Speichern, Ändern, Löschen)
+  /// und gezogene Änderungen ([notifyExternalChange]), damit Listen wie das
+  /// Tagebuch neu laden.
+  ValueListenable<int> get changes => _revision;
+
+  void _changed() => _revision.value++;
+
+  /// Einheiten haben sich außerhalb dieses Repositorys geändert, etwa durch
+  /// einen Sync-Pull von einem anderen Gerät.
+  void notifyExternalChange() => _changed();
+
   /// Neue Einheiten-ID (UUID v4).
   String newSessionId() => ids();
+
+  /// Gibt es die Einheit lokal, auch gelöscht?
+  Future<bool> hasSession(String id) async =>
+      await store.readAggregate(cardioSessionAggregateType, id) != null;
 
   /// Nicht gelöschte Einheiten, neueste zuerst.
   Future<List<CardioSession>> readSessions() async {
@@ -76,12 +104,8 @@ class CardioRepository {
   Future<CardioSession> saveFinished(CardioSession session) async {
     final now = _roundToSecond(clock());
     final saved = sanitize(session, now: now);
-    if (await store.readAggregate(
-          cardioSessionAggregateType,
-          saved.sessionId,
-        ) !=
-        null) {
-      throw StateError('Die Cardio-Einheit existiert bereits.');
+    if (await hasSession(saved.sessionId)) {
+      throw CardioSessionExistsException(saved.sessionId);
     }
     final body = saved.toJson();
     await store.commitMutation(
@@ -94,6 +118,7 @@ class CardioRepository {
       envelope: localEnvelope(aggregateId: saved.sessionId, workingCopy: body),
       createdAtUtc: now,
     );
+    _changed();
     return saved;
   }
 
@@ -230,6 +255,7 @@ class CardioRepository {
       envelope: _pending(old, body),
       createdAtUtc: clock().toUtc(),
     );
+    _changed();
     return updated;
   }
 
@@ -266,6 +292,7 @@ class CardioRepository {
       envelope: _pending(old, body),
       createdAtUtc: clock().toUtc(),
     );
+    _changed();
     return updated;
   }
 
@@ -288,6 +315,7 @@ class CardioRepository {
       envelope: _pending(old, body),
       createdAtUtc: now,
     );
+    _changed();
   }
 
   /// Laufender Entwurf; null ohne laufende Einheit oder bei unlesbarem Stand.

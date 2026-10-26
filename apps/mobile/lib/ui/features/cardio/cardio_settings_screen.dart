@@ -125,7 +125,9 @@ class _CardioSettingsScreenState extends State<CardioSettingsScreen> {
           header: 'Puls',
           footer:
               'Ohne Maximalpuls schätzt Gainer ihn aus dem Alter. Mit Ruhepuls '
-              'rechnen die Zonen nach Karvonen.',
+              'rechnen die Zonen nach Karvonen. Der Maximalpuls zählt '
+              'höchstens mit ${CardioZones.maxHeartRateLimit} bpm, weil '
+              'Zielbereiche dort enden.',
           children: [
             GainerTextFieldRow(
               label: 'Maximalpuls',
@@ -142,7 +144,7 @@ class _CardioSettingsScreenState extends State<CardioSettingsScreen> {
                 'max',
                 text,
                 100,
-                250,
+                CardioZones.maxHeartRateLimit,
                 (values, value) => values.copyWith(maxHeartRate: () => value),
               ),
             ),

@@ -27,6 +27,10 @@ String _newTemplateId() => 'tpl-${DateTime.now().microsecondsSinceEpoch}';
 
 enum _TemplateAction { edit, duplicate, delete }
 
+const _limitText =
+    'Höchstens ${CardioPreferenceValues.maxTemplates} eigene Vorlagen. '
+    'Lösche eine, um eine neue anzulegen.';
+
 /// Liste der Vorlagen: mitgelieferte (nicht löschbar, duplizierbar) und eigene
 /// (Tippen bearbeitet, Wischen oder langes Drücken löscht).
 class CardioTemplatesScreen extends StatefulWidget {
@@ -47,15 +51,25 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
     _preferences.read();
   }
 
-  Future<void> _save(CardioTemplate template) {
-    return _preferences.update((current) {
+  /// Mehr eigene Vorlagen verwirft das Lesen still; am Limit gibt es keine neue.
+  static bool _atLimit(CardioPreferenceValues values) =>
+      values.templates.length >= CardioPreferenceValues.maxTemplates;
+
+  /// Speichert die Vorlage. Ist das Limit eigener Vorlagen erreicht, bleibt
+  /// alles unverändert und das Ergebnis ist der Hinweis dazu, sonst null.
+  Future<String?> _save(CardioTemplate template) async {
+    var full = false;
+    await _preferences.update((current) {
       final index = current.templates.indexWhere((e) => e.id == template.id);
       if (index < 0) {
+        full = _atLimit(current);
+        if (full) return current;
         return current.copyWith(templates: [...current.templates, template]);
       }
       final next = [...current.templates]..[index] = template;
       return current.copyWith(templates: next);
     });
+    return full ? _limitText : null;
   }
 
   Future<void> _delete(CardioTemplate template) {
@@ -69,28 +83,26 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
     );
   }
 
+  // Der Editor speichert selbst und bleibt offen, wenn das scheitert.
   Future<void> _create() async {
-    final created = await showCardioTemplateEditor(
+    await showCardioTemplateEditor(
       context,
       zones: _preferences.values.value.zones,
+      onSave: _save,
     );
-    if (created != null) await _save(created);
   }
 
   Future<void> _edit(CardioTemplate template) async {
-    final edited = await showCardioTemplateEditor(
+    await showCardioTemplateEditor(
       context,
       template: template,
       zones: _preferences.values.value.zones,
+      onSave: _save,
     );
-    if (edited != null) await _save(edited);
   }
 
   Future<void> _duplicate(CardioTemplate template) async {
-    if (_preferences.values.value.templates.length >=
-        CardioPreferenceValues.maxTemplates) {
-      return;
-    }
+    if (_atLimit(_preferences.values.value)) return;
     await _save(
       template.copyWith(id: _newTemplateId(), name: '${template.name} Kopie'),
     );
@@ -105,6 +117,7 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
   }
 
   Future<void> _showActions(CardioTemplate template) async {
+    final full = _atLimit(_preferences.values.value);
     final action = await showGainerActionSheet<_TemplateAction>(
       context: context,
       title: template.name,
@@ -120,7 +133,10 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
             label: 'Duplizieren',
             icon: CupertinoIcons.doc_on_doc,
             value: _TemplateAction.duplicate,
-            hint: template.builtIn
+            enabled: !full,
+            hint: full
+                ? _limitText
+                : template.builtIn
                 ? 'Mitgelieferte Vorlagen sind fest. Die Kopie lässt sich '
                       'ändern.'
                 : null,
@@ -148,21 +164,20 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GainerScaffold(
-      title: 'Vorlagen',
-      trailing: [
-        GainerToolbarButton(
-          icon: CupertinoIcons.add,
-          semanticLabel: 'Neue Vorlage',
-          onPressed: _create,
-        ),
-      ],
-      children: [
-        ValueListenableBuilder<CardioPreferenceValues>(
-          valueListenable: _preferences.values,
-          builder: (context, values, _) => _content(values),
-        ),
-      ],
+    return ValueListenableBuilder<CardioPreferenceValues>(
+      valueListenable: _preferences.values,
+      builder: (context, values, _) => GainerScaffold(
+        title: 'Vorlagen',
+        trailing: [
+          GainerToolbarButton(
+            key: const ValueKey('cardio-template-add'),
+            icon: CupertinoIcons.add,
+            semanticLabel: 'Neue Vorlage',
+            onPressed: _atLimit(values) ? null : _create,
+          ),
+        ],
+        children: [_content(values)],
+      ),
     );
   }
 
@@ -224,6 +239,7 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
         else
           GainerGroupedSection(
             header: 'Eigene',
+            footer: _atLimit(values) ? _limitText : null,
             children: [
               for (final template in values.templates) _row(template, values),
             ],
@@ -233,16 +249,23 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
   }
 }
 
-/// Öffnet den Editor als Sheet; liefert die gesicherte Vorlage oder null.
+/// Speichert die Vorlage aus dem Editor; liefert null bei Erfolg, sonst den
+/// Hinweis, warum nicht gespeichert wurde.
+typedef CardioTemplateSave = Future<String?> Function(CardioTemplate template);
+
+/// Öffnet den Editor als Sheet; liefert die gesicherte Vorlage oder null. Mit
+/// [onSave] speichert der Editor selbst und schließt nur bei Erfolg.
 Future<CardioTemplate?> showCardioTemplateEditor(
   BuildContext context, {
   CardioTemplate? template,
   List<CardioZone> zones = const [],
+  CardioTemplateSave? onSave,
 }) {
   return showGainerSheet<CardioTemplate>(
     context: context,
     heightFactor: 0.92,
-    builder: (_) => CardioTemplateEditor(template: template, zones: zones),
+    builder: (_) =>
+        CardioTemplateEditor(template: template, zones: zones, onSave: onSave),
   );
 }
 
@@ -251,10 +274,18 @@ enum _PhaseAction { moveUp, moveDown, duplicate, delete }
 /// Editor einer Vorlage: Name und Phasen. „Sichern“ ist erst aktiv, wenn die
 /// Vorlage dem Vertrag entspricht; der Grund steht darunter.
 class CardioTemplateEditor extends StatefulWidget {
-  const CardioTemplateEditor({this.template, this.zones = const [], super.key});
+  const CardioTemplateEditor({
+    this.template,
+    this.zones = const [],
+    this.onSave,
+    super.key,
+  });
 
   final CardioTemplate? template;
   final List<CardioZone> zones;
+
+  /// Speichert beim Sichern; ohne Wert gibt der Editor die Vorlage nur zurück.
+  final CardioTemplateSave? onSave;
 
   @override
   State<CardioTemplateEditor> createState() => _CardioTemplateEditorState();
@@ -274,10 +305,42 @@ class _CardioTemplateEditorState extends State<CardioTemplateEditor> {
       ),
   ];
 
+  bool _saving = false;
+
+  /// Grund, warum das letzte Sichern nicht gespeichert hat.
+  String? _saveError;
+
   @override
   void dispose() {
     _name.dispose();
     super.dispose();
+  }
+
+  Future<void> _submit(CardioTemplate draft) async {
+    final onSave = widget.onSave;
+    if (onSave == null) {
+      Navigator.of(context).pop(draft);
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    String? error;
+    try {
+      error = await onSave(draft);
+    } on Object {
+      error = 'Die Vorlage konnte nicht gesichert werden.';
+    }
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.of(context).pop(draft);
+      return;
+    }
+    setState(() {
+      _saving = false;
+      _saveError = error;
+    });
   }
 
   CardioTemplate get _draft => CardioTemplate(
@@ -367,7 +430,8 @@ class _CardioTemplateEditorState extends State<CardioTemplateEditor> {
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
     final draft = _draft;
-    final error = draft.validate();
+    final invalid = draft.validate();
+    final error = invalid ?? _saveError;
     final summary =
         '${_phases.length} ${_phases.length == 1 ? 'Phase' : 'Phasen'} · '
         '${formatTemplateTotal(draft.totalSeconds)}';
@@ -457,8 +521,9 @@ class _CardioTemplateEditorState extends State<CardioTemplateEditor> {
                   key: const ValueKey('cardio-template-save'),
                   label: 'Sichern',
                   expand: true,
-                  onPressed: error == null
-                      ? () => Navigator.of(context).pop(draft)
+                  isLoading: _saving,
+                  onPressed: invalid == null && !_saving
+                      ? () => _submit(draft)
                       : null,
                 ),
               ],

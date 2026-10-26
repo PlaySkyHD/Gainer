@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +21,22 @@ const accountId = '00000000-0000-4000-8000-000000000001';
 String testId(int value) =>
     '00000000-0000-4000-8000-${value.toString().padLeft(12, '0')}';
 
+/// Speichert die Einheit wie schon gesendet (kein wartender Eintrag) und
+/// löscht sie danach. Es bleibt eine gelöschte Einheit im Speicher; ohne das
+/// Senden fasst die Outbox Anlegen und Löschen zu nichts zusammen.
+Future<void> saveSyncedThenDelete(
+  CardioRepository repository,
+  CardioSession session,
+) async {
+  await repository.saveFinished(session);
+  for (final mutation in await repository.store.readOutbox(
+    aggregateType: cardioSessionAggregateType,
+  )) {
+    await repository.store.deleteMutation(mutation.mutationId);
+  }
+  await repository.deleteSession(session.sessionId);
+}
+
 class FakeHeartRate implements HeartRatePlatform {
   HeartRateMonitoringConfig? monitoring;
   final started = <HeartRateMonitoringConfig>[];
@@ -34,8 +52,18 @@ class FakeHeartRate implements HeartRatePlatform {
   int? latestBpm;
   DateTime? latestAt;
 
+  /// Zustand der Live Activity, solange eine Überwachung mit Live Activity läuft.
+  CardioLiveActivityState liveActivity = CardioLiveActivityState.running;
+
+  /// Hält `readStatus` an, bis der Test ihn abschließt.
+  Completer<void>? statusGate;
+  var statusReads = 0;
+
   @override
   Future<HeartRateStatus> readStatus(int afterSequence) async {
+    statusReads++;
+    final gate = statusGate;
+    if (gate != null) await gate.future;
     if (problem != null) throw BluetoothUnavailableException(problem!);
     return HeartRateStatus(
       bluetoothState: HeartRateBluetoothState.poweredOn,
@@ -46,6 +74,9 @@ class FakeHeartRate implements HeartRatePlatform {
       latestBpm: latestBpm,
       latestAtUtc: latestAt,
       monitoringSessionId: monitoring?.sessionId,
+      liveActivityState: monitoring?.liveActivityEnabled == true
+          ? liveActivity
+          : null,
       lastSequence: samples.isEmpty ? 0 : samples.last.sequence,
       samples: [
         for (final sample in samples)
@@ -135,6 +166,23 @@ class FakeCardioHealth implements CardioHealthPlatform {
   }
 }
 
+/// Cardio-Repository, dessen Entwurf-Löschen der Test scheitern lassen kann.
+class FlakyCardioRepository extends CardioRepository {
+  FlakyCardioRepository({required super.store, super.ids, super.clock});
+
+  /// So oft scheitert `clearDraft` noch.
+  var clearDraftFailures = 0;
+
+  @override
+  Future<void> clearDraft() async {
+    if (clearDraftFailures > 0) {
+      clearDraftFailures--;
+      throw StateError('Speicher nicht verfügbar.');
+    }
+    return super.clearDraft();
+  }
+}
+
 /// In-Memory-Datenbank mit Cardio-Repository, Fake-Gurt und steuerbarer Uhr.
 class CardioHarness {
   CardioHarness._(
@@ -149,7 +197,7 @@ class CardioHarness {
 
   final LocalDatabase database;
   final LocalSyncStore store;
-  final CardioRepository repository;
+  final FlakyCardioRepository repository;
   final FakeHeartRate platform;
   final FakeCardioHealth health;
   final CardioSessionController controller;
@@ -178,7 +226,7 @@ class CardioHarness {
     final store = LocalSyncStore(database: database, accountId: accountId);
     final clock = _Clock(now ?? DateTime.utc(2026, 10, 18, 10));
     var id = 100;
-    final repository = CardioRepository(
+    final repository = FlakyCardioRepository(
       store: store,
       ids: () => testId(id++),
       clock: () => clock.value,
