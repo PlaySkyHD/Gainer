@@ -1,3 +1,4 @@
+using Gainer.Core.Mutations;
 using Gainer.Core.Sync;
 using Gainer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -387,13 +388,24 @@ public sealed class SyncPersistenceTests
         Assert.AreEqual(0, await context.UserSyncStates.CountAsync(TestContext.CancellationToken));
     }
 
-    [TestMethod]
-    [DataRow("CardioSession", "saveCardioSession")]
-    [DataRow("TrainingSchedule", "saveTrainingSchedule")]
-    [DataRow("NutritionDayTemplate", "saveNutritionDayTemplate")]
-    public async Task ProtocolThreeClientsMustUpdateForResourcesAddedAfterIt(string resourceType, string operation)
+    private const int OldProtocol = SyncResourceProtocol.ProtocolThree;
+
+    /// <summary>Save operation per resource type; a type missing here makes the protocol-3 test fail.</summary>
+    private static readonly Dictionary<string, string> SaveOperations = new(StringComparer.Ordinal)
     {
-        const int oldProtocol = 3;
+        [nameof(ResourceKind.CardioSession)] = "saveCardioSession",
+        [nameof(ResourceKind.TrainingSchedule)] = "saveTrainingSchedule",
+        [nameof(ResourceKind.NutritionDayTemplate)] = "saveNutritionDayTemplate",
+        [nameof(ResourceKind.WaterIntakeDay)] = "setWaterIntake",
+    };
+
+    public static IEnumerable<object[]> TypesNewerThanProtocolThree =>
+        SyncResourceProtocol.TypesNewerThan(OldProtocol).Select(type => new object[] { type });
+
+    [TestMethod]
+    [DynamicData(nameof(TypesNewerThanProtocolThree))]
+    public async Task ProtocolThreeClientsMustUpdateForResourcesAddedAfterIt(string resourceType)
+    {
         const int currentProtocol = Gainer.Contracts.Sync.SyncProtocol.CurrentVersion;
         (string connectionString, Guid userId, Guid otherUser) = await CreateDatabaseAsync();
         Guid clientId = Guid.NewGuid();
@@ -402,21 +414,9 @@ public sealed class SyncPersistenceTests
         // Push: rejected before any payload is read or anything is stored.
         await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
         {
-            var user = new UserContext(userId);
-            var processor = new SyncMutationProcessor(
-                context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
-            var push = new ProcessSyncMutationCommand(
-                Guid.NewGuid(),
-                new CanonicalMutationContent(
-                    oldProtocol,
-                    clientId,
-                    1,
-                    operation,
-                    [new CanonicalResourceVersion(resourceType, Guid.NewGuid(), 0)],
-                    null,
-                    JsonSerializer.SerializeToElement(new { }, JsonOptions)));
+            ProcessSyncMutationCommand push = OldProtocolSave(Guid.NewGuid(), clientId, resourceType, Guid.NewGuid());
             SyncUpgradeRequiredException rejected = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(
-                () => processor.ProcessAsync(push, TestContext.CancellationToken));
+                () => Processor(context, userId).ProcessAsync(push, TestContext.CancellationToken));
             Assert.AreEqual("upgrade_required", rejected.Code);
             context.ChangeTracker.Clear();
             Assert.AreEqual(0, await context.ProcessedMutations.CountAsync(TestContext.CancellationToken));
@@ -424,7 +424,7 @@ public sealed class SyncPersistenceTests
 
         Guid checkIn = Guid.NewGuid();
         await InsertFeedBatchAsync(connectionString, userId, 1,
-            ("DailyCheckIn", checkIn, 1, false, "{\"weightKg\":80}"));
+            (nameof(ResourceKind.DailyCheckIn), checkIn, 1, false, "{\"weightKg\":80}"));
         await InsertFeedBatchAsync(connectionString, userId, 2,
             (resourceType, Guid.NewGuid(), 1, false, "{\"version\":1}"));
 
@@ -432,11 +432,11 @@ public sealed class SyncPersistenceTests
         await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
         {
             var feed = new SyncChangeFeed(context);
-            SyncChangeFeedPage old = await feed.GetAsync(0, 200, oldProtocol, TestContext.CancellationToken);
+            SyncChangeFeedPage old = await feed.GetAsync(0, 200, OldProtocol, TestContext.CancellationToken);
             Assert.IsTrue(old.UpgradeRequired);
             Assert.AreEqual(1, old.NextCursor);
             Assert.AreEqual(checkIn, old.Batches.Single().Changes.Single().ResourceId);
-            SyncChangeFeedPage blocked = await feed.GetAsync(1, 200, oldProtocol, TestContext.CancellationToken);
+            SyncChangeFeedPage blocked = await feed.GetAsync(1, 200, OldProtocol, TestContext.CancellationToken);
             Assert.IsTrue(blocked.UpgradeRequired);
             Assert.HasCount(0, blocked.Batches);
 
@@ -451,14 +451,80 @@ public sealed class SyncPersistenceTests
             var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
             SyncUpgradeRequiredException upgrade = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(() =>
                 registry.RegisterAsync(
-                    new RegisterSyncClientCommand(Guid.NewGuid(), "Old phone", oldProtocol, false),
+                    new RegisterSyncClientCommand(Guid.NewGuid(), "Old phone", OldProtocol, false),
                     TestContext.CancellationToken));
             Assert.AreEqual("upgrade_required", upgrade.Code);
         }
         await using AppDbContext other = Fixture.CreateContext(connectionString, otherUser);
         RegisteredSyncClient foreign = await new SyncClientRegistry(other, new UserContext(otherUser), TimeProvider.System)
-            .RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Other account", oldProtocol, false), TestContext.CancellationToken);
-        Assert.AreEqual(oldProtocol, foreign.ProtocolVersion);
+            .RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Other account", OldProtocol, false), TestContext.CancellationToken);
+        Assert.AreEqual(OldProtocol, foreign.ProtocolVersion);
+    }
+
+    [TestMethod]
+    [DynamicData(nameof(TypesNewerThanProtocolThree))]
+    public async Task RetryOfAMutationAppliedBeforeTheGateStillGetsItsReceipt(string resourceType)
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid clientId = Guid.NewGuid();
+        await RegisterActiveClientAsync(connectionString, userId, clientId);
+        Guid mutationId = Guid.NewGuid();
+        Guid resourceId = Guid.NewGuid();
+        ProcessSyncMutationCommand applied = OldProtocolSave(mutationId, clientId, resourceType, resourceId);
+
+        // The server applied this protocol-3 mutation before the type required protocol 4; only the receipt remains.
+        await using (AppDbContext seed = Fixture.CreateContext(connectionString, userId))
+        {
+            seed.ProcessedMutations.Add(new ProcessedMutation
+            {
+                MutationId = mutationId,
+                ClientId = clientId,
+                ClientSequence = applied.Content.ClientSequence,
+                ContentHash = CanonicalMutationHasher.Hash(applied.Content),
+                ResultJson = JsonSerializer.Serialize(new
+                {
+                    revision = 1,
+                    changes = new[] { new { resourceType, resourceId, version = 1, snapshot = new { version = 1 }, isTombstone = false } },
+                }, JsonOptions),
+                Revision = 1,
+                AppliedAtUtc = DateTime.UtcNow,
+            });
+            await seed.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        ProcessedSyncMutationResult replay = await Processor(context, userId).ProcessAsync(applied, TestContext.CancellationToken);
+        Assert.IsTrue(replay.Replayed);
+        Assert.AreEqual(1, replay.Revision);
+        ExecutedSyncChange change = replay.Changes.Single();
+        Assert.AreEqual(resourceType, change.Resource.Kind.ToString());
+        Assert.AreEqual(resourceId, change.Resource.ResourceId);
+
+        // A new mutation with the same old protocol is still gated.
+        SyncUpgradeRequiredException rejected = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(() =>
+            Processor(context, userId).ProcessAsync(
+                OldProtocolSave(Guid.NewGuid(), clientId, resourceType, Guid.NewGuid(), sequence: 2),
+                TestContext.CancellationToken));
+        Assert.AreEqual("upgrade_required", rejected.Code);
+    }
+
+    private static ProcessSyncMutationCommand OldProtocolSave(
+        Guid mutationId, Guid clientId, string resourceType, Guid resourceId, long sequence = 1) => new(
+            mutationId,
+            new CanonicalMutationContent(
+                OldProtocol,
+                clientId,
+                sequence,
+                SaveOperations[resourceType],
+                [new CanonicalResourceVersion(resourceType, resourceId, 0)],
+                null,
+                JsonSerializer.SerializeToElement(new { }, JsonOptions)));
+
+    private static SyncMutationProcessor Processor(AppDbContext context, Guid userId)
+    {
+        var user = new UserContext(userId);
+        return new SyncMutationProcessor(
+            context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
     }
 
     [TestMethod]

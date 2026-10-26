@@ -435,8 +435,13 @@ public sealed class TrainingSyncIsolationTests
         Assert.AreEqual("upgrade_required", previous.Code);
         Assert.AreEqual("upgrade_required", missing.Code);
 
-        SyncMutationValidationException nonTraining = await Expect<SyncMutationValidationException>(() =>
+        // Training resource types need protocol 3 as well, so the non-training case uses a protocol-2 type.
+        SyncUpgradeRequiredException trainingResource = await Expect<SyncUpgradeRequiredException>(() =>
             Process(connectionString, owner, ownerClient, WithProtocol(Command(Guid.NewGuid(), ownerClient, 2, "unknownOperation", "Workout", workoutId, 0,
+                new { }), 2)));
+        Assert.AreEqual("upgrade_required", trainingResource.Code);
+        SyncMutationValidationException nonTraining = await Expect<SyncMutationValidationException>(() =>
+            Process(connectionString, owner, ownerClient, WithProtocol(Command(Guid.NewGuid(), ownerClient, 2, "unknownOperation", "DailyCheckIn", Guid.NewGuid(), 0,
                 new { }), 2)));
         Assert.AreEqual("unsupported_operation", nonTraining.Code);
 
