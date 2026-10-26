@@ -144,8 +144,9 @@ jobs:
           # the current main. The checked-out merge ref already contains the current main as
           # its first parent, so compare against that (full history via fetch-depth: 0).
           if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
-              $baseSha = (git rev-parse HEAD^1).Trim()
-              if ($LASTEXITCODE -ne 0) { throw "Cannot resolve the first parent of the merge ref." }
+              $parents = @((git rev-list --parents -n 1 HEAD) -split ' ')
+              if ($LASTEXITCODE -ne 0 -or $parents.Count -ne 3) { throw "HEAD is not the pull request merge commit." }
+              $baseSha = $parents[1]
           }
           else {
               # push: github.event.before (all zeros for a new branch; the script then skips).
