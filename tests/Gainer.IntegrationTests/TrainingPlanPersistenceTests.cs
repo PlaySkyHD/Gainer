@@ -57,6 +57,67 @@ public sealed class TrainingPlanPersistenceTests
     }
 
     [TestMethod]
+    public async Task ReplacingEntriesWithStableIdsIsNotAConflict()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
+        Guid planId = Guid.NewGuid();
+        Guid a = Guid.NewGuid(), b = Guid.NewGuid(), c = Guid.NewGuid(), added = Guid.NewGuid();
+        TrainingPlanEntryValues E(Guid id) => new(id, exerciseIds[0], 1, 2, null, null);
+        TrainingPlanEntryValues[][] saves =
+        [
+            [E(a), E(b), E(c)],
+            // Deleting the first entry moves the others up.
+            [E(b), E(c)],
+            // A new first entry moves the others down.
+            [E(added), E(b), E(c)],
+            // Swapping two entries.
+            [E(added), E(c), E(b)],
+        ];
+
+        for (int index = 0; index < saves.Length; index++)
+        {
+            await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+            var handler = Handler(context, userId);
+            TrainingPlanSnapshot saved = index == 0
+                ? await handler.CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(planId, "Push", saves[index])), TestContext.CancellationToken)
+                : await handler.UpdateAsync(UpdateTrainingPlanMutation.Create(Metadata(), index, Plan(planId, "Push", saves[index])), TestContext.CancellationToken);
+            Assert.AreEqual(index + 1, saved.Version);
+        }
+
+        await using AppDbContext read = Fixture.CreateContext(connectionString, userId);
+        List<TrainingPlanEntry> stored = await read.TrainingPlanEntries.AsNoTracking()
+            .Where(item => item.PlanId == planId).OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
+        CollectionAssert.AreEqual(new[] { added, c, b }, stored.Select(item => item.Id).ToArray());
+    }
+
+    [TestMethod]
+    public async Task UpdateWithWrongVersionOnActivePlanIsAConflictAndKeepsEntries()
+    {
+        (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
+        Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
+        Guid planId = Guid.NewGuid();
+        Guid entryId = Guid.NewGuid();
+        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        var handler = Handler(context, userId);
+        await handler.CreateAsync(CreateTrainingPlanMutation.Create(
+            Metadata(), Plan(planId, "Push", [new TrainingPlanEntryValues(entryId, exerciseIds[0], 1, 2, null, null)])), TestContext.CancellationToken);
+
+        foreach (long wrongVersion in new long[] { 2, 7 })
+        {
+            await Assert.ThrowsAsync<TrainingPlanConflictException>(() => handler.UpdateAsync(
+                UpdateTrainingPlanMutation.Create(Metadata(), wrongVersion, Plan(planId, "Changed", [Entry(exerciseIds[0], 0, 5)])), TestContext.CancellationToken));
+        }
+
+        context.ChangeTracker.Clear();
+        TrainingPlan stored = await context.TrainingPlans.SingleAsync(TestContext.CancellationToken);
+        Assert.AreEqual("Push", stored.Name);
+        Assert.AreEqual(1, stored.Version);
+        Assert.IsFalse(stored.IsArchived);
+        Assert.AreEqual(entryId, (await context.TrainingPlanEntries.SingleAsync(TestContext.CancellationToken)).Id);
+    }
+
+    [TestMethod]
     public async Task InvalidPlanIsRejectedWithFieldErrorAndKeepsPreviousState()
     {
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
