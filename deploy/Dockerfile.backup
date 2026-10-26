@@ -2,5 +2,11 @@ FROM postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c666
 RUN apk add --no-cache rclone restic
 COPY deploy/scripts/backup.sh /usr/local/bin/backup.sh
 COPY deploy/scripts/restore.sh /usr/local/bin/restore.sh
-RUN chmod 0555 /usr/local/bin/backup.sh /usr/local/bin/restore.sh
+RUN chmod 0555 /usr/local/bin/backup.sh /usr/local/bin/restore.sh \
+    && addgroup -g 1654 -S backup \
+    && adduser -u 1654 -S -G backup -H -s /sbin/nologin backup
+# Same uid as the API user (Dockerfile.api): the data-protection volume is read through that owner.
+# The root file system is read-only in Compose, so caches and rclone config go to /tmp.
+ENV HOME=/tmp RESTIC_CACHE_DIR=/tmp/restic-cache
+USER 1654:1654
 ENTRYPOINT ["/usr/local/bin/backup.sh"]
