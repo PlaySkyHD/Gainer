@@ -1,5 +1,6 @@
 using Gainer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.BearerToken;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -61,9 +62,13 @@ public static class GainerIdentityExtensions
             .AddAuthentication(GainerIdentityOptions.AuthenticationScheme)
             .AddBearerToken(GainerIdentityOptions.AuthenticationScheme, options =>
                 options.BearerTokenExpiration = GainerIdentityOptions.AccessTokenLifetime);
-        builder.Services.AddAuthorizationBuilder().AddPolicy(
-            AccountOperatorAuthorization.PolicyName,
-            policy => policy.RequireRole(AccountOperatorAuthorization.RoleName));
+        // An endpoint without authorization metadata (Map* calls, minimal APIs, future additions) is
+        // protected by default. Anonymous endpoints must opt out with [AllowAnonymous]/.AllowAnonymous().
+        builder.Services.AddAuthorizationBuilder()
+            .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
+            .AddPolicy(
+                AccountOperatorAuthorization.PolicyName,
+                policy => policy.RequireRole(AccountOperatorAuthorization.RoleName));
         builder.Services.AddScoped<AccessTokenIssuer>();
         builder.Services.AddScoped<DeviceSignIn>();
         builder.Services.AddScoped<IInitialAccountOperatorProvisioner, InitialAccountOperatorProvisioner>();

@@ -54,12 +54,12 @@ public static class GainerServiceDefaultsExtensions
         app.MapHealthChecks("/health/live", new HealthCheckOptions
         {
             Predicate = static registration => registration.Tags.Contains(GainerHealthCheckTags.Live),
-        });
+        }).AllowAnonymous();
 
         app.MapHealthChecks("/health/ready", new HealthCheckOptions
         {
             Predicate = static registration => registration.Tags.Contains(GainerHealthCheckTags.Ready),
-        });
+        }).AllowAnonymous();
 
         return app;
     }
