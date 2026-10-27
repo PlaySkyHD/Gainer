@@ -16,6 +16,7 @@ You plan, brief, verify, open the pull requests and merge. Subagents only implem
 
 - Map each issue to the files it changes.
 - For a bug about a value the app receives (scanner, API, sync), trace the value to where it is produced before scoping. The file named in the issue is a starting point, not the scope (#222/PR #226: `NutritionLabelScanDraft.Create` rejected 0 kcal before the app saw it).
+- Check an `agent-retro` proposal before you adopt it or put it in a brief; do not copy it verbatim. Check its values against the code it names (e.g. a harness timeout against the script's own timeout) and put each sentence in the section where it is acted on (e.g. planning in 2, agent rules in the brief list in 3, verification in 4, PR and merge steps in 5).
 - Docs or skill changes of up to about ten lines in one file you make yourself; a subagent costs more than the change. Longer docs and skill texts go to a `haiku` subagent. OpenSpec changes always go to a `sonnet` subagent, whatever their size (see Model).
   - Same steps as the brief in section 3: `git fetch origin`, `git switch -c fix/issue-<n>-<slug> origin/main`, Conventional Commit with `Fixes #<n>` and Co-Authored-By, `git push -u origin <branch>`.
   - Not while a subagent edits the same file. Note your own Umwege for the retro.
@@ -39,7 +40,7 @@ You plan, brief, verify, open the pull requests and merge. Subagents only implem
 
 Every prompt contains:
 
-- the issue number and `gh api …/issues/<n>` to read it,
+- the issue number and `gh api …/issues/<n>` to read it; for an `agent-retro` issue also the checked text from section 2, with the note that it replaces the issue's Vorschlag,
 - "Read `docs/agent-lessons-learned.md` first",
 - `git fetch origin`, then as a separate command `git switch -c fix/issue-<n>-<slug> origin/main`; if the fetch fails, stop and report instead of branching from a stale `origin/main` (worktrees do not start on main),
 - the graphify rule: if `graphify-out/graph.json` is missing run `graphify update .`, then `graphify query` before grep,
