@@ -30,6 +30,7 @@ Stack: .NET 10, ASP.NET Core mit Controllern, EF Core mit Npgsql, ASP.NET Core I
 - File-scoped Namespaces, `sealed` als Standard, Nullable aktiv, `CancellationToken` durchreichen.
 - NuGet-Versionen nur in `Directory.Packages.props`; `packages.lock.json` mit committen.
 - Keine Prompt- oder Response-Inhalte, Tokens oder Fitnessdaten in Logs.
+- Sonar-Gate (`playskyhd_gainer_backend`): neuer Code mit mindestens 80 % Coverage, höchstens 3 % Duplikation, Rating A für Zuverlässigkeit, Sicherheit und Wartbarkeit sowie alle Security-Hotspots geprüft. Regel S3776 (kognitive Komplexität je Methode höchstens 15) hat in PR #233 das Gate rot gemacht. Neue `decimal`-Konstanten als lokale `const` in der Methode anlegen, nicht als Feld: Ein `const decimal`-Feld zählt als nie ausgeführte Zeile (PR #233).
 
 ## Tests
 
