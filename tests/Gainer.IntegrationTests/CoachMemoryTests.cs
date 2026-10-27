@@ -343,6 +343,8 @@ public sealed class CoachMemoryTests
             new NoHistory(),
             new NoExercises(),
             new CoachMemoryStore(ownerContext, new TestUserContext(owner), TimeProvider.System),
+            new PassCoachQuota(),
+            new TestUserContext(owner),
             TimeProvider.System);
 
         await coach.AnswerAsync("Wie läuft es?", token);

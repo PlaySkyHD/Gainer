@@ -3,6 +3,12 @@ using System.Text.Json;
 using Gainer.Core.BodyTracking;
 using Gainer.Core.Coach;
 using Gainer.Core.Insights;
+using Gainer.Core.Security;
+using Gainer.Api.Controllers;
+using Gainer.Contracts.Coach;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Gainer.Core.Training;
 using Gainer.Infrastructure.Coach;
 
@@ -68,7 +74,7 @@ public sealed class CoachServiceTests
                 {"summary":"Noch keine belastbare Auswertung möglich.","observations":[],"dataGaps":["Es fehlen Gewichtsmessungen."],"suggestions":["Erfasse zunächst regelmäßig Daten."]}
                 """)));
         CoachAnswer answer = await new CoachService(
-            provider, new NoDataInsights(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new FixedTimeProvider())
+            provider, new NoDataInsights(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new PassCoachQuota(), new CoachTestUser(), new FixedTimeProvider())
             .AnswerAsync("Wie entwickelt sich mein Gewicht?", TestContext.CancellationToken);
 
         Assert.IsEmpty(answer.Facts);
@@ -86,7 +92,7 @@ public sealed class CoachServiceTests
                 {"summary":"ErnÃ¤hrungsdaten vorhanden.","observations":[],"dataGaps":[],"suggestions":[]}
                 """)));
         CoachAnswer answer = await new CoachService(
-            provider, new NutritionInsightsStub(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new FixedTimeProvider())
+            provider, new NutritionInsightsStub(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new PassCoachQuota(), new CoachTestUser(), new FixedTimeProvider())
             .AnswerAsync("Wie sieht meine ErnÃ¤hrung aus?", TestContext.CancellationToken);
 
         Assert.Contains(item => item.TextValue == NutritionSources.MealDiary, answer.Facts);
@@ -332,7 +338,7 @@ public sealed class CoachServiceTests
             Response(Message(EmptyAnswer)));
 
         CoachAnswer answer = await new CoachService(
-            provider, insights, new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new FixedTimeProvider())
+            provider, insights, new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new PassCoachQuota(), new CoachTestUser(), new FixedTimeProvider())
             .AnswerAsync("Vergleiche die Woche mit dem Monat", TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(
@@ -349,7 +355,7 @@ public sealed class CoachServiceTests
             Response(Message(EmptyAnswer)));
 
         CoachAnswer answer = await new CoachService(
-            provider, new VolumeInsights(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new FixedTimeProvider())
+            provider, new VolumeInsights(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new PassCoachQuota(), new CoachTestUser(), new FixedTimeProvider())
             .AnswerAsync("Vergleiche mein Volumen", TestContext.CancellationToken);
 
         // 70 kg·rep over 7 days and 300 over 30 days are both 10 per day.
@@ -369,11 +375,60 @@ public sealed class CoachServiceTests
         var now = new DateTimeOffset(2026, 8, 17, 22, 30, 0, TimeSpan.Zero);
 
         await new CoachService(
-            provider, insights, new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new FixedTimeProvider(now))
+            provider, insights, new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new PassCoachQuota(), new CoachTestUser(), new FixedTimeProvider(now))
             .AnswerAsync("Wie entwickelt sich mein Gewicht?", TestContext.CancellationToken);
 
         Assert.AreEqual(new DateOnly(2026, 8, 18), insights.Calls[0].Through);
     }
+
+    [TestMethod]
+    public async Task DailyBudgetCountsRequestsNotToolRoundsAndIsPerUser()
+    {
+        using var quota = new CoachQuota(
+            Options.Create(new CoachOptions { DailyRequestsPerUser = 1, MaximumConcurrentRequests = 1 }),
+            TimeProvider.System);
+        var first = new CoachTestUser();
+        var second = new CoachTestUser();
+        var provider = new FakeProvider(
+            Response(FunctionCall("call_1", "get_weight_summary", "{\"days\":30}")),
+            Response(Message(EmptyAnswer)),
+            Response(Message(EmptyAnswer)));
+
+        // Two provider rounds for the tool call still cost a single slot.
+        await Service(provider, quota, first).AnswerAsync("Wie entwickelt sich mein Gewicht?", TestContext.CancellationToken);
+        Assert.HasCount(2, provider.Requests);
+
+        OpenAiProviderException error = await Assert.ThrowsAsync<OpenAiProviderException>(() =>
+            Service(provider, quota, first).AnswerAsync("Noch eine Frage", TestContext.CancellationToken));
+        Assert.AreEqual("daily_budget_exhausted", error.Code);
+        Assert.AreEqual(429, error.StatusCode);
+        Assert.HasCount(2, provider.Requests);
+
+        ActionResult<CoachResponse> action = await new CoachController(new ThrowingCoach(error)).Create(
+            new CoachResponseRequest("Noch eine Frage"), TestContext.CancellationToken);
+        var problem = (ProblemDetails)((ObjectResult)action.Result!).Value!;
+        Assert.AreEqual(StatusCodes.Status429TooManyRequests, problem.Status);
+        Assert.AreEqual("daily_budget_exhausted", problem.Extensions["code"]);
+
+        await Service(provider, quota, second).AnswerAsync("Frage eines anderen Nutzers", TestContext.CancellationToken);
+        Assert.HasCount(3, provider.Requests);
+    }
+
+    private sealed class ThrowingCoach(Exception exception) : ICoachService
+    {
+        public Task<CoachAnswer> AnswerAsync(string question, CancellationToken cancellationToken = default) =>
+            Task.FromException<CoachAnswer>(exception);
+    }
+
+    private static CoachService Service(FakeProvider provider, ICoachQuota quota, IUserContext user) => new(
+        provider,
+        new FakeInsights(),
+        new FakeHistory(),
+        new FakeExercises(),
+        new FixedCoachMemories(),
+        quota,
+        user,
+        new FixedTimeProvider());
 
     private const string EmptyAnswer = """
         {"summary":"Noch nichts.","observations":[],"dataGaps":[],"suggestions":[],"memorySuggestions":[]}
@@ -397,6 +452,8 @@ public sealed class CoachServiceTests
         new FakeHistory(),
         new FakeExercises(),
         new FixedCoachMemories(notes),
+        new PassCoachQuota(),
+        new CoachTestUser(),
         new FixedTimeProvider());
 
     private static JsonElement Response(params object[] output) => JsonSerializer.SerializeToElement(new { output });
