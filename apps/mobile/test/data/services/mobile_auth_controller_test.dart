@@ -319,6 +319,83 @@ void main() {
     },
   );
 
+  group('cold start with a stored session', () {
+    Future<MobileAuthController> start(
+      _MemorySecureSession secure,
+      _FakeApiFactory apiFactory,
+    ) async {
+      final first = _controller(
+        secure: secure,
+        databases: <String, LocalDatabase>{},
+        apiFactory: apiFactory,
+      );
+      await first.initialize();
+      await first.login('a@example.test', 'password');
+      final checkpoint = secure.value;
+      await first.logout();
+      secure.value = checkpoint;
+      first.dispose();
+      return _controller(
+        secure: secure,
+        databases: <String, LocalDatabase>{},
+        apiFactory: apiFactory,
+      );
+    }
+
+    final transient = <String, Object>{
+      '503 on refresh': const ApiException(
+        statusCode: 503,
+        code: 'http_503',
+        message: 'unavailable',
+      ),
+      '429 on refresh': const ApiException(
+        statusCode: 429,
+        code: 'http_429',
+        message: 'rate limited',
+      ),
+      'non-JSON body': const FormatException('Expected a JSON object.'),
+    };
+    for (final entry in transient.entries) {
+      test('${entry.key} opens the offline profile', () async {
+        final secure = _MemorySecureSession();
+        final apiFactory = _FakeApiFactory();
+        final controller = await start(secure, apiFactory);
+        apiFactory.sessionError = entry.value;
+        try {
+          await controller.initialize();
+          expect(controller.state, MobileAuthState.offlineKnownUser);
+          expect(controller.account?.session.userId, _accountA);
+          expect(controller.account?.online, isFalse);
+          expect(controller.errorMessage, isNull);
+          expect(secure.value, isNotNull);
+        } finally {
+          await controller.logout();
+          controller.dispose();
+        }
+      });
+    }
+
+    for (final status in [400, 401, 403]) {
+      test('a rejected session ($status) still signs out', () async {
+        final secure = _MemorySecureSession();
+        final apiFactory = _FakeApiFactory();
+        final controller = await start(secure, apiFactory);
+        apiFactory.sessionError = ApiException(
+          statusCode: status,
+          code: 'http_$status',
+          message: 'rejected',
+        );
+        try {
+          await controller.initialize();
+          expect(controller.state, MobileAuthState.signedOut);
+          expect(controller.account, isNull);
+        } finally {
+          controller.dispose();
+        }
+      });
+    }
+  });
+
   group('native training route', () {
     NativeAppRouteRequest route({
       NativeRouteSource source = NativeRouteSource.liveActivity,
@@ -549,6 +626,9 @@ class _FakeApiFactory {
 
   final bool rejectPassword;
   bool offline = false;
+
+  /// Thrown by `getSession` when set, e.g. a 503 or a captive-portal body.
+  Object? sessionError;
   final Map<String, ApiSession> sessions = {
     _accountA: const ApiSession(
       userId: _accountA,
@@ -605,6 +685,8 @@ class _FakeApiClient extends ApiClient {
 
   @override
   Future<ApiSession?> getSession() async {
+    final error = factory.sessionError;
+    if (error != null) throw error;
     if (factory.offline) {
       throw const ApiException(
         statusCode: null,
