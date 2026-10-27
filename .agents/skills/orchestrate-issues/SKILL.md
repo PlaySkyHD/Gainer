@@ -49,7 +49,7 @@ Every prompt contains:
 - the shell rules for isolated worktrees from `docs/agent-lessons-learned.md` section 1 (separate git setup commands, no `git -C` outside the worktree, `cd apps/mobile && <check>` for app checks),
 - "the repository is public: no secrets, personal data or content about other private projects",
 - the exact scope and anchors, and which files not to touch,
-- for Sonar cleanups: aim for cognitive complexity ≤ 12 (limit 15), because the manual count runs low,
+- for every change: new or changed methods keep cognitive complexity ≤ 12 (Sonar S3776, limit 15; the manual count runs low) and at most 7 parameters, constructors included (Sonar S107); group extra parameters in a small class or a scoped helper (PR #282 `CoachRequestBudget`, PR #284 `_RecipeEditorState`),
 - the checks to run (format, analyzer, tests, golden preview) for the touched area; name the exact commands from the instructions (`mobile.instructions.md`, `backend.instructions.md`, section "Prüfen" and "Tests"): only the touched folders, quiet reporters, `flutter pub get` first in a fresh worktree, never the whole suite (CI runs it); do not return unfiltered test output,
 - for a bug fix: show that the new test fails without the fix (undo the fix temporarily with Edit, run the test, redo it; no `git stash`/`git restore`) and put the red line in the report,
 - before the push: commit, then run the skill `code-review` on the own diff against `origin/main` (`code-review low`, diff `origin/main...HEAD`, not the local `main`) and fix the findings (amend the commit, so `Fixes #<n>` stays in it) or state why not,
