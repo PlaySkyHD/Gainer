@@ -400,50 +400,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
         onManage: _editTargets,
         onDayKind: () => _chooseDayKind(snapshot),
       ),
-      if (vm.preferences.waterEnabled)
-        Padding(
-          padding: const EdgeInsets.only(top: GainerSpacing.s),
-          child: NutritionWaterCard(
-            amountMl: vm.waterMl,
-            goalMl: vm.preferences.waterGoalMl,
-            onAdd: vm.addWater,
-            error: vm.errorOperation == NutritionErrorOperation.water
-                ? vm.errorMessage
-                : null,
-            onEdit: () => showWaterAmountSheet(
-              context,
-              currentMl: vm.waterMl,
-              onSave: (amountMl) async => await vm.setWater(amountMl)
-                  ? null
-                  : vm.errorMessage ?? 'Speichern nicht möglich.',
-            ),
-          ),
-        ),
+      if (vm.preferences.waterEnabled) _waterCard(context, vm),
       if (snapshot.suggestedTemplate case final template?)
-        Padding(
-          padding: const EdgeInsets.only(top: GainerSpacing.s),
-          child: GainerGroupedSection(
-            children: [
-              GainerListRow(
-                key: const ValueKey('nutrition-template-suggestion'),
-                title: 'Vorlage „${template.name}“ übernehmen',
-                subtitle: templateSummary(template),
-                leadingIcon: CupertinoIcons.doc_on_doc,
-                trailing: GainerPillButton(
-                  label: _applyLabel,
-                  variant: GainerPillVariant.tonal,
-                  onPressed: vm.canSave
-                      ? () async {
-                          if (!await vm.applyTemplate(template.templateId)) {
-                            vm.reportRejected(NutritionErrorOperation.diary);
-                          }
-                        }
-                      : null,
-                ),
-              ),
-            ],
-          ),
-        ),
+        _templateSuggestion(vm, template),
       NutritionAveragesEntry(repository: vm.repository, refreshKey: snapshot),
       if (vm.statusMessage != null)
         Semantics(liveRegion: true, child: _notice(context, vm.statusMessage!)),
@@ -473,6 +432,58 @@ class _NutritionScreenState extends State<NutritionScreen> {
           ),
         ),
     ];
+  }
+
+  Widget _waterCard(BuildContext context, NutritionViewModel vm) => Padding(
+    padding: const EdgeInsets.only(top: GainerSpacing.s),
+    child: NutritionWaterCard(
+      amountMl: vm.waterMl,
+      goalMl: vm.preferences.waterGoalMl,
+      onAdd: vm.addWater,
+      error: vm.errorOperation == NutritionErrorOperation.water
+          ? vm.errorMessage
+          : null,
+      onEdit: () => showWaterAmountSheet(
+        context,
+        currentMl: vm.waterMl,
+        onSave: (amountMl) async => await vm.setWater(amountMl)
+            ? null
+            : vm.errorMessage ?? 'Speichern nicht möglich.',
+      ),
+    ),
+  );
+
+  Widget _templateSuggestion(
+    NutritionViewModel vm,
+    NutritionDayTemplate template,
+  ) => Padding(
+    padding: const EdgeInsets.only(top: GainerSpacing.s),
+    child: GainerGroupedSection(
+      children: [
+        GainerListRow(
+          key: const ValueKey('nutrition-template-suggestion'),
+          title: 'Vorlage „${template.name}“ übernehmen',
+          subtitle: templateSummary(template),
+          leadingIcon: CupertinoIcons.doc_on_doc,
+          trailing: GainerPillButton(
+            label: _applyLabel,
+            variant: GainerPillVariant.tonal,
+            onPressed: vm.canSave
+                ? () => _applySuggestedTemplate(vm, template)
+                : null,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _applySuggestedTemplate(
+    NutritionViewModel vm,
+    NutritionDayTemplate template,
+  ) async {
+    if (!await vm.applyTemplate(template.templateId)) {
+      vm.reportRejected(NutritionErrorOperation.diary);
+    }
   }
 
   /// Entfernt den Eintrag. Liefert false, wenn er bleibt; dann steht die
@@ -1504,62 +1515,73 @@ class _NutritionScreenState extends State<NutritionScreen> {
               semanticLabel: 'Zurück',
               onPressed: () => Navigator.of(context).pop(),
             ),
-            children: [
-              if (vm.errorMessage != null &&
-                  vm.errorOperation == NutritionErrorOperation.planning)
-                _notice(context, vm.errorMessage!, isError: true),
-              const GainerSectionHeader(title: 'Gespeicherte Gerichte'),
-              const SizedBox(height: GainerSpacing.xs),
-              GainerGroupedSection(
-                children: [
-                  GainerListRow(
-                    title: 'Neues Gericht anlegen',
-                    leadingIcon: CupertinoIcons.add,
-                    showChevron: true,
-                    onTap: () => _editReusableMeal(),
-                  ),
-                  ..._mealRows(vm),
-                ],
-              ),
-              const SizedBox(height: GainerSpacing.l),
-              const GainerSectionHeader(title: 'Tagesvorlagen'),
-              const SizedBox(height: GainerSpacing.xs),
-              GainerGroupedSection(
-                footer: vm.snapshot?.templates.isEmpty ?? true
-                    ? 'Speichere einen Tag über „…“ → „Tag als Vorlage speichern“.'
-                    : null,
-                children: [
-                  for (final template
-                      in vm.snapshot?.templates ??
-                          const <NutritionDayTemplate>[])
-                    NutritionDayTemplateRow(
-                      key: ValueKey('day-template-row-${template.templateId}'),
-                      template: template,
-                      onOpen: () => _openTemplate(template),
-                      onDelete: () async {
-                        if (!await vm.deleteTemplate(template.templateId)) {
-                          vm.reportRejected(NutritionErrorOperation.planning);
-                        }
-                      },
-                    ),
-                  if (vm.snapshot?.templates.isEmpty ?? true)
-                    const GainerListRow(title: 'Noch keine Vorlagen'),
-                ],
-              ),
-              const SizedBox(height: GainerSpacing.l),
-              const GainerSectionHeader(title: 'Ziele'),
-              const SizedBox(height: GainerSpacing.xs),
-              _TargetsSummary(
-                target: vm.snapshot?.targetSchedule?.targetOn(
-                  _dateString(vm.repository.clock()),
-                ),
-                onEdit: _editTargets,
-              ),
-            ],
+            children: _planningChildren(context, vm),
           ),
         ),
       ),
     );
+  }
+
+  List<Widget> _planningChildren(BuildContext context, NutritionViewModel vm) =>
+      [
+        if (vm.errorMessage != null &&
+            vm.errorOperation == NutritionErrorOperation.planning)
+          _notice(context, vm.errorMessage!, isError: true),
+        const GainerSectionHeader(title: 'Gespeicherte Gerichte'),
+        const SizedBox(height: GainerSpacing.xs),
+        GainerGroupedSection(
+          children: [
+            GainerListRow(
+              title: 'Neues Gericht anlegen',
+              leadingIcon: CupertinoIcons.add,
+              showChevron: true,
+              onTap: () => _editReusableMeal(),
+            ),
+            ..._mealRows(vm),
+          ],
+        ),
+        const SizedBox(height: GainerSpacing.l),
+        const GainerSectionHeader(title: 'Tagesvorlagen'),
+        const SizedBox(height: GainerSpacing.xs),
+        _templatesSection(vm),
+        const SizedBox(height: GainerSpacing.l),
+        const GainerSectionHeader(title: 'Ziele'),
+        const SizedBox(height: GainerSpacing.xs),
+        _TargetsSummary(
+          target: vm.snapshot?.targetSchedule?.targetOn(
+            _dateString(vm.repository.clock()),
+          ),
+          onEdit: _editTargets,
+        ),
+      ];
+
+  Widget _templatesSection(NutritionViewModel vm) {
+    final templates = vm.snapshot?.templates ?? const <NutritionDayTemplate>[];
+    return GainerGroupedSection(
+      footer: templates.isEmpty
+          ? 'Speichere einen Tag über „…“ → „Tag als Vorlage speichern“.'
+          : null,
+      children: [
+        for (final template in templates)
+          NutritionDayTemplateRow(
+            key: ValueKey('day-template-row-${template.templateId}'),
+            template: template,
+            onOpen: () => _openTemplate(template),
+            onDelete: () => _deleteTemplate(vm, template),
+          ),
+        if (templates.isEmpty)
+          const GainerListRow(title: 'Noch keine Vorlagen'),
+      ],
+    );
+  }
+
+  Future<void> _deleteTemplate(
+    NutritionViewModel vm,
+    NutritionDayTemplate template,
+  ) async {
+    if (!await vm.deleteTemplate(template.templateId)) {
+      vm.reportRejected(NutritionErrorOperation.planning);
+    }
   }
 
   List<Widget> _mealRows(NutritionViewModel vm) => [
@@ -2013,35 +2035,38 @@ class _NutritionScreenState extends State<NutritionScreen> {
             builder: (context, setDialogState) => _recipeEditorPage(
               context,
               setDialogState,
-              existing: existing,
-              name: c.name,
-              description: c.description,
-              portion: c.portion,
-              components: components,
-              saveError: saveError,
-              saving: saving,
-              onInvalid: (message) => setDialogState(() => saveError = message),
-              save: (value) async {
-                final vm = widget.viewModel;
-                setDialogState(() {
-                  saveError = null;
-                  saving = true;
-                });
-                final saved = await vm.saveReusableMeal(
-                  id: id,
-                  meal: value,
-                  operation: NutritionErrorOperation.planning,
-                );
-                if (!context.mounted) return;
-                if (saved) {
-                  Navigator.pop(context);
-                } else {
+              _RecipeEditorState(
+                existing: existing,
+                name: c.name,
+                description: c.description,
+                portion: c.portion,
+                components: components,
+                saveError: saveError,
+                saving: saving,
+                onInvalid: (message) =>
+                    setDialogState(() => saveError = message),
+                save: (value) async {
+                  final vm = widget.viewModel;
                   setDialogState(() {
-                    saving = false;
-                    saveError = vm.failureMessage();
+                    saveError = null;
+                    saving = true;
                   });
-                }
-              },
+                  final saved = await vm.saveReusableMeal(
+                    id: id,
+                    meal: value,
+                    operation: NutritionErrorOperation.planning,
+                  );
+                  if (!context.mounted) return;
+                  if (saved) {
+                    Navigator.pop(context);
+                  } else {
+                    setDialogState(() {
+                      saving = false;
+                      saveError = vm.failureMessage();
+                    });
+                  }
+                },
+              ),
             ),
           ),
         ),
@@ -2051,17 +2076,18 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   Widget _recipeEditorPage(
     BuildContext context,
-    StateSetter setDialogState, {
-    required ReusableMeal? existing,
-    required TextEditingController name,
-    required TextEditingController description,
-    required TextEditingController portion,
-    required List<ReusableMealComponent> components,
-    required String? saveError,
-    required bool saving,
-    required ValueChanged<String> onInvalid,
-    required Future<void> Function(ReusableMeal value) save,
-  }) {
+    StateSetter setDialogState,
+    _RecipeEditorState editor,
+  ) {
+    final existing = editor.existing;
+    final name = editor.name;
+    final description = editor.description;
+    final portion = editor.portion;
+    final components = editor.components;
+    final saveError = editor.saveError;
+    final saving = editor.saving;
+    final onInvalid = editor.onInvalid;
+    final save = editor.save;
     void refresh() => setDialogState(() {});
     final totalKcal = components.fold<double>(
       0,
@@ -2395,80 +2421,103 @@ class _NutritionScreenState extends State<NutritionScreen> {
           builder: (context, setSheetState) {
             final portion = _parse(scale.text);
             final valid = (portion ?? 0) >= .01 && (portion ?? 101) <= 100;
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                GainerSheetHeader(title: '${meal.name} übernehmen'),
-                if (saveError case final message?)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: GainerSpacing.m,
-                    ),
-                    child: Semantics(
-                      liveRegion: true,
-                      child: _notice(context, message, isError: true),
-                    ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    GainerSpacing.m,
-                    GainerSpacing.m,
-                    GainerSpacing.m,
-                    0,
-                  ),
-                  child: GainerGroupedSection(
-                    children: [
-                      GainerTextFieldRow(
-                        label: 'Portionen',
-                        unit: '×',
-                        controller: scale,
-                        keyboardType: _decimalKeyboard,
-                        onChanged: (_) => setSheetState(() {}),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: GainerSpacing.m),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: GainerSpacing.m,
-                  ),
-                  child: GainerPillButton(
-                    label: _applyLabel,
-                    expand: true,
-                    onPressed: valid && !saving
-                        ? () async {
-                            final vm = widget.viewModel;
-                            setSheetState(() {
-                              saveError = null;
-                              saving = true;
-                            });
-                            final added = await vm.addReusableMeal(
-                              id,
-                              vm.selectedMeal,
-                              portionScale: portion,
-                            );
-                            if (!context.mounted) return;
-                            if (added) {
-                              Navigator.of(sheetContext).pop();
-                            } else {
-                              setSheetState(() {
-                                saving = false;
-                                saveError = vm.failureMessage();
-                              });
-                            }
-                          }
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: GainerSpacing.m),
-              ],
+            return _reusableMealSheetBody(
+              context,
+              meal: meal,
+              scale: scale,
+              saveError: saveError,
+              onChanged: () => setSheetState(() {}),
+              onApply: valid && !saving
+                  ? () => _submitReusableMeal(
+                      context,
+                      sheetContext,
+                      id,
+                      portion,
+                      update: (error, isSaving) => setSheetState(() {
+                        saveError = error;
+                        saving = isSaving;
+                      }),
+                    )
+                  : null,
             );
           },
         ),
       ),
     );
+  }
+
+  Widget _reusableMealSheetBody(
+    BuildContext context, {
+    required ReusableMeal meal,
+    required TextEditingController scale,
+    required String? saveError,
+    required VoidCallback onChanged,
+    required VoidCallback? onApply,
+  }) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      GainerSheetHeader(title: '${meal.name} übernehmen'),
+      if (saveError case final message?)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.m),
+          child: Semantics(
+            liveRegion: true,
+            child: _notice(context, message, isError: true),
+          ),
+        ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+          GainerSpacing.m,
+          GainerSpacing.m,
+          GainerSpacing.m,
+          0,
+        ),
+        child: GainerGroupedSection(
+          children: [
+            GainerTextFieldRow(
+              label: 'Portionen',
+              unit: '×',
+              controller: scale,
+              keyboardType: _decimalKeyboard,
+              onChanged: (_) => onChanged(),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: GainerSpacing.m),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.m),
+        child: GainerPillButton(
+          label: _applyLabel,
+          expand: true,
+          onPressed: onApply,
+        ),
+      ),
+      const SizedBox(height: GainerSpacing.m),
+    ],
+  );
+
+  Future<void> _submitReusableMeal(
+    BuildContext context,
+    BuildContext sheetContext,
+    String id,
+    double? portion, {
+    required void Function(String? error, bool saving) update,
+  }) async {
+    final vm = widget.viewModel;
+    update(null, true);
+    final added = await vm.addReusableMeal(
+      id,
+      vm.selectedMeal,
+      portionScale: portion,
+    );
+    if (!context.mounted) return;
+    if (added) {
+      Navigator.of(sheetContext).pop();
+    } else {
+      update(vm.failureMessage(), false);
+    }
   }
 
   Future<T?> _chooseFromSheet<T>({
@@ -3168,6 +3217,31 @@ class _AddRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Zustand und Rückrufe eines geöffneten Gericht-Editors.
+class _RecipeEditorState {
+  const _RecipeEditorState({
+    required this.existing,
+    required this.name,
+    required this.description,
+    required this.portion,
+    required this.components,
+    required this.saveError,
+    required this.saving,
+    required this.onInvalid,
+    required this.save,
+  });
+
+  final ReusableMeal? existing;
+  final TextEditingController name;
+  final TextEditingController description;
+  final TextEditingController portion;
+  final List<ReusableMealComponent> components;
+  final String? saveError;
+  final bool saving;
+  final ValueChanged<String> onInvalid;
+  final Future<void> Function(ReusableMeal value) save;
 }
 
 class _EntryEditControllers {
