@@ -627,7 +627,10 @@ class SyncRepository implements MobileSyncActions {
     await store.updateMutation(
       _copyMutation(
         syncing,
-        _MutationPatch(status: LocalMutationStatus.clean, clearError: true),
+        const _MutationPatch(
+          status: LocalMutationStatus.clean,
+          clearError: true,
+        ),
       ),
     );
     await store.deleteSyncMetadata(
@@ -700,7 +703,10 @@ class SyncRepository implements MobileSyncActions {
       await store.updateMutation(
         _copyMutation(
           record,
-          _MutationPatch(status: LocalMutationStatus.pending, clearError: true),
+          const _MutationPatch(
+            status: LocalMutationStatus.pending,
+            clearError: true,
+          ),
         ),
       );
     }
@@ -1339,7 +1345,7 @@ class SyncRepository implements MobileSyncActions {
         await store.updateMutation(
           _copyMutation(
             mutation,
-            _MutationPatch(
+            const _MutationPatch(
               status: LocalMutationStatus.pending,
               clearError: true,
             ),
@@ -1733,7 +1739,7 @@ class SyncRepository implements MobileSyncActions {
       await store.updateMutation(
         _copyMutation(
           record,
-          _MutationPatch(
+          const _MutationPatch(
             status: LocalMutationStatus.pending,
             clearError: true,
             clearRetry: true,
