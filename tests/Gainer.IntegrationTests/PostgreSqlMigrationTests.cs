@@ -433,6 +433,65 @@ public sealed class PostgreSqlMigrationTests
         }
     }
 
+    [TestMethod]
+    public async Task StoreEveryDiscardedRefreshTokenKeepsTheDiscardedTokenOfRunningSessions()
+    {
+        const string previousMigration = "20261024232628_AddWaterTracking";
+        Guid userId = Guid.NewGuid();
+        Guid retriedSession = Guid.NewGuid();
+        Guid plainSession = Guid.NewGuid();
+        byte[] discardedHash = Enumerable.Repeat((byte)7, 32).ToArray();
+        var rotatedAt = new DateTimeOffset(2026, 10, 20, 8, 0, 0, TimeSpan.Zero);
+        await using (AppDbContext previous = PostgreSqlTestFixture.CreateContext(ConnectionString))
+        {
+            await ((IInfrastructure<IServiceProvider>)previous).Instance.GetRequiredService<IMigrator>().MigrateAsync(previousMigration, TestContext.CancellationToken);
+            previous.Users.Add(new AppUser
+            {
+                Id = userId,
+                UserName = "session@example.test",
+                NormalizedUserName = "SESSION@EXAMPLE.TEST",
+                Email = "session@example.test",
+                NormalizedEmail = "SESSION@EXAMPLE.TEST",
+                IsActive = true,
+                SecurityStamp = Guid.NewGuid().ToString("N"),
+                ConcurrencyStamp = Guid.NewGuid().ToString("N"),
+            });
+            await previous.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        await using (var connection = new NpgsqlConnection(ConnectionString))
+        {
+            await connection.OpenAsync(TestContext.CancellationToken);
+            const string insert = """
+                INSERT INTO "identity".device_sessions
+                    ("Id", "UserId", "DeviceName", "RefreshTokenHash", "PreviousRefreshTokenHash", "RotatedAt",
+                     "DiscardedRefreshTokenHash", "DiscardedAt", "CreatedAt", "LastUsedAt", "ExpiresAt", "Version")
+                VALUES (@id, @user, 'Phone', @current, @previous, @rotated, @discarded, NULL, @rotated, @rotated, @expires, 3)
+                """;
+            foreach ((Guid id, byte seed, byte[]? discarded) in new[] { (retriedSession, (byte)1, discardedHash), (plainSession, (byte)3, (byte[]?)null) })
+            {
+                await using var command = new NpgsqlCommand(insert, connection);
+                command.Parameters.AddWithValue("id", id);
+                command.Parameters.AddWithValue("user", userId);
+                command.Parameters.AddWithValue("current", Enumerable.Repeat(seed, 32).ToArray());
+                command.Parameters.AddWithValue("previous", Enumerable.Repeat((byte)(seed + 1), 32).ToArray());
+                command.Parameters.AddWithValue("rotated", rotatedAt);
+                command.Parameters.Add(new NpgsqlParameter("discarded", NpgsqlTypes.NpgsqlDbType.Bytea) { Value = (object?)discarded ?? DBNull.Value });
+                command.Parameters.AddWithValue("expires", rotatedAt.AddDays(60));
+                await command.ExecuteNonQueryAsync(TestContext.CancellationToken);
+            }
+        }
+
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString))
+        {
+            await context.Database.MigrateAsync(TestContext.CancellationToken);
+            DeviceSessionDiscardedToken migrated = await context.DeviceSessionDiscardedTokens.SingleAsync(TestContext.CancellationToken);
+            Assert.AreEqual(retriedSession, migrated.SessionId);
+            CollectionAssert.AreEqual(discardedHash, migrated.TokenHash);
+            Assert.AreEqual(rotatedAt, migrated.DiscardedAt);
+        }
+    }
+
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params (string Name, Guid Value)[] parameters)
     {
         await using var command = new NpgsqlCommand(sql, connection);

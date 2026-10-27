@@ -18,7 +18,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("identity")
-                .HasAnnotation("ProductVersion", "10.0.13")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -4743,12 +4743,6 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<DateTimeOffset?>("DiscardedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<byte[]>("DiscardedRefreshTokenHash")
-                        .HasColumnType("bytea");
-
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -4777,9 +4771,6 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DiscardedRefreshTokenHash")
-                        .IsUnique();
-
                     b.HasIndex("PreviousRefreshTokenHash")
                         .IsUnique();
 
@@ -4793,6 +4784,28 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_identity_device_sessions_name", "length(trim(\"DeviceName\")) > 0");
 
                             t.HasCheckConstraint("CK_identity_device_sessions_token_hash", "octet_length(\"RefreshTokenHash\") = 32");
+                        });
+                });
+
+            modelBuilder.Entity("Gainer.Infrastructure.Persistence.DeviceSessionDiscardedToken", b =>
+                {
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("TokenHash")
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTimeOffset>("DiscardedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("SessionId", "TokenHash");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("device_session_discarded_tokens", "identity", t =>
+                        {
+                            t.HasCheckConstraint("CK_identity_device_session_discarded_tokens_hash", "octet_length(\"TokenHash\") = 32");
                         });
                 });
 
@@ -5418,6 +5431,15 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Gainer.Infrastructure.Persistence.DeviceSessionDiscardedToken", b =>
+                {
+                    b.HasOne("Gainer.Infrastructure.Persistence.DeviceSession", null)
+                        .WithMany("DiscardedTokens")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
@@ -5539,6 +5561,11 @@ namespace Gainer.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Gainer.Core.Nutrition.ReusableMeal", b =>
                 {
                     b.Navigation("Components");
+                });
+
+            modelBuilder.Entity("Gainer.Infrastructure.Persistence.DeviceSession", b =>
+                {
+                    b.Navigation("DiscardedTokens");
                 });
 #pragma warning restore 612, 618
         }

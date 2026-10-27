@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Gainer.Core.Access;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Gainer.Infrastructure.Persistence;
 
@@ -14,6 +15,9 @@ public sealed class DeviceSessionOptions
     internal const int TokenBytes = 32;
 
     internal const int MaximumDeviceNameLength = 100;
+
+    /// <summary>Grace-period retries allowed per rotation; one more revokes the session and bounds the stored discarded tokens.</summary>
+    internal const int MaximumGraceRetries = 10;
 
     /// <summary>A session expires after this long without a refresh.</summary>
     public TimeSpan IdleLifetime { get; set; } = TimeSpan.FromDays(60);
@@ -77,7 +81,7 @@ internal sealed class DeviceSessionService(
             .SingleOrDefaultAsync(
                 item => item.RefreshTokenHash == presentedHash
                     || item.PreviousRefreshTokenHash == presentedHash
-                    || item.DiscardedRefreshTokenHash == presentedHash,
+                    || item.DiscardedTokens.Any(discarded => discarded.TokenHash == presentedHash),
                 cancellationToken);
         DateTimeOffset now = timeProvider.GetUtcNow();
         if (session is null
@@ -90,9 +94,9 @@ internal sealed class DeviceSessionService(
         }
 
         bool presentedCurrent = CryptographicOperations.FixedTimeEquals(session.RefreshTokenHash, presentedHash);
-        if (!presentedCurrent && !IsGraceRetry(session, presentedHash, now))
+        if (!presentedCurrent && !await IsGraceRetryAsync(session, presentedHash, now, cancellationToken))
         {
-            // An old or discarded token came back: either copy may be stolen.
+            // An old or discarded token came back, or retries piled up: either copy may be stolen.
             session.RevokedAt = now;
             session.Version++;
             await SaveIgnoringConcurrencyAsync(cancellationToken);
@@ -100,22 +104,26 @@ internal sealed class DeviceSessionService(
         }
 
         // Within the grace period the previous token stays the reference, so a client whose
-        // response was lost can retry again and again until the grace period ends. Each retry
-        // discards the last issued token (never used). Only the first one is remembered: if it
-        // shows up later, someone else used the previous token and the session is revoked. Later
-        // discarded tokens are simply unknown, so a second retry cannot overwrite that trigger.
-        // Once the issued successor is used, the previous token no longer qualifies.
+        // response was lost can retry until the grace period ends or the retry limit is hit.
+        // Each retry discards the last issued token and remembers it: the real device never
+        // presents a discarded token again, so if one shows up, someone else used the previous
+        // token and the session is revoked. Once the issued successor is used, the previous
+        // token no longer qualifies.
+        DateTimeOffset? previousRotation = session.RotatedAt;
         string token = CreateToken();
         if (presentedCurrent)
         {
             session.PreviousRefreshTokenHash = session.RefreshTokenHash;
             session.RotatedAt = now;
-            session.DiscardedAt = null;
         }
-        else if (session.DiscardedAt is null)
+        else
         {
-            session.DiscardedRefreshTokenHash = session.RefreshTokenHash;
-            session.DiscardedAt = now;
+            database.DeviceSessionDiscardedTokens.Add(new DeviceSessionDiscardedToken
+            {
+                SessionId = session.Id,
+                TokenHash = session.RefreshTokenHash,
+                DiscardedAt = now,
+            });
         }
 
         session.RefreshTokenHash = HashToken(token);
@@ -125,6 +133,11 @@ internal sealed class DeviceSessionService(
         if (!await SaveIgnoringConcurrencyAsync(cancellationToken))
         {
             return new DeviceSessionRefreshResult(DeviceSessionRefreshStatus.Invalid);
+        }
+
+        if (presentedCurrent && previousRotation is DateTimeOffset ended)
+        {
+            await ForgetDiscardedBeforeAsync(session.Id, ended, cancellationToken);
         }
 
         return new DeviceSessionRefreshResult(
@@ -189,11 +202,34 @@ internal sealed class DeviceSessionService(
                 cancellationToken);
     }
 
-    private bool IsGraceRetry(DeviceSession session, byte[] presentedHash, DateTimeOffset now) =>
-        session.PreviousRefreshTokenHash is byte[] previous
-        && CryptographicOperations.FixedTimeEquals(previous, presentedHash)
-        && session.RotatedAt is DateTimeOffset rotatedAt
-        && now - rotatedAt <= settings.ReuseGracePeriod;
+    private async Task<bool> IsGraceRetryAsync(
+        DeviceSession session,
+        byte[] presentedHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (session.PreviousRefreshTokenHash is not byte[] previous
+            || !CryptographicOperations.FixedTimeEquals(previous, presentedHash)
+            || session.RotatedAt is not DateTimeOffset rotatedAt
+            || now - rotatedAt > settings.ReuseGracePeriod)
+        {
+            return false;
+        }
+
+        int retries = await database.DeviceSessionDiscardedTokens
+            .CountAsync(item => item.SessionId == session.Id && item.DiscardedAt >= rotatedAt, cancellationToken);
+        return retries < DeviceSessionOptions.MaximumGraceRetries;
+    }
+
+    /// <summary>
+    /// Keeps the tokens discarded in the rotation that just ended, so they still revoke the session if they return,
+    /// and drops older ones. This bounds the stored hashes to two rotations of at most
+    /// <see cref="DeviceSessionOptions.MaximumGraceRetries"/> entries each.
+    /// </summary>
+    private Task ForgetDiscardedBeforeAsync(Guid sessionId, DateTimeOffset endedRotation, CancellationToken cancellationToken) =>
+        database.DeviceSessionDiscardedTokens
+            .Where(item => item.SessionId == sessionId && item.DiscardedAt < endedRotation)
+            .ExecuteDeleteAsync(cancellationToken);
 
     private DateTimeOffset NextExpiry(DeviceSession session, DateTimeOffset now)
     {
@@ -212,6 +248,11 @@ internal sealed class DeviceSessionService(
         }
         catch (DbUpdateConcurrencyException)
         {
+            return false;
+        }
+        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // A parallel retry already discarded the same token.
             return false;
         }
     }

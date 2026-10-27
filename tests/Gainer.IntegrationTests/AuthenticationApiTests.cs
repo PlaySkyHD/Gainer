@@ -22,6 +22,7 @@ public sealed class AuthenticationApiTests
 {
     private const string TestOrigin = "https://auth.gainer.test";
     private const string Email = "athlete@example.test";
+    private const string OtherEmail = "other-athlete@example.test";
     private const string Password = "Correct-horse-42!";
     private static readonly DateTimeOffset Start = new(2026, 8, 18, 12, 0, 0, TimeSpan.Zero);
     private static PostgreSqlTestFixture? fixture;
@@ -321,6 +322,113 @@ public sealed class AuthenticationApiTests
     }
 
     [TestMethod]
+    public async Task AttackerRetryingAfterTheDeviceRevokesWhenTheDevicesRetriedTokenReturns()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse stolen = await BearerTestClient.LoginAsync(client, Email, Password);
+        _ = await RefreshSucceedsAsync(client, stolen.RefreshToken);
+        TokenResponse device = await RefreshSucceedsAsync(client, stolen.RefreshToken);
+        timeProvider.Advance(TimeSpan.FromSeconds(20));
+        TokenResponse attacker = await RefreshSucceedsAsync(client, stolen.RefreshToken);
+
+        using HttpResponseMessage deviceRefresh = await BearerTestClient.RefreshAsync(client, device.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, deviceRefresh.StatusCode);
+        using HttpResponseMessage attackerRefresh = await BearerTestClient.RefreshAsync(client, attacker.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, attackerRefresh.StatusCode);
+        client.UseAccessToken(attacker.AccessToken);
+        using HttpResponseMessage attackerAccess = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, attackerAccess.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task AnEleventhGraceRetryRevokesTheSession()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        TokenResponse newest = await RefreshSucceedsAsync(client, first.RefreshToken);
+        for (int retry = 0; retry < 10; retry++)
+        {
+            timeProvider.Advance(TimeSpan.FromSeconds(5));
+            newest = await RefreshSucceedsAsync(client, first.RefreshToken);
+        }
+
+        using HttpResponseMessage tooMany = await BearerTestClient.RefreshAsync(client, first.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, tooMany.StatusCode);
+        using HttpResponseMessage revoked = await BearerTestClient.RefreshAsync(client, newest.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task DiscardedTokenOfThePreviousRotationStillRevokesAfterTheSuccessorWasUsed()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        TokenResponse lost = await RefreshSucceedsAsync(client, first.RefreshToken);
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
+        timeProvider.Advance(TimeSpan.FromMinutes(15));
+        TokenResponse next = await RefreshSucceedsAsync(client, retried.RefreshToken);
+
+        using HttpResponseMessage discarded = await BearerTestClient.RefreshAsync(client, lost.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, discarded.StatusCode);
+        using HttpResponseMessage revoked = await BearerTestClient.RefreshAsync(client, next.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task DiscardedTokensOlderThanThePreviousRotationAreForgotten()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        Guid userId = await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
+        timeProvider.Advance(TimeSpan.FromMinutes(15));
+        TokenResponse next = await RefreshSucceedsAsync(client, retried.RefreshToken);
+        Assert.AreEqual(1, await CountDiscardedTokensAsync(app, userId));
+
+        timeProvider.Advance(TimeSpan.FromMinutes(15));
+        _ = await RefreshSucceedsAsync(client, next.RefreshToken);
+        Assert.AreEqual(0, await CountDiscardedTokensAsync(app, userId));
+    }
+
+    [TestMethod]
+    public async Task DiscardedTokenOnlyRevokesTheSessionItBelongsTo()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        await CreateUserAsync(app, OtherEmail, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        TokenResponse lost = await RefreshSucceedsAsync(client, first.RefreshToken);
+        TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
+        TokenResponse other = await BearerTestClient.LoginAsync(client, OtherEmail, Password);
+        TokenResponse otherCurrent = await RefreshSucceedsAsync(client, other.RefreshToken);
+
+        using HttpResponseMessage discarded = await BearerTestClient.RefreshAsync(client, lost.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, discarded.StatusCode);
+        using HttpResponseMessage revoked = await BearerTestClient.RefreshAsync(client, retried.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        TokenResponse otherNext = await RefreshSucceedsAsync(client, otherCurrent.RefreshToken);
+        client.UseAccessToken(otherNext.AccessToken);
+        using HttpResponseMessage otherSession = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, otherSession.StatusCode);
+    }
+
+    [TestMethod]
     public async Task PreviousTokenGetsNoGraceRetryOnceTheSuccessorWasUsed()
     {
         var timeProvider = new MutableTimeProvider(Start);
@@ -345,11 +453,13 @@ public sealed class AuthenticationApiTests
         using HttpClient client = CreateClient(app);
         TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
         _ = await RefreshSucceedsAsync(client, first.RefreshToken);
-        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
+        TokenResponse newest = await RefreshSucceedsAsync(client, first.RefreshToken);
 
         timeProvider.Advance(TimeSpan.FromHours(7));
         using HttpResponseMessage late = await BearerTestClient.RefreshAsync(client, first.RefreshToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, late.StatusCode);
+        using HttpResponseMessage revoked = await BearerTestClient.RefreshAsync(client, newest.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
     }
 
     [TestMethod]
@@ -524,6 +634,17 @@ public sealed class AuthenticationApiTests
         IdentityResult result = await userManager.CreateAsync(user, password);
         Assert.IsTrue(result.Succeeded, string.Join(", ", result.Errors.Select(error => error.Code)));
         return user.Id;
+    }
+
+    private async Task<int> CountDiscardedTokensAsync(WebApplication app, Guid userId)
+    {
+        await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
+        AppDbContext database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Guid sessionId = await database.DeviceSessions
+            .Where(item => item.UserId == userId)
+            .Select(item => item.Id)
+            .SingleAsync(TestContext.CancellationToken);
+        return await database.DeviceSessionDiscardedTokens.CountAsync(item => item.SessionId == sessionId, TestContext.CancellationToken);
     }
 
     private static HttpClient CreateClient(WebApplication app)
