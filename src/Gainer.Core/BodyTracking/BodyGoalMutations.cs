@@ -12,7 +12,7 @@ public sealed record BodyGoalPlan(
     DateOnly StartDate,
     DateOnly? TargetDate = null);
 
-public sealed record ActivateBodyGoalMutation : ITypedMutation<BodyGoalSnapshot>
+public sealed record ActivateBodyGoalMutation : ITypedMutation
 {
     private ActivateBodyGoalMutation(
         MutationMetadata metadata,

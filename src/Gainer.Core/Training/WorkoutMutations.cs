@@ -31,7 +31,7 @@ public sealed record WorkoutValues(
     Guid? SourceWorkoutId,
     IReadOnlyList<WorkoutExerciseValues> Exercises);
 
-public sealed record CreateWorkoutMutation : ITypedMutation<WorkoutSnapshot>
+public sealed record CreateWorkoutMutation : ITypedMutation
 {
     private CreateWorkoutMutation(MutationMetadata metadata, WorkoutValues workout)
     {
@@ -57,7 +57,7 @@ public sealed record CreateWorkoutMutation : ITypedMutation<WorkoutSnapshot>
     }
 }
 
-public sealed record SaveWorkoutMutation : ITypedMutation<WorkoutSnapshot>
+public sealed record SaveWorkoutMutation : ITypedMutation
 {
     private SaveWorkoutMutation(MutationMetadata metadata, long baseVersion, WorkoutValues workout)
     {
@@ -86,7 +86,7 @@ public sealed record SaveWorkoutMutation : ITypedMutation<WorkoutSnapshot>
     }
 }
 
-public sealed record DeleteWorkoutMutation : ITypedMutation<DeleteWorkoutResult>
+public sealed record DeleteWorkoutMutation : ITypedMutation
 {
     private DeleteWorkoutMutation(MutationMetadata metadata, Guid workoutId, long baseVersion)
     {

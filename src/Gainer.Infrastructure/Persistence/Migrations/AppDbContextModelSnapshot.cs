@@ -4325,7 +4325,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Gainer.Core.Training.TrainingScheduleException", b =>
+            modelBuilder.Entity("Gainer.Core.Training.TrainingScheduleDeviation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -5272,7 +5272,7 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Gainer.Core.Training.TrainingScheduleException", b =>
+            modelBuilder.Entity("Gainer.Core.Training.TrainingScheduleDeviation", b =>
                 {
                     b.HasOne("Gainer.Core.Training.TrainingSchedule", null)
                         .WithMany()

@@ -2,7 +2,7 @@ using Gainer.Core.Mutations;
 
 namespace Gainer.Core.Training;
 
-public sealed record CreateExerciseCategoryMutation : ITypedMutation<ExerciseCategorySnapshot>
+public sealed record CreateExerciseCategoryMutation : ITypedMutation
 {
     private CreateExerciseCategoryMutation(MutationMetadata metadata, Guid categoryId, string name)
     {
@@ -24,7 +24,7 @@ public sealed record CreateExerciseCategoryMutation : ITypedMutation<ExerciseCat
             : throw new ArgumentException("The category identifier cannot be empty.", nameof(categoryId));
 }
 
-public sealed record UpdateExerciseCategoryMutation : ITypedMutation<ExerciseCategorySnapshot>
+public sealed record UpdateExerciseCategoryMutation : ITypedMutation
 {
     private UpdateExerciseCategoryMutation(MutationMetadata metadata, Guid categoryId, long baseVersion, string name)
     {
@@ -53,7 +53,7 @@ public sealed record UpdateExerciseCategoryMutation : ITypedMutation<ExerciseCat
     }
 }
 
-public sealed record ArchiveExerciseCategoryMutation : ITypedMutation<ExerciseCategorySnapshot>
+public sealed record ArchiveExerciseCategoryMutation : ITypedMutation
 {
     private ArchiveExerciseCategoryMutation(MutationMetadata metadata, Guid categoryId, long baseVersion)
     {

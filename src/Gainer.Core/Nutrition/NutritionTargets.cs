@@ -348,7 +348,7 @@ public sealed record NutritionTargetScheduleSnapshot(
             (item.EffectiveUntil is null || item.EffectiveUntil >= localDate));
 }
 
-public sealed record SaveNutritionTargetScheduleMutation : ITypedMutation<NutritionTargetScheduleSnapshot>
+public sealed record SaveNutritionTargetScheduleMutation : ITypedMutation
 {
     private SaveNutritionTargetScheduleMutation(
         MutationMetadata metadata,

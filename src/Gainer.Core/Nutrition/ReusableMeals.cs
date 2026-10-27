@@ -153,7 +153,7 @@ public sealed record ReusableMealSnapshot(
     public ResourceKey Resource => ResourceKey.Create(ResourceKind.ReusableMeal, ReusableMealId);
 }
 
-public sealed record SaveReusableMealMutation : ITypedMutation<ReusableMealSnapshot>
+public sealed record SaveReusableMealMutation : ITypedMutation
 {
     private SaveReusableMealMutation(
         MutationMetadata metadata,
@@ -189,7 +189,7 @@ public sealed record SaveReusableMealMutation : ITypedMutation<ReusableMealSnaps
     }
 }
 
-public sealed record ArchiveReusableMealMutation : ITypedMutation<ReusableMealSnapshot>
+public sealed record ArchiveReusableMealMutation : ITypedMutation
 {
     private ArchiveReusableMealMutation(MutationMetadata metadata, Guid reusableMealId, long baseVersion)
     {

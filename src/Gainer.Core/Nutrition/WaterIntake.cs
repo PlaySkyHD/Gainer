@@ -35,7 +35,7 @@ public sealed record WaterIntakeDaySnapshot(
 /// Sets the water total of one local day; creates the day from base version 0. Quick buttons and corrections both
 /// send the new total: the base version already guards against lost updates, and a total survives outbox coalescing.
 /// </summary>
-public sealed record SetWaterIntakeMutation : ITypedMutation<WaterIntakeDaySnapshot>
+public sealed record SetWaterIntakeMutation : ITypedMutation
 {
     private SetWaterIntakeMutation(
         MutationMetadata metadata,

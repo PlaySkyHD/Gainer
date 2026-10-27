@@ -42,7 +42,7 @@ public sealed class TrainingScheduleShift : UserOwnedEntity
 }
 
 /// <summary>Moves (or, without a target date, skips) the planned workout of one plan on one day.</summary>
-public sealed class TrainingScheduleException : UserOwnedEntity
+public sealed class TrainingScheduleDeviation : UserOwnedEntity
 {
     public Guid Id { get; init; }
     public Guid ScheduleId { get; init; }
