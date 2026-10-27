@@ -505,10 +505,10 @@ public sealed class PostgreSqlMigrationTests
             // A retry of an earlier rotation lands just before the current rotation, so it neither counts as a retry
             // of the current rotation nor ages out before the device could have presented the token.
             Assert.AreEqual(earlierRetrySession, migrated[0].SessionId);
-            CollectionAssert.AreEqual(earlierHash, migrated[0].TokenHash);
+            Assert.AreSequenceEqual(earlierHash, migrated[0].TokenHash);
             Assert.AreEqual(rotatedAt.AddTicks(-10), migrated[0].DiscardedAt);
             Assert.AreEqual(currentRetrySession, migrated[1].SessionId);
-            CollectionAssert.AreEqual(currentHash, migrated[1].TokenHash);
+            Assert.AreSequenceEqual(currentHash, migrated[1].TokenHash);
             Assert.AreEqual(retriedAt, migrated[1].DiscardedAt);
         }
     }
