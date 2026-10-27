@@ -101,4 +101,37 @@ void main() {
     expect(stored?.endedAtUtc, DateTime.utc(2026, 10, 17, 9));
     expect(activeWorkout.hasActiveWorkout, isFalse);
   });
+
+  group('Aufwärmhinweis', () {
+    const previous = [LoggedSet(setId: 'p1', weightKg: 40, repetitions: 8)];
+
+    WorkoutBlock block(ExerciseKind kind) => WorkoutBlock(
+      workoutExerciseId: 'we-$kind',
+      sourceExerciseId: 'src-$kind',
+      exerciseNameSnapshot: 'Übung',
+      exerciseTypeSnapshot: kind,
+      sets: const [LoggedSet(setId: 's1')],
+    );
+
+    test('erscheint bei Kraftübungen mit Vorwert', () async {
+      final model = viewModel();
+      addTearDown(model.dispose);
+      await model.load();
+
+      final hint = model.warmupHintFor(block(ExerciseKind.strength), previous);
+
+      expect(hint?.map((t) => t.weightKg), [20, 32.5]);
+    });
+
+    test('fehlt bei assistierten Übungen', () async {
+      final model = viewModel();
+      addTearDown(model.dispose);
+      await model.load();
+
+      expect(
+        model.warmupHintFor(block(ExerciseKind.assisted), previous),
+        isNull,
+      );
+    });
+  });
 }
