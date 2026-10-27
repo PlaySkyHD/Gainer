@@ -30,7 +30,7 @@ You plan, brief, verify, open the pull requests and merge. Subagents only implem
   - Default `sonnet`.
   - `haiku` for docs and skill texts, not for OpenSpec changes.
   - `sonnet` for OpenSpec changes (delta, validate, archive, code check); `haiku` struggled with the archive step (PR #227, 69 turns).
-  - `opus` only for the sync protocol, migrations with a data-model decision, native code and Pigeon.
+  - `opus` only for the sync protocol, migrations with a data-model decision, native code, Pigeon and session/token security (refresh rotation, reuse detection, PR #293).
   - At most two Opus agents at once. Work further Opus issues one after another.
 - At most four agents at once in total. More parallel agents do not lower the total, but they hit the 5-hour quota sooner and slow the host's test runs.
 - An issue with more than about three independent points goes to several agents, not one. Give Opus only the native or sync part. One Opus agent for five points of #166 reached 258k context and 16 % of a whole round.
@@ -49,6 +49,7 @@ Every prompt contains:
 - the shell rules for isolated worktrees from `docs/agent-lessons-learned.md` section 1 (separate git setup commands, no `git -C` outside the worktree, `cd apps/mobile && <check>` for app checks),
 - "the repository is public: no secrets, personal data or content about other private projects",
 - the exact scope and anchors, and which files not to touch,
+- for session or token security: the attacker scenarios the fix must withstand (stolen previous token, retries by both sides, an extra rotation in between) and one integration test per scenario (PR #293 needed three review rounds without them),
 - for every change: new or changed methods keep cognitive complexity ≤ 12 (Sonar S3776, limit 15; the manual count runs low) and at most 7 parameters, constructors included (Sonar S107); group extra parameters in a small class or a scoped helper (PR #282 `CoachRequestBudget`, PR #284 `_RecipeEditorState`),
 - the checks to run (format, analyzer, tests, golden preview) for the touched area; name the exact commands from the instructions (`mobile.instructions.md`, `backend.instructions.md`, section "Prüfen" and "Tests"): only the touched folders, quiet reporters, `flutter pub get` first in a fresh worktree, never the whole suite (CI runs it); do not return unfiltered test output,
 - for a bug fix: show that the new test fails without the fix (undo the fix temporarily with Edit, run the test, redo it; no `git stash`/`git restore`) and put the red line in the report,
@@ -73,7 +74,7 @@ Start agents in the background with worktree isolation. Do not touch their files
 
 - Open one PR per issue with `gh pr create`, body via the `pr` skill, `Fixes #<n>` in the body. Register it with T3 if `link_pull_request` exists.
 - Review right after `gh pr create`: run `code-review <PR>`.
-  - First review of a fresh PR: `medium --max-findings 5`. After a rework: `low --max-findings 3` on the new state. Sync protocol or migrations: full review (`high`).
+  - First review of a fresh PR: `medium --max-findings 5`. After a rework: `low --max-findings 3` on the new state. Sync protocol, migrations or session/token security: full review (`high`).
   - Triage before sending anything back: only correctness bugs inside the issue's scope. Extensions, refactorings and style hints are rejected with a reason or filed as a new issue. Rework rounds were about 30 % of a round's quota when every finding was fixed.
   - Send findings back via `SendMessage` to the same agent only if its context is small: under about 150k tokens and at most one review round so far. Otherwise start a fresh agent with a compact brief: branch, list of findings, checks. The branch holds the state, the old transcript is not needed.
     - Setup for an existing branch: `git fetch origin`, then `git switch -c <helper-name> origin/<branch>`, then `git merge --no-edit origin/main` (stop and report if the fetch fails; resolve conflicts and commit the merge, or `git merge --abort` and report); push with `git push origin HEAD:<branch>` (no force). The local branch is still checked out in the first agent's worktree.
