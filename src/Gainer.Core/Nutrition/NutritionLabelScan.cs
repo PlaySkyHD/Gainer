@@ -104,15 +104,6 @@ public sealed record NutritionLabelScanDraft(
         };
         bool converted = basis != NutritionLabelBasis.Per100Grams;
 
-        NutritionLabelReading energy = kilocalories;
-        if (kilocalories.Value is null && kilojoules.Value is { } kj)
-        {
-            energy = new NutritionLabelReading(kj / KilojoulesPerKilocalorie, kilojoules.Evidence);
-            converted = true;
-        }
-
-        NutritionLabelFieldDraft kcal = Field(energy, factor, converted, 0, MaxPlausibleKilocaloriesPer100Grams);
-        converted = basis != NutritionLabelBasis.Per100Grams;
         NutritionLabelFieldDraft protein = Field(proteinGrams, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
         NutritionLabelFieldDraft carbohydrate = Field(carbohydrateGrams, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
         NutritionLabelFieldDraft fat = Field(fatGrams, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
@@ -128,7 +119,7 @@ public sealed record NutritionLabelScanDraft(
         // Fiber is optional for confirmation and scaled like the macros.
         NutritionLabelFieldDraft fiberField = Field(
             fiberGrams ?? NutritionLabelReading.Empty, factor, converted, 1, MaxPlausibleMacroGramsPer100Grams);
-        kcal = CheckAgainstMacroEnergy(kcal, protein, carbohydrate, fat);
+        NutritionLabelFieldDraft kcal = ChooseEnergy(kilocalories, kilojoules, factor, converted, protein, carbohydrate, fat);
         decimal macroSum = (protein.Per100Grams ?? 0m) + (carbohydrate.Per100Grams ?? 0m) + (fat.Per100Grams ?? 0m);
         bool canConfirm = kcal.Per100Grams is not null && macroSum <= MaxPlausibleMacroSumPer100Grams;
 
@@ -148,23 +139,68 @@ public sealed record NutritionLabelScanDraft(
             scannedAtUtc);
     }
 
+    /// <summary>
+    /// Takes kcal when it passes the macro check. If kcal is missing or rejected and the label also prints kJ,
+    /// the converted kJ value is used when it passes; otherwise the kcal result stays.
+    /// </summary>
+    private static NutritionLabelFieldDraft ChooseEnergy(
+        NutritionLabelReading kilocalories,
+        NutritionLabelReading kilojoules,
+        decimal? factor,
+        bool converted,
+        NutritionLabelFieldDraft protein,
+        NutritionLabelFieldDraft carbohydrate,
+        NutritionLabelFieldDraft fat)
+    {
+        // Too much energy can only be judged when all three macros were read, and not when kcal and kJ agree.
+        bool allMacrosRead = protein.Per100Grams is not null && carbohydrate.Per100Grams is not null && fat.Per100Grams is not null;
+        bool checkUpper = allMacrosRead && !AreConsistent(kilocalories.Value, kilojoules.Value);
+        NutritionLabelFieldDraft fromKcal = CheckAgainstMacroEnergy(
+            Field(kilocalories, factor, converted, 0, MaxPlausibleKilocaloriesPer100Grams), protein, carbohydrate, fat, checkUpper);
+        if (fromKcal.Per100Grams is not null || kilojoules.Value is not { } kj) return fromKcal;
+        var energy = new NutritionLabelReading(kj / KilojoulesPerKilocalorie, kilojoules.Evidence);
+        // The unit kJ is printed on the label, so a converted kJ value gets no upper check (liqueurs, kJ-only labels).
+        NutritionLabelFieldDraft fromKj = CheckAgainstMacroEnergy(
+            Field(energy, factor, true, 0, MaxPlausibleKilocaloriesPer100Grams), protein, carbohydrate, fat, false);
+        // A kcal value that was read but rejected keeps its evidence if the kJ value is no better.
+        bool kcalWasRead = kilocalories.Value is not null;
+        return fromKj.Per100Grams is null && kcalWasRead ? fromKcal : fromKj;
+    }
+
+    /// <summary>True when both energies were read and kcal × 4.184 matches kJ within 5 %, so the label confirms itself.</summary>
+    private static bool AreConsistent(decimal? kilocalories, decimal? kilojoules)
+    {
+        const decimal tolerance = 0.05m;
+        return kilocalories is { } kcal && kilojoules is { } kj
+            && Math.Abs(kcal * KilojoulesPerKilocalorie - kj) <= kj * tolerance;
+    }
+
     private static NutritionLabelFieldDraft CheckAgainstMacroEnergy(
         NutritionLabelFieldDraft kcal,
         NutritionLabelFieldDraft protein,
         NutritionLabelFieldDraft carbohydrate,
-        NutritionLabelFieldDraft fat)
+        NutritionLabelFieldDraft fat,
+        bool checkUpper)
     {
         // Below this macro energy (water, diet drinks) rounding makes the comparison meaningless; juice (about 45 kcal) is still checked.
         const decimal minMacroEnergy = 20m;
         // Fiber, polyols and rounding let labels undercut 4/4/9 a lot, so only energy below a quarter of it is a misread.
         const decimal minShareOfMacroEnergy = 0.25m;
+        // Alcohol (7 kcal/g) is not in 4/4/9: sweet wine and liqueurs reach about 2.8 times the macro energy.
+        // A kJ number read as kcal is about 4.2 times, so 3.5 separates them. Alcohol in a label with few macros
+        // can exceed it, hence the higher minimum macro energy for this side.
+        const decimal maxShareOfMacroEnergy = 3.5m;
+        const decimal minMacroEnergyForUpperCheck = 50m;
         if (kcal.Per100Grams is not { } energyPer100) return kcal;
-        // Unreadable macros count as 0: that only lowers the macro energy, so the check stays conservative.
+        // Unreadable macros count as 0: that only lowers the macro energy, which is safe for the lower check
+        // but would wrongly reject the energy in the upper check, so that one runs only with all macros read.
         decimal macroEnergy = NutritionCalculator.CalculateMacroEnergy(
             protein.Per100Grams ?? 0m, carbohydrate.Per100Grams ?? 0m, fat.Per100Grams ?? 0m);
         bool farBelowMacroEnergy = macroEnergy >= minMacroEnergy
             && energyPer100 < macroEnergy * minShareOfMacroEnergy;
-        return farBelowMacroEnergy
+        bool farAboveMacroEnergy = checkUpper && macroEnergy >= minMacroEnergyForUpperCheck
+            && energyPer100 > macroEnergy * maxShareOfMacroEnergy;
+        return farBelowMacroEnergy || farAboveMacroEnergy
             ? kcal with { Per100Grams = null, Status = NutritionLabelFieldStatus.Implausible }
             : kcal;
     }
