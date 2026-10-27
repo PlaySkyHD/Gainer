@@ -119,7 +119,11 @@ class _NutritionAveragesEntryState extends State<NutritionAveragesEntry> {
           key: const ValueKey('nutrition-averages-entry'),
           behavior: HitTestBehavior.opaque,
           onTap: hasData
-              ? () => showNutritionAverages(context, overview)
+              ? () => showNutritionAverages(
+                  context,
+                  overview,
+                  initialDays: shown.windowDays,
+                )
               : null,
           child: GainerCard(
             child: Row(
@@ -165,10 +169,12 @@ String _today(DateTime now) =>
 
 Future<void> showNutritionAverages(
   BuildContext context,
-  NutritionAveragesOverview overview,
-) => showGainerSheet<void>(
+  NutritionAveragesOverview overview, {
+  int initialDays = 7,
+}) => showGainerSheet<void>(
   context: context,
-  builder: (_) => NutritionAveragesSheet(overview: overview),
+  builder: (_) =>
+      NutritionAveragesSheet(overview: overview, initialDays: initialDays),
 );
 
 /// Sheet „Durchschnitt“ mit Umschalter 7 Tage / 30 Tage.
