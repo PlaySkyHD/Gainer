@@ -78,13 +78,17 @@ class WorkoutViewModel extends ChangeNotifier {
 
   /// Aufwärmhinweis der Übung oder `null`, wenn keiner erscheinen soll: nur im
   /// aktiven Training, nicht bei abgeschaltetem Hinweis, bereits vorhandenen
-  /// Aufwärmsätzen oder fehlendem Vorwert-Gewicht. Er wird nie gespeichert.
+  /// Aufwärmsätzen, fehlendem Vorwert-Gewicht oder assistierten Übungen (dort
+  /// ist das Gewicht die Unterstützung, Aufwärmen wäre schwerer als der
+  /// Arbeitssatz). Er wird nie gespeichert.
   /// [previous] sind die Vorwerte des Blocks (siehe [previousValues]).
   List<WarmupTarget>? warmupHintFor(
     WorkoutBlock block,
     List<LoggedSet?> previous,
   ) {
-    if (!isActive || block.sets.any((s) => s.setType == SetType.warmup)) {
+    if (!isActive ||
+        block.exerciseTypeSnapshot == ExerciseKind.assisted ||
+        block.sets.any((s) => s.setType == SetType.warmup)) {
       return null;
     }
     final resolved = resolveWarmup(
