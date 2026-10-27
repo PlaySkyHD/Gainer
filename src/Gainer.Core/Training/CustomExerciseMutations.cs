@@ -17,7 +17,7 @@ public sealed record CustomExerciseValues(
     IReadOnlyList<string>? PrimaryMuscles = null,
     IReadOnlyList<string>? SecondaryMuscles = null);
 
-public sealed record CreateCustomExerciseMutation : ITypedMutation<CustomExerciseSnapshot>
+public sealed record CreateCustomExerciseMutation : ITypedMutation
 {
     private CreateCustomExerciseMutation(
         MutationMetadata metadata,
@@ -45,7 +45,7 @@ public sealed record CreateCustomExerciseMutation : ITypedMutation<CustomExercis
             : throw new ArgumentException("The exercise identifier cannot be empty.", nameof(exerciseId));
 }
 
-public sealed record UpdateCustomExerciseMutation : ITypedMutation<CustomExerciseSnapshot>
+public sealed record UpdateCustomExerciseMutation : ITypedMutation
 {
     private UpdateCustomExerciseMutation(
         MutationMetadata metadata,
@@ -82,7 +82,7 @@ public sealed record UpdateCustomExerciseMutation : ITypedMutation<CustomExercis
     }
 }
 
-public sealed record ArchiveCustomExerciseMutation : ITypedMutation<CustomExerciseSnapshot>
+public sealed record ArchiveCustomExerciseMutation : ITypedMutation
 {
     private ArchiveCustomExerciseMutation(MutationMetadata metadata, Guid exerciseId, long baseVersion)
     {

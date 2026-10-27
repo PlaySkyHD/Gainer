@@ -32,7 +32,7 @@ public sealed record CardioSessionValues(
     string? TemplateName = null,
     IReadOnlyList<CardioPhaseValues>? Phases = null);
 
-public sealed record SaveCardioSessionMutation : ITypedMutation<CardioSessionSnapshot>
+public sealed record SaveCardioSessionMutation : ITypedMutation
 {
     private SaveCardioSessionMutation(MutationMetadata metadata, long baseVersion, CardioSessionValues session)
     {
@@ -63,7 +63,7 @@ public sealed record SaveCardioSessionMutation : ITypedMutation<CardioSessionSna
     }
 }
 
-public sealed record DeleteCardioSessionMutation : ITypedMutation<long>
+public sealed record DeleteCardioSessionMutation : ITypedMutation
 {
     private DeleteCardioSessionMutation(MutationMetadata metadata, Guid sessionId, long baseVersion)
     {

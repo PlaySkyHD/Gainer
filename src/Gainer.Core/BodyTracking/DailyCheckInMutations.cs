@@ -13,7 +13,7 @@ public sealed record DailyCheckInValues(
     int? RestingHeartRateBpm = null,
     int? RestingHrvMs = null);
 
-public sealed record CreateDailyCheckInMutation : ITypedMutation<DailyCheckInSnapshot>
+public sealed record CreateDailyCheckInMutation : ITypedMutation
 {
     private CreateDailyCheckInMutation(
         MutationMetadata metadata,
@@ -50,7 +50,7 @@ public sealed record CreateDailyCheckInMutation : ITypedMutation<DailyCheckInSna
     }
 }
 
-public sealed record CorrectDailyCheckInMutation : ITypedMutation<DailyCheckInSnapshot>
+public sealed record CorrectDailyCheckInMutation : ITypedMutation
 {
     private CorrectDailyCheckInMutation(
         MutationMetadata metadata,

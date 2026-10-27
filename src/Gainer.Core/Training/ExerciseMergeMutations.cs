@@ -6,7 +6,7 @@ namespace Gainer.Core.Training;
 /// Repoints the user's workout blocks and plan entries from an own exercise to a target exercise and archives the source.
 /// The target version is only expected when the target is an own exercise; base exercises are read-only here.
 /// </summary>
-public sealed record MergeExercisesMutation : ITypedMutation<MergeExercisesResult>
+public sealed record MergeExercisesMutation : ITypedMutation
 {
     private MergeExercisesMutation(
         MutationMetadata metadata,

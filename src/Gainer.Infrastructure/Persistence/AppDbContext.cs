@@ -71,7 +71,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 
     public DbSet<TrainingScheduleShift> TrainingScheduleShifts => Set<TrainingScheduleShift>();
 
-    public DbSet<TrainingScheduleException> TrainingScheduleExceptions => Set<TrainingScheduleException>();
+    public DbSet<TrainingScheduleDeviation> TrainingScheduleExceptions => Set<TrainingScheduleDeviation>();
 
     public DbSet<Workout> Workouts => Set<Workout>();
 
@@ -1123,7 +1123,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<TrainingScheduleException>(exception =>
+        modelBuilder.Entity<TrainingScheduleDeviation>(exception =>
         {
             exception.ToTable("training_schedule_exceptions", DatabaseSchemas.Training, table =>
                 table.HasCheckConstraint("CK_training_schedule_exceptions_position", PositionNonNegativeCheck));

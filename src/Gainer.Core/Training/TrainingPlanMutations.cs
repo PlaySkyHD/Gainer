@@ -20,7 +20,7 @@ public sealed record TrainingPlanValues(
 
 public sealed record TrainingPlanVersion(Guid PlanId, long BaseVersion);
 
-public sealed record CreateTrainingPlanMutation : ITypedMutation<TrainingPlanSnapshot>
+public sealed record CreateTrainingPlanMutation : ITypedMutation
 {
     private CreateTrainingPlanMutation(MutationMetadata metadata, TrainingPlanValues plan)
     {
@@ -46,7 +46,7 @@ public sealed record CreateTrainingPlanMutation : ITypedMutation<TrainingPlanSna
     }
 }
 
-public sealed record UpdateTrainingPlanMutation : ITypedMutation<TrainingPlanSnapshot>
+public sealed record UpdateTrainingPlanMutation : ITypedMutation
 {
     private UpdateTrainingPlanMutation(MutationMetadata metadata, long baseVersion, TrainingPlanValues plan)
     {
@@ -75,7 +75,7 @@ public sealed record UpdateTrainingPlanMutation : ITypedMutation<TrainingPlanSna
     }
 }
 
-public sealed record ArchiveTrainingPlanMutation : ITypedMutation<TrainingPlanSnapshot>
+public sealed record ArchiveTrainingPlanMutation : ITypedMutation
 {
     private ArchiveTrainingPlanMutation(MutationMetadata metadata, Guid planId, long baseVersion)
     {
@@ -104,7 +104,7 @@ public sealed record ArchiveTrainingPlanMutation : ITypedMutation<TrainingPlanSn
 }
 
 /// <summary>Stores a new order for a set of plans in one atomic mutation; list order becomes the sort order.</summary>
-public sealed record ReorderTrainingPlansMutation : ITypedMutation<IReadOnlyList<TrainingPlanSnapshot>>
+public sealed record ReorderTrainingPlansMutation : ITypedMutation
 {
     private ReorderTrainingPlansMutation(MutationMetadata metadata, IReadOnlyList<TrainingPlanVersion> plans)
     {

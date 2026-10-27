@@ -50,7 +50,7 @@ public sealed record ResourceVersionExpectation
 }
 
 /// <summary>Marks a concrete command as a typed atomic mutation.</summary>
-public interface ITypedMutation<out TResult>
+public interface ITypedMutation
 {
     MutationMetadata Metadata { get; }
     AtomicMutationScope Scope { get; }
