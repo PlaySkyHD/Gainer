@@ -33,6 +33,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     /// <summary>Signed-in mobile installations and their refresh tokens.</summary>
     public DbSet<DeviceSession> DeviceSessions => Set<DeviceSession>();
 
+    /// <summary>Refresh tokens discarded by grace-period retries; presenting one revokes its session.</summary>
+    public DbSet<DeviceSessionDiscardedToken> DeviceSessionDiscardedTokens => Set<DeviceSessionDiscardedToken>();
+
     public DbSet<BodyGoal> BodyGoals => Set<BodyGoal>();
 
     public DbSet<DailyCheckIn> DailyCheckIns => Set<DailyCheckIn>();
@@ -1037,15 +1040,27 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             session.Property(item => item.DeviceName).HasMaxLength(100).IsRequired();
             session.Property(item => item.RefreshTokenHash).HasColumnType(ByteaColumnType).IsRequired();
             session.Property(item => item.PreviousRefreshTokenHash).HasColumnType(ByteaColumnType);
-            session.Property(item => item.DiscardedRefreshTokenHash).HasColumnType(ByteaColumnType);
             session.HasIndex(item => item.RefreshTokenHash).IsUnique();
             session.HasIndex(item => item.PreviousRefreshTokenHash).IsUnique();
-            session.HasIndex(item => item.DiscardedRefreshTokenHash).IsUnique();
             session.HasIndex(item => item.UserId);
             session.HasOne(item => item.User)
                 .WithMany()
                 .HasForeignKey(item => item.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+            session.HasMany(item => item.DiscardedTokens)
+                .WithOne()
+                .HasForeignKey(item => item.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<DeviceSessionDiscardedToken>(discarded =>
+        {
+            discarded.ToTable("device_session_discarded_tokens", DatabaseSchemas.Identity, table =>
+                table.HasCheckConstraint(
+                    "CK_identity_device_session_discarded_tokens_hash",
+                    "octet_length(\"TokenHash\") = 32"));
+            discarded.HasKey(item => item.TokenHash);
+            discarded.Property(item => item.TokenHash).HasColumnType(ByteaColumnType);
+            discarded.HasIndex(item => item.SessionId);
         });
     }
 
