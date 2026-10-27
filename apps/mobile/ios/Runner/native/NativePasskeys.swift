@@ -73,13 +73,13 @@ private final class PasskeyRequest: NSObject,
   }
 
   func authorizationController(
-    controller: ASAuthorizationController,
+    controller _: ASAuthorizationController,
     didCompleteWithAuthorization authorization: ASAuthorization
   ) {
     finish(.success(authorization.credential))
   }
 
-  func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+  func authorizationController(controller _: ASAuthorizationController, didCompleteWithError error: Error) {
     if let authorizationError = error as? ASAuthorizationError,
        authorizationError.code == .canceled {
       finish(.success(nil))
@@ -92,7 +92,7 @@ private final class PasskeyRequest: NSObject,
     )))
   }
 
-  func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+  func presentationAnchor(for _: ASAuthorizationController) -> ASPresentationAnchor {
     MainActor.assumeIsolated {
       let scene = UIApplication.shared.connectedScenes
         .compactMap { $0 as? UIWindowScene }
