@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/body/body_repository.dart';
+import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart'
+    show NutritionSaveException;
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/repositories/sync/sync_payload_codec.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
@@ -196,6 +198,169 @@ void main() {
       }
     },
   );
+
+  group('gleichzeitige Check-in-Schreiber', () {
+    DailyCheckInInput input({double? calories, int? steps}) =>
+        DailyCheckInInput(
+          localDate: '2026-10-12',
+          weightKg: 71,
+          caloriesKcal: calories,
+          proteinGrams: null,
+          carbohydrateGrams: null,
+          fatGrams: null,
+          steps: steps,
+          sleepMinutes: null,
+        );
+
+    test('updateSteps und saveCheckIn am selben Tag behalten beide', () async {
+      await repository.saveCheckIn(input(calories: 2000, steps: 1000));
+      await Future.wait([
+        repository.updateSteps(localDate: '2026-10-12', steps: 9000),
+        repository.saveCheckIn(input(calories: 2500)),
+      ]);
+      final value = (await repository.read()).checkIns.single.value;
+      expect(value.steps, 9000);
+      expect(value.caloriesKcal, 2500);
+    });
+
+    test('zwei Schreiber an einem Tag ohne Check-in legen einen an', () async {
+      final ids = await Future.wait([
+        repository.saveCheckIn(input(calories: 2000)),
+        repository.saveCheckIn(input(steps: 500)),
+      ]);
+      expect(ids.toSet(), hasLength(1));
+      final snapshot = await repository.read();
+      expect(snapshot.checkIns, hasLength(1));
+      expect(snapshot.checkIns.single.value.caloriesKcal, 2000);
+      expect(snapshot.checkIns.single.value.steps, 500);
+    });
+
+    test(
+      'liest neu, wenn der Check-in beim Commit schon geändert ist',
+      () async {
+        await repository.saveCheckIn(input(calories: 2000, steps: 1000));
+        // Zweite Instanz auf demselben Speicher: eigene Warteschlange, wie ein
+        // Pull oder eine Bestätigung zwischen Lesen und Commit.
+        final other = BodyRepository(
+          store: repository.store,
+          ids: () => testId(id++),
+          clock: () => now,
+        );
+        var interfered = false;
+        repository.beforeCheckInCommitForTesting = () async {
+          if (interfered) return;
+          interfered = true;
+          await other.updateSteps(localDate: '2026-10-12', steps: 9000);
+        };
+        await repository.saveCheckIn(input(calories: 2500));
+        final value = (await repository.read()).checkIns.single.value;
+        expect(value.steps, 9000);
+        expect(value.caloriesKcal, 2500);
+      },
+    );
+  });
+
+  group('Check-in-Konflikte', () {
+    test(
+      'flushPendingResting überspringt einen Konflikt statt zu werfen',
+      () async {
+        await repository.recordRestingMeasurement(
+          localDate: '2026-10-12',
+          restingHeartRateBpm: 58,
+          restingHrvMs: 52,
+        );
+        await repository.saveCheckIn(
+          DailyCheckInInput(
+            localDate: '2026-10-12',
+            weightKg: 71,
+            caloriesKcal: null,
+            proteinGrams: null,
+            carbohydrateGrams: null,
+            fatGrams: null,
+            steps: null,
+            sleepMinutes: null,
+          ),
+        );
+        // saveCheckIn hat den wartenden Wert übernommen; erneut wartend setzen
+        // und den Check-in unter dem Flush ändern.
+        final other = BodyRepository(
+          store: repository.store,
+          ids: () => testId(id++),
+          clock: () => now,
+        );
+        await repository.store.writeSyncMetadata('body-resting-pending', {
+          '2026-10-12': {'restingHeartRateBpm': 60, 'restingHrvMs': 40},
+        });
+        var steps = 100;
+        repository.beforeCheckInCommitForTesting = () =>
+            other.updateSteps(localDate: '2026-10-12', steps: steps++);
+        await repository.flushPendingResting();
+        final snapshot = await repository.read();
+        expect(snapshot.pendingResting, hasLength(1));
+        expect(snapshot.checkIns, hasLength(1));
+      },
+    );
+
+    DailyCheckInInput input(double? calories) => DailyCheckInInput(
+      localDate: '2026-10-12',
+      weightKg: 71,
+      caloriesKcal: calories,
+      proteinGrams: null,
+      carbohydrateGrams: null,
+      fatGrams: null,
+      steps: null,
+      sleepMinutes: null,
+    );
+
+    test('dauerhafter Konflikt wird zur deutschen Meldung', () async {
+      await repository.saveCheckIn(input(2000));
+      final other = BodyRepository(
+        store: repository.store,
+        ids: () => testId(id++),
+        clock: () => now,
+      );
+      var steps = 100;
+      repository.beforeCheckInCommitForTesting = () =>
+          other.updateSteps(localDate: '2026-10-12', steps: steps++);
+      await expectLater(
+        repository.saveCheckIn(input(2500)),
+        throwsA(
+          isA<NutritionSaveException>().having(
+            (e) => e.toString(),
+            'message',
+            contains('Bitte versuche es noch einmal'),
+          ),
+        ),
+      );
+    });
+
+    test('Health-Import wiederholt einen Konflikt höchstens dreimal', () async {
+      await repository.saveCheckIn(input(2000));
+      final other = BodyRepository(
+        store: repository.store,
+        ids: () => testId(id++),
+        clock: () => now,
+      );
+      var steps = 100;
+      var attempts = 0;
+      repository.beforeCheckInCommitForTesting = () async {
+        attempts++;
+        await other.updateSteps(localDate: '2026-10-12', steps: steps++);
+      };
+      await expectLater(
+        repository.importHealthWeight(
+          probeId: 'p1',
+          localDate: '2026-10-12',
+          weightKg: 70,
+          replaceExistingCheckIn: true,
+          sessionGuard: () => true,
+        ),
+        throwsA(isA<NutritionSaveException>()),
+      );
+      // Eine Wiederholungsschicht: genau drei Versuche, nicht neun.
+      expect(attempts, 3);
+    });
+  });
 
   group('Ruhepuls und HRV', () {
     Future<String> checkIn(String date, {double weight = 71}) =>

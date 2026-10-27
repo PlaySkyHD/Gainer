@@ -162,8 +162,11 @@ class MobileAuthController extends ChangeNotifier
           if (!_disposed) notifyListeners();
           return;
         }
-      } on ApiException catch (error) {
-        if (error.code != 'network_error') rethrow;
+      } on Exception catch (error) {
+        // Only a real server rejection signs out. Outages (5xx), rate limits
+        // (429), blocked redirects and non-JSON bodies (captive portal) keep
+        // the stored session and open the offline profile.
+        if (!_isTransientRestoreFailure(error)) rethrow;
         final checkpoint = await sessions.restoreOffline();
         if (checkpoint == null) rethrow;
         await _openAccount(
@@ -185,6 +188,14 @@ class MobileAuthController extends ChangeNotifier
       errorMessage = 'Die gespeicherte Sitzung konnte nicht wiederhergestellt werden. Melde dich erneut an.';
     }
     if (!_disposed) notifyListeners();
+  }
+
+  static bool _isTransientRestoreFailure(Exception error) {
+    if (error is ApiException) {
+      final status = error.statusCode;
+      return status == null || status == 408 || status == 429 || status >= 500;
+    }
+    return error is FormatException;
   }
 
   Future<void> login(String email, String password) async {

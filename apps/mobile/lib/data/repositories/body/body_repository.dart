@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:math';
 
 import '../../../domain/models/body/body_tracking.dart';
 import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
+import '../nutrition/nutrition_repository.dart' show NutritionSaveException;
 import '../sync/local_sync_store.dart';
 
 typedef BodyIdFactory = String Function();
@@ -76,6 +78,48 @@ class BodyRepository {
   final BodyIdFactory ids;
   final DateTime Function() clock;
   final void Function()? transactionFaultForTesting;
+
+  /// Läuft vor dem Commit eines Check-ins; Tests stellen damit eine
+  /// Überlappung nach dem Lesen nach.
+  Future<void> Function()? beforeCheckInCommitForTesting;
+
+  Future<void>? _checkInLock;
+  static const _maxCheckInAttempts = 3;
+
+  /// Legt alle Check-in-Schreiber hinter eine Warteschlange. Ein Check-in ist
+  /// ein Lesen-Ändern-Schreiben auf einer Zeile je Tag; ohne Warteschlange
+  /// überschreibt der spätere Schreiber die Felder des früheren, und zwei
+  /// Schreiber für einen Tag ohne Check-in legen zwei Zeilen an. Eine
+  /// gemeinsame Schlange (statt je Tag) deckt auch [flushPendingResting] ab,
+  /// das mehrere Tage und das gemeinsame Metadatum der wartenden Werte
+  /// berührt. Die Aktion startet ohne Vorgänger sofort.
+  ///
+  /// Hat sich die gelesene Zeile beim Commit geändert (Pull, Bestätigung),
+  /// wirft der Store [LocalResourceChangedException]; dann liest [action]
+  /// neu.
+  Future<T> _serializedCheckIn<T>(Future<T> Function() action) async {
+    final previous = _checkInLock;
+    final mine = Completer<void>();
+    _checkInLock = mine.future;
+    if (previous != null) await previous;
+    try {
+      for (var attempt = 1; ; attempt++) {
+        try {
+          return await action();
+        } on LocalResourceChangedException {
+          if (attempt >= _maxCheckInAttempts) {
+            throw const NutritionSaveException(
+              'Der Check-in hat sich gerade beim Synchronisieren geändert. '
+              'Bitte versuche es noch einmal.',
+            );
+          }
+        }
+      }
+    } finally {
+      if (identical(_checkInLock, mine.future)) _checkInLock = null;
+      mine.complete();
+    }
+  }
 
   Future<BodyTrackingSnapshot> read() async {
     final goals = await store.readAggregates(_bodyGoalType);
@@ -180,27 +224,32 @@ class BodyRepository {
         restingHrvMs: restingHrvMs,
       ),
     );
-    final existing = _findCheckInForDay(
-      await store.readAggregates(_dailyCheckInType),
-      localDate,
-    );
-    if (existing == null) {
-      final pending = await _readPending();
-      pending[localDate] = (heartRate: restingHeartRateBpm, hrv: restingHrvMs);
-      await _writePending(pending);
-      return RestingMeasurementStatus.pending;
-    }
-    final prior = DailyCheckIn.fromJson(_map(existing.workingCopy));
-    await _writeCheckIn(
-      existing: existing,
-      checkIn: _copyCheckIn(
-        prior,
-        restingHeartRateBpm: restingHeartRateBpm,
-        restingHrvMs: restingHrvMs,
-        updatedAtUtc: clock().toUtc().toIso8601String(),
-      ),
-    );
-    return RestingMeasurementStatus.savedToCheckIn;
+    return _serializedCheckIn(() async {
+      final existing = _findCheckInForDay(
+        await store.readAggregates(_dailyCheckInType),
+        localDate,
+      );
+      if (existing == null) {
+        final pending = await _readPending();
+        pending[localDate] = (
+          heartRate: restingHeartRateBpm,
+          hrv: restingHrvMs,
+        );
+        await _writePending(pending);
+        return RestingMeasurementStatus.pending;
+      }
+      final prior = DailyCheckIn.fromJson(_map(existing.workingCopy));
+      await _writeCheckIn(
+        existing: existing,
+        checkIn: _copyCheckIn(
+          prior,
+          restingHeartRateBpm: restingHeartRateBpm,
+          restingHrvMs: restingHrvMs,
+          updatedAtUtc: clock().toUtc().toIso8601String(),
+        ),
+      );
+      return RestingMeasurementStatus.savedToCheckIn;
+    });
   }
 
   /// Setzt nur die Schritte eines vorhandenen Check-ins, z. B. die fertige
@@ -222,75 +271,87 @@ class BodyRepository {
         sleepMinutes: null,
       ),
     );
-    final existing = _findCheckInForDay(
-      await store.readAggregates(_dailyCheckInType),
-      localDate,
-    );
-    if (existing == null) return false;
-    final prior = DailyCheckIn.fromJson(_map(existing.workingCopy));
-    if (prior.steps == steps) return false;
-    await _writeCheckIn(
-      existing: existing,
-      checkIn: DailyCheckIn(
-        localDate: prior.localDate,
-        weightKg: prior.weightKg,
-        caloriesKcal: prior.caloriesKcal,
-        proteinGrams: prior.proteinGrams,
-        carbohydrateGrams: prior.carbohydrateGrams,
-        fatGrams: prior.fatGrams,
-        steps: steps,
-        sleepMinutes: prior.sleepMinutes,
-        restingHeartRateBpm: prior.restingHeartRateBpm,
-        restingHrvMs: prior.restingHrvMs,
-        createdAtUtc: prior.createdAtUtc,
-        updatedAtUtc: clock().toUtc().toIso8601String(),
-      ),
-    );
-    return true;
+    return _serializedCheckIn(() async {
+      final existing = _findCheckInForDay(
+        await store.readAggregates(_dailyCheckInType),
+        localDate,
+      );
+      if (existing == null) return false;
+      final prior = DailyCheckIn.fromJson(_map(existing.workingCopy));
+      if (prior.steps == steps) return false;
+      await _writeCheckIn(
+        existing: existing,
+        checkIn: DailyCheckIn(
+          localDate: prior.localDate,
+          weightKg: prior.weightKg,
+          caloriesKcal: prior.caloriesKcal,
+          proteinGrams: prior.proteinGrams,
+          carbohydrateGrams: prior.carbohydrateGrams,
+          fatGrams: prior.fatGrams,
+          steps: steps,
+          sleepMinutes: prior.sleepMinutes,
+          restingHeartRateBpm: prior.restingHeartRateBpm,
+          restingHrvMs: prior.restingHrvMs,
+          createdAtUtc: prior.createdAtUtc,
+          updatedAtUtc: clock().toUtc().toIso8601String(),
+        ),
+      );
+      return true;
+    });
   }
 
   /// Überträgt wartende Ruhewerte in Check-ins, die es inzwischen gibt (z. B.
   /// aus dem Health-Import). Wartende Werte ohne Check-in bleiben liegen.
-  Future<void> flushPendingResting() async {
+  Future<void> flushPendingResting() => _serializedCheckIn(() async {
     final pending = await _readPending();
     if (pending.isEmpty) return;
     final rows = await store.readAggregates(_dailyCheckInType);
-    var changed = false;
     for (final date in [...pending.keys]) {
       final existing = _findCheckInForDay(rows, date);
       if (existing == null) continue;
       final value = pending[date]!;
       final prior = DailyCheckIn.fromJson(_map(existing.workingCopy));
-      await _writeCheckIn(
-        existing: existing,
-        checkIn: _copyCheckIn(
-          prior,
-          restingHeartRateBpm: value.heartRate,
-          restingHrvMs: value.hrv,
-          updatedAtUtc: clock().toUtc().toIso8601String(),
-        ),
-      );
+      try {
+        await _writeCheckIn(
+          existing: existing,
+          checkIn: _copyCheckIn(
+            prior,
+            restingHeartRateBpm: value.heartRate,
+            restingHrvMs: value.hrv,
+            updatedAtUtc: clock().toUtc().toIso8601String(),
+          ),
+        );
+      } on LocalResourceChangedException {
+        // Aufräumarbeit, die das Laden nicht blockieren darf: Der Tag bleibt
+        // wartend und wird beim nächsten Aufruf erneut versucht.
+        continue;
+      }
+      // Sofort entfernen: Wiederholt ein Konflikt bei einem späteren Tag den
+      // Ablauf, wird ein schon geschriebener Tag nicht noch einmal gesendet.
       pending.remove(date);
-      changed = true;
+      await _writePending(pending);
     }
-    if (changed) await _writePending(pending);
-  }
+  });
 
   Future<void> _writeCheckIn({
     required LocalAggregateEnvelope<Object?> existing,
     required DailyCheckIn checkIn,
-  }) => store.commitMutation(
-    MutationDraft(
-      mutationId: ids(),
-      aggregateType: _dailyCheckInType,
-      aggregateId: existing.aggregateId,
-      operation: LocalMutationOperation.update,
-      baseVersion: existing.serverVersion,
-      body: checkIn.toJson(),
-      envelope: _pendingEnvelope(existing, checkIn.toJson()),
-      createdAtUtc: clock().toUtc(),
-    ),
-  );
+  }) async {
+    await beforeCheckInCommitForTesting?.call();
+    await store.commitMutation(
+      MutationDraft(
+        mutationId: ids(),
+        aggregateType: _dailyCheckInType,
+        aggregateId: existing.aggregateId,
+        operation: LocalMutationOperation.update,
+        baseVersion: existing.serverVersion,
+        body: checkIn.toJson(),
+        envelope: _pendingEnvelope(existing, checkIn.toJson()),
+        resourceExpectations: [_expectation(existing.aggregateId, existing)],
+        createdAtUtc: clock().toUtc(),
+      ),
+    );
+  }
 
   Future<String> activateGoal({
     required BodyGoalKind kind,
@@ -379,8 +440,12 @@ class BodyRepository {
   /// Tagessummen und steigen nur, also gewinnt der größere Wert; so
   /// überschreibt ein älterer Health-Stand aus dem offenen Editor keinen
   /// neueren Wert von `HealthStepsSync`.
-  Future<String> saveCheckIn(DailyCheckInInput input) async {
+  Future<String> saveCheckIn(DailyCheckInInput input) {
     validateDailyCheckIn(input);
+    return _serializedCheckIn(() => _saveCheckIn(input));
+  }
+
+  Future<String> _saveCheckIn(DailyCheckInInput input) async {
     final localDate = input.localDate;
     final weightKg = input.weightKg;
     final caloriesKcal = input.caloriesKcal;
@@ -425,6 +490,7 @@ class BodyRepository {
       createdAtUtc: prior?.createdAtUtc ?? now.toIso8601String(),
       updatedAtUtc: now.toIso8601String(),
     );
+    await beforeCheckInCommitForTesting?.call();
     await store.commitMutation(
       MutationDraft(
         mutationId: ids(),
@@ -438,6 +504,7 @@ class BodyRepository {
         envelope: existing == null
             ? localEnvelope(aggregateId: id, workingCopy: checkIn.toJson())
             : _pendingEnvelope(existing, checkIn.toJson()),
+        resourceExpectations: [_expectation(id, existing)],
         createdAtUtc: now,
       ),
     );
@@ -458,13 +525,15 @@ class BodyRepository {
     required double weightKg,
     required bool replaceExistingCheckIn,
     required bool Function() sessionGuard,
-  }) => _importHealthWeight(
-    probeId: probeId,
-    localDate: localDate,
-    weightKg: weightKg,
-    replaceExistingCheckIn: replaceExistingCheckIn,
-    sessionGuard: sessionGuard,
-    attempt: 0,
+  }) => _serializedCheckIn(
+    () => _importHealthWeight(
+      probeId: probeId,
+      localDate: localDate,
+      weightKg: weightKg,
+      replaceExistingCheckIn: replaceExistingCheckIn,
+      sessionGuard: sessionGuard,
+      attempt: 0,
+    ),
   );
 
   Future<HealthCheckInCommitResult> _importHealthWeight({
@@ -535,6 +604,7 @@ class BodyRepository {
       'importedAtUtc': now.toIso8601String(),
     };
     try {
+      await beforeCheckInCommitForTesting?.call();
       await store.commitMutation(
         MutationDraft(
           mutationId: ids(),
@@ -552,14 +622,7 @@ class BodyRepository {
           localMetadataWrites: {
             ledgerKey: {'probes': probes},
           },
-          resourceExpectations: [
-            LocalResourceExpectation(
-              aggregateType: _dailyCheckInType,
-              aggregateId: id,
-              optimisticVersion: existing?.optimisticVersion,
-              serverVersion: existing?.serverVersion,
-            ),
-          ],
+          resourceExpectations: [_expectation(id, existing)],
           mutationGuard: sessionGuard,
           createdAtUtc: now,
         ),
@@ -583,6 +646,18 @@ class BodyRepository {
     );
   }
 }
+
+/// Erwartet beim Commit den gelesenen Stand der Zeile ([existing]) oder, für
+/// einen neuen Check-in, dass es die Zeile noch nicht gibt.
+LocalResourceExpectation _expectation(
+  String id,
+  LocalAggregateEnvelope<Object?>? existing,
+) => LocalResourceExpectation(
+  aggregateType: _dailyCheckInType,
+  aggregateId: id,
+  optimisticVersion: existing?.optimisticVersion,
+  serverVersion: existing?.serverVersion,
+);
 
 DailyCheckIn _copyCheckIn(
   DailyCheckIn prior, {
@@ -644,9 +719,12 @@ Map<String, dynamic> _healthProbes(Object? rawLedger) {
       : <String, dynamic>{};
 }
 
+/// Nur der Ledger-Konflikt: Ein geänderter Check-in
+/// ([LocalResourceChangedException]) wird von [_serializedCheckIn] wiederholt,
+/// eine zweite Wiederholung hier würde die Versuche vervielfachen.
 bool _isRetryableHealthImportError(StateError error) =>
-    error.message.contains('Health import state changed') ||
-    error.message.contains('local resource changed');
+    error is! LocalResourceChangedException &&
+    error.message.contains('Health import state changed');
 
 String _newUuidV4() {
   final random = Random.secure();
