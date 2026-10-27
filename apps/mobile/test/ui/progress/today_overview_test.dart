@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/api/api_models.dart';
 import 'package:gainer_mobile/data/repositories/insights/insights_repository.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
+import 'package:gainer_mobile/domain/models/training/workout_input.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/progress/progress_view_model.dart';
@@ -157,6 +158,31 @@ void main() {
     expect(_rich('4 Trainings in 7 Tagen'), findsOneWidget);
     expect(find.text('Volumen 4.200 kg · 30 Tage'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('training volume is shown in the account unit', (tester) async {
+    _useTallView(tester);
+    final api = _DashboardApi((_) async => _insights(trendKgPerWeek: -0.4));
+    final model = ProgressViewModel(InsightsRepository(api));
+    addTearDown(model.dispose);
+    addTearDown(api.close);
+    await model.load();
+
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.forBrightness(Brightness.light),
+        home: GainerScaffold(
+          title: 'Kalender',
+          children: [
+            TodayTrainingOverview(viewModel: model, weightUnit: WeightUnit.lbs),
+          ],
+        ),
+      ),
+    );
+
+    // 4.200,4 kg = 9.259,7 lbs
+    expect(find.text('Volumen 9.260 lbs · 30 Tage'), findsOneWidget);
+    expect(find.textContaining('kg'), findsNothing);
   });
 
   testWidgets('cards do not overflow at text scale 2', (tester) async {

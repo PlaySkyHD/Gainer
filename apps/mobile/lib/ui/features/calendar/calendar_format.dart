@@ -31,7 +31,7 @@ String calendarGramsOf(double? value, double? target, {int decimals = 0}) {
   return target == null ? '$actual g' : '$actual / ${number(target)} g';
 }
 
-/// Ganze Zahl, die Volumen-Kennzahl der Trainingszeile: „1.200“.
+/// Ganze Zahl, z. B. die Kalorien der Ernährungsübersicht: „1.200“.
 String calendarWholeNumber(double value) =>
     formatCardioNumber(value, maxDecimals: 0);
 

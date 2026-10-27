@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import '../../../domain/models/cardio/cardio_analysis.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/training/training_schedule.dart';
+import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
@@ -37,6 +38,7 @@ class CalendarDayView extends StatelessWidget {
     this.onToday,
     this.liveSteps,
     this.overview,
+    this.weightUnit = WeightUnit.kg,
     super.key,
   });
 
@@ -72,6 +74,9 @@ class CalendarDayView extends StatelessWidget {
 
   /// Dashboard-Daten des früheren Heute-Tabs; nur für heute gesetzt.
   final ProgressViewModel? overview;
+
+  /// Gewichtseinheit des Kontos für das Trainingsvolumen.
+  final WeightUnit weightUnit;
 
   bool get _isToday => day.date == today;
 
@@ -167,7 +172,11 @@ class CalendarDayView extends StatelessWidget {
           onTap: onOpenCheckIn,
         ),
       if (dashboard != null && dashboard.dashboard != null)
-        TodayTrainingOverview(viewModel: dashboard, onTap: onOpenTraining),
+        TodayTrainingOverview(
+          viewModel: dashboard,
+          weightUnit: weightUnit,
+          onTap: onOpenTraining,
+        ),
       ?_checkInSection(dashboard),
     ];
   }
@@ -231,7 +240,7 @@ class CalendarDayView extends StatelessWidget {
             subtitle: [
               formatDurationMinutes(item.duration),
               if (item.volumeKg > 0)
-                'Volumen ${calendarWholeNumber(item.volumeKg)} kg',
+                'Volumen ${formatStatisticsVolume(item.volumeKg, weightUnit)}',
             ].join(' · '),
             leadingIcon: CupertinoIcons.sportscourt,
             showChevron: true,

@@ -8,8 +8,8 @@ import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import '../progress/bodyweight_missing_hint.dart';
 import 'exercise_statistics_view_model.dart';
-import 'training_statistics_view_model.dart'
-    show formatStatisticsVolume, formatStatisticsWeight;
+import 'training_format.dart' show formatStatisticsVolume;
+import 'training_statistics_view_model.dart' show formatStatisticsWeight;
 import 'warmup_sets_row.dart';
 
 /// Tab der Übungsstatistik. Die Übungskarte öffnet den passenden Tab direkt.

@@ -11,7 +11,6 @@ import '../../core/theme.dart';
 import '../cardio/cardio_feature.dart';
 import '../cardio/cardio_offer_card.dart';
 import 'training_format.dart';
-import 'training_statistics_view_model.dart' show formatStatisticsVolume;
 
 /// Ergebnis der Zusammenfassung: „Fertig“ schließt das Training, „Training
 /// fortsetzen“ öffnet es wieder.

@@ -13,7 +13,6 @@ import '../../../domain/models/training/training_statistics.dart';
 import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../cardio/cardio_format.dart' show formatCardioNumber;
-import '../progress/today_overview.dart' show formatGermanNumber;
 
 const _includeWarmupsKey = 'trainingStatistics:includeWarmups';
 
@@ -42,10 +41,6 @@ String formatStatisticsWeight(double? kg, WeightUnit unit) {
   if (kg == null) return '–';
   return '${formatCardioNumber(unit.fromKg(kg))} ${unit.label}';
 }
-
-/// Volumen in der Kontoeinheit mit Tausenderpunkt, z. B. „12.345 kg“.
-String formatStatisticsVolume(double kg, WeightUnit unit) =>
-    '${formatGermanNumber(unit.fromKg(kg))} ${unit.label}';
 
 Future<void> writeIncludeWarmupSets(LocalSyncStore store, bool value) =>
     store.writeSyncMetadata(_includeWarmupsKey, value);

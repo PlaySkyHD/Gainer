@@ -1,5 +1,11 @@
 import '../../../domain/models/cardio/cardio_session.dart';
+import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
+import '../progress/today_overview.dart' show formatGermanNumber;
+
+/// Volumen in der Kontoeinheit mit Tausenderpunkt, z. B. „12.345 kg“.
+String formatStatisticsVolume(double kg, WeightUnit unit) =>
+    '${formatGermanNumber(unit.fromKg(kg))} ${unit.label}';
 
 const _shortMonths = [
   'Jan.',

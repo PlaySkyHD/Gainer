@@ -4,6 +4,7 @@ import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.d
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/domain/models/training/training_schedule.dart';
+import 'package:gainer_mobile/domain/models/training/workout_input.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/core/view_models/mobile_shell_view_model.dart';
 import 'package:gainer_mobile/ui/features/calendar/calendar_format.dart';
@@ -320,6 +321,50 @@ void main() {
     await settle(tester);
     expect(checkInDays, ['2026-10-14']);
     expect(areas, isEmpty);
+  });
+
+  testWidgets('a past day shows the training volume in the account unit', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final harness = await createCalendarHarness(tester);
+    await tester.runAsync(() async {
+      final pull = await harness.plan('Pull');
+      await harness.finishedFromPlan(pull, _oct(14));
+      await harness.repository.preferences.update(
+        (v) => v.copyWith(weightUnit: WeightUnit.lbs),
+      );
+    });
+    await pumpCalendar(tester, harness);
+
+    await tapDay(tester, _oct(14));
+
+    // 1.200 kg = 2.645,5 lbs
+    expect(find.text('58 min · Volumen 2.646 lbs'), findsOneWidget);
+    expect(find.textContaining('kg'), findsNothing);
+  });
+
+  testWidgets('the training overview of today uses the account unit', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final harness = await createCalendarHarness(tester);
+    await tester.runAsync(
+      () => harness.repository.preferences.update(
+        (v) => v.copyWith(weightUnit: WeightUnit.lbs),
+      ),
+    );
+
+    await pumpCalendar(tester, harness, overview: fakeOverview());
+
+    // 42.000 kg = 92.594 lbs
+    expect(find.text('Volumen 92.594 lbs · 30 Tage'), findsOneWidget);
   });
 
   testWidgets('swiping changes the month and "Heute" returns', (tester) async {
