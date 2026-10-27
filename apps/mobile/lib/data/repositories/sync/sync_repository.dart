@@ -12,7 +12,7 @@ import '../../models/local/local_mutation.dart';
 import '../../services/api/api_client.dart';
 import '../../services/local/local_database.dart';
 import '../../services/local/pending_handover_secret_store.dart';
-import 'check_in_day_adoption.dart';
+import 'day_adoption.dart';
 import 'local_conflict_recovery.dart';
 import 'local_sync_store.dart';
 import 'native_handover_repository.dart';
@@ -1200,12 +1200,7 @@ class SyncRepository implements MobileSyncActions {
       );
     } else {
       envelope =
-          await _adoptedLocalCheckIn(
-            aggregateType,
-            change,
-            snapshot,
-            pending,
-          ) ??
+          await _adoptedLocalDay(aggregateType, change, snapshot, pending) ??
           serverEnvelope(
             aggregateId: change.resourceId,
             snapshot: snapshot,
@@ -1242,21 +1237,22 @@ class SyncRepository implements MobileSyncActions {
     }
   }
 
-  /// Ein lokal angelegter, nie bestätigter Check-in desselben Tages wird zur
-  /// wartenden Änderung auf dem gezogenen Check-in
-  /// ([adoptLocalCheckInForDay]).
-  Future<LocalAggregateEnvelope<Object?>?> _adoptedLocalCheckIn(
+  /// Ein lokal angelegter, nie bestätigter Tag (Check-in, Ernährungstag,
+  /// Wassertag) desselben Datums wird zur wartenden Änderung auf dem
+  /// gezogenen Tag ([adoptLocalDay]).
+  Future<LocalAggregateEnvelope<Object?>?> _adoptedLocalDay(
     String aggregateType,
     SyncChangeResponse change,
     Object? snapshot,
     List<LocalOutboxData> pending,
   ) async {
-    if (aggregateType != dailyCheckInAggregateType || pending.isNotEmpty) {
+    if (!isDayAggregateType(aggregateType) || pending.isNotEmpty) {
       return null;
     }
-    return adoptLocalCheckInForDay(
+    return adoptLocalDay(
       database: store.database,
       accountId: store.accountId,
+      aggregateType: aggregateType,
       serverId: change.resourceId,
       snapshot: snapshot,
       version: change.version,

@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/models/local/local_aggregate.dart';
+import 'package:gainer_mobile/data/models/local/local_mutation.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/bls_food_catalog.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
@@ -153,6 +154,51 @@ void main() {
     final ids = (await repository.read('2026-10-12')).day.entries
         .map((entry) => entry.entryId);
     expect(ids, containsAll([_id(1), _id(2), _id(7)]));
+  });
+
+  test('a pull of the server day under another id between reading and '
+      'creating changes the server day (#298)', () async {
+    final serverId = _id(900);
+    var pulled = false;
+    repository.beforeDayCommitForTesting = () async {
+      if (pulled) return;
+      pulled = true;
+      // Der Pull schreibt den Servertag desselben Datums unter eigener ID.
+      await database
+          .into(database.localResources)
+          .insert(
+            LocalResourcesCompanion.insert(
+              aggregateType: 'nutrition-day',
+              aggregateId: serverId,
+              envelopeJson: serverEnvelope(
+                aggregateId: serverId,
+                snapshot: NutritionDay(
+                  localDate: '2026-10-12',
+                  entries: [_entry(7, NutritionMeal.breakfast, 0)],
+                ).toJson(),
+                version: 3,
+              ).encode(),
+              updatedAtEpochMs: 0,
+            ),
+          );
+    };
+
+    await repository.saveEntry(
+      '2026-10-12',
+      _entry(2, NutritionMeal.breakfast, 0),
+    );
+
+    final rows = await repository.store.readAggregates('nutrition-day');
+    expect(rows.map((row) => row.aggregateId), [serverId]);
+    final waiting = (await repository.store.readOutbox(
+      aggregateType: 'nutrition-day',
+    )).single;
+    expect(waiting.aggregateId, serverId);
+    expect(waiting.operation, LocalMutationOperation.update);
+    expect(waiting.baseVersion, 3);
+    final ids = (await repository.read('2026-10-12')).day.entries
+        .map((entry) => entry.entryId);
+    expect(ids, [_id(7), _id(2)]);
   });
 
   test('a day that keeps changing gives up with a German message', () async {

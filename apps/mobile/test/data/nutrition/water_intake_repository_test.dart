@@ -181,6 +181,48 @@ void main() {
     },
   );
 
+  test('a pull of the server day under another id between reading and '
+      'creating changes the server day (#298)', () async {
+    const serverId = '00000000-0000-4000-8000-000000000900';
+    var pulled = false;
+    water.beforeCommitForTesting = () async {
+      if (pulled) return;
+      pulled = true;
+      // Der Pull schreibt den Servertag desselben Datums unter eigener ID,
+      // etwa von einer älteren App-Version angelegt.
+      await database
+          .into(database.localResources)
+          .insert(
+            LocalResourcesCompanion.insert(
+              aggregateType: waterIntakeAggregateType,
+              aggregateId: serverId,
+              envelopeJson: serverEnvelope(
+                aggregateId: serverId,
+                snapshot: const {
+                  'localDate': _day,
+                  'amountMl': 900,
+                  'createdAtUtc': '2026-10-25T06:00:00Z',
+                  'updatedAtUtc': '2026-10-25T06:00:00Z',
+                },
+                version: 3,
+              ).encode(),
+              updatedAtEpochMs: 0,
+            ),
+          );
+    };
+
+    expect(await water.add(_day, 200), 1100);
+
+    final rows = await store.readAggregates(waterIntakeAggregateType);
+    expect(rows.map((row) => row.aggregateId), [serverId]);
+    final mutation = (await outbox()).single;
+    expect(mutation.aggregateId, serverId);
+    expect(mutation.operation, LocalMutationOperation.update);
+    expect(payloadOf(mutation), containsPair('baseVersion', 3));
+    expect(payloadOf(mutation), containsPair('amountMl', 1100));
+    expect(await water.read(_day), 1100);
+  });
+
   test('a day that keeps changing gives up after a few attempts', () async {
     await water.add(_day, 500);
     var version = 0;

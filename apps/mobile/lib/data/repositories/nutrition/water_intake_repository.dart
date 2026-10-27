@@ -62,11 +62,22 @@ class WaterIntakeRepository {
   /// Getrunkene Menge in ml; 0 ohne gespeicherten Tag.
   Future<int> read(String localDate) async {
     _requireDate(localDate);
-    final existing = await store.readAggregate(
+    final existing = await _readDay(localDate);
+    return existing == null ? 0 : _amountOf(existing.workingCopy);
+  }
+
+  /// Zeile von [localDate]: die mit fester ID, sonst eine vom Server unter
+  /// anderer ID gezogene (z. B. von einer älteren App-Version angelegt).
+  Future<LocalAggregateEnvelope<Object?>?> _readDay(String localDate) async {
+    final fixed = await store.readAggregate(
       waterIntakeAggregateType,
       dayIdFor(localDate),
     );
-    return existing == null ? 0 : _amountOf(existing.workingCopy);
+    if (fixed != null) return fixed;
+    return (await store.readAggregates(waterIntakeAggregateType)).where((row) {
+      final working = row.workingCopy;
+      return working is Map && working['localDate'] == localDate;
+    }).firstOrNull;
   }
 
   /// Addiert [addedMl] und liefert die neue Tagesmenge.
@@ -95,15 +106,19 @@ class WaterIntakeRepository {
 
   Future<int> _change(String localDate, int Function(int current) next) async {
     _requireDate(localDate);
-    final id = dayIdFor(localDate);
     for (var attempt = 1; ; attempt++) {
-      final existing = await store.readAggregate(waterIntakeAggregateType, id);
+      final existing = await _readDay(localDate);
       final current = existing == null ? 0 : _amountOf(existing.workingCopy);
       final total = next(current);
       if (existing != null && total == current) return current;
       await beforeCommitForTesting?.call();
       try {
-        await _commit(id, localDate, existing, total);
+        await _commit(
+          existing?.aggregateId ?? dayIdFor(localDate),
+          localDate,
+          existing,
+          total,
+        );
         return total;
       } on LocalResourceChangedException {
         // Ein Pull oder eine Bestätigung kam dazwischen: neu lesen.
@@ -159,6 +174,8 @@ class WaterIntakeRepository {
                 syncState: LocalSyncState.pending,
               ),
         // Gilt der gelesene Stand beim Commit nicht mehr, schlägt er fehl.
+        // Ein neuer Tag erwartet zusätzlich, dass kein Pull den Servertag
+        // desselben Datums unter anderer ID geschrieben hat.
         resourceExpectations: [
           LocalResourceExpectation(
             aggregateType: waterIntakeAggregateType,
@@ -166,6 +183,13 @@ class WaterIntakeRepository {
             optimisticVersion: existing?.optimisticVersion,
             serverVersion: existing?.serverVersion,
           ),
+          if (existing == null)
+            LocalUniqueFieldExpectation(
+              aggregateType: waterIntakeAggregateType,
+              aggregateId: id,
+              field: 'localDate',
+              value: localDate,
+            ),
         ],
         createdAtUtc: now,
       ),
