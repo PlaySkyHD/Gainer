@@ -233,6 +233,41 @@ void main() {
     expect(find.textContaining('nicht verfügbar'), findsNothing);
     expect(find.text('Dein Training ist konstant.'), findsOneWidget);
   });
+
+  testWidgets('Tageslimit zeigt einen eigenen Hinweis', (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _CoachApi((_) async {
+      throw const ApiException(
+        statusCode: 429,
+        code: 'daily_budget_exhausted',
+        message: 'budget',
+      );
+    });
+    final model = CoachViewModel(CoachRepository(api));
+    addTearDown(model.dispose);
+    addTearDown(api.close);
+
+    await tester.pumpWidget(
+      CupertinoApp(
+        theme: GainerTheme.light,
+        home: CoachScreen(viewModel: model),
+      ),
+    );
+    await tester.enterText(find.byType(CupertinoTextField), 'Wie läuft es?');
+    await tester.tap(find.text('Frage senden'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Das Tageslimit für den Coach ist erreicht. Morgen geht es wieder.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('nicht verfügbar'), findsNothing);
+  });
 }
 
 ApiCoachResponse _answer() => const ApiCoachResponse(

@@ -3,9 +3,18 @@ import 'package:flutter/foundation.dart';
 import '../../../data/models/api/api_models.dart';
 import '../../../data/repositories/coach/coach_memory_repository.dart';
 import '../../../data/repositories/insights/insights_repository.dart';
+import '../../../data/services/api/api_client.dart';
 
 /// Zustand eines Gedächtnis-Vorschlags unter einer Coach-Antwort.
 enum CoachSuggestionState { open, saving, saved, dismissed }
+
+/// Verständliche Meldung für einen fehlgeschlagenen Coach-Aufruf.
+String coachErrorMessage(Object error) {
+  if (error is ApiException && error.code == 'daily_budget_exhausted') {
+    return 'Das Tageslimit für den Coach ist erreicht. Morgen geht es wieder.';
+  }
+  return 'Der Coach ist gerade nicht verfügbar. Deine Frage wurde nicht gespeichert.';
+}
 
 class CoachViewModel extends ChangeNotifier {
   CoachViewModel(this.repository, {this.memories, this.online = true});
@@ -102,7 +111,7 @@ class CoachViewModel extends ChangeNotifier {
     } catch (error) {
       if (_disposed) return;
       if (isCoachMemoryOfflineError(error)) memoryOffline = true;
-      errorMessage = 'Der Coach ist gerade nicht verfügbar. Deine Frage wurde nicht gespeichert.';
+      errorMessage = coachErrorMessage(error);
     } finally {
       if (!_disposed) {
         isLoading = false;
