@@ -219,6 +219,43 @@ void main() {
     expect(isEnabled(tester, 'Superset lösen'), isFalse);
   });
 
+  testWidgets('Fertig übernimmt gültige Sätze und schließt das Sheet', (
+    tester,
+  ) async {
+    await tester.runAsync(() => seedExercise(harness, name: 'Seitheben'));
+    await pumpEditor(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('plan-name-field')),
+      'Schultern',
+    );
+    await addExercise(tester, 'Seitheb', 'Seitheben');
+
+    await tester.tap(find.byKey(const ValueKey('plan-entry-0')));
+    await settle(tester);
+    await tester.tap(find.byIcon(CupertinoIcons.minus_circle).last);
+    await settle(tester);
+    await tester.tap(find.text('Fertig'));
+    await settle(tester);
+
+    expect(find.text('Fertig'), findsNothing);
+    expect(find.text('2 Sätze'), findsOneWidget);
+  });
+
+  testWidgets('Superset lösen schließt das Sheet bei gültigen Sätzen', (
+    tester,
+  ) async {
+    final plan = await seedThreeEntryPlan(tester);
+    await pumpEditor(tester, planId: plan.planId);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('plan-entry-1')));
+    await tester.tap(find.byKey(const ValueKey('plan-entry-1')));
+    await settle(tester);
+    await tester.tap(find.text('Superset lösen'));
+    await settle(tester);
+
+    expect(find.text('Superset lösen'), findsNothing);
+  });
+
   testWidgets('Speichern ist beim Laden eines Plans deaktiviert', (
     tester,
   ) async {
