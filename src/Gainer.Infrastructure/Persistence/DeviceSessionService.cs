@@ -100,8 +100,10 @@ internal sealed class DeviceSessionService(
         }
 
         // Within the grace period the previous token stays the reference, so a client whose
-        // response was lost can retry once. The token from the lost response is remembered: if it
-        // shows up later, someone else used the previous token and the session is revoked.
+        // response was lost can retry again and again until the grace period ends. Each retry
+        // discards the last issued token (never used) and remembers it: if it shows up later,
+        // someone else used the previous token and the session is revoked. Once the issued
+        // successor is used, the previous token is replaced and no longer qualifies.
         string token = CreateToken();
         if (presentedCurrent)
         {
@@ -190,8 +192,7 @@ internal sealed class DeviceSessionService(
         session.PreviousRefreshTokenHash is byte[] previous
         && CryptographicOperations.FixedTimeEquals(previous, presentedHash)
         && session.RotatedAt is DateTimeOffset rotatedAt
-        && now - rotatedAt <= settings.ReuseGracePeriod
-        && session.DiscardedAt is null;
+        && now - rotatedAt <= settings.ReuseGracePeriod;
 
     private DateTimeOffset NextExpiry(DeviceSession session, DateTimeOffset now)
     {

@@ -261,7 +261,45 @@ public sealed class AuthenticationApiTests
     }
 
     [TestMethod]
-    public async Task OnlyOneGraceRetryIsAllowedPerRotation()
+    public async Task TwoLostResponsesInARowCanBothBeRetriedWithThePreviousToken()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        TokenResponse third = await RefreshSucceedsAsync(client, first.RefreshToken);
+
+        TokenResponse next = await RefreshSucceedsAsync(client, third.RefreshToken);
+        client.UseAccessToken(next.AccessToken);
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task TokenDiscardedByTheLatestOfSeveralGraceRetriesStillRevokes()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
+        TokenResponse secondRetry = await RefreshSucceedsAsync(client, first.RefreshToken);
+        TokenResponse thirdRetry = await RefreshSucceedsAsync(client, first.RefreshToken);
+
+        using HttpResponseMessage discarded = await BearerTestClient.RefreshAsync(client, secondRetry.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, discarded.StatusCode);
+        using HttpResponseMessage current = await BearerTestClient.RefreshAsync(client, thirdRetry.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, current.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task PreviousTokenGetsNoGraceRetryOnceTheSuccessorWasUsed()
     {
         var timeProvider = new MutableTimeProvider(Start);
         await using WebApplication app = await CreateApplicationAsync(timeProvider);
@@ -270,12 +308,26 @@ public sealed class AuthenticationApiTests
         TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
         _ = await RefreshSucceedsAsync(client, first.RefreshToken);
         TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
+        _ = await RefreshSucceedsAsync(client, retried.RefreshToken);
 
-        using HttpResponseMessage secondRetry = await BearerTestClient.RefreshAsync(client, first.RefreshToken);
-        Assert.AreEqual(HttpStatusCode.Unauthorized, secondRetry.StatusCode);
-        using HttpResponseMessage current = await BearerTestClient.RefreshAsync(client, retried.RefreshToken);
-        Assert.AreEqual(HttpStatusCode.Unauthorized, current.StatusCode);
+        using HttpResponseMessage reused = await BearerTestClient.RefreshAsync(client, first.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, reused.StatusCode);
+    }
 
+    [TestMethod]
+    public async Task GraceRetriesEndWithTheGracePeriod()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
+        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
+
+        timeProvider.Advance(TimeSpan.FromHours(7));
+        using HttpResponseMessage late = await BearerTestClient.RefreshAsync(client, first.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, late.StatusCode);
     }
 
     [TestMethod]
