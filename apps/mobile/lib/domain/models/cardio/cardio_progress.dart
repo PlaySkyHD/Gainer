@@ -114,6 +114,35 @@ class CardioProgress {
         '${formatHoursMinutes(week.totalDuration)}';
   }
 
+  static Duration _timeInZone(CardioSession session, CardioZone zone) {
+    final inZone = session.heartRateBpm
+        .where((bpm) => bpm > 0 && bpm >= zone.lowBpm && bpm < zone.highBpm)
+        .length;
+    return Duration(seconds: inZone * session.sampleIntervalSeconds);
+  }
+
+  static List<CardioEfficiencyPoint> _efficiencyPoints(
+    List<CardioSession> ordered,
+  ) {
+    final points = <CardioEfficiencyPoint>[];
+    for (final session in ordered) {
+      if (session.deletedAtUtc != null) continue;
+      final power = session.averagePowerWatts;
+      final average = CardioAnalysis.of(session).averageBpm;
+      if (power == null || power <= 0 || average == null) continue;
+      points.add(
+        CardioEfficiencyPoint(
+          sessionId: session.sessionId,
+          startedAtUtc: session.startedAtUtc,
+          efficiency: (power / average * 100).round() / 100,
+          averageBpm: average,
+          powerWatts: power,
+        ),
+      );
+    }
+    return points;
+  }
+
   /// Berechnet die Auswertung. [now] bestimmt die laufende Woche (lokal).
   /// [zones] sind die Zonen der aktuellen Einstellungen; ohne sie entfällt
   /// „Zone 2“.
@@ -149,35 +178,11 @@ class CardioProgress {
       targetTime[index] += analysis.timeInZone;
       counts[index]++;
       totals[index] += session.duration;
-      if (zone2 != null) {
-        final inZone = session.heartRateBpm
-            .where(
-              (bpm) => bpm > 0 && bpm >= zone2.lowBpm && bpm < zone2.highBpm,
-            )
-            .length;
-        zone2Time[index] += Duration(
-          seconds: inZone * session.sampleIntervalSeconds,
-        );
-      }
+      if (zone2 != null) zone2Time[index] += _timeInZone(session, zone2);
     }
 
     // Effizienz und Vergleich: alle Einheiten mit Leistung und Puls.
-    final points = <CardioEfficiencyPoint>[];
-    for (final session in ordered) {
-      if (session.deletedAtUtc != null) continue;
-      final power = session.averagePowerWatts;
-      final average = CardioAnalysis.of(session).averageBpm;
-      if (power == null || power <= 0 || average == null) continue;
-      points.add(
-        CardioEfficiencyPoint(
-          sessionId: session.sessionId,
-          startedAtUtc: session.startedAtUtc,
-          efficiency: (power / average * 100).round() / 100,
-          averageBpm: average,
-          powerWatts: power,
-        ),
-      );
-    }
+    final points = _efficiencyPoints(ordered);
 
     final recovered = [
       for (final session in ordered.reversed)

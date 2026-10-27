@@ -118,6 +118,24 @@ double _best(String token, List<String> others) {
   return best;
 }
 
+/// Ähnlichkeit zwischen Anfrage- und Kandidatenwörtern; `null`, wenn kein
+/// starker (nicht schwacher) Treffer vorliegt.
+double? _candidateScore(List<String> query, List<String> tokens) {
+  var queryScore = 0.0;
+  var strong = false;
+  for (final token in query) {
+    final value = _best(token, tokens);
+    queryScore += value;
+    if (value >= 0.6 && !_weakTokens.contains(token)) strong = true;
+  }
+  if (!strong) return null;
+  var candidateScore = 0.0;
+  for (final token in tokens) {
+    candidateScore += _best(token, query);
+  }
+  return queryScore / query.length + 0.5 * candidateScore / tokens.length;
+}
+
 /// Sucht die Katalogübung, deren Name am besten zu [name] passt, und nur
 /// solche mit Muskelangaben. Ohne ausreichend ähnlichen Namen: `null`.
 CatalogExercise? suggestMuscleSource(
@@ -132,20 +150,8 @@ CatalogExercise? suggestMuscleSource(
     if (candidate.primaryMuscles.isEmpty) continue;
     final tokens = _tokens(candidate.name);
     if (tokens.isEmpty) continue;
-    var queryScore = 0.0;
-    var strong = false;
-    for (final token in query) {
-      final value = _best(token, tokens);
-      queryScore += value;
-      if (value >= 0.6 && !_weakTokens.contains(token)) strong = true;
-    }
-    if (!strong) continue;
-    var candidateScore = 0.0;
-    for (final token in tokens) {
-      candidateScore += _best(token, query);
-    }
-    final score =
-        queryScore / query.length + 0.5 * candidateScore / tokens.length;
+    final score = _candidateScore(query, tokens);
+    if (score == null) continue;
     if (score > bestScore ||
         (score == bestScore &&
             best != null &&

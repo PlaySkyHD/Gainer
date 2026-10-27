@@ -27,6 +27,7 @@ class NutritionSaveException implements Exception {
   String toString() => message;
 }
 
+const _invalidCalendarDayMessage = 'Ungültiger Kalendertag.';
 const _nutritionDayType = 'nutrition-day';
 const _reusableMealType = 'reusable-meal';
 const _nutritionTargetScheduleType = 'nutrition-target-schedule';
@@ -300,7 +301,7 @@ class NutritionRepository {
   Future<NutritionSnapshot> read(String localDate) async {
     if (!isValidLocalDate(localDate)) {
       throw const NutritionValidationException({
-        'localDate': 'Ungültiger Kalendertag.',
+        'localDate': _invalidCalendarDayMessage,
       });
     }
     final dayRow = (await store.readAggregates(_nutritionDayType))
@@ -374,7 +375,7 @@ class NutritionRepository {
   readDays(String from, String to) async {
     if (!isValidLocalDate(from) || !isValidLocalDate(to)) {
       throw const NutritionValidationException({
-        'localDate': 'Ungültiger Kalendertag.',
+        'localDate': _invalidCalendarDayMessage,
       });
     }
     return (
@@ -387,7 +388,7 @@ class NutritionRepository {
   Future<NutritionAveragesOverview> readAverages(String today) async {
     if (!isValidLocalDate(today)) {
       throw const NutritionValidationException({
-        'localDate': 'Ungültiger Kalendertag.',
+        'localDate': _invalidCalendarDayMessage,
       });
     }
     return NutritionAveragesOverview(
@@ -506,7 +507,7 @@ class NutritionRepository {
   ) async {
     if (!isValidLocalDate(localDate)) {
       throw const NutritionValidationException({
-        'localDate': 'Ungültiger Kalendertag.',
+        'localDate': _invalidCalendarDayMessage,
       });
     }
     final row = (await store.readAggregates(_nutritionDayType))
@@ -731,31 +732,38 @@ class NutritionRepository {
             ) +
         1;
     for (final component in reusable.components) {
-      // Stückzahl mit der Portion skalieren; Gramm daraus ableiten, damit
-      // beide zusammenpassen.
-      final pieceGrams = component.pieceGrams;
-      final pieceCount = component.pieceCount == null
-          ? null
-          : roundNutrition(component.pieceCount! * scale);
-      entries.add(
-        NutritionEntry(
-          entryId: ids(),
-          meal: meal,
-          position: position++,
-          productName: component.name,
-          brand: component.brand,
-          amountGrams: pieceCount != null && pieceGrams != null
-              ? gramsForPieces(pieceCount, pieceGrams)
-              : roundNutrition(component.amountGrams * scale),
-          per100Grams: component.per100Grams,
-          source: component.source,
-          pieceGrams: pieceGrams,
-          pieceCount: pieceCount,
-        ),
-      );
+      entries.add(_scaledEntry(component, meal, position++, scale));
     }
     await _saveDay(day.withEntries(entries), dayRow);
   });
+
+  NutritionEntry _scaledEntry(
+    ReusableMealComponent component,
+    NutritionMeal meal,
+    int position,
+    double scale,
+  ) {
+    // Stückzahl mit der Portion skalieren; Gramm daraus ableiten, damit
+    // beide zusammenpassen.
+    final pieceGrams = component.pieceGrams;
+    final pieceCount = component.pieceCount == null
+        ? null
+        : roundNutrition(component.pieceCount! * scale);
+    return NutritionEntry(
+      entryId: ids(),
+      meal: meal,
+      position: position,
+      productName: component.name,
+      brand: component.brand,
+      amountGrams: pieceCount != null && pieceGrams != null
+          ? gramsForPieces(pieceCount, pieceGrams)
+          : roundNutrition(component.amountGrams * scale),
+      per100Grams: component.per100Grams,
+      source: component.source,
+      pieceGrams: pieceGrams,
+      pieceCount: pieceCount,
+    );
+  }
 
   /// Legt fest, ob der Tag als Trainings- oder Ruhetag zählt; null hebt die
   /// Festlegung auf. Ein Tag ohne Einträge bleibt mit leerer Liste erhalten.

@@ -58,6 +58,11 @@ class CardioHealthExporter {
     );
   }
 
+  static int _syncVersion(int? serverVersion, int optimisticVersion) {
+    if (serverVersion != null && serverVersion > 0) return serverVersion;
+    return optimisticVersion < 1 ? 1 : optimisticVersion;
+  }
+
   /// Schreibt die Einheit nach Apple Health. Die Version ist die Server-
   /// Version, solange die Einheit synchronisiert ist, sonst die lokale
   /// optimistische Version.
@@ -75,12 +80,7 @@ class CardioHealthExporter {
     if (session.deletedAtUtc != null) {
       throw StateError('Gelöschte Einheiten lassen sich nicht exportieren.');
     }
-    final serverVersion = row.serverVersion;
-    final syncVersion = serverVersion != null && serverVersion > 0
-        ? serverVersion
-        : row.optimisticVersion < 1
-        ? 1
-        : row.optimisticVersion;
+    final syncVersion = _syncVersion(row.serverVersion, row.optimisticVersion);
     try {
       await platform.requestWriteAuthorization();
       final receipt = await platform.exportCardioSession(

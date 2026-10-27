@@ -266,23 +266,9 @@ extension LocalConflictRecovery on LocalSyncStore {
       final payload = jsonDecode(row.payloadJson) as Map<String, dynamic>;
       final body = payload['body'];
       if (payload['operation'] == LocalMutationOperation.reorder.name) {
-        final plans = body is Map ? body['plans'] : null;
-        for (final plan in plans is List ? plans : const []) {
-          final planId = plan is Map ? plan['planId'] : null;
-          if (planId is String) candidates.add(('training-plan', planId));
-        }
+        candidates.addAll(_reorderedPlans(body));
       } else if (payload['operation'] == LocalMutationOperation.merge.name) {
-        // Der Body nennt die umgeschriebenen Trainings und Pläne nicht.
-        // Kandidaten sind alle; zurück gehen nur die ohne eigene Zeile, deren
-        // Stand nur lokal abweicht.
-        for (final type in const ['workout', 'training-plan']) {
-          final resources = await (database.select(
-            database.localResources,
-          )..where((t) => t.aggregateType.equals(type))).get();
-          for (final resource in resources) {
-            candidates.add((type, resource.aggregateId));
-          }
-        }
+        candidates.addAll(await _mergeCandidates());
       }
     }
     if (candidates.isEmpty) return;
@@ -295,31 +281,60 @@ extension LocalConflictRecovery on LocalSyncStore {
     };
     for (final (type, id) in candidates) {
       if (queued.contains((type, id))) continue;
-      final resource =
-          await (database.select(database.localResources)..where(
-                (t) => t.aggregateType.equals(type) & t.aggregateId.equals(id),
-              ))
-              .getSingleOrNull();
-      if (resource == null) continue;
-      final envelope = LocalAggregateEnvelope<Object?>.fromJson(
-        jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
-      );
-      final version = envelope.serverVersion;
-      if (envelope.syncState != LocalSyncState.pending ||
-          envelope.serverSnapshot == null ||
-          version == null) {
-        continue;
-      }
-      final reset = serverEnvelope(
-        aggregateId: envelope.aggregateId,
-        snapshot: envelope.serverSnapshot,
-        version: version,
-      );
-      await (database.update(database.localResources)..where(
-            (t) => t.aggregateType.equals(type) & t.aggregateId.equals(id),
-          ))
-          .write(LocalResourcesCompanion(envelopeJson: Value(reset.encode())));
+      await _resetToServerState(type, id);
     }
+  }
+
+  Iterable<(String, String)> _reorderedPlans(Object? body) {
+    final plans = body is Map ? body['plans'] : null;
+    return [
+      for (final plan in plans is List ? plans : const [])
+        if ((plan is Map ? plan['planId'] : null) case final String planId)
+          (_trainingPlanType, planId),
+    ];
+  }
+
+  /// Der Body nennt die umgeschriebenen Trainings und Pläne nicht.
+  /// Kandidaten sind alle; zurück gehen nur die ohne eigene Zeile, deren
+  /// Stand nur lokal abweicht.
+  Future<List<(String, String)>> _mergeCandidates() async {
+    final candidates = <(String, String)>[];
+    for (final type in const ['workout', _trainingPlanType]) {
+      final resources = await (database.select(
+        database.localResources,
+      )..where((t) => t.aggregateType.equals(type))).get();
+      for (final resource in resources) {
+        candidates.add((type, resource.aggregateId));
+      }
+    }
+    return candidates;
+  }
+
+  Future<void> _resetToServerState(String type, String id) async {
+    final resource =
+        await (database.select(database.localResources)..where(
+              (t) => t.aggregateType.equals(type) & t.aggregateId.equals(id),
+            ))
+            .getSingleOrNull();
+    if (resource == null) return;
+    final envelope = LocalAggregateEnvelope<Object?>.fromJson(
+      jsonDecode(resource.envelopeJson) as Map<String, dynamic>,
+    );
+    final version = envelope.serverVersion;
+    if (envelope.syncState != LocalSyncState.pending ||
+        envelope.serverSnapshot == null ||
+        version == null) {
+      return;
+    }
+    final reset = serverEnvelope(
+      aggregateId: envelope.aggregateId,
+      snapshot: envelope.serverSnapshot,
+      version: version,
+    );
+    await (database.update(database.localResources)..where(
+          (t) => t.aggregateType.equals(type) & t.aggregateId.equals(id),
+        ))
+        .write(LocalResourcesCompanion(envelopeJson: Value(reset.encode())));
   }
 
   /// Ältere App-Versionen setzten dauerhaft abgelehnte Einträge (422) auf
@@ -440,11 +455,14 @@ extension LocalConflictRecovery on LocalSyncStore {
     }
     await _redirectDependencies(rows, replacementMutationId);
 
-    final operation = deleted
-        ? LocalMutationOperation.delete
-        : serverVersion == null
-        ? LocalMutationOperation.create
-        : LocalMutationOperation.update;
+    final LocalMutationOperation operation;
+    if (deleted) {
+      operation = LocalMutationOperation.delete;
+    } else if (serverVersion == null) {
+      operation = LocalMutationOperation.create;
+    } else {
+      operation = LocalMutationOperation.update;
+    }
     final baseVersion = serverVersion ?? 0;
     await database
         .into(database.localOutbox)
@@ -603,6 +621,14 @@ class _ConflictState {
   final ConflictResourceInfo info;
 }
 
+const _trainingPlanType = 'training-plan';
+const _trainingScheduleType = 'training-schedule';
+const _customExerciseType = 'custom-exercise';
+const _exerciseCategoryType = 'exercise-category';
+const _dailyCheckInType = 'daily-check-in';
+const _nutritionDayType = 'nutrition-day';
+const _cardioSessionType = 'cardio-session';
+
 /// Lokaler Typ der Tagesvorlagen.
 const nutritionDayTemplateType = 'nutrition-day-template';
 
@@ -614,14 +640,14 @@ const waterIntakeAggregateType = 'water-intake-day';
 /// (Archivstatus im Body) und Zielplänen fehlt diese Gleichheit.
 const forceableAggregateTypes = {
   'workout',
-  'training-plan',
-  'training-schedule',
-  'custom-exercise',
-  'exercise-category',
-  'daily-check-in',
-  'nutrition-day',
+  _trainingPlanType,
+  _trainingScheduleType,
+  _customExerciseType,
+  _exerciseCategoryType,
+  _dailyCheckInType,
+  _nutritionDayType,
   nutritionDayTemplateType,
-  'cardio-session',
+  _cardioSessionType,
   waterIntakeAggregateType,
 };
 
@@ -678,17 +704,17 @@ bool _spansResources(Object? operation) =>
 
 bool _hasServerType(String aggregateType) => switch (aggregateType) {
   'body-goal' ||
-  'daily-check-in' ||
-  'custom-exercise' ||
-  'exercise-category' ||
-  'training-plan' ||
-  'training-schedule' ||
+  _dailyCheckInType ||
+  _customExerciseType ||
+  _exerciseCategoryType ||
+  _trainingPlanType ||
+  _trainingScheduleType ||
   'workout' ||
-  'nutrition-day' ||
+  _nutritionDayType ||
   'reusable-meal' ||
   'nutrition-target-schedule' ||
   nutritionDayTemplateType ||
-  'cardio-session' ||
+  _cardioSessionType ||
   waterIntakeAggregateType => true,
   _ => false,
 };
@@ -710,9 +736,9 @@ String? _resourceTitle(String aggregateType, Object? workingCopy) {
                 '${started.month.toString().padLeft(2, '0')}.${started.year}';
       final parts = [?title, ?date];
       return parts.isEmpty ? null : parts.join(' · ');
-    case 'daily-check-in' || 'nutrition-day' || waterIntakeAggregateType:
+    case _dailyCheckInType || _nutritionDayType || waterIntakeAggregateType:
       return text('localDate');
-    case 'cardio-session':
+    case _cardioSessionType:
       final started = DateTime.tryParse(text('startedAtUtc') ?? '')?.toLocal();
       final label = CardioActivityType.values
           .where((type) => type.wireName == text('activityType'))
@@ -724,7 +750,7 @@ String? _resourceTitle(String aggregateType, Object? workingCopy) {
                 '${started.month.toString().padLeft(2, '0')}.${started.year}';
       final parts = [?label, ?date];
       return parts.isEmpty ? null : parts.join(' · ');
-    case 'training-schedule':
+    case _trainingScheduleType:
       return 'Rhythmus';
     default:
       return text('name') ?? text('title');
@@ -733,17 +759,17 @@ String? _resourceTitle(String aggregateType, Object? workingCopy) {
 
 String _serverType(String aggregateType) => switch (aggregateType) {
   'body-goal' => 'BodyGoal',
-  'daily-check-in' => 'DailyCheckIn',
-  'custom-exercise' => 'CustomExercise',
-  'exercise-category' => 'ExerciseCategory',
-  'training-plan' => 'TrainingPlan',
-  'training-schedule' => 'TrainingSchedule',
+  _dailyCheckInType => 'DailyCheckIn',
+  _customExerciseType => 'CustomExercise',
+  _exerciseCategoryType => 'ExerciseCategory',
+  _trainingPlanType => 'TrainingPlan',
+  _trainingScheduleType => 'TrainingSchedule',
   'workout' => 'Workout',
-  'nutrition-day' => 'NutritionDay',
+  _nutritionDayType => 'NutritionDay',
   'reusable-meal' => 'ReusableMeal',
   'nutrition-target-schedule' => 'NutritionTargetSchedule',
   nutritionDayTemplateType => 'NutritionDayTemplate',
-  'cardio-session' => 'CardioSession',
+  _cardioSessionType => 'CardioSession',
   waterIntakeAggregateType => 'WaterIntakeDay',
   _ => throw ArgumentError.value(aggregateType, 'aggregateType'),
 };

@@ -105,64 +105,76 @@ class CheckInHealthCoordinator {
     final day = dayWindow(localDate);
     final night = nightWindow(localDate);
 
-    double? weight;
-    var weightChecked = false;
-    var foreignWeight = false;
-    int? steps;
-    HealthSleepWindow? sleep;
-    var sleepChecked = false;
+    final weight = day == null ? null : await _readWeight(day);
+    final steps = day == null ? null : await _readDaySteps(day);
+    final sleep = night == null ? null : await _readNightSleep(night);
+    return CheckInHealthSnapshot(
+      weightKg: weight?.kilograms,
+      weightChecked: weight != null,
+      hasForeignWeight: weight?.foreign ?? false,
+      steps: steps,
+      sleep: sleep?.window,
+      sleepChecked: sleep != null,
+    );
+  }
 
-    if (day != null) {
-      try {
-        final samples = [
-          for (final sample in await platform.readBodyMassSamples(
-            fromUtc: day.from,
-            toUtc: day.to,
-          ))
-            if (sample.weightKilograms.isFinite &&
-                sample.weightKilograms > 0 &&
-                !sample.measuredAtUtc.isBefore(day.from) &&
-                sample.measuredAtUtc.isBefore(day.to))
-              sample,
-        ]..sort((a, b) => a.measuredAtUtc.compareTo(b.measuredAtUtc));
-        weightChecked = true;
-        foreignWeight = samples.any((sample) => !sample.isFromGainer);
-        weight = samples.isEmpty ? null : samples.last.weightKilograms;
-      } catch (error) {
-        _onError(error);
-      }
-      try {
-        final count = await platform.readStepCount(
+  /// Gewicht des Tages; null, wenn das Lesen scheiterte (nicht geprüft).
+  Future<({double? kilograms, bool foreign})?> _readWeight(
+    ({DateTime from, DateTime to}) day,
+  ) async {
+    try {
+      final samples = [
+        for (final sample in await platform.readBodyMassSamples(
           fromUtc: day.from,
           toUtc: day.to,
-        );
-        steps = count != null && count > 0 ? count : null;
-      } catch (error) {
-        _onError(error);
-      }
+        ))
+          if (sample.weightKilograms.isFinite &&
+              sample.weightKilograms > 0 &&
+              !sample.measuredAtUtc.isBefore(day.from) &&
+              sample.measuredAtUtc.isBefore(day.to))
+            sample,
+      ]..sort((a, b) => a.measuredAtUtc.compareTo(b.measuredAtUtc));
+      return (
+        kilograms: samples.isEmpty ? null : samples.last.weightKilograms,
+        foreign: samples.any((sample) => !sample.isFromGainer),
+      );
+    } catch (error) {
+      _onError(error);
+      return null;
     }
-    if (night != null) {
-      try {
-        final window = await platform.readSleep(
-          fromUtc: night.from,
-          toUtc: night.to,
-        );
-        sleepChecked = true;
-        sleep = window != null && window.wakeUtc.isAfter(window.bedtimeUtc)
+  }
+
+  Future<int?> _readDaySteps(({DateTime from, DateTime to}) day) async {
+    try {
+      final count = await platform.readStepCount(
+        fromUtc: day.from,
+        toUtc: day.to,
+      );
+      return count != null && count > 0 ? count : null;
+    } catch (error) {
+      _onError(error);
+      return null;
+    }
+  }
+
+  /// Schlaffenster der Nacht; null, wenn das Lesen scheiterte (nicht geprüft).
+  Future<({HealthSleepWindow? window})?> _readNightSleep(
+    ({DateTime from, DateTime to}) night,
+  ) async {
+    try {
+      final window = await platform.readSleep(
+        fromUtc: night.from,
+        toUtc: night.to,
+      );
+      return (
+        window: window != null && window.wakeUtc.isAfter(window.bedtimeUtc)
             ? window
-            : null;
-      } catch (error) {
-        _onError(error);
-      }
+            : null,
+      );
+    } catch (error) {
+      _onError(error);
+      return null;
     }
-    return CheckInHealthSnapshot(
-      weightKg: weight,
-      weightChecked: weightChecked,
-      hasForeignWeight: foreignWeight,
-      steps: steps,
-      sleep: sleep,
-      sleepChecked: sleepChecked,
-    );
   }
 
   /// Schreibt Gewicht und Schlaf nach Health, sofern keine fremde Probe

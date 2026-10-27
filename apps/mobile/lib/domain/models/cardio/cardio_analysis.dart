@@ -44,25 +44,13 @@ class CardioAnalysis {
       for (final bpm in heartRateBpm)
         if (bpm > 0) bpm,
     ];
-    // Mit Phasen zählt je Intervall die Phase zu dessen Startzeit; ohne
-    // Phasen der feste Zielbereich. Intervalle ohne Ziel zählen nicht.
-    var inZone = 0;
-    var targeted = withSignal.length;
-    if (phases.isNotEmpty) {
-      targeted = 0;
-      for (var i = 0; i < heartRateBpm.length; i++) {
-        final bpm = heartRateBpm[i];
-        if (bpm <= 0) continue;
-        final target = CardioPhase.at(phases, i * sampleIntervalSeconds)?.zone;
-        if (target == null) continue;
-        targeted++;
-        if (target.contains(bpm)) inZone++;
-      }
-    } else if (zone == null) {
-      targeted = 0;
-    } else {
-      inZone = withSignal.where((bpm) => zone.contains(bpm)).length;
-    }
+    final (:inZone, :targeted) = _zoneCounts(
+      heartRateBpm: heartRateBpm,
+      withSignal: withSignal,
+      sampleIntervalSeconds: sampleIntervalSeconds,
+      zone: zone,
+      phases: phases,
+    );
     return CardioAnalysis(
       activeDuration: activeDuration.isNegative
           ? Duration.zero
@@ -75,6 +63,35 @@ class CardioAnalysis {
       zoneShare: targeted == 0 ? null : inZone / targeted,
       rmssdMs: rmssd(rrIntervalsMs),
     );
+  }
+
+  /// Mit Phasen zählt je Intervall die Phase zu dessen Startzeit; ohne
+  /// Phasen der feste Zielbereich. Intervalle ohne Ziel zählen nicht.
+  static ({int inZone, int targeted}) _zoneCounts({
+    required List<int> heartRateBpm,
+    required List<int> withSignal,
+    required int sampleIntervalSeconds,
+    required CardioTargetZone? zone,
+    required List<CardioPhase> phases,
+  }) {
+    if (phases.isEmpty) {
+      if (zone == null) return (inZone: 0, targeted: 0);
+      return (
+        inZone: withSignal.where((bpm) => zone.contains(bpm)).length,
+        targeted: withSignal.length,
+      );
+    }
+    var inZone = 0;
+    var targeted = 0;
+    for (var i = 0; i < heartRateBpm.length; i++) {
+      final bpm = heartRateBpm[i];
+      if (bpm <= 0) continue;
+      final target = CardioPhase.at(phases, i * sampleIntervalSeconds)?.zone;
+      if (target == null) continue;
+      targeted++;
+      if (target.contains(bpm)) inZone++;
+    }
+    return (inZone: inZone, targeted: targeted);
   }
 
   final Duration activeDuration;

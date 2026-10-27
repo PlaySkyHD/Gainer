@@ -78,19 +78,23 @@ class CardioPhase {
     if (phases.isEmpty || phases.length > maxPhases) return false;
     var cursor = 0;
     for (final phase in phases) {
-      final name = phase.name.trim();
-      if (name.isEmpty || name.length > maxNameLength) return false;
-      if (phase.durationSeconds < minDurationSeconds ||
-          phase.durationSeconds > maxDurationSeconds) {
-        return false;
-      }
-      if (phase.startOffsetSeconds < cursor) return false;
-      if ((phase.lowBpm == null) != (phase.highBpm == null)) return false;
-      final zone = phase.zone;
-      if (zone != null && !zone.isValid) return false;
+      if (!_isValidPhase(phase, cursor)) return false;
       cursor = phase.endOffsetSeconds;
     }
     return cursor <= maxTotalSeconds;
+  }
+
+  static bool _isValidPhase(CardioPhase phase, int cursor) {
+    final name = phase.name.trim();
+    if (name.isEmpty || name.length > maxNameLength) return false;
+    if (phase.durationSeconds < minDurationSeconds ||
+        phase.durationSeconds > maxDurationSeconds) {
+      return false;
+    }
+    if (phase.startOffsetSeconds < cursor) return false;
+    if ((phase.lowBpm == null) != (phase.highBpm == null)) return false;
+    final zone = phase.zone;
+    return zone == null || zone.isValid;
   }
 }
 
@@ -338,32 +342,36 @@ class CardioTemplate {
       return 'Höchstens ${CardioPhase.maxPhases} Phasen sind möglich.';
     }
     for (var i = 0; i < phases.length; i++) {
-      final phase = phases[i];
-      final label = 'Phase ${i + 1}';
-      final phaseName = phase.name.trim();
-      if (phaseName.isEmpty) return '$label braucht einen Namen.';
-      if (phaseName.length > CardioPhase.maxNameLength) {
-        return '$label: Der Name darf höchstens '
-            '${CardioPhase.maxNameLength} Zeichen haben.';
-      }
-      if (phase.durationSeconds < CardioPhase.minDurationSeconds ||
-          phase.durationSeconds > CardioPhase.maxDurationSeconds) {
-        return '$label: Die Dauer muss zwischen 0:30 und 60:00 liegen.';
-      }
-      final target = phase.target;
-      if (target is CardioZoneTarget &&
-          (target.number < 1 || target.number > 5)) {
-        return '$label: Zone 1 bis 5 wählen.';
-      }
-      if (target is CardioBpmTarget &&
-          !CardioTargetZone(lowBpm: target.low, highBpm: target.high).isValid) {
-        return '$label: Der Pulsbereich muss zwischen '
-            '${CardioTargetZone.minBpm} und ${CardioTargetZone.maxBpm} bpm '
-            'liegen, unten kleiner als oben.';
-      }
+      final error = _validatePhase(phases[i], 'Phase ${i + 1}');
+      if (error != null) return error;
     }
     if (totalSeconds > CardioPhase.maxTotalSeconds) {
       return 'Die Vorlage darf höchstens 4 Stunden dauern.';
+    }
+    return null;
+  }
+
+  static String? _validatePhase(CardioTemplatePhase phase, String label) {
+    final phaseName = phase.name.trim();
+    if (phaseName.isEmpty) return '$label braucht einen Namen.';
+    if (phaseName.length > CardioPhase.maxNameLength) {
+      return '$label: Der Name darf höchstens '
+          '${CardioPhase.maxNameLength} Zeichen haben.';
+    }
+    if (phase.durationSeconds < CardioPhase.minDurationSeconds ||
+        phase.durationSeconds > CardioPhase.maxDurationSeconds) {
+      return '$label: Die Dauer muss zwischen 0:30 und 60:00 liegen.';
+    }
+    final target = phase.target;
+    if (target is CardioZoneTarget &&
+        (target.number < 1 || target.number > 5)) {
+      return '$label: Zone 1 bis 5 wählen.';
+    }
+    if (target is CardioBpmTarget &&
+        !CardioTargetZone(lowBpm: target.low, highBpm: target.high).isValid) {
+      return '$label: Der Pulsbereich muss zwischen '
+          '${CardioTargetZone.minBpm} und ${CardioTargetZone.maxBpm} bpm '
+          'liegen, unten kleiner als oben.';
     }
     return null;
   }

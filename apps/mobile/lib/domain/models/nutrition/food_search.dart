@@ -59,6 +59,23 @@ class FoodSearchIndex {
       return FoodSearchResult.empty;
     }
     final matchers = [for (final term in terms) _TermMatcher.of(term, this)];
+    final hits = _hits(matchers);
+    if (hits.isEmpty) return FoodSearchResult.empty;
+    final best = hits.fold<int>(
+      0,
+      (max, hit) => hit.matched > max ? hit.matched : max,
+    );
+    final ranked = hits.where((hit) => hit.matched == best).toList()
+      ..sort(_compareHits);
+    return FoodSearchResult(
+      List.unmodifiable([
+        for (final hit in ranked.take(limit)) _foods[hit.index],
+      ]),
+      partial: best < terms.length,
+    );
+  }
+
+  List<_Hit> _hits(List<_TermMatcher> matchers) {
     final hits = <_Hit>[];
     for (var index = 0; index < _foods.length; index++) {
       final words = _words[index];
@@ -73,26 +90,16 @@ class FoodSearchIndex {
       }
       if (matched > 0) hits.add(_Hit(index, matched, score));
     }
-    if (hits.isEmpty) return FoodSearchResult.empty;
-    final best = hits.fold<int>(
-      0,
-      (max, hit) => hit.matched > max ? hit.matched : max,
+    return hits;
+  }
+
+  int _compareHits(_Hit a, _Hit b) {
+    final byScore = b.score.compareTo(a.score);
+    if (byScore != 0) return byScore;
+    final byLength = _foods[a.index].name.length.compareTo(
+      _foods[b.index].name.length,
     );
-    final ranked = hits.where((hit) => hit.matched == best).toList()
-      ..sort((a, b) {
-        final byScore = b.score.compareTo(a.score);
-        if (byScore != 0) return byScore;
-        final byLength = _foods[a.index].name.length.compareTo(
-          _foods[b.index].name.length,
-        );
-        return byLength != 0 ? byLength : a.index.compareTo(b.index);
-      });
-    return FoodSearchResult(
-      List.unmodifiable([
-        for (final hit in ranked.take(limit)) _foods[hit.index],
-      ]),
-      partial: best < terms.length,
-    );
+    return byLength != 0 ? byLength : a.index.compareTo(b.index);
   }
 
   /// Wörter des Katalogs mit höchstens einer Abweichung zu [term].
@@ -102,6 +109,19 @@ class FoodSearchIndex {
         if (_withinOneEdit(term, word)) word,
   };
 
+  void _extendSplit(List<List<String>?> best, String term, int start, int end) {
+    final prefix = best[start];
+    if (prefix == null) return;
+    final part = term.substring(start, end);
+    // Das ganze Wort ist kein Teil; gesucht sind mindestens zwei.
+    if (part.length == term.length || !_vocabulary.contains(part)) return;
+    final candidate = [...prefix, part];
+    final current = best[end];
+    if (current == null || candidate.length < current.length) {
+      best[end] = candidate;
+    }
+  }
+
   /// Zerlegt [term] in möglichst wenige Wörter des Katalogs (je mindestens
   /// drei Buchstaben); null, wenn das nicht in mindestens zwei Teile geht.
   List<String>? _split(String term) {
@@ -110,18 +130,7 @@ class FoodSearchIndex {
     best[0] = const [];
     for (var end = _minPartLength; end <= term.length; end++) {
       for (var start = 0; start <= end - _minPartLength; start++) {
-        final prefix = best[start];
-        if (prefix == null) continue;
-        final part = term.substring(start, end);
-        // Das ganze Wort ist kein Teil; gesucht sind mindestens zwei.
-        if (part.length == term.length || !_vocabulary.contains(part)) {
-          continue;
-        }
-        final candidate = [...prefix, part];
-        final current = best[end];
-        if (current == null || candidate.length < current.length) {
-          best[end] = candidate;
-        }
+        _extendSplit(best, term, start, end);
       }
     }
     final parts = best[term.length];
@@ -188,16 +197,27 @@ class _TermMatcher {
     var sum = 0.0;
     var firstWord = false;
     for (var p = 0; p < parts.length; p++) {
-      var partBest = 0.0;
-      for (var i = 0; i < words.length; i++) {
-        final value = _wordScore(parts[p], words[i]).toDouble();
-        if (value > partBest) partBest = value;
-        if (value > 0 && i == 0) firstWord = true;
-      }
+      final (:best, :hitsFirst) = _bestPartScore(parts[p], words);
+      final partBest = best;
+      if (hitsFirst) firstWord = true;
       if (partBest == 0) return 0;
       sum += p == parts.length - 1 ? partBest * 2 : partBest;
     }
     return sum / (parts.length + 1) + (firstWord ? 1 : 0);
+  }
+
+  static ({double best, bool hitsFirst}) _bestPartScore(
+    String part,
+    List<String> words,
+  ) {
+    var best = 0.0;
+    var hitsFirst = false;
+    for (var i = 0; i < words.length; i++) {
+      final value = _wordScore(part, words[i]).toDouble();
+      if (value > best) best = value;
+      if (value > 0 && i == 0) hitsFirst = true;
+    }
+    return (best: best, hitsFirst: hitsFirst);
   }
 
   static double _bestWordScore(String variant, List<String> words) {
