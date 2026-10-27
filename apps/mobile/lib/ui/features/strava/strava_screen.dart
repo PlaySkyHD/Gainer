@@ -5,6 +5,8 @@ import '../../../data/repositories/strava/strava_service.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 
+const _connectLabel = 'Mit Strava verbinden';
+
 /// Strava verbinden und einstellen, welche Arten automatisch gesendet werden.
 class StravaScreen extends StatefulWidget {
   const StravaScreen({required this.service, required this.online, super.key});
@@ -178,24 +180,7 @@ class _StravaScreenState extends State<StravaScreen> {
       ];
     }
     final status = _status;
-    if (!widget.online || status == null) {
-      return [
-        GainerGroupedSection(
-          footer: widget.online
-              ? null
-              : 'Strava lässt sich nur mit Verbindung verwalten.',
-          children: [
-            GainerListRow(
-              title: widget.online ? 'Erneut laden' : 'Mit Strava verbinden',
-              leadingIcon: widget.online
-                  ? CupertinoIcons.arrow_clockwise
-                  : CupertinoIcons.link,
-              onTap: widget.online ? _load : null,
-            ),
-          ],
-        ),
-      ];
-    }
+    if (!widget.online || status == null) return [_unavailableSection()];
     if (!status.configured) {
       return const [
         GainerGroupedSection(
@@ -204,7 +189,7 @@ class _StravaScreenState extends State<StravaScreen> {
               'Strava-App-Zugang lässt sich kein Konto verbinden.',
           children: [
             GainerListRow(
-              title: 'Mit Strava verbinden',
+              title: _connectLabel,
               leadingIcon: CupertinoIcons.link,
             ),
           ],
@@ -217,10 +202,29 @@ class _StravaScreenState extends State<StravaScreen> {
           footer:
               'Gainer sendet neue Cardio-Einheiten mit Pulskurve an Strava. '
               'Krafttraining kannst du danach getrennt einschalten.',
-          children: [_connectRow('Mit Strava verbinden')],
+          children: [_connectRow(_connectLabel)],
         ),
       ];
     }
+    return _connectedSections(status);
+  }
+
+  Widget _unavailableSection() => GainerGroupedSection(
+    footer: widget.online
+        ? null
+        : 'Strava lässt sich nur mit Verbindung verwalten.',
+    children: [
+      GainerListRow(
+        title: widget.online ? 'Erneut laden' : _connectLabel,
+        leadingIcon: widget.online
+            ? CupertinoIcons.arrow_clockwise
+            : CupertinoIcons.link,
+        onTap: widget.online ? _load : null,
+      ),
+    ],
+  );
+
+  List<Widget> _connectedSections(ApiStravaStatus status) {
     return [
       GainerGroupedSection(
         footer: status.needsReconnect

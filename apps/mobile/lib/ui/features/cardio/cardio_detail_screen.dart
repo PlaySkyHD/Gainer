@@ -521,7 +521,7 @@ class _CardioDetailScreenState extends State<CardioDetailScreen> {
               : null),
       children: [
         if (_export.exported)
-          GainerListRow(
+          const GainerListRow(
             title: 'In Apple Health gesichert',
             leadingIcon: CupertinoIcons.checkmark_circle_fill,
           )

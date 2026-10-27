@@ -112,41 +112,58 @@ class CardioLinePainter extends CustomPainter {
             plot.height * (point.y - range.low) / (range.high - range.low),
       );
       if (index == 0 && axisFormat != null) {
-        for (final fraction in [0.0, 0.5, 1.0]) {
-          final value = range.low + (range.high - range.low) * fraction;
-          final label = TextPainter(
-            text: TextSpan(text: axisFormat!(value), style: labelStyle),
-            textDirection: TextDirection.ltr,
-          )..layout();
-          label.paint(
-            canvas,
-            Offset(
-              axisWidth - label.width - 6,
-              plot.bottom - plot.height * fraction - label.height / 2,
-            ),
-          );
-        }
+        _paintAxisLabels(canvas, plot, range, axisFormat!);
       }
-      final stroke = Paint()
-        ..color = line.color
-        ..strokeWidth = 2.5
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..style = PaintingStyle.stroke;
-      final path = Path();
-      for (var i = 0; i < line.points.length; i++) {
-        final offset = at(line.points[i]);
-        if (i == 0) {
-          path.moveTo(offset.dx, offset.dy);
-        } else {
-          path.lineTo(offset.dx, offset.dy);
-        }
+      _paintLine(canvas, line, at);
+    }
+  }
+
+  void _paintAxisLabels(
+    Canvas canvas,
+    Rect plot,
+    ({double low, double high}) range,
+    String Function(double value) format,
+  ) {
+    for (final fraction in [0.0, 0.5, 1.0]) {
+      final value = range.low + (range.high - range.low) * fraction;
+      final label = TextPainter(
+        text: TextSpan(text: format(value), style: labelStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      label.paint(
+        canvas,
+        Offset(
+          axisWidth - label.width - 6,
+          plot.bottom - plot.height * fraction - label.height / 2,
+        ),
+      );
+    }
+  }
+
+  void _paintLine(
+    Canvas canvas,
+    ChartSeries line,
+    Offset Function(ChartPoint point) at,
+  ) {
+    final stroke = Paint()
+      ..color = line.color
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    final path = Path();
+    for (var i = 0; i < line.points.length; i++) {
+      final offset = at(line.points[i]);
+      if (i == 0) {
+        path.moveTo(offset.dx, offset.dy);
+      } else {
+        path.lineTo(offset.dx, offset.dy);
       }
-      if (line.points.length > 1) canvas.drawPath(path, stroke);
-      final dot = Paint()..color = line.color;
-      for (final point in line.points) {
-        canvas.drawCircle(at(point), 3, dot);
-      }
+    }
+    if (line.points.length > 1) canvas.drawPath(path, stroke);
+    final dot = Paint()..color = line.color;
+    for (final point in line.points) {
+      canvas.drawCircle(at(point), 3, dot);
     }
   }
 

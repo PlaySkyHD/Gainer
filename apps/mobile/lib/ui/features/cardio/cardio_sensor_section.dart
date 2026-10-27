@@ -58,40 +58,11 @@ class _CardioSensorSectionState extends State<CardioSensorSection> {
     final session = _session;
     final problem = session.bluetoothProblem;
     final name = session.sensorName;
-    final others = [
-      for (final sensor in session.sensors)
-        if (sensor.id != session.sensorId) sensor,
-    ];
     return GainerGroupedSection(
       header: 'Gurt',
       footer: name == null ? widget.footerWithoutSensor : null,
       children: [
-        if (problem != null)
-          Padding(
-            padding: const EdgeInsets.all(GainerSpacing.m),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  bluetoothProblemText(problem),
-                  key: const ValueKey('cardio-bluetooth-problem'),
-                  style: GainerTypography.body.copyWith(
-                    color: colors.destructive,
-                  ),
-                ),
-                if (problem != BluetoothProblem.unsupported &&
-                    session.openSettings != null) ...[
-                  const SizedBox(height: GainerSpacing.s),
-                  GainerPillButton(
-                    key: const ValueKey('cardio-open-settings'),
-                    label: 'Einstellungen öffnen',
-                    variant: GainerPillVariant.tonal,
-                    onPressed: session.openSettings,
-                  ),
-                ],
-              ],
-            ),
-          ),
+        if (problem != null) _problemBlock(colors, session, problem),
         if (name != null)
           GainerListRow(
             title: name,
@@ -101,47 +72,83 @@ class _CardioSensorSectionState extends State<CardioSensorSection> {
             ),
             leadingIcon: CupertinoIcons.heart_fill,
           ),
-        if (problem == null) ...[
-          GainerListRow(
-            key: const ValueKey('cardio-scan'),
-            title: name == null ? 'Gurt suchen' : 'Anderen Gurt suchen',
-            leadingIcon: CupertinoIcons.search,
-            trailing: session.isScanning
-                ? const CupertinoActivityIndicator()
-                : null,
-            onTap: session.isScanning ? null : _scan,
-          ),
-          for (final sensor in others)
-            GainerListRow(
-              key: ValueKey('cardio-sensor-${sensor.id}'),
-              title: sensor.name,
-              subtitle: sensor.isConnected ? 'Verbunden' : null,
-              leadingIcon: CupertinoIcons.antenna_radiowaves_left_right,
-              onTap: () => _connect(sensor),
-            ),
-          if (_scanned && !session.isScanning && others.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(GainerSpacing.m),
-              child: Text(
-                'Kein Gurt gefunden. Lege den Gurt an und prüfe, ob er nicht '
-                'mit einem anderen Gerät verbunden ist.',
-                style: GainerTypography.label.copyWith(
-                  color: colors.secondaryText,
-                ),
-              ),
-            ),
-          if (_error case final error?)
-            Padding(
-              padding: const EdgeInsets.all(GainerSpacing.m),
-              child: Text(
-                error,
-                style: GainerTypography.label.copyWith(
-                  color: colors.destructive,
-                ),
-              ),
-            ),
-        ],
+        if (problem == null) ..._scanRows(colors, session, name),
       ],
     );
+  }
+
+  Widget _problemBlock(
+    GainerColors colors,
+    CardioSessionController session,
+    BluetoothProblem problem,
+  ) => Padding(
+    padding: const EdgeInsets.all(GainerSpacing.m),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          bluetoothProblemText(problem),
+          key: const ValueKey('cardio-bluetooth-problem'),
+          style: GainerTypography.body.copyWith(color: colors.destructive),
+        ),
+        if (problem != BluetoothProblem.unsupported &&
+            session.openSettings != null) ...[
+          const SizedBox(height: GainerSpacing.s),
+          GainerPillButton(
+            key: const ValueKey('cardio-open-settings'),
+            label: 'Einstellungen öffnen',
+            variant: GainerPillVariant.tonal,
+            onPressed: session.openSettings,
+          ),
+        ],
+      ],
+    ),
+  );
+
+  List<Widget> _scanRows(
+    GainerColors colors,
+    CardioSessionController session,
+    String? name,
+  ) {
+    final others = [
+      for (final sensor in session.sensors)
+        if (sensor.id != session.sensorId) sensor,
+    ];
+    return [
+      GainerListRow(
+        key: const ValueKey('cardio-scan'),
+        title: name == null ? 'Gurt suchen' : 'Anderen Gurt suchen',
+        leadingIcon: CupertinoIcons.search,
+        trailing: session.isScanning
+            ? const CupertinoActivityIndicator()
+            : null,
+        onTap: session.isScanning ? null : _scan,
+      ),
+      for (final sensor in others)
+        GainerListRow(
+          key: ValueKey('cardio-sensor-${sensor.id}'),
+          title: sensor.name,
+          subtitle: sensor.isConnected ? 'Verbunden' : null,
+          leadingIcon: CupertinoIcons.antenna_radiowaves_left_right,
+          onTap: () => _connect(sensor),
+        ),
+      if (_scanned && !session.isScanning && others.isEmpty)
+        Padding(
+          padding: const EdgeInsets.all(GainerSpacing.m),
+          child: Text(
+            'Kein Gurt gefunden. Lege den Gurt an und prüfe, ob er nicht '
+            'mit einem anderen Gerät verbunden ist.',
+            style: GainerTypography.label.copyWith(color: colors.secondaryText),
+          ),
+        ),
+      if (_error case final error?)
+        Padding(
+          padding: const EdgeInsets.all(GainerSpacing.m),
+          child: Text(
+            error,
+            style: GainerTypography.label.copyWith(color: colors.destructive),
+          ),
+        ),
+    ];
   }
 }

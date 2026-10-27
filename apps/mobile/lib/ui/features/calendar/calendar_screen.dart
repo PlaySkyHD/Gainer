@@ -326,9 +326,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       listenable: _viewModel,
       builder: (context, _) {
         final model = _viewModel;
-        final colors = GainerDesign.colorsOf(context);
-        final projection = model.projection;
-        final day = model.selectedDay;
         return GainerScaffold(
           title: 'Übersicht',
           onRefresh: _reloadAll,
@@ -350,58 +347,64 @@ class _CalendarScreenState extends State<CalendarScreen> {
               onPressed: _openSchedule,
             ),
           ],
-          children: [
-            if (model.errorMessage case final message?) ...[
-              Text(
-                message,
-                style: GainerTypography.body.copyWith(color: colors.warning),
-              ),
-              const SizedBox(height: GainerSpacing.m),
-            ],
-            if (projection == null || day == null)
-              if (model.isLoading)
-                const Center(child: CupertinoActivityIndicator())
-              else
-                const SizedBox.shrink()
-            else
-              CalendarDayView(
-                day: day,
-                today: model.today,
-                projection: projection,
-                overview: widget.overview,
-                onStart: _start,
-                onSetup: _openSchedule,
-                onActions: _openActions,
-                onOpenWorkout: _openWorkout,
-                onOpenCardio: widget.cardio == null ? null : _openCardio,
-                onOpenNutrition: () =>
-                    widget.onOpenNutritionDay?.call(model.selected.toIso()),
-                onOpenCheckIn: () => widget.onOpenCheckInDay == null
-                    ? widget.onOpenArea?.call(MobileArea.body)
-                    : widget.onOpenCheckInDay!(model.selected.toIso()),
-                onDayKind: () => _chooseDayKind(day),
-                onOpenTraining: () =>
-                    widget.onOpenArea?.call(MobileArea.training),
-                // Neben der Datumsüberschrift statt in der Kopfzeile: Dort
-                // läge es bei langen Daten über dem Pfeil der Tages-Pille.
-                onToday: model.selected == model.today ? null : model.goToToday,
-                liveSteps: _todaySteps,
-              ),
-            // Der Kalender steht unten: Meist interessiert der heutige Tag.
-            const SizedBox(height: GainerSpacing.l),
-            CalendarMonthGrid(
-              key: _monthGrid,
-              month: model.month,
-              today: model.today,
-              selected: model.selected,
-              markersOf: (date) =>
-                  model.day(date)?.markersFor(model.today) ?? const [],
-              onSelect: _selectFromGrid,
-              onChangeMonth: model.changeMonth,
-            ),
-          ],
+          children: _children(model),
         );
       },
     );
+  }
+
+  List<Widget> _children(CalendarViewModel model) {
+    final colors = GainerDesign.colorsOf(context);
+    final projection = model.projection;
+    final day = model.selectedDay;
+    return [
+      if (model.errorMessage case final message?) ...[
+        Text(
+          message,
+          style: GainerTypography.body.copyWith(color: colors.warning),
+        ),
+        const SizedBox(height: GainerSpacing.m),
+      ],
+      if (projection == null || day == null)
+        if (model.isLoading)
+          const Center(child: CupertinoActivityIndicator())
+        else
+          const SizedBox.shrink()
+      else
+        CalendarDayView(
+          day: day,
+          today: model.today,
+          projection: projection,
+          overview: widget.overview,
+          onStart: _start,
+          onSetup: _openSchedule,
+          onActions: _openActions,
+          onOpenWorkout: _openWorkout,
+          onOpenCardio: widget.cardio == null ? null : _openCardio,
+          onOpenNutrition: () =>
+              widget.onOpenNutritionDay?.call(model.selected.toIso()),
+          onOpenCheckIn: () => widget.onOpenCheckInDay == null
+              ? widget.onOpenArea?.call(MobileArea.body)
+              : widget.onOpenCheckInDay!(model.selected.toIso()),
+          onDayKind: () => _chooseDayKind(day),
+          onOpenTraining: () => widget.onOpenArea?.call(MobileArea.training),
+          // Neben der Datumsüberschrift statt in der Kopfzeile: Dort
+          // läge es bei langen Daten über dem Pfeil der Tages-Pille.
+          onToday: model.selected == model.today ? null : model.goToToday,
+          liveSteps: _todaySteps,
+        ),
+      // Der Kalender steht unten: Meist interessiert der heutige Tag.
+      const SizedBox(height: GainerSpacing.l),
+      CalendarMonthGrid(
+        key: _monthGrid,
+        month: model.month,
+        today: model.today,
+        selected: model.selected,
+        markersOf: (date) =>
+            model.day(date)?.markersFor(model.today) ?? const [],
+        onSelect: _selectFromGrid,
+        onChangeMonth: model.changeMonth,
+      ),
+    ];
   }
 }

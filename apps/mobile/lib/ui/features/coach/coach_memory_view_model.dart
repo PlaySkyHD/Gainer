@@ -107,29 +107,40 @@ class CoachMemoryViewModel extends ChangeNotifier {
     required String text,
   }) async {
     Object? failure;
-    final saved = await _change(() async {
-      if (id == null) {
-        _put(await repository.create(category, text));
-      } else {
-        final base = items.where((item) => item.id == id).firstOrNull;
-        _put(
-          await repository.update(
-            id,
-            category,
-            text,
-            baseVersion: base?.version,
-            unknownCategory: base?.category == category
-                ? base?.unknownCategory
-                : null,
-          ),
-        );
-      }
-    }, onError: (error) => failure = error);
+    final saved = await _change(
+      () async => _put(await _write(id, category, text)),
+      onError: (error) => failure = error,
+    );
     if (saved) return null;
     final error = failure;
     if (error == null) {
       return CoachMemorySaveFailure(isOffline ? _offlineReason : _busyReason);
     }
+    return _saveFailure(error, id: id);
+  }
+
+  Future<ApiCoachMemory> _write(
+    String? id,
+    CoachMemoryCategory category,
+    String text,
+  ) {
+    if (id == null) return repository.create(category, text);
+    final base = items.where((item) => item.id == id).firstOrNull;
+    return repository.update(
+      id,
+      category,
+      text,
+      baseVersion: base?.version,
+      unknownCategory: base?.category == category
+          ? base?.unknownCategory
+          : null,
+    );
+  }
+
+  Future<CoachMemorySaveFailure> _saveFailure(
+    Object error, {
+    String? id,
+  }) async {
     final message = coachMemoryErrorMessage(error);
     if (id != null && isCoachMemoryGoneError(error)) {
       final reloaded = await load();
@@ -140,8 +151,9 @@ class CoachMemoryViewModel extends ChangeNotifier {
       );
     }
     if (isCoachMemoryConflictError(error)) {
+      final reloaded = await load();
       return CoachMemorySaveFailure(
-        await load()
+        reloaded
             ? '$message Die Liste ist neu geladen; sichere erneut, um deine '
                   'Fassung zu übernehmen.'
             : '$message Lade die Liste neu, bevor du erneut sicherst.',
@@ -162,9 +174,14 @@ class CoachMemoryViewModel extends ChangeNotifier {
   /// Ersetzt einen vorhandenen Eintrag an seiner Stelle (der Server sortiert
   /// nach Anlage) oder stellt einen neuen an den Anfang.
   void _put(ApiCoachMemory memory) {
-    items = items.any((item) => item.id == memory.id)
-        ? [for (final item in items) item.id == memory.id ? memory : item]
-        : [memory, ...items];
+    if (!items.any((item) => item.id == memory.id)) {
+      items = [memory, ...items];
+      return;
+    }
+    items = [
+      for (final item in items)
+        if (item.id == memory.id) memory else item,
+    ];
   }
 
   /// Löscht auf dem Server; die Zeile entfernt danach [removeLocally], damit

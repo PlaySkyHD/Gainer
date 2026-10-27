@@ -20,8 +20,6 @@ Future<bool> showScheduledTrainingActions(
 }) async {
   final actions = projection.actionsFor(training);
   if (actions.isEmpty) return false;
-  final today = projection.today;
-  bool has(ScheduleActionKind kind) => actions.any((a) => a.kind == kind);
   final moves = [
     for (final action in actions)
       if (action.kind == ScheduleActionKind.shiftRhythm ||
@@ -32,49 +30,7 @@ Future<bool> showScheduledTrainingActions(
   final choice = await showGainerActionSheet<_MainChoice>(
     context: context,
     title: '${training.planName} · ${scheduleDateLabel(training.date)}',
-    groups: [
-      [
-        if (moves.isNotEmpty)
-          const GainerSheetAction(
-            label: 'Verschieben…',
-            icon: CupertinoIcons.arrow_right_arrow_left,
-            value: _MainChoice.move,
-          ),
-        if (has(ScheduleActionKind.skip))
-          const GainerSheetAction(
-            label: 'Überspringen',
-            icon: CupertinoIcons.forward_end,
-            value: _MainChoice.skip,
-            hint: 'Alle anderen Tage bleiben, wie sie sind.',
-          ),
-        if (has(ScheduleActionKind.catchUpToday))
-          const GainerSheetAction(
-            label: 'Heute nachholen',
-            icon: CupertinoIcons.arrow_counterclockwise,
-            value: _MainChoice.catchUp,
-            hint: 'Nur dieses Training liegt dann auf heute.',
-          ),
-        if (has(ScheduleActionKind.continueFromToday))
-          const GainerSheetAction(
-            label: 'Ab heute weiter',
-            icon: CupertinoIcons.arrow_right_circle,
-            value: _MainChoice.continueFromToday,
-            hint: 'Der Rhythmus rückt nach, die Tage davor sind pausiert.',
-          ),
-      ],
-      if (has(ScheduleActionKind.undo))
-        [
-          GainerSheetAction(
-            label: 'Aufheben',
-            icon: CupertinoIcons.arrow_uturn_left,
-            value: _MainChoice.undo,
-            hint: training.status == ScheduledTrainingStatus.skipped
-                ? 'Das Training ist wieder geplant.'
-                : 'Das Training liegt wieder auf '
-                      '${scheduleDayShort(training.originDate, today)}.',
-          ),
-        ],
-    ].where((group) => group.isNotEmpty).toList(),
+    groups: _mainGroups(projection, training, actions, moves),
   );
   if (choice == null || !context.mounted) return false;
 
@@ -87,32 +43,104 @@ Future<bool> showScheduledTrainingActions(
   };
   if (action == null || !context.mounted) return false;
 
+  return _applyAction(context, repository, training, action);
+}
+
+List<List<GainerSheetAction<_MainChoice>>> _mainGroups(
+  TrainingScheduleProjection projection,
+  ScheduledTraining training,
+  List<ScheduleAction> actions,
+  List<ScheduleAction> moves,
+) {
+  bool has(ScheduleActionKind kind) => actions.any((a) => a.kind == kind);
+  return [
+    [
+      if (moves.isNotEmpty)
+        const GainerSheetAction(
+          label: 'Verschieben…',
+          icon: CupertinoIcons.arrow_right_arrow_left,
+          value: _MainChoice.move,
+        ),
+      if (has(ScheduleActionKind.skip))
+        const GainerSheetAction(
+          label: 'Überspringen',
+          icon: CupertinoIcons.forward_end,
+          value: _MainChoice.skip,
+          hint: 'Alle anderen Tage bleiben, wie sie sind.',
+        ),
+      if (has(ScheduleActionKind.catchUpToday))
+        const GainerSheetAction(
+          label: 'Heute nachholen',
+          icon: CupertinoIcons.arrow_counterclockwise,
+          value: _MainChoice.catchUp,
+          hint: 'Nur dieses Training liegt dann auf heute.',
+        ),
+      if (has(ScheduleActionKind.continueFromToday))
+        const GainerSheetAction(
+          label: 'Ab heute weiter',
+          icon: CupertinoIcons.arrow_right_circle,
+          value: _MainChoice.continueFromToday,
+          hint: 'Der Rhythmus rückt nach, die Tage davor sind pausiert.',
+        ),
+    ],
+    if (has(ScheduleActionKind.undo))
+      [
+        GainerSheetAction(
+          label: 'Aufheben',
+          icon: CupertinoIcons.arrow_uturn_left,
+          value: _MainChoice.undo,
+          hint: training.status == ScheduledTrainingStatus.skipped
+              ? 'Das Training ist wieder geplant.'
+              : 'Das Training liegt wieder auf '
+                    '${scheduleDayShort(training.originDate, projection.today)}.',
+        ),
+      ],
+  ].where((group) => group.isNotEmpty).toList();
+}
+
+Future<bool> _applyAction(
+  BuildContext context,
+  TrainingLogRepository repository,
+  ScheduledTraining training,
+  ScheduleAction action,
+) async {
   try {
     final result = await repository.schedule.applyAction(training, action);
     if (!result.applied && context.mounted) {
-      await showGainerStackedDialog<bool>(
-        context: context,
-        title: 'Nicht geändert',
-        message: result.message!,
-        actions: const [GainerDialogAction(label: 'OK', value: true)],
-      );
+      await _showNotChanged(context, result.message!);
     }
     // Auch ohne Änderung neu laden: Der angezeigte Stand ist veraltet.
     return true;
   } catch (error) {
     if (context.mounted) {
-      await showGainerStackedDialog<bool>(
-        context: context,
-        title: 'Nicht geändert',
-        message: planErrorMessage(
-          error,
-          'Der Rhythmus konnte nicht geändert werden.',
-        ),
-        actions: const [GainerDialogAction(label: 'OK', value: true)],
+      await _showNotChanged(
+        context,
+        planErrorMessage(error, 'Der Rhythmus konnte nicht geändert werden.'),
       );
     }
     return false;
   }
+}
+
+Future<void> _showNotChanged(BuildContext context, String message) =>
+    showGainerStackedDialog<bool>(
+      context: context,
+      title: 'Nicht geändert',
+      message: message,
+      actions: const [GainerDialogAction(label: 'OK', value: true)],
+    );
+
+String? _shiftHint(
+  TrainingScheduleProjection projection,
+  ScheduledTraining training,
+  int days,
+) {
+  final voided = projection.exceptionsVoidedByShift(training.date, days);
+  if (voided == 0) return 'Dieses und alle folgenden Trainings rücken nach.';
+  if (voided == 1) {
+    return 'Alle folgenden rücken nach. Eine spätere Verschiebung entfällt.';
+  }
+  return 'Alle folgenden rücken nach. $voided spätere Verschiebungen entfallen.';
 }
 
 Future<ScheduleAction?> _chooseMove(
@@ -130,13 +158,6 @@ Future<ScheduleAction?> _chooseMove(
     for (final action in moves)
       if (action.kind == ScheduleActionKind.moveSingle) action,
   ];
-  String? shiftHint(int days) {
-    final voided = projection.exceptionsVoidedByShift(training.date, days);
-    if (voided == 0) return 'Dieses und alle folgenden Trainings rücken nach.';
-    return voided == 1
-        ? 'Alle folgenden rücken nach. Eine spätere Verschiebung entfällt.'
-        : 'Alle folgenden rücken nach. $voided spätere Verschiebungen entfallen.';
-  }
 
   return showGainerActionSheet<ScheduleAction>(
     context: context,
@@ -151,7 +172,7 @@ Future<ScheduleAction?> _chooseMove(
                   : 'Rhythmus +${action.days} Tage',
               icon: CupertinoIcons.calendar_badge_plus,
               value: action,
-              hint: shiftHint(action.days!),
+              hint: _shiftHint(projection, training, action.days!),
             ),
         ],
       [

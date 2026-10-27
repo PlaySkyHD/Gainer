@@ -89,85 +89,14 @@ class CalendarDayView extends StatelessWidget {
 
   Widget _content(BuildContext context, ProgressViewModel? dashboard) {
     final colors = GainerDesign.colorsOf(context);
-    final isPast = day.date.isBefore(today);
-    final sections = <Widget>[];
-
-    final plan = _isToday
-        ? TrainingTodayCard(
-            projection: projection,
-            onStart: onStart,
-            onSetup: onSetup,
-            onActions: onActions,
-          )
-        : _planSection();
-    if (plan != null) sections.add(plan);
-
-    final training = _trainingSection();
-    if (training != null) sections.add(training);
-
-    // Ernährung zuerst: Sie ändert sich über den Tag am meisten.
-    final nutrition = _nutritionSection();
-    if (nutrition != null) sections.add(nutrition);
-
-    if (dashboard != null &&
-        (dashboard.dashboard != null ||
-            dashboard.errorMessage != null ||
-            dashboard.isLoading)) {
-      sections.add(
-        TodayWeightOverview(
-          viewModel: dashboard,
-          today: today.toDateTime(),
-          todayWeightKg: day.checkIn?.weightKg,
-          onTap: onOpenCheckIn,
-        ),
-      );
-    }
-
-    if (dashboard?.dashboard != null) {
-      sections.add(
-        TodayTrainingOverview(viewModel: dashboard!, onTap: onOpenTraining),
-      );
-    }
-
-    final checkIn = _checkInSection(dashboard);
-    if (checkIn != null) sections.add(checkIn);
-
-    final String? emptyText;
-    if (isPast && !day.hasEntries) {
-      emptyText = 'Keine Einträge';
-    } else if (!isPast && !_isToday && sections.isEmpty) {
-      emptyText = 'Nichts geplant';
-    } else {
-      emptyText = null;
-    }
+    final sections = _sections(dashboard);
+    final emptyText = _emptyText(sections);
 
     return Column(
       key: ValueKey('calendar-day-view-${day.date.toIso()}'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: GainerSectionHeader(title: calendarDayLabel(day.date)),
-            ),
-            if (onToday case final toToday?)
-              CupertinoButton(
-                key: const ValueKey('calendar-today'),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: GainerSpacing.xs,
-                ),
-                minimumSize: const Size(0, GainerRadii.iconButtonDiameter),
-                onPressed: toToday,
-                child: Text(
-                  'Zu heute',
-                  style: GainerTypography.label.copyWith(
-                    color: colors.accent,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-          ],
-        ),
+        _header(colors),
         const SizedBox(height: GainerSpacing.s),
         for (var i = 0; i < sections.length; i++) ...[
           if (i > 0) const SizedBox(height: GainerSpacing.m),
@@ -191,6 +120,63 @@ class CalendarDayView extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  Widget _header(GainerColors colors) => Row(
+    children: [
+      Expanded(child: GainerSectionHeader(title: calendarDayLabel(day.date))),
+      if (onToday case final toToday?)
+        CupertinoButton(
+          key: const ValueKey('calendar-today'),
+          padding: const EdgeInsets.symmetric(horizontal: GainerSpacing.xs),
+          minimumSize: const Size(0, GainerRadii.iconButtonDiameter),
+          onPressed: toToday,
+          child: Text(
+            'Zu heute',
+            style: GainerTypography.label.copyWith(
+              color: colors.accent,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+    ],
+  );
+
+  List<Widget> _sections(ProgressViewModel? dashboard) {
+    final plan = _isToday
+        ? TrainingTodayCard(
+            projection: projection,
+            onStart: onStart,
+            onSetup: onSetup,
+            onActions: onActions,
+          )
+        : _planSection();
+    return [
+      ?plan,
+      ?_trainingSection(),
+      // Ernährung zuerst: Sie ändert sich über den Tag am meisten.
+      ?_nutritionSection(),
+      if (dashboard != null &&
+          (dashboard.dashboard != null ||
+              dashboard.errorMessage != null ||
+              dashboard.isLoading))
+        TodayWeightOverview(
+          viewModel: dashboard,
+          today: today.toDateTime(),
+          todayWeightKg: day.checkIn?.weightKg,
+          onTap: onOpenCheckIn,
+        ),
+      if (dashboard != null && dashboard.dashboard != null)
+        TodayTrainingOverview(viewModel: dashboard, onTap: onOpenTraining),
+      ?_checkInSection(dashboard),
+    ];
+  }
+
+  String? _emptyText(List<Widget> sections) {
+    final isPast = day.date.isBefore(today);
+    if (isPast && !day.hasEntries) return 'Keine Einträge';
+    if (!isPast && !_isToday && sections.isEmpty) return 'Nichts geplant';
+    return null;
   }
 
   Widget? _planSection() {

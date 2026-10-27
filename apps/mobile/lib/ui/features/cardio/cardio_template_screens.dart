@@ -116,6 +116,14 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
     );
   }
 
+  String? _duplicateHint(CardioTemplate template, {required bool full}) {
+    if (full) return _limitText;
+    if (template.builtIn) {
+      return 'Mitgelieferte Vorlagen sind fest. Die Kopie lässt sich ändern.';
+    }
+    return null;
+  }
+
   Future<void> _showActions(CardioTemplate template) async {
     final full = _atLimit(_preferences.values.value);
     final action = await showGainerActionSheet<_TemplateAction>(
@@ -134,12 +142,7 @@ class _CardioTemplatesScreenState extends State<CardioTemplatesScreen> {
             icon: CupertinoIcons.doc_on_doc,
             value: _TemplateAction.duplicate,
             enabled: !full,
-            hint: full
-                ? _limitText
-                : template.builtIn
-                ? 'Mitgelieferte Vorlagen sind fest. Die Kopie lässt sich '
-                      'ändern.'
-                : null,
+            hint: _duplicateHint(template, full: full),
           ),
           if (!template.builtIn)
             const GainerSheetAction(

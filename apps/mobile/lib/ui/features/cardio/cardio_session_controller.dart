@@ -410,7 +410,7 @@ class CardioSessionController extends ChangeNotifier {
     final prefs = await repository.preferences.read();
     final phases = template.resolve(prefs.zones);
     if (!CardioPhase.isValidList(phases)) {
-      throw CardioTemplateResolutionException(
+      throw const CardioTemplateResolutionException(
         'Die Pulszonen ergeben für diese Vorlage keinen gültigen Zielbereich '
         '(${CardioTargetZone.minBpm} bis ${CardioTargetZone.maxBpm} bpm). '
         'Maximalpuls und Ruhepuls in den Cardio-Einstellungen prüfen.',

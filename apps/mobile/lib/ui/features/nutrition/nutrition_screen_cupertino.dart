@@ -28,6 +28,8 @@ const _confidenceNames = {
   'high': 'sicher',
 };
 
+const _addLabel = 'Hinzufügen';
+const _addSaltLabel = 'Salz hinzufügen';
 const _saltName = 'Salz';
 const _saltPer100 = NutritionTotals(
   kilocalories: 0,
@@ -63,7 +65,7 @@ extension on _NutritionEntryMode {
     _NutritionEntryMode.recent => 'Zuletzt verwendet',
     _NutritionEntryMode.meals => 'Gespeicherte Gerichte',
     _NutritionEntryMode.manual => 'Manuell erfassen',
-    _NutritionEntryMode.salt => 'Salz hinzufügen',
+    _NutritionEntryMode.salt => _addSaltLabel,
     _NutritionEntryMode.search => 'Lebensmittel suchen',
     _NutritionEntryMode.barcode => 'Barcode',
     _NutritionEntryMode.estimate => 'Mahlzeit schätzen',
@@ -718,7 +720,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
   Future<void> _offerMultipleAdd(NutritionMeal? meal) async {
     final choice = await showGainerActionSheet<bool>(
       context: context,
-      title: meal == null ? 'Hinzufügen' : _mealName(meal),
+      title: meal == null ? _addLabel : _mealName(meal),
       groups: const [
         [
           GainerSheetAction(
@@ -749,7 +751,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                 ? 'Bestandteil hinzufügen'
                 : multiple
                 ? 'Mehrere hinzufügen'
-                : 'Hinzufügen')
+                : _addLabel)
           : mode.title,
       compactTrailing: true,
       trailing: multiple
@@ -864,17 +866,19 @@ class _NutritionScreenState extends State<NutritionScreen> {
     return switch (mode) {
       _NutritionEntryMode.manual => [
         ..._foodFormGroups(
-          name: _name,
-          brand: _brand,
-          amount: _amount,
-          kcal: _kcal,
-          protein: _protein,
-          carbs: _carbs,
-          fat: _fat,
-          salt: _salt,
-          fiber: _fiber,
-          pieceGrams: _pieceGrams,
-          pieceCount: _pieceCount,
+          (
+            name: _name,
+            brand: _brand,
+            amount: _amount,
+            kcal: _kcal,
+            protein: _protein,
+            carbs: _carbs,
+            fat: _fat,
+            salt: _salt,
+            fiber: _fiber,
+            pieceGrams: _pieceGrams,
+            pieceCount: _pieceCount,
+          ),
           nameKey: const ValueKey('nutrition-entry-name'),
           brandKey: const ValueKey('nutrition-entry-brand'),
           amountKey: const ValueKey('nutrition-entry-amount'),
@@ -897,7 +901,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _NutritionEntryMode.estimate => _estimateTools(vm, onSelectMode),
       _NutritionEntryMode.salt => _saltTools(target, onDraft),
       _NutritionEntryMode.label => [
-        GainerGroupedSection(
+        const GainerGroupedSection(
           footer: 'Du prüfst alle Werte, bevor etwas gespeichert wird.',
           children: [
             GainerListRow(
@@ -991,6 +995,25 @@ class _NutritionScreenState extends State<NutritionScreen> {
     ValueChanged<NutritionFood> onSelect,
   ) {
     final query = _search.text.trim();
+    return [
+      GainerSearchField(
+        key: const ValueKey('nutrition-entry-search'),
+        controller: _search,
+        placeholder: 'Lebensmittel, Produkt oder Marke',
+        onChanged: (query) => _scheduleLocalSearch(vm, query),
+        onSubmitted: (query) => _searchFoods(vm, query),
+      ),
+      const SizedBox(height: GainerSpacing.m),
+      _amountGroup(),
+      if (query.length >= 2) ..._searchResults(vm, onSelect, query),
+    ];
+  }
+
+  List<Widget> _searchResults(
+    NutritionViewModel vm,
+    ValueChanged<NutritionFood> onSelect,
+    String query,
+  ) {
     final source = vm.searchSource;
     final showLocal = source != FoodSourceFilter.openFoodFacts;
     final showOnline = source != FoodSourceFilter.bls;
@@ -1009,58 +1032,47 @@ class _NutritionScreenState extends State<NutritionScreen> {
     final needsInternet =
         source == FoodSourceFilter.openFoodFacts && !vm.canSearchOnline;
     return [
-      GainerSearchField(
-        key: const ValueKey('nutrition-entry-search'),
-        controller: _search,
-        placeholder: 'Lebensmittel, Produkt oder Marke',
-        onChanged: (query) => _scheduleLocalSearch(vm, query),
-        onSubmitted: (query) => _searchFoods(vm, query),
-      ),
       const SizedBox(height: GainerSpacing.m),
-      _amountGroup(),
-      if (query.length >= 2) ...[
+      GainerSegmentedControl<FoodSourceFilter>(
+        key: const ValueKey('nutrition-search-source'),
+        options: const {
+          FoodSourceFilter.all: 'Alle',
+          FoodSourceFilter.bls: 'BLS',
+          // Ausgeschrieben passt „Open Food Facts“ nicht ins Segment;
+          // die Zeilen nennen die Quelle.
+          FoodSourceFilter.openFoodFacts: 'Produkte',
+        },
+        value: source,
+        onChanged: (value) => _selectSearchSource(vm, value, query),
+      ),
+      // Über der Liste, damit sie nicht hinter 20 Treffern verschwindet.
+      if (needsInternet) ...[
         const SizedBox(height: GainerSpacing.m),
-        GainerSegmentedControl<FoodSourceFilter>(
-          key: const ValueKey('nutrition-search-source'),
-          options: const {
-            FoodSourceFilter.all: 'Alle',
-            FoodSourceFilter.bls: 'BLS',
-            // Ausgeschrieben passt „Open Food Facts“ nicht ins Segment;
-            // die Zeilen nennen die Quelle.
-            FoodSourceFilter.openFoodFacts: 'Produkte',
-          },
-          value: source,
-          onChanged: (value) => _selectSearchSource(vm, value, query),
+        _hint('Produktsuche braucht Internet.'),
+      ] else if (canStartOnline) ...[
+        const SizedBox(height: GainerSpacing.m),
+        GainerPillButton(
+          key: const ValueKey('nutrition-search-online'),
+          label: 'In Open Food Facts suchen',
+          icon: CupertinoIcons.globe,
+          variant: GainerPillVariant.tonal,
+          expand: true,
+          onPressed: () => _searchFoods(vm, query),
         ),
-        // Über der Liste, damit sie nicht hinter 20 Treffern verschwindet.
-        if (needsInternet) ...[
-          const SizedBox(height: GainerSpacing.m),
-          _hint('Produktsuche braucht Internet.'),
-        ] else if (canStartOnline) ...[
-          const SizedBox(height: GainerSpacing.m),
-          GainerPillButton(
-            key: const ValueKey('nutrition-search-online'),
-            label: 'In Open Food Facts suchen',
-            icon: CupertinoIcons.globe,
-            variant: GainerPillVariant.tonal,
-            expand: true,
-            onPressed: () => _searchFoods(vm, query),
-          ),
-        ],
-        if (foods.isNotEmpty) ...[
-          const SizedBox(height: GainerSpacing.m),
-          _foodResults(
-            foods,
-            'Lebensmittel',
-            onSelect,
-            header: showLocal && vm.localResultsPartial ? 'Teiltreffer' : null,
-          ),
-        ] else if (!canStartOnline &&
-            !vm.isOnlineOperation &&
-            !needsInternet) ...[
-          const SizedBox(height: GainerSpacing.m),
-          _hint('Keine Treffer.'),
-        ],
+      ],
+      if (foods.isNotEmpty) ...[
+        const SizedBox(height: GainerSpacing.m),
+        _foodResults(
+          foods,
+          'Lebensmittel',
+          onSelect,
+          header: showLocal && vm.localResultsPartial ? 'Teiltreffer' : null,
+        ),
+      ] else if (!canStartOnline &&
+          !vm.isOnlineOperation &&
+          !needsInternet) ...[
+        const SizedBox(height: GainerSpacing.m),
+        _hint('Keine Treffer.'),
       ],
     ];
   }
@@ -1154,7 +1166,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
             const SizedBox(height: GainerSpacing.m),
             GainerPillButton(
               key: const ValueKey('nutrition-salt-add'),
-              label: 'Salz hinzufügen',
+              label: _addSaltLabel,
               expand: true,
               onPressed: valid ? () => _addSalt(grams, target, onDraft) : null,
             ),
@@ -1174,11 +1186,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
         final saved = await widget.viewModel.addManualEntry(
           productName: _saltName,
           amountGrams: grams,
-          kilocaloriesPer100Grams: _saltPer100.kilocalories,
-          proteinGramsPer100: _saltPer100.proteinGrams,
-          carbohydrateGramsPer100: _saltPer100.carbohydrateGrams,
-          fatGramsPer100: _saltPer100.fatGrams,
-          saltGramsPer100: _saltPer100.saltGrams,
+          per100Grams: NutritionTotals(
+            kilocalories: _saltPer100.kilocalories,
+            proteinGrams: _saltPer100.proteinGrams,
+            carbohydrateGrams: _saltPer100.carbohydrateGrams,
+            fatGrams: _saltPer100.fatGrams,
+            saltGrams: _saltPer100.saltGrams,
+          ),
         );
         if (saved) _saltAmount.clear();
         _closeAfterSave(saved);
@@ -1231,75 +1245,85 @@ class _NutritionScreenState extends State<NutritionScreen> {
       ),
     ),
     const SizedBox(height: GainerSpacing.m),
-    ListenableBuilder(
-      listenable: Listenable.merge([_estimateText, _estimating]),
-      builder: (context, _) {
-        final busy = vm.isOnlineOperation || _estimating.value;
-        return GainerPillButton(
-          label: 'Mahlzeit schätzen',
-          icon: CupertinoIcons.sparkles,
-          expand: true,
-          isLoading: busy,
-          onPressed: busy || _estimateText.text.trim().isEmpty
-              ? null
-              : () async {
-                  // Das Beenden des Diktats dauert bis zu 2 s; in der Zeit
-                  // darf ein zweiter Tipp keine zweite Anfrage starten.
-                  _estimating.value = true;
-                  try {
-                    await _dictation?.finish();
-                    if (!mounted) return;
-                    await vm.estimateMeal(_estimateText.text);
-                  } finally {
-                    if (mounted) _estimating.value = false;
-                  }
-                },
-        );
-      },
+    _estimateButton(vm),
+    if (vm.mealEstimateDraft case final estimate?)
+      ..._estimateProposal(vm, estimate, onSelectMode),
+  ];
+
+  Widget _estimateButton(NutritionViewModel vm) => ListenableBuilder(
+    listenable: Listenable.merge([_estimateText, _estimating]),
+    builder: (context, _) {
+      final busy = vm.isOnlineOperation || _estimating.value;
+      return GainerPillButton(
+        label: 'Mahlzeit schätzen',
+        icon: CupertinoIcons.sparkles,
+        expand: true,
+        isLoading: busy,
+        onPressed: busy || _estimateText.text.trim().isEmpty
+            ? null
+            : () => _runEstimate(vm),
+      );
+    },
+  );
+
+  Future<void> _runEstimate(NutritionViewModel vm) async {
+    // Das Beenden des Diktats dauert bis zu 2 s; in der Zeit
+    // darf ein zweiter Tipp keine zweite Anfrage starten.
+    _estimating.value = true;
+    try {
+      await _dictation?.finish();
+      if (!mounted) return;
+      await vm.estimateMeal(_estimateText.text);
+    } finally {
+      if (mounted) _estimating.value = false;
+    }
+  }
+
+  List<Widget> _estimateProposal(
+    NutritionViewModel vm,
+    MealEstimateDraft estimate,
+    ValueChanged<_NutritionEntryMode> onSelectMode,
+  ) => [
+    const SizedBox(height: GainerSpacing.l),
+    GainerSectionHeader(title: 'Vorschlag prüfen · ${estimate.provider}'),
+    const SizedBox(height: GainerSpacing.xs),
+    GainerGroupedSection(
+      children: [
+        for (var index = 0; index < estimate.components.length; index++)
+          GainerListRow(
+            title: estimate.components[index].name,
+            subtitle: _estimateSubtitle(estimate.components[index]),
+            trailing: const _AddGlyph(),
+            onTap: vm.canSave
+                ? () => vm.confirmEstimatedComponent(estimate.components[index])
+                : null,
+          ),
+      ],
     ),
-    if (vm.mealEstimateDraft case final estimate?) ...[
-      const SizedBox(height: GainerSpacing.l),
-      GainerSectionHeader(title: 'Vorschlag prüfen · ${estimate.provider}'),
-      const SizedBox(height: GainerSpacing.xs),
+    // Selbst gesalzenes Essen schätzt die KI nicht; hier geht es direkt
+    // zur Salz-Schnellwahl.
+    if (!estimate.components.any((item) => item.name == _saltName)) ...[
+      const SizedBox(height: GainerSpacing.m),
       GainerGroupedSection(
         children: [
-          for (var index = 0; index < estimate.components.length; index++)
-            GainerListRow(
-              title: estimate.components[index].name,
-              subtitle: _estimateSubtitle(estimate.components[index]),
-              trailing: const _AddGlyph(),
-              onTap: vm.canSave
-                  ? () =>
-                        vm.confirmEstimatedComponent(estimate.components[index])
-                  : null,
-            ),
+          GainerListRow(
+            key: const ValueKey('nutrition-estimate-add-salt'),
+            leadingIcon: _NutritionEntryMode.salt.icon,
+            title: 'Selbst gesalzen?',
+            subtitle: _addSaltLabel,
+            showChevron: true,
+            onTap: () => onSelectMode(_NutritionEntryMode.salt),
+          ),
         ],
       ),
-      // Selbst gesalzenes Essen schätzt die KI nicht; hier geht es direkt
-      // zur Salz-Schnellwahl.
-      if (!estimate.components.any((item) => item.name == _saltName)) ...[
-        const SizedBox(height: GainerSpacing.m),
-        GainerGroupedSection(
-          children: [
-            GainerListRow(
-              key: const ValueKey('nutrition-estimate-add-salt'),
-              leadingIcon: _NutritionEntryMode.salt.icon,
-              title: 'Selbst gesalzen?',
-              subtitle: 'Salz hinzufügen',
-              showChevron: true,
-              onTap: () => onSelectMode(_NutritionEntryMode.salt),
-            ),
-          ],
-        ),
-      ],
-      const SizedBox(height: GainerSpacing.m),
-      GainerPillButton(
-        label: 'Schätzung verwerfen',
-        variant: GainerPillVariant.tonal,
-        expand: true,
-        onPressed: vm.discardEstimate,
-      ),
     ],
+    const SizedBox(height: GainerSpacing.m),
+    GainerPillButton(
+      label: 'Schätzung verwerfen',
+      variant: GainerPillVariant.tonal,
+      expand: true,
+      onPressed: vm.discardEstimate,
+    ),
   ];
 
   /// „350 g · 890 kcal · ~12 g Ballaststoffe · ~3,5 g Salz · mittel“;
@@ -1579,7 +1603,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               _templateEntryRow(context, setPageState, draft, entry),
             _AddRow(
               key: ValueKey('day-template-add-${meal.name}'),
-              label: 'Hinzufügen',
+              label: _addLabel,
               onPressed: draft.entries.length >= maxEntriesPerDay
                   ? null
                   : () => _addTemplateEntry(draft, meal, setPageState),
@@ -1791,22 +1815,26 @@ class _NutritionScreenState extends State<NutritionScreen> {
     NutritionEntry entry,
     NutritionMeal meal,
   ) async {
+    final brand = c.brand.text.trim().isEmpty ? null : c.brand.text;
     await widget.viewModel.updateEntry(
-      original: entry,
-      meal: meal,
-      productName: c.name.text,
-      brand: c.brand.text.trim().isEmpty ? null : c.brand.text,
-      amountGrams: _parse(c.amount.text)!,
-      per100Grams: NutritionTotals(
-        kilocalories: _parse(c.kcal.text)!,
-        proteinGrams: _nullable(c.protein.text),
-        carbohydrateGrams: _nullable(c.carbs.text),
-        fatGrams: _nullable(c.fat.text),
-        saltGrams: _nullable(c.salt.text),
-        fiberGrams: _nullable(c.fiber.text),
+      entry.copyWith(
+        meal: meal,
+        productName: c.name.text,
+        brand: brand,
+        clearBrand: brand == null,
+        amountGrams: _parse(c.amount.text)!,
+        per100Grams: NutritionTotals(
+          kilocalories: _parse(c.kcal.text)!,
+          proteinGrams: _nullable(c.protein.text),
+          carbohydrateGrams: _nullable(c.carbs.text),
+          fatGrams: _nullable(c.fat.text),
+          saltGrams: _nullable(c.salt.text),
+          fiberGrams: _nullable(c.fiber.text),
+        ),
+        pieceGrams: _nullable(c.pieceGrams.text),
+        pieceCount: _nullable(c.pieceCount.text),
+        clearPieces: true,
       ),
-      pieceGrams: _nullable(c.pieceGrams.text),
-      pieceCount: _nullable(c.pieceCount.text),
     );
     if (widget.viewModel.errorMessage == null &&
         routeContext.mounted &&
@@ -1832,17 +1860,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
         child: Center(child: CupertinoActivityIndicator()),
       ),
     ..._foodFormGroups(
-      name: c.name,
-      brand: c.brand,
-      amount: c.amount,
-      kcal: c.kcal,
-      protein: c.protein,
-      carbs: c.carbs,
-      fat: c.fat,
-      salt: c.salt,
-      fiber: c.fiber,
-      pieceGrams: c.pieceGrams,
-      pieceCount: c.pieceCount,
+      c.fields,
       nameKey: const ValueKey('nutrition-edit-name'),
       amountKey: const ValueKey('nutrition-edit-amount'),
       kcalKey: const ValueKey('nutrition-edit-kcal'),
@@ -2031,57 +2049,14 @@ class _NutritionScreenState extends State<NutritionScreen> {
       onDeleted: remove,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onLongPress: () async {
-          final action = await showGainerActionSheet<_EntryAction>(
-            context: context,
-            title: component.name,
-            groups: [
-              if (components.length > 1)
-                const [
-                  GainerSheetAction(
-                    label: 'Verschieben',
-                    icon: CupertinoIcons.arrow_up_arrow_down,
-                    value: _EntryAction.move,
-                  ),
-                ],
-              const [
-                GainerSheetAction(
-                  label: 'Entfernen',
-                  icon: CupertinoIcons.trash,
-                  value: _EntryAction.remove,
-                  destructive: true,
-                ),
-              ],
-            ],
-          );
-          if (!context.mounted) return;
-          switch (action) {
-            case _EntryAction.move:
-              final ids = await showGainerSheet<List<String>>(
-                context: context,
-                builder: (_) => _ReorderSheet(
-                  title: 'Bestandteile anordnen',
-                  items: [
-                    for (final item in components)
-                      (id: item.componentId, title: item.name),
-                  ],
-                ),
-              );
-              if (ids == null) return;
-              final byId = {
-                for (final item in components) item.componentId: item,
-              };
-              setDialogState(() {
-                final ordered = [for (final id in ids) byId[id]!];
-                components
-                  ..clear()
-                  ..addAll(ordered);
-              });
-            case _EntryAction.remove:
-              if (await confirmRemove()) remove();
-            case null:
-          }
-        },
+        onLongPress: () => _componentActions(
+          context,
+          setDialogState,
+          components,
+          component,
+          confirmRemove: confirmRemove,
+          remove: remove,
+        ),
         child: GainerListRow(
           key: ValueKey('meal-component-${component.componentId}'),
           title: component.name,
@@ -2091,6 +2066,63 @@ class _NutritionScreenState extends State<NutritionScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _componentActions(
+    BuildContext context,
+    StateSetter setDialogState,
+    List<ReusableMealComponent> components,
+    ReusableMealComponent component, {
+    required Future<bool> Function() confirmRemove,
+    required VoidCallback remove,
+  }) async {
+    final action = await showGainerActionSheet<_EntryAction>(
+      context: context,
+      title: component.name,
+      groups: [
+        if (components.length > 1)
+          const [
+            GainerSheetAction(
+              label: 'Verschieben',
+              icon: CupertinoIcons.arrow_up_arrow_down,
+              value: _EntryAction.move,
+            ),
+          ],
+        const [
+          GainerSheetAction(
+            label: 'Entfernen',
+            icon: CupertinoIcons.trash,
+            value: _EntryAction.remove,
+            destructive: true,
+          ),
+        ],
+      ],
+    );
+    if (!context.mounted) return;
+    switch (action) {
+      case _EntryAction.move:
+        final ids = await showGainerSheet<List<String>>(
+          context: context,
+          builder: (_) => _ReorderSheet(
+            title: 'Bestandteile anordnen',
+            items: [
+              for (final item in components)
+                (id: item.componentId, title: item.name),
+            ],
+          ),
+        );
+        if (ids == null) return;
+        final byId = {for (final item in components) item.componentId: item};
+        setDialogState(() {
+          final ordered = [for (final id in ids) byId[id]!];
+          components
+            ..clear()
+            ..addAll(ordered);
+        });
+      case _EntryAction.remove:
+        if (await confirmRemove()) remove();
+      case null:
+    }
   }
 
   Widget _addComponentRow(
@@ -2191,17 +2223,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       GainerSpacing.l,
                     ),
                     children: _foodFormGroups(
-                      name: c.name,
-                      brand: c.brand,
-                      amount: c.amount,
-                      kcal: c.kcal,
-                      protein: c.protein,
-                      carbs: c.carbs,
-                      fat: c.fat,
-                      salt: c.salt,
-                      fiber: c.fiber,
-                      pieceGrams: c.pieceGrams,
-                      pieceCount: c.pieceCount,
+                      c.fields,
                       nameKey: const ValueKey('meal-component-name'),
                       amountKey: const ValueKey('meal-component-amount'),
                       kcalKey: const ValueKey('meal-component-kcal'),
@@ -2354,12 +2376,14 @@ class _NutritionScreenState extends State<NutritionScreen> {
           productName: _name.text,
           brand: _brand.text.trim().isEmpty ? null : _brand.text,
           amountGrams: amount,
-          kilocaloriesPer100Grams: kcal,
-          proteinGramsPer100: _nullable(_protein.text),
-          carbohydrateGramsPer100: _nullable(_carbs.text),
-          fatGramsPer100: _nullable(_fat.text),
-          saltGramsPer100: _nullable(_salt.text),
-          fiberGramsPer100: _nullable(_fiber.text),
+          per100Grams: NutritionTotals(
+            kilocalories: kcal,
+            proteinGrams: _nullable(_protein.text),
+            carbohydrateGrams: _nullable(_carbs.text),
+            fatGrams: _nullable(_fat.text),
+            saltGrams: _nullable(_salt.text),
+            fiberGrams: _nullable(_fiber.text),
+          ),
           pieceGrams: _nullable(_pieceGrams.text),
           pieceCount: _nullable(_pieceCount.text),
         );
@@ -2682,132 +2706,152 @@ Widget _notice(BuildContext context, String text, {bool isError = false}) {
 /// Felder eines Lebensmittels als zwei gruppierte Karten (Stammdaten und
 /// Nährwerte pro 100 g). Gemeinsam genutzt von manueller Erfassung, Eintrags-
 /// und Bestandteilbearbeitung.
-List<Widget> _foodFormGroups({
-  required TextEditingController name,
-  required TextEditingController brand,
-  required TextEditingController amount,
-  required TextEditingController kcal,
-  required TextEditingController protein,
-  required TextEditingController carbs,
-  required TextEditingController fat,
-  required TextEditingController salt,
-  required TextEditingController fiber,
-  required TextEditingController pieceGrams,
-  required TextEditingController pieceCount,
+/// Die Eingabefelder eines Lebensmittels.
+typedef _FoodFields = ({
+  TextEditingController name,
+  TextEditingController brand,
+  TextEditingController amount,
+  TextEditingController kcal,
+  TextEditingController protein,
+  TextEditingController carbs,
+  TextEditingController fat,
+  TextEditingController salt,
+  TextEditingController fiber,
+  TextEditingController pieceGrams,
+  TextEditingController pieceCount,
+});
+
+List<Widget> _foodFormGroups(
+  _FoodFields fields, {
   Key? nameKey,
   Key? brandKey,
   Key? amountKey,
   Key? kcalKey,
   ValueChanged<String>? onChanged,
-}) => [
-  GainerGroupedSection(
-    children: [
-      GainerTextFieldRow(
-        label: 'Name',
-        placeholder: 'Lebensmittel',
-        controller: name,
-        fieldKey: nameKey,
-        onChanged: onChanged,
-      ),
-      GainerTextFieldRow(
-        label: 'Marke',
-        placeholder: 'Optional',
-        controller: brand,
-        fieldKey: brandKey,
-        onChanged: onChanged,
-      ),
-      GainerTextFieldRow(
-        label: 'Menge',
-        unit: 'g',
-        controller: amount,
-        keyboardType: _decimalKeyboard,
-        fieldKey: amountKey,
-        onChanged: (value) {
-          // Wer Gramm tippt, gibt die Menge nicht mehr in Stück an.
-          pieceCount.clear();
-          onChanged?.call(value);
-        },
-      ),
-    ],
-  ),
-  const SizedBox(height: GainerSpacing.m),
-  GainerGroupedSection(
-    header: 'Stück (optional)',
-    footer: 'Mit Gewicht pro Stück und Anzahl wird die Menge berechnet.',
-    children: [
-      GainerTextFieldRow(
-        label: 'Gewicht pro Stück',
-        unit: 'g',
-        controller: pieceGrams,
-        keyboardType: _decimalKeyboard,
-        fieldKey: const ValueKey('nutrition-piece-grams'),
-        onChanged: (value) {
-          _syncPieceAmount(amount, pieceGrams, pieceCount);
-          onChanged?.call(value);
-        },
-      ),
-      _PieceCountRow(
-        key: const ValueKey('nutrition-piece-count'),
-        controller: pieceCount,
-        onChanged: (value) {
-          _syncPieceAmount(amount, pieceGrams, pieceCount);
-          onChanged?.call(value);
-        },
-      ),
-    ],
-  ),
-  const SizedBox(height: GainerSpacing.m),
-  GainerGroupedSection(
-    header: 'Nährwerte pro 100 g',
-    children: [
-      GainerTextFieldRow(
-        label: 'Kalorien',
-        unit: 'kcal',
-        controller: kcal,
-        keyboardType: _decimalKeyboard,
-        fieldKey: kcalKey,
-        onChanged: onChanged,
-      ),
-      GainerTextFieldRow(
-        label: 'Protein',
-        unit: 'g',
-        controller: protein,
-        keyboardType: _decimalKeyboard,
-        onChanged: onChanged,
-      ),
-      GainerTextFieldRow(
-        label: 'Kohlenhydrate',
-        unit: 'g',
-        controller: carbs,
-        keyboardType: _decimalKeyboard,
-        onChanged: onChanged,
-      ),
-      GainerTextFieldRow(
-        label: 'Ballaststoffe',
-        unit: 'g',
-        controller: fiber,
-        keyboardType: _decimalKeyboard,
-        fieldKey: const ValueKey('nutrition-entry-fiber'),
-        onChanged: onChanged,
-      ),
-      GainerTextFieldRow(
-        label: 'Fett',
-        unit: 'g',
-        controller: fat,
-        keyboardType: _decimalKeyboard,
-        onChanged: onChanged,
-      ),
-      GainerTextFieldRow(
-        label: 'Salz',
-        unit: 'g',
-        controller: salt,
-        keyboardType: _decimalKeyboard,
-        fieldKey: const ValueKey('nutrition-entry-salt'),
-        onChanged: onChanged,
-      ),
-    ],
-  ),
-];
+}) {
+  final (
+    :name,
+    :brand,
+    :amount,
+    :kcal,
+    :protein,
+    :carbs,
+    :fat,
+    :salt,
+    :fiber,
+    :pieceGrams,
+    :pieceCount,
+  ) = fields;
+  return [
+    GainerGroupedSection(
+      children: [
+        GainerTextFieldRow(
+          label: 'Name',
+          placeholder: 'Lebensmittel',
+          controller: name,
+          fieldKey: nameKey,
+          onChanged: onChanged,
+        ),
+        GainerTextFieldRow(
+          label: 'Marke',
+          placeholder: 'Optional',
+          controller: brand,
+          fieldKey: brandKey,
+          onChanged: onChanged,
+        ),
+        GainerTextFieldRow(
+          label: 'Menge',
+          unit: 'g',
+          controller: amount,
+          keyboardType: _decimalKeyboard,
+          fieldKey: amountKey,
+          onChanged: (value) {
+            // Wer Gramm tippt, gibt die Menge nicht mehr in Stück an.
+            pieceCount.clear();
+            onChanged?.call(value);
+          },
+        ),
+      ],
+    ),
+    const SizedBox(height: GainerSpacing.m),
+    GainerGroupedSection(
+      header: 'Stück (optional)',
+      footer: 'Mit Gewicht pro Stück und Anzahl wird die Menge berechnet.',
+      children: [
+        GainerTextFieldRow(
+          label: 'Gewicht pro Stück',
+          unit: 'g',
+          controller: pieceGrams,
+          keyboardType: _decimalKeyboard,
+          fieldKey: const ValueKey('nutrition-piece-grams'),
+          onChanged: (value) {
+            _syncPieceAmount(amount, pieceGrams, pieceCount);
+            onChanged?.call(value);
+          },
+        ),
+        _PieceCountRow(
+          key: const ValueKey('nutrition-piece-count'),
+          controller: pieceCount,
+          onChanged: (value) {
+            _syncPieceAmount(amount, pieceGrams, pieceCount);
+            onChanged?.call(value);
+          },
+        ),
+      ],
+    ),
+    const SizedBox(height: GainerSpacing.m),
+    GainerGroupedSection(
+      header: 'Nährwerte pro 100 g',
+      children: [
+        GainerTextFieldRow(
+          label: 'Kalorien',
+          unit: 'kcal',
+          controller: kcal,
+          keyboardType: _decimalKeyboard,
+          fieldKey: kcalKey,
+          onChanged: onChanged,
+        ),
+        GainerTextFieldRow(
+          label: 'Protein',
+          unit: 'g',
+          controller: protein,
+          keyboardType: _decimalKeyboard,
+          onChanged: onChanged,
+        ),
+        GainerTextFieldRow(
+          label: 'Kohlenhydrate',
+          unit: 'g',
+          controller: carbs,
+          keyboardType: _decimalKeyboard,
+          onChanged: onChanged,
+        ),
+        GainerTextFieldRow(
+          label: 'Ballaststoffe',
+          unit: 'g',
+          controller: fiber,
+          keyboardType: _decimalKeyboard,
+          fieldKey: const ValueKey('nutrition-entry-fiber'),
+          onChanged: onChanged,
+        ),
+        GainerTextFieldRow(
+          label: 'Fett',
+          unit: 'g',
+          controller: fat,
+          keyboardType: _decimalKeyboard,
+          onChanged: onChanged,
+        ),
+        GainerTextFieldRow(
+          label: 'Salz',
+          unit: 'g',
+          controller: salt,
+          keyboardType: _decimalKeyboard,
+          fieldKey: const ValueKey('nutrition-entry-salt'),
+          onChanged: onChanged,
+        ),
+      ],
+    ),
+  ];
+}
 
 /// Setzt die Menge auf Anzahl × Gewicht pro Stück, sobald beides gültig ist.
 void _syncPieceAmount(
@@ -3021,6 +3065,20 @@ class _EntryEditControllers {
   final TextEditingController fiber;
   final TextEditingController pieceGrams;
   final TextEditingController pieceCount;
+
+  _FoodFields get fields => (
+    name: name,
+    brand: brand,
+    amount: amount,
+    kcal: kcal,
+    protein: protein,
+    carbs: carbs,
+    fat: fat,
+    salt: salt,
+    fiber: fiber,
+    pieceGrams: pieceGrams,
+    pieceCount: pieceCount,
+  );
 
   void dispose() {
     for (final controller in [
@@ -3534,7 +3592,7 @@ class _MealSection extends StatelessWidget {
             for (final entry in ordered) _entryRow(context, ordered, entry),
             _AddRow(
               key: ValueKey('meal-add-${meal.name}'),
-              label: 'Hinzufügen',
+              label: _addLabel,
               onPressed: onAdd,
               onLongPress: onAddMultiple,
             ),
@@ -3852,6 +3910,20 @@ class _IngredientControllers {
   final TextEditingController pieceGrams;
   final TextEditingController pieceCount;
 
+  _FoodFields get fields => (
+    name: name,
+    brand: brand,
+    amount: amount,
+    kcal: kcal,
+    protein: protein,
+    carbs: carbs,
+    fat: fat,
+    salt: salt,
+    fiber: fiber,
+    pieceGrams: pieceGrams,
+    pieceCount: pieceCount,
+  );
+
   void dispose() {
     name.dispose();
     brand.dispose();
@@ -4053,7 +4125,12 @@ class _PieceCountRow extends StatelessWidget {
   void _step(double delta) {
     final current = _parse(controller.text) ?? 0;
     final next = current + delta;
-    final value = next < 1 ? (delta > 0 ? 1.0 : 0.5) : next;
+    final double value;
+    if (next >= 1) {
+      value = next;
+    } else {
+      value = delta > 0 ? 1.0 : 0.5;
+    }
     if (delta < 0 && current <= 0.5) {
       controller.clear();
     } else {

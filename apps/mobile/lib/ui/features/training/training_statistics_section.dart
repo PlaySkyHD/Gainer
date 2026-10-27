@@ -127,44 +127,46 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
               ),
               const SizedBox(height: GainerSpacing.s),
             ],
-            if (model.isLoading && !model.hasLoaded)
-              const Padding(
-                padding: EdgeInsets.all(GainerSpacing.l),
-                child: Center(child: CupertinoActivityIndicator()),
-              )
-            else if (model.exercises.isEmpty)
-              const _EmptyStatistics()
-            else if (model.visibleExercises.isEmpty)
-              GainerCard(
-                padding: const EdgeInsets.all(GainerSpacing.l),
-                child: Text(
-                  'Keine passende Übung gefunden.',
-                  textAlign: TextAlign.center,
-                  style: GainerTypography.body.copyWith(
-                    color: colors.secondaryText,
-                  ),
-                ),
-              )
-            else
-              GainerGroupedSection(
-                children: [
-                  for (final exercise in model.visibleExercises)
-                    GainerListRow(
-                      title: exercise.name,
-                      subtitle:
-                          'Max. ${formatStatisticsWeight(exercise.maxWeightKg, model.weightUnit)} · '
-                          'zuletzt ${formatShortDate(exercise.lastTrainedAtUtc.toLocal())}',
-                      // Geschätztes One-Rep-Max aus dem besten Satz.
-                      value:
-                          '1RM ${formatStatisticsWeight(exercise.estimatedOneRepMaxKg, model.weightUnit)}',
-                      showChevron: true,
-                      onTap: () => _open(exercise.exerciseId),
-                    ),
-                ],
-              ),
+            _exerciseList(model, colors),
           ],
         );
       },
+    );
+  }
+
+  Widget _exerciseList(TrainingStatisticsViewModel model, GainerColors colors) {
+    if (model.isLoading && !model.hasLoaded) {
+      return const Padding(
+        padding: EdgeInsets.all(GainerSpacing.l),
+        child: Center(child: CupertinoActivityIndicator()),
+      );
+    }
+    if (model.exercises.isEmpty) return const _EmptyStatistics();
+    if (model.visibleExercises.isEmpty) {
+      return GainerCard(
+        padding: const EdgeInsets.all(GainerSpacing.l),
+        child: Text(
+          'Keine passende Übung gefunden.',
+          textAlign: TextAlign.center,
+          style: GainerTypography.body.copyWith(color: colors.secondaryText),
+        ),
+      );
+    }
+    return GainerGroupedSection(
+      children: [
+        for (final exercise in model.visibleExercises)
+          GainerListRow(
+            title: exercise.name,
+            subtitle:
+                'Max. ${formatStatisticsWeight(exercise.maxWeightKg, model.weightUnit)} · '
+                'zuletzt ${formatShortDate(exercise.lastTrainedAtUtc.toLocal())}',
+            // Geschätztes One-Rep-Max aus dem besten Satz.
+            value:
+                '1RM ${formatStatisticsWeight(exercise.estimatedOneRepMaxKg, model.weightUnit)}',
+            showChevron: true,
+            onTap: () => _open(exercise.exerciseId),
+          ),
+      ],
     );
   }
 }

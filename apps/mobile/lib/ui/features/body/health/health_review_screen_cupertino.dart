@@ -49,48 +49,9 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
       final review = vm.review;
       return GainerScaffold(
         title: 'Apple Health',
-        trailing: [
-          if (review != null) ...[
-            GainerToolbarButton(
-              icon: CupertinoIcons.arrow_clockwise,
-              semanticLabel: 'Health-Proben neu laden',
-              onPressed: vm.isLoading ? null : () => _prepare(vm),
-            ),
-            GainerToolbarButton(
-              icon: CupertinoIcons.xmark,
-              semanticLabel: 'Prüfung abbrechen',
-              onPressed: vm.cancelReview,
-            ),
-          ],
-        ],
+        trailing: _toolbar(vm, review),
         children: [
-          GainerGroupedSection(
-            header: 'Gewicht übernehmen',
-            footer: 'Health-Daten werden nur nach deiner Aktion geprüft. Leere Ergebnisse sagen nicht aus, ob der Zugriff verweigert wurde.',
-            children: [
-              GainerDateRow(
-                key: const ValueKey('health-from'),
-                title: 'Von',
-                value: _from,
-                format: _displayDate,
-                maximum: _to,
-                onChanged: vm.isLoading
-                    ? null
-                    : (picked) => setState(() => _from = picked),
-              ),
-              GainerDateRow(
-                key: const ValueKey('health-to'),
-                title: 'Bis',
-                value: _to,
-                format: _displayDate,
-                minimum: _from,
-                maximum: _now(),
-                onChanged: vm.isLoading
-                    ? null
-                    : (picked) => setState(() => _to = picked),
-              ),
-            ],
-          ),
+          _rangeSection(vm),
           if (review == null) ...[
             const SizedBox(height: GainerSpacing.m),
             GainerPillButton(
@@ -112,6 +73,50 @@ class _HealthReviewScreenState extends State<HealthReviewScreen> {
         ],
       );
     },
+  );
+
+  List<Widget> _toolbar(HealthReviewViewModel vm, HealthWeightReview? review) =>
+      [
+        if (review != null) ...[
+          GainerToolbarButton(
+            icon: CupertinoIcons.arrow_clockwise,
+            semanticLabel: 'Health-Proben neu laden',
+            onPressed: vm.isLoading ? null : () => _prepare(vm),
+          ),
+          GainerToolbarButton(
+            icon: CupertinoIcons.xmark,
+            semanticLabel: 'Prüfung abbrechen',
+            onPressed: vm.cancelReview,
+          ),
+        ],
+      ];
+
+  Widget _rangeSection(HealthReviewViewModel vm) => GainerGroupedSection(
+    header: 'Gewicht übernehmen',
+    footer: 'Health-Daten werden nur nach deiner Aktion geprüft. Leere Ergebnisse sagen nicht aus, ob der Zugriff verweigert wurde.',
+    children: [
+      GainerDateRow(
+        key: const ValueKey('health-from'),
+        title: 'Von',
+        value: _from,
+        format: _displayDate,
+        maximum: _to,
+        onChanged: vm.isLoading
+            ? null
+            : (picked) => setState(() => _from = picked),
+      ),
+      GainerDateRow(
+        key: const ValueKey('health-to'),
+        title: 'Bis',
+        value: _to,
+        format: _displayDate,
+        minimum: _from,
+        maximum: _now(),
+        onChanged: vm.isLoading
+            ? null
+            : (picked) => setState(() => _to = picked),
+      ),
+    ],
   );
 
   List<Widget> _reviewChildren(

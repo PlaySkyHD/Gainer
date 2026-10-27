@@ -257,8 +257,8 @@ class _BodyScreenState extends State<BodyScreen> {
 
   Widget _history(BodyTrackingSnapshot? snapshot, {required bool isLoading}) {
     if (snapshot == null) {
-      return GainerGroupedSection(
-        children: const [GainerListRow(title: 'Verlauf wird geladen …')],
+      return const GainerGroupedSection(
+        children: [GainerListRow(title: 'Verlauf wird geladen …')],
       );
     }
     final entries = snapshot.checkIns;
@@ -388,82 +388,88 @@ class _BodyScreenState extends State<BodyScreen> {
     }
   }
 
-  Future<void> _presentEditor(
-    BodyViewModel model, {
+  Future<void> _presentEditor(BodyViewModel model, {required bool goal}) =>
+      showGainerSheet<void>(
+        context: context,
+        builder: (sheetContext) => ChangeNotifierProvider.value(
+          value: model,
+          child: Consumer<BodyViewModel>(
+            builder: (sheetContext, liveModel, _) => StatefulBuilder(
+              builder: (sheetContext, setSheetState) {
+                if (!goal) _sheetSetState = setSheetState;
+                return _editorSheet(
+                  sheetContext,
+                  liveModel,
+                  goal: goal,
+                  rebuild: setSheetState,
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+  /// Hinweis über den Feldern: der Modellfehler, sonst die Feldfehler, die zu
+  /// keiner Zeile gehören. Feldfehler stehen direkt an der Zeile.
+  String? _editorNotice(BodyViewModel liveModel, {required bool goal}) {
+    final rowKeys = goal ? _goalFieldKeys : _checkInFieldKeys;
+    final unmatched = [
+      for (final entry in liveModel.fieldErrors.entries)
+        if (!rowKeys.contains(entry.key)) entry.value,
+    ];
+    return liveModel.errorMessage ??
+        (unmatched.isEmpty ? null : unmatched.join('\n'));
+  }
+
+  Widget _editorSheet(
+    BuildContext sheetContext,
+    BodyViewModel liveModel, {
     required bool goal,
-  }) => showGainerSheet<void>(
-    context: context,
-    builder: (sheetContext) => ChangeNotifierProvider.value(
-      value: model,
-      child: Consumer<BodyViewModel>(
-        builder: (sheetContext, liveModel, _) => StatefulBuilder(
-          builder: (sheetContext, setSheetState) {
-            if (!goal) _sheetSetState = setSheetState;
-            final errors = liveModel.fieldErrors;
-            final rowKeys = goal ? _goalFieldKeys : _checkInFieldKeys;
-            // Feldfehler stehen direkt an der Zeile, alles andere als Hinweis.
-            final unmatched = [
-              for (final entry in errors.entries)
-                if (!rowKeys.contains(entry.key)) entry.value,
-            ];
-            final notice =
-                liveModel.errorMessage ??
-                (unmatched.isEmpty ? null : unmatched.join('\n'));
-            return Column(
-              mainAxisSize: MainAxisSize.min,
+    required StateSetter rebuild,
+  }) {
+    final notice = _editorNotice(liveModel, goal: goal);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GainerSheetHeader(
+          title: goal ? 'Körperziel' : _checkInTitle,
+          trailing: GainerPillButton(
+            key: ValueKey(goal ? 'body-save-goal' : 'body-save-checkin'),
+            label: 'Sichern',
+            isLoading: liveModel.isSaving,
+            // Ungültige Schlafzeiten erklärt der Hinweis am Schlaf.
+            onPressed: liveModel.isSaving || (!goal && _sleepTimesInvalid)
+                ? null
+                : () => _saveFromSheet(sheetContext, liveModel, goal: goal),
+          ),
+        ),
+        Flexible(
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(
+              GainerSpacing.m,
+              GainerSpacing.s,
+              GainerSpacing.m,
+              GainerSpacing.l,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                GainerSheetHeader(
-                  title: goal ? 'Körperziel' : _checkInTitle,
-                  trailing: GainerPillButton(
-                    key: ValueKey(
-                      goal ? 'body-save-goal' : 'body-save-checkin',
-                    ),
-                    label: 'Sichern',
-                    isLoading: liveModel.isSaving,
-                    // Ungültige Schlafzeiten erklärt der Hinweis am Schlaf.
-                    onPressed:
-                        liveModel.isSaving || (!goal && _sleepTimesInvalid)
-                        ? null
-                        : () => _saveFromSheet(
-                            sheetContext,
-                            liveModel,
-                            goal: goal,
-                          ),
-                  ),
-                ),
-                Flexible(
-                  child: SingleChildScrollView(
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: EdgeInsets.fromLTRB(
-                      GainerSpacing.m,
-                      GainerSpacing.s,
-                      GainerSpacing.m,
-                      GainerSpacing.l,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (notice case final message?)
-                          _NoticeCard(message: message),
-                        _editorFields(
-                          sheetContext,
-                          liveModel,
-                          goal: goal,
-                          rebuild: setSheetState,
-                          errors: errors,
-                        ),
-                      ],
-                    ),
-                  ),
+                if (notice != null) _NoticeCard(message: notice),
+                _editorFields(
+                  sheetContext,
+                  liveModel,
+                  goal: goal,
+                  rebuild: rebuild,
+                  errors: liveModel.fieldErrors,
                 ),
               ],
-            );
-          },
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      ],
+    );
+  }
 
   Future<void> _saveFromSheet(
     BuildContext sheetContext,
@@ -626,6 +632,13 @@ class _BodyScreenState extends State<BodyScreen> {
     );
   }
 
+  String? _sleepFooter() {
+    if (_sleepTimesInvalid) {
+      return 'Diese Uhrzeit gibt es in der Nacht der Zeitumstellung nicht.';
+    }
+    return _sleepFromHealth ? 'Schlaf aus Apple Health' : null;
+  }
+
   List<Widget> _sleepSection(StateSetter rebuild, String? errorText) {
     final bed = _bedMinutes;
     final wake = _wakeMinutes;
@@ -635,11 +648,7 @@ class _BodyScreenState extends State<BodyScreen> {
     return [
       GainerGroupedSection(
         header: 'Schlaf',
-        footer:
-            errorText ??
-            (_sleepTimesInvalid
-                ? 'Diese Uhrzeit gibt es in der Nacht der Zeitumstellung nicht.'
-                : (_sleepFromHealth ? 'Schlaf aus Apple Health' : null)),
+        footer: errorText ?? _sleepFooter(),
         children: [
           _timeRow(
             'Zu Bett',
