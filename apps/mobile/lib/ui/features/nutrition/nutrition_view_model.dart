@@ -750,24 +750,19 @@ class NutritionViewModel extends ChangeNotifier {
     _notify();
   }
 
-  /// Gilt für den letzten [_run]-Aufruf: abgewiesen, ohne dass ein Fehler
-  /// entstand (zweiter Tipp, Speichern während des Tageswechsels).
-  bool _lastRunRejected = false;
-
   static const rejectedMessage =
       'Gerade läuft ein anderer Vorgang. Bitte versuche es gleich noch einmal.';
 
-  /// Meldung zum zuletzt fehlgeschlagenen Aufruf: der Fehler der Aktion oder,
-  /// bei einer abgewiesenen Aktion, [rejectedMessage].
-  String failureMessage() => _lastRunRejected || errorMessage == null
-      ? rejectedMessage
-      : errorMessage!;
+  /// Meldung zu einer fehlgeschlagenen Mutation: ihr Fehler oder, wenn sie
+  /// abgewiesen wurde, [rejectedMessage]. Die Abweisung steht im Ergebnis der
+  /// Mutation selbst ([_run] hinterlegt sie in [errorMessage]); abgewiesene
+  /// Lesevorgänge (Suche, Schätzung) ändern nichts und verfälschen sie nicht.
+  String failureMessage() => errorMessage ?? rejectedMessage;
 
-  /// Zeigt [rejectedMessage] im Bereich [operation], wenn der letzte Aufruf
-  /// abgewiesen wurde. Ein Fehler der Aktion steht schon in [errorMessage].
+  /// Zeigt eine abgewiesene Mutation im Bereich [operation]. Ein Fehler der
+  /// Aktion steht schon in [errorMessage] und bleibt unverändert.
   void reportRejected(NutritionErrorOperation operation) {
-    if (_disposed || !_lastRunRejected) return;
-    errorMessage = rejectedMessage;
+    if (_disposed || errorMessage != rejectedMessage) return;
     errorOperation = operation;
     _notify();
   }
@@ -786,8 +781,15 @@ class NutritionViewModel extends ChangeNotifier {
     NutritionErrorOperation operation = NutritionErrorOperation.entry,
   }) async {
     if (_disposed) return false;
-    _lastRunRejected = saving ? !canSave : _reading;
-    if (_lastRunRejected) return false;
+    if (saving ? !canSave : _reading) {
+      // Nur Mutationen merken die Abweisung (ohne Benachrichtigung; der
+      // Aufrufer meldet sie über [reportRejected] oder [failureMessage]).
+      if (saving) {
+        errorMessage = rejectedMessage;
+        errorOperation = operation;
+      }
+      return false;
+    }
     if (saving) {
       isSaving = true;
     } else {

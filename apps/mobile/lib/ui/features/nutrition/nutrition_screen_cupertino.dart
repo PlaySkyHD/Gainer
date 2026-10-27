@@ -186,6 +186,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
   bool _addingMultiple = false;
   bool _wasVisible = true;
 
+  /// Erfolgreich entfernte Einträge, die die Liste sofort nicht mehr zeigt.
+  /// Das Wischen entfernt in `confirmDismiss`; wechselt der Tag währenddessen,
+  /// zeigt der Snapshot die Zeile noch, bis der neue Tag geladen ist. Eine
+  /// verwaiste Dismissible-Zeile im Baum wäre ein Fehler.
+  final Set<String> _removedEntryIds = {};
+
   bool get _visible => widget.isVisible?.call() ?? true;
 
   void _onVisibility() {
@@ -378,89 +384,107 @@ class _NutritionScreenState extends State<NutritionScreen> {
     BuildContext context,
     NutritionViewModel vm,
     NutritionSnapshot snapshot,
-  ) => [
-    _DayCard(
-      totals: snapshot.day.totals,
-      target: snapshot.dayTarget,
-      onManage: _editTargets,
-      onDayKind: () => _chooseDayKind(snapshot),
-    ),
-    if (vm.preferences.waterEnabled)
-      Padding(
-        padding: const EdgeInsets.only(top: GainerSpacing.s),
-        child: NutritionWaterCard(
-          amountMl: vm.waterMl,
-          goalMl: vm.preferences.waterGoalMl,
-          onAdd: vm.addWater,
-          error: vm.errorOperation == NutritionErrorOperation.water
-              ? vm.errorMessage
-              : null,
-          onEdit: () => showWaterAmountSheet(
-            context,
-            currentMl: vm.waterMl,
-            onSave: (amountMl) async => await vm.setWater(amountMl)
-                ? null
-                : vm.errorMessage ?? 'Speichern nicht möglich.',
-          ),
-        ),
+  ) {
+    // Entfernte Einträge, die der Snapshot nicht mehr enthält, sind erledigt.
+    _removedEntryIds.removeWhere(
+      (id) => !snapshot.day.entries.any((entry) => entry.entryId == id),
+    );
+    final visibleEntries = [
+      for (final entry in snapshot.day.entries)
+        if (!_removedEntryIds.contains(entry.entryId)) entry,
+    ];
+    return [
+      _DayCard(
+        totals: snapshot.day.totals,
+        target: snapshot.dayTarget,
+        onManage: _editTargets,
+        onDayKind: () => _chooseDayKind(snapshot),
       ),
-    if (snapshot.suggestedTemplate case final template?)
-      Padding(
-        padding: const EdgeInsets.only(top: GainerSpacing.s),
-        child: GainerGroupedSection(
-          children: [
-            GainerListRow(
-              key: const ValueKey('nutrition-template-suggestion'),
-              title: 'Vorlage „${template.name}“ übernehmen',
-              subtitle: templateSummary(template),
-              leadingIcon: CupertinoIcons.doc_on_doc,
-              trailing: GainerPillButton(
-                label: _applyLabel,
-                variant: GainerPillVariant.tonal,
-                onPressed: vm.canSave
-                    ? () => vm.applyTemplate(template.templateId)
-                    : null,
-              ),
+      if (vm.preferences.waterEnabled)
+        Padding(
+          padding: const EdgeInsets.only(top: GainerSpacing.s),
+          child: NutritionWaterCard(
+            amountMl: vm.waterMl,
+            goalMl: vm.preferences.waterGoalMl,
+            onAdd: vm.addWater,
+            error: vm.errorOperation == NutritionErrorOperation.water
+                ? vm.errorMessage
+                : null,
+            onEdit: () => showWaterAmountSheet(
+              context,
+              currentMl: vm.waterMl,
+              onSave: (amountMl) async => await vm.setWater(amountMl)
+                  ? null
+                  : vm.errorMessage ?? 'Speichern nicht möglich.',
             ),
-          ],
-        ),
-      ),
-    NutritionAveragesEntry(repository: vm.repository, refreshKey: snapshot),
-    if (vm.statusMessage != null)
-      Semantics(liveRegion: true, child: _notice(context, vm.statusMessage!)),
-    for (final meal in NutritionMeal.values)
-      Padding(
-        padding: const EdgeInsets.only(top: GainerSpacing.l),
-        child: _MealSection(
-          key: ValueKey('meal-${meal.name}'),
-          meal: meal,
-          entries: snapshot.day.entries
-              .where((entry) => entry.meal == meal)
-              .toList(),
-          onAdd: () {
-            vm.selectMeal(meal);
-            _openEntry();
-          },
-          onAddMultiple: () => _offerMultipleAdd(meal),
-          onEdit: _editEntry,
-          onRemove: _removeEntry,
-          onConfirmRemove: (entry) => confirmGainerDelete(
-            context,
-            title: 'Eintrag löschen?',
-            message: '„${entry.productName}“ wird aus dem Tagebuch entfernt.',
           ),
-          onMoveTo: (entries, orderedIds) =>
-              _applyEntryOrder(meal, entries, orderedIds),
         ),
-      ),
-  ];
+      if (snapshot.suggestedTemplate case final template?)
+        Padding(
+          padding: const EdgeInsets.only(top: GainerSpacing.s),
+          child: GainerGroupedSection(
+            children: [
+              GainerListRow(
+                key: const ValueKey('nutrition-template-suggestion'),
+                title: 'Vorlage „${template.name}“ übernehmen',
+                subtitle: templateSummary(template),
+                leadingIcon: CupertinoIcons.doc_on_doc,
+                trailing: GainerPillButton(
+                  label: _applyLabel,
+                  variant: GainerPillVariant.tonal,
+                  onPressed: vm.canSave
+                      ? () async {
+                          if (!await vm.applyTemplate(template.templateId)) {
+                            vm.reportRejected(NutritionErrorOperation.diary);
+                          }
+                        }
+                      : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+      NutritionAveragesEntry(repository: vm.repository, refreshKey: snapshot),
+      if (vm.statusMessage != null)
+        Semantics(liveRegion: true, child: _notice(context, vm.statusMessage!)),
+      for (final meal in NutritionMeal.values)
+        Padding(
+          padding: const EdgeInsets.only(top: GainerSpacing.l),
+          child: _MealSection(
+            key: ValueKey('meal-${meal.name}'),
+            meal: meal,
+            entries: visibleEntries
+                .where((entry) => entry.meal == meal)
+                .toList(),
+            onAdd: () {
+              vm.selectMeal(meal);
+              _openEntry();
+            },
+            onAddMultiple: () => _offerMultipleAdd(meal),
+            onEdit: _editEntry,
+            onRemove: _removeEntry,
+            onConfirmRemove: (entry) => confirmGainerDelete(
+              context,
+              title: 'Eintrag löschen?',
+              message: '„${entry.productName}“ wird aus dem Tagebuch entfernt.',
+            ),
+            onMoveTo: (entries, orderedIds) =>
+                _applyEntryOrder(meal, entries, orderedIds),
+          ),
+        ),
+    ];
+  }
 
   /// Entfernt den Eintrag. Liefert false, wenn er bleibt; dann steht die
   /// Meldung im Tagebuch.
   Future<bool> _removeEntry(NutritionEntry entry) async {
     final vm = widget.viewModel;
     final removed = await vm.removeEntry(entry.entryId);
-    if (!removed) vm.reportRejected(NutritionErrorOperation.diary);
+    if (!removed) {
+      vm.reportRejected(NutritionErrorOperation.diary);
+    } else if (mounted) {
+      setState(() => _removedEntryIds.add(entry.entryId));
+    }
     return removed;
   }
 
@@ -1582,7 +1606,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
     NutritionDayTemplate template,
   ) async {
     final vm = widget.viewModel;
-    setPageState(() => draft.saveError = null);
+    setPageState(() {
+      draft.saveError = null;
+      draft.saving = true;
+    });
     final saved = await vm.updateTemplate(
       template.templateId,
       name: draft.name.text.trim(),
@@ -1593,7 +1620,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
     if (saved) {
       Navigator.pop(pageContext);
     } else {
-      setPageState(() => draft.saveError = vm.failureMessage());
+      setPageState(() {
+        draft.saving = false;
+        draft.saveError = vm.failureMessage();
+      });
     }
   }
 
@@ -1606,7 +1636,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     title: 'Vorlage bearbeiten',
     closeKey: const ValueKey('day-template-close'),
     error: draft.saveError,
-    onSave: draft.canSave
+    onSave: draft.canSave && !draft.saving
         ? () => _saveTemplate(context, setPageState, draft, template)
         : null,
     children: [
@@ -1819,6 +1849,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   Future<void> _editEntry(NutritionEntry entry) async {
     var meal = entry.meal;
+    String? editError;
     await Navigator.of(context).push<({NutritionMeal meal})>(
       CupertinoPageRoute<({NutritionMeal meal})>(
         builder: (routeContext) => _Owned<_EntryEditControllers>(
@@ -1830,9 +1861,17 @@ class _NutritionScreenState extends State<NutritionScreen> {
               builder: (routeContext, setRouteState) => _FormPage(
                 title: 'Eintrag bearbeiten',
                 closeKey: const ValueKey('nutrition-edit-close'),
+                error: editError,
                 onSave: _isEntryEditBlocked(c)
                     ? null
-                    : () => _saveEntryEdit(routeContext, c, entry, meal),
+                    : () => _saveEntryEdit(
+                        routeContext,
+                        c,
+                        entry,
+                        meal,
+                        onError: (message) =>
+                            setRouteState(() => editError = message),
+                      ),
                 children: _entryEditFields(
                   routeContext,
                   c,
@@ -1860,9 +1899,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
     BuildContext routeContext,
     _EntryEditControllers c,
     NutritionEntry entry,
-    NutritionMeal meal,
-  ) async {
+    NutritionMeal meal, {
+    required ValueChanged<String?> onError,
+  }) async {
     final brand = c.brand.text.trim().isEmpty ? null : c.brand.text;
+    onError(null);
     final saved = await widget.viewModel.updateEntry(
       entry.copyWith(
         meal: meal,
@@ -1883,8 +1924,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
         clearPieces: true,
       ),
     );
+    if (!routeContext.mounted) return;
     if (!saved) {
-      widget.viewModel.reportRejected(NutritionErrorOperation.diary);
+      // Die Meldung steht auf der Bearbeitungsseite selbst, nicht nur auf dem
+      // Screen darunter.
+      onError(widget.viewModel.failureMessage());
       return;
     }
     if (routeContext.mounted &&
@@ -1901,9 +1945,6 @@ class _NutritionScreenState extends State<NutritionScreen> {
     required VoidCallback refresh,
     required ValueChanged<NutritionMeal> onMealChanged,
   }) => [
-    if (widget.viewModel.errorMessage != null &&
-        widget.viewModel.errorOperation == NutritionErrorOperation.diary)
-      _notice(routeContext, widget.viewModel.errorMessage!, isError: true),
     if (widget.viewModel.isSaving)
       const Padding(
         padding: EdgeInsets.all(12),
@@ -1948,6 +1989,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     // gespeicherten Gericht und berührt nie einen Ernährungstag.
     final components = <ReusableMealComponent>[...?existing?.components];
     String? saveError;
+    var saving = false;
     // Die Controller leben im State der Route. Sie schließt erst, wenn das
     // Speichern gelang; sonst bleibt der Entwurf mit Meldung offen.
     await Navigator.of(context).push<void>(
@@ -1977,9 +2019,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
               portion: c.portion,
               components: components,
               saveError: saveError,
+              saving: saving,
               save: (value) async {
                 final vm = widget.viewModel;
-                setDialogState(() => saveError = null);
+                setDialogState(() {
+                  saveError = null;
+                  saving = true;
+                });
                 final saved = await vm.saveReusableMeal(
                   id: id,
                   meal: value,
@@ -1989,7 +2035,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
                 if (saved) {
                   Navigator.pop(context);
                 } else {
-                  setDialogState(() => saveError = vm.failureMessage());
+                  setDialogState(() {
+                    saving = false;
+                    saveError = vm.failureMessage();
+                  });
                 }
               },
             ),
@@ -2008,6 +2057,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     required TextEditingController portion,
     required List<ReusableMealComponent> components,
     required String? saveError,
+    required bool saving,
     required Future<void> Function(ReusableMeal value) save,
   }) {
     void refresh() => setDialogState(() {});
@@ -2019,7 +2069,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       title: existing == null ? 'Neues Gericht' : 'Gericht bearbeiten',
       closeKey: const ValueKey('nutrition-recipe-close'),
       error: saveError,
-      onSave: _canSaveRecipe(name, portion, components)
+      onSave: _canSaveRecipe(name, portion, components) && !saving
           ? () {
               // Die Validierung des Modells kann werfen; wie zuvor als
               // Eingabefehler melden und den Editor schließen.
@@ -2337,6 +2387,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     // Der Controller lebt im State des Sheets. Es schließt erst, wenn die
     // Übernahme gelang; sonst bleibt es mit Meldung offen.
     String? saveError;
+    var saving = false;
     await showGainerSheet<void>(
       context: context,
       builder: (sheetContext) => _Owned<TextEditingController>(
@@ -2388,10 +2439,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
                   child: GainerPillButton(
                     label: _applyLabel,
                     expand: true,
-                    onPressed: valid
+                    onPressed: valid && !saving
                         ? () async {
                             final vm = widget.viewModel;
-                            setSheetState(() => saveError = null);
+                            setSheetState(() {
+                              saveError = null;
+                              saving = true;
+                            });
                             final added = await vm.addReusableMeal(
                               id,
                               vm.selectedMeal,
@@ -2401,9 +2455,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
                             if (added) {
                               Navigator.of(sheetContext).pop();
                             } else {
-                              setSheetState(
-                                () => saveError = vm.failureMessage(),
-                              );
+                              setSheetState(() {
+                                saving = false;
+                                saveError = vm.failureMessage();
+                              });
                             }
                           }
                         : null,
@@ -3205,6 +3260,9 @@ class _TemplateDraft {
 
   /// Meldung des letzten gescheiterten Sicherns.
   String? saveError;
+
+  /// Das Sichern läuft; „Sichern“ ist dann gesperrt (kein Doppeltipp).
+  bool saving = false;
 
   List<NutritionEntry> entriesOf(NutritionMeal meal) => [
     for (final entry in entries)
