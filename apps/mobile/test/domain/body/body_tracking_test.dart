@@ -36,27 +36,31 @@ void main() {
     () {
       expect(
         () => validateDailyCheckIn(
-          localDate: '2026-10-12',
-          weightKg: 72.5,
-          caloriesKcal: null,
-          proteinGrams: null,
-          carbohydrateGrams: null,
-          fatGrams: null,
-          steps: null,
-          sleepMinutes: null,
+          DailyCheckInInput(
+            localDate: '2026-10-12',
+            weightKg: 72.5,
+            caloriesKcal: null,
+            proteinGrams: null,
+            carbohydrateGrams: null,
+            fatGrams: null,
+            steps: null,
+            sleepMinutes: null,
+          ),
         ),
         returnsNormally,
       );
       expect(
         () => validateDailyCheckIn(
-          localDate: '2026-10-12',
-          weightKg: 72.5,
-          caloriesKcal: -1,
-          proteinGrams: null,
-          carbohydrateGrams: null,
-          fatGrams: null,
-          steps: -1,
-          sleepMinutes: 1441,
+          DailyCheckInInput(
+            localDate: '2026-10-12',
+            weightKg: 72.5,
+            caloriesKcal: -1,
+            proteinGrams: null,
+            carbohydrateGrams: null,
+            fatGrams: null,
+            steps: -1,
+            sleepMinutes: 1441,
+          ),
         ),
         throwsA(isA<BodyTrackingValidationException>()),
       );

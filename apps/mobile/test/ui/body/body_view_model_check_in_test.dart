@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/body/body_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
+import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 import 'package:gainer_mobile/ui/features/body/body_view_model.dart';
 
 const _account = '00000000-0000-4000-8000-000000000001';
@@ -31,14 +32,16 @@ void main() {
   });
 
   Future<void> storeFullCheckIn() => repository.saveCheckIn(
-    localDate: '2026-10-24',
-    weightKg: 82,
-    caloriesKcal: 2400,
-    proteinGrams: 150,
-    carbohydrateGrams: 260,
-    fatGrams: 80,
-    steps: 9000,
-    sleepMinutes: 450,
+    DailyCheckInInput(
+      localDate: '2026-10-24',
+      weightKg: 82,
+      caloriesKcal: 2400,
+      proteinGrams: 150,
+      carbohydrateGrams: 260,
+      fatGrams: 80,
+      steps: 9000,
+      sleepMinutes: 450,
+    ),
   );
 
   test('saving without a loaded snapshot keeps calories and sleep', () async {
@@ -64,9 +67,11 @@ void main() {
     await repository.updateSteps(localDate: '2026-10-24', steps: 12000);
 
     await repository.saveCheckIn(
-      localDate: '2026-10-24',
-      weightKg: 81.5,
-      steps: readByEditor,
+      DailyCheckInInput(
+        localDate: '2026-10-24',
+        weightKg: 81.5,
+        steps: readByEditor,
+      ),
     );
 
     final saved = (await repository.read()).checkIns.single.value;

@@ -30,21 +30,23 @@ Future<void> _commitAggregate(
   final value = {'type': aggregateType};
   return store
       .commitMutation(
-        mutationId: _uuid(0x400 + index),
-        aggregateType: aggregateType,
-        aggregateId: id,
-        operation: LocalMutationOperation.update,
-        baseVersion: 1,
-        body: value,
-        envelope: LocalAggregateEnvelope<Object?>(
+        MutationDraft(
+          mutationId: _uuid(0x400 + index),
+          aggregateType: aggregateType,
           aggregateId: id,
-          serverSnapshot: value,
-          workingCopy: value,
-          serverVersion: 1,
-          optimisticVersion: 2,
-          syncState: LocalSyncState.pending,
+          operation: LocalMutationOperation.update,
+          baseVersion: 1,
+          body: value,
+          envelope: LocalAggregateEnvelope<Object?>(
+            aggregateId: id,
+            serverSnapshot: value,
+            workingCopy: value,
+            serverVersion: 1,
+            optimisticVersion: 2,
+            syncState: LocalSyncState.pending,
+          ),
+          createdAtUtc: _now,
         ),
-        createdAtUtc: _now,
       )
       .then((_) {});
 }

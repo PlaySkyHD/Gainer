@@ -69,24 +69,28 @@ void main() {
     'daily check-in upserts by local date and preserves creation time',
     () async {
       final originalId = await repository.saveCheckIn(
-        localDate: '2026-10-12',
-        weightKg: 71,
-        caloriesKcal: 2200,
-        proteinGrams: 140,
-        carbohydrateGrams: 250,
-        fatGrams: 70,
-        steps: 8500,
-        sleepMinutes: 420,
+        DailyCheckInInput(
+          localDate: '2026-10-12',
+          weightKg: 71,
+          caloriesKcal: 2200,
+          proteinGrams: 140,
+          carbohydrateGrams: 250,
+          fatGrams: 70,
+          steps: 8500,
+          sleepMinutes: 420,
+        ),
       );
       final again = await repository.saveCheckIn(
-        localDate: '2026-10-12',
-        weightKg: 70.8,
-        caloriesKcal: null,
-        proteinGrams: 135,
-        carbohydrateGrams: null,
-        fatGrams: null,
-        steps: null,
-        sleepMinutes: null,
+        DailyCheckInInput(
+          localDate: '2026-10-12',
+          weightKg: 70.8,
+          caloriesKcal: null,
+          proteinGrams: 135,
+          carbohydrateGrams: null,
+          fatGrams: null,
+          steps: null,
+          sleepMinutes: null,
+        ),
       );
       expect(again, originalId);
       final checkIn = (await repository.read()).checkIns.single.value;
@@ -161,14 +165,16 @@ void main() {
           targetDate: null,
         );
         await firstRepo.saveCheckIn(
-          localDate: '2026-10-12',
-          weightKg: 72,
-          caloriesKcal: null,
-          proteinGrams: null,
-          carbohydrateGrams: null,
-          fatGrams: null,
-          steps: null,
-          sleepMinutes: null,
+          DailyCheckInInput(
+            localDate: '2026-10-12',
+            weightKg: 72,
+            caloriesKcal: null,
+            proteinGrams: null,
+            carbohydrateGrams: null,
+            fatGrams: null,
+            steps: null,
+            sleepMinutes: null,
+          ),
         );
         await firstDb.close();
 
@@ -194,14 +200,16 @@ void main() {
   group('Ruhepuls und HRV', () {
     Future<String> checkIn(String date, {double weight = 71}) =>
         repository.saveCheckIn(
-          localDate: date,
-          weightKg: weight,
-          caloriesKcal: 2200,
-          proteinGrams: null,
-          carbohydrateGrams: null,
-          fatGrams: null,
-          steps: 8000,
-          sleepMinutes: 420,
+          DailyCheckInInput(
+            localDate: date,
+            weightKg: weight,
+            caloriesKcal: 2200,
+            proteinGrams: null,
+            carbohydrateGrams: null,
+            fatGrams: null,
+            steps: 8000,
+            sleepMinutes: 420,
+          ),
         );
 
     test(

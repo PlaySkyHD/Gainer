@@ -1,4 +1,5 @@
 import 'package:gainer_mobile/data/repositories/body/body_repository.dart';
+import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 
 import 'training_test_support.dart';
@@ -132,13 +133,15 @@ Future<void> saveWeightCheckIn(
 }) async {
   final body = BodyRepository(store: harness.store, clock: () => harness.now);
   await body.saveCheckIn(
-    localDate: localDate,
-    weightKg: weightKg,
-    caloriesKcal: null,
-    proteinGrams: null,
-    carbohydrateGrams: null,
-    fatGrams: null,
-    steps: null,
-    sleepMinutes: null,
+    DailyCheckInInput(
+      localDate: localDate,
+      weightKg: weightKg,
+      caloriesKcal: null,
+      proteinGrams: null,
+      carbohydrateGrams: null,
+      fatGrams: null,
+      steps: null,
+      sleepMinutes: null,
+    ),
   );
 }

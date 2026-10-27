@@ -139,34 +139,36 @@ class WaterIntakeRepository {
       'updatedAtUtc': now.toIso8601String(),
     };
     return store.commitMutation(
-      mutationId: ids(),
-      aggregateType: waterIntakeAggregateType,
-      aggregateId: id,
-      operation: existing == null
-          ? LocalMutationOperation.create
-          : LocalMutationOperation.update,
-      baseVersion: existing?.serverVersion,
-      body: working,
-      envelope: existing == null
-          ? localEnvelope(aggregateId: id, workingCopy: working)
-          : LocalAggregateEnvelope(
-              aggregateId: existing.aggregateId,
-              serverSnapshot: existing.serverSnapshot,
-              workingCopy: working,
-              serverVersion: existing.serverVersion,
-              optimisticVersion: existing.optimisticVersion + 1,
-              syncState: LocalSyncState.pending,
-            ),
-      // Gilt der gelesene Stand beim Commit nicht mehr, schlägt er fehl.
-      resourceExpectations: [
-        LocalResourceExpectation(
-          aggregateType: waterIntakeAggregateType,
-          aggregateId: id,
-          optimisticVersion: existing?.optimisticVersion,
-          serverVersion: existing?.serverVersion,
-        ),
-      ],
-      createdAtUtc: now,
+      MutationDraft(
+        mutationId: ids(),
+        aggregateType: waterIntakeAggregateType,
+        aggregateId: id,
+        operation: existing == null
+            ? LocalMutationOperation.create
+            : LocalMutationOperation.update,
+        baseVersion: existing?.serverVersion,
+        body: working,
+        envelope: existing == null
+            ? localEnvelope(aggregateId: id, workingCopy: working)
+            : LocalAggregateEnvelope(
+                aggregateId: existing.aggregateId,
+                serverSnapshot: existing.serverSnapshot,
+                workingCopy: working,
+                serverVersion: existing.serverVersion,
+                optimisticVersion: existing.optimisticVersion + 1,
+                syncState: LocalSyncState.pending,
+              ),
+        // Gilt der gelesene Stand beim Commit nicht mehr, schlägt er fehl.
+        resourceExpectations: [
+          LocalResourceExpectation(
+            aggregateType: waterIntakeAggregateType,
+            aggregateId: id,
+            optimisticVersion: existing?.optimisticVersion,
+            serverVersion: existing?.serverVersion,
+          ),
+        ],
+        createdAtUtc: now,
+      ),
     );
   }
 

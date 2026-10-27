@@ -35,15 +35,17 @@ Future<LocalMutation> _updateWorkout(
 }) {
   final value = {'title': 'Stand $version'};
   return store.commitMutation(
-    mutationId: mutationId,
-    aggregateType: 'workout',
-    aggregateId: workoutId,
-    operation: LocalMutationOperation.update,
-    baseVersion: 2,
-    body: value,
-    envelope: _envelope(workoutId, value, version),
-    createdAtUtc: _now,
-    afterEnvelopeWriteForTesting: afterEnvelopeWriteForTesting,
+    MutationDraft(
+      mutationId: mutationId,
+      aggregateType: 'workout',
+      aggregateId: workoutId,
+      operation: LocalMutationOperation.update,
+      baseVersion: 2,
+      body: value,
+      envelope: _envelope(workoutId, value, version),
+      createdAtUtc: _now,
+      afterEnvelopeWriteForTesting: afterEnvelopeWriteForTesting,
+    ),
   );
 }
 
@@ -54,21 +56,23 @@ Future<LocalMutation> _createWorkout(
 ) {
   const value = {'title': 'Neu'};
   return store.commitMutation(
-    mutationId: mutationId,
-    aggregateType: 'workout',
-    aggregateId: workoutId,
-    operation: LocalMutationOperation.create,
-    baseVersion: null,
-    body: value,
-    envelope: LocalAggregateEnvelope<Object?>(
+    MutationDraft(
+      mutationId: mutationId,
+      aggregateType: 'workout',
       aggregateId: workoutId,
-      serverSnapshot: null,
-      workingCopy: value,
-      serverVersion: null,
-      optimisticVersion: 1,
-      syncState: LocalSyncState.pending,
+      operation: LocalMutationOperation.create,
+      baseVersion: null,
+      body: value,
+      envelope: LocalAggregateEnvelope<Object?>(
+        aggregateId: workoutId,
+        serverSnapshot: null,
+        workingCopy: value,
+        serverVersion: null,
+        optimisticVersion: 1,
+        syncState: LocalSyncState.pending,
+      ),
+      createdAtUtc: _now,
     ),
-    createdAtUtc: _now,
   );
 }
 
@@ -321,21 +325,23 @@ void main() {
     }) {
       final value = {'name': title, ...extra};
       return store.commitMutation(
-        mutationId: nextId(),
-        aggregateType: type,
-        aggregateId: id,
-        operation: operation,
-        baseVersion: baseVersion,
-        body: value,
-        envelope: LocalAggregateEnvelope<Object?>(
+        MutationDraft(
+          mutationId: nextId(),
+          aggregateType: type,
           aggregateId: id,
-          serverSnapshot: null,
-          workingCopy: value,
-          serverVersion: serverVersion,
-          optimisticVersion: 1,
-          syncState: LocalSyncState.pending,
+          operation: operation,
+          baseVersion: baseVersion,
+          body: value,
+          envelope: LocalAggregateEnvelope<Object?>(
+            aggregateId: id,
+            serverSnapshot: null,
+            workingCopy: value,
+            serverVersion: serverVersion,
+            optimisticVersion: 1,
+            syncState: LocalSyncState.pending,
+          ),
+          createdAtUtc: _now,
         ),
-        createdAtUtc: _now,
       );
     }
 

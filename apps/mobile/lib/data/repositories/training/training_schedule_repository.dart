@@ -217,27 +217,29 @@ class TrainingScheduleRepository {
     final body = compacted.toJson();
     final id = compacted.scheduleId;
     await store.commitMutation(
-      mutationId: _ids(),
-      aggregateType: trainingScheduleAggregateType,
-      aggregateId: id,
-      operation:
-          operation ??
-          (old == null
-              ? LocalMutationOperation.create
-              : LocalMutationOperation.update),
-      baseVersion: old == null ? 0 : old.serverVersion,
-      body: body,
-      envelope: old == null
-          ? localEnvelope(aggregateId: id, workingCopy: body)
-          : LocalAggregateEnvelope<Object?>(
-              aggregateId: id,
-              serverSnapshot: old.serverSnapshot,
-              workingCopy: body,
-              serverVersion: old.serverVersion,
-              optimisticVersion: old.optimisticVersion + 1,
-              syncState: LocalSyncState.pending,
-            ),
-      createdAtUtc: _clock().toUtc(),
+      MutationDraft(
+        mutationId: _ids(),
+        aggregateType: trainingScheduleAggregateType,
+        aggregateId: id,
+        operation:
+            operation ??
+            (old == null
+                ? LocalMutationOperation.create
+                : LocalMutationOperation.update),
+        baseVersion: old == null ? 0 : old.serverVersion,
+        body: body,
+        envelope: old == null
+            ? localEnvelope(aggregateId: id, workingCopy: body)
+            : LocalAggregateEnvelope<Object?>(
+                aggregateId: id,
+                serverSnapshot: old.serverSnapshot,
+                workingCopy: body,
+                serverVersion: old.serverVersion,
+                optimisticVersion: old.optimisticVersion + 1,
+                syncState: LocalSyncState.pending,
+              ),
+        createdAtUtc: _clock().toUtc(),
+      ),
     );
     return compacted;
   }

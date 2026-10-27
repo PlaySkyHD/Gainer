@@ -32,26 +32,15 @@ class TrainingTodayCard extends StatelessWidget {
     final colors = GainerDesign.colorsOf(context);
     if (projection.schedule == null) return _setup(colors);
 
-    final today = projection.today;
-    final day = projection.day(today);
-    final open = [
-      for (final training in day.trainings)
-        if (training.isOpen) training,
-    ];
-    final done = [
-      for (final training in day.trainings)
-        if (training.status == ScheduledTrainingStatus.done) training,
-    ];
-    final away = [
-      for (final training in day.trainings)
-        if (training.status == ScheduledTrainingStatus.moved ||
-            training.status == ScheduledTrainingStatus.skipped)
-          training,
-    ];
-    final actionable = [
-      for (final training in day.trainings)
-        if (projection.actionsFor(training).isNotEmpty) training,
-    ];
+    final trainings = projection.day(projection.today).trainings;
+    final open = trainings.where((t) => t.isOpen).toList();
+    final done = trainings
+        .where((t) => t.status == ScheduledTrainingStatus.done)
+        .toList();
+    final away = trainings.where(_isAway).toList();
+    final actionable = trainings
+        .where((t) => projection.actionsFor(t).isNotEmpty)
+        .toList();
 
     final (:title, :lines) = _headline(open, done, away);
 
@@ -65,52 +54,70 @@ class TrainingTodayCard extends StatelessWidget {
             ? null
             : () => _openActions(context, actionable),
         child: GainerCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  if (open.isEmpty && done.isNotEmpty) ...[
-                    Icon(
-                      CupertinoIcons.checkmark_circle_fill,
-                      size: 22,
-                      color: colors.accent,
-                    ),
-                    const SizedBox(width: GainerSpacing.xs),
-                  ],
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: GainerTypography.cardTitle.copyWith(
-                        color: colors.primaryText,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              for (final line in lines) ...[
-                const SizedBox(height: GainerSpacing.xxs),
-                Text(
-                  line,
-                  style: GainerTypography.label.copyWith(
-                    color: colors.secondaryText,
-                  ),
-                ),
-              ],
-              if (open.isNotEmpty) ...[
-                const SizedBox(height: GainerSpacing.s),
-                GainerPillButton(
-                  key: const ValueKey('training-today-start'),
-                  label: 'Starten',
-                  icon: CupertinoIcons.play_fill,
-                  expand: true,
-                  onPressed: () => onStart(open.first.planId),
-                ),
-              ],
-            ],
+          child: _content(
+            colors,
+            title: title,
+            lines: lines,
+            open: open,
+            showDoneIcon: open.isEmpty && done.isNotEmpty,
           ),
         ),
       ),
+    );
+  }
+
+  static bool _isAway(ScheduledTraining training) =>
+      training.status == ScheduledTrainingStatus.moved ||
+      training.status == ScheduledTrainingStatus.skipped;
+
+  Widget _content(
+    GainerColors colors, {
+    required String title,
+    required List<String> lines,
+    required List<ScheduledTraining> open,
+    required bool showDoneIcon,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            if (showDoneIcon) ...[
+              Icon(
+                CupertinoIcons.checkmark_circle_fill,
+                size: 22,
+                color: colors.accent,
+              ),
+              const SizedBox(width: GainerSpacing.xs),
+            ],
+            Expanded(
+              child: Text(
+                title,
+                style: GainerTypography.cardTitle.copyWith(
+                  color: colors.primaryText,
+                ),
+              ),
+            ),
+          ],
+        ),
+        for (final line in lines) ...[
+          const SizedBox(height: GainerSpacing.xxs),
+          Text(
+            line,
+            style: GainerTypography.label.copyWith(color: colors.secondaryText),
+          ),
+        ],
+        if (open.isNotEmpty) ...[
+          const SizedBox(height: GainerSpacing.s),
+          GainerPillButton(
+            key: const ValueKey('training-today-start'),
+            label: 'Starten',
+            icon: CupertinoIcons.play_fill,
+            expand: true,
+            onPressed: () => onStart(open.first.planId),
+          ),
+        ],
+      ],
     );
   }
 

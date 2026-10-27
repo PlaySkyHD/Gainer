@@ -5,6 +5,7 @@ import 'package:gainer_mobile/data/repositories/health/check_in_health_coordinat
 import 'package:gainer_mobile/data/repositories/health/health_steps_sync.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
+import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 
 import '../../support/fake_health_platform.dart';
 
@@ -45,14 +46,16 @@ void main() {
 
   Future<void> checkIn(String date, {int? steps, int? sleepMinutes}) =>
       body.saveCheckIn(
-        localDate: date,
-        weightKg: 82.4,
-        caloriesKcal: null,
-        proteinGrams: null,
-        carbohydrateGrams: null,
-        fatGrams: null,
-        steps: steps,
-        sleepMinutes: sleepMinutes,
+        DailyCheckInInput(
+          localDate: date,
+          weightKg: 82.4,
+          caloriesKcal: null,
+          proteinGrams: null,
+          carbohydrateGrams: null,
+          fatGrams: null,
+          steps: steps,
+          sleepMinutes: sleepMinutes,
+        ),
       );
 
   Future<int?> storedSteps(String date) async => (await body.read()).checkIns

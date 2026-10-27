@@ -561,28 +561,30 @@ class NutritionRepository {
     };
     await beforeDayCommitForTesting?.call();
     await store.commitMutation(
-      mutationId: ids(),
-      aggregateType: _nutritionDayType,
-      aggregateId: aggregateId,
-      operation: existing == null
-          ? LocalMutationOperation.create
-          : LocalMutationOperation.update,
-      baseVersion: existing?.serverVersion,
-      body: body,
-      envelope: existing == null
-          ? localEnvelope(aggregateId: aggregateId, workingCopy: body)
-          : _pending(existing, body),
-      // Hat sich der Tag seit dem Lesen geändert (z. B. durch den Sync),
-      // schlägt das Speichern fehl, statt den neueren Stand zu überschreiben.
-      resourceExpectations: [
-        LocalResourceExpectation(
-          aggregateType: _nutritionDayType,
-          aggregateId: aggregateId,
-          optimisticVersion: existing?.optimisticVersion,
-          serverVersion: existing?.serverVersion,
-        ),
-      ],
-      createdAtUtc: now,
+      MutationDraft(
+        mutationId: ids(),
+        aggregateType: _nutritionDayType,
+        aggregateId: aggregateId,
+        operation: existing == null
+            ? LocalMutationOperation.create
+            : LocalMutationOperation.update,
+        baseVersion: existing?.serverVersion,
+        body: body,
+        envelope: existing == null
+            ? localEnvelope(aggregateId: aggregateId, workingCopy: body)
+            : _pending(existing, body),
+        // Hat sich der Tag seit dem Lesen geändert (z. B. durch den Sync),
+        // schlägt das Speichern fehl, statt den neueren Stand zu überschreiben.
+        resourceExpectations: [
+          LocalResourceExpectation(
+            aggregateType: _nutritionDayType,
+            aggregateId: aggregateId,
+            optimisticVersion: existing?.optimisticVersion,
+            serverVersion: existing?.serverVersion,
+          ),
+        ],
+        createdAtUtc: now,
+      ),
     );
   }
 
@@ -1234,16 +1236,18 @@ class NutritionRepository {
   }) async {
     final now = clock().toUtc();
     await store.commitMutation(
-      mutationId: ids(),
-      aggregateType: type,
-      aggregateId: id,
-      operation: operation,
-      baseVersion: existing?.serverVersion,
-      body: value,
-      envelope: existing == null
-          ? localEnvelope(aggregateId: id, workingCopy: value)
-          : _pending(existing, value),
-      createdAtUtc: now,
+      MutationDraft(
+        mutationId: ids(),
+        aggregateType: type,
+        aggregateId: id,
+        operation: operation,
+        baseVersion: existing?.serverVersion,
+        body: value,
+        envelope: existing == null
+            ? localEnvelope(aggregateId: id, workingCopy: value)
+            : _pending(existing, value),
+        createdAtUtc: now,
+      ),
     );
   }
 

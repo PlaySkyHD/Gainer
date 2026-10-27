@@ -109,14 +109,19 @@ class CardioRepository {
     }
     final body = saved.toJson();
     await store.commitMutation(
-      mutationId: ids(),
-      aggregateType: cardioSessionAggregateType,
-      aggregateId: saved.sessionId,
-      operation: LocalMutationOperation.create,
-      baseVersion: 0,
-      body: body,
-      envelope: localEnvelope(aggregateId: saved.sessionId, workingCopy: body),
-      createdAtUtc: now,
+      MutationDraft(
+        mutationId: ids(),
+        aggregateType: cardioSessionAggregateType,
+        aggregateId: saved.sessionId,
+        operation: LocalMutationOperation.create,
+        baseVersion: 0,
+        body: body,
+        envelope: localEnvelope(
+          aggregateId: saved.sessionId,
+          workingCopy: body,
+        ),
+        createdAtUtc: now,
+      ),
     );
     _changed();
     return saved;
@@ -254,14 +259,16 @@ class CardioRepository {
     );
     final body = updated.toJson();
     await store.commitMutation(
-      mutationId: ids(),
-      aggregateType: cardioSessionAggregateType,
-      aggregateId: id,
-      operation: LocalMutationOperation.update,
-      baseVersion: old.serverVersion,
-      body: body,
-      envelope: _pending(old, body),
-      createdAtUtc: clock().toUtc(),
+      MutationDraft(
+        mutationId: ids(),
+        aggregateType: cardioSessionAggregateType,
+        aggregateId: id,
+        operation: LocalMutationOperation.update,
+        baseVersion: old.serverVersion,
+        body: body,
+        envelope: _pending(old, body),
+        createdAtUtc: clock().toUtc(),
+      ),
     );
     _changed();
     return updated;
@@ -291,14 +298,16 @@ class CardioRepository {
     );
     final body = updated.toJson();
     await store.commitMutation(
-      mutationId: ids(),
-      aggregateType: cardioSessionAggregateType,
-      aggregateId: id,
-      operation: LocalMutationOperation.update,
-      baseVersion: old.serverVersion,
-      body: body,
-      envelope: _pending(old, body),
-      createdAtUtc: clock().toUtc(),
+      MutationDraft(
+        mutationId: ids(),
+        aggregateType: cardioSessionAggregateType,
+        aggregateId: id,
+        operation: LocalMutationOperation.update,
+        baseVersion: old.serverVersion,
+        body: body,
+        envelope: _pending(old, body),
+        createdAtUtc: clock().toUtc(),
+      ),
     );
     _changed();
     return updated;
@@ -314,14 +323,16 @@ class CardioRepository {
         .copyWith(deletedAtUtc: () => now, updatedAtUtc: now)
         .toJson();
     await store.commitMutation(
-      mutationId: ids(),
-      aggregateType: cardioSessionAggregateType,
-      aggregateId: id,
-      operation: LocalMutationOperation.delete,
-      baseVersion: old.serverVersion,
-      body: body,
-      envelope: _pending(old, body),
-      createdAtUtc: now,
+      MutationDraft(
+        mutationId: ids(),
+        aggregateType: cardioSessionAggregateType,
+        aggregateId: id,
+        operation: LocalMutationOperation.delete,
+        baseVersion: old.serverVersion,
+        body: body,
+        envelope: _pending(old, body),
+        createdAtUtc: now,
+      ),
     );
     _changed();
   }

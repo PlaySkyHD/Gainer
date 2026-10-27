@@ -99,10 +99,12 @@ class BodyViewModel extends ChangeNotifier {
         ? checkInHealth
         : null;
     await repository.saveCheckIn(
-      localDate: localDate,
-      weightKg: weightKg,
-      steps: healthSnapshot?.steps,
-      sleepMinutes: sleepMinutes,
+      DailyCheckInInput(
+        localDate: localDate,
+        weightKg: weightKg,
+        steps: healthSnapshot?.steps,
+        sleepMinutes: sleepMinutes,
+      ),
     );
     if (_disposed) return;
     if (health != null && healthSnapshot != null) {

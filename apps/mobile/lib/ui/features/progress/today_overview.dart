@@ -401,26 +401,38 @@ double Function(int index) _weightChartX(
   List<ApiWeightPoint> points,
   double width,
 ) {
+  final days = _leadingCalendarDays(points);
+  final byDate = days.length == points.length && points.length > 1;
+  final (firstDay, dateSpan) = byDate ? _dayRange(days) : (0, 0);
+  final inset = width < 2 * _markerInset ? width / 2 : _markerInset;
+  final usable = width - 2 * inset;
+  return (index) => points.length == 1
+      ? width / 2
+      : inset +
+            usable * _xShare(index, points.length, days, firstDay, dateSpan);
+}
+
+/// Tagesnummern der Messpunkte bis zum ersten ungültigen Datum.
+List<int> _leadingCalendarDays(List<ApiWeightPoint> points) {
   final days = <int>[];
   for (final point in points) {
     final day = _calendarDay(point.date);
     if (day == null) break;
     days.add(day.millisecondsSinceEpoch ~/ Duration.millisecondsPerDay);
   }
-  final byDate = days.length == points.length && points.length > 1;
-  final firstDay = byDate ? days.reduce((a, b) => a < b ? a : b) : 0;
-  final lastDay = byDate ? days.reduce((a, b) => a > b ? a : b) : 0;
-  final dateSpan = lastDay - firstDay;
-  final inset = width < 2 * _markerInset ? width / 2 : _markerInset;
-  final usable = width - 2 * inset;
-  return (index) {
-    if (points.length == 1) return width / 2;
-    final share = dateSpan > 0
-        ? (days[index] - firstDay) / dateSpan
-        : index / (points.length - 1);
-    return inset + usable * share;
-  };
+  return days;
 }
+
+/// Erster Tag und Spannweite in Tagen.
+(int, int) _dayRange(List<int> days) {
+  final first = days.reduce((a, b) => a < b ? a : b);
+  final last = days.reduce((a, b) => a > b ? a : b);
+  return (first, last - first);
+}
+
+/// Anteil (0 bis 1) der Achse: nach Datum, ohne Datumsspanne nach Index.
+double _xShare(int index, int count, List<int> days, int firstDay, int span) =>
+    span > 0 ? (days[index] - firstDay) / span : index / (count - 1);
 
 /// y-Position je Messpunkt: höheres Gewicht weiter oben.
 double Function(int index) _weightChartY(

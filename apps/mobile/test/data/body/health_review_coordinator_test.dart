@@ -9,6 +9,7 @@ import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 import 'package:gainer_mobile/ui/features/body/health/health_review_view_model.dart';
 
 import '../../support/fake_health_platform.dart';
@@ -261,14 +262,16 @@ void main() {
 
   test('day collision asks for a decision; replacement preserves other check-in fields', () async {
     await body.saveCheckIn(
-      localDate: '2026-10-12',
-      weightKg: 70,
-      caloriesKcal: 2100,
-      proteinGrams: 125,
-      carbohydrateGrams: null,
-      fatGrams: null,
-      steps: 9000,
-      sleepMinutes: null,
+      DailyCheckInInput(
+        localDate: '2026-10-12',
+        weightKg: 70,
+        caloriesKcal: 2100,
+        proteinGrams: 125,
+        carbohydrateGrams: null,
+        fatGrams: null,
+        steps: 9000,
+        sleepMinutes: null,
+      ),
     );
     health.samples = [sample('health-private-uuid-3')];
     final review = (await coordinator().prepareWeightReview(

@@ -8,6 +8,7 @@ import 'package:gainer_mobile/data/repositories/insights/insights_repository.dar
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/training/training_log_repository.dart';
 import 'package:gainer_mobile/data/services/api/api_client.dart';
+import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_session.dart';
 import 'package:gainer_mobile/domain/models/nutrition/nutrition.dart';
 import 'package:gainer_mobile/domain/models/training/training_plan_model.dart';
@@ -125,14 +126,16 @@ class CalendarHarness {
     int? sleepMinutes,
   }) async {
     await body.saveCheckIn(
-      localDate: date.toIso(),
-      weightKg: weightKg,
-      caloriesKcal: null,
-      proteinGrams: null,
-      carbohydrateGrams: null,
-      fatGrams: null,
-      steps: steps,
-      sleepMinutes: sleepMinutes,
+      DailyCheckInInput(
+        localDate: date.toIso(),
+        weightKg: weightKg,
+        caloriesKcal: null,
+        proteinGrams: null,
+        carbohydrateGrams: null,
+        fatGrams: null,
+        steps: steps,
+        sleepMinutes: sleepMinutes,
+      ),
     );
   }
 

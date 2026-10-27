@@ -48,21 +48,23 @@ void main() {
     Object? serverSnapshot,
     DateTime? createdAtUtc,
   }) => store.commitMutation(
-    mutationId: mutationId(),
-    aggregateType: type,
-    aggregateId: id,
-    operation: operation,
-    baseVersion: baseVersion,
-    body: body,
-    envelope: LocalAggregateEnvelope<Object?>(
+    MutationDraft(
+      mutationId: mutationId(),
+      aggregateType: type,
       aggregateId: id,
-      serverSnapshot: serverSnapshot,
-      workingCopy: body,
-      serverVersion: serverVersion,
-      optimisticVersion: 2,
-      syncState: LocalSyncState.pending,
+      operation: operation,
+      baseVersion: baseVersion,
+      body: body,
+      envelope: LocalAggregateEnvelope<Object?>(
+        aggregateId: id,
+        serverSnapshot: serverSnapshot,
+        workingCopy: body,
+        serverVersion: serverVersion,
+        optimisticVersion: 2,
+        syncState: LocalSyncState.pending,
+      ),
+      createdAtUtc: createdAtUtc ?? DateTime.utc(2026, 10, 17, 8),
     ),
-    createdAtUtc: createdAtUtc ?? DateTime.utc(2026, 10, 17, 8),
   );
 
   Future<String> conflict(String type, String id, String code) async {
