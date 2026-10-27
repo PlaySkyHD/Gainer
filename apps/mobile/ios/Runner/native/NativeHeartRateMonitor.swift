@@ -13,36 +13,36 @@ private final class HeartRateCentralBridge: NSObject, CBCentralManagerDelegate, 
     }
   }
 
-  func centralManagerDidUpdateState(_ central: CBCentralManager) {
+  func centralManagerDidUpdateState(_: CBCentralManager) {
     onMain { $0.centralStateChanged() }
   }
 
   func centralManager(
-    _ central: CBCentralManager,
+    _: CBCentralManager,
     didDiscover peripheral: CBPeripheral,
     advertisementData: [String: Any],
-    rssi RSSI: NSNumber
+    rssi: NSNumber
   ) {
-    let signal = RSSI.intValue
+    let signal = rssi.intValue
     onMain { $0.didDiscover(peripheral, advertisementData: advertisementData, rssi: signal) }
   }
 
-  func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+  func centralManager(_: CBCentralManager, didConnect peripheral: CBPeripheral) {
     onMain { $0.didConnect(peripheral) }
   }
 
   func centralManager(
-    _ central: CBCentralManager,
+    _: CBCentralManager,
     didFailToConnect peripheral: CBPeripheral,
-    error: Error?
+    error _: Error?
   ) {
     onMain { $0.didFailToConnect(peripheral) }
   }
 
   func centralManager(
-    _ central: CBCentralManager,
+    _: CBCentralManager,
     didDisconnectPeripheral peripheral: CBPeripheral,
-    error: Error?
+    error _: Error?
   ) {
     onMain { $0.didDisconnect(peripheral) }
   }
@@ -486,12 +486,12 @@ final class NativeHeartRateMonitor {
   fileprivate func didUpdateValue(_ source: CBPeripheral, characteristic: CBCharacteristic, failed: Bool) {
     guard !failed, source.identifier == peripheral?.identifier, let data = characteristic.value else { return }
     let bytes = [UInt8](data)
-    if characteristic.uuid == Self.heartRateMeasurement {
-      if let measurement = HeartRateMeasurementParser.parse(bytes) {
-        handle(measurement, at: Date())
-      }
-    } else if characteristic.uuid == Self.batteryLevel {
-      if let level = HeartRateMeasurementParser.parseBattery(bytes) { batteryPercent = level }
+    if characteristic.uuid == Self.heartRateMeasurement,
+       let measurement = HeartRateMeasurementParser.parse(bytes) {
+      handle(measurement, at: Date())
+    } else if characteristic.uuid == Self.batteryLevel,
+              let level = HeartRateMeasurementParser.parseBattery(bytes) {
+      batteryPercent = level
     }
   }
 

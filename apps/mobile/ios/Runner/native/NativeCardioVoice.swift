@@ -77,11 +77,11 @@ struct CardioVoiceSchedule: Equatable {
 private final class CardioSpeechDelegate: NSObject, AVSpeechSynthesizerDelegate {
   weak var owner: NativeCardioVoice?
 
-  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+  func speechSynthesizer(_: AVSpeechSynthesizer, didFinish _: AVSpeechUtterance) {
     notifyEnded()
   }
 
-  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+  func speechSynthesizer(_: AVSpeechSynthesizer, didCancel _: AVSpeechUtterance) {
     notifyEnded()
   }
 

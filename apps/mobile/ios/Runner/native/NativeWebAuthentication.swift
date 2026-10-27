@@ -55,7 +55,7 @@ final class NativeWebAuthentication {
 private final class WebAuthenticationRequest: NSObject, ASWebAuthenticationPresentationContextProviding {
   var session: ASWebAuthenticationSession?
 
-  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+  func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
     MainActor.assumeIsolated {
       let scene = UIApplication.shared.connectedScenes
         .compactMap { $0 as? UIWindowScene }
