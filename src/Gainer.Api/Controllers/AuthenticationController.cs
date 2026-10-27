@@ -36,7 +36,7 @@ public sealed class AuthenticationController(
         AppUser? user = await userManager.FindByNameAsync(request.Email.Trim());
         if (user is null)
         {
-            HashForEqualTiming(request.Password);
+            HashForEqualTiming(passwordHasher, request.Password);
             return Failure("invalid_credentials");
         }
 
@@ -49,7 +49,7 @@ public sealed class AuthenticationController(
             // Identity skips the hash for locked, inactive or unconfirmed accounts.
             if (result.IsLockedOut || result.IsNotAllowed)
             {
-                HashForEqualTiming(request.Password);
+                HashForEqualTiming(passwordHasher, request.Password);
             }
 
             return Failure("invalid_credentials");
@@ -136,7 +136,7 @@ public sealed class AuthenticationController(
     }
 
     /// <summary>Spends the same hashing time as a real password check, so the response time does not reveal accounts.</summary>
-    private void HashForEqualTiming(string password)
+    private static void HashForEqualTiming(IPasswordHasher<AppUser> passwordHasher, string password)
     {
         var placeholder = new AppUser();
         timingHash ??= passwordHasher.HashPassword(placeholder, Guid.NewGuid().ToString());

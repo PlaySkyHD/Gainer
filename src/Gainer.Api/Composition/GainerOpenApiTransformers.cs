@@ -83,7 +83,7 @@ internal static class GainerOpenApiTransformers
             });
         }
 
-        string? path = context.Description.RelativePath is { } relative ? "/" + relative : null;
+        string? path = context.Description.RelativePath is { } relative ? '/' + relative : null;
         if (path == MealEstimatesPath)
         {
             operation.RequestBody = MultipartBody(

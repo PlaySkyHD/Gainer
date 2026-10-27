@@ -102,6 +102,7 @@ public sealed partial class StravaApiClient(
     ILogger<StravaApiClient>? logger = null) : IStravaApiClient
 {
     private const int MaximumLoggedErrorLength = 500;
+    private const string BearerScheme = "Bearer";
     private readonly StravaOptions settings = options.Value;
     private readonly ILogger log = logger ?? NullLogger<StravaApiClient>.Instance;
 
@@ -122,7 +123,7 @@ public sealed partial class StravaApiClient(
     public async Task DeauthorizeAsync(string accessToken, CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, OAuthUri("oauth/deauthorize"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, accessToken);
         using HttpResponseMessage response = await SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response);
     }
@@ -140,7 +141,7 @@ public sealed partial class StravaApiClient(
         if (upload.Description is { } description) content.Add(new StringContent(description), "description");
         if (upload.Trainer) content.Add(new StringContent("1"), "trainer");
         using var request = new HttpRequestMessage(HttpMethod.Post, ApiUri("uploads")) { Content = content };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, accessToken);
         using HttpResponseMessage response = await SendAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.BadRequest &&
             await TryReadUploadAsync(response, cancellationToken) is { } rejected)
@@ -155,7 +156,7 @@ public sealed partial class StravaApiClient(
     public async Task<StravaUploadState> GetUploadAsync(string accessToken, long uploadId, CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, ApiUri($"uploads/{uploadId}"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, accessToken);
         using HttpResponseMessage response = await SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response);
         return await TryReadUploadAsync(response, cancellationToken)
@@ -168,7 +169,7 @@ public sealed partial class StravaApiClient(
         {
             Content = JsonContent.Create(new { sport_type = sportType }),
         };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, accessToken);
         using HttpResponseMessage response = await SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response);
     }

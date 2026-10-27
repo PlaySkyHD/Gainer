@@ -81,7 +81,7 @@ public sealed class StravaExportProcessor(
             }
             catch (StravaApiException exception)
             {
-                logger.LogWarning("Strava rejected export {ExportId} with status {Status}.", export.Id, exception.StatusCode);
+                logger.LogWarning(exception, "Strava rejected export {ExportId} with status {Status}.", export.Id, exception.StatusCode);
                 Fail(export, "strava_rejected");
             }
             await context.SaveChangesAsync(cancellationToken);
@@ -228,7 +228,7 @@ public sealed class StravaExportProcessor(
             catch (StravaApiException exception) when (exception.Failure == StravaFailure.Rejected)
             {
                 // The activity exists; a wrong type is not worth a duplicate.
-                logger.LogWarning("Strava refused the activity type of export {ExportId}.", export.Id);
+                logger.LogWarning(exception, "Strava refused the activity type of export {ExportId}.", export.Id);
             }
         }
         Complete(export, activityId);

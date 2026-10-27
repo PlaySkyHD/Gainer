@@ -98,13 +98,8 @@ public sealed class SyncMutationExecutor(
             case "activateBodyGoal":
                 {
                     ActivateBodyGoalPayload payload = Deserialize<ActivateBodyGoalPayload>(content.Payload);
-                    BodyGoalKind kind = Enum.TryParse(payload.Kind, ignoreCase: true, out BodyGoalKind parsedKind)
-                        ? parsedKind
-                        : throw new SyncMutationValidationException(InvalidPayloadCode, "The body goal kind is invalid.");
-                    ActiveBodyGoalExpectation? expected = payload.ExpectedActiveGoalId is { } activeId &&
-                        payload.ExpectedActiveGoalVersion is { } activeVersion
-                            ? new ActiveBodyGoalExpectation(activeId, activeVersion)
-                            : null;
+                    BodyGoalKind kind = ParseBodyGoalKind(payload.Kind);
+                    ActiveBodyGoalExpectation? expected = ExpectedActiveGoal(payload);
                     var expectations = new List<(ResourceKind Kind, Guid Id, long Version)>
                     {
                         (ResourceKind.BodyGoal, payload.GoalId, 0),
@@ -400,9 +395,7 @@ public sealed class SyncMutationExecutor(
         payload is null
             ? null
             : NutritionRestDayTargetDraft.Create(
-                string.IsNullOrWhiteSpace(payload.InputMode)
-                    ? NutritionTargetInputMode.Grams
-                    : ParseTargetInputMode(payload.InputMode),
+                RestDayInputMode(payload.InputMode),
                 payload.Kilocalories,
                 payload.ProteinGrams,
                 payload.CarbohydrateGrams,
@@ -410,6 +403,19 @@ public sealed class SyncMutationExecutor(
                 payload.ProteinPercent,
                 payload.CarbohydratePercent,
                 payload.FatPercent);
+
+    private static NutritionTargetInputMode RestDayInputMode(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? NutritionTargetInputMode.Grams : ParseTargetInputMode(value);
+
+    private static BodyGoalKind ParseBodyGoalKind(string? value) =>
+        Enum.TryParse(value, ignoreCase: true, out BodyGoalKind kind)
+            ? kind
+            : throw new SyncMutationValidationException(InvalidPayloadCode, "The body goal kind is invalid.");
+
+    private static ActiveBodyGoalExpectation? ExpectedActiveGoal(ActivateBodyGoalPayload payload) =>
+        payload.ExpectedActiveGoalId is { } activeId && payload.ExpectedActiveGoalVersion is { } activeVersion
+            ? new ActiveBodyGoalExpectation(activeId, activeVersion)
+            : null;
 
     private static T Deserialize<T>(JsonElement payload)
     {
@@ -532,12 +538,13 @@ public sealed class SyncMutationExecutor(
             item.Source,
             NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
 
-    private static NutritionDayKind? ParseDayKind(string? value) =>
-        value is null
-            ? null
-            : Enum.TryParse(value, ignoreCase: true, out NutritionDayKind kind) && Enum.IsDefined(kind)
-                ? kind
-                : throw new SyncMutationValidationException(InvalidPayloadCode, "The day kind is invalid.");
+    private static NutritionDayKind? ParseDayKind(string? value)
+    {
+        if (value is null) return null;
+        return Enum.TryParse(value, ignoreCase: true, out NutritionDayKind kind) && Enum.IsDefined(kind)
+            ? kind
+            : throw new SyncMutationValidationException(InvalidPayloadCode, "The day kind is invalid.");
+    }
 
     private static MealType ParseMeal(string value) =>
         Enum.TryParse(value, ignoreCase: true, out MealType meal) && Enum.IsDefined(meal)

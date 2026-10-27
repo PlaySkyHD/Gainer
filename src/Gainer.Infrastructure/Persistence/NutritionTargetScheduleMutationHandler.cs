@@ -82,36 +82,12 @@ public sealed class NutritionTargetScheduleMutationHandler(
         List<NutritionTargetVersion> materialized)
     {
         DateOnly changeStart = incoming[^1].EffectiveFrom;
-        DateOnly dayBefore = changeStart.AddDays(-1);
         Dictionary<Guid, NutritionTargetVersionDraft> incomingById = incoming.ToDictionary(item => item.TargetVersionId);
         foreach (NutritionTargetVersion version in schedule.Versions.ToArray())
         {
             incomingById.Remove(version.Id, out NutritionTargetVersionDraft? candidate);
-            if (version.EffectiveFrom >= changeStart && candidate is null)
-            {
-                if (version.EffectiveFrom <= today.AddDays(1))
-                    throw new NutritionTargetScheduleConflictException("Target versions that have begun cannot be removed.");
-                context.NutritionTargetVersions.Remove(version);
-                continue;
-            }
-            if (candidate is null)
-                throw new NutritionTargetScheduleConflictException("Target versions before the change cannot be removed.");
-            if (candidate.EffectiveFrom != version.EffectiveFrom)
-                throw new NutritionTargetScheduleConflictException("The start of a stored target version cannot change.");
-            if (version.EffectiveFrom == changeStart)
-            {
-                Apply(version, candidate);
-            }
-            else if (!Matches(version, candidate))
-            {
-                bool coversDayBefore = version.EffectiveUntil is null || version.EffectiveUntil >= dayBefore;
-                if (!coversDayBefore ||
-                    candidate.EffectiveUntil != dayBefore ||
-                    !Matches(version, candidate with { EffectiveUntil = version.EffectiveUntil }))
-                    throw new NutritionTargetScheduleConflictException("Target versions before the change are immutable except for ending the previous one.");
-                version.EffectiveUntil = candidate.EffectiveUntil;
-            }
-            materialized.Add(version);
+            if (ReconcileStoredVersion(version, candidate, changeStart, today))
+                materialized.Add(version);
         }
 
         foreach (NutritionTargetVersionDraft addition in incomingById.Values)
@@ -122,6 +98,46 @@ public sealed class NutritionTargetScheduleMutationHandler(
             context.NutritionTargetVersions.Add(created);
             materialized.Add(created);
         }
+    }
+
+    /// <summary>Applies the incoming counterpart to one stored version; returns false when the version was removed.</summary>
+    private bool ReconcileStoredVersion(
+        NutritionTargetVersion version,
+        NutritionTargetVersionDraft? candidate,
+        DateOnly changeStart,
+        DateOnly today)
+    {
+        DateOnly dayBefore = changeStart.AddDays(-1);
+        if (version.EffectiveFrom >= changeStart && candidate is null)
+        {
+            if (version.EffectiveFrom <= today.AddDays(1))
+                throw new NutritionTargetScheduleConflictException("Target versions that have begun cannot be removed.");
+            context.NutritionTargetVersions.Remove(version);
+            return false;
+        }
+        if (candidate is null)
+            throw new NutritionTargetScheduleConflictException("Target versions before the change cannot be removed.");
+        if (candidate.EffectiveFrom != version.EffectiveFrom)
+            throw new NutritionTargetScheduleConflictException("The start of a stored target version cannot change.");
+        if (version.EffectiveFrom == changeStart)
+        {
+            Apply(version, candidate);
+        }
+        else if (!Matches(version, candidate))
+        {
+            EndPreviousVersion(version, candidate, dayBefore);
+        }
+        return true;
+    }
+
+    private static void EndPreviousVersion(NutritionTargetVersion version, NutritionTargetVersionDraft candidate, DateOnly dayBefore)
+    {
+        bool coversDayBefore = version.EffectiveUntil is null || version.EffectiveUntil >= dayBefore;
+        if (!coversDayBefore ||
+            candidate.EffectiveUntil != dayBefore ||
+            !Matches(version, candidate with { EffectiveUntil = version.EffectiveUntil }))
+            throw new NutritionTargetScheduleConflictException("Target versions before the change are immutable except for ending the previous one.");
+        version.EffectiveUntil = candidate.EffectiveUntil;
     }
 
     private static bool Matches(NutritionTargetVersion stored, NutritionTargetVersionDraft candidate) =>

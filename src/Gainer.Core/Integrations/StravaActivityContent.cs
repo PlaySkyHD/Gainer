@@ -50,11 +50,12 @@ public static class StravaActivityContent
         byte[] file = Tcx(
             "Biking",
             start,
-            totalSeconds,
-            totalMeters,
-            session.EnergyKcal,
-            beats.Length == 0 ? null : (int)Math.Round(beats.Average()),
-            beats.Length == 0 ? null : beats.Max(),
+            new TcxLap(
+                totalSeconds,
+                totalMeters,
+                session.EnergyKcal,
+                beats.Length == 0 ? null : (int)Math.Round(beats.Average()),
+                beats.Length == 0 ? null : beats.Max()),
             points);
 
         var description = new List<string>();
@@ -91,11 +92,7 @@ public static class StravaActivityContent
         byte[] file = Tcx(
             "Other",
             start,
-            totalSeconds,
-            null,
-            null,
-            null,
-            null,
+            new TcxLap(totalSeconds, null, null, null, null),
             [new TrackPoint(start, null, null), new TrackPoint(start.AddSeconds(totalSeconds), null, null)]);
 
         var description = new List<string>();
@@ -135,9 +132,10 @@ public static class StravaActivityContent
         if (groups.Count == 0) return null;
         return string.Join(", ", groups.Select(group =>
         {
-            string count = group.Reps is { } reps
-                ? $"{group.Count} × {reps}"
-                : group.Count == 1 ? "1 Satz" : $"{group.Count} Sätze";
+            string count;
+            if (group.Reps is { } reps) count = $"{group.Count} × {reps}";
+            else if (group.Count == 1) count = "1 Satz";
+            else count = $"{group.Count} Sätze";
             return group.Weight is { } weight ? $"{count} · {Number(weight)} kg" : count;
         }));
     }
@@ -164,11 +162,7 @@ public static class StravaActivityContent
     private static byte[] Tcx(
         string sport,
         DateTime start,
-        double totalSeconds,
-        double? totalMeters,
-        decimal? energyKcal,
-        int? averageBpm,
-        int? maximumBpm,
+        TcxLap lap,
         IReadOnlyList<TrackPoint> points)
     {
         var settings = new XmlWriterSettings { Encoding = new UTF8Encoding(false), Indent = false };
@@ -183,19 +177,19 @@ public static class StravaActivityContent
             writer.WriteElementString("Id", TcxNamespace, Time(start));
             writer.WriteStartElement("Lap", TcxNamespace);
             writer.WriteAttributeString("StartTime", Time(start));
-            writer.WriteElementString("TotalTimeSeconds", TcxNamespace, Invariant(totalSeconds));
-            writer.WriteElementString("DistanceMeters", TcxNamespace, Invariant(totalMeters ?? 0));
-            int calories = energyKcal is { } kcal ? (int)Math.Clamp(Math.Round(kcal), 0, ushort.MaxValue) : 0;
+            writer.WriteElementString("TotalTimeSeconds", TcxNamespace, Invariant(lap.TotalSeconds));
+            writer.WriteElementString("DistanceMeters", TcxNamespace, Invariant(lap.TotalMeters ?? 0));
+            int calories = lap.EnergyKcal is { } kcal ? (int)Math.Clamp(Math.Round(kcal), 0, ushort.MaxValue) : 0;
             writer.WriteElementString("Calories", TcxNamespace, calories.ToString(CultureInfo.InvariantCulture));
-            if (averageBpm is { } average) WriteBpm(writer, "AverageHeartRateBpm", average);
-            if (maximumBpm is { } maximum) WriteBpm(writer, "MaximumHeartRateBpm", maximum);
+            if (lap.AverageBpm is { } average) WriteBpm(writer, "AverageHeartRateBpm", average);
+            if (lap.MaximumBpm is { } maximum) WriteBpm(writer, "MaximumHeartRateBpm", maximum);
             writer.WriteElementString("Intensity", TcxNamespace, "Active");
             writer.WriteElementString("TriggerMethod", TcxNamespace, "Manual");
             writer.WriteStartElement("Track", TcxNamespace);
             foreach (TrackPoint point in points)
             {
                 writer.WriteStartElement("Trackpoint", TcxNamespace);
-                writer.WriteElementString("Time", TcxNamespace, Time(point.Time));
+                writer.WriteElementString("Time", TcxNamespace, Time(point.At));
                 if (point.DistanceMeters is { } meters)
                 {
                     writer.WriteElementString("DistanceMeters", TcxNamespace, Invariant(meters));
@@ -220,5 +214,12 @@ public static class StravaActivityContent
         writer.WriteEndElement();
     }
 
-    private sealed record TrackPoint(DateTime Time, double? DistanceMeters, int? Bpm);
+    private sealed record TcxLap(
+        double TotalSeconds,
+        double? TotalMeters,
+        decimal? EnergyKcal,
+        int? AverageBpm,
+        int? MaximumBpm);
+
+    private sealed record TrackPoint(DateTime At, double? DistanceMeters, int? Bpm);
 }

@@ -30,6 +30,7 @@ import sys
 
 REBUILD_TOKENS = 100_000
 BIG_RESULT_CHARS = 20_000
+JSONL_SUFFIX = ".jsonl"
 
 
 def weight(usage):
@@ -59,8 +60,22 @@ def text_length(content):
     return 0
 
 
-def analyse(path):
-    """Liest ein Transkript und gibt Kennzahlen und Gewicht pro Stunde zurück."""
+def count_big_results(message):
+    """Zählt Tool-Ergebnisse einer User-Nachricht, die BIG_RESULT_CHARS überschreiten."""
+    content = message.get("content")
+    if not isinstance(content, list):
+        return 0
+    return sum(
+        1
+        for part in content
+        if isinstance(part, dict)
+        and part.get("type") == "tool_result"
+        and text_length(part.get("content")) > BIG_RESULT_CHARS
+    )
+
+
+def read_transcript(path):
+    """Liest ein Transkript: letzte Zeile je Nachrichten-ID und Zahl großer Tool-Ergebnisse."""
     # Eine gestreamte Antwort steht in mehreren Zeilen mit derselben ID; erst die
     # letzte trägt die vollständigen output_tokens. Deshalb gewinnt die letzte Zeile.
     messages = {}
@@ -72,16 +87,19 @@ def analyse(path):
             except json.JSONDecodeError:
                 continue
             message = record.get("message") or {}
-            if record.get("type") == "user" and isinstance(message.get("content"), list):
-                for part in message["content"]:
-                    if isinstance(part, dict) and part.get("type") == "tool_result":
-                        if text_length(part.get("content")) > BIG_RESULT_CHARS:
-                            big_results += 1
+            if record.get("type") == "user":
+                big_results += count_big_results(message)
             usage = message.get("usage")
             if not usage:
                 continue
             message_id = message.get("id") or record.get("uuid")
             messages[message_id] = (usage, record.get("timestamp") or "", message.get("model") or "-")
+    return messages, big_results
+
+
+def analyse(path):
+    """Liest ein Transkript und gibt Kennzahlen und Gewicht pro Stunde zurück."""
+    messages, big_results = read_transcript(path)
 
     contexts = []
     per_hour = collections.Counter()
@@ -119,15 +137,15 @@ def short_model(name):
 def main():
     if len(sys.argv) != 2:
         sys.exit("Aufruf: python3 -I scripts/agent-usage.py <pfad-zur-session-ohne-.jsonl>")
-    root = sys.argv[1].rstrip("/").removesuffix(".jsonl")
-    paths = [root + ".jsonl"] + sorted(glob.glob(os.path.join(root, "subagents", "*.jsonl")))
+    root = sys.argv[1].rstrip("/").removesuffix(JSONL_SUFFIX)
+    paths = [root + JSONL_SUFFIX] + sorted(glob.glob(os.path.join(root, "subagents", "*" + JSONL_SUFFIX)))
     paths = [path for path in paths if os.path.isfile(path)]
     if not paths:
         sys.exit("Keine Transkripte gefunden.")
 
     results = []
     for path in paths:
-        name = "main" if path == root + ".jsonl" else os.path.basename(path).removesuffix(".jsonl")
+        name = "main" if path == root + JSONL_SUFFIX else os.path.basename(path).removesuffix(JSONL_SUFFIX)
         results.append((name, analyse(path)))
 
     total = sum(result["weight"] for _, result in results) or 1.0

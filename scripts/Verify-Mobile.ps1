@@ -295,6 +295,22 @@ function Invoke-ManagedProcess {
     finally { $process.Dispose() }
 }
 
+function Confirm-SimulatorInventoryMatch {
+    param(
+        [Parameter(Mandatory)] $Runtime,
+        [Parameter(Mandatory)] $Device,
+        [Parameter(Mandatory)][string] $Label,
+        [Parameter(Mandatory)][string] $ExpectedRuntimeIdentifier,
+        [Parameter(Mandatory)][string] $ExpectedName,
+        [switch] $RequireBooted
+    )
+    Write-Information "SIMULATOR INVENTORY MATCH label=$Label runtime=$($Runtime.Name) name=$($Device.name) udid=$($Device.udid) state=$($Device.state) is_available=$($Device.isAvailable)" -InformationAction Continue
+    if ([string]$Runtime.Name -ne $ExpectedRuntimeIdentifier -or [string]$Device.name -ne $ExpectedName -or $Device.isAvailable -ne $true) {
+        throw "Exact simulator identity/availability check failed ($Label)."
+    }
+    if ($RequireBooted -and [string]$Device.state -ne 'Booted') { throw "Exact simulator is not Booted ($Label)." }
+}
+
 function Get-VerifiedSimulatorInventoryEntry {
     param(
         [Parameter(Mandatory)][string] $XcrunPath,
@@ -317,14 +333,9 @@ function Get-VerifiedSimulatorInventoryEntry {
     try { $inventory = $query.Stdout | ConvertFrom-Json } catch { throw "Simulator inventory was invalid JSON ($Label)." }
     foreach ($runtime in $inventory.devices.PSObject.Properties) {
         foreach ($device in $runtime.Value) {
-            if ([string]$device.udid -eq $SimulatorId) {
-                Write-Information "SIMULATOR INVENTORY MATCH label=$Label runtime=$($runtime.Name) name=$($device.name) udid=$($device.udid) state=$($device.state) is_available=$($device.isAvailable)" -InformationAction Continue
-                if ([string]$runtime.Name -ne $ExpectedRuntimeIdentifier -or [string]$device.name -ne $ExpectedName -or $device.isAvailable -ne $true) {
-                    throw "Exact simulator identity/availability check failed ($Label)."
-                }
-                if ($RequireBooted -and [string]$device.state -ne 'Booted') { throw "Exact simulator is not Booted ($Label)." }
-                return [pscustomobject]@{ RuntimeIdentifier = [string]$runtime.Name; Device = $device }
-            }
+            if ([string]$device.udid -ne $SimulatorId) { continue }
+            Confirm-SimulatorInventoryMatch $runtime $device $Label $ExpectedRuntimeIdentifier $ExpectedName -RequireBooted:$RequireBooted
+            return [pscustomobject]@{ RuntimeIdentifier = [string]$runtime.Name; Device = $device }
         }
     }
     return $null
@@ -346,6 +357,79 @@ function Assert-OwnedSimulatorRecord {
         $SimulatorId -notmatch '^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') {
         throw 'Simulator ownership record does not match this workflow run; refusing boot retry.'
     }
+}
+
+function Assert-BootPhaseWithinBudget {
+    param(
+        [Parameter(Mandatory)][System.Diagnostics.Stopwatch] $Clock,
+        [Parameter(Mandatory)][int] $BudgetSeconds,
+        [Parameter(Mandatory)][string] $Message
+    )
+    if ([int][Math]::Ceiling($Clock.Elapsed.TotalSeconds) -gt $BudgetSeconds) { throw $Message }
+}
+
+function Get-BootPhaseRemainingSeconds {
+    param(
+        [Parameter(Mandatory)][System.Diagnostics.Stopwatch] $Clock,
+        [Parameter(Mandatory)][int] $BudgetSeconds
+    )
+    return $BudgetSeconds - [int][Math]::Ceiling($Clock.Elapsed.TotalSeconds)
+}
+
+# Second bootstatus client after the first one timed out and was confirmed terminated.
+# $Boot carries the shared identity, budget and clock of Invoke-CiSimulatorBootStatus.
+function Invoke-BootstatusRetry {
+    param([Parameter(Mandatory)] $Boot)
+    Assert-OwnedSimulatorRecord $Boot.StatePath $Boot.RunToken $Boot.SimulatorId $Boot.SimulatorName $Boot.RuntimeIdentifier
+    $remaining = Get-BootPhaseRemainingSeconds $Boot.Clock $Boot.InternalBudgetSeconds
+    $preRetryReserve = (3 * $Boot.ProcessCleanupReserve) + $Boot.MinimumRetrySeconds + $Boot.MinimumInventoryTimeout
+    $preRetryTimeout = [Math]::Min($Boot.InventoryTimeoutSeconds, $remaining - $preRetryReserve)
+    if ($preRetryTimeout -lt 1) { throw 'Insufficient internal boot phase budget remains for a safe ownership check and retry.' }
+    $entry = Get-VerifiedSimulatorInventoryEntry $Boot.XcrunPath $Boot.SimulatorId $preRetryTimeout 'simctl inventory before retry' $Boot.ExecutablePrefixArguments $Boot.RuntimeIdentifier $Boot.SimulatorName
+    Assert-BootPhaseWithinBudget $Boot.Clock $Boot.InternalBudgetSeconds 'Simulator boot phase deadline was exceeded while checking ownership before retry.'
+    if (-not $entry -or $entry.RuntimeIdentifier -ne $Boot.RuntimeIdentifier -or $entry.Device.name -ne $Boot.SimulatorName -or
+        $entry.Device.state -notin @('Created', 'Shutdown', 'Booting', 'Booted')) {
+        throw 'The exact run-owned simulator is absent or has unexpected identity/state; refusing boot retry.'
+    }
+    Assert-OwnedSimulatorRecord $Boot.StatePath $Boot.RunToken $Boot.SimulatorId $Boot.SimulatorName $Boot.RuntimeIdentifier
+    $remaining = Get-BootPhaseRemainingSeconds $Boot.Clock $Boot.InternalBudgetSeconds
+    $retryLimit = [Math]::Min($Boot.RetryMaximumSeconds, $remaining - ($Boot.InventoryMinimumWorstCase + (2 * $Boot.ProcessCleanupReserve)))
+    if ($retryLimit -lt $Boot.MinimumRetrySeconds) { throw 'Insufficient internal boot phase budget remains for a second bootstatus client.' }
+    Write-Information "SIMULATOR BOOTSTATUS RETRY utc=$([DateTime]::UtcNow.ToString('o')) udid=$($Boot.SimulatorId) timeout_seconds=$retryLimit" -InformationAction Continue
+    $second = Invoke-ManagedProcess $Boot.XcrunPath $Boot.BootArguments $retryLimit 'simctl bootstatus attempt=2'
+    Assert-BootPhaseWithinBudget $Boot.Clock $Boot.InternalBudgetSeconds 'Simulator boot phase deadline was exceeded after retry bootstatus client.'
+    if (-not $second.TerminationConfirmed -or -not $second.OutputDrained) { throw 'The retry bootstatus client did not terminate and drain its output safely.' }
+    if ($second.TimedOut) { throw 'The fresh bootstatus client timed out; no further retry is permitted.' }
+    if ($second.ExitCode -ne 0) { throw "simctl bootstatus failed on retry with exit code $($second.ExitCode)." }
+}
+
+# Final exact Booted inventory check, with one fresh inventory client if the first one timed out cleanly.
+function Get-BootedSimulatorAfterBootstatus {
+    param([Parameter(Mandatory)] $Boot)
+    $remaining = Get-BootPhaseRemainingSeconds $Boot.Clock $Boot.InternalBudgetSeconds
+    # Reserve enough time for one fresh inventory client if this first readiness
+    # query times out, including bounded process termination/output-drain time.
+    $finalRetryReserve = (2 * $Boot.ProcessCleanupReserve) + $Boot.MinimumInventoryRetrySeconds
+    $finalInventoryTimeout = [Math]::Min($Boot.InventoryTimeoutSeconds, $remaining - $finalRetryReserve)
+    if ($finalInventoryTimeout -lt $Boot.MinimumInventoryRetrySeconds) { throw 'Insufficient internal simulator boot phase budget remains for readiness and one bounded inventory retry.' }
+    $ready = Get-VerifiedSimulatorInventoryEntry $Boot.XcrunPath $Boot.SimulatorId $finalInventoryTimeout 'simctl final readiness inventory attempt=1' $Boot.ExecutablePrefixArguments $Boot.RuntimeIdentifier $Boot.SimulatorName -RequireBooted -ReturnConfirmedTimeout
+    Assert-BootPhaseWithinBudget $Boot.Clock $Boot.InternalBudgetSeconds 'Internal simulator boot phase deadline was exceeded while checking final readiness.'
+    if ($ready -and $ready.PSObject.Properties['InventoryTimedOut']) {
+        Assert-OwnedSimulatorRecord $Boot.StatePath $Boot.RunToken $Boot.SimulatorId $Boot.SimulatorName $Boot.RuntimeIdentifier
+        $remaining = Get-BootPhaseRemainingSeconds $Boot.Clock $Boot.InternalBudgetSeconds
+        $inventoryRetryTimeout = [Math]::Min($Boot.InventoryTimeoutSeconds, $remaining - $Boot.ProcessCleanupReserve)
+        if ($inventoryRetryTimeout -lt $Boot.MinimumInventoryRetrySeconds) {
+            throw 'Insufficient internal simulator boot phase budget remains for the one permitted fresh readiness inventory client.'
+        }
+        Assert-OwnedSimulatorRecord $Boot.StatePath $Boot.RunToken $Boot.SimulatorId $Boot.SimulatorName $Boot.RuntimeIdentifier
+        Write-Information "SIMULATOR INVENTORY RETRY utc=$([DateTime]::UtcNow.ToString('o')) udid=$($Boot.SimulatorId) timeout_seconds=$inventoryRetryTimeout reason=first_client_timed_out_terminated_and_drained" -InformationAction Continue
+        $ready = Get-VerifiedSimulatorInventoryEntry $Boot.XcrunPath $Boot.SimulatorId $inventoryRetryTimeout 'simctl final readiness inventory attempt=2' $Boot.ExecutablePrefixArguments $Boot.RuntimeIdentifier $Boot.SimulatorName -RequireBooted
+        Assert-BootPhaseWithinBudget $Boot.Clock $Boot.InternalBudgetSeconds 'Internal simulator boot phase deadline was exceeded after the one permitted readiness inventory retry.'
+    }
+    if (-not $ready -or $ready.RuntimeIdentifier -ne $Boot.RuntimeIdentifier -or $ready.Device.name -ne $Boot.SimulatorName -or $ready.Device.state -ne 'Booted') {
+        throw "Simulator $($Boot.SimulatorId) did not pass bootstatus and exact Booted inventory verification."
+    }
+    return $ready
 }
 
 function Invoke-CiSimulatorBootStatus {
@@ -376,65 +460,80 @@ function Invoke-CiSimulatorBootStatus {
     Write-Information "SIMULATOR BOOT BUDGET available_seconds=$InternalBudgetSeconds first_timeout_seconds=$firstLimit" -InformationAction Continue
     if ($firstLimit -lt $MinimumFirstAttemptSeconds) { throw 'Insufficient simulator boot phase budget remains to start bootstatus safely.' }
     $bootArguments = @($ExecutablePrefixArguments) + @('simctl', 'bootstatus', $SimulatorId, '-b')
+    $boot = [pscustomobject]@{
+        XcrunPath = $XcrunPath
+        RunToken = $RunToken
+        StatePath = $StatePath
+        SimulatorId = $SimulatorId
+        SimulatorName = $SimulatorName
+        RuntimeIdentifier = $RuntimeIdentifier
+        ExecutablePrefixArguments = $ExecutablePrefixArguments
+        BootArguments = $bootArguments
+        Clock = $phaseClock
+        InternalBudgetSeconds = $InternalBudgetSeconds
+        InventoryTimeoutSeconds = $InventoryTimeoutSeconds
+        RetryMaximumSeconds = $RetryMaximumSeconds
+        MinimumRetrySeconds = $MinimumRetrySeconds
+        MinimumInventoryRetrySeconds = $MinimumInventoryRetrySeconds
+        MinimumInventoryTimeout = $minimumInventoryTimeout
+        ProcessCleanupReserve = $processCleanupReserve
+        InventoryMinimumWorstCase = $inventoryMinimumWorstCase
+    }
     $first = Invoke-ManagedProcess $XcrunPath $bootArguments $firstLimit 'simctl bootstatus attempt=1'
-    if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) { throw 'Simulator boot phase deadline was exceeded after first bootstatus client.' }
+    Assert-BootPhaseWithinBudget $phaseClock $InternalBudgetSeconds 'Simulator boot phase deadline was exceeded after first bootstatus client.'
     if (-not $first.TerminationConfirmed -or -not $first.OutputDrained) { throw 'The bootstatus client did not terminate and drain its output safely; refusing retry/readiness.' }
     if (-not $first.TimedOut) {
         if ($first.ExitCode -ne 0) { throw "simctl bootstatus failed on first attempt with exit code $($first.ExitCode)." }
     }
     else {
-        if (-not $first.TerminationConfirmed) { throw 'The first bootstatus process tree could not be confirmed terminated; refusing retry.' }
-        Assert-OwnedSimulatorRecord $StatePath $RunToken $SimulatorId $SimulatorName $RuntimeIdentifier
-        $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
-        $preRetryReserve = (3 * $processCleanupReserve) + $MinimumRetrySeconds + $minimumInventoryTimeout
-        $preRetryTimeout = [Math]::Min($InventoryTimeoutSeconds, $remaining - $preRetryReserve)
-        if ($preRetryTimeout -lt 1) { throw 'Insufficient internal boot phase budget remains for a safe ownership check and retry.' }
-        $entry = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $preRetryTimeout 'simctl inventory before retry' $ExecutablePrefixArguments $RuntimeIdentifier $SimulatorName
-        if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) { throw 'Simulator boot phase deadline was exceeded while checking ownership before retry.' }
-        if (-not $entry -or $entry.RuntimeIdentifier -ne $RuntimeIdentifier -or $entry.Device.name -ne $SimulatorName -or
-            $entry.Device.state -notin @('Created', 'Shutdown', 'Booting', 'Booted')) {
-            throw 'The exact run-owned simulator is absent or has unexpected identity/state; refusing boot retry.'
-        }
-        Assert-OwnedSimulatorRecord $StatePath $RunToken $SimulatorId $SimulatorName $RuntimeIdentifier
-        $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
-        $retryLimit = [Math]::Min($RetryMaximumSeconds, $remaining - ($inventoryMinimumWorstCase + (2 * $processCleanupReserve)))
-        if ($retryLimit -lt $MinimumRetrySeconds) { throw 'Insufficient internal boot phase budget remains for a second bootstatus client.' }
-        Write-Information "SIMULATOR BOOTSTATUS RETRY utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId timeout_seconds=$retryLimit" -InformationAction Continue
-        $second = Invoke-ManagedProcess $XcrunPath $bootArguments $retryLimit 'simctl bootstatus attempt=2'
-        if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) { throw 'Simulator boot phase deadline was exceeded after retry bootstatus client.' }
-        if (-not $second.TerminationConfirmed -or -not $second.OutputDrained) { throw 'The retry bootstatus client did not terminate and drain its output safely.' }
-        if ($second.TimedOut) { throw 'The fresh bootstatus client timed out; no further retry is permitted.' }
-        if ($second.ExitCode -ne 0) { throw "simctl bootstatus failed on retry with exit code $($second.ExitCode)." }
+        Invoke-BootstatusRetry $boot
     }
-    $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
-    # Reserve enough time for one fresh inventory client if this first readiness
-    # query times out, including bounded process termination/output-drain time.
-    $finalRetryReserve = (2 * $processCleanupReserve) + $MinimumInventoryRetrySeconds
-    $finalInventoryTimeout = [Math]::Min($InventoryTimeoutSeconds, $remaining - $finalRetryReserve)
-    if ($finalInventoryTimeout -lt $MinimumInventoryRetrySeconds) { throw 'Insufficient internal simulator boot phase budget remains for readiness and one bounded inventory retry.' }
-    $ready = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $finalInventoryTimeout 'simctl final readiness inventory attempt=1' $ExecutablePrefixArguments $RuntimeIdentifier $SimulatorName -RequireBooted -ReturnConfirmedTimeout
-    if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) {
-        throw 'Internal simulator boot phase deadline was exceeded while checking final readiness.'
-    }
-    if ($ready -and $ready.PSObject.Properties['InventoryTimedOut']) {
-        Assert-OwnedSimulatorRecord $StatePath $RunToken $SimulatorId $SimulatorName $RuntimeIdentifier
-        $remaining = $InternalBudgetSeconds - [int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds)
-        $inventoryRetryTimeout = [Math]::Min($InventoryTimeoutSeconds, $remaining - $processCleanupReserve)
-        if ($inventoryRetryTimeout -lt $MinimumInventoryRetrySeconds) {
-            throw 'Insufficient internal simulator boot phase budget remains for the one permitted fresh readiness inventory client.'
-        }
-        Assert-OwnedSimulatorRecord $StatePath $RunToken $SimulatorId $SimulatorName $RuntimeIdentifier
-        Write-Information "SIMULATOR INVENTORY RETRY utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId timeout_seconds=$inventoryRetryTimeout reason=first_client_timed_out_terminated_and_drained" -InformationAction Continue
-        $ready = Get-VerifiedSimulatorInventoryEntry $XcrunPath $SimulatorId $inventoryRetryTimeout 'simctl final readiness inventory attempt=2' $ExecutablePrefixArguments $RuntimeIdentifier $SimulatorName -RequireBooted
-        if ([int][Math]::Ceiling($phaseClock.Elapsed.TotalSeconds) -gt $InternalBudgetSeconds) {
-            throw 'Internal simulator boot phase deadline was exceeded after the one permitted readiness inventory retry.'
-        }
-    }
-    if (-not $ready -or $ready.RuntimeIdentifier -ne $RuntimeIdentifier -or $ready.Device.name -ne $SimulatorName -or $ready.Device.state -ne 'Booted') {
-        throw "Simulator $SimulatorId did not pass bootstatus and exact Booted inventory verification."
-    }
+    $ready = Get-BootedSimulatorAfterBootstatus $boot
     Write-Information "SIMULATOR BOOTSTATUS VERIFIED utc=$([DateTime]::UtcNow.ToString('o')) udid=$SimulatorId state=$($ready.Device.state)" -InformationAction Continue
     return $ready.Device
+}
+
+function Get-RuntimeMetadataVersion {
+    param([Parameter(Mandatory)] $Metadata)
+    $versionText = [string]$Metadata.version
+    $versionSource = 'simctl-runtime-metadata.version'
+    if ([string]::IsNullOrWhiteSpace($versionText)) {
+        $runtimeNameMatch = [regex]::Match([string]$Metadata.name, '^iOS\s+(\d+\.\d+(?:\.\d+)?)$')
+        if ($runtimeNameMatch.Success) {
+            $versionText = $runtimeNameMatch.Groups[1].Value
+            $versionSource = 'simctl-runtime-metadata.name'
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($versionText)) {
+        $versionText = [string]$Metadata.SimulatorVersion
+        if (-not [string]::IsNullOrWhiteSpace($versionText)) { $versionSource = 'simctl-runtime-metadata.SimulatorVersion' }
+    }
+    return [pscustomobject]@{ Text = $versionText; Source = $versionSource }
+}
+
+# Returns the runtime version and its source, or $null when the runtime is not an eligible iOS 17+ runtime.
+function Resolve-EligibleRuntimeVersion {
+    param(
+        [Parameter(Mandatory)][string] $RuntimeIdentifier,
+        $Metadata
+    )
+    $identifierMatch = [regex]::Match($RuntimeIdentifier, '^com\.apple\.CoreSimulator\.SimRuntime\.iOS-(\d+)-(\d+)(?:-(\d+))?$')
+    if (-not $identifierMatch.Success) { return $null }
+    $identifierHasPatch = $identifierMatch.Groups[3].Success
+    $identifierPatch = if ($identifierHasPatch) { [int]$identifierMatch.Groups[3].Value } else { 0 }
+    $identifierMajor = [int]$identifierMatch.Groups[1].Value
+    $identifierMinor = [int]$identifierMatch.Groups[2].Value
+    if (-not $Metadata -or $Metadata.isAvailable -ne $true) { return $null }
+    $versionInfo = Get-RuntimeMetadataVersion $Metadata
+    if ([string]::IsNullOrWhiteSpace($versionInfo.Text)) { return $null }
+    $versionMatch = [regex]::Match($versionInfo.Text, '^(\d+)\.(\d+)(?:\.(\d+))?$')
+    if (-not $versionMatch.Success) { return $null }
+    $metadataPatch = if ($versionMatch.Groups[3].Success) { [int]$versionMatch.Groups[3].Value } else { 0 }
+    $runtimeVersion = [version]::new([int]$versionMatch.Groups[1].Value, [int]$versionMatch.Groups[2].Value, $metadataPatch)
+    if ($runtimeVersion.Major -ne $identifierMajor -or $runtimeVersion.Minor -ne $identifierMinor) { return $null }
+    if ($identifierHasPatch -and $identifierPatch -ne $runtimeVersion.Build) { return $null }
+    if ($runtimeVersion -lt [version]'17.0') { return $null }
+    return [pscustomobject]@{ Version = $runtimeVersion; Source = $versionInfo.Source }
 }
 
 function Get-EligibleIphoneSimulatorCandidates {
@@ -450,43 +549,15 @@ function Get-EligibleIphoneSimulatorCandidates {
     }
     $candidates = @(
         foreach ($runtimeGroup in $DeviceInventory.devices.PSObject.Properties) {
-            $identifierMatch = [regex]::Match([string]$runtimeGroup.Name, '^com\.apple\.CoreSimulator\.SimRuntime\.iOS-(\d+)-(\d+)(?:-(\d+))?$')
-            if (-not $identifierMatch.Success) { continue }
-            $identifierMajor = [int]$identifierMatch.Groups[1].Value
-            $identifierMinor = [int]$identifierMatch.Groups[2].Value
-            $identifierHasPatch = $identifierMatch.Groups[3].Success
-            $identifierPatch = if ($identifierHasPatch) { [int]$identifierMatch.Groups[3].Value } else { 0 }
-            $identifierVersion = [version]::new($identifierMajor, $identifierMinor, $identifierPatch)
-            $metadata = $runtimeByIdentifier[[string]$runtimeGroup.Name]
-            if (-not $metadata -or $metadata.isAvailable -ne $true) { continue }
-            $versionText = [string]$metadata.version
-            $versionSource = 'simctl-runtime-metadata.version'
-            if ([string]::IsNullOrWhiteSpace($versionText)) {
-                $runtimeNameMatch = [regex]::Match([string]$metadata.name, '^iOS\s+(\d+\.\d+(?:\.\d+)?)$')
-                if ($runtimeNameMatch.Success) {
-                    $versionText = $runtimeNameMatch.Groups[1].Value
-                    $versionSource = 'simctl-runtime-metadata.name'
-                }
-            }
-            if ([string]::IsNullOrWhiteSpace($versionText)) {
-                $versionText = [string]$metadata.SimulatorVersion
-                if (-not [string]::IsNullOrWhiteSpace($versionText)) { $versionSource = 'simctl-runtime-metadata.SimulatorVersion' }
-            }
-            if ([string]::IsNullOrWhiteSpace($versionText)) { continue }
-            $versionMatch = [regex]::Match($versionText, '^(\d+)\.(\d+)(?:\.(\d+))?$')
-            if (-not $versionMatch.Success) { continue }
-            $metadataPatch = if ($versionMatch.Groups[3].Success) { [int]$versionMatch.Groups[3].Value } else { 0 }
-            $runtimeVersion = [version]::new([int]$versionMatch.Groups[1].Value, [int]$versionMatch.Groups[2].Value, $metadataPatch)
-            if ($runtimeVersion.Major -ne $identifierVersion.Major -or $runtimeVersion.Minor -ne $identifierVersion.Minor) { continue }
-            if ($identifierHasPatch -and $identifierPatch -ne $runtimeVersion.Build) { continue }
-            if ($runtimeVersion -lt [version]'17.0') { continue }
+            $resolved = Resolve-EligibleRuntimeVersion ([string]$runtimeGroup.Name) $runtimeByIdentifier[[string]$runtimeGroup.Name]
+            if (-not $resolved) { continue }
             foreach ($device in $runtimeGroup.Value) {
                 if ($device.isAvailable -ne $true -or [string]$device.name -notlike 'iPhone*') { continue }
                 [pscustomobject]@{
-                    RuntimeVersion = $runtimeVersion
-                    RuntimeVersionSource = $versionSource
+                    RuntimeVersion = $resolved.Version
+                    RuntimeVersionSource = $resolved.Source
                     RuntimeIdentifier = [string]$runtimeGroup.Name
-                    RuntimeMajor = $runtimeVersion.Major
+                    RuntimeMajor = $resolved.Version.Major
                     Device = $device
                 }
             }
@@ -658,9 +729,7 @@ function Invoke-IosBuildPhase {
     }
 }
 
-function Invoke-SimulatorBootPhase {
-    Assert-PinnedFlutter
-    Assert-IosBuildPrerequisites
+function Get-SelectedIphoneSimulator {
     $simulatorOutput = & /usr/bin/xcrun simctl list devices available --json
     if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate available iOS simulators.' }
     $simulatorInventory = $simulatorOutput | ConvertFrom-Json
@@ -672,45 +741,86 @@ function Invoke-SimulatorBootPhase {
     if ($availableIPhones.Count -eq 0) {
         throw 'No available iPhone simulator for iOS 17+ matched the pinned Xcode runtime metadata.'
     }
-    $selected = $availableIPhones[0]
-    $device = $selected.Device
+    return $availableIPhones[0]
+}
+
+function Resolve-SimulatorDeviceTypeIdentifier {
+    param([Parameter(Mandatory)] $Device)
+    $deviceTypeIdentifier = [string]$Device.deviceTypeIdentifier
+    if (-not [string]::IsNullOrWhiteSpace($deviceTypeIdentifier)) { return $deviceTypeIdentifier }
+    $deviceTypesOutput = & /usr/bin/xcrun simctl list devicetypes --json
+    if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate simulator device types.' }
+    $deviceTypesInventory = $deviceTypesOutput | ConvertFrom-Json
+    $matchingTypes = @(
+        $deviceTypesInventory.devicetypes |
+            Where-Object { $_.name -eq $Device.name -and ($_.productFamily -eq 'iPhone' -or $_.name -like 'iPhone*') }
+    )
+    if ($matchingTypes.Count -ne 1 -or [string]::IsNullOrWhiteSpace([string]$matchingTypes[0].identifier)) {
+        throw "Could not resolve one iPhone simulator device type for '$($Device.name)' from simctl JSON."
+    }
+    return [string]$matchingTypes[0].identifier
+}
+
+function New-OwnedCiSimulatorTarget {
+    param([Parameter(Mandatory)] $Selected)
+    $device = $Selected.Device
+    $deviceTypeIdentifier = Resolve-SimulatorDeviceTypeIdentifier $device
+    $simulatorName = "Gainer-CI-$runToken"
+    Write-Information "SIMULATOR CREATE START utc=$([DateTime]::UtcNow.ToString('o')) name=$simulatorName runtime=$($Selected.RuntimeIdentifier) deviceType=$deviceTypeIdentifier sourceDevice=$($device.name)" -InformationAction Continue
+    $createOutput = & /usr/bin/xcrun simctl create $simulatorName $deviceTypeIdentifier $Selected.RuntimeIdentifier
+    $createExitCode = $LASTEXITCODE
+    $simulatorId = [string]($createOutput | Select-Object -Last 1)
+    $simulatorId = $simulatorId.Trim()
+    if ($createExitCode -ne 0 -or $simulatorId -notmatch '^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') {
+        throw "Could not create an isolated CI simulator; simctl returned '$simulatorId' (exit $createExitCode)."
+    }
+    return [pscustomobject]@{
+        SimulatorId = $simulatorId
+        SimulatorName = $simulatorName
+        InitialState = 'Created'
+        Owned = $true
+        DeviceTypeIdentifier = $deviceTypeIdentifier
+    }
+}
+
+function Get-LocalSimulatorTarget {
+    param([Parameter(Mandatory)] $Device)
+    $initialState = [string]$Device.state
+    if ($initialState -notin @('Shutdown', 'Booted', 'Booting')) {
+        throw "Selected iPhone simulator is in an unexpected state '$initialState'."
+    }
+    return [pscustomobject]@{
+        SimulatorId = [string]$Device.udid
+        SimulatorName = [string]$Device.name
+        InitialState = $initialState
+        Owned = $false
+        DeviceTypeIdentifier = [string]$Device.deviceTypeIdentifier
+    }
+}
+
+function Get-LocalSimulatorDeviceAfterBoot {
+    param([Parameter(Mandatory)][string] $SimulatorId)
+    $deviceOutput = & /usr/bin/xcrun simctl list devices available --json
+    if ($LASTEXITCODE -ne 0) { throw 'Could not re-check simulator state after boot.' }
+    $devicesAfterBoot = ($deviceOutput | ConvertFrom-Json).devices
+    foreach ($runtime in $devicesAfterBoot.PSObject.Properties) {
+        foreach ($candidateDevice in $runtime.Value) {
+            if ($candidateDevice.udid -eq $SimulatorId) { return $candidateDevice }
+        }
+    }
+    return $null
+}
+
+function Invoke-SimulatorBootPhase {
+    Assert-PinnedFlutter
+    Assert-IosBuildPrerequisites
+    $selected = Get-SelectedIphoneSimulator
     $isGitHubActions = $env:GITHUB_ACTIONS -eq 'true'
-    $simulatorOwned = $false
-    if ($isGitHubActions) {
-        $deviceTypeIdentifier = [string]$device.deviceTypeIdentifier
-        if ([string]::IsNullOrWhiteSpace($deviceTypeIdentifier)) {
-            $deviceTypesOutput = & /usr/bin/xcrun simctl list devicetypes --json
-            if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate simulator device types.' }
-            $deviceTypesInventory = $deviceTypesOutput | ConvertFrom-Json
-            $matchingTypes = @(
-                $deviceTypesInventory.devicetypes |
-                    Where-Object { $_.name -eq $device.name -and ($_.productFamily -eq 'iPhone' -or $_.name -like 'iPhone*') }
-            )
-            if ($matchingTypes.Count -ne 1 -or [string]::IsNullOrWhiteSpace([string]$matchingTypes[0].identifier)) {
-                throw "Could not resolve one iPhone simulator device type for '$($device.name)' from simctl JSON."
-            }
-            $deviceTypeIdentifier = [string]$matchingTypes[0].identifier
-        }
-        $simulatorName = "Gainer-CI-$runToken"
-        Write-Information "SIMULATOR CREATE START utc=$([DateTime]::UtcNow.ToString('o')) name=$simulatorName runtime=$($selected.RuntimeIdentifier) deviceType=$deviceTypeIdentifier sourceDevice=$($device.name)" -InformationAction Continue
-        $createOutput = & /usr/bin/xcrun simctl create $simulatorName $deviceTypeIdentifier $selected.RuntimeIdentifier
-        $createExitCode = $LASTEXITCODE
-        $simulatorId = [string]($createOutput | Select-Object -Last 1)
-        $simulatorId = $simulatorId.Trim()
-        if ($createExitCode -ne 0 -or $simulatorId -notmatch '^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') {
-            throw "Could not create an isolated CI simulator; simctl returned '$simulatorId' (exit $createExitCode)."
-        }
-        $simulatorOwned = $true
-        $initialState = 'Created'
-    }
-    else {
-        $simulatorId = [string]$device.udid
-        $simulatorName = [string]$device.name
-        $initialState = [string]$device.state
-        if ($initialState -notin @('Shutdown', 'Booted', 'Booting')) {
-            throw "Selected iPhone simulator is in an unexpected state '$initialState'."
-        }
-    }
+    $target = if ($isGitHubActions) { New-OwnedCiSimulatorTarget $selected } else { Get-LocalSimulatorTarget $selected.Device }
+    $simulatorId = $target.SimulatorId
+    $simulatorName = $target.SimulatorName
+    $initialState = $target.InitialState
+    $simulatorOwned = $target.Owned
 
     $simulatorState = [ordered]@{
         runToken = $runToken
@@ -719,7 +829,7 @@ function Invoke-SimulatorBootPhase {
         simulatorName = $simulatorName
         runtimeIdentifier = $selected.RuntimeIdentifier
         runtimeMajor = $selected.RuntimeMajor
-        deviceTypeIdentifier = if ($isGitHubActions) { $deviceTypeIdentifier } else { [string]$device.deviceTypeIdentifier }
+        deviceTypeIdentifier = $target.DeviceTypeIdentifier
         owned = $simulatorOwned
         state = $initialState
     }
@@ -738,16 +848,7 @@ function Invoke-SimulatorBootPhase {
     }
     else {
         Invoke-Checked '/usr/bin/xcrun' @('simctl', 'bootstatus', $simulatorId, '-b')
-        $deviceOutput = & /usr/bin/xcrun simctl list devices available --json
-        if ($LASTEXITCODE -ne 0) { throw 'Could not re-check simulator state after boot.' }
-        $deviceAfterBoot = $null
-        $devicesAfterBoot = ($deviceOutput | ConvertFrom-Json).devices
-        foreach ($runtime in $devicesAfterBoot.PSObject.Properties) {
-            foreach ($candidateDevice in $runtime.Value) {
-                if ($candidateDevice.udid -eq $simulatorId) { $deviceAfterBoot = $candidateDevice; break }
-            }
-            if ($deviceAfterBoot) { break }
-        }
+        $deviceAfterBoot = Get-LocalSimulatorDeviceAfterBoot $simulatorId
     }
     if (-not $deviceAfterBoot -or $deviceAfterBoot.state -ne 'Booted') {
         throw "Simulator $simulatorId did not reach Booted state after bootstatus."
@@ -827,11 +928,7 @@ function Stop-SimulatorRunnerApp {
     }
 }
 
-function Invoke-UiCapturePhase {
-    Assert-PinnedFlutter
-    Assert-IosBuildPrerequisites
-    $phaseClock = [System.Diagnostics.Stopwatch]::StartNew()
-    $phaseBudgetSeconds = 690
+function Get-OwnedBootedSimulatorState {
     if (-not (Test-Path -LiteralPath $simulatorStatePath -PathType Leaf)) {
         throw "Missing simulator boot record '$simulatorStatePath'; run SimulatorBoot first."
     }
@@ -842,9 +939,17 @@ function Invoke-UiCapturePhase {
     Assert-OwnedSimulatorRecord -StatePath $simulatorStatePath -RunToken $runToken `
         -SimulatorId $simulatorState.simulatorId -SimulatorName $simulatorState.simulatorName `
         -RuntimeIdentifier $simulatorState.runtimeIdentifier
+    return $simulatorState
+}
+
+function Get-UiCaptureSimulatorInventory {
+    param(
+        [Parameter(Mandatory)][System.Diagnostics.Stopwatch] $PhaseClock,
+        [Parameter(Mandatory)][int] $PhaseBudgetSeconds
+    )
     $inventory = $null
     for ($attempt = 1; $attempt -le 2 -and $null -eq $inventory; $attempt++) {
-        $remaining = [int][Math]::Floor($phaseBudgetSeconds - $phaseClock.Elapsed.TotalSeconds - 20)
+        $remaining = [int][Math]::Floor($PhaseBudgetSeconds - $PhaseClock.Elapsed.TotalSeconds - 20)
         if ($remaining -lt 12) { throw 'UI capture ownership check exceeded its reserved phase budget.' }
         $result = Invoke-ManagedProcess '/usr/bin/xcrun' @('simctl', 'list', 'devices', '--json') `
             ([Math]::Min(25, $remaining)) "UI capture simulator inventory attempt $attempt" -SuppressOutputPreview
@@ -860,18 +965,133 @@ function Invoke-UiCapturePhase {
         try { $inventory = $result.Stdout | ConvertFrom-Json }
         catch { throw 'Simulator inventory was invalid JSON; refusing UI capture.' }
     }
-    $deviceFound = $false
-    foreach ($runtime in $inventory.devices.PSObject.Properties) {
+    return $inventory
+}
+
+function Test-OwnedSimulatorBooted {
+    param(
+        [Parameter(Mandatory)] $Inventory,
+        [Parameter(Mandatory)] $SimulatorState
+    )
+    foreach ($runtime in $Inventory.devices.PSObject.Properties) {
         foreach ($device in $runtime.Value) {
-            if ([string]$device.udid -eq [string]$simulatorState.simulatorId -and
-                [string]$runtime.Name -eq [string]$simulatorState.runtimeIdentifier -and
-                [string]$device.name -eq [string]$simulatorState.simulatorName -and
+            if ([string]$device.udid -eq [string]$SimulatorState.simulatorId -and
+                [string]$runtime.Name -eq [string]$SimulatorState.runtimeIdentifier -and
+                [string]$device.name -eq [string]$SimulatorState.simulatorName -and
                 $device.isAvailable -eq $true -and [string]$device.state -eq 'Booted') {
-                $deviceFound = $true
+                return $true
             }
         }
     }
-    if (-not $deviceFound) { throw 'The exact workflow-owned simulator is unavailable or not Booted; refusing UI capture.' }
+    return $false
+}
+
+function Get-RunnerBundleId {
+    # Confirm the built bundle identity before terminating the app between attempts.
+    $runnerInfoPlist = Join-Path $mobileRoot 'build/ios/iphonesimulator/Runner.app/Info.plist'
+    if (-not (Test-Path -LiteralPath $runnerInfoPlist -PathType Leaf)) {
+        throw "Built Runner app Info.plist is missing: '$runnerInfoPlist'."
+    }
+    $appBundleId = (& '/usr/libexec/PlistBuddy' -c 'Print :CFBundleIdentifier' $runnerInfoPlist | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($appBundleId) -or
+        $appBundleId -notmatch '^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$') {
+        throw "Built Runner app has an invalid CFBundleIdentifier '$appBundleId'."
+    }
+    return $appBundleId
+}
+
+function Invoke-UiCaptureDrive {
+    param(
+        [Parameter(Mandatory)][string] $SimulatorId,
+        [Parameter(Mandatory)][string] $AppBundleId,
+        [Parameter(Mandatory)][System.Diagnostics.Stopwatch] $PhaseClock,
+        [Parameter(Mandatory)][int] $PhaseBudgetSeconds
+    )
+    # On the CI simulator `flutter drive` occasionally launches the app but never
+    # discovers its Dart VM service and then waits until the phase budget is gone.
+    # That single, recognizable state is retried once after a fresh app launch;
+    # every other failure still fails the phase immediately.
+    $vmServiceWait = [regex]'Waiting for VM Service port to be available'
+    $vmServiceFound = [regex]'(?i)Connected to Flutter application|Dart VM [Ss]ervice (is listening|was found)|VM Service URL'
+    Push-Location $mobileRoot
+    try {
+        for ($attempt = 1; $attempt -le 2; $attempt++) {
+            Stop-SimulatorRunnerApp $SimulatorId $AppBundleId
+            $commandBudget = [int][Math]::Floor($PhaseBudgetSeconds - $PhaseClock.Elapsed.TotalSeconds - 15)
+            if ($commandBudget -lt 30) { throw 'UI capture has insufficient time remaining for the simulator test.' }
+            $result = Invoke-ManagedProcessWithStallGuard $flutterCommand @(
+                'drive',
+                '--driver=test_driver/ui_design_driver.dart',
+                '--target=integration_test/ui_design_test.dart',
+                '-d', $SimulatorId,
+                '--no-pub',
+                '--verbose'
+            ) $commandBudget "fixture-backed native iOS UI capture attempt=$attempt" `
+                -StallStartPattern $vmServiceWait -StallEndPattern $vmServiceFound -StallTimeoutSeconds 120 `
+                -WorkingDirectory $mobileRoot -OutputPreviewLimit 20000
+            $cleanlyEnded = $result.TerminationConfirmed -and $result.OutputDrained
+            if ($result.Stalled -and $cleanlyEnded -and $attempt -lt 2) {
+                Write-Information "UI CAPTURE RETRY utc=$([DateTime]::UtcNow.ToString('o')) reason=vm_service_not_discovered remaining_seconds=$([int]($PhaseBudgetSeconds - $PhaseClock.Elapsed.TotalSeconds))" -InformationAction Continue
+                continue
+            }
+            if ($result.Stalled -or $result.TimedOut -or -not $cleanlyEnded -or $result.ExitCode -ne 0) {
+                throw 'Fixture-backed iOS UI capture failed or exceeded its remaining phase budget.'
+            }
+            break
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+function Assert-PngContent {
+    param(
+        [Parameter(Mandatory)][byte[]] $Bytes,
+        [Parameter(Mandatory)][string] $Name
+    )
+    $signature = [byte[]](137, 80, 78, 71, 13, 10, 26, 10)
+    for ($index = 0; $index -lt $signature.Length; $index++) {
+        if ($Bytes[$index] -ne $signature[$index]) {
+            throw "Required native UI screenshot '$Name.png' is not a PNG."
+        }
+    }
+    if ([System.Text.Encoding]::ASCII.GetString($Bytes, 12, 4) -ne 'IHDR') {
+        throw "Required native UI screenshot '$Name.png' has no PNG IHDR."
+    }
+    $width = [uint32]($Bytes[16] * 16777216 + $Bytes[17] * 65536 + $Bytes[18] * 256 + $Bytes[19])
+    $height = [uint32]($Bytes[20] * 16777216 + $Bytes[21] * 65536 + $Bytes[22] * 256 + $Bytes[23])
+    if ($width -lt 1 -or $height -lt 1 -or $width -gt 6000 -or $height -gt 12000) {
+        throw "Required native UI screenshot '$Name.png' has unreasonable dimensions ${width}x${height}."
+    }
+}
+
+function Assert-UiScreenshot {
+    param(
+        [Parameter(Mandatory)][string] $CaptureRoot,
+        [Parameter(Mandatory)][string] $Name
+    )
+    $path = Join-Path $CaptureRoot "$Name.png"
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw "Required native UI screenshot '$Name.png' is missing or empty."
+    }
+    $bytes = [System.IO.File]::ReadAllBytes($path)
+    if ($bytes.Length -lt 1000) {
+        throw "Required native UI screenshot '$Name.png' is missing or empty."
+    }
+    Assert-PngContent $bytes $Name
+}
+
+function Invoke-UiCapturePhase {
+    Assert-PinnedFlutter
+    Assert-IosBuildPrerequisites
+    $phaseClock = [System.Diagnostics.Stopwatch]::StartNew()
+    $phaseBudgetSeconds = 690
+    $simulatorState = Get-OwnedBootedSimulatorState
+    $inventory = Get-UiCaptureSimulatorInventory $phaseClock $phaseBudgetSeconds
+    if (-not (Test-OwnedSimulatorBooted $inventory $simulatorState)) {
+        throw 'The exact workflow-owned simulator is unavailable or not Booted; refusing UI capture.'
+    }
 
     $expectedScreenshots = @(
         'tab-kalender', 'tab-checkin', 'tab-essen', 'tab-training', 'tab-mehr',
@@ -890,75 +1110,10 @@ function Invoke-UiCapturePhase {
         }
     }
 
-    # Confirm the built bundle identity before terminating the app between attempts.
-    $runnerInfoPlist = Join-Path $mobileRoot 'build/ios/iphonesimulator/Runner.app/Info.plist'
-    if (-not (Test-Path -LiteralPath $runnerInfoPlist -PathType Leaf)) {
-        throw "Built Runner app Info.plist is missing: '$runnerInfoPlist'."
-    }
-    $appBundleId = (& '/usr/libexec/PlistBuddy' -c 'Print :CFBundleIdentifier' $runnerInfoPlist | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($appBundleId) -or
-        $appBundleId -notmatch '^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$') {
-        throw "Built Runner app has an invalid CFBundleIdentifier '$appBundleId'."
-    }
-    # On the CI simulator `flutter drive` occasionally launches the app but never
-    # discovers its Dart VM service and then waits until the phase budget is gone.
-    # That single, recognizable state is retried once after a fresh app launch;
-    # every other failure still fails the phase immediately.
-    $vmServiceWait = [regex]'Waiting for VM Service port to be available'
-    $vmServiceFound = [regex]'(?i)Connected to Flutter application|Dart VM [Ss]ervice (is listening|was found)|VM Service URL'
-    Push-Location $mobileRoot
-    try {
-        for ($attempt = 1; $attempt -le 2; $attempt++) {
-            Stop-SimulatorRunnerApp $simulatorState.simulatorId $appBundleId
-            $commandBudget = [int][Math]::Floor($phaseBudgetSeconds - $phaseClock.Elapsed.TotalSeconds - 15)
-            if ($commandBudget -lt 30) { throw 'UI capture has insufficient time remaining for the simulator test.' }
-            $result = Invoke-ManagedProcessWithStallGuard $flutterCommand @(
-                'drive',
-                '--driver=test_driver/ui_design_driver.dart',
-                '--target=integration_test/ui_design_test.dart',
-                '-d', $simulatorState.simulatorId,
-                '--no-pub',
-                '--verbose'
-            ) $commandBudget "fixture-backed native iOS UI capture attempt=$attempt" `
-                -StallStartPattern $vmServiceWait -StallEndPattern $vmServiceFound -StallTimeoutSeconds 120 `
-                -WorkingDirectory $mobileRoot -OutputPreviewLimit 20000
-            $cleanlyEnded = $result.TerminationConfirmed -and $result.OutputDrained
-            if ($result.Stalled -and $cleanlyEnded -and $attempt -lt 2) {
-                Write-Information "UI CAPTURE RETRY utc=$([DateTime]::UtcNow.ToString('o')) reason=vm_service_not_discovered remaining_seconds=$([int]($phaseBudgetSeconds - $phaseClock.Elapsed.TotalSeconds))" -InformationAction Continue
-                continue
-            }
-            if ($result.Stalled -or $result.TimedOut -or -not $cleanlyEnded -or $result.ExitCode -ne 0) {
-                throw 'Fixture-backed iOS UI capture failed or exceeded its remaining phase budget.'
-            }
-            break
-        }
-    }
-    finally {
-        Pop-Location
-    }
+    $appBundleId = Get-RunnerBundleId
+    Invoke-UiCaptureDrive $simulatorState.simulatorId $appBundleId $phaseClock $phaseBudgetSeconds
     foreach ($name in $expectedScreenshots) {
-        $path = Join-Path $captureRoot "$name.png"
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            throw "Required native UI screenshot '$name.png' is missing or empty."
-        }
-        $bytes = [System.IO.File]::ReadAllBytes($path)
-        if ($bytes.Length -lt 1000) {
-            throw "Required native UI screenshot '$name.png' is missing or empty."
-        }
-        $signature = [byte[]](137, 80, 78, 71, 13, 10, 26, 10)
-        for ($index = 0; $index -lt $signature.Length; $index++) {
-            if ($bytes[$index] -ne $signature[$index]) {
-                throw "Required native UI screenshot '$name.png' is not a PNG."
-            }
-        }
-        if ([System.Text.Encoding]::ASCII.GetString($bytes, 12, 4) -ne 'IHDR') {
-            throw "Required native UI screenshot '$name.png' has no PNG IHDR."
-        }
-        $width = [uint32]($bytes[16] * 16777216 + $bytes[17] * 65536 + $bytes[18] * 256 + $bytes[19])
-        $height = [uint32]($bytes[20] * 16777216 + $bytes[21] * 65536 + $bytes[22] * 256 + $bytes[23])
-        if ($width -lt 1 -or $height -lt 1 -or $width -gt 6000 -or $height -gt 12000) {
-            throw "Required native UI screenshot '$name.png' has unreasonable dimensions ${width}x${height}."
-        }
+        Assert-UiScreenshot $captureRoot $name
     }
     Write-Information "UI CAPTURES READY count=$($expectedScreenshots.Count) simulator=$($simulatorState.simulatorName) udid=$($simulatorState.simulatorId) elapsed_seconds=$([Math]::Round($phaseClock.Elapsed.TotalSeconds, 2))" -InformationAction Continue
 }
