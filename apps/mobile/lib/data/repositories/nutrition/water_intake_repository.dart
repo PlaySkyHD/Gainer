@@ -8,6 +8,7 @@ import '../../../domain/models/nutrition/nutrition.dart';
 import '../../../domain/models/nutrition/water_intake.dart';
 import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
+import '../sync/day_adoption.dart' show waterAmountSetLocallyKey;
 import '../sync/local_conflict_recovery.dart' show waterIntakeAggregateType;
 import '../sync/local_sync_store.dart';
 
@@ -62,11 +63,27 @@ class WaterIntakeRepository {
   /// Getrunkene Menge in ml; 0 ohne gespeicherten Tag.
   Future<int> read(String localDate) async {
     _requireDate(localDate);
-    final existing = await store.readAggregate(
-      waterIntakeAggregateType,
-      dayIdFor(localDate),
-    );
+    final existing = await _readDay(localDate);
     return existing == null ? 0 : _amountOf(existing.workingCopy);
+  }
+
+  /// Zeile von [localDate]. Eine vom Server bestätigte Zeile geht vor, auch
+  /// unter anderer ID (z. B. von einer älteren App-Version angelegt): Konnte
+  /// der Pull einen lokalen Tag nicht übernehmen, weil dessen Eintrag gerade
+  /// gesendet wurde, gehen weitere Änderungen an die Serverzeile statt an
+  /// die abgelehnte Anlage. Sonst die Zeile mit fester ID.
+  Future<LocalAggregateEnvelope<Object?>?> _readDay(String localDate) async {
+    final days = (await store.readAggregates(waterIntakeAggregateType))
+        .where((row) {
+          final working = row.workingCopy;
+          return working is Map && working['localDate'] == localDate;
+        })
+        .toList();
+    return days.where((row) => row.serverVersion != null).firstOrNull ??
+        days
+            .where((row) => row.aggregateId == dayIdFor(localDate))
+            .firstOrNull ??
+        days.firstOrNull;
   }
 
   /// Addiert [addedMl] und liefert die neue Tagesmenge.
@@ -83,7 +100,7 @@ class WaterIntakeRepository {
 
   /// Setzt die Tagesmenge auf [amountMl] (Korrektur, Rückgängig).
   Future<int> setAmount(String localDate, int amountMl) => _serialized(
-    () => _change(localDate, (_) {
+    () => _change(localDate, setsTotal: true, (_) {
       if (!WaterIntakeLimits.isValidDaily(amountMl)) {
         throw const NutritionValidationException({
           'amountMl': 'Erlaubt sind 0 bis 10.000 ml.',
@@ -93,17 +110,26 @@ class WaterIntakeRepository {
     }),
   );
 
-  Future<int> _change(String localDate, int Function(int current) next) async {
+  /// [setsTotal]: [next] setzt eine absolute Tagessumme statt zu addieren.
+  Future<int> _change(
+    String localDate,
+    int Function(int current) next, {
+    bool setsTotal = false,
+  }) async {
     _requireDate(localDate);
-    final id = dayIdFor(localDate);
     for (var attempt = 1; ; attempt++) {
-      final existing = await store.readAggregate(waterIntakeAggregateType, id);
+      final existing = await _readDay(localDate);
       final current = existing == null ? 0 : _amountOf(existing.workingCopy);
       final total = next(current);
       if (existing != null && total == current) return current;
       await beforeCommitForTesting?.call();
       try {
-        await _commit(id, localDate, existing, total);
+        await _commit(
+          existing?.aggregateId ?? dayIdFor(localDate),
+          localDate,
+          existing,
+          (total: total, setsTotal: setsTotal),
+        );
         return total;
       } on LocalResourceChangedException {
         // Ein Pull oder eine Bestätigung kam dazwischen: neu lesen.
@@ -126,17 +152,24 @@ class WaterIntakeRepository {
     String id,
     String localDate,
     LocalAggregateEnvelope<Object?>? existing,
-    int total,
+    ({int total, bool setsTotal}) change,
   ) {
     final now = clock().toUtc();
     final previous = existing?.workingCopy;
+    // Nur ein nie bestätigter Tag braucht den Merker: Der Pull führt ihn
+    // dann ohne Doppelzählung in den Servertag über (adoptLocalDay).
+    final setLocally =
+        existing?.serverVersion == null &&
+        (change.setsTotal ||
+            (previous is Map && previous[waterAmountSetLocallyKey] == true));
     final working = <String, Object?>{
       'localDate': localDate,
-      'amountMl': total,
+      'amountMl': change.total,
       'createdAtUtc':
           (previous is Map ? previous['createdAtUtc'] : null) ??
           now.toIso8601String(),
       'updatedAtUtc': now.toIso8601String(),
+      if (setLocally) waterAmountSetLocallyKey: true,
     };
     return store.commitMutation(
       MutationDraft(
@@ -159,6 +192,8 @@ class WaterIntakeRepository {
                 syncState: LocalSyncState.pending,
               ),
         // Gilt der gelesene Stand beim Commit nicht mehr, schlägt er fehl.
+        // Ein neuer Tag erwartet zusätzlich, dass kein Pull den Servertag
+        // desselben Datums unter anderer ID geschrieben hat.
         resourceExpectations: [
           LocalResourceExpectation(
             aggregateType: waterIntakeAggregateType,
@@ -166,6 +201,13 @@ class WaterIntakeRepository {
             optimisticVersion: existing?.optimisticVersion,
             serverVersion: existing?.serverVersion,
           ),
+          if (existing == null)
+            LocalUniqueFieldExpectation(
+              aggregateType: waterIntakeAggregateType,
+              aggregateId: id,
+              field: 'localDate',
+              value: localDate,
+            ),
         ],
         createdAtUtc: now,
       ),

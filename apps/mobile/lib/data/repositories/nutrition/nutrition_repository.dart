@@ -547,7 +547,7 @@ class NutritionRepository {
   /// [existing] ist die Zeile, auf der der Aufrufer geändert hat (null für
   /// einen neuen Tag). Hat sie sich beim Commit geändert, wirft der Store
   /// [LocalResourceChangedException]; ein neuer Tag erwartet, dass noch keine
-  /// Zeile mit der neuen ID existiert.
+  /// Zeile mit der neuen ID und keine andere Zeile für sein Datum existiert.
   Future<void> _saveDay(
     NutritionDay day,
     LocalAggregateEnvelope<Object?>? existing,
@@ -575,6 +575,9 @@ class NutritionRepository {
             : _pending(existing, body),
         // Hat sich der Tag seit dem Lesen geändert (z. B. durch den Sync),
         // schlägt das Speichern fehl, statt den neueren Stand zu überschreiben.
+        // Ein neuer Tag erwartet zusätzlich, dass kein Pull den Servertag
+        // desselben Datums unter anderer ID geschrieben hat; [_retryingDay]
+        // liest dann neu und ändert die Serverzeile.
         resourceExpectations: [
           LocalResourceExpectation(
             aggregateType: _nutritionDayType,
@@ -582,6 +585,13 @@ class NutritionRepository {
             optimisticVersion: existing?.optimisticVersion,
             serverVersion: existing?.serverVersion,
           ),
+          if (existing == null)
+            LocalUniqueFieldExpectation(
+              aggregateType: _nutritionDayType,
+              aggregateId: aggregateId,
+              field: 'localDate',
+              value: day.localDate,
+            ),
         ],
         createdAtUtc: now,
       ),
