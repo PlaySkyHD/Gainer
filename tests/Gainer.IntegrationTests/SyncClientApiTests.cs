@@ -62,10 +62,10 @@ public sealed class SyncClientApiTests
         Guid clientId = Guid.NewGuid();
         using HttpResponseMessage registration = await client.PutAsJsonAsync(
             $"/api/v1/sync/clients/{clientId}",
-            new RegisterSyncClientRequest(clientId, "Integration iPhone", SyncProtocol.CurrentVersion, false));
+            new RegisterSyncClientRequest(clientId, "Integration iPhone", SyncProtocol.CurrentVersion, false), cancellationToken: TestContext.CancellationToken);
 
-        Assert.AreEqual(HttpStatusCode.OK, registration.StatusCode, await registration.Content.ReadAsStringAsync());
-        SyncClientResponse? response = await registration.Content.ReadFromJsonAsync<SyncClientResponse>();
+        Assert.AreEqual(HttpStatusCode.OK, registration.StatusCode, await registration.Content.ReadAsStringAsync(TestContext.CancellationToken));
+        SyncClientResponse? response = await registration.Content.ReadFromJsonAsync<SyncClientResponse>(TestContext.CancellationToken);
         Assert.IsNotNull(response);
         Assert.AreEqual(clientId, response.ClientId);
         Assert.AreEqual("Integration iPhone", response.DisplayName);
@@ -83,16 +83,16 @@ public sealed class SyncClientApiTests
         Guid clientId = Guid.NewGuid();
         using (HttpResponseMessage registration = await client.PutAsJsonAsync(
             $"/api/v1/sync/clients/{clientId}",
-            new RegisterSyncClientRequest(clientId, "Neues iPhone", SyncProtocol.CurrentVersion, false)))
+            new RegisterSyncClientRequest(clientId, "Neues iPhone", SyncProtocol.CurrentVersion, false), cancellationToken: TestContext.CancellationToken))
         {
-            Assert.AreEqual(HttpStatusCode.OK, registration.StatusCode, await registration.Content.ReadAsStringAsync());
+            Assert.AreEqual(HttpStatusCode.OK, registration.StatusCode, await registration.Content.ReadAsStringAsync(TestContext.CancellationToken));
         }
 
         // An app before protocol 4 pulls without a version and expects version 3.
-        using (HttpResponseMessage legacy = await client.GetAsync("/api/v1/sync/changes?after=0&limit=200"))
+        using (HttpResponseMessage legacy = await client.GetAsync("/api/v1/sync/changes?after=0&limit=200", TestContext.CancellationToken))
         {
             Assert.AreEqual(HttpStatusCode.OK, legacy.StatusCode);
-            PullChangesResponse empty = (await legacy.Content.ReadFromJsonAsync<PullChangesResponse>())!;
+            PullChangesResponse empty = (await legacy.Content.ReadFromJsonAsync<PullChangesResponse>(TestContext.CancellationToken))!;
             Assert.AreEqual(SyncProtocol.UnversionedPullVersion, empty.ProtocolVersion);
         }
 
@@ -112,32 +112,32 @@ public sealed class SyncClientApiTests
                     localDate = "2026-10-25",
                     baseVersion = 0,
                     amountMl = 750,
-                }))))
+                })), cancellationToken: TestContext.CancellationToken))
         {
-            Assert.AreEqual(HttpStatusCode.OK, push.StatusCode, await push.Content.ReadAsStringAsync());
+            Assert.AreEqual(HttpStatusCode.OK, push.StatusCode, await push.Content.ReadAsStringAsync(TestContext.CancellationToken));
         }
 
-        using (HttpResponseMessage legacy = await client.GetAsync("/api/v1/sync/changes?after=0&limit=200"))
+        using (HttpResponseMessage legacy = await client.GetAsync("/api/v1/sync/changes?after=0&limit=200", TestContext.CancellationToken))
         {
             Assert.AreEqual(HttpStatusCode.Conflict, legacy.StatusCode);
             Assert.AreEqual("upgrade_required", await ProblemCodeAsync(legacy));
         }
         using (HttpResponseMessage current = await client.GetAsync(
-            $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion}"))
+            $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion}", TestContext.CancellationToken))
         {
             Assert.AreEqual(HttpStatusCode.OK, current.StatusCode);
-            PullChangesResponse page = (await current.Content.ReadFromJsonAsync<PullChangesResponse>())!;
+            PullChangesResponse page = (await current.Content.ReadFromJsonAsync<PullChangesResponse>(TestContext.CancellationToken))!;
             Assert.AreEqual(SyncProtocol.CurrentVersion, page.ProtocolVersion);
             SyncChangeResponse water = page.Batches.Single().Changes.Single();
             Assert.AreEqual("WaterIntakeDay", water.ResourceType);
             Assert.AreEqual(dayId, water.ResourceId);
         }
         using (HttpResponseMessage tooNew = await client.GetAsync(
-            $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion + 1}"))
+            $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion + 1}", TestContext.CancellationToken))
         {
             Assert.AreEqual(HttpStatusCode.BadRequest, tooNew.StatusCode);
         }
-        using (HttpResponseMessage tooOld = await client.GetAsync("/api/v1/sync/changes?after=0&limit=200&protocolVersion=1"))
+        using (HttpResponseMessage tooOld = await client.GetAsync("/api/v1/sync/changes?after=0&limit=200&protocolVersion=1", TestContext.CancellationToken))
         {
             Assert.AreEqual(HttpStatusCode.Conflict, tooOld.StatusCode);
             Assert.AreEqual("upgrade_required", await ProblemCodeAsync(tooOld));
@@ -147,7 +147,7 @@ public sealed class SyncClientApiTests
         Guid oldDevice = Guid.NewGuid();
         using HttpResponseMessage oldRegistration = await client.PutAsJsonAsync(
             $"/api/v1/sync/clients/{oldDevice}",
-            new RegisterSyncClientRequest(oldDevice, "Altes iPhone", SyncProtocol.UnversionedPullVersion, false));
+            new RegisterSyncClientRequest(oldDevice, "Altes iPhone", SyncProtocol.UnversionedPullVersion, false), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Conflict, oldRegistration.StatusCode);
         Assert.AreEqual("upgrade_required", await ProblemCodeAsync(oldRegistration));
     }
@@ -161,9 +161,9 @@ public sealed class SyncClientApiTests
     private async Task<WebApplication> CreateApplicationAsync()
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
-            await context.Database.MigrateAsync();
+            await context.Database.MigrateAsync(TestContext.CancellationToken);
         }
 
         keyRingPath = Path.Combine(Path.GetTempPath(), $"gainer-sync-api-{Guid.NewGuid():N}");
@@ -178,7 +178,7 @@ public sealed class SyncClientApiTests
 
         WebApplication app = builder.Build();
         app.MapGainerApi();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.CancellationToken);
         return app;
     }
 
@@ -196,4 +196,6 @@ public sealed class SyncClientApiTests
         }, Password);
         Assert.IsTrue(result.Succeeded, string.Join(", ", result.Errors.Select(error => error.Code)));
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

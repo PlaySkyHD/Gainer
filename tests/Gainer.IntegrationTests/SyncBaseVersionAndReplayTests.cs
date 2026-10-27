@@ -52,7 +52,7 @@ public sealed class SyncBaseVersionAndReplayTests
         await ExpectStale(connectionString, user, client, 3,
             Command("deleteWorkout", "Workout", workoutId, 1, new { workoutId, baseVersion = 1 }));
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         Workout stored = await context.Workouts.SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual("Push 2", stored.Title);
         Assert.AreEqual(2, stored.Version);
@@ -70,7 +70,7 @@ public sealed class SyncBaseVersionAndReplayTests
         ProcessSyncMutationCommand update = For(
             Command("updateTrainingPlan", "TrainingPlan", planId, 1, new { baseVersion = 1, plan = Plan(planId, "Push A", exerciseId, Guid.NewGuid()) }), client, 2);
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         SyncMutationProcessor processor = Processor(context, user);
         Assert.IsFalse((await processor.ProcessAsync(create, TestContext.CancellationToken)).Replayed);
         Assert.IsTrue((await processor.ProcessAsync(create, TestContext.CancellationToken)).Replayed);
@@ -99,7 +99,7 @@ public sealed class SyncBaseVersionAndReplayTests
         await ExpectStale(connectionString, user, client, 2,
             Command("createTrainingPlan", "TrainingPlan", planId, 0, new { plan = Plan(planId, "Again", exerciseId, Guid.NewGuid()) }));
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         TrainingPlan stored = await context.TrainingPlans.SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual("Push", stored.Name);
         Assert.AreEqual(1, stored.Version);
@@ -114,7 +114,7 @@ public sealed class SyncBaseVersionAndReplayTests
         Guid secondGoal = Guid.NewGuid();
         ProcessSyncMutationCommand activate = For(ActivateGoal(firstGoal, null, null), client, 1);
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             SyncMutationProcessor processor = Processor(context, user);
             ProcessedSyncMutationResult applied = await processor.ProcessAsync(activate, TestContext.CancellationToken);
@@ -128,14 +128,14 @@ public sealed class SyncBaseVersionAndReplayTests
         // Expecting no active goal is stale now, and so is a wrong expected version.
         await ExpectStale(connectionString, user, client, 2, ActivateGoal(secondGoal, null, null));
         await ExpectStale(connectionString, user, client, 2, ActivateGoal(secondGoal, firstGoal, 7));
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             Assert.IsNull((await context.BodyGoals.SingleAsync(TestContext.CancellationToken)).EndedAtUtc);
         }
 
         // The matching expectation ends the first goal and activates the second.
         await Apply(connectionString, user, client, 2, ActivateGoal(secondGoal, firstGoal, 1));
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             List<BodyGoal> goals = await context.BodyGoals.AsNoTracking().OrderBy(item => item.CreatedAtUtc).ToListAsync(TestContext.CancellationToken);
             Assert.HasCount(2, goals);
@@ -208,13 +208,13 @@ public sealed class SyncBaseVersionAndReplayTests
 
     private static async Task Apply(string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         _ = await Processor(context, user).ProcessAsync(For(command, client, sequence));
     }
 
     private static async Task ExpectStale(string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         SyncMutationConflictException conflict = await Assert.ThrowsExactlyAsync<SyncMutationConflictException>(() =>
             Processor(context, user).ProcessAsync(For(command, client, sequence)));
         Assert.AreEqual("stale_base_version", conflict.Code);
@@ -229,7 +229,7 @@ public sealed class SyncBaseVersionAndReplayTests
 
     private static async Task<Guid> BaseExerciseIdAsync(string connectionString, Guid userId)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         return await context.Exercises.Where(item => item.OwnerUserId == null)
             .OrderBy(item => item.Id).Select(item => item.Id).FirstAsync();
     }
@@ -239,13 +239,13 @@ public sealed class SyncBaseVersionAndReplayTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid user = Guid.NewGuid();
         Guid client = Guid.NewGuid();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
             await context.Database.MigrateAsync();
             context.Users.Add(User(user));
             await context.SaveChangesAsync();
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             context.SyncClients.Add(new SyncClient
             {

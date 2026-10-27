@@ -21,8 +21,7 @@ public sealed class SyncContractTests
             typeof(ResourceVersionRequest),
             typeof(RegisterSyncClientRequest),
         ];
-        Assert.IsFalse(requestTypes.SelectMany(type => type.GetProperties())
-            .Any(property => property.Name.Contains("UserId", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(property => property.Name.Contains("UserId", StringComparison.OrdinalIgnoreCase), requestTypes.SelectMany(type => type.GetProperties()));
     }
 
     [TestMethod]
@@ -44,7 +43,7 @@ public sealed class SyncContractTests
         Assert.AreEqual(dependency, request.DependsOnMutationId);
         Assert.HasCount(2, request.Resources);
         Assert.AreEqual(3, request.Resources[0].BaseVersion);
-        Assert.HasCount(0, Validate(request));
+        Assert.IsEmpty(Validate(request));
     }
 
     [TestMethod]
@@ -68,17 +67,17 @@ public sealed class SyncContractTests
     [TestMethod]
     public void NutritionExtensionKeepsExistingProtocolWindowCompatible()
     {
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             ExpectedProtocolWindow,
             new[] { SyncProtocol.PreviousVersion, SyncProtocol.CurrentVersion });
         var nutrition = new ResourceVersionRequest("NutritionDay", Guid.NewGuid(), 0);
-        Assert.HasCount(0, Validate(nutrition));
+        Assert.IsEmpty(Validate(nutrition));
     }
 
     [TestMethod]
     public void ProtocolsGateTrainingAndTheTypesAddedAfterProtocolThree()
     {
-        CollectionAssert.AreEquivalent(
+        Assert.AreSequenceEqual(
             new[]
             {
                 nameof(ResourceKind.CustomExercise), nameof(ResourceKind.TrainingPlan), nameof(ResourceKind.Workout),
@@ -86,15 +85,15 @@ public sealed class SyncContractTests
                 nameof(ResourceKind.TrainingSchedule), nameof(ResourceKind.NutritionDayTemplate),
                 nameof(ResourceKind.WaterIntakeDay),
             },
-            SyncResourceProtocol.TypesNewerThan(SyncProtocol.PreviousVersion).ToArray());
-        CollectionAssert.AreEquivalent(
+            SyncResourceProtocol.TypesNewerThan(SyncProtocol.PreviousVersion).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(
             new[]
             {
                 nameof(ResourceKind.CardioSession), nameof(ResourceKind.TrainingSchedule),
                 nameof(ResourceKind.NutritionDayTemplate), nameof(ResourceKind.WaterIntakeDay),
             },
-            SyncResourceProtocol.TypesNewerThan(SyncProtocol.TrainingContractVersion).ToArray());
-        Assert.HasCount(0, SyncResourceProtocol.TypesNewerThan(SyncProtocol.CurrentVersion));
+            SyncResourceProtocol.TypesNewerThan(SyncProtocol.TrainingContractVersion).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.IsEmpty(SyncResourceProtocol.TypesNewerThan(SyncProtocol.CurrentVersion));
         Assert.IsTrue(SyncResourceProtocol.Supports(SyncProtocol.PreviousVersion, nameof(ResourceKind.NutritionDay)));
     }
 
@@ -102,7 +101,7 @@ public sealed class SyncContractTests
     public void EveryResourceKindHasAMinimumProtocolInsideTheWindow()
     {
         string[] kinds = Enum.GetNames<ResourceKind>();
-        CollectionAssert.AreEquivalent(kinds, SyncResourceProtocol.KnownTypes.ToArray());
+        Assert.AreSequenceEqual(kinds, SyncResourceProtocol.KnownTypes.ToArray(), SequenceOrder.InAnyOrder);
         Assert.AreEqual(SyncProtocol.PreviousVersion, kinds.Min(SyncResourceProtocol.MinimumVersionFor));
         foreach (string kind in kinds)
         {
@@ -117,7 +116,7 @@ public sealed class SyncContractTests
     public void CoreProtocolNumbersMatchTheContract()
     {
         // Core cannot reference Contracts, so it repeats the numbers; they must stay equal.
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             new[] { SyncProtocol.PreviousVersion, SyncProtocol.TrainingContractVersion, SyncProtocol.CurrentVersion },
             new[] { SyncResourceProtocol.ProtocolTwo, SyncResourceProtocol.ProtocolThree, SyncResourceProtocol.CurrentVersion });
     }

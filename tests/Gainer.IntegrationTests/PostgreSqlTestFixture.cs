@@ -36,14 +36,14 @@ internal sealed class PostgreSqlTestFixture : IAsyncDisposable
         return connectionString.ConnectionString;
     }
 
-    public AppDbContext CreateContext(string connectionString, Guid? userId = null) =>
+    public static AppDbContext CreateContext(string connectionString, Guid? userId = null) =>
         CreateContext(connectionString, new FixtureUserContext(userId));
 
-    public AppDbContext CreateContext(string connectionString, IUserContext userContext) =>
+    public static AppDbContext CreateContext(string connectionString, IUserContext userContext) =>
         CreateContextWithInterceptors(connectionString, userContext);
 
     /// <summary>A context with additional interceptors, e.g. to inject a database failure.</summary>
-    public AppDbContext CreateContextWithInterceptors(
+    public static AppDbContext CreateContextWithInterceptors(
         string connectionString,
         Guid userId,
         params IInterceptor[] interceptors) =>

@@ -88,7 +88,7 @@ public sealed class OpenAiLiveEvalTests
         });
 
         var stopwatch = Stopwatch.StartNew();
-        JsonElement response = await provider.CreateResponseAsync(request);
+        JsonElement response = await provider.CreateResponseAsync(request, TestContext.CancellationToken);
         stopwatch.Stop();
 
         JsonElement usage = response.GetProperty("usage");
@@ -159,7 +159,7 @@ public sealed class OpenAiLiveEvalTests
         MealEstimateDraft result = await estimator.EstimateAsync(MealEstimationInput.Create(
             "Synthetic test image representing one plain slice of wheat bread, approximately 40 g.",
             new MealImageInput(imageBytes, "image/png"),
-            imageConsent: true));
+            imageConsent: true), TestContext.CancellationToken);
         stopwatch.Stop();
 
         Assert.IsNotEmpty(result.Components);
@@ -202,4 +202,6 @@ public sealed class OpenAiLiveEvalTests
     {
         Guid? IUserContext.UserId => Value;
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

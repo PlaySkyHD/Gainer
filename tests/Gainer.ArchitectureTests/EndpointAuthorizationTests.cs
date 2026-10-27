@@ -64,7 +64,7 @@ public sealed class EndpointAuthorizationTests
 
         foreach (string entry in AnonymousActionAllowList)
         {
-            CollectionAssert.Contains(anonymousActions, entry, $"Allow list entry {entry} is stale.");
+            Assert.Contains(entry, anonymousActions, $"Allow list entry {entry} is stale.");
         }
     }
 

@@ -39,7 +39,7 @@ public sealed class TrainingPlanPersistenceTests
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 2);
         Guid planId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(planId, "Push", [
             Entry(exerciseIds[0], 2, 3), Entry(exerciseIds[1], 0, 3),
@@ -77,7 +77,7 @@ public sealed class TrainingPlanPersistenceTests
 
         for (int index = 0; index < saves.Length; index++)
         {
-            await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
             var handler = Handler(context, userId);
             TrainingPlanSnapshot saved = index == 0
                 ? await handler.CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(planId, "Push", saves[index])), TestContext.CancellationToken)
@@ -85,10 +85,10 @@ public sealed class TrainingPlanPersistenceTests
             Assert.AreEqual(index + 1, saved.Version);
         }
 
-        await using AppDbContext read = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext read = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         List<TrainingPlanEntry> stored = await read.TrainingPlanEntries.AsNoTracking()
             .Where(item => item.PlanId == planId).OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
-        CollectionAssert.AreEqual(new[] { added, c, b }, stored.Select(item => item.Id).ToArray());
+        Assert.AreSequenceEqual(new[] { added, c, b }, stored.Select(item => item.Id).ToArray());
     }
 
     [TestMethod]
@@ -98,7 +98,7 @@ public sealed class TrainingPlanPersistenceTests
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
         Guid planId = Guid.NewGuid();
         Guid entryId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateTrainingPlanMutation.Create(
             Metadata(), Plan(planId, "Push", [new TrainingPlanEntryValues(entryId, exerciseIds[0], 1, 2, null, null)])), TestContext.CancellationToken);
@@ -123,7 +123,7 @@ public sealed class TrainingPlanPersistenceTests
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
         Guid planId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(planId, "Push", [Entry(exerciseIds[0], 0, 3)])), TestContext.CancellationToken);
 
@@ -142,13 +142,13 @@ public sealed class TrainingPlanPersistenceTests
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
         Guid planId = Guid.NewGuid();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             context.TrainingPlans.Add(PlanRow(planId, "Push", 0));
             context.TrainingPlanEntries.Add(EntryRow(planId, 0, exerciseIds[0], 0, 0));
             await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(TestContext.CancellationToken));
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             context.TrainingPlanEntries.Add(EntryRow(planId, 0, exerciseIds[0], 2, 3));
             context.TrainingPlanEntries.Add(EntryRow(planId, 0, exerciseIds[0], 2, 3));
@@ -162,7 +162,7 @@ public sealed class TrainingPlanPersistenceTests
         (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, firstUser, 1);
         Guid planId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         var handler = Handler(context, firstUser);
         await handler.CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(planId, "Push", [Entry(exerciseIds[0], 1, 2)])), TestContext.CancellationToken);
         TrainingPlanSnapshot archived = await handler.ArchiveAsync(ArchiveTrainingPlanMutation.Create(Metadata(), planId, 1), TestContext.CancellationToken);
@@ -171,7 +171,7 @@ public sealed class TrainingPlanPersistenceTests
         await Assert.ThrowsAsync<TrainingPlanConflictException>(() => handler.UpdateAsync(
             UpdateTrainingPlanMutation.Create(Metadata(), 2, Plan(planId, "Again", [Entry(exerciseIds[0], 1, 2)])), TestContext.CancellationToken));
 
-        await using AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser);
+        await using AppDbContext foreign = PostgreSqlTestFixture.CreateContext(connectionString, secondUser);
         var intruder = Handler(foreign, secondUser);
         await Assert.ThrowsAsync<TrainingPlanNotFoundException>(() => intruder.UpdateAsync(
             UpdateTrainingPlanMutation.Create(Metadata(), 2, Plan(planId, "Stolen", [Entry(exerciseIds[0], 1, 2)])), TestContext.CancellationToken));
@@ -187,7 +187,7 @@ public sealed class TrainingPlanPersistenceTests
         Guid push = Guid.NewGuid();
         Guid pull = Guid.NewGuid();
         Guid legs = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(push, "Push", [Entry(exerciseIds[0], 0, 3)])), TestContext.CancellationToken);
         await handler.CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(pull, "Pull", [Entry(exerciseIds[0], 0, 3)])), TestContext.CancellationToken);
@@ -196,14 +196,14 @@ public sealed class TrainingPlanPersistenceTests
 
         IReadOnlyList<TrainingPlanSnapshot> reordered = await handler.ReorderAsync(ReorderTrainingPlansMutation.Create(Metadata(),
             [new TrainingPlanVersion(legs, 1), new TrainingPlanVersion(push, 1), new TrainingPlanVersion(pull, 1)]), TestContext.CancellationToken);
-        CollectionAssert.AreEqual(new[] { legs, push, pull }, reordered.Select(item => item.PlanId).ToArray());
-        CollectionAssert.AreEqual(ReorderedSortOrder, reordered.Select(item => item.SortOrder).ToArray());
+        Assert.AreSequenceEqual(new[] { legs, push, pull }, reordered.Select(item => item.PlanId).ToArray());
+        Assert.AreSequenceEqual(ReorderedSortOrder, reordered.Select(item => item.SortOrder).ToArray());
         Assert.IsTrue(reordered.All(item => item.Version == 2));
 
         await Assert.ThrowsAsync<TrainingPlanConflictException>(() => handler.ReorderAsync(ReorderTrainingPlansMutation.Create(Metadata(),
             [new TrainingPlanVersion(push, 1), new TrainingPlanVersion(legs, 2)]), TestContext.CancellationToken));
         context.ChangeTracker.Clear();
-        CollectionAssert.AreEqual(SortOrderAfterRejectedReorder, (await context.TrainingPlans.OrderBy(item => item.Name)
+        Assert.AreSequenceEqual(SortOrderAfterRejectedReorder, (await context.TrainingPlans.OrderBy(item => item.Name)
             .Select(item => item.SortOrder).ToListAsync(TestContext.CancellationToken)).ToArray());
     }
 
@@ -215,7 +215,7 @@ public sealed class TrainingPlanPersistenceTests
         Guid push = Guid.NewGuid();
         Guid archivedPlan = Guid.NewGuid();
         Guid foreignPlan = await CreatePlanAsync(connectionString, secondUser, exerciseIds[0], "Foreign");
-        await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         var handler = new TrainingScheduleMutationHandler(context, new CurrentUser(firstUser), TimeProvider.System);
         await Handler(context, firstUser).CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(push, "Push", [Entry(exerciseIds[0], 0, 3)])), TestContext.CancellationToken);
         await Handler(context, firstUser).CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(archivedPlan, "Old", [Entry(exerciseIds[0], 0, 3)])), TestContext.CancellationToken);
@@ -256,7 +256,7 @@ public sealed class TrainingPlanPersistenceTests
     private static async Task<Guid> CreatePlanAsync(string connectionString, Guid userId, Guid exerciseId, string name)
     {
         Guid planId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         await Handler(context, userId).CreateAsync(CreateTrainingPlanMutation.Create(Metadata(), Plan(planId, name, [Entry(exerciseId, 0, 3)])));
         return planId;
     }
@@ -295,7 +295,7 @@ public sealed class TrainingPlanPersistenceTests
 
     private static async Task<Guid[]> BaseExerciseIdsAsync(string connectionString, Guid userId, int count)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         return await context.Exercises.Where(item => item.OwnerUserId == null)
             .OrderBy(item => item.Id).Select(item => item.Id).Take(count).ToArrayAsync();
     }
@@ -303,7 +303,7 @@ public sealed class TrainingPlanPersistenceTests
     private static async Task<(string ConnectionString, Guid FirstUser, Guid SecondUser)> CreateDatabaseAsync()
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         Guid first = Guid.NewGuid();
         Guid second = Guid.NewGuid();

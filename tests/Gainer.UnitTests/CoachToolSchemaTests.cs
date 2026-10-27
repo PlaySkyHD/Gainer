@@ -29,22 +29,24 @@ public sealed class CoachToolSchemaTests
         Assert.AreEqual(6, schema.GetProperty("properties").GetProperty("suggestions").GetProperty("maxItems").GetInt32());
     }
 
+    private static readonly string[] ExpectedFields = new[] { "category", "text" };
+
     [TestMethod]
     public void MemorySuggestionsAreARequiredBoundedListOfCategoryAndText()
     {
         JsonElement schema = CoachToolCatalog.OutputSchema;
-        Assert.IsTrue(schema.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "memorySuggestions"));
+        Assert.Contains(item => item.GetString() == "memorySuggestions", schema.GetProperty("required").EnumerateArray());
         JsonElement suggestions = schema.GetProperty("properties").GetProperty("memorySuggestions");
         Assert.AreEqual(CoachMemoryRules.MaxSuggestions, suggestions.GetProperty("maxItems").GetInt32());
         JsonElement item = suggestions.GetProperty("items");
         Assert.IsFalse(item.GetProperty("additionalProperties").GetBoolean());
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             CoachMemoryRules.WireNames.ToArray(),
             item.GetProperty("properties").GetProperty("category").GetProperty("enum").EnumerateArray().Select(value => value.GetString()).ToArray());
         Assert.AreEqual(CoachMemoryRules.MaxTextLength, item.GetProperty("properties").GetProperty("text").GetProperty("maxLength").GetInt32());
-        CollectionAssert.AreEquivalent(
-            new[] { "category", "text" },
-            item.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray());
+        Assert.AreSequenceEqual(
+            ExpectedFields,
+            item.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray(), SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]

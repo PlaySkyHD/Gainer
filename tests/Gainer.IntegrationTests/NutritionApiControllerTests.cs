@@ -33,18 +33,18 @@ public sealed class NutritionApiControllerTests
             [], new DateTime(2026, 8, 19, 12, 0, 0, DateTimeKind.Utc), false));
         var controller = WithHttpContext(new FoodCatalogController(catalog));
 
-        FoodCatalogProductResponse product = Value(await controller.Barcode("12345678"));
+        FoodCatalogProductResponse product = Value(await controller.Barcode("12345678", TestContext.CancellationToken));
         Assert.AreEqual("Oats", product.ProductName);
         Assert.AreEqual(370m, product.KilocaloriesPer100Grams);
         Assert.IsNull(catalog.LastSearch);
 
-        ActionResult<FoodCatalogSearchResponse> invalid = await controller.Search("x", 1, 10);
+        ActionResult<FoodCatalogSearchResponse> invalid = await controller.Search("x", 1, 10, TestContext.CancellationToken);
         ValidationProblemDetails validation = (ValidationProblemDetails)((ObjectResult)invalid.Result!).Value!;
         Assert.IsTrue(validation.Errors.ContainsKey("query"));
 
         var failureController = WithHttpContext(new FoodCatalogController(
             new StubCatalog(new FoodCatalogException("provider_rate_limited", "later", true, 429))));
-        ObjectResult failure = (ObjectResult)(await failureController.Search("oats", 1, 10)).Result!;
+        ObjectResult failure = (ObjectResult)(await failureController.Search("oats", 1, 10, TestContext.CancellationToken)).Result!;
         Assert.AreEqual(StatusCodes.Status429TooManyRequests, failure.StatusCode);
         Assert.AreEqual("provider_rate_limited", ((ProblemDetails)failure.Value!).Extensions["code"]);
     }
@@ -56,14 +56,14 @@ public sealed class NutritionApiControllerTests
         DateOnly date = new(2026, 8, 19);
         var controller = Controller(new StubNutritionQueries(null, []), StubSmartNutritionQueries.Empty);
 
-        NutritionDayResponse empty = Value(await controller.Day(date));
+        NutritionDayResponse empty = Value(await controller.Day(date, TestContext.CancellationToken));
 
         Assert.IsNull(empty.NutritionDayId);
         Assert.AreEqual(date, empty.LocalDate);
         Assert.AreEqual(0m, empty.Totals.Kilocalories);
-        Assert.HasCount(0, empty.Entries);
-        Assert.IsFalse(typeof(NutritionDayResponse).GetProperties().Any(property => property.Name == "UserId"));
-        Assert.IsFalse(typeof(FoodCatalogProductResponse).GetProperties().Any(property => property.Name == "UserId"));
+        Assert.IsEmpty(empty.Entries);
+        Assert.DoesNotContain(property => property.Name == "UserId", typeof(NutritionDayResponse).GetProperties());
+        Assert.DoesNotContain(property => property.Name == "UserId", typeof(FoodCatalogProductResponse).GetProperties());
     }
 
     [TestMethod]
@@ -84,8 +84,8 @@ public sealed class NutritionApiControllerTests
             new StubNutritionQueries(day, [entry]),
             new StubSmartNutritionQueries([], null, null, target));
 
-        NutritionDayResponse response = Value(await controller.Day(date));
-        RecentNutritionEntriesResponse recent = Value(await controller.Recent(10));
+        NutritionDayResponse response = Value(await controller.Day(date, TestContext.CancellationToken));
+        RecentNutritionEntriesResponse recent = Value(await controller.Recent(10, TestContext.CancellationToken));
 
         Assert.AreEqual("Breakfast", response.Entries.Single().Meal);
         Assert.IsNull(response.Entries.Single().Totals.CarbohydrateGrams);
@@ -112,17 +112,17 @@ public sealed class NutritionApiControllerTests
         var smart = new StubSmartNutritionQueries([meal], meal, null, target);
         var controller = Controller(new StubNutritionQueries(null, []), smart);
 
-        ReusableMealsResponse meals = Value(await controller.ReusableMeals());
-        ReusableMealResponse detail = Value(await controller.ReusableMealById(mealId));
-        NutritionTargetScheduleResponse schedule = Value(await controller.TargetSchedule());
-        EffectiveNutritionTargetResponse effective = Value(await controller.EffectiveTarget(new DateOnly(2026, 8, 19)));
+        ReusableMealsResponse meals = Value(await controller.ReusableMeals(cancellationToken: TestContext.CancellationToken));
+        ReusableMealResponse detail = Value(await controller.ReusableMealById(mealId, TestContext.CancellationToken));
+        NutritionTargetScheduleResponse schedule = Value(await controller.TargetSchedule(TestContext.CancellationToken));
+        EffectiveNutritionTargetResponse effective = Value(await controller.EffectiveTarget(new DateOnly(2026, 8, 19), TestContext.CancellationToken));
 
         Assert.AreEqual("Breakfast", meals.Meals.Single().Name);
         Assert.AreEqual("Oats", detail.Components.Single().Name);
         Assert.IsNull(schedule.NutritionTargetScheduleId);
-        Assert.HasCount(0, schedule.Versions);
+        Assert.IsEmpty(schedule.Versions);
         Assert.AreEqual(2500m, effective.Target?.Kilocalories);
-        Assert.IsFalse(typeof(ReusableMealResponse).GetProperties().Any(property => property.Name == "UserId"));
+        Assert.DoesNotContain(property => property.Name == "UserId", typeof(ReusableMealResponse).GetProperties());
     }
 
     [TestMethod]
@@ -130,17 +130,17 @@ public sealed class NutritionApiControllerTests
     {
         await using WebApplication app = await CreateApplicationAsync();
         using HttpClient client = app.GetTestClient();
-        Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/nutrition/days/2026-08-19")).StatusCode);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/nutrition/days/2026-08-19", TestContext.CancellationToken)).StatusCode);
 
         Guid firstUser = Guid.NewGuid();
         Guid secondUser = Guid.NewGuid();
         client.DefaultRequestHeaders.Add("X-Test-User", firstUser.ToString());
         NutritionDayResponse first = (await client.GetFromJsonAsync<NutritionDayResponse>(
-            $"/api/v1/nutrition/days/2026-08-19?userId={secondUser}"))!;
+            $"/api/v1/nutrition/days/2026-08-19?userId={secondUser}", TestContext.CancellationToken))!;
         client.DefaultRequestHeaders.Remove("X-Test-User");
         client.DefaultRequestHeaders.Add("X-Test-User", secondUser.ToString());
         NutritionDayResponse second = (await client.GetFromJsonAsync<NutritionDayResponse>(
-            $"/api/v1/nutrition/days/2026-08-19?userId={firstUser}"))!;
+            $"/api/v1/nutrition/days/2026-08-19?userId={firstUser}", TestContext.CancellationToken))!;
 
         Assert.AreEqual(firstUser.ToString(), first.Entries.Single().ProductName);
         Assert.AreEqual(secondUser.ToString(), second.Entries.Single().ProductName);
@@ -155,47 +155,47 @@ public sealed class NutritionApiControllerTests
         client.BaseAddress = new Uri("https://localhost");
         using var anonymous = new MultipartFormDataContent { { new StringContent("oats"), "text" } };
         using var anonymousRequest = MealEstimateRequest(anonymous);
-        Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.SendAsync(anonymousRequest)).StatusCode);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.SendAsync(anonymousRequest, TestContext.CancellationToken)).StatusCode);
 
         client.DefaultRequestHeaders.Add("X-Test-User", Guid.NewGuid().ToString());
         using var textOnly = new MultipartFormDataContent { { new StringContent("oats"), "text" } };
-        using HttpResponseMessage success = await client.SendAsync(MealEstimateRequest(textOnly));
-        Assert.AreEqual(HttpStatusCode.OK, success.StatusCode, await success.Content.ReadAsStringAsync());
+        using HttpResponseMessage success = await client.SendAsync(MealEstimateRequest(textOnly), TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, success.StatusCode, await success.Content.ReadAsStringAsync(TestContext.CancellationToken));
         Assert.IsTrue(success.Headers.CacheControl?.NoStore);
         Assert.IsTrue(success.Headers.CacheControl?.Private);
         Assert.AreEqual(1, estimator.Calls);
 
         using var missingConsent = new MultipartFormDataContent();
         missingConsent.Add(new ByteArrayContent([0x89, 0x50, 0x4E, 0x47]), "image", "meal.png");
-        using HttpResponseMessage consentFailure = await client.SendAsync(MealEstimateRequest(missingConsent));
+        using HttpResponseMessage consentFailure = await client.SendAsync(MealEstimateRequest(missingConsent), TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.BadRequest, consentFailure.StatusCode);
-        Assert.AreEqual("image_consent_required", (await consentFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
+        Assert.AreEqual("image_consent_required", (await consentFailure.Content.ReadFromJsonAsync<ProblemDetails>(TestContext.CancellationToken))!.Extensions["code"]?.ToString());
         Assert.AreEqual(1, estimator.Calls);
 
         using var multipleImages = new MultipartFormDataContent();
         multipleImages.Add(new ByteArrayContent([1]), "image", "first.png");
         multipleImages.Add(new ByteArrayContent([2]), "otherImage", "second.png");
         multipleImages.Add(new StringContent("true"), "imageConsent");
-        using HttpResponseMessage multipleFailure = await client.SendAsync(MealEstimateRequest(multipleImages));
+        using HttpResponseMessage multipleFailure = await client.SendAsync(MealEstimateRequest(multipleImages), TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.BadRequest, multipleFailure.StatusCode);
-        Assert.AreEqual("too_many_images", (await multipleFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
+        Assert.AreEqual("too_many_images", (await multipleFailure.Content.ReadFromJsonAsync<ProblemDetails>(TestContext.CancellationToken))!.Extensions["code"]?.ToString());
 
         using var photoSized = new MultipartFormDataContent();
         photoSized.Add(new ByteArrayContent(new byte[3 * 1024 * 1024]), "image", "photo.png");
         photoSized.Add(new StringContent("true"), "imageConsent");
-        using HttpResponseMessage photoSizedResponse = await client.SendAsync(MealEstimateRequest(photoSized));
+        using HttpResponseMessage photoSizedResponse = await client.SendAsync(MealEstimateRequest(photoSized), TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, photoSizedResponse.StatusCode, "Photos above the general 1 MiB limit must reach the estimator.");
         Assert.AreEqual(2, estimator.Calls);
 
         using var largeJson = new ByteArrayContent(new byte[2 * 1024 * 1024]);
         largeJson.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
-        using HttpResponseMessage generalLimit = await client.PostAsync("/api/v1/nutrition/days/2026-08-19/entries", largeJson);
+        using HttpResponseMessage generalLimit = await client.PostAsync("/api/v1/nutrition/days/2026-08-19/entries", largeJson, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, generalLimit.StatusCode);
 
         using var oversized = new MultipartFormDataContent();
         oversized.Add(new ByteArrayContent(new byte[(8 * 1024 * 1024) + 1]), "image", "large.png");
         oversized.Add(new StringContent("true"), "imageConsent");
-        using HttpResponseMessage sizeFailure = await client.SendAsync(MealEstimateRequest(oversized));
+        using HttpResponseMessage sizeFailure = await client.SendAsync(MealEstimateRequest(oversized), TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, sizeFailure.StatusCode);
         Assert.AreEqual(2, estimator.Calls, "Rejected requests and returned drafts must not create persisted estimate state.");
     }
@@ -209,27 +209,27 @@ public sealed class NutritionApiControllerTests
         client.BaseAddress = new Uri("https://localhost");
         using var anonymous = new MultipartFormDataContent();
         anonymous.Add(new ByteArrayContent([1]), "image", "label.jpg");
-        Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.SendAsync(LabelScanRequest(anonymous))).StatusCode);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.SendAsync(LabelScanRequest(anonymous), TestContext.CancellationToken)).StatusCode);
 
         client.DefaultRequestHeaders.Add("X-Test-User", Guid.NewGuid().ToString());
         using var missingImage = new MultipartFormDataContent { { new StringContent("x"), "text" } };
-        using HttpResponseMessage missingFailure = await client.SendAsync(LabelScanRequest(missingImage));
+        using HttpResponseMessage missingFailure = await client.SendAsync(LabelScanRequest(missingImage), TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.BadRequest, missingFailure.StatusCode);
-        Assert.AreEqual("invalid_input", (await missingFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
+        Assert.AreEqual("invalid_input", (await missingFailure.Content.ReadFromJsonAsync<ProblemDetails>(TestContext.CancellationToken))!.Extensions["code"]?.ToString());
 
         using var multipleImages = new MultipartFormDataContent();
         multipleImages.Add(new ByteArrayContent([1]), "image", "first.jpg");
         multipleImages.Add(new ByteArrayContent([2]), "otherImage", "second.jpg");
-        using HttpResponseMessage multipleFailure = await client.SendAsync(LabelScanRequest(multipleImages));
+        using HttpResponseMessage multipleFailure = await client.SendAsync(LabelScanRequest(multipleImages), TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.BadRequest, multipleFailure.StatusCode);
         Assert.AreEqual(0, scanner.Calls);
 
         using var photo = new MultipartFormDataContent();
         photo.Add(new ByteArrayContent(new byte[3 * 1024 * 1024]), "image", "label.jpg");
-        using HttpResponseMessage success = await client.SendAsync(LabelScanRequest(photo));
-        Assert.AreEqual(HttpStatusCode.OK, success.StatusCode, await success.Content.ReadAsStringAsync());
+        using HttpResponseMessage success = await client.SendAsync(LabelScanRequest(photo), TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, success.StatusCode, await success.Content.ReadAsStringAsync(TestContext.CancellationToken));
         Assert.IsTrue(success.Headers.CacheControl?.NoStore);
-        NutritionLabelScanResponse body = (await success.Content.ReadFromJsonAsync<NutritionLabelScanResponse>())!;
+        NutritionLabelScanResponse body = (await success.Content.ReadFromJsonAsync<NutritionLabelScanResponse>(TestContext.CancellationToken))!;
         Assert.AreEqual("Per100Grams", body.Basis);
         Assert.AreEqual("Confirmed", body.Kilocalories.Status);
         Assert.AreEqual(377m, body.Kilocalories.Per100Grams);
@@ -239,9 +239,9 @@ public sealed class NutritionApiControllerTests
         scanner.Failure = new MealEstimationException("no_nutrition_label", "none", 422);
         using var noLabel = new MultipartFormDataContent();
         noLabel.Add(new ByteArrayContent([1]), "image", "label.jpg");
-        using HttpResponseMessage noLabelFailure = await client.SendAsync(LabelScanRequest(noLabel));
+        using HttpResponseMessage noLabelFailure = await client.SendAsync(LabelScanRequest(noLabel), TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.UnprocessableEntity, noLabelFailure.StatusCode);
-        Assert.AreEqual("no_nutrition_label", (await noLabelFailure.Content.ReadFromJsonAsync<ProblemDetails>())!.Extensions["code"]?.ToString());
+        Assert.AreEqual("no_nutrition_label", (await noLabelFailure.Content.ReadFromJsonAsync<ProblemDetails>(TestContext.CancellationToken))!.Extensions["code"]?.ToString());
     }
 
     private static HttpRequestMessage LabelScanRequest(HttpContent content) =>
@@ -407,4 +407,6 @@ public sealed class NutritionApiControllerTests
                 new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name)));
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -85,15 +85,15 @@ public sealed class AccountOperatorProvisioningTests
         const string password = "External-only-password-42!";
         string secretPath = Path.Combine(Path.GetTempPath(), $"gainer-operator-{Guid.NewGuid():N}.json");
         temporaryPaths.Add(secretPath);
-        await File.WriteAllTextAsync(secretPath, JsonSerializer.Serialize(new { email, password }));
+        await File.WriteAllTextAsync(secretPath, JsonSerializer.Serialize(new { email, password }), TestContext.CancellationToken);
 
         await using WebApplication app = await CreateApplicationAsync(secretPath);
         await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
         IInitialAccountOperatorProvisioner provisioner = scope.ServiceProvider
             .GetRequiredService<IInitialAccountOperatorProvisioner>();
 
-        InitialAccountOperatorProvisioningResult first = await provisioner.ProvisionAsync();
-        InitialAccountOperatorProvisioningResult second = await provisioner.ProvisionAsync();
+        InitialAccountOperatorProvisioningResult first = await provisioner.ProvisionAsync(TestContext.CancellationToken);
+        InitialAccountOperatorProvisioningResult second = await provisioner.ProvisionAsync(TestContext.CancellationToken);
 
         Assert.AreEqual(InitialAccountOperatorProvisioningResult.Created, first);
         Assert.AreEqual(InitialAccountOperatorProvisioningResult.AlreadyProvisioned, second);
@@ -102,7 +102,7 @@ public sealed class AccountOperatorProvisioningTests
         Assert.IsNotNull(account);
         Assert.IsTrue(await users.IsInRoleAsync(account, AccountOperatorAuthorization.RoleName));
         Assert.IsTrue(await users.CheckPasswordAsync(account, password));
-        Assert.AreEqual(1, await users.Users.CountAsync());
+        Assert.AreEqual(1, await users.Users.CountAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -113,18 +113,18 @@ public sealed class AccountOperatorProvisioningTests
         IInitialAccountOperatorProvisioner provisioner = scope.ServiceProvider
             .GetRequiredService<IInitialAccountOperatorProvisioner>();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => provisioner.ProvisionAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provisioner.ProvisionAsync(TestContext.CancellationToken));
 
         UserManager<AppUser> users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
-        Assert.AreEqual(0, await users.Users.CountAsync());
+        Assert.AreEqual(0, await users.Users.CountAsync(TestContext.CancellationToken));
     }
 
     private async Task<WebApplication> CreateApplicationAsync(string? secretPath = null)
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
-            await context.Database.MigrateAsync();
+            await context.Database.MigrateAsync(TestContext.CancellationToken);
         }
 
         string keyRingPath = Path.Combine(Path.GetTempPath(), $"gainer-operator-keys-{Guid.NewGuid():N}");
@@ -144,7 +144,7 @@ public sealed class AccountOperatorProvisioningTests
         builder.AddGainerIdentity();
         var app = builder.Build();
         app.MapGainerApi();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.CancellationToken);
         return app;
     }
 
@@ -158,4 +158,6 @@ public sealed class AccountOperatorProvisioningTests
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

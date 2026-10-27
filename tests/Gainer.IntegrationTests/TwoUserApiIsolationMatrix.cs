@@ -24,19 +24,17 @@ internal static class TwoUserApiIsolationMatrix
 
         Assert.AreEqual(firstIds.Length, await scenario.CountAsync(scenario.FirstUser));
         Assert.AreEqual(secondIds.Length, await scenario.CountAsync(scenario.SecondUser));
-        CollectionAssert.AreEquivalent(
-            firstIds,
-            (await scenario.ListIdsAsync(scenario.FirstUser, offset: 0, limit: 100)).ToArray());
-        CollectionAssert.AreEquivalent(
-            secondIds,
-            (await scenario.ListIdsAsync(scenario.SecondUser, offset: 0, limit: 100)).ToArray());
+        Assert.AreSequenceEqual(
+            firstIds, (await scenario.ListIdsAsync(scenario.FirstUser, offset: 0, limit: 100)).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(
+            secondIds, (await scenario.ListIdsAsync(scenario.SecondUser, offset: 0, limit: 100)).ToArray(), SequenceOrder.InAnyOrder);
 
         IReadOnlyList<Guid> firstPage = await scenario.ListIdsAsync(scenario.FirstUser, offset: 0, limit: 2);
         IReadOnlyList<Guid> secondPage = await scenario.ListIdsAsync(scenario.FirstUser, offset: 2, limit: 2);
         Assert.HasCount(2, firstPage);
         Assert.HasCount(1, secondPage);
-        Assert.AreEqual(3, firstPage.Concat(secondPage).Distinct().Count());
-        CollectionAssert.AreEquivalent(firstIds, firstPage.Concat(secondPage).ToArray());
+        Assert.HasCount(3, firstPage.Concat(secondPage).Distinct());
+        Assert.AreSequenceEqual(firstIds, firstPage.Concat(secondPage).ToArray(), SequenceOrder.InAnyOrder);
 
         Guid unknownId = Guid.NewGuid();
         await AssertForeignResponseIsNeutralAsync(

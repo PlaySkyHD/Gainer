@@ -37,39 +37,39 @@ public sealed class SmartNutritionPersistenceTests
         Guid mealId = Guid.NewGuid();
         var time = new FixedTimeProvider(new DateTimeOffset(2026, 8, 19, 12, 0, 0, TimeSpan.Zero));
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var changes = new ChangeCollector();
             var handler = new ReusableMealMutationHandler(context, new TestUserContext(firstUser), time, changes);
             ReusableMealSnapshot created = await handler.SaveAsync(SaveMeal(mealId, 0, "Bowl", 1m,
                 Component(1, "Hähnchen", 150m, 165m),
-                Component(0, "Reis", 200m, 130m)));
+                Component(0, "Reis", 200m, 130m)), TestContext.CancellationToken);
             Assert.AreEqual(1, created.Version);
-            CollectionAssert.AreEqual(ExpectedComponentNames, created.Components.Select(item => item.Name).ToArray());
+            Assert.AreSequenceEqual(ExpectedComponentNames, created.Components.Select(item => item.Name).ToArray());
             Assert.HasCount(1, changes.Changes);
         }
 
         time.UtcNow = new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var handler = new ReusableMealMutationHandler(context, new TestUserContext(firstUser), time);
             ReusableMealSnapshot updated = await handler.SaveAsync(SaveMeal(mealId, 1, "Bowl XL", 2m,
-                Component(0, "Reis", 300m, 130m)));
+                Component(0, "Reis", 300m, 130m)), TestContext.CancellationToken);
             Assert.AreEqual(2, updated.Version);
             Assert.AreEqual("Bowl XL", updated.Name);
             Assert.HasCount(1, updated.Components);
             ReusableMealSnapshot archived = await handler.ArchiveAsync(
-                ArchiveReusableMealMutation.Create(Metadata(), mealId, 2));
+                ArchiveReusableMealMutation.Create(Metadata(), mealId, 2), TestContext.CancellationToken);
             Assert.AreEqual(3, archived.Version);
             Assert.AreEqual(ReusableMealStatus.Archived, archived.Status);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var queries = new SmartNutritionQueries(context);
-            Assert.HasCount(0, await queries.GetReusableMealsAsync(includeArchived: false));
-            Assert.HasCount(1, await queries.GetReusableMealsAsync(includeArchived: true));
-            Assert.AreEqual(ReusableMealStatus.Archived, (await queries.GetReusableMealAsync(mealId))?.Status);
+            Assert.IsEmpty(await queries.GetReusableMealsAsync(includeArchived: false, TestContext.CancellationToken));
+            Assert.HasCount(1, await queries.GetReusableMealsAsync(includeArchived: true, TestContext.CancellationToken));
+            Assert.AreEqual(ReusableMealStatus.Archived, (await queries.GetReusableMealAsync(mealId, TestContext.CancellationToken))?.Status);
         }
     }
 
@@ -82,35 +82,35 @@ public sealed class SmartNutritionPersistenceTests
         NutritionTargetVersionDraft august = Target(new DateOnly(2026, 8, 1), 2500m);
         NutritionTargetVersionDraft september = Target(new DateOnly(2026, 9, 1), 2700m);
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), time);
-            NutritionTargetScheduleSnapshot created = await handler.SaveAsync(SaveTargets(scheduleId, 0, august));
+            NutritionTargetScheduleSnapshot created = await handler.SaveAsync(SaveTargets(scheduleId, 0, august), TestContext.CancellationToken);
             Assert.AreEqual(1, created.Version);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), time);
             NutritionTargetVersionDraft closedAugust = august with { EffectiveUntil = new DateOnly(2026, 8, 31) };
-            NutritionTargetScheduleSnapshot updated = await handler.SaveAsync(SaveTargets(scheduleId, 1, closedAugust, september));
+            NutritionTargetScheduleSnapshot updated = await handler.SaveAsync(SaveTargets(scheduleId, 1, closedAugust, september), TestContext.CancellationToken);
             Assert.AreEqual(2, updated.Version);
             Assert.AreEqual(2500m, (await new SmartNutritionQueries(context)
-                .GetEffectiveNutritionTargetAsync(new DateOnly(2026, 8, 31)))?.Kilocalories);
+                .GetEffectiveNutritionTargetAsync(new DateOnly(2026, 8, 31), TestContext.CancellationToken))?.Kilocalories);
             Assert.AreEqual(2700m, (await new SmartNutritionQueries(context)
-                .GetEffectiveNutritionTargetAsync(new DateOnly(2026, 9, 2)))?.Kilocalories);
+                .GetEffectiveNutritionTargetAsync(new DateOnly(2026, 9, 2), TestContext.CancellationToken))?.Kilocalories);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), time);
             NutritionTargetVersionDraft changedAugust = NutritionTargetVersionDraft.Create(
                 august.TargetVersionId, august.EffectiveFrom, 2600m, august.ProteinGrams,
                 august.CarbohydrateGrams, august.FatGrams, august.Origin, august.AlgorithmVersion, august.Reason);
             await Assert.ThrowsAsync<NutritionTargetScheduleConflictException>(() =>
-                handler.SaveAsync(SaveTargets(scheduleId, 2, changedAugust with { EffectiveUntil = new DateOnly(2026, 8, 31) }, september)));
+                handler.SaveAsync(SaveTargets(scheduleId, 2, changedAugust with { EffectiveUntil = new DateOnly(2026, 8, 31) }, september), TestContext.CancellationToken));
             Assert.AreEqual(2500m, (await new SmartNutritionQueries(context)
-                .GetEffectiveNutritionTargetAsync(new DateOnly(2026, 8, 15)))?.Kilocalories);
+                .GetEffectiveNutritionTargetAsync(new DateOnly(2026, 8, 15), TestContext.CancellationToken))?.Kilocalories);
         }
     }
 
@@ -127,27 +127,27 @@ public sealed class SmartNutritionPersistenceTests
             Guid.NewGuid(), "Maintenance", NutritionGoalCategory.Maintenance,
             new DateOnly(2026, 9, 2), new DateOnly(2026, 10, 31), 2800m, 30m, 40m, 30m);
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), time);
-            await handler.SaveAsync(SaveTargets(scheduleId, 0, current, future));
+            await handler.SaveAsync(SaveTargets(scheduleId, 0, current, future), TestContext.CancellationToken);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var queries = new SmartNutritionQueries(context);
-            Assert.AreEqual("Sommer Cut", (await queries.GetEffectiveNutritionTargetAsync(new DateOnly(2026, 8, 31)))?.Name);
-            Assert.IsNull(await queries.GetEffectiveNutritionTargetAsync(new DateOnly(2026, 9, 1)));
+            Assert.AreEqual("Sommer Cut", (await queries.GetEffectiveNutritionTargetAsync(new DateOnly(2026, 8, 31), TestContext.CancellationToken))?.Name);
+            Assert.IsNull(await queries.GetEffectiveNutritionTargetAsync(new DateOnly(2026, 9, 1), TestContext.CancellationToken));
             Assert.AreEqual(NutritionTargetInputMode.Percent,
-                (await queries.GetEffectiveNutritionTargetAsync(new DateOnly(2026, 9, 2)))?.InputMode);
-            Assert.IsNull(await queries.GetEffectiveNutritionTargetAsync(new DateOnly(2026, 11, 1)));
+                (await queries.GetEffectiveNutritionTargetAsync(new DateOnly(2026, 9, 2), TestContext.CancellationToken))?.InputMode);
+            Assert.IsNull(await queries.GetEffectiveNutritionTargetAsync(new DateOnly(2026, 11, 1), TestContext.CancellationToken));
 
             NutritionTargetVersionDraft editedFuture = NutritionTargetVersionDraft.CreateInPercent(
                 future.TargetVersionId, "Maintenance 2", NutritionGoalCategory.Maintenance,
                 future.EffectiveFrom, future.EffectiveUntil, 2900m, 30m, 40m, 30m);
             NutritionTargetScheduleSnapshot edited = await new NutritionTargetScheduleMutationHandler(
                     context, new TestUserContext(firstUser), time)
-                .SaveAsync(SaveTargets(scheduleId, 1, current, editedFuture));
+                .SaveAsync(SaveTargets(scheduleId, 1, current, editedFuture), TestContext.CancellationToken);
             Assert.AreEqual(2, edited.Version);
             Assert.AreEqual("Maintenance 2", edited.Versions.Single(item => item.TargetVersionId == future.TargetVersionId).Name);
         }
@@ -159,25 +159,25 @@ public sealed class SmartNutritionPersistenceTests
         (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
         Guid mealId = Guid.NewGuid();
         Guid scheduleId = Guid.NewGuid();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             await new ReusableMealMutationHandler(context, new TestUserContext(firstUser), TimeProvider.System)
-                .SaveAsync(SaveMeal(mealId, 0, "Private bowl", 1m, Component(0, "Rice", 100m, 130m)));
+                .SaveAsync(SaveMeal(mealId, 0, "Private bowl", 1m, Component(0, "Rice", 100m, 130m)), TestContext.CancellationToken);
             await new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), TimeProvider.System)
-                .SaveAsync(SaveTargets(scheduleId, 0, Target(new DateOnly(2026, 8, 1), 2500m)));
+                .SaveAsync(SaveTargets(scheduleId, 0, Target(new DateOnly(2026, 8, 1), 2500m)), TestContext.CancellationToken);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, secondUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, secondUser))
         {
             var queries = new SmartNutritionQueries(context);
-            Assert.IsNull(await queries.GetReusableMealAsync(mealId));
-            Assert.IsNull(await queries.GetNutritionTargetScheduleAsync());
+            Assert.IsNull(await queries.GetReusableMealAsync(mealId, TestContext.CancellationToken));
+            Assert.IsNull(await queries.GetNutritionTargetScheduleAsync(TestContext.CancellationToken));
             await Assert.ThrowsAsync<ReusableMealNotFoundException>(() =>
                 new ReusableMealMutationHandler(context, new TestUserContext(secondUser), TimeProvider.System)
-                    .ArchiveAsync(ArchiveReusableMealMutation.Create(Metadata(), mealId, 1)));
+                    .ArchiveAsync(ArchiveReusableMealMutation.Create(Metadata(), mealId, 1), TestContext.CancellationToken));
             await Assert.ThrowsAsync<NutritionTargetScheduleNotFoundException>(() =>
                 new NutritionTargetScheduleMutationHandler(context, new TestUserContext(secondUser), TimeProvider.System)
-                    .SaveAsync(SaveTargets(scheduleId, 1, Target(new DateOnly(2026, 9, 1), 2600m))));
+                    .SaveAsync(SaveTargets(scheduleId, 1, Target(new DateOnly(2026, 9, 1), 2600m)), TestContext.CancellationToken));
         }
     }
 
@@ -187,14 +187,14 @@ public sealed class SmartNutritionPersistenceTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid userId = Guid.NewGuid();
         Guid dayId = Guid.NewGuid();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
             IMigrator migrator = context.GetService<IMigrator>();
-            await migrator.MigrateAsync("20260819172804_AddNutritionTracking");
+            await migrator.MigrateAsync("20260819172804_AddNutritionTracking", TestContext.CancellationToken);
             context.Users.Add(User(userId, "migration-smart-nutrition@example.test"));
-            await context.SaveChangesAsync();
+            await context.SaveChangesAsync(TestContext.CancellationToken);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             // Written in the original schema, not through the current model, which has newer columns.
             DateTime now = DateTime.UtcNow;
@@ -205,19 +205,19 @@ public sealed class SmartNutritionPersistenceTests
                     ("Id", "NutritionDayId", "Meal", "Position", "ProductName", "AmountGrams", "AmountUnit", "Kilocalories",
                      "ProteinGrams", "BasisGrams", "KilocaloriesPerBasis", "ProteinGramsPerBasis", "UserId")
                 VALUES ({Guid.NewGuid()}, {dayId}, 'Breakfast', 0, 'Existing food', 100, 'g', 100, 10, 100, 100, 10, {userId});
-                """);
+                """, TestContext.CancellationToken);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
-            await context.Database.MigrateAsync();
-            NutritionDaySnapshot day = await new NutritionQueries(context).GetDayAsync(new DateOnly(2026, 8, 19))
+            await context.Database.MigrateAsync(TestContext.CancellationToken);
+            NutritionDaySnapshot day = await new NutritionQueries(context).GetDayAsync(new DateOnly(2026, 8, 19), TestContext.CancellationToken)
                 ?? throw new AssertFailedException();
             Assert.AreEqual(dayId, day.NutritionDayId);
             Assert.AreEqual("Existing food", day.Entries.Single().ProductName);
             Assert.AreEqual(1, day.Version);
             Assert.IsNull(day.Entries.Single().Totals.SaltGrams);
-            Assert.AreEqual(0, await context.ReusableMeals.CountAsync());
-            Assert.AreEqual(0, await context.NutritionTargetSchedules.CountAsync());
+            Assert.AreEqual(0, await context.ReusableMeals.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(0, await context.NutritionTargetSchedules.CountAsync(TestContext.CancellationToken));
         }
     }
 
@@ -231,18 +231,18 @@ public sealed class SmartNutritionPersistenceTests
         Guid secondId = Guid.NewGuid();
         const string previousMigration = "20260819195131_AddSmartMealsAndNutritionTargets";
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
             IMigrator migrator = context.GetService<IMigrator>();
-            await migrator.MigrateAsync(previousMigration);
+            await migrator.MigrateAsync(previousMigration, TestContext.CancellationToken);
             context.Users.Add(User(userId, "migration-target-phases@example.test"));
-            await context.SaveChangesAsync();
+            await context.SaveChangesAsync(TestContext.CancellationToken);
             DateTime utcNow = new(2026, 8, 20, 12, 0, 0, DateTimeKind.Utc);
             await context.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO tracking.nutrition_target_schedules
                     ("Id", "CreatedAtUtc", "UpdatedAtUtc", "Version", "UserId")
                 VALUES ({scheduleId}, {utcNow}, {utcNow}, {1L}, {userId});
-                """);
+                """, TestContext.CancellationToken);
             await context.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO tracking.nutrition_target_versions
                     ("Id", "NutritionTargetScheduleId", "EffectiveFrom", "Kilocalories",
@@ -251,14 +251,14 @@ public sealed class SmartNutritionPersistenceTests
                 VALUES
                     ({firstId}, {scheduleId}, {new DateOnly(2026, 8, 1)}, {2500m}, {180m}, {260m}, {80m}, {"Manual"}, {(string?)null}, {(string?)null}, {userId}),
                     ({secondId}, {scheduleId}, {new DateOnly(2026, 9, 1)}, {2700m}, {190m}, {300m}, {80m}, {"Manual"}, {(string?)null}, {(string?)null}, {userId});
-                """);
-            await migrator.MigrateAsync();
+                """, TestContext.CancellationToken);
+            await migrator.MigrateAsync(cancellationToken: TestContext.CancellationToken);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             NutritionTargetScheduleSnapshot schedule = await new SmartNutritionQueries(context)
-                .GetNutritionTargetScheduleAsync() ?? throw new AssertFailedException();
+                .GetNutritionTargetScheduleAsync(TestContext.CancellationToken) ?? throw new AssertFailedException();
             Assert.HasCount(2, schedule.Versions);
             Assert.AreEqual(new DateOnly(2026, 8, 31), schedule.Versions[0].EffectiveUntil);
             Assert.AreEqual(NutritionGoalCategory.Custom, schedule.Versions[0].Category);
@@ -266,7 +266,7 @@ public sealed class SmartNutritionPersistenceTests
             Assert.AreEqual("Ziel", schedule.Versions[0].Name);
             Assert.IsNull(schedule.Versions[1].EffectiveUntil);
 
-            await context.GetService<IMigrator>().MigrateAsync(previousMigration);
+            await context.GetService<IMigrator>().MigrateAsync(previousMigration, TestContext.CancellationToken);
         }
     }
 
@@ -287,13 +287,12 @@ public sealed class SmartNutritionPersistenceTests
 
         for (int index = 0; index < saves.Length; index++)
         {
-            await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
             var handler = new ReusableMealMutationHandler(context, new TestUserContext(firstUser), TimeProvider.System);
-            ReusableMealSnapshot saved = await handler.SaveAsync(SaveMeal(mealId, index, "Bowl", 1m, saves[index]));
+            ReusableMealSnapshot saved = await handler.SaveAsync(SaveMeal(mealId, index, "Bowl", 1m, saves[index]), TestContext.CancellationToken);
             Assert.AreEqual(index + 1, saved.Version);
-            CollectionAssert.AreEqual(
-                saves[index].Select(item => item.ComponentId).ToArray(),
-                saved.Components.Select(item => item.ComponentId).ToArray());
+            Assert.AreSequenceEqual(
+                saves[index].Select(item => item.ComponentId).ToArray(), saved.Components.Select(item => item.ComponentId).ToArray());
         }
     }
 
@@ -321,7 +320,7 @@ public sealed class SmartNutritionPersistenceTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid firstUser = Guid.NewGuid();
         Guid secondUser = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(firstUser, "first-smart-nutrition@example.test"), User(secondUser, "second-smart-nutrition@example.test"));
         await context.SaveChangesAsync();
@@ -348,4 +347,6 @@ public sealed class SmartNutritionPersistenceTests
         public DateTimeOffset UtcNow { get; set; } = utcNow;
         public override DateTimeOffset GetUtcNow() => UtcNow;
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

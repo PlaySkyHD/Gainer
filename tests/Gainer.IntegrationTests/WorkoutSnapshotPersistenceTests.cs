@@ -38,7 +38,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid workoutId = Guid.NewGuid();
         var collector = new ChangeCollector();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         WorkoutSnapshot snapshot = await Handler(context, userId, collector).CreateAsync(
             CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Leeres Training", Started, null, [])), TestContext.CancellationToken);
 
@@ -60,15 +60,14 @@ public sealed class WorkoutSnapshotPersistenceTests
             Set("warmup", null, null), Set("warmup", null, null),
             Set("normal", null, null), Set("normal", null, null), Set("mystery", null, null),
         };
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         WorkoutSnapshot snapshot = await Handler(context, userId).CreateAsync(CreateWorkoutMutation.Create(
             Metadata(),
             Values(workoutId, "Push", Started, null, [Block(exerciseIds[0], "Bench", sets)], sourcePlanId: await PlanAsync(connectionString, userId, exerciseIds[0]))), TestContext.CancellationToken);
 
         WorkoutExerciseValues block = snapshot.Exercises.Single();
-        CollectionAssert.AreEqual(
-            ExpectedSetTypes,
-            block.Sets.Select(item => item.SetType).ToArray());
+        Assert.AreSequenceEqual(
+            ExpectedSetTypes, block.Sets.Select(item => item.SetType).ToArray());
         Assert.IsNotNull(snapshot.SourcePlanId);
         Assert.AreEqual("exercise", snapshot.PreviousValueSource);
         Assert.AreEqual(5, await context.WorkoutSets.CountAsync(item => item.WorkoutId == workoutId, TestContext.CancellationToken));
@@ -81,7 +80,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
         Guid sourceId = Guid.NewGuid();
         Guid repeatId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(sourceId, "Push", Started, Started.AddHours(1),
             [Block(exerciseIds[0], "Bench", [Set("warmup", 60m, 10), Set("normal", 100m, 8)])])), TestContext.CancellationToken);
@@ -104,7 +103,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         Guid workoutId = Guid.NewGuid();
         Guid exerciseEntryId = Guid.NewGuid();
         Guid setId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Push", Started, Started.AddHours(1),
             [new WorkoutExerciseValues(exerciseEntryId, exerciseIds[0], "Bench", "strength", null, null,
@@ -154,7 +153,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         long version = 0;
         for (int index = 0; index < rounds.Length; index++)
         {
-            await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
             var handler = Handler(context, userId);
             WorkoutValues values = Values(workoutId, "Push", Started, Started.AddHours(1), rounds[index]);
             WorkoutSnapshot saved = index == 0
@@ -164,12 +163,12 @@ public sealed class WorkoutSnapshotPersistenceTests
             Assert.AreEqual(index + 1, saved.Version);
         }
 
-        await using AppDbContext read = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext read = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         List<WorkoutExercise> stored = await read.WorkoutExercises.AsNoTracking().OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
-        CollectionAssert.AreEqual(new[] { blockC, blockB, blockNew }, stored.Select(item => item.Id).ToArray());
+        Assert.AreSequenceEqual(new[] { blockC, blockB, blockNew }, stored.Select(item => item.Id).ToArray());
         List<WorkoutSet> storedSets = await read.WorkoutSets.AsNoTracking()
             .Where(item => item.WorkoutExerciseId == blockB).OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
-        CollectionAssert.AreEqual(new[] { bNew, b3, b2 }, storedSets.Select(item => item.Id).ToArray());
+        Assert.AreSequenceEqual(new[] { bNew, b3, b2 }, storedSets.Select(item => item.Id).ToArray());
     }
 
     [TestMethod]
@@ -177,7 +176,7 @@ public sealed class WorkoutSnapshotPersistenceTests
     {
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid workoutId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Push", Started, null, [])), TestContext.CancellationToken);
         await handler.SaveAsync(SaveWorkoutMutation.Create(Metadata(), 1, Values(workoutId, "Push 2", Started, null, [])), TestContext.CancellationToken);
@@ -199,7 +198,7 @@ public sealed class WorkoutSnapshotPersistenceTests
     {
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid workoutId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Push", Started, null, [])), TestContext.CancellationToken);
 
@@ -219,7 +218,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid firstId = Guid.NewGuid();
         Guid secondId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(firstId, "Push", Started, null, [])), TestContext.CancellationToken);
 
@@ -239,7 +238,7 @@ public sealed class WorkoutSnapshotPersistenceTests
     {
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid workoutId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var handler = Handler(context, userId);
         await handler.CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(workoutId, "Push", Started, Started.AddHours(1), [])), TestContext.CancellationToken);
 
@@ -258,7 +257,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
         Guid workoutId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         await Handler(context, userId).CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(
             workoutId, "Push", Started, Started.AddHours(1), [Block(exerciseIds[0], "Bench", [Set("normal", 100m, 8)])])), TestContext.CancellationToken);
         var collector = new ChangeCollector();
@@ -271,7 +270,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         Assert.IsInstanceOfType<DeletedResourceChange>(collector.Changes[0]);
         Assert.IsFalse(await context.Workouts.AnyAsync(item => item.Id == workoutId && item.DeletedAtUtc == null, TestContext.CancellationToken));
         Assert.IsEmpty(await context.WorkoutSets.Where(item => item.WorkoutId == workoutId).ToListAsync(TestContext.CancellationToken));
-        Assert.IsFalse((await new WorkoutHistoryQueries(context).ListAsync(0, 100, TestContext.CancellationToken)).Any(item => item.WorkoutId == workoutId));
+        Assert.DoesNotContain(item => item.WorkoutId == workoutId, await new WorkoutHistoryQueries(context).ListAsync(0, 100, TestContext.CancellationToken));
         Assert.IsNull(await new WorkoutHistoryQueries(context).GetAsync(workoutId, TestContext.CancellationToken));
         await Assert.ThrowsAsync<WorkoutNotFoundException>(() => handler.DeleteAsync(DeleteWorkoutMutation.Create(Metadata(), workoutId, 2), TestContext.CancellationToken));
     }
@@ -282,7 +281,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
         Guid workoutId = Guid.NewGuid();
         Guid ownCustomExercise = Guid.NewGuid();
-        await using (AppDbContext owner3 = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext owner3 = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             owner3.Exercises.Add(new Exercise
             {
@@ -298,7 +297,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         }
         Guid planId = await PlanAsync(connectionString, firstUser, ownCustomExercise);
         Guid sourceWorkoutId = Guid.NewGuid();
-        await using (AppDbContext owner = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext owner = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             await Handler(owner, firstUser).CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(
                 sourceWorkoutId, "Old", Started.AddDays(-2), Started.AddDays(-2).AddHours(1), [])), TestContext.CancellationToken);
@@ -306,7 +305,7 @@ public sealed class WorkoutSnapshotPersistenceTests
                 workoutId, "Push", Started, null, [])), TestContext.CancellationToken);
         }
 
-        await using AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser);
+        await using AppDbContext foreign = PostgreSqlTestFixture.CreateContext(connectionString, secondUser);
         var intruder = Handler(foreign, secondUser);
         await Assert.ThrowsAsync<WorkoutNotFoundException>(() => intruder.SaveAsync(SaveWorkoutMutation.Create(
             Metadata(), 1, Values(workoutId, "Stolen", Started, null, [])), TestContext.CancellationToken));
@@ -330,7 +329,7 @@ public sealed class WorkoutSnapshotPersistenceTests
                 [Block(Guid.NewGuid(), "Bench", [Set("normal", 100m, 8)])])), TestContext.CancellationToken));
         Assert.AreEqual(foreignExercise.Errors["Exercises.SourceExerciseId"], unknownExercise.Errors["Exercises.SourceExerciseId"]);
 
-        await using AppDbContext owner2 = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext owner2 = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         Assert.AreEqual("Push", (await owner2.Workouts.SingleAsync(item => item.Id == workoutId, TestContext.CancellationToken)).Title);
     }
 
@@ -340,22 +339,22 @@ public sealed class WorkoutSnapshotPersistenceTests
         (string connectionString, Guid userId, Guid otherUser) = await CreateDatabaseAsync();
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
         Guid workoutId = Guid.NewGuid();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             context.Workouts.Add(Workout(workoutId, "Push", Started, null));
             await context.SaveChangesAsync(TestContext.CancellationToken);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             context.Workouts.Add(Workout(Guid.NewGuid(), "Second active", Started, null));
             await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(TestContext.CancellationToken));
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, otherUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, otherUser))
         {
             context.Workouts.Add(Workout(Guid.NewGuid(), "Ends before start", Started, Started.AddMinutes(-1)));
             await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(TestContext.CancellationToken));
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             Guid workoutExerciseId = Guid.NewGuid();
             context.WorkoutExercises.Add(new WorkoutExercise
@@ -387,7 +386,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid[] exerciseIds = await BaseExerciseIdsAsync(connectionString, userId, 1);
         Guid workoutId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         await Handler(context, userId).CreateAsync(CreateWorkoutMutation.Create(Metadata(), Values(
             workoutId, "Push", Started, Started.AddHours(1),
             [Block(exerciseIds[0], "Bench", [Set("warmup", 40m, 10), Set("normal", 100m, 8), Set("normal", null, 5), Set("dropset", 80m, 6)])])), TestContext.CancellationToken);
@@ -433,7 +432,7 @@ public sealed class WorkoutSnapshotPersistenceTests
     private static async Task<Guid> PlanAsync(string connectionString, Guid userId, Guid exerciseId)
     {
         Guid planId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         await new TrainingPlanMutationHandler(context, new CurrentUser(userId), TimeProvider.System).CreateAsync(
             CreateTrainingPlanMutation.Create(Metadata(), new TrainingPlanValues(
                 planId, "Push", null, "exercise",
@@ -451,7 +450,7 @@ public sealed class WorkoutSnapshotPersistenceTests
         int repetitions,
         WorkoutSetType setType)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         Guid workoutId = Guid.NewGuid();
         Guid exerciseEntryId = Guid.NewGuid();
         context.Workouts.Add(Workout(workoutId, "Historical", startedAtUtc, endedAtUtc));
@@ -481,7 +480,7 @@ public sealed class WorkoutSnapshotPersistenceTests
 
     private static async Task<Guid[]> BaseExerciseIdsAsync(string connectionString, Guid userId, int count)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         return await context.Exercises.Where(item => item.OwnerUserId == null)
             .OrderBy(item => item.Id).Select(item => item.Id).Take(count).ToArrayAsync();
     }
@@ -489,7 +488,7 @@ public sealed class WorkoutSnapshotPersistenceTests
     private static async Task<(string ConnectionString, Guid FirstUser, Guid SecondUser)> CreateDatabaseAsync()
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
             await context.Database.MigrateAsync();
             Guid first = Guid.NewGuid();

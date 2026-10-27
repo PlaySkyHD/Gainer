@@ -75,7 +75,7 @@ public sealed class SyncHandoverApiTests
         Assert.AreEqual(first.HandoverId, concurrentRetry.HandoverId);
         Assert.AreEqual(first.OneTimeCode, concurrentRetry.OneTimeCode);
         Assert.AreEqual(0, first.FrozenRevision);
-        Assert.IsTrue(first.ExpiresAtUtc > DateTime.UtcNow.AddMinutes(14));
+        Assert.IsGreaterThan(DateTime.UtcNow.AddMinutes(14), first.ExpiresAtUtc);
 
         CompleteSyncHandoverRequest completeRequest = new(first.OneTimeCode, target, 0);
         CompleteSyncHandoverResponse completed = await CompleteAsync(client, auth, first.HandoverId, completeRequest);
@@ -124,21 +124,21 @@ public sealed class SyncHandoverApiTests
         {
             matchingPull.Headers.Add("X-Gainer-Account-Id", userA.ToString("D"));
             authA.Apply(matchingPull);
-            using HttpResponseMessage response = await clientA.SendAsync(matchingPull);
+            using HttpResponseMessage response = await clientA.SendAsync(matchingPull, TestContext.CancellationToken);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         }
         using (var mismatchedPull = new HttpRequestMessage(HttpMethod.Get, "/api/v1/sync/changes?after=0&limit=200"))
         {
             mismatchedPull.Headers.Add("X-Gainer-Account-Id", userA.ToString("D"));
             authB.Apply(mismatchedPull);
-            using HttpResponseMessage response = await clientB.SendAsync(mismatchedPull);
+            using HttpResponseMessage response = await clientB.SendAsync(mismatchedPull, TestContext.CancellationToken);
             Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
             Assert.AreEqual("account_changed", await ProblemCodeAsync(response));
         }
         using (var legacyPull = new HttpRequestMessage(HttpMethod.Get, "/api/v1/sync/changes?after=0&limit=200"))
         {
             authB.WithoutAccountHeader().Apply(legacyPull);
-            using HttpResponseMessage response = await clientB.SendAsync(legacyPull);
+            using HttpResponseMessage response = await clientB.SendAsync(legacyPull, TestContext.CancellationToken);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         }
 
@@ -148,7 +148,7 @@ public sealed class SyncHandoverApiTests
             $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion}"))
         {
             authB.WithoutAccountHeader().Apply(headerlessPull);
-            using HttpResponseMessage response = await clientB.SendAsync(headerlessPull);
+            using HttpResponseMessage response = await clientB.SendAsync(headerlessPull, TestContext.CancellationToken);
             Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode);
             Assert.AreEqual("account_header_required", await ProblemCodeAsync(response));
         }
@@ -233,7 +233,7 @@ public sealed class SyncHandoverApiTests
             $"/api/v1/sync/mutations/{mutationId}",
             mutation))
         {
-            Assert.AreEqual(HttpStatusCode.OK, legacyMutation.StatusCode, await legacyMutation.Content.ReadAsStringAsync());
+            Assert.AreEqual(HttpStatusCode.OK, legacyMutation.StatusCode, await legacyMutation.Content.ReadAsStringAsync(TestContext.CancellationToken));
         }
 
         BeginSyncHandoverRequest beginRequest = new(Guid.NewGuid(), source, 1);
@@ -312,7 +312,7 @@ public sealed class SyncHandoverApiTests
                     amountMl = 1250,
                 }, JsonOptions))))
         {
-            Assert.AreEqual(HttpStatusCode.OK, water.StatusCode, await water.Content.ReadAsStringAsync());
+            Assert.AreEqual(HttpStatusCode.OK, water.StatusCode, await water.Content.ReadAsStringAsync(TestContext.CancellationToken));
         }
 
         // A target that registers with the old protocol is told to update; the current app passes.
@@ -339,9 +339,9 @@ public sealed class SyncHandoverApiTests
             HttpMethod.Get,
             $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion}");
         auth.Apply(pull);
-        using HttpResponseMessage pulled = await client.SendAsync(pull);
+        using HttpResponseMessage pulled = await client.SendAsync(pull, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, pulled.StatusCode);
-        PullChangesResponse page = (await pulled.Content.ReadFromJsonAsync<PullChangesResponse>())!;
+        PullChangesResponse page = (await pulled.Content.ReadFromJsonAsync<PullChangesResponse>(TestContext.CancellationToken))!;
         Assert.AreEqual(dayId, page.Batches.Single().Changes.Single().ResourceId);
     }
 
@@ -384,7 +384,7 @@ public sealed class SyncHandoverApiTests
             HttpMethod.Put,
             $"/api/v1/sync/mutations/{mutationId}",
             mutation);
-        Assert.AreEqual(HttpStatusCode.Conflict, lateWrite.StatusCode, await lateWrite.Content.ReadAsStringAsync());
+        Assert.AreEqual(HttpStatusCode.Conflict, lateWrite.StatusCode, await lateWrite.Content.ReadAsStringAsync(TestContext.CancellationToken));
         Assert.AreEqual("handover_in_progress", await ProblemCodeAsync(lateWrite));
 
         await CancelAsync(client, auth, handover.HandoverId, source);
@@ -395,7 +395,7 @@ public sealed class SyncHandoverApiTests
             HttpMethod.Put,
             $"/api/v1/sync/mutations/{mutationId}",
             mutation);
-        Assert.AreEqual(HttpStatusCode.OK, retriedWrite.StatusCode, await retriedWrite.Content.ReadAsStringAsync());
+        Assert.AreEqual(HttpStatusCode.OK, retriedWrite.StatusCode, await retriedWrite.Content.ReadAsStringAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -489,10 +489,10 @@ public sealed class SyncHandoverApiTests
 
         Assert.IsTrue(
             beginResponse.StatusCode is HttpStatusCode.OK or HttpStatusCode.Conflict,
-            await beginResponse.Content.ReadAsStringAsync());
+            await beginResponse.Content.ReadAsStringAsync(TestContext.CancellationToken));
         Assert.IsTrue(
             mutationResponse.StatusCode is HttpStatusCode.OK or HttpStatusCode.Conflict,
-            await mutationResponse.Content.ReadAsStringAsync());
+            await mutationResponse.Content.ReadAsStringAsync(TestContext.CancellationToken));
         Assert.IsFalse(
             beginResponse.StatusCode == HttpStatusCode.OK && mutationResponse.StatusCode == HttpStatusCode.OK,
             "A frozen revision and a mutation from that revision cannot both be accepted.");
@@ -509,9 +509,9 @@ public sealed class SyncHandoverApiTests
 
         using var feedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/sync/changes?after=0&limit=200");
         beginAuth.Apply(feedRequest);
-        using HttpResponseMessage feedResponse = await beginClient.SendAsync(feedRequest);
-        Assert.AreEqual(HttpStatusCode.OK, feedResponse.StatusCode, await feedResponse.Content.ReadAsStringAsync());
-        PullChangesResponse feed = (await feedResponse.Content.ReadFromJsonAsync<PullChangesResponse>())!;
+        using HttpResponseMessage feedResponse = await beginClient.SendAsync(feedRequest, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, feedResponse.StatusCode, await feedResponse.Content.ReadAsStringAsync(TestContext.CancellationToken));
+        PullChangesResponse feed = (await feedResponse.Content.ReadFromJsonAsync<PullChangesResponse>(TestContext.CancellationToken))!;
         Assert.AreEqual(mutationResponse.StatusCode == HttpStatusCode.OK ? 1 : 0, feed.NextCursor);
     }
 
@@ -591,15 +591,15 @@ public sealed class SyncHandoverApiTests
                 payload = new { waterIntakeDayId = Guid.NewGuid(), localDate = new DateOnly(2026, 10, 25), baseVersion = 0, amountMl = 250 },
             });
 
-        Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode, await response.Content.ReadAsStringAsync());
+        Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode, await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
         Assert.AreEqual("invalid_resources", await ProblemCodeAsync(response));
     }
 
     private async Task<WebApplication> CreateApplicationAsync(TestTimeProvider? clock = null)
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
-            await context.Database.MigrateAsync();
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
+            await context.Database.MigrateAsync(TestContext.CancellationToken);
 
         string keyRingPath = Path.Combine(Path.GetTempPath(), $"gainer-sync-handover-api-{Guid.NewGuid():N}");
         keyRingPaths.Add(keyRingPath);
@@ -623,7 +623,7 @@ public sealed class SyncHandoverApiTests
 
         WebApplication app = builder.Build();
         app.MapGainerApi();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.CancellationToken);
         return app;
     }
 
@@ -763,4 +763,6 @@ public sealed class SyncHandoverApiTests
         public override DateTimeOffset GetUtcNow() => current;
         public void Advance(TimeSpan value) => current += value;
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

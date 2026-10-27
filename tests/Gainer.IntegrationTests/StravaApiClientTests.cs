@@ -16,7 +16,7 @@ public sealed class StravaApiClientTests
             """{"access_token":"a","refresh_token":"r","expires_at":1893456000,"athlete":{"id":7,"firstname":"Nic","lastname":"M"}}"""));
         StravaApiClient client = Client(handler);
 
-        StravaTokens tokens = await client.ExchangeCodeAsync("the-code");
+        StravaTokens tokens = await client.ExchangeCodeAsync("the-code", TestContext.CancellationToken);
 
         Assert.AreEqual("a", tokens.AccessToken);
         Assert.AreEqual("r", tokens.RefreshToken);
@@ -24,27 +24,27 @@ public sealed class StravaApiClientTests
         Assert.AreEqual("Nic M", tokens.AthleteName);
         Assert.AreEqual(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc), tokens.ExpiresAtUtc);
         Assert.AreEqual("https://strava.test/oauth/token", handler.Requests[0].Uri);
-        StringAssert.Contains(handler.Requests[0].Body, "grant_type=authorization_code");
-        StringAssert.Contains(handler.Requests[0].Body, "client_id=123");
-        StringAssert.Contains(handler.Requests[0].Body, "client_secret=secret");
-        StringAssert.Contains(handler.Requests[0].Body, "code=the-code");
+        Assert.Contains("grant_type=authorization_code", handler.Requests[0].Body);
+        Assert.Contains("client_id=123", handler.Requests[0].Body);
+        Assert.Contains("client_secret=secret", handler.Requests[0].Body);
+        Assert.Contains("code=the-code", handler.Requests[0].Body);
     }
 
     [TestMethod]
     public async Task RefreshWithoutAthleteAndRejectedRefreshAreDistinguished()
     {
         StravaTokens refreshed = await Client(new RecordingHandler(_ => Json(HttpStatusCode.OK,
-            """{"access_token":"a2","refresh_token":"r2","expires_at":1893456000}"""))).RefreshAsync("r");
+            """{"access_token":"a2","refresh_token":"r2","expires_at":1893456000}"""))).RefreshAsync("r", TestContext.CancellationToken);
         Assert.AreEqual("a2", refreshed.AccessToken);
         Assert.IsNull(refreshed.AthleteId);
 
         StravaApiException rejected = await Assert.ThrowsExactlyAsync<StravaApiException>(() =>
-            Client(new RecordingHandler(_ => Json(HttpStatusCode.BadRequest, "{}"))).RefreshAsync("r"));
+            Client(new RecordingHandler(_ => Json(HttpStatusCode.BadRequest, "{}"))).RefreshAsync("r", TestContext.CancellationToken));
         Assert.AreEqual(StravaFailure.Unauthorized, rejected.Failure);
 
         StravaApiException incomplete = await Assert.ThrowsExactlyAsync<StravaApiException>(() =>
             Client(new RecordingHandler(_ => Json(HttpStatusCode.OK, """{"access_token":"","refresh_token":"","expires_at":0}""")))
-                .RefreshAsync("r"));
+                .RefreshAsync("r", TestContext.CancellationToken));
         Assert.AreEqual(StravaFailure.Transient, incomplete.Failure);
     }
 
@@ -59,7 +59,7 @@ public sealed class StravaApiClientTests
     public async Task TokenResponsesWithUnexpectedStructureFailAsStravaErrors(string body)
     {
         StravaApiException error = await Assert.ThrowsExactlyAsync<StravaApiException>(() =>
-            Client(new RecordingHandler(_ => Json(HttpStatusCode.OK, body))).RefreshAsync("r"));
+            Client(new RecordingHandler(_ => Json(HttpStatusCode.OK, body))).RefreshAsync("r", TestContext.CancellationToken));
         Assert.AreEqual(StravaFailure.Transient, error.Failure);
     }
 
@@ -72,7 +72,7 @@ public sealed class StravaApiClientTests
         });
 
         StravaApiException error = await Assert.ThrowsExactlyAsync<StravaApiException>(() =>
-            Client(handler).GetUploadAsync("token", 9));
+            Client(handler).GetUploadAsync("token", 9, TestContext.CancellationToken));
         Assert.AreEqual(StravaFailure.Transient, error.Failure);
     }
 
@@ -82,7 +82,7 @@ public sealed class StravaApiClientTests
         var handler = new RecordingHandler(_ => Json(HttpStatusCode.Created, """{"id":55,"error":null,"activity_id":null}"""));
         StravaUpload upload = new("gainer-cardio-x", "Ride", "Notes", Trainer: true, Encoding.UTF8.GetBytes("<tcx/>"), null);
 
-        StravaUploadState state = await Client(handler).UploadAsync("token", upload);
+        StravaUploadState state = await Client(handler).UploadAsync("token", upload, TestContext.CancellationToken);
 
         Assert.AreEqual(55, state.UploadId);
         Assert.IsTrue(state.IsProcessing);
@@ -91,7 +91,7 @@ public sealed class StravaApiClientTests
         Assert.AreEqual("Bearer token", request.Authorization);
         foreach (string part in new[] { "name=data_type", "tcx", "name=external_id", "gainer-cardio-x", "name=trainer", "name=description", "<tcx/>" })
         {
-            StringAssert.Contains(request.Body, part);
+            Assert.Contains(part, request.Body);
         }
     }
 
@@ -102,7 +102,7 @@ public sealed class StravaApiClientTests
             """{"id":56,"error":"gainer-cardio-x.tcx duplicate of activity 4242","activity_id":null}"""));
         StravaUpload upload = new("gainer-cardio-x", "Ride", null, Trainer: false, [1], null);
 
-        StravaUploadState state = await Client(handler).UploadAsync("token", upload);
+        StravaUploadState state = await Client(handler).UploadAsync("token", upload, TestContext.CancellationToken);
 
         Assert.AreEqual(4242, state.DuplicateOfActivityId);
         Assert.IsFalse(state.IsProcessing);
@@ -116,13 +116,13 @@ public sealed class StravaApiClientTests
             : Json(HttpStatusCode.OK, "{}"));
         StravaApiClient client = Client(handler);
 
-        StravaUploadState state = await client.GetUploadAsync("token", 9);
-        await client.SetSportTypeAsync("token", 77, "WeightTraining");
-        await client.DeauthorizeAsync("token");
+        StravaUploadState state = await client.GetUploadAsync("token", 9, TestContext.CancellationToken);
+        await client.SetSportTypeAsync("token", 77, "WeightTraining", TestContext.CancellationToken);
+        await client.DeauthorizeAsync("token", TestContext.CancellationToken);
 
         Assert.AreEqual(77, state.ActivityId);
         Assert.AreEqual("PUT https://strava.test/api/v3/activities/77", $"{handler.Requests[1].Method} {handler.Requests[1].Uri}");
-        StringAssert.Contains(handler.Requests[1].Body, "\"sport_type\":\"WeightTraining\"");
+        Assert.Contains("\"sport_type\":\"WeightTraining\"", handler.Requests[1].Body);
         Assert.AreEqual("https://strava.test/oauth/deauthorize", handler.Requests[2].Uri);
     }
 
@@ -135,7 +135,7 @@ public sealed class StravaApiClientTests
     public async Task StatusCodesMapToFailures(HttpStatusCode status, StravaFailure expected)
     {
         StravaApiException exception = await Assert.ThrowsExactlyAsync<StravaApiException>(() =>
-            Client(new RecordingHandler(_ => Json(status, "{}"))).GetUploadAsync("token", 1));
+            Client(new RecordingHandler(_ => Json(status, "{}"))).GetUploadAsync("token", 1, TestContext.CancellationToken));
         Assert.AreEqual(expected, exception.Failure);
         Assert.AreEqual((int)status, exception.StatusCode);
     }
@@ -144,11 +144,11 @@ public sealed class StravaApiClientTests
     public async Task NetworkErrorsAndUnreadableBodiesAreTransient()
     {
         StravaApiException network = await Assert.ThrowsExactlyAsync<StravaApiException>(() =>
-            Client(new RecordingHandler(_ => throw new HttpRequestException("down"))).GetUploadAsync("token", 1));
+            Client(new RecordingHandler(_ => throw new HttpRequestException("down"))).GetUploadAsync("token", 1, TestContext.CancellationToken));
         Assert.AreEqual(StravaFailure.Transient, network.Failure);
 
         StravaApiException unreadable = await Assert.ThrowsExactlyAsync<StravaApiException>(() =>
-            Client(new RecordingHandler(_ => Json(HttpStatusCode.OK, "not json"))).GetUploadAsync("token", 1));
+            Client(new RecordingHandler(_ => Json(HttpStatusCode.OK, "not json"))).GetUploadAsync("token", 1, TestContext.CancellationToken));
         Assert.AreEqual(StravaFailure.Transient, unreadable.Failure);
     }
 
@@ -206,4 +206,6 @@ public sealed class StravaApiClientTests
             return respond(request);
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

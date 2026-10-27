@@ -31,8 +31,8 @@ public sealed class ApiCompositionRootTests
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/system/status");
         request.Headers.Add(ApiConstants.CorrelationIdHeader, "test-correlation-42");
 
-        using HttpResponseMessage response = await client.SendAsync(request);
-        string responseBody = await response.Content.ReadAsStringAsync();
+        using HttpResponseMessage response = await client.SendAsync(request, TestContext.CancellationToken);
+        string responseBody = await response.Content.ReadAsStringAsync(TestContext.CancellationToken);
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, responseBody);
         SystemStatusResponse? payload = JsonSerializer.Deserialize<SystemStatusResponse>(
@@ -52,8 +52,8 @@ public sealed class ApiCompositionRootTests
         await using var app = await CreateApplicationAsync(logProvider);
         using var client = app.GetTestClient();
 
-        using HttpResponseMessage response = await client.GetAsync("/api/v1/does-not-exist?private=value");
-        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using HttpResponseMessage response = await client.GetAsync("/api/v1/does-not-exist?private=value", TestContext.CancellationToken);
+        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
 
         Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
         Assert.AreEqual("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -61,7 +61,7 @@ public sealed class ApiCompositionRootTests
         Assert.IsFalse(string.IsNullOrWhiteSpace(payload.RootElement.GetProperty("traceId").GetString()));
         Assert.IsFalse(string.IsNullOrWhiteSpace(payload.RootElement.GetProperty("correlationId").GetString()));
         Assert.IsFalse(payload.RootElement.TryGetProperty("detail", out _));
-        Assert.IsFalse(logProvider.Messages.Any(message => message.Contains("private=value", StringComparison.Ordinal)));
+        Assert.DoesNotContain(message => message.Contains("private=value", StringComparison.Ordinal), logProvider.Messages);
     }
 
     [TestMethod]
@@ -71,8 +71,8 @@ public sealed class ApiCompositionRootTests
         using var client = app.GetTestClient();
         using var content = new ByteArrayContent(new byte[ApiConstants.MaximumRequestBodyBytes + 1]);
 
-        using HttpResponseMessage response = await client.PostAsync("/api/v1/system/status", content);
-        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using HttpResponseMessage response = await client.PostAsync("/api/v1/system/status", content, TestContext.CancellationToken);
+        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
 
         Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
         Assert.AreEqual("request_too_large", payload.RootElement.GetProperty("code").GetString());
@@ -107,8 +107,8 @@ public sealed class ApiCompositionRootTests
         request.Headers.Add("X-Forwarded-Proto", "https");
         request.Headers.Add("X-Forwarded-Host", "gainer.markfort.xyz");
 
-        using HttpResponseMessage response = await client.SendAsync(request);
-        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using HttpResponseMessage response = await client.SendAsync(request, TestContext.CancellationToken);
+        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         Assert.AreEqual("https", payload.RootElement.GetProperty("scheme").GetString());
@@ -125,8 +125,8 @@ public sealed class ApiCompositionRootTests
         // A client-supplied entry in front of the address host Caddy saw must not become the client.
         request.Headers.Add("X-Forwarded-For", "198.51.100.1, 203.0.113.10");
 
-        using HttpResponseMessage response = await client.SendAsync(request);
-        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using HttpResponseMessage response = await client.SendAsync(request, TestContext.CancellationToken);
+        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
 
         Assert.AreEqual("203.0.113.10", payload.RootElement.GetProperty("remoteIp").GetString());
     }
@@ -145,7 +145,7 @@ public sealed class ApiCompositionRootTests
 
         using HttpResponseMessage limited = await ReadinessAsync(client, "203.0.113.20");
         using HttpResponseMessage otherClient = await ReadinessAsync(client, "203.0.113.21");
-        using HttpResponseMessage otherPath = await client.GetAsync("/forwarded-probe");
+        using HttpResponseMessage otherPath = await client.GetAsync("/forwarded-probe", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
         Assert.AreEqual(HttpStatusCode.OK, otherClient.StatusCode);
         Assert.AreEqual(HttpStatusCode.OK, otherPath.StatusCode);
@@ -165,7 +165,7 @@ public sealed class ApiCompositionRootTests
         }
 
         using HttpResponseMessage limited = await SystemStatusAsync(client, "203.0.113.30");
-        using JsonDocument payload = JsonDocument.Parse(await limited.Content.ReadAsStringAsync());
+        using JsonDocument payload = JsonDocument.Parse(await limited.Content.ReadAsStringAsync(TestContext.CancellationToken));
         using HttpResponseMessage otherClient = await SystemStatusAsync(client, "203.0.113.31");
 
         Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
@@ -202,9 +202,9 @@ public sealed class ApiCompositionRootTests
         });
         using var client = app.GetTestClient();
 
-        using HttpResponseMessage response = await client.GetAsync("/probe/4006381333931?token=query-secret");
-        using HttpResponseMessage unmatched = await client.GetAsync("/nowhere/2026-10-26");
-        using HttpResponseMessage attribute = await client.GetAsync("/api/v1/system/status");
+        using HttpResponseMessage response = await client.GetAsync("/probe/4006381333931?token=query-secret", TestContext.CancellationToken);
+        using HttpResponseMessage unmatched = await client.GetAsync("/nowhere/2026-10-26", TestContext.CancellationToken);
+        using HttpResponseMessage attribute = await client.GetAsync("/api/v1/system/status", TestContext.CancellationToken);
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         Assert.AreEqual(HttpStatusCode.NotFound, unmatched.StatusCode);
@@ -218,13 +218,13 @@ public sealed class ApiCompositionRootTests
         });
 
         // Messages, structured state values and scopes of the ordinary logger provider.
-        Assert.IsTrue(logProvider.Messages.Any(message => message.Contains("GET /probe/{value}", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("GET /probe/{value}", StringComparison.Ordinal), logProvider.Messages);
         // Attribute routes are stored without a leading slash; the template always has one.
-        Assert.IsTrue(logProvider.Messages.Any(message => message.Contains("GET /api/v1/system/status", StringComparison.Ordinal)));
-        Assert.IsTrue(logProvider.Messages.Any(message => message.Contains("GET /unmatched", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("GET /api/v1/system/status", StringComparison.Ordinal), logProvider.Messages);
+        Assert.Contains(message => message.Contains("GET /unmatched", StringComparison.Ordinal), logProvider.Messages);
         AssertNoRequestedPath(logProvider.Messages);
         // What the OpenTelemetry log exporter would send, attributes and scopes included.
-        Assert.IsTrue(exported.Any(value => value.Contains("GET /probe/{value}", StringComparison.Ordinal)));
+        Assert.Contains(value => value.Contains("GET /probe/{value}", StringComparison.Ordinal), exported);
         AssertNoRequestedPath(exported);
         // Span names and tags.
         lock (activityValues)
@@ -248,7 +248,7 @@ public sealed class ApiCompositionRootTests
         await using var app = await CreateApplicationAsync();
         using var client = app.GetTestClient();
 
-        using JsonDocument document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
+        using JsonDocument document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json", TestContext.CancellationToken));
         JsonElement paths = document.RootElement.GetProperty("paths");
 
         // Every operation that takes an uploaded file must be multipart, not only the two known paths.
@@ -283,8 +283,8 @@ public sealed class ApiCompositionRootTests
         string[] snapshot = values.ToArray();
         foreach (string privateValue in new[] { "4006381333931", "2026-10-26", "query-secret", "/nowhere" })
         {
-            Assert.IsFalse(
-                snapshot.Any(value => value.Contains(privateValue, StringComparison.Ordinal)),
+            Assert.DoesNotContain(
+                value => value.Contains(privateValue, StringComparison.Ordinal), snapshot,
                 $"'{privateValue}' leaked: " + string.Join(" | ", snapshot.Where(value => value.Contains(privateValue, StringComparison.Ordinal))));
         }
     }
@@ -423,4 +423,6 @@ public sealed class ApiCompositionRootTests
         {
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -39,7 +39,7 @@ public sealed class InsightQueriesTests
         (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
         Guid exerciseId = Guid.NewGuid();
         await SeedCheckInsAndWorkoutAsync(connectionString, firstUser, exerciseId);
-        await using AppDbContext first = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext first = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         DashboardInsightSnapshot dashboard = await new InsightQueries(first, new TestUserContext(firstUser))
             .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(0, dashboard.AsOfRevision);
@@ -48,7 +48,7 @@ public sealed class InsightQueriesTests
         Assert.AreEqual(1, dashboard.Training.WorkoutCount);
         Assert.AreEqual(1800m, dashboard.Training.VolumeKgRepetitions);
 
-        await using AppDbContext second = Fixture.CreateContext(connectionString, secondUser);
+        await using AppDbContext second = PostgreSqlTestFixture.CreateContext(connectionString, secondUser);
         DashboardInsightSnapshot isolated = await new InsightQueries(second, new TestUserContext(secondUser))
             .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(0, isolated.Weight.ObservedDays);
@@ -59,7 +59,7 @@ public sealed class InsightQueriesTests
     public async Task DashboardPrefersMealDiaryWithoutAddingLegacyAndPreservesMissingMacros()
     {
         (string connectionString, Guid firstUser, Guid secondUser) = await CreateDatabaseAsync();
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             seed.DailyCheckIns.AddRange(
                 CheckIn(new DateOnly(2026, 8, 17), 80m),
@@ -91,7 +91,7 @@ public sealed class InsightQueriesTests
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using AppDbContext first = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext first = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         DashboardInsightSnapshot dashboard = await new InsightQueries(first, new TestUserContext(firstUser))
             .DashboardAsync(new DateOnly(2026, 8, 18), 2, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(1550m, dashboard.Nutrition.CaloriesKcal.Value);
@@ -100,7 +100,7 @@ public sealed class InsightQueriesTests
         Assert.AreEqual(1, dashboard.Nutrition.MealDiaryDays);
         Assert.AreEqual(1, dashboard.Nutrition.LegacyCheckInDays);
 
-        await using AppDbContext second = Fixture.CreateContext(connectionString, secondUser);
+        await using AppDbContext second = PostgreSqlTestFixture.CreateContext(connectionString, secondUser);
         DashboardInsightSnapshot isolated = await new InsightQueries(second, new TestUserContext(secondUser))
             .DashboardAsync(new DateOnly(2026, 8, 18), 2, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(0, isolated.Nutrition.ObservedDays);
@@ -113,7 +113,7 @@ public sealed class InsightQueriesTests
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid exerciseId = Guid.NewGuid();
         await SeedCheckInsAndWorkoutAsync(connectionString, userId, exerciseId);
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         ExerciseProgressSnapshot result = await new InsightQueries(context, new TestUserContext(userId)).ExerciseProgressAsync(
             exerciseId,
             7,
@@ -133,17 +133,17 @@ public sealed class InsightQueriesTests
     public async Task RepeatableReadKeepsRevisionAndDashboardRowsAtOneDataSnapshot()
     {
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             seed.DailyCheckIns.Add(CheckIn(new DateOnly(2026, 8, 17), 80m));
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
-        await using AppDbContext reader = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext reader = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         await using var transaction = await reader.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, TestContext.CancellationToken);
         int before = await reader.DailyCheckIns.CountAsync(TestContext.CancellationToken);
         long revisionBefore = await reader.UserSyncStates.Select(item => (long?)item.CurrentRevision).SingleOrDefaultAsync(TestContext.CancellationToken) ?? 0;
 
-        await using (AppDbContext writer = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext writer = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             writer.DailyCheckIns.Add(CheckIn(new DateOnly(2026, 8, 18), 81m));
             writer.UserSyncStates.Add(new Gainer.Core.Sync.UserSyncState
@@ -163,7 +163,7 @@ public sealed class InsightQueriesTests
 
     private static async Task SeedCheckInsAndWorkoutAsync(string connectionString, Guid userId, Guid exerciseId)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         context.Exercises.Add(new Exercise
         {
             Id = exerciseId,
@@ -235,7 +235,7 @@ public sealed class InsightQueriesTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid first = Guid.NewGuid();
         Guid second = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(first), User(second));
         await context.SaveChangesAsync();

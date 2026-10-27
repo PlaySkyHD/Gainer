@@ -65,18 +65,18 @@ public sealed class AuthenticationApiTests
 
         using HttpResponseMessage login = await client.PostAsJsonAsync(
             "/api/v1/auth/login",
-            new LoginRequest(Email, Password, "Test-iPhone"));
+            new LoginRequest(Email, Password, "Test-iPhone"), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, login.StatusCode);
         Assert.IsFalse(login.Headers.Contains("Set-Cookie"));
         Assert.IsTrue(login.Headers.CacheControl?.NoStore);
-        TokenResponse? tokens = await login.Content.ReadFromJsonAsync<TokenResponse>();
+        TokenResponse? tokens = await login.Content.ReadFromJsonAsync<TokenResponse>(TestContext.CancellationToken);
         Assert.IsNotNull(tokens);
         Assert.AreEqual((int)GainerIdentityOptions.AccessTokenLifetime.TotalSeconds, tokens.ExpiresIn);
         Assert.IsGreaterThanOrEqualTo(43, tokens.RefreshToken.Length);
 
         client.UseAccessToken(tokens.AccessToken);
-        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
-        SessionResponse? payload = await session.Content.ReadFromJsonAsync<SessionResponse>();
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
+        SessionResponse? payload = await session.Content.ReadFromJsonAsync<SessionResponse>(TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
         Assert.IsNotNull(payload);
         Assert.AreEqual(userId, payload.UserId);
@@ -87,15 +87,15 @@ public sealed class AuthenticationApiTests
         await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
         {
             AppDbContext database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            DeviceSession stored = await database.DeviceSessions.SingleAsync(item => item.UserId == userId);
+            DeviceSession stored = await database.DeviceSessions.SingleAsync(item => item.UserId == userId, TestContext.CancellationToken);
             Assert.AreEqual("Test-iPhone", stored.DeviceName);
             Assert.HasCount(32, stored.RefreshTokenHash);
         }
 
-        using HttpResponseMessage logout = await client.PostAsync("/api/v1/auth/logout", content: null);
+        using HttpResponseMessage logout = await client.PostAsync("/api/v1/auth/logout", content: null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.NoContent, logout.StatusCode);
 
-        using HttpResponseMessage afterLogout = await client.GetAsync("/api/v1/auth/session");
+        using HttpResponseMessage afterLogout = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, afterLogout.StatusCode);
         using HttpResponseMessage refreshAfterLogout = await BearerTestClient.RefreshAsync(client, tokens.RefreshToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, refreshAfterLogout.StatusCode);
@@ -107,8 +107,8 @@ public sealed class AuthenticationApiTests
         await using WebApplication app = await CreateApplicationAsync();
         using HttpClient client = CreateClient(app);
 
-        using HttpResponseMessage response = await client.GetAsync("/api/v1/auth/session");
-        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using HttpResponseMessage response = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
+        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
 
         Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.AreEqual("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -123,12 +123,12 @@ public sealed class AuthenticationApiTests
         using HttpClient client = CreateClient(app);
 
         // The fallback policy answers 401 for every unknown route without a session; the route is gone for a signed-in user.
-        using HttpResponseMessage anonymousAntiforgery = await client.GetAsync("/api/v1/auth/antiforgery");
+        using HttpResponseMessage anonymousAntiforgery = await client.GetAsync("/api/v1/auth/antiforgery", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousAntiforgery.StatusCode);
         TokenResponse tokens = await BearerTestClient.LoginAsync(client, Email, Password);
         using var antiforgeryRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/antiforgery");
         antiforgeryRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tokens.AccessToken);
-        using HttpResponseMessage antiforgery = await client.SendAsync(antiforgeryRequest);
+        using HttpResponseMessage antiforgery = await client.SendAsync(antiforgeryRequest, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.NotFound, antiforgery.StatusCode);
 
         using var foreignOriginLogin = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login")
@@ -137,12 +137,12 @@ public sealed class AuthenticationApiTests
         };
         foreignOriginLogin.Headers.Add("Origin", "https://attacker.example");
         foreignOriginLogin.Headers.Add("Cookie", ".AspNetCore.Identity.Application=forged");
-        using HttpResponseMessage login = await client.SendAsync(foreignOriginLogin);
+        using HttpResponseMessage login = await client.SendAsync(foreignOriginLogin, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, login.StatusCode);
 
         using var cookieOnly = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/session");
         cookieOnly.Headers.Add("Cookie", ".AspNetCore.Identity.Application=forged");
-        using HttpResponseMessage session = await client.SendAsync(cookieOnly);
+        using HttpResponseMessage session = await client.SendAsync(cookieOnly, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, session.StatusCode);
     }
 
@@ -159,7 +159,7 @@ public sealed class AuthenticationApiTests
         Assert.AreNotEqual(first.RefreshToken, second.RefreshToken);
         Assert.AreNotEqual(first.AccessToken, second.AccessToken);
         client.UseAccessToken(second.AccessToken);
-        using (HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session"))
+        using (HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken))
         {
             Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
         }
@@ -171,7 +171,7 @@ public sealed class AuthenticationApiTests
 
         using HttpResponseMessage current = await BearerTestClient.RefreshAsync(client, second.RefreshToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, current.StatusCode);
-        using HttpResponseMessage revokedAccess = await client.GetAsync("/api/v1/auth/session");
+        using HttpResponseMessage revokedAccess = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, revokedAccess.StatusCode);
     }
 
@@ -191,7 +191,7 @@ public sealed class AuthenticationApiTests
 
         TokenResponse next = await RefreshSucceedsAsync(client, retried.RefreshToken);
         client.UseAccessToken(next.AccessToken);
-        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
     }
 
@@ -214,7 +214,7 @@ public sealed class AuthenticationApiTests
         using HttpResponseMessage attackerRefresh = await BearerTestClient.RefreshAsync(client, attacker.RefreshToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, attackerRefresh.StatusCode);
         client.UseAccessToken(attacker.AccessToken);
-        using HttpResponseMessage attackerAccess = await client.GetAsync("/api/v1/auth/session");
+        using HttpResponseMessage attackerAccess = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, attackerAccess.StatusCode);
     }
 
@@ -252,7 +252,7 @@ public sealed class AuthenticationApiTests
         TokenResponse retriedAgain = await RefreshSucceedsAsync(client, retried.RefreshToken);
         TokenResponse next = await RefreshSucceedsAsync(client, retriedAgain.RefreshToken);
         client.UseAccessToken(next.AccessToken);
-        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
     }
 
@@ -266,12 +266,12 @@ public sealed class AuthenticationApiTests
         TokenResponse tokens = await client.AuthenticateAsync(Email, Password);
 
         timeProvider.Advance(GainerIdentityOptions.AccessTokenLifetime + TimeSpan.FromSeconds(1));
-        using HttpResponseMessage expired = await client.GetAsync("/api/v1/auth/session");
+        using HttpResponseMessage expired = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, expired.StatusCode);
 
         TokenResponse renewed = await RefreshSucceedsAsync(client, tokens.RefreshToken);
         client.UseAccessToken(renewed.AccessToken);
-        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
     }
 
@@ -308,10 +308,10 @@ public sealed class AuthenticationApiTests
         await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
         {
             IAccountStatusService status = scope.ServiceProvider.GetRequiredService<IAccountStatusService>();
-            Assert.IsTrue(await status.SetActiveAsync(userId, isActive: false));
+            Assert.IsTrue(await status.SetActiveAsync(userId, isActive: false, TestContext.CancellationToken));
         }
 
-        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, session.StatusCode);
         using HttpResponseMessage refresh = await BearerTestClient.RefreshAsync(client, tokens.RefreshToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, refresh.StatusCode);
@@ -319,7 +319,7 @@ public sealed class AuthenticationApiTests
         await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
         {
             IAccountStatusService status = scope.ServiceProvider.GetRequiredService<IAccountStatusService>();
-            Assert.IsTrue(await status.SetActiveAsync(userId, isActive: true));
+            Assert.IsTrue(await status.SetActiveAsync(userId, isActive: true, TestContext.CancellationToken));
         }
 
         using HttpResponseMessage afterReactivation = await BearerTestClient.RefreshAsync(client, tokens.RefreshToken);
@@ -335,12 +335,12 @@ public sealed class AuthenticationApiTests
 
         using HttpResponseMessage unknown = await client.PostAsJsonAsync(
             "/api/v1/auth/login",
-            new LoginRequest("unknown@example.test", Password));
+            new LoginRequest("unknown@example.test", Password), cancellationToken: TestContext.CancellationToken);
         using HttpResponseMessage wrongPassword = await client.PostAsJsonAsync(
             "/api/v1/auth/login",
-            new LoginRequest(Email, "Wrong-password-42!"));
-        using JsonDocument unknownBody = JsonDocument.Parse(await unknown.Content.ReadAsStringAsync());
-        using JsonDocument wrongPasswordBody = JsonDocument.Parse(await wrongPassword.Content.ReadAsStringAsync());
+            new LoginRequest(Email, "Wrong-password-42!"), cancellationToken: TestContext.CancellationToken);
+        using JsonDocument unknownBody = JsonDocument.Parse(await unknown.Content.ReadAsStringAsync(TestContext.CancellationToken));
+        using JsonDocument wrongPasswordBody = JsonDocument.Parse(await wrongPassword.Content.ReadAsStringAsync(TestContext.CancellationToken));
 
         Assert.AreEqual(HttpStatusCode.Unauthorized, unknown.StatusCode);
         Assert.AreEqual(unknown.StatusCode, wrongPassword.StatusCode);
@@ -351,24 +351,24 @@ public sealed class AuthenticationApiTests
         Assert.AreEqual(
             unknownBody.RootElement.GetProperty("code").GetString(),
             wrongPasswordBody.RootElement.GetProperty("code").GetString());
-        Assert.IsFalse((await unknown.Content.ReadAsStringAsync()).Contains("unknown@example.test", StringComparison.Ordinal));
+        Assert.IsFalse((await unknown.Content.ReadAsStringAsync(TestContext.CancellationToken)).Contains("unknown@example.test", StringComparison.Ordinal));
 
         // Unknown routes answer 401 without a session (fallback policy) and 404 for a signed-in user.
-        using HttpResponseMessage anonymousRegistration = await client.GetAsync("/api/v1/auth/register");
+        using HttpResponseMessage anonymousRegistration = await client.GetAsync("/api/v1/auth/register", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousRegistration.StatusCode);
         TokenResponse tokens = await BearerTestClient.LoginAsync(client, Email, Password);
         using var registrationRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/register");
         registrationRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tokens.AccessToken);
-        using HttpResponseMessage registration = await client.SendAsync(registrationRequest);
+        using HttpResponseMessage registration = await client.SendAsync(registrationRequest, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.NotFound, registration.StatusCode);
     }
 
     private async Task<WebApplication> CreateApplicationAsync(TimeProvider? timeProvider = null)
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
-            await context.Database.MigrateAsync();
+            await context.Database.MigrateAsync(TestContext.CancellationToken);
         }
 
         string keyRingPath = Path.Combine(Path.GetTempPath(), $"gainer-auth-{Guid.NewGuid():N}");
@@ -389,7 +389,7 @@ public sealed class AuthenticationApiTests
 
         var app = builder.Build();
         app.MapGainerApi();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.CancellationToken);
         return app;
     }
 
@@ -442,4 +442,6 @@ public sealed class AuthenticationApiTests
             currentUtc += duration;
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }
