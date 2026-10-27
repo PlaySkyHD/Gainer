@@ -55,6 +55,7 @@ public sealed class OpenAiMuscleSuggester(
     private const int MaximumExplanationLength = 300;
     private const string StringType = "string";
     private const string QuestionKind = "question";
+    private const string QuestionProperty = "question";
 
     public async Task<MuscleSuggestionResult> SuggestAsync(
         MuscleSuggestionInput input,
@@ -171,7 +172,7 @@ public sealed class OpenAiMuscleSuggester(
     {
         type = "object",
         additionalProperties = false,
-        required = new[] { "kind", QuestionKind, "options", "primaryMuscles", "secondaryMuscles", "explanation" },
+        required = new[] { "kind", QuestionProperty, "options", "primaryMuscles", "secondaryMuscles", "explanation" },
         properties = new
         {
             kind = new { type = StringType, @enum = new[] { QuestionKind, "suggestion" } },
@@ -192,7 +193,7 @@ public sealed class OpenAiMuscleSuggester(
     {
         type = "object",
         additionalProperties = false,
-        required = new[] { "kind", QuestionKind, "options", "primaryMuscles", "secondaryMuscles", "explanation" },
+        required = new[] { "kind", QuestionProperty, "options", "primaryMuscles", "secondaryMuscles", "explanation" },
         properties = new
         {
             kind = new { type = StringType, @enum = new[] { "suggestion" } },

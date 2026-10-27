@@ -75,7 +75,7 @@ public sealed class OpenFoodFactsCatalogState(IOptions<OpenFoodFactsOptions> opt
             }
             if (abandoned)
             {
-                // Outside the lock: cancellation callbacks run synchronously.
+                // Outside the lock: the abandoning caller awaits the cancellation callbacks.
                 try
                 {
                     await call.Cancellation.CancelAsync();
