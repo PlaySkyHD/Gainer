@@ -7,7 +7,7 @@ Issue #279: Gingen zwei Refresh-Antworten nacheinander verloren, erlaubte der Se
 ## What Changes
 
 - Innerhalb der Kulanzfrist wird der unmittelbare Vorgänger wiederholt akzeptiert. Jeder Retry verwirft den zuletzt ausgestellten, nie benutzten Token und gibt einen neuen aus.
-- Jeder verworfene Token wird gespeichert (Tabelle `device_session_discarded_tokens`, ersetzt die Spalte `DiscardedRefreshTokenHash`). Kehrt einer zurück, widerruft die API die Session. Gespeichert bleiben die verworfenen Tokens der laufenden und der vorigen Rotation; ältere löscht die nächste normale Rotation.
+- Jeder verworfene Token wird gespeichert (Tabelle `device_session_discarded_tokens`, ersetzt die Spalte `DiscardedRefreshTokenHash`). Kehrt einer zurück, widerruft die API die Session. Wie die bisherige Spalte bleiben die Einträge erhalten, bis der erste Retry einer späteren Rotation sie ablöst; normale Rotationen löschen nichts.
 - Höchstens zehn Retries je Rotation, der elfte widerruft die Session. Das begrenzt das Wachstum der Tabelle.
 - Nach Benutzung des Nachfolgers ist der Vorgänger kein Retry mehr, nach Ablauf der Frist ebenfalls nicht.
 

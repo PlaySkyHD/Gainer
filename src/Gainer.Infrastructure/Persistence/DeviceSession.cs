@@ -29,6 +29,6 @@ public sealed class DeviceSession
 
     public AppUser User { get; set; } = null!;
 
-    /// <summary>Tokens replaced by grace-period retries of the current and the previous rotation.</summary>
+    /// <summary>Tokens replaced by grace-period retries, kept until a retry of a later rotation replaces them.</summary>
     public List<DeviceSessionDiscardedToken> DiscardedTokens { get; set; } = [];
 }

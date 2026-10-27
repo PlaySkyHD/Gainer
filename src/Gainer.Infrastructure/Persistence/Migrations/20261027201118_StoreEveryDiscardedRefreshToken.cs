@@ -16,13 +16,13 @@ public partial class StoreEveryDiscardedRefreshToken : Migration
             schema: "identity",
             columns: table => new
             {
-                SessionId = table.Column<Guid>(type: "uuid", nullable: false),
                 TokenHash = table.Column<byte[]>(type: "bytea", nullable: false),
+                SessionId = table.Column<Guid>(type: "uuid", nullable: false),
                 DiscardedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
             },
             constraints: table =>
             {
-                table.PrimaryKey("PK_device_session_discarded_tokens", x => new { x.SessionId, x.TokenHash });
+                table.PrimaryKey("PK_device_session_discarded_tokens", x => x.TokenHash);
                 table.CheckConstraint("CK_identity_device_session_discarded_tokens_hash", "octet_length(\"TokenHash\") = 32");
                 table.ForeignKey(
                     name: "FK_device_session_discarded_tokens_device_sessions_SessionId",
@@ -34,18 +34,18 @@ public partial class StoreEveryDiscardedRefreshToken : Migration
             });
 
         migrationBuilder.CreateIndex(
-            name: "IX_device_session_discarded_tokens_TokenHash",
+            name: "IX_device_session_discarded_tokens_SessionId",
             schema: "identity",
             table: "device_session_discarded_tokens",
-            column: "TokenHash",
-            unique: true);
+            column: "SessionId");
 
-        // Running sessions keep their discarded token as a revocation trigger. Without a retry since the
-        // last rotation it counts as discarded in that rotation, so the next normal rotation keeps it once more.
+        // Running sessions keep their discarded token as a revocation trigger. DiscardedAt was only set while the
+        // retry belonged to the current rotation; otherwise the session start stands in, which places the token
+        // before the current rotation, so (as with the old single slot) the next retry replaces it.
         migrationBuilder.Sql(
             """
             INSERT INTO "identity".device_session_discarded_tokens ("SessionId", "TokenHash", "DiscardedAt")
-            SELECT "Id", "DiscardedRefreshTokenHash", COALESCE("DiscardedAt", "RotatedAt", "CreatedAt")
+            SELECT "Id", "DiscardedRefreshTokenHash", COALESCE("DiscardedAt", "CreatedAt")
             FROM "identity".device_sessions
             WHERE "DiscardedRefreshTokenHash" IS NOT NULL;
             """);

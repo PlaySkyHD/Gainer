@@ -441,6 +441,7 @@ public sealed class PostgreSqlMigrationTests
         Guid retriedSession = Guid.NewGuid();
         Guid plainSession = Guid.NewGuid();
         byte[] discardedHash = Enumerable.Repeat((byte)7, 32).ToArray();
+        var createdAt = new DateTimeOffset(2026, 10, 1, 8, 0, 0, TimeSpan.Zero);
         var rotatedAt = new DateTimeOffset(2026, 10, 20, 8, 0, 0, TimeSpan.Zero);
         await using (AppDbContext previous = PostgreSqlTestFixture.CreateContext(ConnectionString))
         {
@@ -466,7 +467,7 @@ public sealed class PostgreSqlMigrationTests
                 INSERT INTO "identity".device_sessions
                     ("Id", "UserId", "DeviceName", "RefreshTokenHash", "PreviousRefreshTokenHash", "RotatedAt",
                      "DiscardedRefreshTokenHash", "DiscardedAt", "CreatedAt", "LastUsedAt", "ExpiresAt", "Version")
-                VALUES (@id, @user, 'Phone', @current, @previous, @rotated, @discarded, NULL, @rotated, @rotated, @expires, 3)
+                VALUES (@id, @user, 'Phone', @current, @previous, @rotated, @discarded, NULL, @created, @rotated, @expires, 3)
                 """;
             foreach ((Guid id, byte seed, byte[]? discarded) in new[] { (retriedSession, (byte)1, discardedHash), (plainSession, (byte)3, (byte[]?)null) })
             {
@@ -476,6 +477,7 @@ public sealed class PostgreSqlMigrationTests
                 command.Parameters.AddWithValue("current", Enumerable.Repeat(seed, 32).ToArray());
                 command.Parameters.AddWithValue("previous", Enumerable.Repeat((byte)(seed + 1), 32).ToArray());
                 command.Parameters.AddWithValue("rotated", rotatedAt);
+                command.Parameters.AddWithValue("created", createdAt);
                 command.Parameters.Add(new NpgsqlParameter("discarded", NpgsqlTypes.NpgsqlDbType.Bytea) { Value = (object?)discarded ?? DBNull.Value });
                 command.Parameters.AddWithValue("expires", rotatedAt.AddDays(60));
                 await command.ExecuteNonQueryAsync(TestContext.CancellationToken);
@@ -488,7 +490,7 @@ public sealed class PostgreSqlMigrationTests
             DeviceSessionDiscardedToken migrated = await context.DeviceSessionDiscardedTokens.SingleAsync(TestContext.CancellationToken);
             Assert.AreEqual(retriedSession, migrated.SessionId);
             CollectionAssert.AreEqual(discardedHash, migrated.TokenHash);
-            Assert.AreEqual(rotatedAt, migrated.DiscardedAt);
+            Assert.AreEqual(createdAt, migrated.DiscardedAt);
         }
     }
 

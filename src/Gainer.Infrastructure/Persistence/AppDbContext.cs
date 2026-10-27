@@ -1058,9 +1058,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
                 table.HasCheckConstraint(
                     "CK_identity_device_session_discarded_tokens_hash",
                     "octet_length(\"TokenHash\") = 32"));
-            discarded.HasKey(item => new { item.SessionId, item.TokenHash });
+            discarded.HasKey(item => item.TokenHash);
             discarded.Property(item => item.TokenHash).HasColumnType(ByteaColumnType);
-            discarded.HasIndex(item => item.TokenHash).IsUnique();
+            discarded.HasIndex(item => item.SessionId);
         });
     }
 

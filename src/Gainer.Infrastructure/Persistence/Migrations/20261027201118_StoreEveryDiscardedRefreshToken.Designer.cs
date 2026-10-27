@@ -4792,19 +4792,18 @@ namespace Gainer.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Gainer.Infrastructure.Persistence.DeviceSessionDiscardedToken", b =>
                 {
-                    b.Property<Guid>("SessionId")
-                        .HasColumnType("uuid");
-
                     b.Property<byte[]>("TokenHash")
                         .HasColumnType("bytea");
 
                     b.Property<DateTimeOffset>("DiscardedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.HasKey("SessionId", "TokenHash");
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
 
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
+                    b.HasKey("TokenHash");
+
+                    b.HasIndex("SessionId");
 
                     b.ToTable("device_session_discarded_tokens", "identity", t =>
                         {

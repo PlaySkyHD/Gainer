@@ -142,7 +142,7 @@ Das System MUST Betreiberfunktionen auf Konten, Einladungen und Kontostatus begr
 
 ### Requirement: Wiederverwendung widerruft die Session
 
-Wird ein ersetzter Refresh-Token nach der Kulanzfrist (`Security:DeviceSessions:ReuseGracePeriod`, Standard 6 h) eingelöst, SHALL die API mit 401 antworten und die Session widerrufen. In der Frist SHALL sie den direkten Vorgänger bis zu zehnmal akzeptieren, je Retry den zuletzt ausgestellten Token verwerfend. Nach Benutzung des Nachfolgers und bei älteren Tokens MUST sie 401 liefern. Ein elfter Retry und jeder verworfene Token der laufenden oder vorigen Rotation MUST die Session widerrufen.
+Wird ein ersetzter Refresh-Token nach der Kulanzfrist (`Security:DeviceSessions:ReuseGracePeriod`, Standard 6 h) eingelöst, SHALL die API 401 liefern und die Session widerrufen. In der Frist SHALL sie den Vorgänger bis zu zehnmal akzeptieren, je Retry den zuletzt ausgestellten Token verwerfend. Nach Nutzung des Nachfolgers und bei älteren Tokens MUST sie 401 liefern. Ein elfter Retry und jeder verworfene Token MUST die Session widerrufen, bis ein Retry einer späteren Rotation ihn ablöst.
 
 #### Scenario: Gestohlener Token
 - **GIVEN** Token A wurde gegen Token B getauscht
@@ -183,6 +183,11 @@ Wird ein ersetzter Refresh-Token nach der Kulanzfrist (`Security:DeviceSessions:
 - **GIVEN** Token A wurde gegen Token B getauscht, und Token A wurde zehnmal per Retry eingelöst
 - **WHEN** Token A innerhalb der Kulanzfrist ein elftes Mal eingelöst wird
 - **THEN** antwortet die API mit 401, und der zuletzt ausgestellte Token funktioniert nicht mehr
+
+#### Scenario: Verworfener Token nach weiteren Rotationen
+- **GIVEN** das Gerät hat Token A gegen Token B getauscht, ein Angreifer erhielt per Retry mit Token A Token C und tauschte danach zweimal ohne Retry weiter bis Token E
+- **WHEN** das Gerät Token B einlöst
+- **THEN** antwortet die API mit 401, und Token E funktioniert nicht mehr
 
 ### Requirement: Widerruf wirkt sofort
 

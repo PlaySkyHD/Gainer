@@ -365,27 +365,30 @@ public sealed class AuthenticationApiTests
     }
 
     [TestMethod]
-    public async Task DiscardedTokenOfThePreviousRotationStillRevokesAfterTheSuccessorWasUsed()
+    public async Task DiscardedTokenStillRevokesAfterLaterNormalRotations()
     {
         var timeProvider = new MutableTimeProvider(Start);
         await using WebApplication app = await CreateApplicationAsync(timeProvider);
         await CreateUserAsync(app, Email, Password);
         using HttpClient client = CreateClient(app);
-        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
-        TokenResponse lost = await RefreshSucceedsAsync(client, first.RefreshToken);
+        TokenResponse stolen = await BearerTestClient.LoginAsync(client, Email, Password);
+        TokenResponse device = await RefreshSucceedsAsync(client, stolen.RefreshToken);
         timeProvider.Advance(TimeSpan.FromSeconds(10));
-        TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
-        timeProvider.Advance(TimeSpan.FromMinutes(15));
-        TokenResponse next = await RefreshSucceedsAsync(client, retried.RefreshToken);
+        TokenResponse attacker = await RefreshSucceedsAsync(client, stolen.RefreshToken);
+        for (int rotation = 0; rotation < 2; rotation++)
+        {
+            timeProvider.Advance(TimeSpan.FromMinutes(15));
+            attacker = await RefreshSucceedsAsync(client, attacker.RefreshToken);
+        }
 
-        using HttpResponseMessage discarded = await BearerTestClient.RefreshAsync(client, lost.RefreshToken);
+        using HttpResponseMessage discarded = await BearerTestClient.RefreshAsync(client, device.RefreshToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, discarded.StatusCode);
-        using HttpResponseMessage revoked = await BearerTestClient.RefreshAsync(client, next.RefreshToken);
+        using HttpResponseMessage revoked = await BearerTestClient.RefreshAsync(client, attacker.RefreshToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
     }
 
     [TestMethod]
-    public async Task DiscardedTokensOlderThanThePreviousRotationAreForgotten()
+    public async Task ARetryOfALaterRotationReplacesTheStoredDiscardedTokens()
     {
         var timeProvider = new MutableTimeProvider(Start);
         await using WebApplication app = await CreateApplicationAsync(timeProvider);
@@ -394,14 +397,15 @@ public sealed class AuthenticationApiTests
         TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
         _ = await RefreshSucceedsAsync(client, first.RefreshToken);
         timeProvider.Advance(TimeSpan.FromSeconds(10));
+        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
         TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
         timeProvider.Advance(TimeSpan.FromMinutes(15));
-        TokenResponse next = await RefreshSucceedsAsync(client, retried.RefreshToken);
-        Assert.AreEqual(1, await CountDiscardedTokensAsync(app, userId));
+        _ = await RefreshSucceedsAsync(client, retried.RefreshToken);
+        Assert.AreEqual(2, await CountDiscardedTokensAsync(app, userId));
 
-        timeProvider.Advance(TimeSpan.FromMinutes(15));
-        _ = await RefreshSucceedsAsync(client, next.RefreshToken);
-        Assert.AreEqual(0, await CountDiscardedTokensAsync(app, userId));
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        _ = await RefreshSucceedsAsync(client, retried.RefreshToken);
+        Assert.AreEqual(1, await CountDiscardedTokensAsync(app, userId));
     }
 
     [TestMethod]
