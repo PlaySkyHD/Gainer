@@ -210,7 +210,11 @@ public sealed class AuthenticationApiTests
 
         // Only the immediate predecessor is remembered; the older token is simply unknown.
         TokenResponse retried = await RefreshSucceedsAsync(client, second.RefreshToken);
-        Assert.AreNotEqual(third.RefreshToken, retried.RefreshToken);
+        _ = await RefreshSucceedsAsync(client, retried.RefreshToken);
+
+        // The retry discarded the token from the lost response, so it is rejected now.
+        using HttpResponseMessage discarded = await BearerTestClient.RefreshAsync(client, third.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, discarded.StatusCode);
     }
 
     [TestMethod]
