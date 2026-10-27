@@ -75,6 +75,30 @@ void main() {
     },
   );
 
+  testWidgets('Volumen wird mit Tausenderpunkt und ohne Nachkomma gezeigt', (
+    tester,
+  ) async {
+    final workout = await tester.runAsync(
+      () => harness.seedWorkout(
+        title: 'Schwer',
+        start: DateTime.utc(2026, 10, 17, 8),
+        end: DateTime.utc(2026, 10, 17, 9),
+        blocks: [
+          _bench(const [
+            LoggedSet(setId: 's1', weightKg: 4000, repetitions: 1),
+            LoggedSet(setId: 's2', weightKg: 4000, repetitions: 1),
+            LoggedSet(setId: 's3', weightKg: 4345.5, repetitions: 1),
+          ]),
+        ],
+      ),
+    );
+
+    await pumpSummary(tester, workout!.workoutId);
+
+    expect(find.text('12.346 kg'), findsOneWidget);
+    expect(find.text('12345,5 kg'), findsNothing);
+  });
+
   testWidgets('neuer 1RM-Rekord wird hervorgehoben', (tester) async {
     await tester.runAsync(
       () => harness.seedWorkout(

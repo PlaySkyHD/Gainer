@@ -11,6 +11,7 @@ import '../../core/theme.dart';
 import '../cardio/cardio_feature.dart';
 import '../cardio/cardio_offer_card.dart';
 import 'training_format.dart';
+import 'training_statistics_view_model.dart' show formatStatisticsVolume;
 
 /// Ergebnis der Zusammenfassung: „Fertig“ schließt das Training, „Training
 /// fortsetzen“ öffnet es wieder.
@@ -181,7 +182,7 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
     final summary = data.summary;
     final workout = data.workout;
     final unit = data.unit;
-    final volume = formatWeight(summary.volumeKg, unit);
+    final volume = formatStatisticsVolume(summary.volumeKg, unit);
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         GainerSpacing.m,
@@ -244,7 +245,7 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
                   _Metric(
                     icon: CupertinoIcons.chart_bar_alt_fill,
                     label: 'Volumen',
-                    value: '$volume ${unit.label}',
+                    value: volume,
                   ),
                   _Metric(
                     icon: CupertinoIcons.square_stack_3d_up_fill,
@@ -374,7 +375,8 @@ String _recordText(NewRecord record, WeightUnit unit) {
   return switch (record.kind) {
     RecordKind.estimatedOneRepMax => '1RM $weight ${unit.label}',
     RecordKind.maxWeight => 'Gewicht $weight ${unit.label}',
-    RecordKind.volume => 'Volumen $weight ${unit.label}',
+    RecordKind.volume =>
+      'Volumen ${formatStatisticsVolume(record.value, unit)}',
     RecordKind.maxRepetitions => 'Wdh. ${record.value.round()}',
   };
 }
