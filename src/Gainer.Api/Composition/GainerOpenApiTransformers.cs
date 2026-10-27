@@ -9,8 +9,8 @@ internal static class GainerOpenApiTransformers
 {
     private const string BearerSchemeName = "Bearer";
     private const string MultipartMediaType = "multipart/form-data";
-    private const string MealEstimatesPath = "/api/v1/nutrition/meal-estimates";
-    private const string LabelScansPath = "/api/v1/nutrition/label-scans";
+    private const string MealEstimatesPath = "api/v1/nutrition/meal-estimates";
+    private const string LabelScansPath = "api/v1/nutrition/label-scans";
 
     internal static OpenApiOptions AddGainerTransformers(this OpenApiOptions options)
     {
@@ -83,7 +83,7 @@ internal static class GainerOpenApiTransformers
             });
         }
 
-        string? path = context.Description.RelativePath is { } relative ? '/' + relative : null;
+        string? path = context.Description.RelativePath;
         if (path == MealEstimatesPath)
         {
             operation.RequestBody = MultipartBody(

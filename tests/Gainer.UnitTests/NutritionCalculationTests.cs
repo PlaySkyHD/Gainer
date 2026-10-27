@@ -63,12 +63,12 @@ public sealed class NutritionCalculationTests
     public void EstimatedComponentsCarryFiberAndRejectInvalidFiber()
     {
         MealEstimateComponentDraft soup = MealEstimateComponentDraft.Create(
-            "Linsensuppe", 400m, 360m, 22m, 48m, 6m, MealEstimateConfidence.Medium, [], fiberGrams: 12m);
+            "Linsensuppe", 400m, new MealEstimateNutrients(360m, 22m, 48m, 6m, FiberGrams: 12m), MealEstimateConfidence.Medium, []);
         Assert.AreEqual(12m, soup.FiberGrams);
 
         NutritionValidationException error = Assert.Throws<NutritionValidationException>(() =>
             MealEstimateComponentDraft.Create(
-                "Linsensuppe", 400m, 360m, null, null, null, MealEstimateConfidence.Medium, [], fiberGrams: -1m));
+                "Linsensuppe", 400m, new MealEstimateNutrients(360m, FiberGrams: -1m), MealEstimateConfidence.Medium, []));
         Assert.IsTrue(error.Errors.ContainsKey("FiberGrams"));
     }
 
@@ -84,7 +84,7 @@ public sealed class NutritionCalculationTests
     public void EstimatedComponentsAllowZeroCalorieSaltAndRejectInvalidSalt()
     {
         MealEstimateComponentDraft salt = MealEstimateComponentDraft.Create(
-            "Salz", 6m, 0m, 0m, 0m, 0m, MealEstimateConfidence.High, [], saltGrams: 6m);
+            "Salz", 6m, new MealEstimateNutrients(0m, 0m, 0m, 0m, SaltGrams: 6m), MealEstimateConfidence.High, []);
         Assert.AreEqual(0m, salt.Kilocalories);
         Assert.AreEqual(6m, salt.SaltGrams);
 
@@ -92,7 +92,7 @@ public sealed class NutritionCalculationTests
         {
             NutritionValidationException error = Assert.Throws<NutritionValidationException>(() =>
                 MealEstimateComponentDraft.Create(
-                    "Pizza", 350m, 890m, null, null, null, MealEstimateConfidence.Medium, [], saltGrams: invalid));
+                    "Pizza", 350m, new MealEstimateNutrients(890m, SaltGrams: invalid), MealEstimateConfidence.Medium, []));
             Assert.IsTrue(error.Errors.ContainsKey("SaltGrams"));
         }
     }
@@ -102,19 +102,19 @@ public sealed class NutritionCalculationTests
     {
         NutritionEntryInput eggs = NutritionEntryInput.Create(
             Guid.NewGuid(), MealType.Breakfast, 0, "Ei", 200m, new NutritionPer100Grams(155m, 13m, 1m, 11m),
-            portion: new NutritionPortion(50m, 4m));
+            new NutritionItemDetails(Portion: new NutritionPortion(50m, 4m)));
         Assert.AreEqual(4m, eggs.Portion!.PieceCount);
         Assert.AreEqual(200m, eggs.Portion.AmountGrams);
 
         NutritionEntryInput remembered = NutritionEntryInput.Create(
             Guid.NewGuid(), MealType.Breakfast, 0, "Ei", 130m, new NutritionPer100Grams(155m, 13m, 1m, 11m),
-            portion: new NutritionPortion(50m, null));
+            new NutritionItemDetails(Portion: new NutritionPortion(50m, null)));
         Assert.IsNull(remembered.Portion!.PieceCount, "A piece weight alone is kept for later.");
 
         NutritionValidationException mismatch = Assert.Throws<NutritionValidationException>(() =>
             NutritionEntryInput.Create(
                 Guid.NewGuid(), MealType.Breakfast, 0, "Ei", 180m, new NutritionPer100Grams(155m, null, null, null),
-                portion: new NutritionPortion(50m, 4m)));
+                new NutritionItemDetails(Portion: new NutritionPortion(50m, 4m))));
         Assert.IsTrue(mismatch.Errors.ContainsKey("AmountGrams"));
         Assert.Throws<NutritionValidationException>(() => NutritionPortion.From(null, 2m));
         Assert.IsNull(NutritionPortion.From(null, null));
@@ -124,12 +124,14 @@ public sealed class NutritionCalculationTests
     public void EstimatedPiecesAreKeptOnlyWhenConsistent()
     {
         MealEstimateComponentDraft eggs = MealEstimateComponentDraft.Create(
-            "Ei", 220m, 341m, 28m, 2m, 24m, MealEstimateConfidence.Medium, [], pieceCount: 4m, pieceGrams: 55m);
+            "Ei", 220m, new MealEstimateNutrients(341m, 28m, 2m, 24m), MealEstimateConfidence.Medium, [],
+            pieces: new MealEstimatePieces(4m, 55m));
         Assert.AreEqual(4m, eggs.PieceCount);
         Assert.AreEqual(55m, eggs.PieceGrams);
 
         MealEstimateComponentDraft mismatch = MealEstimateComponentDraft.Create(
-            "Ei", 200m, 310m, 26m, 2m, 22m, MealEstimateConfidence.Medium, [], pieceCount: 4m, pieceGrams: 55m);
+            "Ei", 200m, new MealEstimateNutrients(310m, 26m, 2m, 22m), MealEstimateConfidence.Medium, [],
+            pieces: new MealEstimatePieces(4m, 55m));
         Assert.IsNull(mismatch.PieceCount);
         Assert.IsNull(mismatch.PieceGrams);
     }

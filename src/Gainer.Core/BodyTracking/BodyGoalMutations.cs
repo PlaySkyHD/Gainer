@@ -4,25 +4,29 @@ namespace Gainer.Core.BodyTracking;
 
 public sealed record ActiveBodyGoalExpectation(Guid GoalId, long Version);
 
+/// <summary>The weight and date values of a body goal.</summary>
+public sealed record BodyGoalPlan(
+    BodyGoalKind Kind,
+    decimal StartWeightKg,
+    decimal TargetWeightKg,
+    DateOnly StartDate,
+    DateOnly? TargetDate = null);
+
 public sealed record ActivateBodyGoalMutation : ITypedMutation<BodyGoalSnapshot>
 {
     private ActivateBodyGoalMutation(
         MutationMetadata metadata,
         Guid goalId,
-        BodyGoalKind kind,
-        decimal startWeightKg,
-        decimal targetWeightKg,
-        DateOnly startDate,
-        DateOnly? targetDate,
+        BodyGoalPlan plan,
         ActiveBodyGoalExpectation? expectedActiveGoal)
     {
         Metadata = metadata;
         GoalId = goalId;
-        Kind = kind;
-        StartWeightKg = startWeightKg;
-        TargetWeightKg = targetWeightKg;
-        StartDate = startDate;
-        TargetDate = targetDate;
+        Kind = plan.Kind;
+        StartWeightKg = plan.StartWeightKg;
+        TargetWeightKg = plan.TargetWeightKg;
+        StartDate = plan.StartDate;
+        TargetDate = plan.TargetDate;
         ExpectedActiveGoal = expectedActiveGoal;
         ResourceVersionExpectation create = ResourceVersionExpectation.Create(
             ResourceKey.Create(ResourceKind.BodyGoal, goalId),
@@ -49,14 +53,11 @@ public sealed record ActivateBodyGoalMutation : ITypedMutation<BodyGoalSnapshot>
     public static ActivateBodyGoalMutation Create(
         MutationMetadata metadata,
         Guid goalId,
-        BodyGoalKind kind,
-        decimal startWeightKg,
-        decimal targetWeightKg,
-        DateOnly startDate,
-        DateOnly? targetDate = null,
+        BodyGoalPlan plan,
         ActiveBodyGoalExpectation? expectedActiveGoal = null)
     {
         ArgumentNullException.ThrowIfNull(metadata);
+        ArgumentNullException.ThrowIfNull(plan);
         if (goalId == Guid.Empty)
         {
             throw new ArgumentException("The goal identifier cannot be empty.", nameof(goalId));
@@ -65,11 +66,7 @@ public sealed record ActivateBodyGoalMutation : ITypedMutation<BodyGoalSnapshot>
         return new ActivateBodyGoalMutation(
             metadata,
             goalId,
-            kind,
-            startWeightKg,
-            targetWeightKg,
-            startDate,
-            targetDate,
+            plan,
             expectedActiveGoal);
     }
 }

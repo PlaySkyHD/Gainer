@@ -164,11 +164,12 @@ public sealed class BodyTrackingPersistenceTests
         ActivateBodyGoalMutation invalid = ActivateBodyGoalMutation.Create(
             Metadata(),
             Guid.NewGuid(),
-            (BodyGoalKind)999,
-            startWeightKg: 0,
-            targetWeightKg: -1,
-            startDate: new DateOnly(2026, 8, 18),
-            targetDate: new DateOnly(2026, 8, 17));
+            new BodyGoalPlan(
+                (BodyGoalKind)999,
+                StartWeightKg: 0,
+                TargetWeightKg: -1,
+                StartDate: new DateOnly(2026, 8, 18),
+                TargetDate: new DateOnly(2026, 8, 17)));
 
         BodyGoalValidationException exception = await Assert.ThrowsAsync<BodyGoalValidationException>(
             () => handler.ActivateAsync(invalid, TestContext.CancellationToken));
@@ -533,11 +534,7 @@ public sealed class BodyTrackingPersistenceTests
         ActiveBodyGoalExpectation? expectation = null) => ActivateBodyGoalMutation.Create(
             Metadata(),
             goalId,
-            kind,
-            startWeightKg,
-            targetWeightKg,
-            new DateOnly(2026, 8, 18),
-            new DateOnly(2026, 12, 31),
+            new BodyGoalPlan(kind, startWeightKg, targetWeightKg, new DateOnly(2026, 8, 18), new DateOnly(2026, 12, 31)),
             expectation);
 
     private static MutationMetadata Metadata() => MutationMetadata.Create(Guid.NewGuid(), Guid.NewGuid(), 1);
