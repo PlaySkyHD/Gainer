@@ -88,6 +88,7 @@ jobs:
         # e1 S6667: the exceptions are deliberately not logged, Npgsql and JSON messages can quote user data.
         # e2/e3 S6960: splitting the controllers would change tags in the published OpenAPI contract.
         # e4 S6932: the check rejects a second uploaded image; IFormFile binding alone cannot count files.
+        # e5 S1144: EF sets UserId through the private setter; without it the property is no longer mapped by convention.
         run: >
           dotnet sonarscanner begin
           /k:"playskyhd_gainer_backend"
@@ -97,7 +98,7 @@ jobs:
           /d:sonar.test.exclusions="apps/**"
           /d:sonar.coverage.exclusions="scripts/**"
           /d:sonar.cs.vscoveragexml.reportsPaths="coverage.xml"
-          /d:sonar.issue.ignore.multicriteria=e1,e2,e3,e4
+          /d:sonar.issue.ignore.multicriteria=e1,e2,e3,e4,e5
           /d:sonar.issue.ignore.multicriteria.e1.ruleKey=csharpsquid:S6667
           /d:sonar.issue.ignore.multicriteria.e1.resourceKey=src/Gainer.Infrastructure/Persistence/SyncMutationProcessor.cs
           /d:sonar.issue.ignore.multicriteria.e2.ruleKey=csharpsquid:S6960
@@ -106,6 +107,8 @@ jobs:
           /d:sonar.issue.ignore.multicriteria.e3.resourceKey=src/Gainer.Api/Controllers/AccountOperatorAccountsController.cs
           /d:sonar.issue.ignore.multicriteria.e4.ruleKey=csharpsquid:S6932
           /d:sonar.issue.ignore.multicriteria.e4.resourceKey=src/Gainer.Api/Controllers/NutritionController.cs
+          /d:sonar.issue.ignore.multicriteria.e5.ruleKey=csharpsquid:S1144
+          /d:sonar.issue.ignore.multicriteria.e5.resourceKey=src/Gainer.Core/Security/UserOwnedEntity.cs
 
       - name: Build backend
         run: dotnet build Gainer.slnx --no-restore
