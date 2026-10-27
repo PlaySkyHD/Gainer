@@ -838,15 +838,17 @@ class TrainingLogRepository {
     List<(String, LocalAggregateEnvelope<Object?>)> related = const [],
   }) async {
     await store.commitMutation(
-      mutationId: _ids(),
-      aggregateType: aggregateType,
-      aggregateId: aggregateId,
-      operation: operation,
-      baseVersion: baseVersion,
-      body: body,
-      envelope: envelope,
-      relatedEnvelopes: related,
-      createdAtUtc: _clock().toUtc(),
+      MutationDraft(
+        mutationId: _ids(),
+        aggregateType: aggregateType,
+        aggregateId: aggregateId,
+        operation: operation,
+        baseVersion: baseVersion,
+        body: body,
+        envelope: envelope,
+        relatedEnvelopes: related,
+        createdAtUtc: _clock().toUtc(),
+      ),
     );
   }
 }

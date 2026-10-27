@@ -166,28 +166,50 @@ String? validateBodyGoal({
   return null;
 }
 
-void validateDailyCheckIn({
-  required String localDate,
-  required double weightKg,
-  required double? caloriesKcal,
-  required double? proteinGrams,
-  required double? carbohydrateGrams,
-  required double? fatGrams,
-  required int? steps,
-  required int? sleepMinutes,
-  int? restingHeartRateBpm,
-  int? restingHrvMs,
-}) {
+/// Eingabewerte eines Tages-Check-ins; `null` heißt „nicht angegeben“.
+class DailyCheckInInput {
+  const DailyCheckInInput({
+    required this.localDate,
+    required this.weightKg,
+    this.caloriesKcal,
+    this.proteinGrams,
+    this.carbohydrateGrams,
+    this.fatGrams,
+    this.steps,
+    this.sleepMinutes,
+    this.restingHeartRateBpm,
+    this.restingHrvMs,
+  });
+
+  final String localDate;
+  final double weightKg;
+  final double? caloriesKcal;
+  final double? proteinGrams;
+  final double? carbohydrateGrams;
+  final double? fatGrams;
+  final int? steps;
+  final int? sleepMinutes;
+  final int? restingHeartRateBpm;
+  final int? restingHrvMs;
+}
+
+void validateDailyCheckIn(DailyCheckInInput input) {
+  final localDate = input.localDate;
+  final weightKg = input.weightKg;
+  final steps = input.steps;
+  final sleepMinutes = input.sleepMinutes;
+  final restingHeartRateBpm = input.restingHeartRateBpm;
+  final restingHrvMs = input.restingHrvMs;
   final errors = <String, String>{};
   if (!_validDate(localDate)) errors['localDate'] = _invalidCalendarDayMessage;
   if (!weightKg.isFinite || weightKg <= 0) {
     errors['weightKg'] = 'Das Gewicht muss positiv sein.';
   }
   _validateNutritionValues(errors, [
-    ('caloriesKcal', caloriesKcal),
-    ('proteinGrams', proteinGrams),
-    ('carbohydrateGrams', carbohydrateGrams),
-    ('fatGrams', fatGrams),
+    ('caloriesKcal', input.caloriesKcal),
+    ('proteinGrams', input.proteinGrams),
+    ('carbohydrateGrams', input.carbohydrateGrams),
+    ('fatGrams', input.fatGrams),
   ]);
   if (steps != null && steps < 0) {
     errors['steps'] = 'Schritte dürfen nicht negativ sein.';

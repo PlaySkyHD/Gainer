@@ -4,6 +4,7 @@ import 'package:gainer_mobile/data/models/api/strava_api_models.dart';
 import 'package:gainer_mobile/data/models/local/local_aggregate.dart';
 import 'package:gainer_mobile/data/models/local/local_mutation.dart';
 import 'package:gainer_mobile/data/repositories/cardio/cardio_repository.dart';
+import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_session.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_detail_screen.dart';
 
@@ -246,21 +247,23 @@ void main() {
   Future<void> markSynced(WidgetTester tester, CardioSession session) async {
     await tester.runAsync(
       () => harness.store.commitMutation(
-        mutationId: '00000000-0000-4000-8000-000000000900',
-        aggregateType: cardioSessionAggregateType,
-        aggregateId: session.sessionId,
-        operation: LocalMutationOperation.update,
-        baseVersion: 1,
-        body: session.toJson(),
-        envelope: LocalAggregateEnvelope<Object?>(
+        MutationDraft(
+          mutationId: '00000000-0000-4000-8000-000000000900',
+          aggregateType: cardioSessionAggregateType,
           aggregateId: session.sessionId,
-          serverSnapshot: session.toJson(),
-          workingCopy: session.toJson(),
-          serverVersion: 1,
-          optimisticVersion: 2,
-          syncState: LocalSyncState.pending,
+          operation: LocalMutationOperation.update,
+          baseVersion: 1,
+          body: session.toJson(),
+          envelope: LocalAggregateEnvelope<Object?>(
+            aggregateId: session.sessionId,
+            serverSnapshot: session.toJson(),
+            workingCopy: session.toJson(),
+            serverVersion: 1,
+            optimisticVersion: 2,
+            syncState: LocalSyncState.pending,
+          ),
+          createdAtUtc: harness.now,
         ),
-        createdAtUtc: harness.now,
       ),
     );
   }

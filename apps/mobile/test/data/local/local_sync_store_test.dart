@@ -32,17 +32,19 @@ void main() {
       final store = LocalSyncStore(database: database, accountId: accountA);
       final mutableBody = <String, Object?>{'weightKg': 81.5};
       final mutation = await store.commitMutation(
-        mutationId: 'c1234567-1234-4234-8234-123456789abc',
-        aggregateType: 'daily-check-in',
-        aggregateId: aggregateId,
-        operation: LocalMutationOperation.create,
-        baseVersion: null,
-        body: mutableBody,
-        envelope: localEnvelope(
+        MutationDraft(
+          mutationId: 'c1234567-1234-4234-8234-123456789abc',
+          aggregateType: 'daily-check-in',
           aggregateId: aggregateId,
-          workingCopy: mutableBody,
+          operation: LocalMutationOperation.create,
+          baseVersion: null,
+          body: mutableBody,
+          envelope: localEnvelope(
+            aggregateId: aggregateId,
+            workingCopy: mutableBody,
+          ),
+          createdAtUtc: DateTime.utc(2026, 10, 12),
         ),
-        createdAtUtc: DateTime.utc(2026, 10, 12),
       );
       mutableBody['weightKg'] = 99;
       expect(mutation.sequence, 1);
@@ -76,18 +78,20 @@ void main() {
       final store = LocalSyncStore(database: database, accountId: accountA);
       expect(
         () => store.commitMutation(
-          mutationId: 'c1234567-1234-4234-8234-123456789abc',
-          aggregateType: 'daily-check-in',
-          aggregateId: aggregateId,
-          operation: LocalMutationOperation.create,
-          baseVersion: null,
-          body: {'weightKg': 81.5},
-          envelope: localEnvelope(
+          MutationDraft(
+            mutationId: 'c1234567-1234-4234-8234-123456789abc',
+            aggregateType: 'daily-check-in',
             aggregateId: aggregateId,
-            workingCopy: {'weightKg': 81.5},
+            operation: LocalMutationOperation.create,
+            baseVersion: null,
+            body: {'weightKg': 81.5},
+            envelope: localEnvelope(
+              aggregateId: aggregateId,
+              workingCopy: {'weightKg': 81.5},
+            ),
+            afterEnvelopeWriteForTesting: () =>
+                throw StateError('simulated process failure'),
           ),
-          afterEnvelopeWriteForTesting: () =>
-              throw StateError('simulated process failure'),
         ),
         throwsStateError,
       );
@@ -104,7 +108,29 @@ void main() {
     final subscription = store.committedMutations.listen(emitted.add);
     await expectLater(
       store.commitMutation(
-        mutationId: 'c1234567-1234-4234-8234-123456789abc',
+        MutationDraft(
+          mutationId: 'c1234567-1234-4234-8234-123456789abc',
+          aggregateType: 'daily-check-in',
+          aggregateId: aggregateId,
+          operation: LocalMutationOperation.create,
+          baseVersion: null,
+          body: {'weightKg': 81.5},
+          envelope: localEnvelope(
+            aggregateId: aggregateId,
+            workingCopy: {'weightKg': 81.5},
+          ),
+          afterEnvelopeWriteForTesting: () =>
+              throw StateError('simulated transaction rollback'),
+        ),
+      ),
+      throwsStateError,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(emitted, isEmpty);
+
+    final committed = await store.commitMutation(
+      MutationDraft(
+        mutationId: 'd1234567-1234-4234-8234-123456789abc',
         aggregateType: 'daily-check-in',
         aggregateId: aggregateId,
         operation: LocalMutationOperation.create,
@@ -114,24 +140,6 @@ void main() {
           aggregateId: aggregateId,
           workingCopy: {'weightKg': 81.5},
         ),
-        afterEnvelopeWriteForTesting: () =>
-            throw StateError('simulated transaction rollback'),
-      ),
-      throwsStateError,
-    );
-    await Future<void>.delayed(Duration.zero);
-    expect(emitted, isEmpty);
-
-    final committed = await store.commitMutation(
-      mutationId: 'd1234567-1234-4234-8234-123456789abc',
-      aggregateType: 'daily-check-in',
-      aggregateId: aggregateId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'weightKg': 81.5},
-      envelope: localEnvelope(
-        aggregateId: aggregateId,
-        workingCopy: {'weightKg': 81.5},
       ),
     );
     await Future<void>.delayed(Duration.zero);
@@ -145,15 +153,17 @@ void main() {
     final first = LocalSyncStore(database: database, accountId: accountA);
     const accountB = 'd1234567-1234-4234-8234-123456789abc';
     await first.commitMutation(
-      mutationId: 'c1234567-1234-4234-8234-123456789abc',
-      aggregateType: 'daily-check-in',
-      aggregateId: aggregateId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'weightKg': 81},
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: 'c1234567-1234-4234-8234-123456789abc',
+        aggregateType: 'daily-check-in',
         aggregateId: aggregateId,
-        workingCopy: {'weightKg': 81},
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'weightKg': 81},
+        envelope: localEnvelope(
+          aggregateId: aggregateId,
+          workingCopy: {'weightKg': 81},
+        ),
       ),
     );
     expect(await first.readOutbox(), hasLength(1));
@@ -173,15 +183,17 @@ void main() {
       accountId: accountB,
     );
     await second.commitMutation(
-      mutationId: 'e1234567-1234-4234-8234-123456789abc',
-      aggregateType: 'daily-check-in',
-      aggregateId: aggregateId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'weightKg': 81},
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: 'e1234567-1234-4234-8234-123456789abc',
+        aggregateType: 'daily-check-in',
         aggregateId: aggregateId,
-        workingCopy: {'weightKg': 81},
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'weightKg': 81},
+        envelope: localEnvelope(
+          aggregateId: aggregateId,
+          workingCopy: {'weightKg': 81},
+        ),
       ),
     );
     expect(await second.readOutbox(), hasLength(1));
@@ -229,6 +241,25 @@ void main() {
       await store.freezeWritesIfOutboxEmpty();
       await expectLater(
         store.commitMutation(
+          MutationDraft(
+            mutationId: 'c1234567-1234-4234-8234-123456789abc',
+            aggregateType: 'daily-check-in',
+            aggregateId: aggregateId,
+            operation: LocalMutationOperation.create,
+            baseVersion: null,
+            body: {'weightKg': 81},
+            envelope: localEnvelope(
+              aggregateId: aggregateId,
+              workingCopy: {'weightKg': 81},
+            ),
+          ),
+        ),
+        throwsStateError,
+      );
+      expect(await store.readOutbox(), isEmpty);
+      await store.unfreezeWrites();
+      await store.commitMutation(
+        MutationDraft(
           mutationId: 'c1234567-1234-4234-8234-123456789abc',
           aggregateType: 'daily-check-in',
           aggregateId: aggregateId,
@@ -239,21 +270,6 @@ void main() {
             aggregateId: aggregateId,
             workingCopy: {'weightKg': 81},
           ),
-        ),
-        throwsStateError,
-      );
-      expect(await store.readOutbox(), isEmpty);
-      await store.unfreezeWrites();
-      await store.commitMutation(
-        mutationId: 'c1234567-1234-4234-8234-123456789abc',
-        aggregateType: 'daily-check-in',
-        aggregateId: aggregateId,
-        operation: LocalMutationOperation.create,
-        baseVersion: null,
-        body: {'weightKg': 81},
-        envelope: localEnvelope(
-          aggregateId: aggregateId,
-          workingCopy: {'weightKg': 81},
         ),
       );
       await expectLater(store.freezeWritesIfOutboxEmpty(), throwsStateError);

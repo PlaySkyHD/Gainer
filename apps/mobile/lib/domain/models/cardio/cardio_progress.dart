@@ -158,47 +158,23 @@ class CardioProgress {
         DateTime(firstWeek.year, firstWeek.month, firstWeek.day - 7 * i),
     ];
     final zone2 = zones.where((zone) => zone.number == 2).firstOrNull;
-    final targetTime = List.filled(weekCount, Duration.zero);
-    final zone2Time = List.filled(weekCount, Duration.zero);
-    final counts = List.filled(weekCount, 0);
-    final totals = List.filled(weekCount, Duration.zero);
-    var any = false;
-
     final ordered = [...sessions]
       ..sort((a, b) => a.startedAtUtc.compareTo(b.startedAtUtc));
-    for (final session in ordered) {
-      if (session.deletedAtUtc != null) continue;
-      final index = _indexOf(
-        starts,
-        _weekStart(session.startedAtUtc.toLocal()),
-      );
-      if (index < 0) continue;
-      any = true;
-      final analysis = CardioAnalysis.of(session);
-      targetTime[index] += analysis.timeInZone;
-      counts[index]++;
-      totals[index] += session.duration;
-      if (zone2 != null) zone2Time[index] += _timeInZone(session, zone2);
-    }
+    final totals = _WeekTotals.of(ordered, starts, zone2);
 
     // Effizienz und Vergleich: alle Einheiten mit Leistung und Puls.
     final points = _efficiencyPoints(ordered);
-
-    final recovered = [
-      for (final session in ordered.reversed)
-        if (session.deletedAtUtc == null && session.recoveryDropBpm != null)
-          session.recoveryDropBpm!,
-    ].take(recoverySessionCount).toList();
+    final recovered = _recoveryDrops(ordered);
 
     return CardioProgress(
       weeks: [
         for (var i = 0; i < weekCount; i++)
           CardioWeek(
             start: starts[i],
-            timeInTarget: targetTime[i],
-            timeInZone2: zone2 == null ? null : zone2Time[i],
-            sessionCount: counts[i],
-            totalDuration: totals[i],
+            timeInTarget: totals.targetTime[i],
+            timeInZone2: zone2 == null ? null : totals.zone2Time[i],
+            sessionCount: totals.counts[i],
+            totalDuration: totals.durations[i],
           ),
       ],
       weeklyTargetMinutes: weeklyTargetMinutes,
@@ -210,9 +186,15 @@ class CardioProgress {
           ? null
           : (recovered.reduce((a, b) => a + b) / recovered.length).round(),
       recoverySampleCount: recovered.length,
-      hasSessions: any,
+      hasSessions: totals.any,
     );
   }
+
+  static List<int> _recoveryDrops(List<CardioSession> ordered) => [
+    for (final session in ordered.reversed)
+      if (session.deletedAtUtc == null && session.recoveryDropBpm != null)
+        session.recoveryDropBpm!,
+  ].take(recoverySessionCount).toList();
 
   /// Häufigste Leistungsstufe (auf 10 W gerundet) ab drei Einheiten; bei
   /// Gleichstand die höhere Stufe. Erster und letzter Ø-Puls nach Startzeit.
@@ -242,6 +224,50 @@ class CardioProgress {
       lastBpm: group.last.averageBpm.round(),
       sessionCount: group.length,
     );
+  }
+}
+
+/// Summen je Woche, in der Reihenfolge von `starts`.
+class _WeekTotals {
+  _WeekTotals._()
+    : targetTime = List.filled(CardioProgress.weekCount, Duration.zero),
+      zone2Time = List.filled(CardioProgress.weekCount, Duration.zero),
+      counts = List.filled(CardioProgress.weekCount, 0),
+      durations = List.filled(CardioProgress.weekCount, Duration.zero);
+
+  /// Summiert die nach Startzeit geordneten, nicht gelöschten Einheiten in die
+  /// Woche, in der sie lokal liegen; Einheiten außerhalb der Wochen zählen nicht.
+  factory _WeekTotals.of(
+    List<CardioSession> ordered,
+    List<DateTime> starts,
+    CardioZone? zone2,
+  ) {
+    final totals = _WeekTotals._();
+    for (final session in ordered) {
+      if (session.deletedAtUtc != null) continue;
+      final index = _indexOf(
+        starts,
+        _weekStart(session.startedAtUtc.toLocal()),
+      );
+      if (index >= 0) totals._add(index, session, zone2);
+    }
+    return totals;
+  }
+
+  final List<Duration> targetTime;
+  final List<Duration> zone2Time;
+  final List<int> counts;
+  final List<Duration> durations;
+  bool any = false;
+
+  void _add(int index, CardioSession session, CardioZone? zone2) {
+    any = true;
+    targetTime[index] += CardioAnalysis.of(session).timeInZone;
+    counts[index]++;
+    durations[index] += session.duration;
+    if (zone2 != null) {
+      zone2Time[index] += CardioProgress._timeInZone(session, zone2);
+    }
   }
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/body/body_repository.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 import 'package:gainer_mobile/domain/models/cardio/cardio_draft.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_feature.dart';
 import 'package:gainer_mobile/ui/features/cardio/cardio_hrv_measurement_screen.dart';
@@ -148,14 +149,16 @@ void main() {
 
     test('mit heutigem Check-in wird dieser korrigiert', () async {
       await body.saveCheckIn(
-        localDate: '2026-10-19',
-        weightKg: 71,
-        caloriesKcal: null,
-        proteinGrams: null,
-        carbohydrateGrams: null,
-        fatGrams: null,
-        steps: null,
-        sleepMinutes: null,
+        DailyCheckInInput(
+          localDate: '2026-10-19',
+          weightKg: 71,
+          caloriesKcal: null,
+          proteinGrams: null,
+          carbohydrateGrams: null,
+          fatGrams: null,
+          steps: null,
+          sleepMinutes: null,
+        ),
       );
       await harness.controller.refreshStatus();
       await controller.start();
@@ -212,16 +215,18 @@ void main() {
       for (var i = 0; i < rates.length; i++) {
         final date = '2026-10-${(10 + i).toString().padLeft(2, '0')}';
         await body.saveCheckIn(
-          localDate: date,
-          weightKg: 70,
-          caloriesKcal: null,
-          proteinGrams: null,
-          carbohydrateGrams: null,
-          fatGrams: null,
-          steps: null,
-          sleepMinutes: null,
-          restingHeartRateBpm: rates[i],
-          restingHrvMs: 50,
+          DailyCheckInInput(
+            localDate: date,
+            weightKg: 70,
+            caloriesKcal: null,
+            proteinGrams: null,
+            carbohydrateGrams: null,
+            fatGrams: null,
+            steps: null,
+            sleepMinutes: null,
+            restingHeartRateBpm: rates[i],
+            restingHrvMs: 50,
+          ),
         );
       }
       await controller.load();
@@ -381,16 +386,18 @@ void main() {
       await tester.runAsync(() async {
         for (var i = 0; i < 3; i++) {
           await body.saveCheckIn(
-            localDate: '2026-10-1${i + 1}',
-            weightKg: 70,
-            caloriesKcal: null,
-            proteinGrams: null,
-            carbohydrateGrams: null,
-            fatGrams: null,
-            steps: null,
-            sleepMinutes: null,
-            restingHeartRateBpm: 56 + i * 2,
-            restingHrvMs: 50,
+            DailyCheckInInput(
+              localDate: '2026-10-1${i + 1}',
+              weightKg: 70,
+              caloriesKcal: null,
+              proteinGrams: null,
+              carbohydrateGrams: null,
+              fatGrams: null,
+              steps: null,
+              sleepMinutes: null,
+              restingHeartRateBpm: 56 + i * 2,
+              restingHrvMs: 50,
+            ),
           );
         }
         await controller.load();

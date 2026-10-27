@@ -133,13 +133,12 @@ class NativeHandoverRepository {
     required String sourceClientId,
     required DateTime expiresAtUtc,
   }) async {
-    _validateUuid(handoverId, 'handoverId');
-    _validateUuid(sourceClientId, 'sourceClientId');
-    if (frozenRevision < 0 || oneTimeCode.isEmpty) {
-      throw ArgumentError(
-        'A handover code and nonnegative frozen revision are required.',
-      );
-    }
+    _validateCompleteArguments(
+      handoverId,
+      sourceClientId,
+      frozenRevision,
+      oneTimeCode,
+    );
     final secureStore = _requireSecureStore();
     final origin = api.configuration.canonicalApiOrigin;
     final accountId = store.accountId;
@@ -196,15 +195,13 @@ class NativeHandoverRepository {
         expectedAccountId: accountId,
       );
     } on ApiException catch (error) {
-      // A wrong code or id is typed by hand and can never succeed on retry
-      // with the same values. Release the freeze and the record so a corrected
-      // entry is accepted instead of being rejected as a different completion.
-      if (_isDefinitiveCompleteRejection(error)) {
-        // Only release a freeze this flow set. A device that was already
-        // frozen (e.g. after a recovery that keeps it frozen) stays frozen.
-        if (!wasFrozen || isReplay) await store.unfreezeWrites();
-        await secureStore.clear(apiOrigin: origin, accountId: accountId);
-      }
+      await _releaseAfterRejectedComplete(
+        error,
+        secureStore,
+        origin: origin,
+        accountId: accountId,
+        keepFrozen: wasFrozen && !isReplay,
+      );
       rethrow;
     }
     if (!response.isActiveWriter ||
@@ -217,6 +214,38 @@ class NativeHandoverRepository {
     await store.unfreezeWrites();
     await secureStore.clear(apiOrigin: origin, accountId: accountId);
     return response;
+  }
+
+  void _validateCompleteArguments(
+    String handoverId,
+    String sourceClientId,
+    int frozenRevision,
+    String oneTimeCode,
+  ) {
+    _validateUuid(handoverId, 'handoverId');
+    _validateUuid(sourceClientId, 'sourceClientId');
+    if (frozenRevision < 0 || oneTimeCode.isEmpty) {
+      throw ArgumentError(
+        'A handover code and nonnegative frozen revision are required.',
+      );
+    }
+  }
+
+  /// A wrong code or id is typed by hand and can never succeed on retry
+  /// with the same values. Release the freeze and the record so a corrected
+  /// entry is accepted instead of being rejected as a different completion.
+  Future<void> _releaseAfterRejectedComplete(
+    ApiException error,
+    PendingHandoverSecretStore secureStore, {
+    required String origin,
+    required String accountId,
+    required bool keepFrozen,
+  }) async {
+    if (!_isDefinitiveCompleteRejection(error)) return;
+    // Only release a freeze this flow set. A device that was already
+    // frozen (e.g. after a recovery that keeps it frozen) stays frozen.
+    if (!keepFrozen) await store.unfreezeWrites();
+    await secureStore.clear(apiOrigin: origin, accountId: accountId);
   }
 
   /// Explicitly releases a stale target freeze only after the server confirms

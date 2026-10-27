@@ -103,6 +103,44 @@ List<(String, LocalAggregateEnvelope<Object?>, String)> _encodeRelatedEnvelopes(
   return relatedJson;
 }
 
+/// Everything [LocalSyncStore.commitMutation] needs to persist one local edit
+/// and its outbox entry atomically.
+class MutationDraft {
+  const MutationDraft({
+    required this.mutationId,
+    required this.aggregateType,
+    required this.aggregateId,
+    required this.operation,
+    required this.baseVersion,
+    required this.body,
+    required this.envelope,
+    this.relatedEnvelopes = const [],
+    this.dependsOnMutationId,
+    this.createdAtUtc,
+    this.localMetadataWrites = const {},
+    this.localMetadataExpectations = const {},
+    this.resourceExpectations = const [],
+    this.mutationGuard,
+    this.afterEnvelopeWriteForTesting,
+  });
+
+  final String mutationId;
+  final String aggregateType;
+  final String aggregateId;
+  final LocalMutationOperation operation;
+  final int? baseVersion;
+  final Object? body;
+  final LocalAggregateEnvelope<Object?> envelope;
+  final List<(String, LocalAggregateEnvelope<Object?>)> relatedEnvelopes;
+  final String? dependsOnMutationId;
+  final DateTime? createdAtUtc;
+  final Map<String, Object?> localMetadataWrites;
+  final Map<String, Object?> localMetadataExpectations;
+  final List<LocalResourceExpectation> resourceExpectations;
+  final bool Function()? mutationGuard;
+  final void Function()? afterEnvelopeWriteForTesting;
+}
+
 /// Account-scoped durable storage. Every user edit writes its envelope and
 /// immutable outbox payload in one SQLite transaction before it may be shown
 /// as committed by a caller.
@@ -156,23 +194,22 @@ class LocalSyncStore {
         .toList(growable: false);
   }
 
-  Future<LocalMutation> commitMutation({
-    required String mutationId,
-    required String aggregateType,
-    required String aggregateId,
-    required LocalMutationOperation operation,
-    required int? baseVersion,
-    required Object? body,
-    required LocalAggregateEnvelope<Object?> envelope,
-    List<(String, LocalAggregateEnvelope<Object?>)> relatedEnvelopes = const [],
-    String? dependsOnMutationId,
-    DateTime? createdAtUtc,
-    Map<String, Object?> localMetadataWrites = const {},
-    Map<String, Object?> localMetadataExpectations = const {},
-    List<LocalResourceExpectation> resourceExpectations = const [],
-    bool Function()? mutationGuard,
-    void Function()? afterEnvelopeWriteForTesting,
-  }) async {
+  Future<LocalMutation> commitMutation(MutationDraft draft) async {
+    final mutationId = draft.mutationId;
+    final aggregateType = draft.aggregateType;
+    final aggregateId = draft.aggregateId;
+    final operation = draft.operation;
+    final baseVersion = draft.baseVersion;
+    final body = draft.body;
+    final envelope = draft.envelope;
+    final relatedEnvelopes = draft.relatedEnvelopes;
+    final dependsOnMutationId = draft.dependsOnMutationId;
+    final createdAtUtc = draft.createdAtUtc;
+    final localMetadataWrites = draft.localMetadataWrites;
+    final localMetadataExpectations = draft.localMetadataExpectations;
+    final resourceExpectations = draft.resourceExpectations;
+    final mutationGuard = draft.mutationGuard;
+    final afterEnvelopeWriteForTesting = draft.afterEnvelopeWriteForTesting;
     _validateMutationInputs(
       mutationId,
       aggregateType,

@@ -348,21 +348,23 @@ void main() {
       final old = (await store.readAggregate('training-plan', planId))!;
       final body = {...plan, 'name': name};
       await store.commitMutation(
-        mutationId: nextId(),
-        aggregateType: 'training-plan',
-        aggregateId: planId,
-        operation: LocalMutationOperation.update,
-        baseVersion: old.serverVersion,
-        body: body,
-        envelope: LocalAggregateEnvelope<Object?>(
+        MutationDraft(
+          mutationId: nextId(),
+          aggregateType: 'training-plan',
           aggregateId: planId,
-          serverSnapshot: old.serverSnapshot,
-          workingCopy: body,
-          serverVersion: old.serverVersion,
-          optimisticVersion: old.optimisticVersion + 1,
-          syncState: LocalSyncState.pending,
+          operation: LocalMutationOperation.update,
+          baseVersion: old.serverVersion,
+          body: body,
+          envelope: LocalAggregateEnvelope<Object?>(
+            aggregateId: planId,
+            serverSnapshot: old.serverSnapshot,
+            workingCopy: body,
+            serverVersion: old.serverVersion,
+            optimisticVersion: old.optimisticVersion + 1,
+            syncState: LocalSyncState.pending,
+          ),
+          createdAtUtc: now,
         ),
-        createdAtUtc: now,
       );
     }
 

@@ -167,16 +167,18 @@ class BodyRepository {
     required int restingHrvMs,
   }) async {
     validateDailyCheckIn(
-      localDate: localDate,
-      weightKg: 1,
-      caloriesKcal: null,
-      proteinGrams: null,
-      carbohydrateGrams: null,
-      fatGrams: null,
-      steps: null,
-      sleepMinutes: null,
-      restingHeartRateBpm: restingHeartRateBpm,
-      restingHrvMs: restingHrvMs,
+      DailyCheckInInput(
+        localDate: localDate,
+        weightKg: 1,
+        caloriesKcal: null,
+        proteinGrams: null,
+        carbohydrateGrams: null,
+        fatGrams: null,
+        steps: null,
+        sleepMinutes: null,
+        restingHeartRateBpm: restingHeartRateBpm,
+        restingHrvMs: restingHrvMs,
+      ),
     );
     final existing = _findCheckInForDay(
       await store.readAggregates(_dailyCheckInType),
@@ -209,14 +211,16 @@ class BodyRepository {
     required int steps,
   }) async {
     validateDailyCheckIn(
-      localDate: localDate,
-      weightKg: 1,
-      caloriesKcal: null,
-      proteinGrams: null,
-      carbohydrateGrams: null,
-      fatGrams: null,
-      steps: steps,
-      sleepMinutes: null,
+      DailyCheckInInput(
+        localDate: localDate,
+        weightKg: 1,
+        caloriesKcal: null,
+        proteinGrams: null,
+        carbohydrateGrams: null,
+        fatGrams: null,
+        steps: steps,
+        sleepMinutes: null,
+      ),
     );
     final existing = _findCheckInForDay(
       await store.readAggregates(_dailyCheckInType),
@@ -276,14 +280,16 @@ class BodyRepository {
     required LocalAggregateEnvelope<Object?> existing,
     required DailyCheckIn checkIn,
   }) => store.commitMutation(
-    mutationId: ids(),
-    aggregateType: _dailyCheckInType,
-    aggregateId: existing.aggregateId,
-    operation: LocalMutationOperation.update,
-    baseVersion: existing.serverVersion,
-    body: checkIn.toJson(),
-    envelope: _pendingEnvelope(existing, checkIn.toJson()),
-    createdAtUtc: clock().toUtc(),
+    MutationDraft(
+      mutationId: ids(),
+      aggregateType: _dailyCheckInType,
+      aggregateId: existing.aggregateId,
+      operation: LocalMutationOperation.update,
+      baseVersion: existing.serverVersion,
+      body: checkIn.toJson(),
+      envelope: _pendingEnvelope(existing, checkIn.toJson()),
+      createdAtUtc: clock().toUtc(),
+    ),
   );
 
   Future<String> activateGoal({
@@ -346,22 +352,24 @@ class BodyRepository {
       'expectedActiveGoalVersion': expectedActiveGoalVersion,
     };
     await store.commitMutation(
-      mutationId: ids(),
-      aggregateType: _bodyGoalType,
-      aggregateId: goalId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: payload,
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: ids(),
+        aggregateType: _bodyGoalType,
         aggregateId: goalId,
-        workingCopy: newGoal.toJson(),
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: payload,
+        envelope: localEnvelope(
+          aggregateId: goalId,
+          workingCopy: newGoal.toJson(),
+        ),
+        relatedEnvelopes: [
+          for (final entry in related.entries) (entry.key, entry.value),
+        ],
+        dependsOnMutationId: dependency,
+        createdAtUtc: now,
+        afterEnvelopeWriteForTesting: transactionFaultForTesting,
       ),
-      relatedEnvelopes: [
-        for (final entry in related.entries) (entry.key, entry.value),
-      ],
-      dependsOnMutationId: dependency,
-      createdAtUtc: now,
-      afterEnvelopeWriteForTesting: transactionFaultForTesting,
     );
     return goalId;
   }
@@ -371,30 +379,18 @@ class BodyRepository {
   /// Tagessummen und steigen nur, also gewinnt der größere Wert; so
   /// überschreibt ein älterer Health-Stand aus dem offenen Editor keinen
   /// neueren Wert von `HealthStepsSync`.
-  Future<String> saveCheckIn({
-    required String localDate,
-    required double weightKg,
-    double? caloriesKcal,
-    double? proteinGrams,
-    double? carbohydrateGrams,
-    double? fatGrams,
-    int? steps,
-    int? sleepMinutes,
-    int? restingHeartRateBpm,
-    int? restingHrvMs,
-  }) async {
-    validateDailyCheckIn(
-      localDate: localDate,
-      weightKg: weightKg,
-      caloriesKcal: caloriesKcal,
-      proteinGrams: proteinGrams,
-      carbohydrateGrams: carbohydrateGrams,
-      fatGrams: fatGrams,
-      steps: steps,
-      sleepMinutes: sleepMinutes,
-      restingHeartRateBpm: restingHeartRateBpm,
-      restingHrvMs: restingHrvMs,
-    );
+  Future<String> saveCheckIn(DailyCheckInInput input) async {
+    validateDailyCheckIn(input);
+    final localDate = input.localDate;
+    final weightKg = input.weightKg;
+    final caloriesKcal = input.caloriesKcal;
+    final proteinGrams = input.proteinGrams;
+    final carbohydrateGrams = input.carbohydrateGrams;
+    final fatGrams = input.fatGrams;
+    final steps = input.steps;
+    final sleepMinutes = input.sleepMinutes;
+    final restingHeartRateBpm = input.restingHeartRateBpm;
+    final restingHrvMs = input.restingHrvMs;
     final now = clock().toUtc();
     final existing = _findCheckInForDay(
       await store.readAggregates(_dailyCheckInType),
@@ -430,18 +426,20 @@ class BodyRepository {
       updatedAtUtc: now.toIso8601String(),
     );
     await store.commitMutation(
-      mutationId: ids(),
-      aggregateType: _dailyCheckInType,
-      aggregateId: id,
-      operation: existing == null
-          ? LocalMutationOperation.create
-          : LocalMutationOperation.update,
-      baseVersion: existing?.serverVersion,
-      body: checkIn.toJson(),
-      envelope: existing == null
-          ? localEnvelope(aggregateId: id, workingCopy: checkIn.toJson())
-          : _pendingEnvelope(existing, checkIn.toJson()),
-      createdAtUtc: now,
+      MutationDraft(
+        mutationId: ids(),
+        aggregateType: _dailyCheckInType,
+        aggregateId: id,
+        operation: existing == null
+            ? LocalMutationOperation.create
+            : LocalMutationOperation.update,
+        baseVersion: existing?.serverVersion,
+        body: checkIn.toJson(),
+        envelope: existing == null
+            ? localEnvelope(aggregateId: id, workingCopy: checkIn.toJson())
+            : _pendingEnvelope(existing, checkIn.toJson()),
+        createdAtUtc: now,
+      ),
     );
     if (waiting != null) {
       pending.remove(localDate);
@@ -481,14 +479,16 @@ class BodyRepository {
       throw ArgumentError.value(probeId, 'probeId');
     }
     validateDailyCheckIn(
-      localDate: localDate,
-      weightKg: weightKg,
-      caloriesKcal: null,
-      proteinGrams: null,
-      carbohydrateGrams: null,
-      fatGrams: null,
-      steps: null,
-      sleepMinutes: null,
+      DailyCheckInInput(
+        localDate: localDate,
+        weightKg: weightKg,
+        caloriesKcal: null,
+        proteinGrams: null,
+        carbohydrateGrams: null,
+        fatGrams: null,
+        steps: null,
+        sleepMinutes: null,
+      ),
     );
     const ledgerKey = 'health-ledger:body-mass';
     final rawLedger = await store.readSyncMetadata(ledgerKey);
@@ -536,31 +536,33 @@ class BodyRepository {
     };
     try {
       await store.commitMutation(
-        mutationId: ids(),
-        aggregateType: _dailyCheckInType,
-        aggregateId: id,
-        operation: existing == null
-            ? LocalMutationOperation.create
-            : LocalMutationOperation.update,
-        baseVersion: existing?.serverVersion,
-        body: checkIn.toJson(),
-        envelope: existing == null
-            ? localEnvelope(aggregateId: id, workingCopy: checkIn.toJson())
-            : _pendingEnvelope(existing, checkIn.toJson()),
-        localMetadataExpectations: {ledgerKey: rawLedger},
-        localMetadataWrites: {
-          ledgerKey: {'probes': probes},
-        },
-        resourceExpectations: [
-          LocalResourceExpectation(
-            aggregateType: _dailyCheckInType,
-            aggregateId: id,
-            optimisticVersion: existing?.optimisticVersion,
-            serverVersion: existing?.serverVersion,
-          ),
-        ],
-        mutationGuard: sessionGuard,
-        createdAtUtc: now,
+        MutationDraft(
+          mutationId: ids(),
+          aggregateType: _dailyCheckInType,
+          aggregateId: id,
+          operation: existing == null
+              ? LocalMutationOperation.create
+              : LocalMutationOperation.update,
+          baseVersion: existing?.serverVersion,
+          body: checkIn.toJson(),
+          envelope: existing == null
+              ? localEnvelope(aggregateId: id, workingCopy: checkIn.toJson())
+              : _pendingEnvelope(existing, checkIn.toJson()),
+          localMetadataExpectations: {ledgerKey: rawLedger},
+          localMetadataWrites: {
+            ledgerKey: {'probes': probes},
+          },
+          resourceExpectations: [
+            LocalResourceExpectation(
+              aggregateType: _dailyCheckInType,
+              aggregateId: id,
+              optimisticVersion: existing?.optimisticVersion,
+              serverVersion: existing?.serverVersion,
+            ),
+          ],
+          mutationGuard: sessionGuard,
+          createdAtUtc: now,
+        ),
       );
     } on StateError catch (error) {
       if (attempt < 2 && _isRetryableHealthImportError(error)) {

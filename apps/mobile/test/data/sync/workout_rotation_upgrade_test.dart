@@ -35,15 +35,17 @@ void main() {
     required Object? body,
     String? dependsOn,
   }) => store.commitMutation(
-    mutationId: mutationId,
-    aggregateType: type,
-    aggregateId: id,
-    operation: LocalMutationOperation.create,
-    baseVersion: 0,
-    body: body,
-    envelope: localEnvelope(aggregateId: id, workingCopy: body),
-    dependsOnMutationId: dependsOn,
-    createdAtUtc: DateTime.utc(2026, 10, 20),
+    MutationDraft(
+      mutationId: mutationId,
+      aggregateType: type,
+      aggregateId: id,
+      operation: LocalMutationOperation.create,
+      baseVersion: 0,
+      body: body,
+      envelope: localEnvelope(aggregateId: id, workingCopy: body),
+      dependsOnMutationId: dependsOn,
+      createdAtUtc: DateTime.utc(2026, 10, 20),
+    ),
   );
 
   test(

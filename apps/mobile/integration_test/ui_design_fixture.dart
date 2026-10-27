@@ -61,14 +61,16 @@ Future<UiDesignFixture> createUiDesignFixture() async {
     targetDate: null,
   );
   await bodyRepository.saveCheckIn(
-    localDate: _date(DateTime.now()),
-    weightKg: 82.4,
-    caloriesKcal: 2130,
-    proteinGrams: 148,
-    carbohydrateGrams: 220,
-    fatGrams: 66,
-    steps: 8460,
-    sleepMinutes: 438,
+    DailyCheckInInput(
+      localDate: _date(DateTime.now()),
+      weightKg: 82.4,
+      caloriesKcal: 2130,
+      proteinGrams: 148,
+      carbohydrateGrams: 220,
+      fatGrams: 66,
+      steps: 8460,
+      sleepMinutes: 438,
+    ),
   );
 
   final trainingLog = TrainingLogRepository(

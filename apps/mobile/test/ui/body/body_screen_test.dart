@@ -84,16 +84,18 @@ void main() {
     await tester.runAsync(() async {
       for (final (back, rate, hrv) in [(6, 60, 45), (3, 58, 50), (0, 57, 55)]) {
         await repository.saveCheckIn(
-          localDate: day(back),
-          weightKg: 71,
-          caloriesKcal: null,
-          proteinGrams: null,
-          carbohydrateGrams: null,
-          fatGrams: null,
-          steps: null,
-          sleepMinutes: null,
-          restingHeartRateBpm: rate,
-          restingHrvMs: hrv,
+          DailyCheckInInput(
+            localDate: day(back),
+            weightKg: 71,
+            caloriesKcal: null,
+            proteinGrams: null,
+            carbohydrateGrams: null,
+            fatGrams: null,
+            steps: null,
+            sleepMinutes: null,
+            restingHeartRateBpm: rate,
+            restingHrvMs: hrv,
+          ),
         );
       }
     });
@@ -295,14 +297,16 @@ void main() {
       }
 
       await repository.saveCheckIn(
-        localDate: dateOnly(priorDate),
-        weightKg: 77.2,
-        caloriesKcal: 1980,
-        proteinGrams: null,
-        carbohydrateGrams: null,
-        fatGrams: null,
-        steps: null,
-        sleepMinutes: null,
+        DailyCheckInInput(
+          localDate: dateOnly(priorDate),
+          weightKg: 77.2,
+          caloriesKcal: 1980,
+          proteinGrams: null,
+          carbohydrateGrams: null,
+          fatGrams: null,
+          steps: null,
+          sleepMinutes: null,
+        ),
       );
       final model = BodyViewModel(repository);
       await tester.pumpWidget(
@@ -387,14 +391,16 @@ void main() {
     final localDate =
         '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
     await repository.saveCheckIn(
-      localDate: localDate,
-      weightKg: 77.25,
-      caloriesKcal: 1980.5,
-      proteinGrams: 148.5,
-      carbohydrateGrams: 211.25,
-      fatGrams: 62.75,
-      steps: 9000,
-      sleepMinutes: 450,
+      DailyCheckInInput(
+        localDate: localDate,
+        weightKg: 77.25,
+        caloriesKcal: 1980.5,
+        proteinGrams: 148.5,
+        carbohydrateGrams: 211.25,
+        fatGrams: 62.75,
+        steps: 9000,
+        sleepMinutes: 450,
+      ),
     );
     final model = BodyViewModel(repository);
     await tester.pumpWidget(
@@ -511,14 +517,16 @@ void main() {
     );
     final today = _fixedNow;
     await repository.saveCheckIn(
-      localDate: _localDate(today),
-      weightKg: 77.2,
-      caloriesKcal: 1980,
-      proteinGrams: null,
-      carbohydrateGrams: null,
-      fatGrams: null,
-      steps: 8000,
-      sleepMinutes: null,
+      DailyCheckInInput(
+        localDate: _localDate(today),
+        weightKg: 77.2,
+        caloriesKcal: 1980,
+        proteinGrams: null,
+        carbohydrateGrams: null,
+        fatGrams: null,
+        steps: 8000,
+        sleepMinutes: null,
+      ),
     );
     final model = BodyViewModel(repository);
     await tester.pumpWidget(
@@ -787,16 +795,5 @@ class _DeferredSaveBodyRepository extends BodyRepository {
   final Completer<String> completion;
 
   @override
-  Future<String> saveCheckIn({
-    required String localDate,
-    required double weightKg,
-    double? caloriesKcal,
-    double? proteinGrams,
-    double? carbohydrateGrams,
-    double? fatGrams,
-    int? steps,
-    int? sleepMinutes,
-    int? restingHeartRateBpm,
-    int? restingHrvMs,
-  }) => completion.future;
+  Future<String> saveCheckIn(DailyCheckInInput input) => completion.future;
 }

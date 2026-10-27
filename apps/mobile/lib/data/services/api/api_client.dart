@@ -51,6 +51,9 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+/// How [ApiClient._request] authenticates and treats a 401 response.
+enum _RequestAuth { bearer, allowUnauthorized, anonymous }
+
 /// Bearer-token transport for the Gainer API. Access tokens are short-lived
 /// and renewed with the rotating refresh token of the device session.
 /// Redirects are rejected so tokens and request data cannot follow another host.
@@ -96,7 +99,7 @@ class ApiClient {
     final response = await _request(
       'GET',
       '/api/v1/auth/session',
-      allow401: true,
+      auth: _RequestAuth.allowUnauthorized,
     );
     if (response.statusCode == 401) return null;
     return ApiSession.fromJson(_asObject(response.data));
@@ -479,7 +482,7 @@ class ApiClient {
       'POST',
       '/api/v1/auth/login',
       body: request.toJson(),
-      authenticate: false,
+      auth: _RequestAuth.anonymous,
     );
     final tokens = ApiTokenResponse.fromJson(_asObject(response.data));
     _applyTokens(tokens);
@@ -490,7 +493,7 @@ class ApiClient {
     final response = await _request(
       'POST',
       '/api/v1/auth/passkeys/request-options',
-      authenticate: false,
+      auth: _RequestAuth.anonymous,
     );
     return ApiPasskeyOptions.fromJson(_asObject(response.data));
   }
@@ -510,7 +513,7 @@ class ApiClient {
         'state': state,
         'deviceName': ?deviceName,
       },
-      authenticate: false,
+      auth: _RequestAuth.anonymous,
     );
     final tokens = ApiTokenResponse.fromJson(_asObject(response.data));
     _applyTokens(tokens);
@@ -587,7 +590,7 @@ class ApiClient {
       'POST',
       '/api/v1/auth/invitations/accept',
       body: request.toJson(),
-      authenticate: false,
+      auth: _RequestAuth.anonymous,
     );
   }
 
@@ -857,11 +860,10 @@ class ApiClient {
     Object? body,
     Map<String, Object?>? queryParameters,
     Map<String, String>? headers,
-    bool allow401 = false,
-    bool authenticate = true,
+    _RequestAuth auth = _RequestAuth.bearer,
     Duration? receiveTimeout,
   }) async {
-    if (!authenticate) {
+    if (auth == _RequestAuth.anonymous) {
       final response = await _send(
         method,
         path,
@@ -870,7 +872,7 @@ class ApiClient {
         headers: headers,
         receiveTimeout: receiveTimeout,
       );
-      _throwForStatus(response, allow401: allow401);
+      _throwForStatus(response);
       return response;
     }
     if (!_accessTokenUsable && _refreshToken != null) {
@@ -901,7 +903,7 @@ class ApiClient {
         receiveTimeout: receiveTimeout,
       );
     }
-    _throwForStatus(response, allow401: allow401);
+    _throwForStatus(response, allow401: auth == _RequestAuth.allowUnauthorized);
     return response;
   }
 

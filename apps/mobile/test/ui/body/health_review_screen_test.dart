@@ -7,6 +7,7 @@ import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
 import 'package:gainer_mobile/data/services/platform/generated/mobile_platform_api.dart';
 import 'package:gainer_mobile/data/services/platform/platform_ports.dart';
+import 'package:gainer_mobile/domain/models/body/body_tracking.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/body/health/health_review_screen.dart';
@@ -153,14 +154,16 @@ void main() {
       final store = LocalSyncStore(database: database, accountId: accountId);
       final body = BodyRepository(store: store, clock: () => _fixedNow);
       await body.saveCheckIn(
-        localDate: _today(),
-        weightKg: 70,
-        caloriesKcal: 2100,
-        proteinGrams: 120,
-        carbohydrateGrams: null,
-        fatGrams: null,
-        steps: null,
-        sleepMinutes: null,
+        DailyCheckInInput(
+          localDate: _today(),
+          weightKg: 70,
+          caloriesKcal: 2100,
+          proteinGrams: 120,
+          carbohydrateGrams: null,
+          fatGrams: null,
+          steps: null,
+          sleepMinutes: null,
+        ),
       );
       final health = _HealthFake()
         ..samples = [

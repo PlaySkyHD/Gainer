@@ -35,15 +35,17 @@ void main() {
   });
 
   Future<void> commitPlan(String mutationId) => store.commitMutation(
-    mutationId: mutationId,
-    aggregateType: 'training-plan',
-    aggregateId: _planId,
-    operation: LocalMutationOperation.create,
-    baseVersion: 0,
-    body: {'name': 'Push'},
-    envelope: localEnvelope(
+    MutationDraft(
+      mutationId: mutationId,
+      aggregateType: 'training-plan',
       aggregateId: _planId,
-      workingCopy: {'name': 'Push'},
+      operation: LocalMutationOperation.create,
+      baseVersion: 0,
+      body: {'name': 'Push'},
+      envelope: localEnvelope(
+        aggregateId: _planId,
+        workingCopy: {'name': 'Push'},
+      ),
     ),
   );
 

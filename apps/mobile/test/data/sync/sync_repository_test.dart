@@ -395,15 +395,17 @@ void main() {
   test('active writer uses Sync v2 PascalCase resource, then atomically pulls its batch', () async {
     final (store, database, api, repository) = await fixture();
     await store.commitMutation(
-      mutationId: mutationId,
-      aggregateType: 'daily-check-in',
-      aggregateId: checkInId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'localDate': '2026-10-12', 'weightKg': 81.5},
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
         aggregateId: checkInId,
-        workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        ),
       ),
     );
     final queuedBeforeCrash = (await store.readOutbox()).single;
@@ -458,15 +460,17 @@ void main() {
     pullResourceId = 'b9234567-1234-4234-8234-123456789abc';
     final (store, database, api, repository) = await fixture();
     await store.commitMutation(
-      mutationId: mutationId,
-      aggregateType: 'daily-check-in',
-      aggregateId: checkInId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'localDate': '2026-10-12'},
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
         aggregateId: checkInId,
-        workingCopy: {'localDate': '2026-10-12'},
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12'},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12'},
+        ),
       ),
     );
 
@@ -492,15 +496,17 @@ void main() {
     registrationStatus = 401;
     final (store, database, api, repository) = await fixture();
     await store.commitMutation(
-      mutationId: mutationId,
-      aggregateType: 'daily-check-in',
-      aggregateId: checkInId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'localDate': '2026-10-12'},
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
         aggregateId: checkInId,
-        workingCopy: {'localDate': '2026-10-12'},
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12'},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12'},
+        ),
       ),
     );
     final result = await repository.synchronize();
@@ -519,15 +525,17 @@ void main() {
       sessionUserId = 'f1234567-1234-4234-8234-123456789abc';
       final (store, database, api, repository) = await fixture();
       await store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'daily-check-in',
-        aggregateId: checkInId,
-        operation: LocalMutationOperation.create,
-        baseVersion: null,
-        body: {'localDate': '2026-10-12'},
-        envelope: localEnvelope(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'daily-check-in',
           aggregateId: checkInId,
-          workingCopy: {'localDate': '2026-10-12'},
+          operation: LocalMutationOperation.create,
+          baseVersion: null,
+          body: {'localDate': '2026-10-12'},
+          envelope: localEnvelope(
+            aggregateId: checkInId,
+            workingCopy: {'localDate': '2026-10-12'},
+          ),
         ),
       );
       final report = await repository.synchronize();
@@ -559,15 +567,17 @@ void main() {
       serverAccountId = 'f1234567-1234-4234-8234-123456789abc';
       final (store, database, api, repository) = await fixture();
       await store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'daily-check-in',
-        aggregateId: checkInId,
-        operation: LocalMutationOperation.create,
-        baseVersion: null,
-        body: {'localDate': '2026-10-12'},
-        envelope: localEnvelope(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'daily-check-in',
           aggregateId: checkInId,
-          workingCopy: {'localDate': '2026-10-12'},
+          operation: LocalMutationOperation.create,
+          baseVersion: null,
+          body: {'localDate': '2026-10-12'},
+          envelope: localEnvelope(
+            aggregateId: checkInId,
+            workingCopy: {'localDate': '2026-10-12'},
+          ),
         ),
       );
       final report = await repository.synchronize();
@@ -592,15 +602,17 @@ void main() {
     switchAccountAfterRegistration = true;
     final (store, database, api, repository) = await fixture();
     await store.commitMutation(
-      mutationId: mutationId,
-      aggregateType: 'daily-check-in',
-      aggregateId: checkInId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'localDate': '2026-10-12'},
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
         aggregateId: checkInId,
-        workingCopy: {'localDate': '2026-10-12'},
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12'},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12'},
+        ),
       ),
     );
 
@@ -623,15 +635,17 @@ void main() {
       pullFailureCode = 'account_changed';
       final (store, database, api, repository) = await fixture();
       await store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'daily-check-in',
-        aggregateId: checkInId,
-        operation: LocalMutationOperation.create,
-        baseVersion: null,
-        body: {'localDate': '2026-10-12'},
-        envelope: localEnvelope(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'daily-check-in',
           aggregateId: checkInId,
-          workingCopy: {'localDate': '2026-10-12'},
+          operation: LocalMutationOperation.create,
+          baseVersion: null,
+          body: {'localDate': '2026-10-12'},
+          envelope: localEnvelope(
+            aggregateId: checkInId,
+            workingCopy: {'localDate': '2026-10-12'},
+          ),
         ),
       );
 
@@ -666,15 +680,17 @@ void main() {
   test('entries an older app parked with upgrade_required are sent after the update', () async {
     final (store, database, api, repository) = await fixture();
     final parked = await store.commitMutation(
-      mutationId: mutationId,
-      aggregateType: 'daily-check-in',
-      aggregateId: checkInId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'localDate': '2026-10-12', 'weightKg': 82.5},
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
         aggregateId: checkInId,
-        workingCopy: {'localDate': '2026-10-12', 'weightKg': 82.5},
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12', 'weightKg': 82.5},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12', 'weightKg': 82.5},
+        ),
       ),
     );
     await store.updateMutation(
@@ -708,15 +724,17 @@ void main() {
       mutationFailureStatus = 409;
       final (store, database, api, repository) = await fixture();
       await store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'daily-check-in',
-        aggregateId: checkInId,
-        operation: LocalMutationOperation.create,
-        baseVersion: null,
-        body: {'localDate': '2026-10-12', 'weightKg': 82.5},
-        envelope: localEnvelope(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'daily-check-in',
           aggregateId: checkInId,
-          workingCopy: {'localDate': '2026-10-12', 'weightKg': 82.5},
+          operation: LocalMutationOperation.create,
+          baseVersion: null,
+          body: {'localDate': '2026-10-12', 'weightKg': 82.5},
+          envelope: localEnvelope(
+            aggregateId: checkInId,
+            workingCopy: {'localDate': '2026-10-12', 'weightKg': 82.5},
+          ),
         ),
       );
 
@@ -751,15 +769,17 @@ void main() {
       mutationFailureStatus = 409;
       final (store, database, api, repository) = await fixture();
       await store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'daily-check-in',
-        aggregateId: checkInId,
-        operation: LocalMutationOperation.create,
-        baseVersion: null,
-        body: {'localDate': '2026-10-12', 'weightKg': 81.5},
-        envelope: localEnvelope(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'daily-check-in',
           aggregateId: checkInId,
-          workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+          operation: LocalMutationOperation.create,
+          baseVersion: null,
+          body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+          envelope: localEnvelope(
+            aggregateId: checkInId,
+            workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+          ),
         ),
       );
 
@@ -785,15 +805,17 @@ void main() {
       mutationFailureStatus = 503;
       final (store, database, api, repository) = await fixture();
       await store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'daily-check-in',
-        aggregateId: checkInId,
-        operation: LocalMutationOperation.create,
-        baseVersion: null,
-        body: {'localDate': '2026-10-12', 'weightKg': 81.5},
-        envelope: localEnvelope(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'daily-check-in',
           aggregateId: checkInId,
-          workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+          operation: LocalMutationOperation.create,
+          baseVersion: null,
+          body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+          envelope: localEnvelope(
+            aggregateId: checkInId,
+            workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+          ),
         ),
       );
       var now = DateTime.utc(2026, 10, 12, 10);
@@ -1050,19 +1072,21 @@ void main() {
       final (store, database, api, repository) = await fixture();
       final deletedBody = scheduleBody(deletedAtUtc: '2026-10-12T10:00:00Z');
       await store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'training-schedule',
-        aggregateId: scheduleId,
-        operation: LocalMutationOperation.delete,
-        baseVersion: 3,
-        body: deletedBody,
-        envelope: LocalAggregateEnvelope<Object?>(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'training-schedule',
           aggregateId: scheduleId,
-          serverSnapshot: scheduleBody(),
-          workingCopy: deletedBody,
-          serverVersion: 3,
-          optimisticVersion: 4,
-          syncState: LocalSyncState.pending,
+          operation: LocalMutationOperation.delete,
+          baseVersion: 3,
+          body: deletedBody,
+          envelope: LocalAggregateEnvelope<Object?>(
+            aggregateId: scheduleId,
+            serverSnapshot: scheduleBody(),
+            workingCopy: deletedBody,
+            serverVersion: 3,
+            optimisticVersion: 4,
+            syncState: LocalSyncState.pending,
+          ),
         ),
       );
       // Der Server hat die Löschung bestätigt; ihr Batch kommt erst beim Pull.
@@ -1075,19 +1099,21 @@ void main() {
         ),
       );
       await store.commitMutation(
-        mutationId: 'e7777777-7777-4777-8777-777777777777',
-        aggregateType: 'training-schedule',
-        aggregateId: scheduleId,
-        operation: LocalMutationOperation.update,
-        baseVersion: 3,
-        body: scheduleBody(),
-        envelope: LocalAggregateEnvelope<Object?>(
+        MutationDraft(
+          mutationId: 'e7777777-7777-4777-8777-777777777777',
+          aggregateType: 'training-schedule',
           aggregateId: scheduleId,
-          serverSnapshot: scheduleBody(),
-          workingCopy: scheduleBody(),
-          serverVersion: 3,
-          optimisticVersion: 5,
-          syncState: LocalSyncState.pending,
+          operation: LocalMutationOperation.update,
+          baseVersion: 3,
+          body: scheduleBody(),
+          envelope: LocalAggregateEnvelope<Object?>(
+            aggregateId: scheduleId,
+            serverSnapshot: scheduleBody(),
+            workingCopy: scheduleBody(),
+            serverVersion: 3,
+            optimisticVersion: 5,
+            syncState: LocalSyncState.pending,
+          ),
         ),
       );
       lenientMutations = true;
@@ -1175,19 +1201,21 @@ void main() {
 
   Future<void> commitWorkoutUpdate(LocalSyncStore store) async {
     await store.commitMutation(
-      mutationId: mutationId,
-      aggregateType: 'workout',
-      aggregateId: workoutAggregateId,
-      operation: LocalMutationOperation.update,
-      baseVersion: 1,
-      body: workoutWorkingCopy,
-      envelope: LocalAggregateEnvelope<Object?>(
+      MutationDraft(
+        mutationId: mutationId,
+        aggregateType: 'workout',
         aggregateId: workoutAggregateId,
-        serverSnapshot: {...workoutWorkingCopy, 'endedAtUtc': null},
-        workingCopy: workoutWorkingCopy,
-        serverVersion: 1,
-        optimisticVersion: 2,
-        syncState: LocalSyncState.pending,
+        operation: LocalMutationOperation.update,
+        baseVersion: 1,
+        body: workoutWorkingCopy,
+        envelope: LocalAggregateEnvelope<Object?>(
+          aggregateId: workoutAggregateId,
+          serverSnapshot: {...workoutWorkingCopy, 'endedAtUtc': null},
+          workingCopy: workoutWorkingCopy,
+          serverVersion: 1,
+          optimisticVersion: 2,
+          syncState: LocalSyncState.pending,
+        ),
       ),
     );
   }
@@ -1237,17 +1265,19 @@ void main() {
     final (store, database, api, repository) = await fixture();
     final active = {...workoutWorkingCopy, 'endedAtUtc': null};
     await store.commitMutation(
-      mutationId: mutationId,
-      aggregateType: 'workout',
-      aggregateId: workoutAggregateId,
-      operation: LocalMutationOperation.create,
-      baseVersion: 0,
-      body: active,
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: mutationId,
+        aggregateType: 'workout',
         aggregateId: workoutAggregateId,
-        workingCopy: active,
+        operation: LocalMutationOperation.create,
+        baseVersion: 0,
+        body: active,
+        envelope: localEnvelope(
+          aggregateId: workoutAggregateId,
+          workingCopy: active,
+        ),
+        createdAtUtc: DateTime.utc(2026, 10, 17, 8),
       ),
-      createdAtUtc: DateTime.utc(2026, 10, 17, 8),
     );
     await repository.synchronize();
     final conflict =
@@ -1257,19 +1287,21 @@ void main() {
     // Das Training wurde inzwischen beendet; der Nutzer erzwingt den Stand.
     final ended = {...workoutWorkingCopy, 'endedAtUtc': '2026-10-17T09:00:00Z'};
     await store.commitMutation(
-      mutationId: 'e1234567-1234-4234-8234-123456789abc',
-      aggregateType: 'workout',
-      aggregateId: workoutAggregateId,
-      operation: LocalMutationOperation.update,
-      baseVersion: null,
-      body: ended,
-      envelope: LocalAggregateEnvelope<Object?>(
+      MutationDraft(
+        mutationId: 'e1234567-1234-4234-8234-123456789abc',
+        aggregateType: 'workout',
         aggregateId: workoutAggregateId,
-        serverSnapshot: null,
-        workingCopy: ended,
-        serverVersion: null,
-        optimisticVersion: 2,
-        syncState: LocalSyncState.pending,
+        operation: LocalMutationOperation.update,
+        baseVersion: null,
+        body: ended,
+        envelope: LocalAggregateEnvelope<Object?>(
+          aggregateId: workoutAggregateId,
+          serverSnapshot: null,
+          workingCopy: ended,
+          serverVersion: null,
+          optimisticVersion: 2,
+          syncState: LocalSyncState.pending,
+        ),
       ),
     );
     await store.forceLocalState(
@@ -1364,19 +1396,21 @@ void main() {
       pullVersion = 4;
       final (store, database, api, repository) = await fixture();
       await store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'daily-check-in',
-        aggregateId: checkInId,
-        operation: LocalMutationOperation.update,
-        baseVersion: 2,
-        body: {'localDate': '2026-10-12', 'weightKg': 82.5},
-        envelope: LocalAggregateEnvelope(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'daily-check-in',
           aggregateId: checkInId,
-          serverSnapshot: {'weightKg': 80.0},
-          workingCopy: {'weightKg': 82.5},
-          serverVersion: 2,
-          optimisticVersion: 3,
-          syncState: LocalSyncState.pending,
+          operation: LocalMutationOperation.update,
+          baseVersion: 2,
+          body: {'localDate': '2026-10-12', 'weightKg': 82.5},
+          envelope: LocalAggregateEnvelope(
+            aggregateId: checkInId,
+            serverSnapshot: {'weightKg': 80.0},
+            workingCopy: {'weightKg': 82.5},
+            serverVersion: 2,
+            optimisticVersion: 3,
+            syncState: LocalSyncState.pending,
+          ),
         ),
       );
       await repository.synchronize();
@@ -1425,19 +1459,21 @@ void main() {
       pullVersion = 3;
       final (store, database, api, repository) = await fixture();
       await store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'daily-check-in',
-        aggregateId: checkInId,
-        operation: LocalMutationOperation.update,
-        baseVersion: 2,
-        body: {'localDate': '2026-10-12', 'weightKg': 82.5},
-        envelope: LocalAggregateEnvelope(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'daily-check-in',
           aggregateId: checkInId,
-          serverSnapshot: {'weightKg': 80.0},
-          workingCopy: {'weightKg': 82.5},
-          serverVersion: 2,
-          optimisticVersion: 3,
-          syncState: LocalSyncState.pending,
+          operation: LocalMutationOperation.update,
+          baseVersion: 2,
+          body: {'localDate': '2026-10-12', 'weightKg': 82.5},
+          envelope: LocalAggregateEnvelope(
+            aggregateId: checkInId,
+            serverSnapshot: {'weightKg': 80.0},
+            workingCopy: {'weightKg': 82.5},
+            serverVersion: 2,
+            optimisticVersion: 3,
+            syncState: LocalSyncState.pending,
+          ),
         ),
       );
 
@@ -1479,15 +1515,17 @@ void main() {
     mutationFailureStatus = 422;
     final (store, database, api, repository) = await fixture();
     await store.commitMutation(
-      mutationId: mutationId,
-      aggregateType: 'daily-check-in',
-      aggregateId: checkInId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'localDate': '2026-10-12', 'weightKg': 81.5},
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
         aggregateId: checkInId,
-        workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        ),
       ),
     );
 
@@ -1535,15 +1573,17 @@ void main() {
 
   Future<void> commitCheckInCreate(LocalSyncStore store) =>
       store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'daily-check-in',
-        aggregateId: checkInId,
-        operation: LocalMutationOperation.create,
-        baseVersion: null,
-        body: {'localDate': '2026-10-12', 'weightKg': 81.5},
-        envelope: localEnvelope(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'daily-check-in',
           aggregateId: checkInId,
-          workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+          operation: LocalMutationOperation.create,
+          baseVersion: null,
+          body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+          envelope: localEnvelope(
+            aggregateId: checkInId,
+            workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+          ),
         ),
       );
 
@@ -1777,19 +1817,21 @@ void main() {
     String id,
     double weightKg,
   ) => store.commitMutation(
-    mutationId: id,
-    aggregateType: 'daily-check-in',
-    aggregateId: checkInId,
-    operation: LocalMutationOperation.update,
-    baseVersion: 2,
-    body: {'localDate': '2026-10-12', 'weightKg': weightKg},
-    envelope: LocalAggregateEnvelope(
+    MutationDraft(
+      mutationId: id,
+      aggregateType: 'daily-check-in',
       aggregateId: checkInId,
-      serverSnapshot: {'weightKg': 80.0},
-      workingCopy: {'weightKg': weightKg},
-      serverVersion: 2,
-      optimisticVersion: 3,
-      syncState: LocalSyncState.pending,
+      operation: LocalMutationOperation.update,
+      baseVersion: 2,
+      body: {'localDate': '2026-10-12', 'weightKg': weightKg},
+      envelope: LocalAggregateEnvelope(
+        aggregateId: checkInId,
+        serverSnapshot: {'weightKg': 80.0},
+        workingCopy: {'weightKg': weightKg},
+        serverVersion: 2,
+        optimisticVersion: 3,
+        syncState: LocalSyncState.pending,
+      ),
     ),
   );
 
@@ -1879,15 +1921,17 @@ void main() {
     pullCursor = 1;
     final (store, database, api, repository) = await fixture();
     await store.commitMutation(
-      mutationId: mutationId,
-      aggregateType: 'daily-check-in',
-      aggregateId: checkInId,
-      operation: LocalMutationOperation.create,
-      baseVersion: null,
-      body: {'localDate': '2026-10-12', 'weightKg': 81.5},
-      envelope: localEnvelope(
+      MutationDraft(
+        mutationId: mutationId,
+        aggregateType: 'daily-check-in',
         aggregateId: checkInId,
-        workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        operation: LocalMutationOperation.create,
+        baseVersion: null,
+        body: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        envelope: localEnvelope(
+          aggregateId: checkInId,
+          workingCopy: {'localDate': '2026-10-12', 'weightKg': 81.5},
+        ),
       ),
     );
     await (database.update(
@@ -2000,38 +2044,40 @@ void main() {
       }
       final archived = {...serverExercise, 'isArchived': true};
       await store.commitMutation(
-        mutationId: mutationId,
-        aggregateType: 'custom-exercise',
-        aggregateId: exerciseId,
-        operation: LocalMutationOperation.merge,
-        baseVersion: 3,
-        body: {...archived, 'targetExerciseId': 'bench-press'},
-        envelope: LocalAggregateEnvelope(
+        MutationDraft(
+          mutationId: mutationId,
+          aggregateType: 'custom-exercise',
           aggregateId: exerciseId,
-          serverSnapshot: serverExercise,
-          workingCopy: archived,
-          serverVersion: 3,
-          optimisticVersion: 4,
-          syncState: LocalSyncState.pending,
-        ),
-        relatedEnvelopes: [
-          (
-            'workout',
-            LocalAggregateEnvelope(
-              aggregateId: workoutId,
-              serverSnapshot: serverWorkout,
-              workingCopy: {
-                'workoutId': workoutId,
-                'blocks': [
-                  {'sourceExerciseId': 'bench-press'},
-                ],
-              },
-              serverVersion: 3,
-              optimisticVersion: 3,
-              syncState: LocalSyncState.pending,
-            ),
+          operation: LocalMutationOperation.merge,
+          baseVersion: 3,
+          body: {...archived, 'targetExerciseId': 'bench-press'},
+          envelope: LocalAggregateEnvelope(
+            aggregateId: exerciseId,
+            serverSnapshot: serverExercise,
+            workingCopy: archived,
+            serverVersion: 3,
+            optimisticVersion: 4,
+            syncState: LocalSyncState.pending,
           ),
-        ],
+          relatedEnvelopes: [
+            (
+              'workout',
+              LocalAggregateEnvelope(
+                aggregateId: workoutId,
+                serverSnapshot: serverWorkout,
+                workingCopy: {
+                  'workoutId': workoutId,
+                  'blocks': [
+                    {'sourceExerciseId': 'bench-press'},
+                  ],
+                },
+                serverVersion: 3,
+                optimisticVersion: 3,
+                syncState: LocalSyncState.pending,
+              ),
+            ),
+          ],
+        ),
       );
       await store.upsertConflict(
         LocalConflictRecord(

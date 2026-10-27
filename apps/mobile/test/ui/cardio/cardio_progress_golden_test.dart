@@ -255,16 +255,18 @@ void main() {
       await tester.runAsync(() async {
         for (var i = 0; i < 8; i++) {
           await body.saveCheckIn(
-            localDate: '2026-10-${(12 + i).toString().padLeft(2, '0')}',
-            weightKg: 70,
-            caloriesKcal: null,
-            proteinGrams: null,
-            carbohydrateGrams: null,
-            fatGrams: null,
-            steps: null,
-            sleepMinutes: null,
-            restingHeartRateBpm: 62 - i % 4,
-            restingHrvMs: 44 + (i * 3) % 11,
+            DailyCheckInInput(
+              localDate: '2026-10-${(12 + i).toString().padLeft(2, '0')}',
+              weightKg: 70,
+              caloriesKcal: null,
+              proteinGrams: null,
+              carbohydrateGrams: null,
+              fatGrams: null,
+              steps: null,
+              sleepMinutes: null,
+              restingHeartRateBpm: 62 - i % 4,
+              restingHrvMs: 44 + (i * 3) % 11,
+            ),
           );
         }
         await harness.repository.preferences.write(
