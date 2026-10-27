@@ -55,7 +55,7 @@ public sealed class PostgreSqlMigrationTests
     [TestMethod]
     public async Task EmptyDatabaseMigratesAndCreatesRequiredSchemasForTwoUsers()
     {
-        await using AppDbContext context = Fixture.CreateContext(ConnectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString);
 
         await context.Database.MigrateAsync(TestContext.CancellationToken);
         context.Users.AddRange(
@@ -64,28 +64,27 @@ public sealed class PostgreSqlMigrationTests
         await context.SaveChangesAsync(TestContext.CancellationToken);
 
         Assert.AreEqual(2, await context.Users.CountAsync(TestContext.CancellationToken));
-        CollectionAssert.AreEquivalent(DatabaseSchemas.All.ToArray(), await ReadSchemasAsync());
-        CollectionAssert.Contains(
-            (await context.Database.GetAppliedMigrationsAsync(TestContext.CancellationToken)).ToArray(),
-            context.Database.GetMigrations().Last());
+        Assert.AreSequenceEqual(DatabaseSchemas.All.ToArray(), await ReadSchemasAsync(), SequenceOrder.InAnyOrder);
+        Assert.Contains(
+            context.Database.GetMigrations().Last(), (await context.Database.GetAppliedMigrationsAsync(TestContext.CancellationToken)).ToArray());
     }
 
     [TestMethod]
     public async Task ApplyingMigrationsRepeatedlyKeepsExactlyTheDefinedHistoryEntries()
     {
-        await using AppDbContext context = Fixture.CreateContext(ConnectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString);
 
         await context.Database.MigrateAsync(TestContext.CancellationToken);
         await context.Database.MigrateAsync(TestContext.CancellationToken);
         string[] migrations = (await context.Database.GetAppliedMigrationsAsync(TestContext.CancellationToken)).ToArray();
 
-        CollectionAssert.AreEqual(context.Database.GetMigrations().ToArray(), migrations);
+        Assert.AreSequenceEqual(context.Database.GetMigrations().ToArray(), migrations);
     }
 
     [TestMethod]
     public async Task TestInitializationProvidesAResetDatabase()
     {
-        await using AppDbContext context = Fixture.CreateContext(ConnectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString);
 
         bool canConnect = await context.Database.CanConnectAsync(TestContext.CancellationToken);
         string[] appliedMigrations = (await context.Database.GetAppliedMigrationsAsync(TestContext.CancellationToken)).ToArray();
@@ -97,12 +96,12 @@ public sealed class PostgreSqlMigrationTests
     [TestMethod]
     public async Task SchemaReadinessRequiresEveryMigrationIncludingTheLatest()
     {
-        await using AppDbContext context = Fixture.CreateContext(ConnectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString);
         var healthCheck = new DatabaseSchemaReadinessHealthCheck(CreateConfiguration(("ConnectionStrings:gainer-db", ConnectionString)));
         string[] migrations = context.Database.GetMigrations().ToArray();
         string previousToLatest = migrations[^2];
 
-        CollectionAssert.AreEqual(migrations, DatabaseSchemaVersion.ExpectedMigrations.ToArray());
+        Assert.AreSequenceEqual(migrations, DatabaseSchemaVersion.ExpectedMigrations.ToArray());
 
         HealthCheckResult beforeMigration = await healthCheck.CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
         Assert.AreEqual("Database schema is not at the required version.", beforeMigration.Description);
@@ -231,7 +230,7 @@ public sealed class PostgreSqlMigrationTests
         Guid customExerciseId = Guid.NewGuid();
         Guid mutationId = Guid.NewGuid();
         Guid clientId = Guid.NewGuid();
-        await using (AppDbContext previous = Fixture.CreateContext(ConnectionString))
+        await using (AppDbContext previous = PostgreSqlTestFixture.CreateContext(ConnectionString))
         {
             await ((IInfrastructure<IServiceProvider>)previous).Instance.GetRequiredService<IMigrator>().MigrateAsync(previousMigration, TestContext.CancellationToken);
             previous.Users.Add(new AppUser
@@ -263,7 +262,7 @@ public sealed class PostgreSqlMigrationTests
                 """, ("user", userId), ("workout", workoutId), ("exercise", customExerciseId));
         }
 
-        await using (AppDbContext previous = Fixture.CreateContext(ConnectionString, userId))
+        await using (AppDbContext previous = PostgreSqlTestFixture.CreateContext(ConnectionString, userId))
         {
             previous.SyncClients.Add(new SyncClient
             {
@@ -312,7 +311,7 @@ public sealed class PostgreSqlMigrationTests
             await previous.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(ConnectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString))
         {
             await context.Database.MigrateAsync(TestContext.CancellationToken);
         }
@@ -327,7 +326,7 @@ public sealed class PostgreSqlMigrationTests
             Assert.AreEqual(0L, await ScalarAsync(connection, "SELECT COUNT(*) FROM training.exercises WHERE \"OwnerUserId\" IS NOT NULL"));
             Assert.IsGreaterThan(0L, await ScalarAsync(connection, "SELECT COUNT(*) FROM training.exercises WHERE \"OwnerUserId\" IS NULL"));
         }
-        await using (AppDbContext context = Fixture.CreateContext(ConnectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString, userId))
         {
             Assert.AreEqual(0, await context.TrainingPlans.CountAsync(TestContext.CancellationToken));
             Assert.AreEqual(0, await context.Workouts.CountAsync(TestContext.CancellationToken));
@@ -343,7 +342,7 @@ public sealed class PostgreSqlMigrationTests
         Guid rotationMutation = Guid.NewGuid();
         Guid workoutMutation = Guid.NewGuid();
         Guid workoutId = Guid.NewGuid();
-        await using (AppDbContext previous = Fixture.CreateContext(ConnectionString))
+        await using (AppDbContext previous = PostgreSqlTestFixture.CreateContext(ConnectionString))
         {
             await ((IInfrastructure<IServiceProvider>)previous).Instance.GetRequiredService<IMigrator>().MigrateAsync(previousMigration, TestContext.CancellationToken);
             previous.Users.Add(new AppUser
@@ -360,7 +359,7 @@ public sealed class PostgreSqlMigrationTests
             await previous.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using (AppDbContext previous = Fixture.CreateContext(ConnectionString, userId))
+        await using (AppDbContext previous = PostgreSqlTestFixture.CreateContext(ConnectionString, userId))
         {
             previous.SyncClients.Add(new SyncClient
             {
@@ -417,16 +416,16 @@ public sealed class PostgreSqlMigrationTests
             await previous.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(ConnectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString))
         {
             await context.Database.MigrateAsync(TestContext.CancellationToken);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(ConnectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString, userId))
         {
             SyncChangeFeedPage page = await new SyncChangeFeed(context).GetAsync(0, 200, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion, TestContext.CancellationToken);
             List<SyncFeedChange> changes = page.Batches.SelectMany(batch => batch.Changes).ToList();
-            Assert.IsFalse(changes.Any(change => change.ResourceType == "WorkoutRotation"));
+            Assert.DoesNotContain(change => change.ResourceType == "WorkoutRotation", changes);
             Assert.AreEqual(workoutId, changes.Single().ResourceId);
             Assert.AreEqual(2, page.NextCursor);
             Assert.IsFalse(await context.ProcessedMutations.AnyAsync(item => item.MutationId == rotationMutation, TestContext.CancellationToken));

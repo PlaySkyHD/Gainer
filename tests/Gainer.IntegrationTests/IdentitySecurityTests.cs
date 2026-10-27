@@ -43,7 +43,7 @@ public sealed class IdentitySecurityTests
 
             Assert.IsNotNull(restored);
             Assert.AreEqual(userId, restored.Principal.FindFirstValue(ClaimTypes.NameIdentifier));
-            Assert.IsTrue(Directory.EnumerateFiles(keyRingPath, "*.xml").Any());
+            Assert.IsNotEmpty(Directory.EnumerateFiles(keyRingPath, "*.xml"));
         }
         finally
         {

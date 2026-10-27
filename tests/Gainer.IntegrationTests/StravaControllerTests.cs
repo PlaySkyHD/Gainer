@@ -20,9 +20,8 @@ public sealed class StravaControllerTests
         Assert.IsNotNull(typeof(StravaController).GetCustomAttributes(typeof(AuthorizeAttribute), true).SingleOrDefault());
         Assert.IsNotNull(typeof(StravaController).GetMethod(nameof(StravaController.Callback))!
             .GetCustomAttributes(typeof(AllowAnonymousAttribute), true).SingleOrDefault());
-        Assert.IsFalse(typeof(StravaController).GetMethods()
-            .Where(method => method.Name != nameof(StravaController.Callback))
-            .Any(method => method.GetCustomAttributes(typeof(AllowAnonymousAttribute), true).Length > 0));
+        Assert.DoesNotContain(method => method.GetCustomAttributes(typeof(AllowAnonymousAttribute), true).Length > 0, typeof(StravaController).GetMethods()
+            .Where(method => method.Name != nameof(StravaController.Callback)));
     }
 
     [TestMethod]
@@ -31,15 +30,15 @@ public sealed class StravaControllerTests
         var service = new StubService();
         StravaController controller = Controller(service);
 
-        StravaStatusResponse status = Ok(await controller.GetStatus());
+        StravaStatusResponse status = Ok(await controller.GetStatus(TestContext.CancellationToken));
         Assert.IsTrue(status.Connected);
         Assert.AreEqual("Nic", status.AthleteName);
 
-        StravaStatusResponse updated = Ok(await controller.UpdateSettings(new StravaSettingsRequest(false, true)));
+        StravaStatusResponse updated = Ok(await controller.UpdateSettings(new StravaSettingsRequest(false, true), TestContext.CancellationToken));
         Assert.IsFalse(updated.ExportCardio);
         Assert.IsTrue(updated.ExportStrength);
 
-        Assert.IsInstanceOfType<NoContentResult>(await controller.Disconnect());
+        Assert.IsInstanceOfType<NoContentResult>(await controller.Disconnect(TestContext.CancellationToken));
         Assert.IsTrue(service.Disconnected);
     }
 
@@ -68,7 +67,7 @@ public sealed class StravaControllerTests
     {
         var service = new StubService { AuthorizationResult = result };
 
-        RedirectResult redirect = (RedirectResult)await Controller(service).Callback("state", "code", "activity:write", null);
+        RedirectResult redirect = (RedirectResult)await Controller(service).Callback("state", "code", "activity:write", null, TestContext.CancellationToken);
 
         Assert.AreEqual($"gainer://strava?result={expected}", redirect.Url);
     }
@@ -79,22 +78,22 @@ public sealed class StravaControllerTests
         var service = new StubService();
         StravaController controller = Controller(service);
 
-        Assert.IsInstanceOfType<NotFoundResult>((await controller.GetExport("cardio", Resource)).Result);
-        Assert.IsInstanceOfType<NotFoundResult>((await controller.GetExport("yoga", Resource)).Result);
-        Assert.IsInstanceOfType<NotFoundResult>((await controller.RequestExport("yoga", Resource)).Result);
+        Assert.IsInstanceOfType<NotFoundResult>((await controller.GetExport("cardio", Resource, TestContext.CancellationToken)).Result);
+        Assert.IsInstanceOfType<NotFoundResult>((await controller.GetExport("yoga", Resource, TestContext.CancellationToken)).Result);
+        Assert.IsInstanceOfType<NotFoundResult>((await controller.RequestExport("yoga", Resource, TestContext.CancellationToken)).Result);
 
-        AcceptedResult accepted = (AcceptedResult)(await controller.RequestExport("strength", Resource)).Result!;
+        AcceptedResult accepted = (AcceptedResult)(await controller.RequestExport("strength", Resource, TestContext.CancellationToken)).Result!;
         StravaExportResponse queued = (StravaExportResponse)accepted.Value!;
         Assert.AreEqual("strength", queued.Kind);
         Assert.AreEqual("pending", queued.Status);
 
         service.Export = service.Export! with { Status = StravaExportStatus.Completed, ActivityId = 9 };
-        StravaExportResponse completed = Ok(await controller.GetExport("strength", Resource));
+        StravaExportResponse completed = Ok(await controller.GetExport("strength", Resource, TestContext.CancellationToken));
         Assert.AreEqual("completed", completed.Status);
         Assert.AreEqual(9, completed.ActivityId);
 
         service.Failure = new StravaIntegrationException(StravaIntegrationException.ResourceNotFound, "missing", 404);
-        ObjectResult problem = (ObjectResult)(await controller.RequestExport("cardio", Resource)).Result!;
+        ObjectResult problem = (ObjectResult)(await controller.RequestExport("cardio", Resource, TestContext.CancellationToken)).Result!;
         Assert.AreEqual(StatusCodes.Status404NotFound, problem.StatusCode);
     }
 
@@ -125,7 +124,7 @@ public sealed class StravaControllerTests
         signal.Notify();
         signal.Notify();
         Task waited = signal.WaitAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
-        Assert.AreSame(waited, await Task.WhenAny(waited, Task.Delay(TimeSpan.FromSeconds(5))));
+        Assert.AreSame(waited, await Task.WhenAny(waited, Task.Delay(TimeSpan.FromSeconds(5), TestContext.CancellationToken)));
     }
 
     private static T Ok<T>(ActionResult<T> result) => (T)((ObjectResult)result.Result!).Value!;
@@ -185,4 +184,6 @@ public sealed class StravaControllerTests
             return Task.FromResult(Export);
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

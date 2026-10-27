@@ -13,13 +13,13 @@ public sealed class DailyRequestQuotaTests
         Guid user = Guid.NewGuid();
 
         // 23:30 on 17 August in Berlin (CEST): the budget is used up afterwards.
-        await (await quota.AcquireAsync(user, () => new InvalidOperationException())).DisposeAsync();
+        await (await quota.AcquireAsync(user, () => new InvalidOperationException(), TestContext.CancellationToken)).DisposeAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await quota.AcquireAsync(user, () => new InvalidOperationException()));
+            await quota.AcquireAsync(user, () => new InvalidOperationException(), TestContext.CancellationToken));
 
         // 00:30 on 18 August in Berlin is still 17 August in UTC, but a new local day.
         time.Now = new DateTimeOffset(2026, 8, 17, 22, 30, 0, TimeSpan.Zero);
-        await (await quota.AcquireAsync(user, () => new InvalidOperationException())).DisposeAsync();
+        await (await quota.AcquireAsync(user, () => new InvalidOperationException(), TestContext.CancellationToken)).DisposeAsync();
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider
@@ -27,4 +27,6 @@ public sealed class DailyRequestQuotaTests
         public DateTimeOffset Now { get; set; } = now;
         public override DateTimeOffset GetUtcNow() => Now;
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

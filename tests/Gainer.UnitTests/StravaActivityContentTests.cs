@@ -62,7 +62,7 @@ public sealed class StravaActivityContentTests
         Assert.IsNull(upload.Description);
         XElement lap = XDocument.Load(new MemoryStream(upload.TcxFile)).Descendants(Tcx + "Lap").Single();
         Assert.IsNull(lap.Element(Tcx + "AverageHeartRateBpm"));
-        Assert.IsFalse(lap.Descendants(Tcx + "Trackpoint").Any(point => point.Element(Tcx + "DistanceMeters") is not null));
+        Assert.DoesNotContain(point => point.Element(Tcx + "DistanceMeters") is not null, lap.Descendants(Tcx + "Trackpoint"));
     }
 
     [TestMethod]

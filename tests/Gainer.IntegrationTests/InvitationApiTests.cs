@@ -75,12 +75,12 @@ public sealed class InvitationApiTests
         await using (AsyncServiceScope scope = test.App.Services.CreateAsyncScope())
         {
             AppDbContext database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            AccountInvitation stored = await database.AccountInvitations.SingleAsync();
+            AccountInvitation stored = await database.AccountInvitations.SingleAsync(TestContext.CancellationToken);
             Assert.HasCount(32, stored.TokenHash);
             Assert.IsFalse(Convert.ToHexString(stored.TokenHash).Contains(token, StringComparison.Ordinal));
-            Assert.IsFalse(typeof(AccountInvitation).GetProperties().Any(property =>
+            Assert.DoesNotContain(property =>
                 property.PropertyType == typeof(string)
-                && property.Name.Contains("Token", StringComparison.Ordinal)));
+                && property.Name.Contains("Token", StringComparison.Ordinal), typeof(AccountInvitation).GetProperties());
         }
 
         var inviteeAuth = new TestSession();
@@ -150,9 +150,9 @@ public sealed class InvitationApiTests
             anonymousAuth,
             "unknown-invitation-token");
 
-        string reusedBody = await reused.Content.ReadAsStringAsync();
-        string expiredBody = await expired.Content.ReadAsStringAsync();
-        string unknownBody = await unknown.Content.ReadAsStringAsync();
+        string reusedBody = await reused.Content.ReadAsStringAsync(TestContext.CancellationToken);
+        string expiredBody = await expired.Content.ReadAsStringAsync(TestContext.CancellationToken);
+        string unknownBody = await unknown.Content.ReadAsStringAsync(TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.BadRequest, reused.StatusCode);
         Assert.AreEqual(reused.StatusCode, expired.StatusCode);
         Assert.AreEqual(reused.StatusCode, unknown.StatusCode);
@@ -213,8 +213,8 @@ public sealed class InvitationApiTests
         await using (AsyncServiceScope scope = test.App.Services.CreateAsyncScope())
         {
             AppDbContext database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            Assert.AreEqual(memberId, (await database.Users.SingleAsync(user => user.Id == memberId)).Id);
-            Assert.AreEqual(1, await database.AccountInvitations.CountAsync(item => item.UserId == memberId));
+            Assert.AreEqual(memberId, (await database.Users.SingleAsync(user => user.Id == memberId, TestContext.CancellationToken)).Id);
+            Assert.AreEqual(1, await database.AccountInvitations.CountAsync(item => item.UserId == memberId, TestContext.CancellationToken));
         }
 
         using HttpResponseMessage enabled = await SetAccountStatusAsync(
@@ -248,7 +248,7 @@ public sealed class InvitationApiTests
             operatorAuth,
             operatorId,
             isActive: false);
-        using JsonDocument problem = JsonDocument.Parse(await self.Content.ReadAsStringAsync());
+        using JsonDocument problem = JsonDocument.Parse(await self.Content.ReadAsStringAsync(TestContext.CancellationToken));
         Assert.AreEqual(HttpStatusCode.Conflict, self.StatusCode);
         Assert.AreEqual("operator_self_deactivation", problem.RootElement.GetProperty("code").GetString());
         Assert.AreEqual(
@@ -264,9 +264,9 @@ public sealed class InvitationApiTests
     private async Task<TestApplication> CreateApplicationAsync(TimeProvider? timeProvider = null)
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
-            await context.Database.MigrateAsync();
+            await context.Database.MigrateAsync(TestContext.CancellationToken);
         }
 
         string keyRingPath = Path.Combine(Path.GetTempPath(), $"gainer-invitations-{Guid.NewGuid():N}");
@@ -287,7 +287,7 @@ public sealed class InvitationApiTests
 
         var app = builder.Build();
         app.MapGainerApi();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.CancellationToken);
         return new TestApplication(app, connectionString);
     }
 
@@ -428,4 +428,6 @@ public sealed class InvitationApiTests
     {
         public async ValueTask DisposeAsync() => await App.DisposeAsync();
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

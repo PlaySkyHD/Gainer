@@ -10,6 +10,7 @@ public sealed class TrainingScheduleValidationTests
     private static readonly Guid Push = Guid.Parse("00000000-0000-0000-0000-000000000001");
     private static readonly Guid Pull = Guid.Parse("00000000-0000-0000-0000-000000000002");
     private static readonly DateOnly Anchor = new(2026, 10, 20);
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
 
     [TestMethod]
     public void ValidCycleAndWeeklySchedulesPass()
@@ -21,8 +22,8 @@ public sealed class TrainingScheduleValidationTests
         TrainingScheduleValues weekly = Weekly([new(Push), new(null), new(Pull), new(null), new(Push), new(null), new(null)]);
 
         TrainingScheduleValues normalized = TrainingScheduleValidation.Normalize(cycle);
-        CollectionAssert.AreEqual(cycle.Slots.ToArray(), normalized.Slots.ToArray());
-        CollectionAssert.AreEqual(cycle.Exceptions.ToArray(), normalized.Exceptions.ToArray());
+        Assert.AreSequenceEqual(cycle.Slots.ToArray(), normalized.Slots.ToArray());
+        Assert.AreSequenceEqual(cycle.Exceptions.ToArray(), normalized.Exceptions.ToArray());
         Assert.HasCount(7, TrainingScheduleValidation.Normalize(weekly).Slots);
     }
 
@@ -164,7 +165,7 @@ public sealed class TrainingScheduleValidationTests
             new DateTime(2026, 10, 21, 8, 0, 0, DateTimeKind.Utc),
             2);
 
-        using JsonDocument json = JsonSerializer.SerializeToDocument(snapshot, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using JsonDocument json = JsonSerializer.SerializeToDocument(snapshot, WebJson);
         JsonElement root = json.RootElement;
 
         Assert.AreEqual(id.ToString(), root.GetProperty("scheduleId").GetString());

@@ -71,7 +71,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
             new { categoryId, baseVersion = 2 }));
         Assert.AreEqual(3, archived.Changes.Single().Version);
 
-        await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         ExerciseCategory stored = await check.ExerciseCategories.SingleAsync(item => item.Id == categoryId, TestContext.CancellationToken);
         Assert.IsTrue(stored.IsArchived);
         Assert.AreEqual(1, await check.ProcessedMutations.CountAsync(item => item.MutationId == createId, TestContext.CancellationToken));
@@ -97,7 +97,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
                 new { categoryId = legs, baseVersion = 1 })));
         Assert.AreEqual("resource_not_found", archive.Code);
 
-        await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         ExerciseCategory stored = await check.ExerciseCategories.IgnoreQueryFilters().SingleAsync(item => item.Id == legs, TestContext.CancellationToken);
         Assert.AreEqual(ExerciseCatalogSnapshot.Document.Categories.Single(item => item.Key == "legs").Name, stored.Name);
         Assert.IsFalse(stored.IsArchived);
@@ -125,7 +125,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         Assert.AreEqual("assisted", createdSnapshot.Values.ExerciseType);
         Assert.AreEqual(0.9m, createdSnapshot.Values.BodyweightFactor);
         Assert.AreEqual(1.5m, createdSnapshot.Values.WeightFactor);
-        CollectionAssert.AreEqual(new[] { legs, rehaId }.Order().ToArray(), createdSnapshot.Values.CategoryIds!.ToArray());
+        Assert.AreSequenceEqual(new[] { legs, rehaId }.Order().ToArray(), createdSnapshot.Values.CategoryIds!.ToArray());
 
         ProcessedSyncMutationResult updated = await ProcessAsync(connectionString, userId, Command(
             Guid.NewGuid(), clientId, 3, "updateCustomExercise", "CustomExercise", exerciseId, 1,
@@ -134,14 +134,14 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         Assert.AreEqual(2, updatedSnapshot.Version);
         Assert.AreEqual("strength", updatedSnapshot.Values.ExerciseType);
         Assert.AreEqual("Band", updatedSnapshot.Values.Notes);
-        CollectionAssert.AreEqual(new[] { chest }, updatedSnapshot.Values.CategoryIds!.ToArray());
+        Assert.AreSequenceEqual(new[] { chest }, updatedSnapshot.Values.CategoryIds!.ToArray());
 
-        await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         Guid[] assigned = await check.ExerciseCategoryAssignments
             .Where(item => item.ExerciseId == exerciseId)
             .Select(item => item.CategoryId)
             .ToArrayAsync(TestContext.CancellationToken);
-        CollectionAssert.AreEqual(new[] { chest }, assigned);
+        Assert.AreSequenceEqual(new[] { chest }, assigned);
     }
 
     [TestMethod]
@@ -172,7 +172,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
                 new { exerciseId, values = Values("Duplicates", "strength", categoryIds: [ExerciseCatalogSnapshot.Document.CategoryId("legs"), ExerciseCatalogSnapshot.Document.CategoryId("legs")]) })));
         Assert.IsTrue(duplicates.Errors.ContainsKey(nameof(CustomExerciseValues.CategoryIds)));
 
-        await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         Assert.AreEqual(0, await check.Exercises.CountAsync(item => item.OwnerUserId == userId, TestContext.CancellationToken));
     }
 
@@ -201,7 +201,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         CustomExerciseValidationException archived = await AssertRejectedAsync(connectionString, owner, ownerClient, 5, [archivedCategory]);
         Assert.AreEqual(unknown.Message, foreign.Message);
         Assert.AreEqual(unknown.Message, archived.Message);
-        CollectionAssert.AreEqual(unknown.Errors.Keys.ToArray(), foreign.Errors.Keys.ToArray());
+        Assert.AreSequenceEqual(unknown.Errors.Keys.ToArray(), foreign.Errors.Keys.ToArray());
         Assert.AreEqual(unknown.Errors[nameof(CustomExerciseValues.CategoryIds)], foreign.Errors[nameof(CustomExerciseValues.CategoryIds)]);
         Assert.AreEqual(unknown.Errors[nameof(CustomExerciseValues.CategoryIds)], archived.Errors[nameof(CustomExerciseValues.CategoryIds)]);
     }
@@ -229,7 +229,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
             Guid.NewGuid(), clientId, 4, "archiveExerciseCategory", "ExerciseCategory", categoryId, 1,
             new { categoryId, baseVersion = 1 }));
 
-        await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         Assert.AreEqual(2, await check.ExerciseCategoryAssignments.CountAsync(item => item.CategoryId == categoryId, TestContext.CancellationToken));
         Exercise first = await check.Exercises.SingleAsync(item => item.Id == firstExercise, TestContext.CancellationToken);
         Assert.AreEqual(1, first.Version);
@@ -237,8 +237,8 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         var queries = new ExerciseCatalogQueries(check, new TestUserContext(userId));
         ExerciseCatalogPage page = await queries.SearchAsync(new ExerciseCatalogFilter(Search: "First"), TestContext.CancellationToken);
         Assert.AreEqual(1, page.Total);
-        CollectionAssert.AreEqual(new[] { categoryId }, page.Items.Single().CategoryIds.ToArray());
-        Assert.IsFalse(page.Categories.Any(item => item.Id == categoryId));
+        Assert.AreSequenceEqual(new[] { categoryId }, page.Items.Single().CategoryIds.ToArray());
+        Assert.DoesNotContain(item => item.Id == categoryId, page.Categories);
     }
 
     [TestMethod]
@@ -258,7 +258,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
 
         Assert.IsFalse(first.Replayed);
         Assert.IsTrue(second.Replayed);
-        await using AppDbContext check = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         Assert.AreEqual(1, await check.Exercises.CountAsync(item => item.OwnerUserId == userId, TestContext.CancellationToken));
         Assert.AreEqual(1, await check.ChangeBatches.CountAsync(TestContext.CancellationToken));
     }
@@ -276,14 +276,13 @@ public sealed class ExerciseCatalogSyncPersistenceTests
             Guid.NewGuid(), ownerClient, 1, "createExerciseCategory", "ExerciseCategory", categoryId, 0,
             new { categoryId, name = "Private" }));
 
-        await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext ownerContext = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         SyncChangeFeedPage ownerPage = await new SyncChangeFeed(ownerContext).GetAsync(0, 10, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion, TestContext.CancellationToken);
-        Assert.IsTrue(ownerPage.Batches.SelectMany(batch => batch.Changes)
-            .Any(change => change.ResourceType == "ExerciseCategory" && change.ResourceId == categoryId));
+        Assert.Contains(change => change.ResourceType == "ExerciseCategory" && change.ResourceId == categoryId, ownerPage.Batches.SelectMany(batch => batch.Changes));
 
-        await using AppDbContext otherContext = Fixture.CreateContext(connectionString, other);
+        await using AppDbContext otherContext = PostgreSqlTestFixture.CreateContext(connectionString, other);
         SyncChangeFeedPage otherPage = await new SyncChangeFeed(otherContext).GetAsync(0, 10, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion, TestContext.CancellationToken);
-        Assert.IsFalse(otherPage.Batches.Any());
+        Assert.IsEmpty(otherPage.Batches);
     }
 
     [TestMethod]
@@ -322,7 +321,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         await AssertAssignmentRejectedAsync<UserIsolationViolationException>(connectionString, owner, Guid.NewGuid(), ownerCategory);
         await AssertAssignmentRejectedAsync<UserIsolationViolationException>(connectionString, other, ownerExercise, ownerCategory);
 
-        await using AppDbContext allowed = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext allowed = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         allowed.ExerciseCategoryAssignments.Add(new ExerciseCategoryAssignment { ExerciseId = ownerExercise, CategoryId = ownerCategory });
         await allowed.SaveChangesAsync(TestContext.CancellationToken);
         Assert.AreEqual(1, await allowed.ExerciseCategoryAssignments.CountAsync(item => item.ExerciseId == ownerExercise, TestContext.CancellationToken));
@@ -353,28 +352,28 @@ public sealed class ExerciseCatalogSyncPersistenceTests
             Guid.NewGuid(), otherClient, 2, "createCustomExercise", "CustomExercise", otherExercise, 0,
             new { exerciseId = otherExercise, values = Values("Other Movement", "strength", categoryIds: [otherCategory]) }));
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         var controller = new Gainer.Api.Controllers.ExerciseCatalogController(new ExerciseCatalogQueries(context, new TestUserContext(owner)));
         var result = (Microsoft.AspNetCore.Mvc.OkObjectResult)(await controller.Search(null, null, null, null, 0, 100, TestContext.CancellationToken)).Result!;
         var response = (Gainer.Contracts.Training.ExerciseCatalogResponse)result.Value!;
 
-        Assert.IsFalse(response.Items.Any(item => item.Name == "Other Movement"));
+        Assert.DoesNotContain(item => item.Name == "Other Movement", response.Items);
         Gainer.Contracts.Training.ExerciseCatalogItemResponse mine = response.Items.Single(item => item.Name == "Owner Movement");
         Assert.AreEqual("assisted", mine.ExerciseType);
         Assert.AreEqual("Band", mine.Notes);
         Assert.AreEqual(0.5m, mine.BodyweightFactor);
-        CollectionAssert.AreEqual(new[] { ownerCategory }, mine.CategoryIds.ToArray());
-        Assert.IsTrue(response.Items.Any(item => !item.IsCustom && item.CategoryIds.Count > 0));
-        Assert.IsTrue(response.Categories.Any(item => item.IsBase));
-        Assert.IsTrue(response.Categories.Any(item => item.Id == ownerCategory && !item.IsBase));
-        Assert.IsFalse(response.Categories.Any(item => item.Id == otherCategory));
+        Assert.AreSequenceEqual(new[] { ownerCategory }, mine.CategoryIds.ToArray());
+        Assert.Contains(item => !item.IsCustom && item.CategoryIds.Count > 0, response.Items);
+        Assert.Contains(item => item.IsBase, response.Categories);
+        Assert.Contains(item => item.Id == ownerCategory && !item.IsBase, response.Categories);
+        Assert.DoesNotContain(item => item.Id == otherCategory, response.Categories);
 
-        await using AppDbContext otherContext = Fixture.CreateContext(connectionString, other);
+        await using AppDbContext otherContext = PostgreSqlTestFixture.CreateContext(connectionString, other);
         var otherController = new Gainer.Api.Controllers.ExerciseCatalogController(new ExerciseCatalogQueries(otherContext, new TestUserContext(other)));
         var otherResult = (Microsoft.AspNetCore.Mvc.OkObjectResult)(await otherController.Search(null, null, null, null, 0, 100, TestContext.CancellationToken)).Result!;
         var otherResponse = (Gainer.Contracts.Training.ExerciseCatalogResponse)otherResult.Value!;
-        Assert.IsFalse(otherResponse.Items.Any(item => item.Name == "Owner Movement"));
-        Assert.IsFalse(otherResponse.Categories.Any(item => item.Id == ownerCategory));
+        Assert.DoesNotContain(item => item.Name == "Owner Movement", otherResponse.Items);
+        Assert.DoesNotContain(item => item.Id == ownerCategory, otherResponse.Categories);
     }
 
     private static async Task AssertAssignmentRejectedAsync<TException>(
@@ -384,7 +383,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         Guid categoryId)
         where TException : Exception
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         context.ExerciseCategoryAssignments.Add(new ExerciseCategoryAssignment { ExerciseId = exerciseId, CategoryId = categoryId });
         await Assert.ThrowsAsync<TException>(() => context.SaveChangesAsync());
     }
@@ -416,7 +415,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         Guid userId,
         ProcessSyncMutationCommand command)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var user = new TestUserContext(userId);
         var processor = new SyncMutationProcessor(
             context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
@@ -448,7 +447,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid first = Guid.NewGuid();
         Guid second = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(first), User(second));
         await context.SaveChangesAsync();
@@ -457,7 +456,7 @@ public sealed class ExerciseCatalogSyncPersistenceTests
 
     private static async Task RegisterActiveClientAsync(string connectionString, Guid userId, Guid clientId)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         context.SyncClients.Add(new SyncClient
         {
             Id = clientId,

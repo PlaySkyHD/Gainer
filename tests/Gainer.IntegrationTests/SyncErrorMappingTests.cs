@@ -202,11 +202,11 @@ public sealed class SyncErrorMappingTests
     {
         (string connectionString, Guid user, Guid client) = await SetupAsync();
         Guid goalId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContextWithInterceptors(
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContextWithInterceptors(
             connectionString, user, new FailingInsertInterceptor<BodyGoal>(sqlState));
 
         SyncMutationConflictException conflict = await Assert.ThrowsExactlyAsync<SyncMutationConflictException>(() =>
-            Processor(context, user).ProcessAsync(For(ActivateGoal(goalId), client, 1)));
+            Processor(context, user).ProcessAsync(For(ActivateGoal(goalId), client, 1), TestContext.CancellationToken));
         Assert.AreEqual("concurrent_mutation", conflict.Code);
     }
 
@@ -253,9 +253,9 @@ public sealed class SyncErrorMappingTests
             Assert.AreEqual("The mutation payload conflicts with stored data.", invalid.Message);
         }
 
-        await using AppDbContext read = Fixture.CreateContext(connectionString, owner);
-        Assert.AreEqual(1, (await read.NutritionDays.SingleAsync(item => item.Id == dayId)).Version);
-        Assert.AreEqual(1, (await read.Workouts.SingleAsync(item => item.Id == workoutId)).Version);
+        await using AppDbContext read = PostgreSqlTestFixture.CreateContext(connectionString, owner);
+        Assert.AreEqual(1, (await read.NutritionDays.SingleAsync(item => item.Id == dayId, TestContext.CancellationToken)).Version);
+        Assert.AreEqual(1, (await read.Workouts.SingleAsync(item => item.Id == workoutId, TestContext.CancellationToken)).Version);
     }
 
     [TestMethod]
@@ -277,8 +277,8 @@ public sealed class SyncErrorMappingTests
 
         Assert.IsInstanceOfType<DbUpdateException>(invalid.InnerException);
         string entry = logger.Messages.Single();
-        StringAssert.Contains(entry, PostgresErrorCodes.UniqueViolation);
-        StringAssert.Contains(entry, "workout_exercises");
+        Assert.Contains(PostgresErrorCodes.UniqueViolation, entry);
+        Assert.Contains("workout_exercises", entry);
         Assert.IsFalse(entry.Contains(workoutExerciseId.ToString(), StringComparison.OrdinalIgnoreCase));
     }
 
@@ -295,7 +295,7 @@ public sealed class SyncErrorMappingTests
 
         Assert.IsInstanceOfType<JsonException>(invalid.InnerException);
         string entry = logger.Messages.Single();
-        StringAssert.Contains(entry, "$.amountMl");
+        Assert.Contains("$.amountMl", entry);
         Assert.IsFalse(entry.Contains("viel", StringComparison.Ordinal));
     }
 
@@ -419,7 +419,7 @@ public sealed class SyncErrorMappingTests
 
     private static async Task Run(string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         _ = await Processor(context, user).ProcessAsync(For(command, client, sequence));
     }
 
@@ -455,7 +455,7 @@ public sealed class SyncErrorMappingTests
         ILogger<SyncMutationProcessor>? logger = null)
         where TException : Exception
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         return await Assert.ThrowsExactlyAsync<TException>(() =>
             Processor(context, user, logger).ProcessAsync(For(command, client, sequence)));
     }
@@ -472,7 +472,7 @@ public sealed class SyncErrorMappingTests
 
     private static async Task<Guid> BaseExerciseIdAsync(string connectionString, Guid userId)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         return await context.Exercises.Where(item => item.OwnerUserId == null)
             .OrderBy(item => item.Id).Select(item => item.Id).FirstAsync();
     }
@@ -480,7 +480,7 @@ public sealed class SyncErrorMappingTests
     private static async Task<(string ConnectionString, Guid User, Guid Client)> SetupAsync()
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
             await context.Database.MigrateAsync();
         }
@@ -492,12 +492,12 @@ public sealed class SyncErrorMappingTests
     {
         Guid user = Guid.NewGuid();
         Guid client = Guid.NewGuid();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
             context.Users.Add(User(user));
             await context.SaveChangesAsync();
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             context.SyncClients.Add(new SyncClient
             {

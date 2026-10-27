@@ -11,7 +11,7 @@ public sealed class DependencyDirectionTests
             .GetReferencedAssemblies()
             .Select(reference => reference.Name);
 
-        CollectionAssert.DoesNotContain(referencedAssemblyNames.ToArray(), "Gainer.Infrastructure");
+        Assert.DoesNotContain("Gainer.Infrastructure", referencedAssemblyNames.ToArray());
     }
 
     [TestMethod]
@@ -23,9 +23,9 @@ public sealed class DependencyDirectionTests
             .Select(reference => reference.Name)
             .ToArray();
 
-        CollectionAssert.DoesNotContain(referencedAssemblyNames, "Gainer.Api");
-        CollectionAssert.DoesNotContain(referencedAssemblyNames, "Gainer.Core");
-        CollectionAssert.DoesNotContain(referencedAssemblyNames, "Gainer.Infrastructure");
+        Assert.DoesNotContain("Gainer.Api", referencedAssemblyNames);
+        Assert.DoesNotContain("Gainer.Core", referencedAssemblyNames);
+        Assert.DoesNotContain("Gainer.Infrastructure", referencedAssemblyNames);
     }
 
     [TestMethod]
@@ -37,8 +37,8 @@ public sealed class DependencyDirectionTests
             .Select(reference => reference.Name)
             .ToArray();
 
-        CollectionAssert.DoesNotContain(referencedAssemblyNames, "Gainer.Api");
-        CollectionAssert.DoesNotContain(referencedAssemblyNames, "Gainer.Contracts");
+        Assert.DoesNotContain("Gainer.Api", referencedAssemblyNames);
+        Assert.DoesNotContain("Gainer.Contracts", referencedAssemblyNames);
     }
 
     [TestMethod]
@@ -66,10 +66,10 @@ public sealed class DependencyDirectionTests
             .Select(parameter => parameter.ParameterType)
             .ToArray();
 
-        Assert.IsFalse(dependencies.Any(type =>
-            typeof(Gainer.Core.Security.IUserScopedRepository).IsAssignableFrom(type)));
-        Assert.IsFalse(dependencies.Any(type =>
-            type.Namespace?.Contains("Insights", StringComparison.Ordinal) == true));
+        Assert.DoesNotContain(type =>
+            typeof(Gainer.Core.Security.IUserScopedRepository).IsAssignableFrom(type), dependencies);
+        Assert.DoesNotContain(type =>
+            type.Namespace?.Contains("Insights", StringComparison.Ordinal) == true, dependencies);
         Assert.IsFalse(dependencies.Contains(typeof(Gainer.Infrastructure.Persistence.AppDbContext)));
     }
 
@@ -86,10 +86,10 @@ public sealed class DependencyDirectionTests
             .Select(parameter => parameter.ParameterType)
             .ToArray();
 
-        Assert.IsFalse(dependencies.Any(type =>
-            typeof(Gainer.Core.Security.IUserScopedRepository).IsAssignableFrom(type)));
-        Assert.IsFalse(dependencies.Any(type =>
-            type.Namespace?.Contains("Insights", StringComparison.Ordinal) == true));
+        Assert.DoesNotContain(type =>
+            typeof(Gainer.Core.Security.IUserScopedRepository).IsAssignableFrom(type), dependencies);
+        Assert.DoesNotContain(type =>
+            type.Namespace?.Contains("Insights", StringComparison.Ordinal) == true, dependencies);
         Assert.IsFalse(dependencies.Contains(typeof(Gainer.Infrastructure.Persistence.AppDbContext)));
     }
 }

@@ -7,6 +7,8 @@ namespace Gainer.UnitTests;
 public sealed class CardioSessionTests
 {
     private static readonly DateTime Start = new(2026, 10, 18, 8, 0, 0, DateTimeKind.Utc);
+    private static readonly int[] ExpectedHeartRates = new[] { 0, 25, 120, 250 };
+    private static readonly int[] ExpectedRrIntervals = new[] { 200, 800, 3000 };
 
     [TestMethod]
     public void ValidSessionIsNormalizedAndKeepsSeries()
@@ -25,8 +27,8 @@ public sealed class CardioSessionTests
         Assert.AreEqual("Polar H10", normalized.SensorName);
         Assert.IsNull(normalized.Notes);
         Assert.AreEqual(DateTimeKind.Utc, normalized.StartedAtUtc.Kind);
-        CollectionAssert.AreEqual(new[] { 0, 25, 120, 250 }, normalized.HeartRateBpm.ToArray());
-        CollectionAssert.AreEqual(new[] { 200, 800, 3000 }, normalized.RrIntervalsMs.ToArray());
+        Assert.AreSequenceEqual(ExpectedHeartRates, normalized.HeartRateBpm.ToArray());
+        Assert.AreSequenceEqual(ExpectedRrIntervals, normalized.RrIntervalsMs.ToArray());
     }
 
     [TestMethod]

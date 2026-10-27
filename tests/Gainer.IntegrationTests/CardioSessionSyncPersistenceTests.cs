@@ -48,21 +48,21 @@ public sealed class CardioSessionSyncPersistenceTests
         Guid createId = Guid.NewGuid();
         ProcessSyncMutationCommand create = Save(createId, client, 1, 0, values);
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
-            ProcessedSyncMutationResult applied = await Processor(context, firstUser).ProcessAsync(create);
+            ProcessedSyncMutationResult applied = await Processor(context, firstUser).ProcessAsync(create, TestContext.CancellationToken);
             Assert.IsFalse(applied.Replayed);
             Assert.AreEqual(ResourceKind.CardioSession, applied.Changes.Single().Resource.Kind);
             Assert.AreEqual(1, applied.Changes.Single().Version);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
-            ProcessedSyncMutationResult replayed = await Processor(context, firstUser).ProcessAsync(create);
+            ProcessedSyncMutationResult replayed = await Processor(context, firstUser).ProcessAsync(create, TestContext.CancellationToken);
             Assert.IsTrue(replayed.Replayed);
-            Assert.AreEqual(1, await context.CardioSessions.CountAsync());
-            CardioSession stored = await context.CardioSessions.SingleAsync();
-            CollectionAssert.AreEqual(new[] { 0, 95, 130, 250 }, stored.HeartRateBpm);
-            CollectionAssert.AreEqual(new[] { 200, 640, 3000 }, stored.RrIntervalsMs);
+            Assert.AreEqual(1, await context.CardioSessions.CountAsync(TestContext.CancellationToken));
+            CardioSession stored = await context.CardioSessions.SingleAsync(TestContext.CancellationToken);
+            Assert.AreSequenceEqual(ExpectedHeartRates, stored.HeartRateBpm);
+            Assert.AreSequenceEqual(ExpectedRrIntervals, stored.RrIntervalsMs);
             Assert.AreEqual(120, stored.TargetZoneLowBpm);
             Assert.AreEqual(140, stored.TargetZoneHighBpm);
             Assert.AreEqual(12.345m, stored.DistanceKm);
@@ -72,25 +72,25 @@ public sealed class CardioSessionSyncPersistenceTests
 
         CardioSessionValues edited = values with { Notes = "hard ride", HeartRateBpm = [0, 95, 130, 250, 100] };
         Guid updateId = Guid.NewGuid();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             ProcessedSyncMutationResult updated = await Processor(context, firstUser)
-                .ProcessAsync(Save(updateId, client, 2, 1, edited, createId));
+                .ProcessAsync(Save(updateId, client, 2, 1, edited, createId), TestContext.CancellationToken);
             Assert.AreEqual(2, updated.Changes.Single().Version);
-            CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync();
+            CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync(TestContext.CancellationToken);
             Assert.AreEqual("hard ride", stored.Notes);
             Assert.HasCount(5, stored.HeartRateBpm);
             Assert.AreEqual(2, stored.Version);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             ProcessedSyncMutationResult deleted = await Processor(context, firstUser).ProcessAsync(
-                Delete(Guid.NewGuid(), client, 3, sessionId, 2, updateId));
+                Delete(Guid.NewGuid(), client, 3, sessionId, 2, updateId), TestContext.CancellationToken);
             Assert.IsTrue(deleted.Changes.Single().IsTombstone);
             Assert.AreEqual(3, deleted.Changes.Single().Version);
-            Assert.AreEqual(0, await context.CardioSessions.CountAsync());
-            SyncChangeFeedPage feed = await new SyncChangeFeed(context).GetAsync(0, 10, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion);
+            Assert.AreEqual(0, await context.CardioSessions.CountAsync(TestContext.CancellationToken));
+            SyncChangeFeedPage feed = await new SyncChangeFeed(context).GetAsync(0, 10, Gainer.Contracts.Sync.SyncProtocol.CurrentVersion, TestContext.CancellationToken);
             Assert.HasCount(3, feed.Batches);
             Assert.IsTrue(feed.Batches[2].Changes.Single().IsTombstone);
         }
@@ -111,18 +111,18 @@ public sealed class CardioSessionSyncPersistenceTests
             Phases = [new(0, 120, "Warm-up", 100, 120), new(120, 60, "Push", 150, 170), new(180, 60, "Rest", null, null)],
         };
         Guid createId = Guid.NewGuid();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             ProcessedSyncMutationResult applied = await Processor(context, firstUser)
-                .ProcessAsync(Save(createId, client, 1, 0, values));
+                .ProcessAsync(Save(createId, client, 1, 0, values), TestContext.CancellationToken);
             var snapshot = (CardioSessionSnapshot)applied.Changes.Single().Snapshot!;
             Assert.AreEqual(160, snapshot.RecoveryStartBpm);
             Assert.AreEqual("Intervals 4x1", snapshot.TemplateName);
             Assert.HasCount(3, snapshot.Phases!);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
-            CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync();
+            CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync(TestContext.CancellationToken);
             Assert.AreEqual(160, stored.RecoveryStartBpm);
             Assert.AreEqual(128, stored.RecoveryEndBpm);
             Assert.AreEqual("Intervals 4x1", stored.TemplateName);
@@ -132,10 +132,10 @@ public sealed class CardioSessionSyncPersistenceTests
         }
 
         CardioSessionValues edited = values with { Phases = [new(0, 300, "Steady", 120, 140)], RecoveryStartBpm = null, RecoveryEndBpm = null };
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
-            await Processor(context, firstUser).ProcessAsync(Save(Guid.NewGuid(), client, 2, 1, edited, createId));
-            CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync();
+            await Processor(context, firstUser).ProcessAsync(Save(Guid.NewGuid(), client, 2, 1, edited, createId), TestContext.CancellationToken);
+            CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync(TestContext.CancellationToken);
             Assert.HasCount(1, stored.Phases!);
             Assert.AreEqual("Steady", stored.Phases![0].Name);
             Assert.IsNull(stored.RecoveryStartBpm);
@@ -162,10 +162,10 @@ public sealed class CardioSessionSyncPersistenceTests
             rrIntervalsMs = new[] { 800 },
             sensorName = "Polar H10",
         };
-        await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         await Processor(context, firstUser).ProcessAsync(Command(
-            Guid.NewGuid(), client, 1, "saveCardioSession", sessionId, 0, new { baseVersion = 0, session = oldSession }, null));
-        CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync();
+            Guid.NewGuid(), client, 1, "saveCardioSession", sessionId, 0, new { baseVersion = 0, session = oldSession }, null), TestContext.CancellationToken);
+        CardioSession stored = await context.CardioSessions.AsNoTracking().SingleAsync(TestContext.CancellationToken);
         Assert.IsNull(stored.RecoveryStartBpm);
         Assert.IsNull(stored.TemplateName);
         Assert.IsNull(stored.Phases);
@@ -180,33 +180,33 @@ public sealed class CardioSessionSyncPersistenceTests
         Guid sessionId = Guid.NewGuid();
         CardioSessionValues values = Session(sessionId);
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
-            _ = await Processor(context, user).ProcessAsync(Save(Guid.NewGuid(), client, 1, 0, values));
+            _ = await Processor(context, user).ProcessAsync(Save(Guid.NewGuid(), client, 1, 0, values), TestContext.CancellationToken);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             SyncMutationConflictException duplicateCreate = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
-                Processor(context, user).ProcessAsync(Save(Guid.NewGuid(), client, 2, 0, values)));
+                Processor(context, user).ProcessAsync(Save(Guid.NewGuid(), client, 2, 0, values), TestContext.CancellationToken));
             Assert.AreEqual("stale_base_version", duplicateCreate.Code);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             SyncMutationConflictException staleUpdate = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
-                Processor(context, user).ProcessAsync(Save(Guid.NewGuid(), client, 2, 5, values)));
+                Processor(context, user).ProcessAsync(Save(Guid.NewGuid(), client, 2, 5, values), TestContext.CancellationToken));
             Assert.AreEqual("stale_base_version", staleUpdate.Code);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             SyncMutationConflictException staleDelete = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
-                Processor(context, user).ProcessAsync(Delete(Guid.NewGuid(), client, 2, sessionId, 4)));
+                Processor(context, user).ProcessAsync(Delete(Guid.NewGuid(), client, 2, sessionId, 4), TestContext.CancellationToken));
             Assert.AreEqual("stale_base_version", staleDelete.Code);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             Guid missing = Guid.NewGuid();
             SyncMutationConflictException notFound = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
-                Processor(context, user).ProcessAsync(Save(Guid.NewGuid(), client, 2, 1, Session(missing))));
+                Processor(context, user).ProcessAsync(Save(Guid.NewGuid(), client, 2, 1, Session(missing)), TestContext.CancellationToken));
             Assert.AreEqual("resource_not_found", notFound.Code);
         }
     }
@@ -219,12 +219,12 @@ public sealed class CardioSessionSyncPersistenceTests
         await RegisterAsync(connectionString, user, client);
         CardioSessionValues invalid = Session(Guid.NewGuid()) with { HeartRateBpm = [400] };
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         CardioSessionValidationException error = await Assert.ThrowsAsync<CardioSessionValidationException>(() =>
-            Processor(context, user).ProcessAsync(Save(Guid.NewGuid(), client, 1, 0, invalid)));
+            Processor(context, user).ProcessAsync(Save(Guid.NewGuid(), client, 1, 0, invalid), TestContext.CancellationToken));
         Assert.IsTrue(error.Errors.ContainsKey(nameof(CardioSessionValues.HeartRateBpm)));
-        await using AppDbContext verify = Fixture.CreateContext(connectionString, user);
-        Assert.AreEqual(0, await verify.CardioSessions.CountAsync());
+        await using AppDbContext verify = PostgreSqlTestFixture.CreateContext(connectionString, user);
+        Assert.AreEqual(0, await verify.CardioSessions.CountAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -237,31 +237,31 @@ public sealed class CardioSessionSyncPersistenceTests
         await RegisterAsync(connectionString, intruder, intruderClient);
         Guid sessionId = Guid.NewGuid();
         CardioSessionValues values = Session(sessionId);
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, owner))
         {
-            _ = await Processor(context, owner).ProcessAsync(Save(Guid.NewGuid(), ownerClient, 1, 0, values));
+            _ = await Processor(context, owner).ProcessAsync(Save(Guid.NewGuid(), ownerClient, 1, 0, values), TestContext.CancellationToken);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, intruder))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, intruder))
         {
             SyncMutationConflictException update = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
                 Processor(context, intruder).ProcessAsync(
-                    Save(Guid.NewGuid(), intruderClient, 1, 1, values with { Notes = "stolen" })));
+                    Save(Guid.NewGuid(), intruderClient, 1, 1, values with { Notes = "stolen" }), TestContext.CancellationToken));
             Assert.AreEqual("resource_not_found", update.Code);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, intruder))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, intruder))
         {
             SyncMutationConflictException delete = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
-                Processor(context, intruder).ProcessAsync(Delete(Guid.NewGuid(), intruderClient, 1, sessionId, 1)));
+                Processor(context, intruder).ProcessAsync(Delete(Guid.NewGuid(), intruderClient, 1, sessionId, 1), TestContext.CancellationToken));
             Assert.AreEqual("resource_not_found", delete.Code);
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, intruder))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, intruder))
         {
-            Assert.AreEqual(0, await context.CardioSessions.CountAsync());
+            Assert.AreEqual(0, await context.CardioSessions.CountAsync(TestContext.CancellationToken));
         }
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, owner))
         {
-            CardioSession stored = await context.CardioSessions.SingleAsync();
+            CardioSession stored = await context.CardioSessions.SingleAsync(TestContext.CancellationToken);
             Assert.IsNull(stored.Notes);
             Assert.AreEqual(1, stored.Version);
         }
@@ -317,7 +317,7 @@ public sealed class CardioSessionSyncPersistenceTests
 
     private static async Task RegisterAsync(string connectionString, Guid userId, Guid clientId)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         context.SyncClients.Add(new SyncClient
         {
             Id = clientId,
@@ -341,7 +341,7 @@ public sealed class CardioSessionSyncPersistenceTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid first = Guid.NewGuid();
         Guid second = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(first), User(second));
         await context.SaveChangesAsync();
@@ -364,4 +364,9 @@ public sealed class CardioSessionSyncPersistenceTests
     {
         Guid? IUserContext.UserId => Value;
     }
+
+    public TestContext TestContext { get; set; } = null!;
+
+    private static readonly int[] ExpectedHeartRates = new[] { 0, 95, 130, 250 };
+    private static readonly int[] ExpectedRrIntervals = new[] { 200, 640, 3000 };
 }

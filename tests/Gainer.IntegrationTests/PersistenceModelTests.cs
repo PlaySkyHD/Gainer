@@ -23,9 +23,8 @@ public sealed class PersistenceModelTests
         Assert.AreEqual(DatabaseSchemas.Identity, user.GetSchema());
         Assert.AreEqual("users", user.GetTableName());
         Assert.AreEqual("uuid", user.FindProperty(nameof(AppUser.Id))?.GetColumnType());
-        CollectionAssert.AreEquivalent(
-            ExpectedSchemaNames,
-            DatabaseSchemas.All.ToArray());
+        Assert.AreSequenceEqual(
+            ExpectedSchemaNames, DatabaseSchemas.All.ToArray(), SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]

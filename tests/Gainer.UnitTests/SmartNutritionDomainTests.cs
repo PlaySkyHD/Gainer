@@ -21,7 +21,7 @@ public sealed class SmartNutritionDomainTests
 
         Assert.AreEqual("Bowl", draft.Name);
         Assert.AreEqual("Meal prep", draft.Description);
-        CollectionAssert.AreEqual(new[] { first.ComponentId, second.ComponentId }, draft.Components.Select(item => item.ComponentId).ToArray());
+        Assert.AreSequenceEqual(new[] { first.ComponentId, second.ComponentId }, draft.Components.Select(item => item.ComponentId).ToArray());
     }
 
     [TestMethod]
@@ -141,7 +141,7 @@ public sealed class SmartNutritionDomainTests
 
         NutritionTargetScheduleDraft schedule = NutritionTargetScheduleDraft.Create([later, earlier]);
 
-        CollectionAssert.AreEqual(new[] { earlier.TargetVersionId, later.TargetVersionId }, schedule.Versions.Select(item => item.TargetVersionId).ToArray());
+        Assert.AreSequenceEqual(new[] { earlier.TargetVersionId, later.TargetVersionId }, schedule.Versions.Select(item => item.TargetVersionId).ToArray());
         Assert.AreEqual(earlier.TargetVersionId, schedule.GetEffective(new DateOnly(2026, 8, 31))?.TargetVersionId);
         Assert.AreEqual(later.TargetVersionId, schedule.GetEffective(new DateOnly(2026, 9, 2))?.TargetVersionId);
         Assert.IsNull(schedule.GetEffective(new DateOnly(2026, 7, 31)));
@@ -250,7 +250,7 @@ public sealed class SmartNutritionDomainTests
         Assert.IsNull(draft.Components[0].ProteinGrams);
         Assert.IsNull(draft.Components[0].FatGrams);
         Assert.AreEqual(MealEstimateConfidence.Low, draft.Components[0].Confidence);
-        CollectionAssert.Contains(draft.Components[0].DataGaps.ToArray(), "fat could not be estimated");
+        Assert.Contains("fat could not be estimated", draft.Components[0].DataGaps.ToArray());
     }
 
     [TestMethod]

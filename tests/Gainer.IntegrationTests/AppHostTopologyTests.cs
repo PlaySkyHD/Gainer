@@ -13,7 +13,7 @@ public sealed class AppHostTopologyTests
     public async Task AppHostDefinesPostgresAzuriteAndApiWithReferences()
     {
         var appHost = await DistributedApplicationTestingBuilder
-            .CreateAsync<Projects.Gainer_AppHost>();
+            .CreateAsync<Projects.Gainer_AppHost>(TestContext.CancellationToken);
 
         var resources = appHost.Resources.ToDictionary(resource => resource.Name);
 
@@ -35,6 +35,8 @@ public sealed class AppHostTopologyTests
             .Where(annotation => annotation.Type == "Reference")
             .Select(annotation => annotation.Resource);
 
-        CollectionAssert.Contains(referencedResources.ToArray(), target);
+        Assert.Contains(target, referencedResources.ToArray());
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

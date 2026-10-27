@@ -22,10 +22,10 @@ public sealed class MealImageSanitizerTests
         })
         {
             byte[] source = CreateImage(format, 3, 2);
-            SanitizedMealImage result = await new MealImageSanitizer().SanitizeAsync(new MealImageInput(source, contentType));
+            SanitizedMealImage result = await new MealImageSanitizer().SanitizeAsync(new MealImageInput(source, contentType), TestContext.CancellationToken);
 
             Assert.AreEqual("image/jpeg", result.ContentType);
-            CollectionAssert.AreEqual(new byte[] { 0xFF, 0xD8 }, result.Bytes[..2]);
+            Assert.AreSequenceEqual(new byte[] { 0xFF, 0xD8 }, result.Bytes[..2]);
             Assert.IsTrue(source.All(value => value == 0));
             Assert.AreEqual(3, result.Width);
             Assert.AreEqual(2, result.Height);
@@ -41,19 +41,19 @@ public sealed class MealImageSanitizerTests
     {
         byte[] mismatch = TinyPng.ToArray();
         MealEstimationException mismatchError = await Assert.ThrowsAsync<MealEstimationException>(() =>
-            new MealImageSanitizer().SanitizeAsync(new MealImageInput(mismatch, "image/jpeg")));
+            new MealImageSanitizer().SanitizeAsync(new MealImageInput(mismatch, "image/jpeg"), TestContext.CancellationToken));
         Assert.AreEqual("image_type_mismatch", mismatchError.Code);
         Assert.IsTrue(mismatch.All(value => value == 0));
 
         byte[] invalid = [1, 2, 3, 4];
         MealEstimationException invalidError = await Assert.ThrowsAsync<MealEstimationException>(() =>
-            new MealImageSanitizer().SanitizeAsync(new MealImageInput(invalid, "image/jpeg")));
+            new MealImageSanitizer().SanitizeAsync(new MealImageInput(invalid, "image/jpeg"), TestContext.CancellationToken));
         Assert.AreEqual("invalid_image", invalidError.Code);
         Assert.IsTrue(invalid.All(value => value == 0));
 
         byte[] oversized = new byte[MealImageSanitizer.MaximumBytes + 1];
         MealEstimationException sizeError = await Assert.ThrowsAsync<MealEstimationException>(() =>
-            new MealImageSanitizer().SanitizeAsync(new MealImageInput(oversized, "image/jpeg")));
+            new MealImageSanitizer().SanitizeAsync(new MealImageInput(oversized, "image/jpeg"), TestContext.CancellationToken));
         Assert.AreEqual("invalid_image_size", sizeError.Code);
         Assert.IsTrue(oversized.All(value => value == 0));
     }
@@ -63,13 +63,13 @@ public sealed class MealImageSanitizerTests
     {
         byte[] tooWide = CreateImage(SKEncodedImageFormat.Png, MealImageSanitizer.MaximumDimension + 1, 1);
         MealEstimationException dimensions = await Assert.ThrowsAsync<MealEstimationException>(() =>
-            new MealImageSanitizer().SanitizeAsync(new MealImageInput(tooWide, "image/png")));
+            new MealImageSanitizer().SanitizeAsync(new MealImageInput(tooWide, "image/png"), TestContext.CancellationToken));
         Assert.AreEqual("invalid_image_dimensions", dimensions.Code);
         Assert.IsTrue(tooWide.All(value => value == 0));
 
         byte[] withMetadata = AddExifDescription(CreateImage(SKEncodedImageFormat.Jpeg, 2, 2), "private meal note");
         SanitizedMealImage sanitized = await new MealImageSanitizer().SanitizeAsync(
-            new MealImageInput(withMetadata, "image/jpeg"));
+            new MealImageInput(withMetadata, "image/jpeg"), TestContext.CancellationToken);
         Assert.IsFalse(Encoding.ASCII.GetString(sanitized.Bytes).Contains("private meal note", StringComparison.Ordinal));
     }
 
@@ -115,4 +115,6 @@ public sealed class MealImageSanitizerTests
         jpeg.AsSpan(2).CopyTo(result.AsSpan(6 + payload.Length));
         return result;
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

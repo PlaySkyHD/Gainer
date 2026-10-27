@@ -35,7 +35,7 @@ public sealed class OpenAiResponsesProviderTests
             input = new[] { new { role = "user", content = "private@example.test data:image/jpeg;base64,SECRET meal component" } },
             tools = new[] { new { type = "function", name = "get_progress" } },
         });
-        _ = await provider.CreateResponseAsync(request);
+        _ = await provider.CreateResponseAsync(request, TestContext.CancellationToken);
 
         using JsonDocument sent = JsonDocument.Parse(handler.Body!);
         JsonElement root = sent.RootElement;
@@ -59,13 +59,13 @@ public sealed class OpenAiResponsesProviderTests
     {
         var limited = new CaptureHandler(HttpStatusCode.TooManyRequests, "{}");
         OpenAiProviderException rate = await Assert.ThrowsAsync<OpenAiProviderException>(() => Provider(limited).CreateResponseAsync(
-            JsonSerializer.SerializeToElement(new { input = Array.Empty<object>() })));
+            JsonSerializer.SerializeToElement(new { input = Array.Empty<object>() }), TestContext.CancellationToken));
         Assert.AreEqual("provider_rate_limited", rate.Code);
         Assert.AreEqual(429, rate.StatusCode);
 
         var invalid = new CaptureHandler(HttpStatusCode.OK, "not-json");
         OpenAiProviderException json = await Assert.ThrowsAsync<OpenAiProviderException>(() => Provider(invalid).CreateResponseAsync(
-            JsonSerializer.SerializeToElement(new { input = Array.Empty<object>() })));
+            JsonSerializer.SerializeToElement(new { input = Array.Empty<object>() }), TestContext.CancellationToken));
         Assert.AreEqual("invalid_provider_response", json.Code);
     }
 
@@ -74,12 +74,12 @@ public sealed class OpenAiResponsesProviderTests
     {
         OpenAiProviderException timeout = await Assert.ThrowsAsync<OpenAiProviderException>(() =>
             Provider(new DelayedHandler()).CreateResponseAsync(
-                JsonSerializer.SerializeToElement(new { input = Array.Empty<object>() })));
+                JsonSerializer.SerializeToElement(new { input = Array.Empty<object>() }), TestContext.CancellationToken));
         Assert.AreEqual("provider_timeout", timeout.Code);
 
         OpenAiProviderException server = await Assert.ThrowsAsync<OpenAiProviderException>(() =>
             Provider(new CaptureHandler(HttpStatusCode.BadGateway, "{}"))
-                .CreateResponseAsync(JsonSerializer.SerializeToElement(new { input = Array.Empty<object>() })));
+                .CreateResponseAsync(JsonSerializer.SerializeToElement(new { input = Array.Empty<object>() }), TestContext.CancellationToken));
         Assert.AreEqual("provider_error", server.Code);
         Assert.AreEqual(502, server.StatusCode);
     }
@@ -136,4 +136,6 @@ public sealed class OpenAiResponsesProviderTests
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
             Messages.Add(formatter(state, exception));
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

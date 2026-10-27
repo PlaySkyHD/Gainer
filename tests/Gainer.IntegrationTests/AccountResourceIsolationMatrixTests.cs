@@ -116,7 +116,7 @@ public sealed partial class AccountResourceIsolationMatrixTests
             UpdatedAtUtc = now.AddDays(-10),
         };
         vault.Store(connection, new StravaTokens("access", "refresh", now.AddDays(30), connection.AthleteId, null));
-        await using AppDbContext context = Fixture.CreateContext(api.ConnectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(api.ConnectionString, user);
         context.StravaConnections.Add(connection);
         await context.SaveChangesAsync();
     }
@@ -223,7 +223,7 @@ public sealed partial class AccountResourceIsolationMatrixTests
                 UpdatedAtUtc = endedAtUtc,
                 Version = 1,
             };
-            await using (AppDbContext context = fixture.CreateContext(Api.ConnectionString, actor))
+            await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(Api.ConnectionString, actor))
             {
                 context.CardioSessions.Add(session);
                 await context.SaveChangesAsync();
@@ -354,7 +354,7 @@ internal sealed class TwoUserHttpApp : IAsyncDisposable
         Action<WebApplicationBuilder>? configure = null)
     {
         string connectionString = await fixture.CreateIsolatedDatabaseAsync();
-        await using (AppDbContext context = fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
             await context.Database.MigrateAsync();
         }

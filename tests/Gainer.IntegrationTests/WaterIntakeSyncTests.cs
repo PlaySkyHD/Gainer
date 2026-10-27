@@ -58,12 +58,12 @@ public sealed class WaterIntakeSyncTests
         Assert.AreEqual(0, reset.AmountMl);
         Assert.AreEqual(3, reset.Version);
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         SyncChangeFeedPage feed = await new SyncChangeFeed(context).GetAsync(0, 50, SyncProtocol.CurrentVersion, TestContext.CancellationToken);
         SyncFeedChange[] changes = feed.Batches.SelectMany(batch => batch.Changes).ToArray();
         Assert.HasCount(3, changes);
         Assert.IsTrue(changes.All(change => change.ResourceType == "WaterIntakeDay" && change.ResourceId == dayId));
-        Assert.IsFalse(changes.Any(change => change.IsTombstone));
+        Assert.DoesNotContain(change => change.IsTombstone, changes);
         JsonElement last = changes[^1].Snapshot ?? throw new AssertFailedException("Snapshot missing.");
         Assert.AreEqual(3, changes[^1].Version);
         Assert.AreEqual(0, last.GetProperty("amountMl").GetInt32());
@@ -85,7 +85,7 @@ public sealed class WaterIntakeSyncTests
         await RegisterAsync(connectionString, user, client);
         ProcessSyncMutationCommand set = For(Set(Guid.NewGuid(), 0, 500), client, 1);
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         ProcessedSyncMutationResult first = await Processor(context, user).ProcessAsync(set, TestContext.CancellationToken);
         ProcessedSyncMutationResult replayed = await Processor(context, user).ProcessAsync(set, TestContext.CancellationToken);
 
@@ -113,7 +113,7 @@ public sealed class WaterIntakeSyncTests
         await ExpectInvalid(connectionString, user, client, 3, Set(Guid.NewGuid(), 0, 200), "water_day_exists");
         await ExpectConflict(connectionString, user, client, 3, Set(Guid.NewGuid(), 1, 200), "resource_not_found");
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         WaterIntakeDay stored = await context.WaterIntakeDays.SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual(600, stored.AmountMl);
         Assert.AreEqual(2, stored.Version);
@@ -130,7 +130,7 @@ public sealed class WaterIntakeSyncTests
 
         await ExpectInvalid(connectionString, user, client, 2, Set(dayId, 1, 500, Day.AddDays(1)));
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         WaterIntakeDay stored = await context.WaterIntakeDays.SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual(Day, stored.LocalDate);
         Assert.AreEqual(300, stored.AmountMl);
@@ -169,16 +169,16 @@ public sealed class WaterIntakeSyncTests
         WaterIntakeDaySnapshot own = await Apply(connectionString, otherUser, otherClient, 1, Set(Guid.NewGuid(), 0, 250));
         Assert.AreEqual(250, own.AmountMl);
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, otherUser))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, otherUser))
         {
             WaterIntakeDay[] visible = await context.WaterIntakeDays.ToArrayAsync(TestContext.CancellationToken);
             Assert.HasCount(1, visible);
             Assert.AreEqual(250, visible[0].AmountMl);
             AccountDataExport export = await new AccountDataExportQuery(context).ExportAsync(TestContext.CancellationToken);
-            Assert.IsFalse(export.Resources.Any(item => item.ResourceId == dayId));
+            Assert.DoesNotContain(item => item.ResourceId == dayId, export.Resources);
         }
 
-        await using AppDbContext owner = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext owner = PostgreSqlTestFixture.CreateContext(connectionString, user);
         WaterIntakeDay stored = await owner.WaterIntakeDays.SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual(700, stored.AmountMl);
         Assert.AreEqual(1, stored.Version);
@@ -195,7 +195,7 @@ public sealed class WaterIntakeSyncTests
 
         await ExpectConflict(connectionString, user, client, 1, old, "upgrade_required");
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         Assert.IsFalse(await context.WaterIntakeDays.AnyAsync(TestContext.CancellationToken));
     }
 
@@ -206,19 +206,19 @@ public sealed class WaterIntakeSyncTests
         Guid client = Guid.NewGuid();
         await RegisterAsync(connectionString, user, client);
         Guid checkIn = Guid.NewGuid();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
-            _ = await Processor(context, user).ProcessAsync(For(CheckIn(checkIn), client, 1));
+            _ = await Processor(context, user).ProcessAsync(For(CheckIn(checkIn), client, 1), TestContext.CancellationToken);
         }
         Guid dayId = Guid.NewGuid();
         _ = await Apply(connectionString, user, client, 2, Set(dayId, 0, 500));
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             _ = await Processor(context, user).ProcessAsync(
-                For(CheckIn(Guid.NewGuid(), Day.AddDays(-1)), client, 3));
+                For(CheckIn(Guid.NewGuid(), Day.AddDays(-1)), client, 3), TestContext.CancellationToken);
         }
 
-        await using AppDbContext reader = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext reader = PostgreSqlTestFixture.CreateContext(connectionString, user);
         var feed = new SyncChangeFeed(reader);
 
         // An old client gets the check-in before the water batch, never past it.
@@ -230,7 +230,7 @@ public sealed class WaterIntakeSyncTests
 
         SyncChangeFeedPage oldBlocked = await feed.GetAsync(1, 200, OldProtocol, TestContext.CancellationToken);
         Assert.IsTrue(oldBlocked.UpgradeRequired);
-        Assert.HasCount(0, oldBlocked.Batches);
+        Assert.IsEmpty(oldBlocked.Batches);
         Assert.AreEqual(1, oldBlocked.NextCursor);
 
         SyncChangeFeedPage current = await feed.GetAsync(0, 200, SyncProtocol.CurrentVersion, TestContext.CancellationToken);
@@ -250,30 +250,30 @@ public sealed class WaterIntakeSyncTests
         Guid oldDevice = Guid.NewGuid();
 
         // Without water an old app keeps working.
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             RegisteredSyncClient registered = await Registry(context, user)
-                .RegisterAsync(new RegisterSyncClientCommand(oldDevice, "Altes iPhone", OldProtocol, false));
+                .RegisterAsync(new RegisterSyncClientCommand(oldDevice, "Altes iPhone", OldProtocol, false), TestContext.CancellationToken);
             Assert.AreEqual(OldProtocol, registered.ProtocolVersion);
         }
 
         _ = await Apply(connectionString, user, client, 1, Set(Guid.NewGuid(), 0, 500));
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             SyncUpgradeRequiredException upgrade = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(() =>
                 Registry(context, user).RegisterAsync(
-                    new RegisterSyncClientCommand(oldDevice, "Altes iPhone", OldProtocol, false)));
+                    new RegisterSyncClientCommand(oldDevice, "Altes iPhone", OldProtocol, false), TestContext.CancellationToken));
             Assert.AreEqual("upgrade_required", upgrade.Code);
             RegisteredSyncClient updated = await Registry(context, user).RegisterAsync(
-                new RegisterSyncClientCommand(oldDevice, "Altes iPhone", SyncProtocol.CurrentVersion, false));
+                new RegisterSyncClientCommand(oldDevice, "Altes iPhone", SyncProtocol.CurrentVersion, false), TestContext.CancellationToken);
             Assert.AreEqual(SyncProtocol.CurrentVersion, updated.ProtocolVersion);
         }
 
         // Water of one account does not block old apps of another account.
-        await using AppDbContext other = Fixture.CreateContext(connectionString, otherUser);
+        await using AppDbContext other = PostgreSqlTestFixture.CreateContext(connectionString, otherUser);
         RegisteredSyncClient foreign = await Registry(other, otherUser)
-            .RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Anderes Konto", OldProtocol, false));
+            .RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Anderes Konto", OldProtocol, false), TestContext.CancellationToken);
         Assert.AreEqual(OldProtocol, foreign.ProtocolVersion);
     }
 
@@ -281,7 +281,7 @@ public sealed class WaterIntakeSyncTests
     public async Task HandlerRequiresAnAuthenticatedUser()
     {
         (string connectionString, _, _) = await CreateDatabaseAsync();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         var handler = new WaterIntakeMutationHandler(context, new AnonymousContext(), new FixedTimeProvider(ServerNow));
         SetWaterIntakeMutation mutation = SetWaterIntakeMutation.Create(
             Gainer.Core.Mutations.MutationMetadata.Create(Guid.NewGuid(), Guid.NewGuid(), 1),
@@ -317,7 +317,7 @@ public sealed class WaterIntakeSyncTests
     private static async Task<WaterIntakeDaySnapshot> Apply(
         string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         ProcessedSyncMutationResult result = await Processor(context, user).ProcessAsync(For(command, client, sequence));
         ExecutedSyncChange change = result.Changes.Single();
         Assert.IsFalse(change.IsTombstone);
@@ -327,7 +327,7 @@ public sealed class WaterIntakeSyncTests
     private static async Task ExpectConflict(
         string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command, string code)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         SyncMutationConflictException conflict = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
             Processor(context, user).ProcessAsync(For(command, client, sequence)));
         Assert.AreEqual(code, conflict.Code);
@@ -341,7 +341,7 @@ public sealed class WaterIntakeSyncTests
         ProcessSyncMutationCommand command,
         string code = "invalid_payload")
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         SyncMutationValidationException invalid = await Assert.ThrowsAsync<SyncMutationValidationException>(() =>
             Processor(context, user).ProcessAsync(For(command, client, sequence)));
         Assert.AreEqual(code, invalid.Code);
@@ -359,7 +359,7 @@ public sealed class WaterIntakeSyncTests
 
     private static async Task RegisterAsync(string connectionString, Guid userId, Guid clientId)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         context.SyncClients.Add(new SyncClient
         {
             Id = clientId,
@@ -383,7 +383,7 @@ public sealed class WaterIntakeSyncTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid first = Guid.NewGuid();
         Guid second = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(first), User(second));
         await context.SaveChangesAsync();

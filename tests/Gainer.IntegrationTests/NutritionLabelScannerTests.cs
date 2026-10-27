@@ -17,7 +17,7 @@ public sealed class NutritionLabelScannerTests
         var provider = new FakeProvider(Response(Label("per100Grams", null, kcal: 377m, protein: 13.5m, carbs: 58.7m, fat: 7m)));
         OpenAiNutritionLabelScanner scanner = Scanner(provider);
 
-        NutritionLabelScanDraft result = await scanner.ScanAsync(new MealImageInput([1, 2, 3], "image/jpeg"));
+        NutritionLabelScanDraft result = await scanner.ScanAsync(new MealImageInput([1, 2, 3], "image/jpeg"), TestContext.CancellationToken);
 
         Assert.AreEqual(NutritionLabelBasis.Per100Grams, result.Basis);
         Assert.AreEqual(377m, result.Kilocalories.Per100Grams);
@@ -56,18 +56,18 @@ public sealed class NutritionLabelScannerTests
             fatGrams = Reading(null),
         })));
         MealEstimationException noLabelError = await Assert.ThrowsAsync<MealEstimationException>(() =>
-            noLabel.ScanAsync(new MealImageInput([1], "image/jpeg")));
+            noLabel.ScanAsync(new MealImageInput([1], "image/jpeg"), TestContext.CancellationToken));
         Assert.AreEqual("no_nutrition_label", noLabelError.Code);
         Assert.AreEqual(422, noLabelError.StatusCode);
 
         OpenAiNutritionLabelScanner invalid = Scanner(new FakeProvider(Response(new { isNutritionLabel = true, basis = "perCup" })));
         MealEstimationException invalidError = await Assert.ThrowsAsync<MealEstimationException>(() =>
-            invalid.ScanAsync(new MealImageInput([1], "image/jpeg")));
+            invalid.ScanAsync(new MealImageInput([1], "image/jpeg"), TestContext.CancellationToken));
         Assert.AreEqual("invalid_provider_response", invalidError.Code);
 
         OpenAiNutritionLabelScanner timeout = Scanner(new FakeProvider(new OpenAiProviderException("provider_timeout", "slow")));
         MealEstimationException timeoutError = await Assert.ThrowsAsync<MealEstimationException>(() =>
-            timeout.ScanAsync(new MealImageInput([1], "image/jpeg")));
+            timeout.ScanAsync(new MealImageInput([1], "image/jpeg"), TestContext.CancellationToken));
         Assert.AreEqual(504, timeoutError.StatusCode);
     }
 
@@ -84,7 +84,7 @@ public sealed class NutritionLabelScannerTests
     {
         OpenAiNutritionLabelScanner scanner = Scanner(new FakeProvider(JsonDocument.Parse(response).RootElement.Clone()));
         MealEstimationException error = await Assert.ThrowsAsync<MealEstimationException>(() =>
-            scanner.ScanAsync(new MealImageInput([1], "image/jpeg")));
+            scanner.ScanAsync(new MealImageInput([1], "image/jpeg"), TestContext.CancellationToken));
         Assert.AreEqual("invalid_provider_response", error.Code);
     }
 
@@ -95,7 +95,7 @@ public sealed class NutritionLabelScannerTests
     {
         OpenAiNutritionLabelScanner scanner = Scanner(new FakeProvider(Response(JsonDocument.Parse(payload).RootElement)));
         MealEstimationException error = await Assert.ThrowsAsync<MealEstimationException>(() =>
-            scanner.ScanAsync(new MealImageInput([1], "image/jpeg")));
+            scanner.ScanAsync(new MealImageInput([1], "image/jpeg"), TestContext.CancellationToken));
         Assert.AreEqual("invalid_provider_response", error.Code);
     }
 
@@ -465,4 +465,6 @@ public sealed class NutritionLabelScannerTests
     {
         public override DateTimeOffset GetUtcNow() => new(2026, 10, 21, 12, 0, 0, TimeSpan.Zero);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

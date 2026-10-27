@@ -43,20 +43,20 @@ public sealed class TrainingStatisticsIsolationTests
     {
         (string connectionString, Guid owner, Guid other) = await CreateDatabaseAsync();
         Guid exerciseId = BaseExercise(ExerciseType.Strength);
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, owner))
         {
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (100m, 5));
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 17, 18), Utc(2026, 8, 17, 19), Utc(2026, 8, 19, 8), (300m, 5));
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 20), null, null, (400m, 5));
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, other))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, other))
         {
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (500m, 5));
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext ownerContext = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         var ownerQueries = new InsightQueries(ownerContext, new TestUserContext(owner));
         ExerciseProgressSnapshot progress = await ownerQueries.ExerciseProgressAsync(exerciseId, null, ThroughUtc, Berlin, TestContext.CancellationToken);
         Assert.HasCount(1, progress.Points);
@@ -76,27 +76,27 @@ public sealed class TrainingStatisticsIsolationTests
     {
         (string connectionString, Guid owner, Guid other) = await CreateDatabaseAsync();
         Guid exerciseId = BaseExercise(ExerciseType.BodyweightLoaded);
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, owner))
         {
             seed.DailyCheckIns.Add(CheckIn(new DateOnly(2026, 8, 17), 80m));
             AddFinishedWorkout(seed, exerciseId, ExerciseType.BodyweightLoaded, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (10m, 5));
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, other))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, other))
         {
             seed.DailyCheckIns.Add(CheckIn(new DateOnly(2026, 8, 17), 100m));
             AddFinishedWorkout(seed, exerciseId, ExerciseType.BodyweightLoaded, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (10m, 5));
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext ownerContext = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         ExerciseProgressSnapshot ownerProgress = await new InsightQueries(ownerContext, new TestUserContext(owner))
             .ExerciseProgressAsync(exerciseId, null, ThroughUtc, Berlin, TestContext.CancellationToken);
         Assert.HasCount(1, ownerProgress.Points);
         Assert.AreEqual(105m, TrainingStatistics.RoundForOutput(ownerProgress.Points[0].EstimatedOneRepMaxKg!.Value));
         Assert.IsFalse(ownerProgress.Points[0].BodyweightMissing);
 
-        await using AppDbContext otherContext = Fixture.CreateContext(connectionString, other);
+        await using AppDbContext otherContext = PostgreSqlTestFixture.CreateContext(connectionString, other);
         ExerciseProgressSnapshot otherProgress = await new InsightQueries(otherContext, new TestUserContext(other))
             .ExerciseProgressAsync(exerciseId, null, ThroughUtc, Berlin, TestContext.CancellationToken);
         Assert.AreEqual(128.33m, TrainingStatistics.RoundForOutput(otherProgress.Points[0].EstimatedOneRepMaxKg!.Value));
@@ -107,18 +107,18 @@ public sealed class TrainingStatisticsIsolationTests
     {
         (string connectionString, Guid owner, Guid other) = await CreateDatabaseAsync();
         Guid exerciseId = BaseExercise(ExerciseType.BodyweightOnly);
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, other))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, other))
         {
             seed.DailyCheckIns.Add(CheckIn(new DateOnly(2026, 8, 17), 100m));
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, owner))
         {
             AddFinishedWorkout(seed, exerciseId, ExerciseType.BodyweightOnly, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (null, 10));
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext ownerContext = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         DashboardInsightSnapshot dashboard = await new InsightQueries(ownerContext, new TestUserContext(owner))
             .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin, TestContext.CancellationToken);
         Assert.IsTrue(dashboard.Training.BodyweightMissing);
@@ -130,18 +130,18 @@ public sealed class TrainingStatisticsIsolationTests
     {
         (string connectionString, Guid owner, Guid other) = await CreateDatabaseAsync();
         Guid exerciseId = BaseExercise(ExerciseType.Strength);
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, owner))
         {
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (100m, 5), (90m, 8));
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, other))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, other))
         {
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (500m, 5));
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         var provider = new FakeProvider(
             Response(FunctionCall("call_1", "get_exercise_progress", $"{{\"exerciseId\":\"{exerciseId}\",\"days\":30}}")),
             Response(Message("""
@@ -172,7 +172,7 @@ public sealed class TrainingStatisticsIsolationTests
     {
         (string connectionString, Guid owner, _) = await CreateDatabaseAsync();
         Guid exerciseId = BaseExercise(ExerciseType.Strength);
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, owner))
         {
             // 00:30 local time (CEST) on 12 August: first day of the window, but 11 August in UTC.
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 11, 22), Utc(2026, 8, 11, 23).AddMinutes(30), null, (100m, 1));
@@ -186,7 +186,7 @@ public sealed class TrainingStatisticsIsolationTests
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         DashboardInsightSnapshot dashboard = await new InsightQueries(context, new TestUserContext(owner))
             .DashboardAsync(new DateOnly(2026, 8, 18), 7, Berlin, TestContext.CancellationToken);
 
@@ -201,7 +201,7 @@ public sealed class TrainingStatisticsIsolationTests
     {
         (string connectionString, Guid owner, _) = await CreateDatabaseAsync();
         Guid exerciseId = BaseExercise(ExerciseType.Strength);
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, owner))
         {
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 17, 21), Utc(2026, 8, 17, 22).AddMinutes(30), null, (200m, 1));
             AddFinishedWorkout(seed, exerciseId, ExerciseType.Strength, Utc(2026, 8, 14, 11), Utc(2026, 8, 14, 12), null, (100m, 1));
@@ -209,7 +209,7 @@ public sealed class TrainingStatisticsIsolationTests
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         DashboardInsightSnapshot dashboard = await new InsightQueries(context, new TestUserContext(owner))
             .DashboardAsync(new DateOnly(2026, 8, 18), 1, Berlin, TestContext.CancellationToken);
 
@@ -223,14 +223,14 @@ public sealed class TrainingStatisticsIsolationTests
     public async Task RecentWorkoutsCountSetsLikeTheStatisticsDo()
     {
         (string connectionString, Guid owner, _) = await CreateDatabaseAsync();
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, owner))
         {
             AddFinishedWorkout(seed, PushUp, ExerciseType.BodyweightOnly, Utc(2026, 8, 18, 18), Utc(2026, 8, 18, 19), null, (null, 10), (null, 12), (null, 0));
             AddFinishedWorkout(seed, BenchPress, ExerciseType.Strength, Utc(2026, 8, 17, 18), Utc(2026, 8, 17, 19), null, (null, 5), (100m, 5));
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         IReadOnlyList<WorkoutHistorySummary> items = await new WorkoutHistoryQueries(context)
             .ListAsync(0, 10, TestContext.CancellationToken);
 
@@ -311,7 +311,7 @@ public sealed class TrainingStatisticsIsolationTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid owner = Guid.NewGuid();
         Guid other = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(owner), User(other));
         await context.SaveChangesAsync();

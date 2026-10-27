@@ -23,6 +23,9 @@ public sealed class AccountDataExportTests
     private static PostgreSqlTestFixture Fixture => fixture
         ?? throw new InvalidOperationException("The PostgreSQL fixture has not started.");
 
+    private static readonly string[] ExpectedCategories = new[] { "intolerance", "goal" };
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+
     [ClassInitialize]
     public static async Task StartAsync(TestContext context)
     {
@@ -62,26 +65,24 @@ public sealed class AccountDataExportTests
         await AddBatchAsync(connectionString, secondUser, 1,
             Upsert("Workout", foreignWorkout, 5, "{\"title\":\"second-private\"}"));
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         AccountDataExport export = await new AccountDataExportQuery(context).ExportAsync(TestContext.CancellationToken);
 
         Assert.AreEqual(3, export.AsOfRevision);
-        CollectionAssert.AreEquivalent(
-            new[] { workout, checkIn, recreatedDay },
-            export.Resources.Select(item => item.ResourceId).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { workout, checkIn, recreatedDay }, export.Resources.Select(item => item.ResourceId).ToArray(), SequenceOrder.InAnyOrder);
         AccountExportResource newestWorkout = export.Resources.Single(item => item.ResourceId == workout);
         Assert.AreEqual(2, newestWorkout.Version);
         Assert.AreEqual("first-v2", newestWorkout.Snapshot.GetProperty("title").GetString());
         Assert.AreEqual(
             "recreated",
             export.Resources.Single(item => item.ResourceId == recreatedDay).Snapshot.GetProperty("day").GetString());
-        Assert.IsFalse(export.Resources.Any(item => item.Snapshot.GetRawText().Contains("second-private", StringComparison.Ordinal)));
-        CollectionAssert.AreEqual(
+        Assert.DoesNotContain(item => item.Snapshot.GetRawText().Contains("second-private", StringComparison.Ordinal), export.Resources);
+        Assert.AreSequenceEqual(
             export.Resources.OrderBy(item => item.ResourceType, StringComparer.Ordinal).ThenBy(item => item.ResourceId)
-                .Select(item => item.ResourceId).ToArray(),
-            export.Resources.Select(item => item.ResourceId).ToArray());
+                .Select(item => item.ResourceId).ToArray(), export.Resources.Select(item => item.ResourceId).ToArray());
 
-        await using AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser);
+        await using AppDbContext foreign = PostgreSqlTestFixture.CreateContext(connectionString, secondUser);
         AccountDataExport secondExport = await new AccountDataExportQuery(foreign).ExportAsync(TestContext.CancellationToken);
         Assert.AreEqual(1, secondExport.AsOfRevision);
         Assert.AreEqual(foreignWorkout, secondExport.Resources.Single().ResourceId);
@@ -91,7 +92,7 @@ public sealed class AccountDataExportTests
     public async Task ExportOfAnAccountWithoutChangesIsEmpty()
     {
         (string connectionString, Guid firstUser, _) = await CreateDatabaseAsync();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         AccountDataExport export = await new AccountDataExportQuery(context).ExportAsync(TestContext.CancellationToken);
         Assert.AreEqual(0, export.AsOfRevision);
         Assert.IsEmpty(export.Resources);
@@ -109,17 +110,17 @@ public sealed class AccountDataExportTests
         await AddMemoriesAsync(connectionString, secondUser,
             Memory(CoachMemoryCategory.Injury, "second-private", new DateTime(2026, 10, 3, 8, 0, 0, DateTimeKind.Utc)));
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         AccountDataExport export = await new AccountDataExportQuery(context).ExportAsync(TestContext.CancellationToken);
 
         Assert.IsEmpty(export.Resources);
-        CollectionAssert.AreEqual(new[] { newer.Id, older.Id }, export.CoachMemories.Select(item => item.Id).ToArray());
+        Assert.AreSequenceEqual(new[] { newer.Id, older.Id }, export.CoachMemories.Select(item => item.Id).ToArray());
         CoachMemoryItem exported = export.CoachMemories[0];
         Assert.AreEqual(CoachMemoryCategory.Intolerance, exported.Category);
         Assert.AreEqual("Laktoseintoleranz", exported.Text);
         Assert.AreEqual(3, exported.Version);
         Assert.AreEqual(newer.CreatedAtUtc, exported.CreatedAtUtc);
-        Assert.IsFalse(export.CoachMemories.Any(item => item.Text == "second-private"));
+        Assert.DoesNotContain(item => item.Text == "second-private", export.CoachMemories);
 
         var controller = new AccountExportController(new AccountDataExportQuery(context), TimeProvider.System)
         {
@@ -128,12 +129,12 @@ public sealed class AccountDataExportTests
         ActionResult<AccountExportResponse> action = await controller.Get(TestContext.CancellationToken);
         AccountExportResponse response = (AccountExportResponse)((OkObjectResult)action.Result!).Value!;
         Assert.AreEqual(1, response.SchemaVersion);
-        CollectionAssert.AreEqual(new[] { "intolerance", "goal" }, response.CoachMemories!.Select(item => item.Category).ToArray());
-        string json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.AreSequenceEqual(ExpectedCategories, response.CoachMemories!.Select(item => item.Category).ToArray());
+        string json = JsonSerializer.Serialize(response, WebJson);
         Assert.Contains("\"coachMemories\":[", json);
         Assert.DoesNotContain("second-private", json);
 
-        await using AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser);
+        await using AppDbContext foreign = PostgreSqlTestFixture.CreateContext(connectionString, secondUser);
         AccountDataExport secondExport = await new AccountDataExportQuery(foreign).ExportAsync(TestContext.CancellationToken);
         Assert.AreEqual("second-private", secondExport.CoachMemories.Single().Text);
     }
@@ -144,7 +145,7 @@ public sealed class AccountDataExportTests
         (string connectionString, Guid firstUser, _) = await CreateDatabaseAsync();
         Guid workout = Guid.NewGuid();
         await AddBatchAsync(connectionString, firstUser, 1, Upsert("Workout", workout, 1, "{\"title\":\"push\"}"));
-        await using AppDbContext context = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         var time = new FixedTimeProvider(new DateTimeOffset(2026, 10, 24, 18, 0, 0, TimeSpan.Zero));
         var controller = new AccountExportController(new AccountDataExportQuery(context), time)
         {
@@ -206,7 +207,7 @@ public sealed class AccountDataExportTests
 
     private async Task AddMemoriesAsync(string connectionString, Guid userId, params CoachMemory[] memories)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         context.CoachMemories.AddRange(memories);
         await context.SaveChangesAsync(TestContext.CancellationToken);
     }
@@ -214,7 +215,7 @@ public sealed class AccountDataExportTests
     private async Task AddBatchAsync(string connectionString, Guid userId, long revision, params ChangeItem[] items)
     {
         Guid batchId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         context.ChangeBatches.Add(new ChangeBatch { Id = batchId, Revision = revision, CreatedAtUtc = DateTime.UtcNow });
         context.ChangeItems.AddRange(items.Select((item, position) => new ChangeItem
         {
@@ -235,7 +236,7 @@ public sealed class AccountDataExportTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid first = Guid.NewGuid();
         Guid second = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(first), User(second));
         await context.SaveChangesAsync();

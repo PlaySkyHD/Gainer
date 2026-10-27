@@ -30,7 +30,7 @@ public sealed class ExternalHttpClientPipelineTests
         using IServiceScope scope = services.CreateScope();
         IOpenAiResponsesProvider provider = scope.ServiceProvider.GetRequiredService<IOpenAiResponsesProvider>();
 
-        OpenAiProviderException exception = await Assert.ThrowsAsync<OpenAiProviderException>(() => provider.CreateResponseAsync(EmptyRequest));
+        OpenAiProviderException exception = await Assert.ThrowsAsync<OpenAiProviderException>(() => provider.CreateResponseAsync(EmptyRequest, TestContext.CancellationToken));
 
         Assert.AreEqual("provider_error", exception.Code);
         Assert.AreEqual(1, handler.Calls, "A POST to the AI provider costs money and must not be retried.");
@@ -50,9 +50,9 @@ public sealed class ExternalHttpClientPipelineTests
             .GetRequiredService<IOptionsMonitor<HttpStandardResilienceOptions>>()
             .Get($"{clientName}-standard");
 
-        Assert.IsTrue(options.AttemptTimeout.Timeout >= TimeSpan.FromSeconds(seconds));
-        Assert.IsTrue(options.TotalRequestTimeout.Timeout >= TimeSpan.FromSeconds(seconds));
-        Assert.IsTrue(options.CircuitBreaker.SamplingDuration >= options.AttemptTimeout.Timeout * 2);
+        Assert.IsGreaterThanOrEqualTo(TimeSpan.FromSeconds(seconds), options.AttemptTimeout.Timeout);
+        Assert.IsGreaterThanOrEqualTo(TimeSpan.FromSeconds(seconds), options.TotalRequestTimeout.Timeout);
+        Assert.IsGreaterThanOrEqualTo(options.AttemptTimeout.Timeout * 2, options.CircuitBreaker.SamplingDuration);
         Assert.AreEqual(Timeout.InfiniteTimeSpan, services.GetRequiredService<IHttpClientFactory>().CreateClient(clientName).Timeout);
     }
 
@@ -64,7 +64,7 @@ public sealed class ExternalHttpClientPipelineTests
         using IServiceScope scope = services.CreateScope();
 
         FoodCatalogException exception = await Assert.ThrowsAsync<FoodCatalogException>(() =>
-            scope.ServiceProvider.GetRequiredService<IExternalFoodCatalog>().GetByBarcodeAsync("12345678"));
+            scope.ServiceProvider.GetRequiredService<IExternalFoodCatalog>().GetByBarcodeAsync("12345678", TestContext.CancellationToken));
 
         Assert.AreEqual("provider_unavailable", exception.Code);
         Assert.AreEqual(1, handler.Calls, "One budget slot must cost one HTTP request.");
@@ -77,14 +77,14 @@ public sealed class ExternalHttpClientPipelineTests
         await using ServiceProvider timeoutServices = BuildServices(timeoutHandler);
         using IServiceScope timeoutScope = timeoutServices.CreateScope();
         OpenAiProviderException timeout = await Assert.ThrowsAsync<OpenAiProviderException>(() =>
-            timeoutScope.ServiceProvider.GetRequiredService<IOpenAiResponsesProvider>().CreateResponseAsync(EmptyRequest));
+            timeoutScope.ServiceProvider.GetRequiredService<IOpenAiResponsesProvider>().CreateResponseAsync(EmptyRequest, TestContext.CancellationToken));
         Assert.AreEqual("provider_timeout", timeout.Code);
 
         var circuitHandler = new CountingHandler(_ => throw new BrokenCircuitException("circuit open"));
         await using ServiceProvider circuitServices = BuildServices(circuitHandler);
         using IServiceScope circuitScope = circuitServices.CreateScope();
         OpenAiProviderException unavailable = await Assert.ThrowsAsync<OpenAiProviderException>(() =>
-            circuitScope.ServiceProvider.GetRequiredService<IOpenAiResponsesProvider>().CreateResponseAsync(EmptyRequest));
+            circuitScope.ServiceProvider.GetRequiredService<IOpenAiResponsesProvider>().CreateResponseAsync(EmptyRequest, TestContext.CancellationToken));
         Assert.AreEqual("provider_unavailable", unavailable.Code);
     }
 
@@ -106,9 +106,9 @@ public sealed class ExternalHttpClientPipelineTests
         IExternalFoodCatalog catalogB = second.ServiceProvider.GetRequiredService<IExternalFoodCatalog>();
         Assert.AreNotSame(catalogA, catalogB);
 
-        await catalogA.GetByBarcodeAsync("12345678");
-        FoodCatalogProduct cached = await catalogB.GetByBarcodeAsync("12345678");
-        FoodCatalogException exhausted = await Assert.ThrowsAsync<FoodCatalogException>(() => catalogB.GetByBarcodeAsync("87654321"));
+        await catalogA.GetByBarcodeAsync("12345678", TestContext.CancellationToken);
+        FoodCatalogProduct cached = await catalogB.GetByBarcodeAsync("12345678", TestContext.CancellationToken);
+        FoodCatalogException exhausted = await Assert.ThrowsAsync<FoodCatalogException>(() => catalogB.GetByBarcodeAsync("87654321", TestContext.CancellationToken));
 
         Assert.AreEqual("Test", cached.ProductName);
         Assert.AreEqual(1, handler.Calls, "The second instance must serve the barcode from the shared cache.");
@@ -145,4 +145,6 @@ public sealed class ExternalHttpClientPipelineTests
             return respond(request);
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

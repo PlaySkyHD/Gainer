@@ -185,8 +185,8 @@ public sealed class NutritionCalculationTests
                 100m,
                 new NutritionPer100Grams(100m, null, null, null)));
 
-        CollectionAssert.AreEquivalent(
+        Assert.AreSequenceEqual(
             ExpectedEntryErrorFields,
-            exception.Errors.Keys.ToArray());
+            exception.Errors.Keys.ToArray(), SequenceOrder.InAnyOrder);
     }
 }

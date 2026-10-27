@@ -75,7 +75,7 @@ public sealed partial class ExerciseCatalogIsolationMatrixTests
             string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
             Guid first = Guid.NewGuid();
             Guid second = Guid.NewGuid();
-            await using AppDbContext context = Fixture.CreateContext(connectionString);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
             await context.Database.MigrateAsync();
             context.Users.AddRange(User(first), User(second));
             await context.SaveChangesAsync();
@@ -103,7 +103,7 @@ public sealed partial class ExerciseCatalogIsolationMatrixTests
                     [new CanonicalResourceVersion(resourceType, resourceId, baseVersion)],
                     null,
                     JsonSerializer.SerializeToElement(payload, JsonOptions)));
-            await using AppDbContext context = Fixture.CreateContext(ConnectionString, actor);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString, actor);
             var user = new TestUserContext(actor);
             var processor = new SyncMutationProcessor(
                 context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
@@ -113,7 +113,7 @@ public sealed partial class ExerciseCatalogIsolationMatrixTests
         /// <summary>Unknown ids fall back to version 1 so the request reaches the not-found path instead of failing validation.</summary>
         protected async Task<long> VersionAsync(string table, Guid id)
         {
-            await using AppDbContext context = Fixture.CreateContext(ConnectionString);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString);
             long version = table == "exercise"
                 ? await context.Exercises.IgnoreQueryFilters().Where(item => item.Id == id).Select(item => item.Version).FirstOrDefaultAsync()
                 : await context.ExerciseCategories.IgnoreQueryFilters().Where(item => item.Id == id).Select(item => item.Version).FirstOrDefaultAsync();
@@ -130,7 +130,7 @@ public sealed partial class ExerciseCatalogIsolationMatrixTests
 
         private async Task RegisterAsync(Guid userId, Guid clientId)
         {
-            await using AppDbContext context = Fixture.CreateContext(ConnectionString, userId);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString, userId);
             context.SyncClients.Add(new SyncClient
             {
                 Id = clientId,
@@ -231,13 +231,13 @@ public sealed partial class ExerciseCatalogIsolationMatrixTests
 
         private async Task<ExerciseCatalogItem?> ResolveAsync(Guid actor, Guid id)
         {
-            await using AppDbContext context = Fixture.CreateContext(ConnectionString, actor);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString, actor);
             return await new ExerciseCatalogQueries(context, new TestUserContext(actor)).ResolveAsync(id, includeArchived: false);
         }
 
         private async Task<List<ExerciseCatalogItem>> OwnedAsync(Guid actor)
         {
-            await using AppDbContext context = Fixture.CreateContext(ConnectionString, actor);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString, actor);
             var queries = new ExerciseCatalogQueries(context, new TestUserContext(actor));
             var owned = new List<ExerciseCatalogItem>();
             for (int offset = 0; ; offset += 100)
@@ -315,7 +315,7 @@ public sealed partial class ExerciseCatalogIsolationMatrixTests
 
         private async Task<List<ExerciseCategoryItem>> OwnedAsync(Guid actor)
         {
-            await using AppDbContext context = Fixture.CreateContext(ConnectionString, actor);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(ConnectionString, actor);
             ExerciseCatalogPage page = await new ExerciseCatalogQueries(context, new TestUserContext(actor))
                 .SearchAsync(new ExerciseCatalogFilter(Limit: 1));
             return page.Categories.Where(item => !item.IsBase).OrderBy(item => item.Id).ToList();

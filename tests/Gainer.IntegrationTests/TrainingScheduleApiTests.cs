@@ -104,7 +104,7 @@ public sealed class TrainingScheduleApiTests
         Assert.IsTrue(replay.Replayed);
         Assert.AreEqual(created.Revision, replay.Revision);
         Assert.AreEqual(1, replay.Resources.Single().Version);
-        await using (AppDbContext check = Fixture.CreateContext(connectionString, owner.UserId))
+        await using (AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, owner.UserId))
         {
             Assert.AreEqual(1, await check.TrainingSchedules.CountAsync(TestContext.CancellationToken));
             Assert.AreEqual(3, await check.TrainingScheduleSlots.CountAsync(TestContext.CancellationToken));
@@ -138,7 +138,7 @@ public sealed class TrainingScheduleApiTests
         // Stale base version: the server keeps version 2 and reports a conflict.
         using (HttpResponseMessage stale = await PushAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 1, weekly))
         {
-            Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode, await stale.Content.ReadAsStringAsync());
+            Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode, await stale.Content.ReadAsStringAsync(TestContext.CancellationToken));
             Assert.AreEqual("stale_base_version", await ProblemCodeAsync(stale));
         }
 
@@ -147,7 +147,7 @@ public sealed class TrainingScheduleApiTests
         using (HttpResponseMessage second = await PushAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", secondId, 0,
                    WithIdentity(cycle, secondId, 0)))
         {
-            Assert.AreEqual(HttpStatusCode.Conflict, second.StatusCode, await second.Content.ReadAsStringAsync());
+            Assert.AreEqual(HttpStatusCode.Conflict, second.StatusCode, await second.Content.ReadAsStringAsync(TestContext.CancellationToken));
             Assert.AreEqual("stale_base_version", await ProblemCodeAsync(second));
         }
 
@@ -171,11 +171,11 @@ public sealed class TrainingScheduleApiTests
 
         using HttpResponseMessage foreign = await PushAsync(intruder, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 0,
             Cycle(scheduleId, 0, intruderPlan, ownerPlan));
-        string foreignBody = await foreign.Content.ReadAsStringAsync();
+        string foreignBody = await foreign.Content.ReadAsStringAsync(TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.UnprocessableEntity, foreign.StatusCode, foreignBody);
         using HttpResponseMessage unknown = await PushAsync(intruder, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 0,
             Cycle(scheduleId, 0, intruderPlan, Guid.NewGuid()));
-        string unknownBody = await unknown.Content.ReadAsStringAsync();
+        string unknownBody = await unknown.Content.ReadAsStringAsync(TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.UnprocessableEntity, unknown.StatusCode, unknownBody);
         using JsonDocument foreignProblem = JsonDocument.Parse(foreignBody);
         using JsonDocument unknownProblem = JsonDocument.Parse(unknownBody);
@@ -184,7 +184,7 @@ public sealed class TrainingScheduleApiTests
             unknownProblem.RootElement.GetProperty("errors").GetProperty("Slots").GetString(),
             foreignProblem.RootElement.GetProperty("errors").GetProperty("Slots").GetString());
 
-        await using AppDbContext intruderCheck = Fixture.CreateContext(connectionString, intruder.UserId);
+        await using AppDbContext intruderCheck = PostgreSqlTestFixture.CreateContext(connectionString, intruder.UserId);
         Assert.AreEqual(0, await intruderCheck.TrainingSchedules.CountAsync(TestContext.CancellationToken));
         Assert.AreEqual(0, await intruderCheck.TrainingScheduleSlots.CountAsync(TestContext.CancellationToken));
         Assert.AreEqual(0, (await PullAsync(intruder)).Batches.SelectMany(batch => batch.Changes)
@@ -194,7 +194,7 @@ public sealed class TrainingScheduleApiTests
         await PushOkAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 0, Cycle(scheduleId, 0, ownerPlan));
         using HttpResponseMessage foreignDelete = await PushAsync(intruder, Guid.NewGuid(), "deleteTrainingSchedule", scheduleId, 1,
             new { scheduleId, baseVersion = 1 });
-        Assert.AreEqual(HttpStatusCode.Conflict, foreignDelete.StatusCode, await foreignDelete.Content.ReadAsStringAsync());
+        Assert.AreEqual(HttpStatusCode.Conflict, foreignDelete.StatusCode, await foreignDelete.Content.ReadAsStringAsync(TestContext.CancellationToken));
         Assert.AreEqual("resource_not_found", await ProblemCodeAsync(foreignDelete));
         Assert.AreEqual(0, (await PullAsync(intruder)).Batches.SelectMany(batch => batch.Changes)
             .Count(change => change.ResourceType == "TrainingSchedule"));
@@ -212,7 +212,7 @@ public sealed class TrainingScheduleApiTests
         using (HttpResponseMessage stale = await PushAsync(owner, Guid.NewGuid(), "deleteTrainingSchedule", scheduleId, 2,
                    new { scheduleId, baseVersion = 2 }))
         {
-            Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode, await stale.Content.ReadAsStringAsync());
+            Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode, await stale.Content.ReadAsStringAsync(TestContext.CancellationToken));
             Assert.AreEqual("stale_base_version", await ProblemCodeAsync(stale));
         }
 
@@ -223,13 +223,12 @@ public sealed class TrainingScheduleApiTests
         Assert.AreEqual("TrainingSchedule", tombstone.ResourceType);
         Assert.AreEqual(2, tombstone.Version);
         Assert.IsNull(tombstone.Snapshot);
-        await using (AppDbContext check = Fixture.CreateContext(connectionString, owner.UserId))
+        await using (AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, owner.UserId))
         {
             Assert.AreEqual(0, await check.TrainingSchedules.CountAsync(item => item.DeletedAtUtc == null, TestContext.CancellationToken));
             Assert.AreEqual(0, await check.TrainingScheduleSlots.CountAsync(TestContext.CancellationToken));
         }
-        Assert.IsTrue((await PullAsync(owner)).Batches.SelectMany(batch => batch.Changes)
-            .Any(change => change.ResourceType == "TrainingSchedule" && change.IsTombstone));
+        Assert.Contains(change => change.ResourceType == "TrainingSchedule" && change.IsTombstone, (await PullAsync(owner)).Batches.SelectMany(batch => batch.Changes));
 
         using (HttpResponseMessage missing = await PushAsync(owner, Guid.NewGuid(), "deleteTrainingSchedule", scheduleId, 1,
                    new { scheduleId, baseVersion = 1 }))
@@ -243,7 +242,7 @@ public sealed class TrainingScheduleApiTests
         {
             using HttpResponseMessage stale = await PushAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, staleBase,
                 Cycle(scheduleId, staleBase, push));
-            Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode, await stale.Content.ReadAsStringAsync());
+            Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode, await stale.Content.ReadAsStringAsync(TestContext.CancellationToken));
             Assert.AreEqual("stale_base_version", await ProblemCodeAsync(stale));
         }
         PushMutationResponse recreated = await PushOkAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 2,
@@ -252,7 +251,7 @@ public sealed class TrainingScheduleApiTests
         Assert.IsFalse(recreatedResource.IsTombstone);
         Assert.AreEqual(3, recreatedResource.Version);
         Assert.AreEqual(2, recreatedResource.Snapshot!.Value.GetProperty("slots").GetArrayLength());
-        await using (AppDbContext check = Fixture.CreateContext(connectionString, owner.UserId))
+        await using (AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, owner.UserId))
         {
             Assert.AreEqual(2, await check.TrainingScheduleSlots.CountAsync(TestContext.CancellationToken));
         }
@@ -317,7 +316,7 @@ public sealed class TrainingScheduleApiTests
         foreach ((object payload, string field) in cases)
         {
             using HttpResponseMessage response = await PushAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 0, payload);
-            string body = await response.Content.ReadAsStringAsync();
+            string body = await response.Content.ReadAsStringAsync(TestContext.CancellationToken);
             Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode, body);
             using JsonDocument problem = JsonDocument.Parse(body);
             Assert.AreEqual("validation_failed", problem.RootElement.GetProperty("code").GetString(), body);
@@ -333,11 +332,11 @@ public sealed class TrainingScheduleApiTests
         foreach (System.Text.Json.Nodes.JsonObject payload in invalidPayloads)
         {
             using HttpResponseMessage response = await PushAsync(owner, Guid.NewGuid(), "saveTrainingSchedule", scheduleId, 0, payload);
-            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode, await response.Content.ReadAsStringAsync());
+            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode, await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
             Assert.AreEqual("invalid_payload", await ProblemCodeAsync(response));
         }
 
-        await using AppDbContext check = Fixture.CreateContext(connectionString, owner.UserId);
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, owner.UserId);
         Assert.AreEqual(0, await check.TrainingSchedules.CountAsync(TestContext.CancellationToken));
     }
 
@@ -353,11 +352,11 @@ public sealed class TrainingScheduleApiTests
         {
             using HttpResponseMessage response = await PushAsync(owner, Guid.NewGuid(), "saveWorkoutRotation", rotationId, 0,
                 new { rotationId, baseVersion = 0, planIds = new[] { push } }, resourceType);
-            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode, await response.Content.ReadAsStringAsync());
+            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode, await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
             Assert.AreEqual("unsupported_operation", await ProblemCodeAsync(response));
         }
 
-        await using AppDbContext check = Fixture.CreateContext(connectionString, owner.UserId);
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(connectionString, owner.UserId);
         Assert.AreEqual(0, await check.TrainingSchedules.CountAsync(TestContext.CancellationToken));
     }
 
@@ -393,7 +392,7 @@ public sealed class TrainingScheduleApiTests
     private async Task<Guid> CreatePlanAsync(Device device, string name)
     {
         Guid exerciseId;
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, device.UserId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, device.UserId))
         {
             exerciseId = await context.Exercises.Where(item => item.OwnerUserId == null)
                 .OrderBy(item => item.Id).Select(item => item.Id).FirstAsync(TestContext.CancellationToken);
@@ -426,7 +425,7 @@ public sealed class TrainingScheduleApiTests
         string resourceType = "TrainingSchedule")
     {
         using HttpResponseMessage response = await PushAsync(device, mutationId, operation, resourceId, baseVersion, payload, resourceType);
-        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
         return (await response.Content.ReadFromJsonAsync<PushMutationResponse>(TestContext.CancellationToken))!;
     }
 
@@ -468,7 +467,7 @@ public sealed class TrainingScheduleApiTests
             HttpMethod.Get, $"/api/v1/sync/changes?after=0&limit=200&protocolVersion={SyncProtocol.CurrentVersion}");
         device.Session.Apply(request);
         using HttpResponseMessage response = await device.Client.SendAsync(request, TestContext.CancellationToken);
-        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
         return (await response.Content.ReadFromJsonAsync<PullChangesResponse>(TestContext.CancellationToken))!;
     }
 
@@ -499,14 +498,14 @@ public sealed class TrainingScheduleApiTests
         };
         session.Apply(request);
         using HttpResponseMessage response = await client.SendAsync(request, TestContext.CancellationToken);
-        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
         return device;
     }
 
     private async Task<WebApplication> CreateApplicationAsync()
     {
         connectionString = await Fixture.CreateIsolatedDatabaseAsync();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
             await context.Database.MigrateAsync(TestContext.CancellationToken);
 
         string keyRingPath = Path.Combine(Path.GetTempPath(), $"gainer-training-schedule-api-{Guid.NewGuid():N}");

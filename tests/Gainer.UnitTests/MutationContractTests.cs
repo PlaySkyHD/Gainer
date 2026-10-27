@@ -67,8 +67,8 @@ public sealed class MutationContractTests
             .Select(member => member.Name)
             .ToArray();
 
-        Assert.IsFalse(exposedMemberNames.Any(name =>
-            forbiddenFragments.Any(fragment => name.Contains(fragment, StringComparison.OrdinalIgnoreCase))));
+        Assert.DoesNotContain(name =>
+            forbiddenFragments.Any(fragment => name.Contains(fragment, StringComparison.OrdinalIgnoreCase)), exposedMemberNames);
     }
 
     private static ResourceVersionExpectation Expect(ResourceKind kind, long baseVersion)

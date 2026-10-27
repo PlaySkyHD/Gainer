@@ -68,21 +68,21 @@ public sealed class PasskeyApiTests
         PasskeySummaryResponse registered = await RegisterAsync(client, authenticator, "Nics iPhone");
         Assert.AreEqual(authenticator.CredentialId, registered.Id);
         Assert.AreEqual("Nics iPhone", registered.Name);
-        List<PasskeySummaryResponse>? listed = await client.GetFromJsonAsync<List<PasskeySummaryResponse>>("/api/v1/auth/passkeys");
+        List<PasskeySummaryResponse>? listed = await client.GetFromJsonAsync<List<PasskeySummaryResponse>>("/api/v1/auth/passkeys", TestContext.CancellationToken);
         Assert.HasCount(1, listed!);
 
         using HttpClient anonymous = CreateClient(app);
         TokenResponse tokens = await SignInAsync(anonymous, authenticator, "Gainer iPhone");
         anonymous.UseAccessToken(tokens.AccessToken);
-        SessionResponse? session = await anonymous.GetFromJsonAsync<SessionResponse>("/api/v1/auth/session");
+        SessionResponse? session = await anonymous.GetFromJsonAsync<SessionResponse>("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(userId, session?.UserId);
 
         using HttpResponseMessage refreshed = await BearerTestClient.RefreshAsync(anonymous, tokens.RefreshToken);
         Assert.AreEqual(HttpStatusCode.OK, refreshed.StatusCode);
         await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
         AppDbContext database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.AreEqual(2, await database.DeviceSessions.CountAsync(item => item.UserId == userId));
-        Assert.IsTrue(await database.DeviceSessions.AnyAsync(item => item.DeviceName == "Gainer iPhone"));
+        Assert.AreEqual(2, await database.DeviceSessions.CountAsync(item => item.UserId == userId, TestContext.CancellationToken));
+        Assert.IsTrue(await database.DeviceSessions.AnyAsync(item => item.DeviceName == "Gainer iPhone", TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -101,30 +101,30 @@ public sealed class PasskeyApiTests
         string credential = authenticator.Register(options.OptionsJson);
         using HttpResponseMessage foreign = await other.PostAsJsonAsync(
             "/api/v1/auth/passkeys",
-            new RegisterPasskeyRequest(credential, options.State));
+            new RegisterPasskeyRequest(credential, options.State), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.BadRequest, foreign.StatusCode);
         Assert.AreEqual("passkey_rejected", await ReadCodeAsync(foreign));
 
         using HttpResponseMessage tampered = await client.PostAsJsonAsync(
             "/api/v1/auth/passkeys",
-            new RegisterPasskeyRequest(credential, options.State[..^4] + "AAAA"));
+            new RegisterPasskeyRequest(credential, options.State[..^4] + "AAAA"), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.BadRequest, tampered.StatusCode);
 
         // The foreign attempt did not consume the state of the owning account.
         using HttpResponseMessage accepted = await client.PostAsJsonAsync(
             "/api/v1/auth/passkeys",
-            new RegisterPasskeyRequest(credential, options.State));
-        Assert.AreEqual(HttpStatusCode.Created, accepted.StatusCode, await accepted.Content.ReadAsStringAsync());
+            new RegisterPasskeyRequest(credential, options.State), cancellationToken: TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Created, accepted.StatusCode, await accepted.Content.ReadAsStringAsync(TestContext.CancellationToken));
 
         PasskeyOptionsResponse signIn = await OptionsAsync(CreateClient(app), "/api/v1/auth/passkeys/request-options");
         string assertion = authenticator.SignIn(signIn.OptionsJson);
         using HttpResponseMessage first = await client.PostAsJsonAsync(
             "/api/v1/auth/passkeys/login",
-            new PasskeyLoginRequest(assertion, signIn.State));
-        Assert.AreEqual(HttpStatusCode.OK, first.StatusCode, await first.Content.ReadAsStringAsync());
+            new PasskeyLoginRequest(assertion, signIn.State), cancellationToken: TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, first.StatusCode, await first.Content.ReadAsStringAsync(TestContext.CancellationToken));
         using HttpResponseMessage replay = await client.PostAsJsonAsync(
             "/api/v1/auth/passkeys/login",
-            new PasskeyLoginRequest(assertion, signIn.State));
+            new PasskeyLoginRequest(assertion, signIn.State), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, replay.StatusCode);
         Assert.AreEqual("invalid_passkey", await ReadCodeAsync(replay));
     }
@@ -141,10 +141,10 @@ public sealed class PasskeyApiTests
         PasskeyOptionsResponse options = await OptionsAsync(client, "/api/v1/auth/passkeys/creation-options");
         using HttpResponseMessage response = await client.PostAsJsonAsync(
             "/api/v1/auth/passkeys",
-            new RegisterPasskeyRequest(authenticator.Register(options.OptionsJson), options.State));
+            new RegisterPasskeyRequest(authenticator.Register(options.OptionsJson), options.State), cancellationToken: TestContext.CancellationToken);
 
         Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
-        List<PasskeySummaryResponse>? listed = await client.GetFromJsonAsync<List<PasskeySummaryResponse>>("/api/v1/auth/passkeys");
+        List<PasskeySummaryResponse>? listed = await client.GetFromJsonAsync<List<PasskeySummaryResponse>>("/api/v1/auth/passkeys", TestContext.CancellationToken);
         Assert.IsEmpty(listed!);
     }
 
@@ -161,7 +161,7 @@ public sealed class PasskeyApiTests
         await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
         {
             IAccountStatusService status = scope.ServiceProvider.GetRequiredService<IAccountStatusService>();
-            await status.SetActiveAsync(userId, isActive: false);
+            await status.SetActiveAsync(userId, isActive: false, TestContext.CancellationToken);
         }
 
         using HttpClient anonymous = CreateClient(app);
@@ -170,13 +170,13 @@ public sealed class PasskeyApiTests
         await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
         {
             IAccountStatusService status = scope.ServiceProvider.GetRequiredService<IAccountStatusService>();
-            await status.SetActiveAsync(userId, isActive: true);
+            await status.SetActiveAsync(userId, isActive: true, TestContext.CancellationToken);
         }
 
         await client.AuthenticateAsync(Email, Password);
-        using HttpResponseMessage removed = await client.DeleteAsync($"/api/v1/auth/passkeys/{authenticator.CredentialId}");
+        using HttpResponseMessage removed = await client.DeleteAsync($"/api/v1/auth/passkeys/{authenticator.CredentialId}", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.NoContent, removed.StatusCode);
-        using HttpResponseMessage missing = await client.DeleteAsync($"/api/v1/auth/passkeys/{authenticator.CredentialId}");
+        using HttpResponseMessage missing = await client.DeleteAsync($"/api/v1/auth/passkeys/{authenticator.CredentialId}", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
         Assert.AreEqual(HttpStatusCode.Unauthorized, (await TrySignInAsync(anonymous, authenticator)).StatusCode);
     }
@@ -196,13 +196,13 @@ public sealed class PasskeyApiTests
         {
             using HttpResponseMessage wrong = await anonymous.PostAsJsonAsync(
                 "/api/v1/auth/login",
-                new LoginRequest(Email, "Wrong-password-1!"));
+                new LoginRequest(Email, "Wrong-password-1!"), cancellationToken: TestContext.CancellationToken);
             Assert.AreEqual(HttpStatusCode.Unauthorized, wrong.StatusCode);
         }
 
         using HttpResponseMessage locked = await anonymous.PostAsJsonAsync(
             "/api/v1/auth/login",
-            new LoginRequest(Email, Password));
+            new LoginRequest(Email, Password), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, locked.StatusCode);
         TokenResponse tokens = await SignInAsync(anonymous, authenticator, "iPhone");
         Assert.IsFalse(string.IsNullOrEmpty(tokens.AccessToken));
@@ -219,22 +219,22 @@ public sealed class PasskeyApiTests
         await client.AuthenticateAsync(Email, Password);
 
         timeProvider.Advance(PasskeysController.RecentSignInWindow + TimeSpan.FromMinutes(1));
-        using HttpResponseMessage withoutPassword = await client.PostAsync("/api/v1/auth/passkeys/creation-options", content: null);
+        using HttpResponseMessage withoutPassword = await client.PostAsync("/api/v1/auth/passkeys/creation-options", content: null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Forbidden, withoutPassword.StatusCode);
         Assert.AreEqual("reauthentication_required", await ReadCodeAsync(withoutPassword));
         using HttpResponseMessage wrongPassword = await client.PostAsJsonAsync(
             "/api/v1/auth/passkeys/creation-options",
-            new PasskeyCreationOptionsRequest("Wrong-password-1!"));
+            new PasskeyCreationOptionsRequest("Wrong-password-1!"), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Forbidden, wrongPassword.StatusCode);
 
         using HttpResponseMessage confirmed = await client.PostAsJsonAsync(
             "/api/v1/auth/passkeys/creation-options",
-            new PasskeyCreationOptionsRequest(Password));
-        Assert.AreEqual(HttpStatusCode.OK, confirmed.StatusCode, await confirmed.Content.ReadAsStringAsync());
-        PasskeyOptionsResponse options = (await confirmed.Content.ReadFromJsonAsync<PasskeyOptionsResponse>())!;
+            new PasskeyCreationOptionsRequest(Password), cancellationToken: TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, confirmed.StatusCode, await confirmed.Content.ReadAsStringAsync(TestContext.CancellationToken));
+        PasskeyOptionsResponse options = (await confirmed.Content.ReadFromJsonAsync<PasskeyOptionsResponse>(TestContext.CancellationToken))!;
         using HttpResponseMessage registered = await client.PostAsJsonAsync(
             "/api/v1/auth/passkeys",
-            new RegisterPasskeyRequest(authenticator.Register(options.OptionsJson), options.State, "iPhone"));
+            new RegisterPasskeyRequest(authenticator.Register(options.OptionsJson), options.State, "iPhone"), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Created, registered.StatusCode);
     }
 
@@ -250,10 +250,10 @@ public sealed class PasskeyApiTests
         using HttpClient tablet = CreateClient(app);
         await tablet.AuthenticateAsync(Email, Password);
 
-        using HttpResponseMessage logoutAll = await phone.PostAsync("/api/v1/auth/logout-all", content: null);
+        using HttpResponseMessage logoutAll = await phone.PostAsync("/api/v1/auth/logout-all", content: null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.NoContent, logoutAll.StatusCode);
-        using HttpResponseMessage phoneSession = await phone.GetAsync("/api/v1/auth/session");
-        using HttpResponseMessage tabletSession = await tablet.GetAsync("/api/v1/auth/session");
+        using HttpResponseMessage phoneSession = await phone.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
+        using HttpResponseMessage tabletSession = await tablet.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, phoneSession.StatusCode);
         Assert.AreEqual(HttpStatusCode.Unauthorized, tabletSession.StatusCode);
 
@@ -268,8 +268,8 @@ public sealed class PasskeyApiTests
         await using WebApplication app = await CreateApplicationAsync();
         using HttpClient client = CreateClient(app);
 
-        using HttpResponseMessage list = await client.GetAsync("/api/v1/auth/passkeys");
-        using HttpResponseMessage options = await client.PostAsync("/api/v1/auth/passkeys/creation-options", content: null);
+        using HttpResponseMessage list = await client.GetAsync("/api/v1/auth/passkeys", TestContext.CancellationToken);
+        using HttpResponseMessage options = await client.PostAsync("/api/v1/auth/passkeys/creation-options", content: null, TestContext.CancellationToken);
 
         Assert.AreEqual(HttpStatusCode.Unauthorized, list.StatusCode);
         Assert.AreEqual(HttpStatusCode.Unauthorized, options.StatusCode);
@@ -325,9 +325,9 @@ public sealed class PasskeyApiTests
     private async Task<WebApplication> CreateApplicationAsync(TimeProvider? timeProvider = null)
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
-        await using (AppDbContext context = Fixture.CreateContext(connectionString))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
-            await context.Database.MigrateAsync();
+            await context.Database.MigrateAsync(TestContext.CancellationToken);
         }
 
         string keyRingPath = Path.Combine(Path.GetTempPath(), $"gainer-passkeys-{Guid.NewGuid():N}");
@@ -349,7 +349,7 @@ public sealed class PasskeyApiTests
 
         var app = builder.Build();
         app.MapGainerApi();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.CancellationToken);
         return app;
     }
 
@@ -388,4 +388,6 @@ public sealed class PasskeyApiTests
             currentUtc += duration;
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

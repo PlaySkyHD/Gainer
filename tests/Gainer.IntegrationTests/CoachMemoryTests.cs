@@ -43,7 +43,7 @@ public sealed class CoachMemoryTests
     {
         (string connectionString, Guid user, _) = await CreateDatabaseAsync();
         var time = new SteppingTimeProvider();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         var store = new CoachMemoryStore(context, new TestUserContext(user), time);
         CancellationToken token = TestContext.CancellationToken;
 
@@ -53,9 +53,8 @@ public sealed class CoachMemoryTests
         Assert.IsTrue(first.Created);
         Assert.AreEqual("Halbmarathon im Mai", first.Item.Text);
         Assert.AreEqual(1, first.Item.Version);
-        CollectionAssert.AreEqual(
-            new[] { second.Item.Id, first.Item.Id },
-            (await store.ListAsync(token)).Select(item => item.Id).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { second.Item.Id, first.Item.Id }, (await store.ListAsync(token)).Select(item => item.Id).ToArray());
 
         CoachMemoryItem updated = await store.UpdateAsync(
             first.Item.Id, CoachMemoryCategory.Other, "Halbmarathon im Juni", first.Item.Version, token);
@@ -85,7 +84,7 @@ public sealed class CoachMemoryTests
     public async Task DuplicatesAreIdempotentOnCreateAndRejectedOnUpdate()
     {
         (string connectionString, Guid user, _) = await CreateDatabaseAsync();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         var store = new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider());
         CancellationToken token = TestContext.CancellationToken;
 
@@ -106,7 +105,7 @@ public sealed class CoachMemoryTests
     public async Task SameTextWithOtherCategoryUpdatesTheExistingEntryInPlace()
     {
         (string connectionString, Guid user, _) = await CreateDatabaseAsync();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         var store = new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider());
         CancellationToken token = TestContext.CancellationToken;
         CoachMemoryCreateResult original = await store.CreateAsync(CoachMemoryCategory.Other, "Laktoseintoleranz", token);
@@ -122,10 +121,10 @@ public sealed class CoachMemoryTests
         Assert.IsGreaterThan(original.Item.UpdatedAtUtc, again.Item.UpdatedAtUtc);
         Assert.AreEqual(original.Item.CreatedAtUtc, again.Item.CreatedAtUtc);
         IReadOnlyList<CoachMemoryItem> list = await store.ListAsync(token);
-        CollectionAssert.AreEqual(new[] { newer.Item.Id, original.Item.Id }, list.Select(item => item.Id).ToArray());
+        Assert.AreSequenceEqual(new[] { newer.Item.Id, original.Item.Id }, list.Select(item => item.Id).ToArray());
         Assert.AreEqual(CoachMemoryCategory.Intolerance, list[1].Category);
 
-        await using AppDbContext verify = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext verify = PostgreSqlTestFixture.CreateContext(connectionString, user);
         CoachMemory stored = await verify.CoachMemories.SingleAsync(item => item.Id == original.Item.Id, token);
         Assert.AreEqual(CoachMemoryCategory.Intolerance, stored.Category);
         Assert.AreEqual(2, stored.Version);
@@ -137,7 +136,7 @@ public sealed class CoachMemoryTests
         (string connectionString, Guid user, _) = await CreateDatabaseAsync();
         CancellationToken token = TestContext.CancellationToken;
         CoachMemoryItem original;
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             original = (await new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider())
                 .CreateAsync(CoachMemoryCategory.Goal, "Halbmarathon im Mai", token)).Item;
@@ -146,7 +145,7 @@ public sealed class CoachMemoryTests
         string[] texts = ["Halbmarathon im Juni", "Marathon im Oktober"];
         (string Text, CoachMemoryItem? Item, CoachMemoryException? Error)[] outcomes = await Task.WhenAll(texts.Select(async text =>
         {
-            await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
             var store = new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider());
             try
             {
@@ -163,7 +162,7 @@ public sealed class CoachMemoryTests
         var loser = outcomes.Single(item => item.Error is not null);
         Assert.AreEqual(CoachMemoryException.Conflict, loser.Error!.Code);
         Assert.AreEqual(2, winner.Item!.Version);
-        await using AppDbContext verify = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext verify = PostgreSqlTestFixture.CreateContext(connectionString, user);
         CoachMemory stored = await verify.CoachMemories.SingleAsync(token);
         Assert.AreEqual(winner.Text, stored.Text);
         Assert.AreEqual(2, stored.Version);
@@ -183,7 +182,7 @@ public sealed class CoachMemoryTests
     public async Task InvalidTextAndUnknownCategoryAreRejected()
     {
         (string connectionString, Guid user, _) = await CreateDatabaseAsync();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         var store = new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider());
         CancellationToken token = TestContext.CancellationToken;
 
@@ -204,7 +203,7 @@ public sealed class CoachMemoryTests
     {
         (string connectionString, Guid user, _) = await CreateDatabaseAsync();
         CancellationToken token = TestContext.CancellationToken;
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             var store = new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider());
             for (int index = 0; index < 45; index++)
@@ -213,7 +212,7 @@ public sealed class CoachMemoryTests
 
         CoachMemoryException?[] outcomes = await Task.WhenAll(Enumerable.Range(0, 10).Select(async index =>
         {
-            await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+            await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
             var store = new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider());
             try
             {
@@ -228,7 +227,7 @@ public sealed class CoachMemoryTests
 
         Assert.AreEqual(5, outcomes.Count(item => item is null));
         Assert.IsTrue(outcomes.Where(item => item is not null).All(item => item!.Code == CoachMemoryException.LimitReached));
-        await using AppDbContext verify = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext verify = PostgreSqlTestFixture.CreateContext(connectionString, user);
         Assert.AreEqual(CoachMemoryRules.MaxEntriesPerUser, await verify.CoachMemories.CountAsync(token));
     }
 
@@ -236,7 +235,7 @@ public sealed class CoachMemoryTests
     public async Task ControllerMapsResultsToStableStatusCodes()
     {
         (string connectionString, Guid user, _) = await CreateDatabaseAsync();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         var controller = new CoachMemoriesController(
             new CoachMemoryStore(context, new TestUserContext(user), new SteppingTimeProvider()));
         CancellationToken token = TestContext.CancellationToken;
@@ -281,13 +280,13 @@ public sealed class CoachMemoryTests
         (string connectionString, Guid owner, Guid stranger) = await CreateDatabaseAsync();
         CancellationToken token = TestContext.CancellationToken;
         Guid ownerEntry;
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, owner))
         {
             var store = new CoachMemoryStore(context, new TestUserContext(owner), new SteppingTimeProvider());
             ownerEntry = (await store.CreateAsync(CoachMemoryCategory.Injury, "owner-private", token)).Item.Id;
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, stranger))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, stranger))
         {
             var controller = new CoachMemoriesController(
                 new CoachMemoryStore(context, new TestUserContext(stranger), new SteppingTimeProvider()));
@@ -305,7 +304,7 @@ public sealed class CoachMemoryTests
             Assert.IsInstanceOfType<NoContentResult>(await controller.DeleteAll(token));
         }
 
-        await using AppDbContext verify = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext verify = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         CoachMemory kept = await verify.CoachMemories.SingleAsync(token);
         Assert.AreEqual(ownerEntry, kept.Id);
         Assert.AreEqual("owner-private", kept.Text);
@@ -316,7 +315,7 @@ public sealed class CoachMemoryTests
     public async Task AnonymousAccessIsRejected()
     {
         (string connectionString, _, _) = await CreateDatabaseAsync();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         var store = new CoachMemoryStore(context, new TestUserContext(null), new SteppingTimeProvider());
         await Assert.ThrowsAsync<UserIsolationViolationException>(() => store.ListAsync(TestContext.CancellationToken));
         await Assert.ThrowsAsync<UserIsolationViolationException>(() =>
@@ -329,14 +328,14 @@ public sealed class CoachMemoryTests
     {
         (string connectionString, Guid owner, Guid stranger) = await CreateDatabaseAsync();
         CancellationToken token = TestContext.CancellationToken;
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, owner))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, owner))
             await new CoachMemoryStore(context, new TestUserContext(owner), new SteppingTimeProvider())
                 .CreateAsync(CoachMemoryCategory.Goal, "owner-note", token);
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, stranger))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, stranger))
             await new CoachMemoryStore(context, new TestUserContext(stranger), new SteppingTimeProvider())
                 .CreateAsync(CoachMemoryCategory.Goal, "stranger-note", token);
 
-        await using AppDbContext ownerContext = Fixture.CreateContext(connectionString, owner);
+        await using AppDbContext ownerContext = PostgreSqlTestFixture.CreateContext(connectionString, owner);
         var provider = new RecordingProvider();
         var coach = new CoachService(
             provider,
@@ -360,8 +359,8 @@ public sealed class CoachMemoryTests
         Assert.IsTrue(typeof(CoachMemoriesController).IsSealed);
         foreach (var method in typeof(CoachMemoriesController).GetMethods().Where(method => method.DeclaringType == typeof(CoachMemoriesController)))
         {
-            Assert.IsFalse(
-                method.GetParameters().Any(parameter => parameter.Name is "userId" or "ownerId"),
+            Assert.DoesNotContain(
+                parameter => parameter.Name is "userId" or "ownerId", method.GetParameters(),
                 $"{method.Name} must not accept a user id.");
         }
     }
@@ -388,7 +387,7 @@ public sealed class CoachMemoryTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid first = Guid.NewGuid();
         Guid second = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(first), User(second));
         await context.SaveChangesAsync();

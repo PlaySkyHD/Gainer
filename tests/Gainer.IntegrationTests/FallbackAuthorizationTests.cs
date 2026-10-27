@@ -47,7 +47,7 @@ public sealed class FallbackAuthorizationTests
                 .GetFallbackPolicyAsync();
 
             Assert.IsNotNull(fallback);
-            Assert.IsTrue(fallback.Requirements.OfType<DenyAnonymousAuthorizationRequirement>().Any());
+            Assert.IsNotEmpty(fallback.Requirements.OfType<DenyAnonymousAuthorizationRequirement>());
         }
         finally
         {
@@ -64,12 +64,12 @@ public sealed class FallbackAuthorizationTests
             await using WebApplication app = await CreateApplicationAsync(keyRingPath);
             using HttpClient client = app.GetTestClient();
 
-            using HttpResponseMessage live = await client.GetAsync("/health/live");
-            using HttpResponseMessage ready = await client.GetAsync("/health/ready");
-            using HttpResponseMessage status = await client.GetAsync("/api/v1/system/status");
-            using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session");
-            using HttpResponseMessage unmarked = await client.GetAsync(UnmarkedProbePath);
-            using HttpResponseMessage open = await client.GetAsync(AnonymousProbePath);
+            using HttpResponseMessage live = await client.GetAsync("/health/live", TestContext.CancellationToken);
+            using HttpResponseMessage ready = await client.GetAsync("/health/ready", TestContext.CancellationToken);
+            using HttpResponseMessage status = await client.GetAsync("/api/v1/system/status", TestContext.CancellationToken);
+            using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
+            using HttpResponseMessage unmarked = await client.GetAsync(UnmarkedProbePath, TestContext.CancellationToken);
+            using HttpResponseMessage open = await client.GetAsync(AnonymousProbePath, TestContext.CancellationToken);
 
             Assert.AreEqual(HttpStatusCode.OK, live.StatusCode);
             Assert.AreEqual(HttpStatusCode.OK, ready.StatusCode);
@@ -102,7 +102,7 @@ public sealed class FallbackAuthorizationTests
                 .Order(StringComparer.Ordinal)
                 .ToArray();
 
-            CollectionAssert.AreEqual(AnonymousRoutes.Order(StringComparer.Ordinal).ToArray(), anonymous);
+            Assert.AreSequenceEqual(AnonymousRoutes.Order(StringComparer.Ordinal).ToArray(), anonymous);
         }
         finally
         {
@@ -143,4 +143,6 @@ public sealed class FallbackAuthorizationTests
 
         return app;
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

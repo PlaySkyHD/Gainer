@@ -48,9 +48,9 @@ public sealed class TrainingRestDayNutritionSyncTests
             Version(first, "2026-10-01", "2026-10-21", 2600m),
             Version(second, "2026-10-22", null, 2600m, rest)), client, 2);
         await Apply(connectionString, user, client, 2, offlineEdit);
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
-            ProcessedSyncMutationResult replayed = await Processor(context, user).ProcessAsync(offlineEdit);
+            ProcessedSyncMutationResult replayed = await Processor(context, user).ProcessAsync(offlineEdit, TestContext.CancellationToken);
             Assert.IsTrue(replayed.Replayed);
             NutritionTargetScheduleSnapshot schedule = await Schedule(context);
             Assert.AreEqual(2, schedule.Version);
@@ -79,7 +79,7 @@ public sealed class TrainingRestDayNutritionSyncTests
         await Apply(connectionString, user, client, 4, Targets(scheduleId, 3,
             Version(first, "2026-10-01", "2026-10-21", 2600m),
             Version(second, "2026-10-22", null, 2550m)));
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             NutritionTargetScheduleSnapshot schedule = await Schedule(context);
             Assert.AreEqual(4, schedule.Version);
@@ -87,8 +87,8 @@ public sealed class TrainingRestDayNutritionSyncTests
             Assert.IsNull(schedule.Versions[1].RestDay);
         }
 
-        await using AppDbContext other = Fixture.CreateContext(connectionString, otherUser);
-        Assert.IsNull(await new SmartNutritionQueries(other).GetNutritionTargetScheduleAsync());
+        await using AppDbContext other = PostgreSqlTestFixture.CreateContext(connectionString, otherUser);
+        Assert.IsNull(await new SmartNutritionQueries(other).GetNutritionTargetScheduleAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -117,12 +117,11 @@ public sealed class TrainingRestDayNutritionSyncTests
             Version(current, "2026-10-24", "2026-10-24", 2500m, Rest(2100m, 180m, 165m, 80m)),
             Version(Guid.NewGuid(), "2026-10-25", null, 2450m)));
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         NutritionTargetScheduleSnapshot schedule = await Schedule(context);
-        CollectionAssert.AreEqual(
-            new[] { new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 24), new DateOnly(2026, 10, 25) },
-            schedule.Versions.Select(item => item.EffectiveFrom).ToArray());
-        Assert.IsFalse(schedule.Versions.Any(item => item.TargetVersionId == planned));
+        Assert.AreSequenceEqual(
+            new[] { new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 24), new DateOnly(2026, 10, 25) }, schedule.Versions.Select(item => item.EffectiveFrom).ToArray());
+        Assert.DoesNotContain(item => item.TargetVersionId == planned, schedule.Versions);
         Assert.AreEqual(2100m, schedule.Versions[1].RestDay?.Kilocalories);
     }
 
@@ -162,23 +161,23 @@ public sealed class TrainingRestDayNutritionSyncTests
         Guid dayId = Guid.NewGuid();
 
         await Apply(connectionString, user, client, 1, DayCommand(dayId, 0, "Rest"));
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
-            NutritionDay day = await context.NutritionDays.SingleAsync();
+            NutritionDay day = await context.NutritionDays.SingleAsync(TestContext.CancellationToken);
             Assert.AreEqual(NutritionDayKind.Rest, day.DayKind);
-            Assert.AreEqual(0, await context.NutritionEntries.CountAsync());
+            Assert.AreEqual(0, await context.NutritionEntries.CountAsync(TestContext.CancellationToken));
         }
 
         await Apply(connectionString, user, client, 2, DayCommand(dayId, 1, null));
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
-            Assert.IsNull((await context.NutritionDays.SingleAsync()).DayKind);
+            Assert.IsNull((await context.NutritionDays.SingleAsync(TestContext.CancellationToken)).DayKind);
         }
 
         await ExpectInvalid(connectionString, user, client, 3, DayCommand(dayId, 2, "Refeed"));
 
-        await using AppDbContext other = Fixture.CreateContext(connectionString, otherUser);
-        Assert.AreEqual(0, await other.NutritionDays.CountAsync());
+        await using AppDbContext other = PostgreSqlTestFixture.CreateContext(connectionString, otherUser);
+        Assert.AreEqual(0, await other.NutritionDays.CountAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -194,20 +193,20 @@ public sealed class TrainingRestDayNutritionSyncTests
         ProcessSyncMutationCommand save = For(TemplateCommand(templateId, 0, "Trainingstag", "Training",
             Entry("Breakfast", 0, "Haferflocken", 80m), Entry("Lunch", 0, "Reis", 150m)), client, 1);
         await Apply(connectionString, user, client, 1, save);
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
-            ProcessedSyncMutationResult replayed = await Processor(context, user).ProcessAsync(save);
+            ProcessedSyncMutationResult replayed = await Processor(context, user).ProcessAsync(save, TestContext.CancellationToken);
             Assert.IsTrue(replayed.Replayed);
-            NutritionDayTemplate template = await context.NutritionDayTemplates.Include(item => item.Entries).SingleAsync();
+            NutritionDayTemplate template = await context.NutritionDayTemplates.Include(item => item.Entries).SingleAsync(TestContext.CancellationToken);
             Assert.AreEqual(NutritionDayKind.Training, template.DayKind);
             Assert.HasCount(2, template.Entries);
         }
 
         await Apply(connectionString, user, client, 2,
             TemplateCommand(templateId, 1, "Trainingstag", "Training", Entry("Dinner", 0, "Hähnchen", 200m)));
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
-            NutritionDayTemplate template = await context.NutritionDayTemplates.Include(item => item.Entries).SingleAsync();
+            NutritionDayTemplate template = await context.NutritionDayTemplates.Include(item => item.Entries).SingleAsync(TestContext.CancellationToken);
             Assert.AreEqual(2, template.Version);
             Assert.AreEqual("Hähnchen", template.Entries.Single().ProductName);
             NutritionDayTemplateSnapshot snapshot = NutritionDayTemplateMutationHandler.Snapshot(template);
@@ -217,21 +216,21 @@ public sealed class TrainingRestDayNutritionSyncTests
         await ExpectConflict(connectionString, user, client, 3,
             TemplateCommand(templateId, 1, "Trainingstag", null, Entry("Dinner", 0, "Hähnchen", 200m)));
 
-        await using (AppDbContext foreign = Fixture.CreateContext(connectionString, otherUser))
+        await using (AppDbContext foreign = PostgreSqlTestFixture.CreateContext(connectionString, otherUser))
         {
-            Assert.AreEqual(0, await foreign.NutritionDayTemplates.CountAsync());
+            Assert.AreEqual(0, await foreign.NutritionDayTemplates.CountAsync(TestContext.CancellationToken));
             SyncMutationConflictException denied = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
-                Processor(foreign, otherUser).ProcessAsync(DeleteTemplateCommand(templateId, 2, otherClient, 1)));
+                Processor(foreign, otherUser).ProcessAsync(DeleteTemplateCommand(templateId, 2, otherClient, 1), TestContext.CancellationToken));
             Assert.AreEqual("resource_not_found", denied.Code);
         }
 
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user))
         {
             ProcessedSyncMutationResult deleted = await Processor(context, user)
-                .ProcessAsync(DeleteTemplateCommand(templateId, 2, client, 3));
+                .ProcessAsync(DeleteTemplateCommand(templateId, 2, client, 3), TestContext.CancellationToken);
             Assert.IsTrue(deleted.Changes.Single().IsTombstone);
-            Assert.AreEqual(0, await context.NutritionDayTemplates.CountAsync());
-            Assert.AreEqual(0, await context.NutritionDayTemplateEntries.CountAsync());
+            Assert.AreEqual(0, await context.NutritionDayTemplates.CountAsync(TestContext.CancellationToken));
+            Assert.AreEqual(0, await context.NutritionDayTemplateEntries.CountAsync(TestContext.CancellationToken));
         }
     }
 
@@ -260,12 +259,11 @@ public sealed class TrainingRestDayNutritionSyncTests
                 TemplateCommand(templateId, index, "Trainingstag", "Training", saves[index]));
         }
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
-        NutritionDayTemplate template = await context.NutritionDayTemplates.Include(item => item.Entries).SingleAsync();
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
+        NutritionDayTemplate template = await context.NutritionDayTemplates.Include(item => item.Entries).SingleAsync(TestContext.CancellationToken);
         Assert.AreEqual(saves.Length, template.Version);
-        CollectionAssert.AreEqual(
-            new[] { added, c, b },
-            template.Entries.OrderBy(item => item.Position).Select(item => item.Id).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { added, c, b }, template.Entries.OrderBy(item => item.Position).Select(item => item.Id).ToArray());
     }
 
     [TestMethod]
@@ -381,14 +379,14 @@ public sealed class TrainingRestDayNutritionSyncTests
     private static async Task Apply(
         string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         _ = await Processor(context, user).ProcessAsync(For(command, client, sequence));
     }
 
     private static async Task ExpectConflict(
         string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         SyncMutationConflictException conflict = await Assert.ThrowsAsync<SyncMutationConflictException>(() =>
             Processor(context, user).ProcessAsync(For(command, client, sequence)));
         Assert.AreEqual("stale_base_version", conflict.Code);
@@ -397,7 +395,7 @@ public sealed class TrainingRestDayNutritionSyncTests
     private static async Task ExpectInvalid(
         string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         _ = await Assert.ThrowsAsync<SyncMutationValidationException>(() =>
             Processor(context, user).ProcessAsync(For(command, client, sequence)));
     }
@@ -414,7 +412,7 @@ public sealed class TrainingRestDayNutritionSyncTests
 
     private static async Task RegisterAsync(string connectionString, Guid userId, Guid clientId)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         context.SyncClients.Add(new SyncClient
         {
             Id = clientId,
@@ -438,7 +436,7 @@ public sealed class TrainingRestDayNutritionSyncTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid first = Guid.NewGuid();
         Guid second = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(first), User(second));
         await context.SaveChangesAsync();
@@ -466,4 +464,6 @@ public sealed class TrainingRestDayNutritionSyncTests
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

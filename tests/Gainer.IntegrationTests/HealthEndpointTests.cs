@@ -21,7 +21,7 @@ public sealed class HealthEndpointTests
             openAiStatus: HealthStatus.Unhealthy);
         using var client = app.GetTestClient();
 
-        var response = await client.GetAsync("/health/ready");
+        var response = await client.GetAsync("/health/ready", TestContext.CancellationToken);
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
     }
@@ -35,8 +35,8 @@ public sealed class HealthEndpointTests
             openAiStatus: HealthStatus.Healthy);
         using var client = app.GetTestClient();
 
-        var readinessResponse = await client.GetAsync("/health/ready");
-        var livenessResponse = await client.GetAsync("/health/live");
+        var readinessResponse = await client.GetAsync("/health/ready", TestContext.CancellationToken);
+        var livenessResponse = await client.GetAsync("/health/live", TestContext.CancellationToken);
 
         Assert.AreEqual(HttpStatusCode.ServiceUnavailable, readinessResponse.StatusCode);
         Assert.AreEqual(HttpStatusCode.OK, livenessResponse.StatusCode);
@@ -81,4 +81,6 @@ public sealed class HealthEndpointTests
             return Task.FromResult(new HealthCheckResult(status));
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

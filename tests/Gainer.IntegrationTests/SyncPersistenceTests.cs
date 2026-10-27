@@ -42,7 +42,7 @@ public sealed class SyncPersistenceTests
         Guid clientId = Guid.NewGuid();
         Guid mutationId = Guid.NewGuid();
         Guid batchId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         context.SyncClients.Add(Client(clientId));
         context.UserSyncStates.Add(new UserSyncState
         {
@@ -95,7 +95,7 @@ public sealed class SyncPersistenceTests
         ChangeBatch stored = await context.ChangeBatches.SingleAsync(TestContext.CancellationToken);
         List<ChangeItem> items = await context.ChangeItems.OrderBy(item => item.Position).ToListAsync(TestContext.CancellationToken);
         Assert.AreEqual(1, stored.Revision);
-        CollectionAssert.AreEqual(ExpectedPositions, items.Select(item => item.Position).ToArray());
+        Assert.AreSequenceEqual(ExpectedPositions, items.Select(item => item.Position).ToArray());
         Assert.IsTrue(items.All(item => item.BatchId == stored.Id));
     }
 
@@ -106,7 +106,7 @@ public sealed class SyncPersistenceTests
         Guid mutationId = Guid.NewGuid();
         await InsertReceiptAsync(connectionString, firstUser, mutationId, revision: 1);
         await InsertReceiptAsync(connectionString, secondUser, mutationId, revision: 1);
-        await using AppDbContext duplicate = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext duplicate = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         SyncClient client = await duplicate.SyncClients.SingleAsync(TestContext.CancellationToken);
         duplicate.ProcessedMutations.Add(new ProcessedMutation
         {
@@ -126,7 +126,7 @@ public sealed class SyncPersistenceTests
     {
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid clientId = Guid.NewGuid();
-        await using AppDbContext invalid = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext invalid = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         invalid.SyncClients.Add(Client(clientId));
         invalid.ProcessedMutations.Add(new ProcessedMutation
         {
@@ -167,7 +167,7 @@ public sealed class SyncPersistenceTests
         Guid checkInId = Guid.NewGuid();
         ProcessSyncMutationCommand command = CreateCheckInCommand(mutationId, clientId, checkInId, 82.5m);
 
-        await using (AppDbContext firstContext = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext firstContext = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             var user = new UserContext(userId);
             var processor = new SyncMutationProcessor(
@@ -177,7 +177,7 @@ public sealed class SyncPersistenceTests
             Assert.AreEqual(1, applied.Revision);
             Assert.HasCount(1, applied.Changes);
         }
-        await using (AppDbContext replayContext = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext replayContext = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             var user = new UserContext(userId);
             var processor = new SyncMutationProcessor(
@@ -208,7 +208,7 @@ public sealed class SyncPersistenceTests
         await RegisterActiveClientAsync(connectionString, secondUser, secondClient);
 
         Guid exerciseId;
-        await using (AppDbContext catalog = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext catalog = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             exerciseId = await catalog.Exercises.Where(item => item.OwnerUserId == null)
                 .Select(item => item.Id).FirstAsync(TestContext.CancellationToken);
@@ -228,7 +228,7 @@ public sealed class SyncPersistenceTests
             new { baseVersion = 1, workout = WorkoutPayload(workoutId, started, started.AddMinutes(45), exerciseId, workoutExerciseId, setId, 100, 8) },
             createMutationId);
 
-        await using (AppDbContext apply = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext apply = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var user = new UserContext(firstUser);
             var processor = new SyncMutationProcessor(
@@ -239,7 +239,7 @@ public sealed class SyncPersistenceTests
             Assert.AreEqual(2, applied.Revision);
         }
 
-        await using (AppDbContext retry = Fixture.CreateContext(connectionString, firstUser))
+        await using (AppDbContext retry = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var user = new UserContext(firstUser);
             var processor = new SyncMutationProcessor(
@@ -259,7 +259,7 @@ public sealed class SyncPersistenceTests
             Assert.AreEqual("mutation_id_reused", changed.Code);
         }
 
-        await using (AppDbContext foreign = Fixture.CreateContext(connectionString, secondUser))
+        await using (AppDbContext foreign = PostgreSqlTestFixture.CreateContext(connectionString, secondUser))
         {
             var user = new UserContext(secondUser);
             var processor = new SyncMutationProcessor(
@@ -280,7 +280,7 @@ public sealed class SyncPersistenceTests
         Guid activeClient = Guid.NewGuid();
         Guid inactiveClient = Guid.NewGuid();
         await RegisterActiveClientAsync(connectionString, userId, activeClient, inactiveClient);
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var user = new UserContext(userId);
         var processor = new SyncMutationProcessor(
             context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
@@ -320,7 +320,7 @@ public sealed class SyncPersistenceTests
         await InsertFeedBatchAsync(connectionString, secondUser, 1,
             ("DailyCheckIn", Guid.NewGuid(), 1, false, "{\"weightKg\":99}"));
 
-        await using AppDbContext firstContext = Fixture.CreateContext(connectionString, firstUser);
+        await using AppDbContext firstContext = PostgreSqlTestFixture.CreateContext(connectionString, firstUser);
         var feed = new SyncChangeFeed(firstContext);
         const int protocol = Gainer.Contracts.Sync.SyncProtocol.CurrentVersion;
         SyncChangeFeedPage firstPage = await feed.GetAsync(0, 1, protocol, TestContext.CancellationToken);
@@ -344,7 +344,7 @@ public sealed class SyncPersistenceTests
         Assert.IsFalse(replay.HasMore);
         Assert.IsEmpty(replay.Batches);
 
-        await using AppDbContext secondContext = Fixture.CreateContext(connectionString, secondUser);
+        await using AppDbContext secondContext = PostgreSqlTestFixture.CreateContext(connectionString, secondUser);
         SyncChangeFeedPage secondUserPage = await new SyncChangeFeed(secondContext).GetAsync(0, 10, protocol, TestContext.CancellationToken);
         Assert.HasCount(1, secondUserPage.Batches);
         Assert.AreEqual("DailyCheckIn", secondUserPage.Batches[0].Changes.Single().ResourceType);
@@ -356,7 +356,7 @@ public sealed class SyncPersistenceTests
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid firstId = Guid.NewGuid();
         Guid secondId = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
 
         RegisteredSyncClient first = await registry.RegisterAsync(new RegisterSyncClientCommand(
@@ -379,7 +379,7 @@ public sealed class SyncPersistenceTests
     public async Task UnsupportedClientProtocolRequiresUpgradeWithoutPersistingAnything()
     {
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
         SyncUpgradeRequiredException error = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(() =>
             registry.RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Old browser", 0, true), TestContext.CancellationToken));
@@ -412,7 +412,7 @@ public sealed class SyncPersistenceTests
         await RegisterActiveClientAsync(connectionString, userId, clientId);
 
         // Push: rejected before any payload is read or anything is stored.
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             ProcessSyncMutationCommand push = OldProtocolSave(Guid.NewGuid(), clientId, resourceType, Guid.NewGuid());
             SyncUpgradeRequiredException rejected = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(
@@ -429,7 +429,7 @@ public sealed class SyncPersistenceTests
             (resourceType, Guid.NewGuid(), 1, false, "{\"version\":1}"));
 
         // Pull: an old client gets the batch before the new type and keeps its cursor there.
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             var feed = new SyncChangeFeed(context);
             SyncChangeFeedPage old = await feed.GetAsync(0, 200, OldProtocol, TestContext.CancellationToken);
@@ -438,7 +438,7 @@ public sealed class SyncPersistenceTests
             Assert.AreEqual(checkIn, old.Batches.Single().Changes.Single().ResourceId);
             SyncChangeFeedPage blocked = await feed.GetAsync(1, 200, OldProtocol, TestContext.CancellationToken);
             Assert.IsTrue(blocked.UpgradeRequired);
-            Assert.HasCount(0, blocked.Batches);
+            Assert.IsEmpty(blocked.Batches);
 
             SyncChangeFeedPage current = await feed.GetAsync(0, 200, currentProtocol, TestContext.CancellationToken);
             Assert.IsFalse(current.UpgradeRequired);
@@ -446,7 +446,7 @@ public sealed class SyncPersistenceTests
         }
 
         // Registration: an old app of this account must update, another account is unaffected.
-        await using (AppDbContext context = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             var registry = new SyncClientRegistry(context, new UserContext(userId), TimeProvider.System);
             SyncUpgradeRequiredException upgrade = await Assert.ThrowsAsync<SyncUpgradeRequiredException>(() =>
@@ -455,7 +455,7 @@ public sealed class SyncPersistenceTests
                     TestContext.CancellationToken));
             Assert.AreEqual("upgrade_required", upgrade.Code);
         }
-        await using AppDbContext other = Fixture.CreateContext(connectionString, otherUser);
+        await using AppDbContext other = PostgreSqlTestFixture.CreateContext(connectionString, otherUser);
         RegisteredSyncClient foreign = await new SyncClientRegistry(other, new UserContext(otherUser), TimeProvider.System)
             .RegisterAsync(new RegisterSyncClientCommand(Guid.NewGuid(), "Other account", OldProtocol, false), TestContext.CancellationToken);
         Assert.AreEqual(OldProtocol, foreign.ProtocolVersion);
@@ -473,7 +473,7 @@ public sealed class SyncPersistenceTests
         ProcessSyncMutationCommand applied = OldProtocolSave(mutationId, clientId, resourceType, resourceId);
 
         // The server applied this protocol-3 mutation before the type required protocol 4; only the receipt remains.
-        await using (AppDbContext seed = Fixture.CreateContext(connectionString, userId))
+        await using (AppDbContext seed = PostgreSqlTestFixture.CreateContext(connectionString, userId))
         {
             seed.ProcessedMutations.Add(new ProcessedMutation
             {
@@ -492,7 +492,7 @@ public sealed class SyncPersistenceTests
             await seed.SaveChangesAsync(TestContext.CancellationToken);
         }
 
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         ProcessedSyncMutationResult replay = await Processor(context, userId).ProcessAsync(applied, TestContext.CancellationToken);
         Assert.IsTrue(replay.Replayed);
         Assert.AreEqual(1, replay.Revision);
@@ -533,7 +533,7 @@ public sealed class SyncPersistenceTests
         (string connectionString, Guid userId, _) = await CreateDatabaseAsync();
         Guid clientId = Guid.NewGuid();
         await RegisterActiveClientAsync(connectionString, userId, clientId);
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         var user = new UserContext(userId);
         var processor = new SyncMutationProcessor(
             context, user, new SyncMutationExecutor(context, user, TimeProvider.System), TimeProvider.System);
@@ -565,7 +565,7 @@ public sealed class SyncPersistenceTests
 
     private static async Task InsertReceiptAsync(string connectionString, Guid userId, Guid mutationId, long revision)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         Guid clientId = Guid.NewGuid();
         context.SyncClients.Add(Client(clientId));
         context.ProcessedMutations.Add(new ProcessedMutation
@@ -587,7 +587,7 @@ public sealed class SyncPersistenceTests
         long revision,
         params (string Type, Guid Id, long Version, bool Tombstone, string? Snapshot)[] changes)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         Guid batchId = Guid.NewGuid();
         context.ChangeBatches.Add(new ChangeBatch
         {
@@ -615,7 +615,7 @@ public sealed class SyncPersistenceTests
         Guid activeClientId,
         Guid? inactiveClientId = null)
     {
-        await using AppDbContext context = Fixture.CreateContext(connectionString, userId);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
         context.SyncClients.Add(Client(activeClientId));
         if (inactiveClientId is { } inactive) context.SyncClients.Add(Client(inactive));
         context.UserSyncStates.Add(new UserSyncState
@@ -759,7 +759,7 @@ public sealed class SyncPersistenceTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid first = Guid.NewGuid();
         Guid second = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(first), User(second));
         await context.SaveChangesAsync();

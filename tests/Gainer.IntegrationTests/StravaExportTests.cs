@@ -138,12 +138,12 @@ public sealed class StravaExportTests
 
         await RunAsync(db, user);
 
-        await using AppDbContext context = Fixture.CreateContext(db, user);
-        Assert.IsTrue((await context.StravaConnections.SingleAsync()).NeedsReconnect);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user);
+        Assert.IsTrue((await context.StravaConnections.SingleAsync(TestContext.CancellationToken)).NeedsReconnect);
         Assert.IsEmpty(strava.Uploads);
-        Assert.IsTrue((await Service(context, user).GetStatusAsync()).NeedsReconnect);
+        Assert.IsTrue((await Service(context, user).GetStatusAsync(TestContext.CancellationToken)).NeedsReconnect);
         StravaIntegrationException blocked = await Assert.ThrowsExactlyAsync<StravaIntegrationException>(() =>
-            Service(context, user).RequestExportAsync(StravaExportKind.Cardio, Guid.NewGuid()));
+            Service(context, user).RequestExportAsync(StravaExportKind.Cardio, Guid.NewGuid(), TestContext.CancellationToken));
         Assert.AreEqual(StravaIntegrationException.NeedsReconnect, blocked.Code);
     }
 
@@ -159,8 +159,8 @@ public sealed class StravaExportTests
         await RunAsync(db, user);
 
         Assert.AreEqual("new-access", strava.Uploads.Single().AccessToken);
-        await using AppDbContext context = Fixture.CreateContext(db, user);
-        StravaConnection connection = await context.StravaConnections.SingleAsync();
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user);
+        StravaConnection connection = await context.StravaConnections.SingleAsync(TestContext.CancellationToken);
         Assert.DoesNotContain("new-access", connection.ProtectedAccessToken);
         Assert.DoesNotContain("new-refresh", connection.ProtectedRefreshToken);
         Assert.IsLessThan(1, Math.Abs((time.Now.AddHours(6) - connection.AccessTokenExpiresAtUtc).TotalSeconds));
@@ -178,9 +178,9 @@ public sealed class StravaExportTests
         await RunAsync(db, user);
         Assert.IsEmpty(strava.Uploads, "Cardio before connecting and strength while off stay local.");
 
-        await using (AppDbContext context = Fixture.CreateContext(db, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user))
         {
-            StravaStatus status = await Service(context, user).UpdateSettingsAsync(exportCardio: true, exportStrength: true);
+            StravaStatus status = await Service(context, user).UpdateSettingsAsync(exportCardio: true, exportStrength: true, TestContext.CancellationToken);
             Assert.IsTrue(status.ExportStrength);
             Assert.IsTrue(status.ExportCardio);
         }
@@ -203,31 +203,31 @@ public sealed class StravaExportTests
         Guid foreign = await AddCardioAsync(db, second, Connected.AddDays(1));
         strava.Upload = _ => new StravaUploadState(1, 55, null, null);
 
-        await using (AppDbContext context = Fixture.CreateContext(db, first))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, first))
         {
-            IStravaIntegrationService service = Service(context, first);
+            StravaIntegrationService service = Service(context, first);
             StravaIntegrationException foreignRequest = await Assert.ThrowsExactlyAsync<StravaIntegrationException>(() =>
-                service.RequestExportAsync(StravaExportKind.Cardio, foreign));
+                service.RequestExportAsync(StravaExportKind.Cardio, foreign, TestContext.CancellationToken));
             Assert.AreEqual(StravaIntegrationException.ResourceNotFound, foreignRequest.Code);
-            Assert.IsNull(await service.GetExportAsync(StravaExportKind.Cardio, foreign));
+            Assert.IsNull(await service.GetExportAsync(StravaExportKind.Cardio, foreign, TestContext.CancellationToken));
 
-            StravaExportState queued = await service.RequestExportAsync(StravaExportKind.Cardio, older);
+            StravaExportState queued = await service.RequestExportAsync(StravaExportKind.Cardio, older, TestContext.CancellationToken);
             Assert.AreEqual(StravaExportStatus.Pending, queued.Status);
         }
         await RunAsync(db, first);
         await RunAsync(db, second);
 
         Assert.AreEqual($"gainer-cardio-{older:N}", strava.Uploads.Single().ExternalId);
-        await using (AppDbContext context = Fixture.CreateContext(db, first))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, first))
         {
-            StravaExportState? state = await Service(context, first).GetExportAsync(StravaExportKind.Cardio, older);
+            StravaExportState? state = await Service(context, first).GetExportAsync(StravaExportKind.Cardio, older, TestContext.CancellationToken);
             Assert.AreEqual(StravaExportStatus.Completed, state?.Status);
             Assert.AreEqual(55, state?.ActivityId);
         }
-        await using (AppDbContext context = Fixture.CreateContext(db, second))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, second))
         {
-            Assert.AreEqual(0, await context.StravaExports.CountAsync());
-            Assert.IsFalse((await Service(context, second).GetStatusAsync()).Connected);
+            Assert.AreEqual(0, await context.StravaExports.CountAsync(TestContext.CancellationToken));
+            Assert.IsFalse((await Service(context, second).GetStatusAsync(TestContext.CancellationToken)).Connected);
         }
     }
 
@@ -236,7 +236,7 @@ public sealed class StravaExportTests
     {
         (string db, Guid first, Guid second) = await CreateDatabaseAsync();
         string url;
-        await using (AppDbContext context = Fixture.CreateContext(db, first))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, first))
         {
             url = Service(context, first).BeginAuthorization("https://gainer.example/cb");
         }
@@ -253,23 +253,23 @@ public sealed class StravaExportTests
             "A state is accepted only once.");
 
         string fresh;
-        await using (AppDbContext context = Fixture.CreateContext(db, first))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, first))
         {
             fresh = StateOf(Service(context, first).BeginAuthorization("https://gainer.example/cb"));
         }
         Assert.AreEqual(StravaAuthorizationResult.Connected, await CallbackAsync(db, fresh, "read,activity:write"));
 
-        await using (AppDbContext context = Fixture.CreateContext(db, first))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, first))
         {
-            StravaStatus status = await Service(context, first).GetStatusAsync();
+            StravaStatus status = await Service(context, first).GetStatusAsync(TestContext.CancellationToken);
             Assert.IsTrue(status.Connected);
             Assert.AreEqual("Nic M", status.AthleteName);
             Assert.IsTrue(status.ExportCardio);
             Assert.IsFalse(status.ExportStrength);
         }
-        await using (AppDbContext context = Fixture.CreateContext(db, second))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, second))
         {
-            Assert.IsFalse((await Service(context, second).GetStatusAsync()).Connected);
+            Assert.IsFalse((await Service(context, second).GetStatusAsync(TestContext.CancellationToken)).Connected);
         }
     }
 
@@ -279,14 +279,14 @@ public sealed class StravaExportTests
         (string db, Guid user, Guid _) = await CreateDatabaseAsync();
         await ConnectAsync(db, user);
 
-        await using (AppDbContext context = Fixture.CreateContext(db, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user))
         {
-            await Service(context, user).DisconnectAsync();
+            await Service(context, user).DisconnectAsync(TestContext.CancellationToken);
         }
 
         Assert.AreEqual("access", strava.Deauthorized.Single());
-        await using AppDbContext check = Fixture.CreateContext(db, user);
-        Assert.AreEqual(0, await check.StravaConnections.CountAsync());
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(db, user);
+        Assert.AreEqual(0, await check.StravaConnections.CountAsync(TestContext.CancellationToken));
     }
 
     private static string StateOf(string url) =>
@@ -297,9 +297,9 @@ public sealed class StravaExportTests
         // Like the anonymous callback: the context only knows the user the service binds from the state.
         var scopeUser = new BackgroundUserScope();
         var userContext = new ScopedUserContext(scopeUser);
-        await using AppDbContext context = Fixture.CreateContext(db, userContext);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(db, userContext);
         return await Service(context, userContext, scopeUser)
-            .CompleteAuthorizationAsync(state, "code", scope, null, "https://gainer.example/cb");
+            .CompleteAuthorizationAsync(state, "code", scope, null, "https://gainer.example/cb", TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -315,7 +315,7 @@ public sealed class StravaExportTests
         var services = new ServiceCollection();
         services.AddScoped<BackgroundUserScope>();
         services.AddScoped<IUserContext>(provider => new ScopedUserContext(provider.GetRequiredService<BackgroundUserScope>()));
-        services.AddScoped(provider => Fixture.CreateContext(db, provider.GetRequiredService<IUserContext>()));
+        services.AddScoped(provider => PostgreSqlTestFixture.CreateContext(db, provider.GetRequiredService<IUserContext>()));
         services.AddScoped(provider => new StravaExportProcessor(
             provider.GetRequiredService<AppDbContext>(), strava, Vault(), Settings(), time, NullLogger<StravaExportProcessor>.Instance));
         await using ServiceProvider provider = services.BuildServiceProvider();
@@ -328,9 +328,8 @@ public sealed class StravaExportTests
 
         await worker.RunOnceAsync(CancellationToken.None);
 
-        CollectionAssert.AreEquivalent(
-            new[] { $"gainer-cardio-{firstSession:N}", $"gainer-cardio-{secondSession:N}" },
-            strava.Uploads.Select(upload => upload.ExternalId).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { $"gainer-cardio-{firstSession:N}", $"gainer-cardio-{secondSession:N}" }, strava.Uploads.Select(upload => upload.ExternalId).ToArray(), SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -346,6 +345,8 @@ public sealed class StravaExportTests
         await worker.StartAsync(CancellationToken.None);
         await worker.ExecuteTask!;
         await worker.StopAsync(CancellationToken.None);
+
+        Assert.IsTrue(worker.ExecuteTask!.IsCompletedSuccessfully);
     }
 
     [TestMethod]
@@ -358,9 +359,9 @@ public sealed class StravaExportTests
 
         await RunAsync(db, user);
 
-        await using (AppDbContext context = Fixture.CreateContext(db, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user))
         {
-            Assert.IsGreaterThan(time.Now, (await context.StravaConnections.SingleAsync()).PausedUntilUtc!.Value);
+            Assert.IsGreaterThan(time.Now, (await context.StravaConnections.SingleAsync(TestContext.CancellationToken)).PausedUntilUtc!.Value);
         }
         await RunAsync(db, user);
         Assert.HasCount(1, strava.Uploads, "A paused user is skipped.");
@@ -406,13 +407,13 @@ public sealed class StravaExportTests
         await ConnectAsync(db, user);
         Guid workout = await AddWorkoutAsync(db, user, Connected.AddDays(1));
         Guid cardio = await AddCardioAsync(db, user, Connected.AddDays(-5));
-        await using (AppDbContext context = Fixture.CreateContext(db, user))
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user))
         {
             StravaIntegrationService service = Service(context, user);
-            await service.RequestExportAsync(StravaExportKind.Strength, workout);
-            await service.RequestExportAsync(StravaExportKind.Cardio, cardio);
-            context.CardioSessions.Remove(await context.CardioSessions.SingleAsync());
-            await context.SaveChangesAsync();
+            await service.RequestExportAsync(StravaExportKind.Strength, workout, TestContext.CancellationToken);
+            await service.RequestExportAsync(StravaExportKind.Cardio, cardio, TestContext.CancellationToken);
+            context.CardioSessions.Remove(await context.CardioSessions.SingleAsync(TestContext.CancellationToken));
+            await context.SaveChangesAsync(TestContext.CancellationToken);
         }
         strava.Upload = _ => new StravaUploadState(1, 300, null, null);
         strava.SportTypeFailure = new StravaApiException(StravaFailure.Transient, "503", 503);
@@ -438,27 +439,27 @@ public sealed class StravaExportTests
         (string db, Guid user, Guid _) = await CreateDatabaseAsync();
         await ConnectAsync(db, user);
         Guid workout = await AddWorkoutAsync(db, user, Connected.AddDays(1));
-        await using AppDbContext context = Fixture.CreateContext(db, user);
-        Workout stored = await context.Workouts.SingleAsync();
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user);
+        Workout stored = await context.Workouts.SingleAsync(TestContext.CancellationToken);
         stored.EndedAtUtc = null;
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.CancellationToken);
 
         StravaIntegrationException unfinished = await Assert.ThrowsExactlyAsync<StravaIntegrationException>(() =>
-            Service(context, user).RequestExportAsync(StravaExportKind.Strength, workout));
+            Service(context, user).RequestExportAsync(StravaExportKind.Strength, workout, TestContext.CancellationToken));
         Assert.AreEqual(StravaIntegrationException.ResourceNotFinished, unfinished.Code);
 
         var off = new StravaIntegrationService(
             context, new FixedUser(user), new BackgroundUserScope(), strava, Vault(), new StravaExportSignal(),
             dataProtection, usedStates, Options.Create(new StravaOptions()), time, NullLogger<StravaIntegrationService>.Instance);
-        Assert.IsFalse((await off.GetStatusAsync()).Configured);
+        Assert.IsFalse((await off.GetStatusAsync(TestContext.CancellationToken)).Configured);
         StravaIntegrationException notConfigured = Assert.ThrowsExactly<StravaIntegrationException>(() => off.BeginAuthorization("https://x.test/cb"));
         Assert.AreEqual(StravaIntegrationException.NotConfigured, notConfigured.Code);
-        Assert.AreEqual(StravaAuthorizationResult.Failed, await off.CompleteAuthorizationAsync("s", "c", "activity:write", null, "https://x.test/cb"));
+        Assert.AreEqual(StravaAuthorizationResult.Failed, await off.CompleteAuthorizationAsync("s", "c", "activity:write", null, "https://x.test/cb", TestContext.CancellationToken));
     }
 
     private async Task RunAsync(string db, Guid user)
     {
-        await using AppDbContext context = Fixture.CreateContext(db, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user);
         await new StravaExportProcessor(
                 context,
                 strava,
@@ -466,7 +467,7 @@ public sealed class StravaExportTests
                 Settings(),
                 time,
                 NullLogger<StravaExportProcessor>.Instance)
-            .RunAsync();
+            .RunAsync(TestContext.CancellationToken);
     }
 
     private StravaIntegrationService Service(AppDbContext context, Guid user) =>
@@ -496,7 +497,7 @@ public sealed class StravaExportTests
 
     private async Task ConnectAsync(string db, Guid user, DateTime? expiresAtUtc = null)
     {
-        await using AppDbContext context = Fixture.CreateContext(db, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user);
         var connection = new StravaConnection
         {
             AthleteId = Athlete,
@@ -508,12 +509,12 @@ public sealed class StravaExportTests
         };
         Vault().Store(connection, new StravaTokens("access", "refresh", expiresAtUtc ?? time.Now.AddDays(30), Athlete, null));
         context.StravaConnections.Add(connection);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.CancellationToken);
     }
 
     private static async Task<Guid> AddCardioAsync(string db, Guid user, DateTime endedAtUtc)
     {
-        await using AppDbContext context = Fixture.CreateContext(db, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user);
         var session = new CardioSession
         {
             Id = Guid.NewGuid(),
@@ -532,7 +533,7 @@ public sealed class StravaExportTests
 
     private static async Task<Guid> AddWorkoutAsync(string db, Guid user, DateTime endedAtUtc)
     {
-        await using AppDbContext context = Fixture.CreateContext(db, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user);
         var exercise = new Exercise
         {
             Id = Guid.NewGuid(),
@@ -582,7 +583,7 @@ public sealed class StravaExportTests
 
     private static async Task<StravaExport> SingleExportAsync(string db, Guid user)
     {
-        await using AppDbContext context = Fixture.CreateContext(db, user);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user);
         return await context.StravaExports.AsNoTracking().SingleAsync();
     }
 
@@ -591,7 +592,7 @@ public sealed class StravaExportTests
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
         Guid first = Guid.NewGuid();
         Guid second = Guid.NewGuid();
-        await using AppDbContext context = Fixture.CreateContext(connectionString);
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString);
         await context.Database.MigrateAsync();
         context.Users.AddRange(User(first), User(second));
         await context.SaveChangesAsync();
@@ -671,4 +672,6 @@ public sealed class StravaExportTests
             return Task.CompletedTask;
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }
