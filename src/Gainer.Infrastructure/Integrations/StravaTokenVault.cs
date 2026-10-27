@@ -32,19 +32,6 @@ public sealed class StravaTokenVault(IDataProtectionProvider dataProtection, ISt
         return tokens.AccessToken;
     }
 
-    /// <summary>The stored access token without refreshing; null if it cannot be read.</summary>
-    public string? CurrentAccessToken(StravaConnection connection)
-    {
-        try
-        {
-            return protector.Unprotect(connection.ProtectedAccessToken);
-        }
-        catch (CryptographicException)
-        {
-            return null;
-        }
-    }
-
     private string Unprotect(string value)
     {
         try
