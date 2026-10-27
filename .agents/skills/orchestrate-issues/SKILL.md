@@ -33,6 +33,7 @@ You plan, brief, verify, open the pull requests and merge. Subagents only implem
   - At most two Opus agents at once. Work further Opus issues one after another.
 - At most four agents at once in total. More parallel agents do not lower the total, but they hit the 5-hour quota sooner and slow the host's test runs.
 - An issue with more than about three independent points goes to several agents, not one. Give Opus only the native or sync part. One Opus agent for five points of #166 reached 258k context and 16 % of a whole round.
+- Sonar or analyzer cleanups: at most about 20 findings or 10 files per agent.
 
 ## 3. Brief
 
@@ -47,6 +48,7 @@ Every prompt contains:
 - the shell rules for isolated worktrees from `docs/agent-lessons-learned.md` section 1 (separate git setup commands, no `git -C` outside the worktree, `cd apps/mobile && <check>` for app checks),
 - "the repository is public: no secrets, personal data or content about other private projects",
 - the exact scope and anchors, and which files not to touch,
+- for Sonar cleanups: aim for cognitive complexity ≤ 12 (limit 15), because the manual count runs low,
 - the checks to run (format, analyzer, tests, golden preview) for the touched area; name the exact commands from the instructions (`mobile.instructions.md`, `backend.instructions.md`, section "Prüfen" and "Tests"): only the touched folders, quiet reporters, `flutter pub get` first in a fresh worktree, never the whole suite (CI runs it); do not return unfiltered test output,
 - for a bug fix: show that the new test fails without the fix (undo the fix temporarily with Edit, run the test, redo it; no `git stash`/`git restore`) and put the red line in the report,
 - before the push: commit, then run the skill `code-review` on the own diff against `origin/main` (`code-review low`, diff `origin/main...HEAD`, not the local `main`) and fix the findings (amend the commit, so `Fixes #<n>` stays in it) or state why not,
@@ -77,6 +79,7 @@ Start agents in the background with worktree isolation. Do not touch their files
   - Pure style or refactoring hints from follow-up rounds may stay open, so the loop ends.
 - Watch checks with `scripts/pr-wait.sh <prs…>` via Bash `run_in_background`: it stays silent and exits when all given PRs are final (checks done, merged, closed, conflict), so the harness wakes you once. For PRs you want to merge independently, start one process per PR. Start it only after the review is done. `watch_pull_request` is only a fallback. Answer wake-ups for already merged PRs and Sonar "Quality Gate Passed" with one line and no tool call.
 - Handover: when your own context exceeds about 150k, all agents are done and only CI and merges are left, write a handover (open PRs with state, rejected findings, follow-up issues) and continue merging in a new thread. Each wake-up re-reads the whole context.
+- Sonar cleanups: open the PR right after the push and read its Sonar findings before merging, even when the gate passed (calls in `docs/agent-lessons-learned.md`, section 4). The refactor can add new findings (e.g. dart:S7112 `const`).
 - Merge only when all checks are green, `mergeable_state` is `clean` and the review findings are fixed or rejected with a reason: `gh pr merge <n> --merge`.
 - After each merge, check the remaining PRs. On a conflict, merge `origin/main` into the branch and push.
 - Confirm the issues closed: `gh api repos/PlaySkyHD/Gainer/issues/<n> --jq .state`.
