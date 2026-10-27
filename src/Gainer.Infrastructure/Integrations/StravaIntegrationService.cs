@@ -136,23 +136,27 @@ public sealed class StravaIntegrationService(
         _ = CurrentUserId();
         StravaConnection? connection = await context.StravaConnections.SingleOrDefaultAsync(cancellationToken);
         if (connection is null) return;
-        if (tokens.CurrentAccessToken(connection) is { } accessToken)
-        {
-            try
-            {
-                await strava.DeauthorizeAsync(accessToken, cancellationToken);
-            }
-            catch (StravaApiException exception)
-            {
-                // Best effort: the tokens are deleted anyway; the user can also remove Gainer in Strava.
-                if (logger.IsEnabled(LogLevel.Information))
-                {
-                    logger.LogInformation(exception, "Strava deauthorization failed with {Failure}.", exception.Failure);
-                }
-            }
-        }
+        await TryDeauthorizeAsync(connection, cancellationToken);
         context.StravaConnections.Remove(connection);
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task TryDeauthorizeAsync(StravaConnection connection, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Refreshes an expired access token first; Strava rejects the deauthorization otherwise.
+            string accessToken = await tokens.AccessTokenAsync(connection, cancellationToken);
+            await strava.DeauthorizeAsync(accessToken, cancellationToken);
+        }
+        catch (StravaApiException exception)
+        {
+            // Best effort: the connection is deleted anyway; the user can also remove Gainer in Strava.
+            if (logger.IsEnabled(LogLevel.Information))
+            {
+                logger.LogInformation(exception, "Strava deauthorization failed with {Failure}.", exception.Failure);
+            }
+        }
     }
 
     public async Task<StravaExportState?> GetExportAsync(StravaExportKind kind, Guid resourceId, CancellationToken cancellationToken = default)

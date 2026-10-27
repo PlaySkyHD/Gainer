@@ -289,6 +289,40 @@ public sealed class StravaExportTests
         Assert.AreEqual(0, await check.StravaConnections.CountAsync(TestContext.CancellationToken));
     }
 
+    [TestMethod]
+    public async Task DisconnectRefreshesAnExpiredTokenBeforeRevoking()
+    {
+        (string db, Guid user, Guid _) = await CreateDatabaseAsync();
+        await ConnectAsync(db, user, expiresAtUtc: time.Now.AddMinutes(-1));
+        strava.Refresh = _ => new StravaTokens("new-access", "new-refresh", time.Now.AddHours(6), null, null);
+
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user))
+        {
+            await Service(context, user).DisconnectAsync(TestContext.CancellationToken);
+        }
+
+        Assert.AreEqual("new-access", strava.Deauthorized.Single());
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(db, user);
+        Assert.AreEqual(0, await check.StravaConnections.CountAsync(TestContext.CancellationToken));
+    }
+
+    [TestMethod]
+    public async Task DisconnectDeletesTheConnectionWhenTheRefreshFails()
+    {
+        (string db, Guid user, Guid _) = await CreateDatabaseAsync();
+        await ConnectAsync(db, user, expiresAtUtc: time.Now.AddMinutes(-1));
+        strava.Refresh = _ => throw new StravaApiException(StravaFailure.Unauthorized, "400", 400);
+
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(db, user))
+        {
+            await Service(context, user).DisconnectAsync(TestContext.CancellationToken);
+        }
+
+        Assert.IsEmpty(strava.Deauthorized);
+        await using AppDbContext check = PostgreSqlTestFixture.CreateContext(db, user);
+        Assert.AreEqual(0, await check.StravaConnections.CountAsync(TestContext.CancellationToken));
+    }
+
     private static string StateOf(string url) =>
         Uri.UnescapeDataString(url.Split("state=")[1].Split('&')[0]);
 
