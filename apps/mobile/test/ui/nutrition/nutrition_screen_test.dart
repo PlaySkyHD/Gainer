@@ -255,6 +255,92 @@ void main() {
     expect(viewModel.statusMessage, '„Haferflocken“ hinzugefügt.');
   });
 
+  for (final multiple in [false, true]) {
+    testWidgets('manual entry clears every nutrient field after saving '
+        '(${multiple ? 'several' : 'single'})', (tester) async {
+      final harness = await _pumpDiary(tester, []);
+      Finder field(String label) => find.descendant(
+        of: find.ancestor(
+          of: find.text(label),
+          matching: find.byType(GainerTextFieldRow),
+        ),
+        matching: find.byType(CupertinoTextField),
+      );
+      Future<void> openManual() async {
+        if (multiple) {
+          await tester.longPress(find.byKey(const ValueKey('meal-add-lunch')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Mehrere hinzufügen'));
+        } else {
+          await tester.tap(find.byKey(const ValueKey('meal-add-lunch')));
+        }
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> reach(Finder finder) => tester.scrollUntilVisible(
+        finder.hitTestable(),
+        120,
+        scrollable: _sheetScrollable(),
+      );
+
+      Future<void> expectBlankForm() async {
+        for (final label in [
+          'Kalorien',
+          'Protein',
+          'Kohlenhydrate',
+          'Ballaststoffe',
+          'Fett',
+          'Salz',
+        ]) {
+          await reach(field(label));
+          expect(
+            tester.widget<CupertinoTextField>(field(label)).controller!.text,
+            isEmpty,
+            reason: label,
+          );
+        }
+      }
+
+      await openManual();
+      await tester.tap(find.text('Manuell erfassen'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('nutrition-entry-name')),
+        'Haferflocken',
+      );
+      for (final (label, value) in [
+        ('Kalorien', '370'),
+        ('Protein', '13'),
+        ('Kohlenhydrate', '60'),
+        ('Ballaststoffe', '10'),
+        ('Fett', '7'),
+        ('Salz', '1'),
+      ]) {
+        await reach(field(label));
+        await tester.enterText(field(label), value);
+      }
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      await reach(find.text('Manuell speichern'));
+      await tester.tap(find.text('Manuell speichern'));
+      await tester.pumpAndSettle();
+      expect(harness.viewModel.snapshot!.day.entries, hasLength(1));
+
+      if (multiple) {
+        // Das Sheet bleibt offen, ohne Schließen sind die Felder schon leer.
+        expect(
+          find.byKey(const ValueKey('nutrition-entry-done')),
+          findsOneWidget,
+        );
+      } else {
+        await openManual();
+        await tester.tap(find.text('Manuell erfassen'));
+        await tester.pumpAndSettle();
+      }
+      await expectBlankForm();
+    });
+  }
+
   testWidgets('nutrition overview keeps forms behind contextual routes', (
     tester,
   ) async {

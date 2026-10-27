@@ -690,7 +690,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     _estimateText.clear();
     _saltAmount.clear();
     _search.clear();
-    _amount.text = '100';
+    _clearManualFields();
     _addPieces.clear();
     widget.viewModel
       ..clearEstimateDraft()
@@ -2387,12 +2387,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
           pieceGrams: _nullable(_pieceGrams.text),
           pieceCount: _nullable(_pieceCount.text),
         );
-        if (saved) {
-          _name.clear();
-          _brand.clear();
-          _pieceGrams.clear();
-          _pieceCount.clear();
-        }
+        if (!mounted) return;
+        // Beim Schließen leert _resetEntrySheet; nur im Mehrfachmodus bleibt
+        // das Sheet offen und braucht ein leeres Formular.
+        if (saved && _addingMultiple) _clearManualFields();
         _closeAfterSave(saved);
       case MealDraftTarget():
         final accepted = _commitDraft(
@@ -2414,23 +2412,28 @@ class _NutritionScreenState extends State<NutritionScreen> {
           ),
           onDraft,
         );
-        if (accepted) {
-          for (final controller in [
-            _name,
-            _brand,
-            _kcal,
-            _protein,
-            _carbs,
-            _fat,
-            _salt,
-            _fiber,
-            _pieceGrams,
-            _pieceCount,
-          ]) {
-            controller.clear();
-          }
-        }
+        if (accepted) _clearManualFields();
     }
+  }
+
+  /// Leert das Formular „Manuell“ für den nächsten Eintrag: alle Felder leer,
+  /// Menge zurück auf 100.
+  void _clearManualFields() {
+    for (final controller in [
+      _name,
+      _brand,
+      _kcal,
+      _protein,
+      _carbs,
+      _fat,
+      _salt,
+      _fiber,
+      _pieceGrams,
+      _pieceCount,
+    ]) {
+      controller.clear();
+    }
+    _amount.text = '100';
   }
 
   Future<void> _scanLabel() async {
