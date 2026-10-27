@@ -228,6 +228,75 @@ public sealed class NutritionLabelScannerTests
     }
 
     [TestMethod]
+    public void KilojoulesReadAsKilocaloriesAreRejectedWithoutKilojouleValue()
+    {
+        // Yogurt: macro energy 4*4 + 4*15 + 9*7 = 139 kcal, but 600 (the kJ number) was read as kcal.
+        NutritionLabelScanDraft draft = CreateWithEnergy(600m, null, protein: 4m, carbs: 15m, fat: 7m);
+        Assert.AreEqual(NutritionLabelFieldStatus.Implausible, draft.Kilocalories.Status);
+        Assert.IsNull(draft.Kilocalories.Per100Grams);
+        Assert.IsFalse(draft.CanConfirm);
+    }
+
+    [TestMethod]
+    public void KilojoulesReplaceRejectedKilocalories()
+    {
+        NutritionLabelScanDraft draft = CreateWithEnergy(600m, 600m, protein: 4m, carbs: 15m, fat: 7m);
+        Assert.AreEqual(143m, draft.Kilocalories.Per100Grams);
+        Assert.AreEqual(NutritionLabelFieldStatus.Converted, draft.Kilocalories.Status);
+        Assert.IsTrue(draft.CanConfirm);
+
+        // Kilocalories far below the macro energy are replaced as well.
+        NutritionLabelScanDraft muesli = CreateWithEnergy(0m, 1450m, protein: 10m, carbs: 65m, fat: 5m);
+        Assert.AreEqual(347m, muesli.Kilocalories.Per100Grams);
+        Assert.IsTrue(muesli.CanConfirm);
+
+        // A kJ value that fails the check as well keeps the rejected kcal reading.
+        NutritionLabelScanDraft both = CreateWithEnergy(600m, 100m, protein: 4m, carbs: 15m, fat: 7m);
+        Assert.AreEqual(NutritionLabelFieldStatus.Implausible, both.Kilocalories.Status);
+        Assert.AreEqual(600m, both.Kilocalories.OriginalValue);
+        Assert.IsFalse(both.CanConfirm);
+    }
+
+    [TestMethod]
+    public void HighEnergyFromAlcoholStaysConfirmable()
+    {
+        // Sweet liqueur: macro energy 4*25 = 100 kcal plus about 25 g alcohol (7 kcal/g), 275 kcal printed.
+        Assert.IsTrue(CreateWithEnergy(275m, null, protein: 0m, carbs: 25m, fat: 0m).CanConfirm);
+        // Spirit: no macros at all.
+        Assert.IsTrue(CreateWithEnergy(230m, null, protein: 0m, carbs: 0m, fat: 0m).CanConfirm);
+        // Dry wine with a little sugar stays below the minimum macro energy of the upper check.
+        Assert.IsTrue(CreateWithEnergy(90m, null, protein: 0.1m, carbs: 4m, fat: 0m).CanConfirm);
+    }
+
+    [TestMethod]
+    public void ConsistentKilocaloriesAndKilojoulesSkipTheUpperCheck()
+    {
+        // Herbal liqueur, 35 % vol: macro energy 56 kcal, printed 250 kcal / 1046 kJ.
+        NutritionLabelScanDraft liqueur = CreateWithEnergy(250m, 1046m, protein: 0m, carbs: 14m, fat: 0m);
+        Assert.AreEqual(NutritionLabelFieldStatus.Confirmed, liqueur.Kilocalories.Status);
+        Assert.AreEqual(250m, liqueur.Kilocalories.Per100Grams);
+        Assert.IsTrue(liqueur.CanConfirm);
+    }
+
+    [TestMethod]
+    public void UpperCheckNeedsAllMacrosRead()
+    {
+        // Cheese with the fat unread: 4*25 = 100 kcal macro energy would wrongly reject 400 kcal.
+        NutritionLabelScanDraft cheese = NutritionLabelScanDraft.Create(
+            new NutritionLabelReadings(
+                NutritionLabelBasis.Per100Grams,
+                null,
+                new NutritionLabelReading(400m, null),
+                NutritionLabelReading.Empty,
+                new NutritionLabelReading(25m, null),
+                new NutritionLabelReading(0m, null),
+                NutritionLabelReading.Empty),
+            "OpenAI", "model", "v1", ScannedAt);
+        Assert.AreEqual(NutritionLabelFieldStatus.Confirmed, cheese.Kilocalories.Status);
+        Assert.IsTrue(cheese.CanConfirm);
+    }
+
+    [TestMethod]
     public void SaltIsReadPer100GramsAndDerivedFromSodium()
     {
         NutritionLabelScanDraft salt = NutritionLabelScanDraft.Create(
@@ -299,6 +368,22 @@ public sealed class NutritionLabelScannerTests
                 servingMass,
                 new NutritionLabelReading(kcal, null),
                 NutritionLabelReading.Empty,
+                new NutritionLabelReading(protein, null),
+                new NutritionLabelReading(carbs, null),
+                new NutritionLabelReading(fat, null)),
+            "OpenAI", "model", "v1", ScannedAt);
+
+    private static NutritionLabelScanDraft CreateWithEnergy(
+        decimal kcal,
+        decimal? kilojoules,
+        decimal protein,
+        decimal carbs,
+        decimal fat) => NutritionLabelScanDraft.Create(
+            new NutritionLabelReadings(
+                NutritionLabelBasis.Per100Grams,
+                null,
+                new NutritionLabelReading(kcal, null),
+                new NutritionLabelReading(kilojoules, kilojoules is null ? null : $"{kilojoules} kJ"),
                 new NutritionLabelReading(protein, null),
                 new NutritionLabelReading(carbs, null),
                 new NutritionLabelReading(fat, null)),
