@@ -39,9 +39,28 @@ public static class DatabaseReadinessExtensions
                 tags: [readinessTag])
             .AddCheck<MealEstimationConfigurationHealthCheck>(
                 "meal-estimation-configuration",
+                tags: [readinessTag])
+            .AddCheck<CoachConfigurationHealthCheck>(
+                "coach-configuration",
                 tags: [readinessTag]);
 
         return services;
+    }
+}
+
+internal sealed class CoachConfigurationHealthCheck(IConfiguration configuration) : IHealthCheck
+{
+    public Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
+    {
+        _ = context;
+        _ = cancellationToken;
+        CoachOptions options = configuration.GetSection(CoachOptions.SectionName).Get<CoachOptions>() ?? new();
+        bool valid = options.DailyRequestsPerUser is >= 1 and <= 1_000 && options.MaximumConcurrentRequests is >= 1 and <= 32;
+        return Task.FromResult(valid
+            ? HealthCheckResult.Healthy("Coach configuration is valid.")
+            : HealthCheckResult.Unhealthy("Coach configuration is invalid."));
     }
 }
 

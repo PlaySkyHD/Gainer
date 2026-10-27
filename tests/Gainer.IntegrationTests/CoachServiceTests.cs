@@ -8,6 +8,9 @@ using Gainer.Api.Controllers;
 using Gainer.Contracts.Coach;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Gainer.Infrastructure.HealthChecks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Gainer.Core.Training;
 using Gainer.Infrastructure.Coach;
@@ -386,7 +389,7 @@ public sealed class CoachServiceTests
     {
         using var quota = new CoachQuota(
             Options.Create(new CoachOptions { DailyRequestsPerUser = 1, MaximumConcurrentRequests = 1 }),
-            TimeProvider.System);
+            new FixedTimeProvider());
         var first = new CoachTestUser();
         var second = new CoachTestUser();
         var provider = new FakeProvider(
@@ -412,6 +415,26 @@ public sealed class CoachServiceTests
 
         await Service(provider, quota, second).AnswerAsync("Frage eines anderen Nutzers", TestContext.CancellationToken);
         Assert.HasCount(3, provider.Requests);
+    }
+
+    [TestMethod]
+    public async Task ReadinessReportsInvalidCoachConfiguration()
+    {
+        Assert.AreEqual(HealthStatus.Healthy, await CoachHealth(null, null));
+        Assert.AreEqual(HealthStatus.Healthy, await CoachHealth("100", "4"));
+        Assert.AreEqual(HealthStatus.Unhealthy, await CoachHealth("0", "4"));
+        Assert.AreEqual(HealthStatus.Unhealthy, await CoachHealth("100", "33"));
+    }
+
+    private async Task<HealthStatus> CoachHealth(string? daily, string? concurrent)
+    {
+        var values = new Dictionary<string, string?>();
+        if (daily is not null) values["Coach:DailyRequestsPerUser"] = daily;
+        if (concurrent is not null) values["Coach:MaximumConcurrentRequests"] = concurrent;
+        IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+        HealthCheckResult result = await new CoachConfigurationHealthCheck(configuration)
+            .CheckHealthAsync(new HealthCheckContext(), TestContext.CancellationToken);
+        return result.Status;
     }
 
     private sealed class ThrowingCoach(Exception exception) : ICoachService
