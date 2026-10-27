@@ -100,6 +100,8 @@ class _AuthScreenState extends State<AuthScreen> {
                   value: _acceptingInvitation,
                   onChanged: (value) {
                     if (_busy) return;
+                    _password.clear();
+                    widget.controller.clearError();
                     setState(() {
                       _acceptingInvitation = value;
                       _localError = null;

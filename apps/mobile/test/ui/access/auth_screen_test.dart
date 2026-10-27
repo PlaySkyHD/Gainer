@@ -226,6 +226,48 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('switching mode clears the password and the old error', (
+    tester,
+  ) async {
+    final controller = MobileAuthController(
+      configuration: MobileAppConfiguration(
+        api: Uri.parse('https://api.example.test'),
+      ),
+      apiFactory: _InviteApi.new,
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      CupertinoApp(home: AuthScreen(controller: controller)),
+    );
+    await tester.tap(find.text('Einladung annehmen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField).first, 'bad');
+    await tester.enterText(find.byType(CupertinoTextField).last, 'secret');
+    await tester.tap(find.text('Einladung bestätigen'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Die Einladung konnte nicht bestätigt werden'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Anmelden'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Die Einladung konnte nicht bestätigt werden'),
+      findsNothing,
+    );
+    expect(controller.errorMessage, isNull);
+    expect(
+      tester
+          .widget<CupertinoTextField>(find.byType(CupertinoTextField).last)
+          .controller
+          ?.text,
+      isEmpty,
+    );
+  });
 }
 
 class _PasskeyOptionsApi extends ApiClient {
@@ -281,6 +323,13 @@ class _InviteApi extends ApiClient {
   Future<void> acceptInvitation(ApiAcceptInvitationRequest request) async {
     acceptCalls++;
     await gate?.future;
+    if (request.token == 'bad') {
+      throw const ApiException(
+        statusCode: 400,
+        code: 'invalid_invitation',
+        message: 'invalid',
+      );
+    }
     acceptedToken = request.token;
   }
 }
