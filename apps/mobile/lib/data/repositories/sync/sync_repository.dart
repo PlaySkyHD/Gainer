@@ -12,6 +12,7 @@ import '../../models/local/local_mutation.dart';
 import '../../services/api/api_client.dart';
 import '../../services/local/local_database.dart';
 import '../../services/local/pending_handover_secret_store.dart';
+import 'check_in_day_adoption.dart';
 import 'local_conflict_recovery.dart';
 import 'local_sync_store.dart';
 import 'native_handover_repository.dart';
@@ -1198,11 +1199,18 @@ class SyncRepository implements MobileSyncActions {
             : LocalSyncState.pending,
       );
     } else {
-      envelope = serverEnvelope(
-        aggregateId: change.resourceId,
-        snapshot: snapshot,
-        version: change.version,
-      );
+      envelope =
+          await _adoptedLocalCheckIn(
+            aggregateType,
+            change,
+            snapshot,
+            pending,
+          ) ??
+          serverEnvelope(
+            aggregateId: change.resourceId,
+            snapshot: snapshot,
+            version: change.version,
+          );
     }
     await database
         .into(database.localResources)
@@ -1232,6 +1240,27 @@ class SyncRepository implements MobileSyncActions {
         version: change.version,
       );
     }
+  }
+
+  /// Ein lokal angelegter, nie bestätigter Check-in desselben Tages wird zur
+  /// wartenden Änderung auf dem gezogenen Check-in
+  /// ([adoptLocalCheckInForDay]).
+  Future<LocalAggregateEnvelope<Object?>?> _adoptedLocalCheckIn(
+    String aggregateType,
+    SyncChangeResponse change,
+    Object? snapshot,
+    List<LocalOutboxData> pending,
+  ) async {
+    if (aggregateType != dailyCheckInAggregateType || pending.isNotEmpty) {
+      return null;
+    }
+    return adoptLocalCheckInForDay(
+      database: store.database,
+      accountId: store.accountId,
+      serverId: change.resourceId,
+      snapshot: snapshot,
+      version: change.version,
+    );
   }
 
   /// Ein anderes Gerät hat die Ressource geändert, während hier ein Stand

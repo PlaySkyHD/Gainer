@@ -36,8 +36,9 @@ class LocalUniqueFieldExpectation extends LocalResourceExpectation {
     required this.value,
   }) : super(optimisticVersion: null, serverVersion: null);
 
+  /// Schlüssel in der Arbeitskopie, ohne Punkte (Teil eines JSON-Pfads).
   final String field;
-  final Object value;
+  final String value;
 }
 
 const _resourceChangedMessage =
@@ -436,22 +437,21 @@ class LocalSyncStore {
   Future<void> _verifyUniqueField(
     LocalUniqueFieldExpectation expectation,
   ) async {
-    final rows =
-        await (database.select(database.localResources)..where(
-              (t) =>
-                  t.aggregateType.equals(expectation.aggregateType) &
-                  t.aggregateId.equals(expectation.aggregateId).not(),
-            ))
-            .get();
-    for (final row in rows) {
-      final workingCopy = LocalAggregateEnvelope<Object?>.fromJson(
-        jsonDecode(row.envelopeJson) as Map<String, dynamic>,
-      ).workingCopy;
-      if (workingCopy is Map &&
-          workingCopy[expectation.field] == expectation.value) {
-        throw LocalResourceChangedException();
-      }
-    }
+    final other = await database
+        .customSelect(
+          'SELECT 1 FROM local_resources '
+          'WHERE aggregate_type = ? AND aggregate_id != ? '
+          'AND json_extract(envelope_json, ?) = ? LIMIT 1',
+          variables: [
+            Variable.withString(expectation.aggregateType),
+            Variable.withString(expectation.aggregateId),
+            Variable.withString('\$.workingCopy.${expectation.field}'),
+            Variable.withString(expectation.value),
+          ],
+          readsFrom: {database.localResources},
+        )
+        .getSingleOrNull();
+    if (other != null) throw LocalResourceChangedException();
   }
 
   Future<void> _verifyMetadataExpectations(
