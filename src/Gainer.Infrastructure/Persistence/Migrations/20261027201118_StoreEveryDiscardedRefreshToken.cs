@@ -40,12 +40,14 @@ public partial class StoreEveryDiscardedRefreshToken : Migration
             column: "SessionId");
 
         // Running sessions keep their discarded token as a revocation trigger. DiscardedAt was only set while the
-        // retry belonged to the current rotation; otherwise the session start stands in, which places the token
-        // before the current rotation, so (as with the old single slot) the next retry replaces it.
+        // retry belonged to the current rotation; otherwise the retry happened before the current rotation, so one
+        // microsecond before it stands in: the token does not count against the current rotation's retries and is
+        // kept at least as long as the device holding it could still refresh.
         migrationBuilder.Sql(
             """
             INSERT INTO "identity".device_session_discarded_tokens ("SessionId", "TokenHash", "DiscardedAt")
-            SELECT "Id", "DiscardedRefreshTokenHash", COALESCE("DiscardedAt", "CreatedAt")
+            SELECT "Id", "DiscardedRefreshTokenHash",
+                COALESCE("DiscardedAt", "RotatedAt" - INTERVAL '1 microsecond', "CreatedAt")
             FROM "identity".device_sessions
             WHERE "DiscardedRefreshTokenHash" IS NOT NULL;
             """);

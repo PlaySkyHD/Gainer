@@ -142,7 +142,7 @@ Das System MUST Betreiberfunktionen auf Konten, Einladungen und Kontostatus begr
 
 ### Requirement: Wiederverwendung widerruft die Session
 
-Wird ein ersetzter Refresh-Token nach der Kulanzfrist (`Security:DeviceSessions:ReuseGracePeriod`, Standard 6 h) eingelöst, SHALL die API 401 liefern und die Session widerrufen. In der Frist SHALL sie den Vorgänger bis zu zehnmal akzeptieren, je Retry den zuletzt ausgestellten Token verwerfend. Nach Nutzung des Nachfolgers und bei älteren Tokens MUST sie 401 liefern. Ein elfter Retry und jeder verworfene Token MUST die Session widerrufen, bis ein Retry einer späteren Rotation ihn ablöst.
+Wird ein ersetzter Refresh-Token nach der Kulanzfrist (`Security:DeviceSessions:ReuseGracePeriod`, Standard 6 h) eingelöst, SHALL die API 401 liefern und die Session widerrufen. In der Frist SHALL sie den Vorgänger bis zu zehnmal akzeptieren und je Retry den letzten Token verwerfen. Nach Nutzung des Nachfolgers und bei älteren Tokens MUST sie 401 liefern. Ein elfter Retry, ein Retry über 50 verworfene Tokens und jeder verworfene Token jünger als die Leerlauffrist MUST die Session widerrufen.
 
 #### Scenario: Gestohlener Token
 - **GIVEN** Token A wurde gegen Token B getauscht
@@ -188,6 +188,16 @@ Wird ein ersetzter Refresh-Token nach der Kulanzfrist (`Security:DeviceSessions:
 - **GIVEN** das Gerät hat Token A gegen Token B getauscht, ein Angreifer erhielt per Retry mit Token A Token C und tauschte danach zweimal ohne Retry weiter bis Token E
 - **WHEN** das Gerät Token B einlöst
 - **THEN** antwortet die API mit 401, und Token E funktioniert nicht mehr
+
+#### Scenario: Zwischenrotation und Retry des Angreifers
+- **GIVEN** das Gerät hat Token A gegen Token B getauscht, ein Angreifer erhielt per Retry mit Token A Token C, tauschte Token C gegen Token D und erhielt per Retry mit Token C Token E
+- **WHEN** das Gerät Token B einlöst
+- **THEN** antwortet die API mit 401, und weder Token E noch der zugehörige Access-Token funktionieren noch
+
+#### Scenario: Zu viele gespeicherte verworfene Tokens
+- **GIVEN** in fünf Rotationen wurde der Vorgänger je zehnmal per Retry eingelöst, sodass 50 verworfene Tokens gespeichert sind
+- **WHEN** nach der nächsten Rotation der Vorgänger innerhalb der Kulanzfrist per Retry eingelöst wird
+- **THEN** antwortet die API mit 401, und der zuletzt ausgestellte Token funktioniert nicht mehr
 
 ### Requirement: Widerruf wirkt sofort
 
