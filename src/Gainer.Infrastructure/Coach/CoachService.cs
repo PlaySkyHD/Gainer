@@ -15,6 +15,7 @@ public sealed partial class CoachService(
     IWorkoutHistoryQueries workoutHistory,
     IExerciseResolver exercises,
     ICoachMemoryQueries memories,
+    ICoachRequestBudget budget,
     TimeProvider timeProvider) : ICoachService
 {
     private const int MaximumRounds = 3;
@@ -54,6 +55,8 @@ public sealed partial class CoachService(
                 [], [], ["Für diese Frage sind medizinische Untersuchung und Kontext erforderlich."],
                 ["Bitte wende dich bei Beschwerden an qualifiziertes medizinisches Fachpersonal."], 0, []);
         }
+
+        await using IAsyncDisposable lease = await budget.AcquireAsync(cancellationToken);
 
         IReadOnlyList<CoachMemoryItem> notes = await memories.ListAsync(cancellationToken);
         (IReadOnlyList<CoachMemoryItem> promptNotes, string notesText) = BoundedNotes(notes);
