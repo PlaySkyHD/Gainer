@@ -288,6 +288,12 @@ class MobileAuthController extends ChangeNotifier
     return scope;
   }
 
+  void clearError() {
+    if (errorMessage == null) return;
+    errorMessage = null;
+    if (!_disposed) notifyListeners();
+  }
+
   Future<void> acceptInvitation(String token, String password) async {
     final api = _api ?? _newApi();
     _api = api;

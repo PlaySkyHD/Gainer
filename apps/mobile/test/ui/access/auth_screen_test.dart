@@ -133,6 +133,141 @@ void main() {
 
     expect(api?.acceptCalls, 1);
   });
+
+  testWidgets('accepted invitation returns to sign-in with cleared secrets', (
+    tester,
+  ) async {
+    _InviteApi? api;
+    final controller = MobileAuthController(
+      configuration: MobileAppConfiguration(
+        api: Uri.parse('https://api.example.test'),
+      ),
+      apiFactory: (configuration) => api = _InviteApi(configuration),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      CupertinoApp(home: AuthScreen(controller: controller)),
+    );
+    await tester.tap(find.text('Einladung annehmen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField).first, 'abc123');
+    await tester.enterText(
+      find.byType(CupertinoTextField).last,
+      'new-password',
+    );
+    await tester.tap(find.text('Einladung bestätigen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Einladung bestätigen'), findsNothing);
+    expect(find.text('Anmelden'), findsNWidgets(2));
+    expect(find.text('E-Mail-Adresse'), findsOneWidget);
+    expect(find.text('Mit Passkey anmelden'), findsOneWidget);
+    expect(
+      find.text(
+        'Einladung angenommen. Melde dich jetzt mit deinem neuen Konto an.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('new-password'), findsNothing);
+    expect(
+      tester
+          .widget<CupertinoTextField>(find.byType(CupertinoTextField).last)
+          .controller
+          ?.text,
+      isEmpty,
+    );
+
+    await tester.tap(find.text('Einladung annehmen'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<CupertinoTextField>(find.byType(CupertinoTextField).first)
+          .controller
+          ?.text,
+      isEmpty,
+    );
+    expect(api?.acceptCalls, 1);
+  });
+
+  testWidgets('local invitation error wins over an old sign-in error', (
+    tester,
+  ) async {
+    final controller = MobileAuthController(
+      configuration: MobileAppConfiguration(
+        api: Uri.parse('https://api.example.test'),
+      ),
+      apiFactory: _InviteApi.new,
+      secureSessions: _MemorySecureSession(),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      CupertinoApp(home: AuthScreen(controller: controller)),
+    );
+    await tester.enterText(find.byType(CupertinoTextField).first, 'a@b.test');
+    await tester.enterText(find.byType(CupertinoTextField).last, 'wrong');
+    await tester.tap(find.widgetWithText(CupertinoButton, 'Anmelden'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('E-Mail-Adresse oder Passwort stimmen nicht.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Einladung annehmen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Einladung bestätigen'));
+    await tester.pumpAndSettle();
+
+    const local = 'Gib einen gültigen Einladungscode oder Einladungslink ein.';
+    expect(find.text(local), findsOneWidget);
+    expect(
+      find.text('E-Mail-Adresse oder Passwort stimmen nicht.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('switching mode clears the password and the old error', (
+    tester,
+  ) async {
+    final controller = MobileAuthController(
+      configuration: MobileAppConfiguration(
+        api: Uri.parse('https://api.example.test'),
+      ),
+      apiFactory: _InviteApi.new,
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      CupertinoApp(home: AuthScreen(controller: controller)),
+    );
+    await tester.tap(find.text('Einladung annehmen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField).first, 'bad');
+    await tester.enterText(find.byType(CupertinoTextField).last, 'secret');
+    await tester.tap(find.text('Einladung bestätigen'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Die Einladung konnte nicht bestätigt werden'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Anmelden'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Die Einladung konnte nicht bestätigt werden'),
+      findsNothing,
+    );
+    expect(controller.errorMessage, isNull);
+    expect(
+      tester
+          .widget<CupertinoTextField>(find.byType(CupertinoTextField).last)
+          .controller
+          ?.text,
+      isEmpty,
+    );
+  });
 }
 
 class _PasskeyOptionsApi extends ApiClient {
@@ -177,9 +312,35 @@ class _InviteApi extends ApiClient {
   Completer<void>? gate;
 
   @override
+  Future<ApiTokenResponse> login(ApiLoginRequest request) async =>
+      throw const ApiException(
+        statusCode: 401,
+        code: 'invalid_credentials',
+        message: 'invalid',
+      );
+
+  @override
   Future<void> acceptInvitation(ApiAcceptInvitationRequest request) async {
     acceptCalls++;
     await gate?.future;
+    if (request.token == 'bad') {
+      throw const ApiException(
+        statusCode: 400,
+        code: 'invalid_invitation',
+        message: 'invalid',
+      );
+    }
     acceptedToken = request.token;
   }
+}
+
+class _MemorySecureSession implements SecureSessionPlatform {
+  @override
+  Future<void> clearCheckpoint(String apiOrigin) async {}
+
+  @override
+  Future<Uint8List?> readCheckpoint(String apiOrigin) async => null;
+
+  @override
+  Future<void> writeCheckpoint(String apiOrigin, Uint8List checkpoint) async {}
 }

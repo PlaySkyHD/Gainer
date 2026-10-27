@@ -38,11 +38,21 @@ class _AuthScreenState extends State<AuthScreen> {
             'Gib einen gültigen Einladungscode oder Einladungslink ein.';
       } else {
         await widget.controller.acceptInvitation(token, _password.text);
+        if (mounted && widget.controller.errorMessage == null) {
+          _leaveInvitationMode();
+        }
       }
     } else {
       await widget.controller.login(_email.text, _password.text);
     }
     if (mounted) setState(() => _busy = false);
+  }
+
+  /// Nach angenommener Einladung ist das Token verbraucht: zurück zur Anmeldung.
+  void _leaveInvitationMode() {
+    _invitation.clear();
+    _password.clear();
+    _acceptingInvitation = false;
   }
 
   Future<void> _loginWithPasskey() async {
@@ -90,7 +100,12 @@ class _AuthScreenState extends State<AuthScreen> {
                   value: _acceptingInvitation,
                   onChanged: (value) {
                     if (_busy) return;
-                    setState(() => _acceptingInvitation = value);
+                    _password.clear();
+                    widget.controller.clearError();
+                    setState(() {
+                      _acceptingInvitation = value;
+                      _localError = null;
+                    });
                   },
                 ),
                 const SizedBox(height: 18),
@@ -127,7 +142,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                   ],
                 ),
-                if ((widget.controller.errorMessage ?? _localError)
+                if ((_localError ?? widget.controller.errorMessage)
                     case final message?)
                   Padding(
                     padding: const EdgeInsets.only(top: 14),
