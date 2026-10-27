@@ -20,6 +20,7 @@ Stack: .NET 10, ASP.NET Core mit Controllern, EF Core mit Npgsql, ASP.NET Core I
 ## Daten und Sync
 
 - Jede nutzerbezogene Entität implementiert `IUserOwnedEntity`; der globale Query-Filter in `AppDbContext` isoliert die Nutzer. Die `UserId` kommt nur aus `IUserContext`, nie aus Request oder LLM-Aufruf.
+- `UserOwnedEntity.UserId` behält `private set`: EF Core mappt per Konvention nur Properties mit Setter, sonst hängt die Nutzerisolation am expliziten Mapping jeder Entität. Sonar S1144 ist dafür in `sonar-backend.yml` ausgenommen.
 - Schreibende Handler prüfen die Basisversion, erhöhen `Version` und melden Abweichungen über die fachliche `*ConflictException`. `SyncMutationProcessor` übersetzt sie in Sync-Codes.
 - Ein Unique-Fehler ist nur dann ein Konflikt, wenn wirklich ein anderer Stand existiert. Werden Kindzeilen mit gleichen IDs ersetzt, das Entfernen zuerst mit `SaveChanges` abschließen, beides in einer Transaktion.
 - Migrationen: `dotnet ef migrations add` mit Startprojekt `src/Gainer.Infrastructure`, danach `dotnet format`.
