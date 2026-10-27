@@ -81,17 +81,16 @@ internal sealed class DeviceSessionService(
         }
 
         byte[] presentedHash = HashToken(refreshToken.Trim());
-        DateTimeOffset now = timeProvider.GetUtcNow();
         for (int attempt = 0; attempt < MaximumRefreshAttempts; attempt++)
         {
-            DeviceSessionRefreshResult? result = await TryRefreshAsync(presentedHash, now, cancellationToken);
+            DeviceSessionRefreshResult? result = await TryRefreshAsync(presentedHash, attempt > 0, cancellationToken);
             if (result is not null)
             {
                 return result;
             }
 
             // A parallel refresh changed the session between reading and saving: decide again on its new state,
-            // so a parallel retry is answered like a sequential one and a reused token is still detected.
+            // so a reused token is still detected.
             database.ChangeTracker.Clear();
         }
 
@@ -101,10 +100,11 @@ internal sealed class DeviceSessionService(
     /// <summary>One refresh attempt; returns null when a parallel refresh changed the session before the save.</summary>
     private async Task<DeviceSessionRefreshResult?> TryRefreshAsync(
         byte[] presentedHash,
-        DateTimeOffset now,
+        bool afterConflict,
         CancellationToken cancellationToken)
     {
         DeviceSession? session = await FindSessionAsync(presentedHash, cancellationToken);
+        DateTimeOffset now = timeProvider.GetUtcNow();
         if (session is null
             || session.RevokedAt is not null
             || session.ExpiresAt <= now
@@ -115,6 +115,13 @@ internal sealed class DeviceSessionService(
         }
 
         bool presentedCurrent = CryptographicOperations.FixedTimeEquals(session.RefreshTokenHash, presentedHash);
+        if (afterConflict && !presentedCurrent && IsWithinGracePeriod(session, presentedHash, now))
+        {
+            // A parallel request with the same token won the race. Rotating again would discard the token it issued,
+            // and the server cannot know which response the client keeps, so this one leaves the session unchanged.
+            return new DeviceSessionRefreshResult(DeviceSessionRefreshStatus.Invalid);
+        }
+
         if (!presentedCurrent && !await TryDiscardForRetryAsync(session, presentedHash, now, cancellationToken))
         {
             // An old or discarded token came back, or retries piled up: either copy may be stolen. The revocation

@@ -97,31 +97,49 @@ public sealed class DeviceSessionRaceTests
     [TestMethod]
     [DataRow(true, DisplayName = "attacker reads first, device saves first")]
     [DataRow(false, DisplayName = "device reads first, attacker saves first")]
-    public async Task ParallelGraceRetriesOfDeviceAndAttackerBothSucceedAndTheDiscardedOneRevokes(bool attackerReadsFirst)
+    public async Task ParallelGraceRetriesOfDeviceAndAttackerKeepTheWinnerAndALaterRetryStillRevokes(bool attackerReadsFirst)
     {
         string stolen = await SignInAsync();
         _ = await RefreshedAsync(stolen);
         timeProvider.Advance(TimeSpan.FromSeconds(20));
 
-        // Both sides retry with the previous token; the server cannot tell them apart.
+        // Both sides retry with the previous token; the server cannot tell them apart. The slower one loses the race
+        // and leaves the session unchanged, so the winner's token stays current and works like a single grace retry.
         string? inner = null;
         DeviceSessionRefreshResult outer = await RefreshAsync(stolen, async () => inner = await RefreshedAsync(stolen));
 
-        Assert.AreEqual(DeviceSessionRefreshStatus.Refreshed, outer.Status);
-        Assert.IsNotNull(outer.Session);
+        Assert.AreEqual(DeviceSessionRefreshStatus.Invalid, outer.Status);
         Assert.IsNotNull(inner);
-        Assert.IsTrue(await IsCurrentAsync(outer.Session.RefreshToken), "The later grace retry holds the current token.");
+        Assert.IsTrue(await IsCurrentAsync(inner), "The winning grace retry holds the current token.");
+        Assert.IsFalse(await IsRevokedAsync());
 
-        // The later retry works like a single grace retry; the earlier one's token was discarded, and whoever holds
-        // it reveals the second copy when it returns.
-        string next = await RefreshedAsync(outer.Session.RefreshToken);
+        // The loser retries again in sequence, which discards the winner's token: its return reveals the second copy.
+        string retried = await RefreshedAsync(stolen);
         string discardedHolder = attackerReadsFirst ? "device" : "attacker";
         Assert.AreEqual(
             DeviceSessionRefreshStatus.ReuseDetected,
             (await RefreshAsync(inner)).Status,
             $"The {discardedHolder}'s discarded token must revoke the session.");
         Assert.IsTrue(await IsRevokedAsync());
-        Assert.AreEqual(DeviceSessionRefreshStatus.Invalid, (await RefreshAsync(next)).Status);
+        Assert.AreEqual(DeviceSessionRefreshStatus.Invalid, (await RefreshAsync(retried)).Status);
+    }
+
+    [TestMethod]
+    public async Task AbandonedRefreshThatLosesTheRaceKeepsTheTokenOfTheResentRefresh()
+    {
+        string first = await SignInAsync();
+        string current = await RefreshedAsync(first);
+        timeProvider.Advance(TimeSpan.FromMinutes(15));
+
+        // The client gives up on the slow refresh and resends the same token; the resent one commits first.
+        string? resent = null;
+        DeviceSessionRefreshResult abandoned = await RefreshAsync(current, async () => resent = await RefreshedAsync(current));
+
+        Assert.AreEqual(DeviceSessionRefreshStatus.Invalid, abandoned.Status);
+        Assert.IsNotNull(resent);
+        Assert.IsTrue(await IsCurrentAsync(resent), "The abandoned refresh must not discard the token the client keeps.");
+        Assert.AreEqual(0, await CountDiscardedTokensAsync());
+        Assert.AreEqual(DeviceSessionRefreshStatus.Refreshed, (await RefreshAsync(resent)).Status);
     }
 
     [TestMethod]
@@ -158,22 +176,22 @@ public sealed class DeviceSessionRaceTests
     }
 
     [TestMethod]
-    public async Task ParallelGraceRetriesWithTheSameTokenAreBothAnsweredLikeSequentialRetries()
+    public async Task ParallelGraceRetriesWithTheSameTokenKeepTheWinnersToken()
     {
         string first = await SignInAsync();
         _ = await RefreshedAsync(first);
         timeProvider.Advance(TimeSpan.FromSeconds(20));
 
-        // Both retries discard the same lost token; the second insert used to hit the key of the discarded tokens.
-        string? earlier = null;
-        DeviceSessionRefreshResult later = await RefreshAsync(first, async () => earlier = await RefreshedAsync(first));
+        // Both retries discard the same lost token, so the slower one hits the key of the discarded tokens or the
+        // version. It is answered as invalid without an exception and without touching the winner's token.
+        string? winner = null;
+        DeviceSessionRefreshResult loser = await RefreshAsync(first, async () => winner = await RefreshedAsync(first));
 
-        Assert.AreEqual(DeviceSessionRefreshStatus.Refreshed, later.Status);
-        Assert.IsNotNull(later.Session);
-        Assert.IsNotNull(earlier);
-        Assert.AreEqual(2, await CountDiscardedTokensAsync());
-        Assert.IsTrue(await IsCurrentAsync(later.Session.RefreshToken));
-        Assert.AreEqual(DeviceSessionRefreshStatus.Refreshed, (await RefreshAsync(later.Session.RefreshToken)).Status);
+        Assert.AreEqual(DeviceSessionRefreshStatus.Invalid, loser.Status);
+        Assert.IsNotNull(winner);
+        Assert.AreEqual(1, await CountDiscardedTokensAsync());
+        Assert.IsTrue(await IsCurrentAsync(winner));
+        Assert.AreEqual(DeviceSessionRefreshStatus.Refreshed, (await RefreshAsync(winner)).Status);
     }
 
     private async Task<string> SignInAsync()
