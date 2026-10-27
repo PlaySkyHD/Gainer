@@ -153,8 +153,7 @@ public sealed class TrainingStatisticsIsolationTests
             new EmptyHistory(),
             new ExerciseCatalogQueries(context, new TestUserContext(owner)),
             new FixedCoachMemories(),
-            new PassCoachQuota(),
-            new CoachTestUser(owner),
+            CoachTestBudget.Pass(owner),
             new FixedTimeProvider(ThroughUtc));
         CoachAnswer answer = await coach.AnswerAsync("Wie entwickelt sich meine Übung?", TestContext.CancellationToken);
 

@@ -74,6 +74,7 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<ICoachMemoryQueries>(services => services.GetRequiredService<ICoachMemoryStore>());
         builder.Services.Configure<CoachOptions>(builder.Configuration.GetSection(CoachOptions.SectionName));
         builder.Services.AddSingleton<ICoachQuota, CoachQuota>();
+        builder.Services.AddScoped<ICoachRequestBudget, CoachRequestBudget>();
         builder.Services.AddScoped<ICoachService, CoachService>();
         builder.Services.Configure<MealEstimationOptions>(builder.Configuration.GetSection(MealEstimationOptions.SectionName));
         builder.Services.Configure<MealImageOptions>(builder.Configuration.GetSection(MealImageOptions.SectionName));

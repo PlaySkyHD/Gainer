@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Gainer.Core.Coach;
 using Gainer.Core.Insights;
-using Gainer.Core.Security;
 using Gainer.Core.Training;
 using Gainer.Infrastructure.Nutrition;
 
@@ -16,8 +15,7 @@ public sealed partial class CoachService(
     IWorkoutHistoryQueries workoutHistory,
     IExerciseResolver exercises,
     ICoachMemoryQueries memories,
-    ICoachQuota quota,
-    IUserContext userContext,
+    ICoachRequestBudget budget,
     TimeProvider timeProvider) : ICoachService
 {
     private const int MaximumRounds = 3;
@@ -58,8 +56,7 @@ public sealed partial class CoachService(
                 ["Bitte wende dich bei Beschwerden an qualifiziertes medizinisches Fachpersonal."], 0, []);
         }
 
-        Guid userId = userContext.UserId ?? throw new UnauthorizedAccessException("An authenticated user is required.");
-        await using IAsyncDisposable lease = await quota.AcquireAsync(userId, cancellationToken);
+        await using IAsyncDisposable lease = await budget.AcquireAsync(cancellationToken);
 
         IReadOnlyList<CoachMemoryItem> notes = await memories.ListAsync(cancellationToken);
         (IReadOnlyList<CoachMemoryItem> promptNotes, string notesText) = BoundedNotes(notes);

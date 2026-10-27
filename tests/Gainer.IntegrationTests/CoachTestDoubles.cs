@@ -10,6 +10,12 @@ internal sealed record CoachTestUser(Guid? UserId) : IUserContext
     }
 }
 
+internal static class CoachTestBudget
+{
+    public static CoachRequestBudget Pass(Guid? userId = null) =>
+        new(new PassCoachQuota(), new CoachTestUser(userId ?? Guid.NewGuid()));
+}
+
 internal sealed class PassCoachQuota : ICoachQuota
 {
     public ValueTask<IAsyncDisposable> AcquireAsync(Guid userId, CancellationToken cancellationToken = default) =>

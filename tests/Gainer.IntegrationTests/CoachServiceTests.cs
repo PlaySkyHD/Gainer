@@ -77,7 +77,7 @@ public sealed class CoachServiceTests
                 {"summary":"Noch keine belastbare Auswertung möglich.","observations":[],"dataGaps":["Es fehlen Gewichtsmessungen."],"suggestions":["Erfasse zunächst regelmäßig Daten."]}
                 """)));
         CoachAnswer answer = await new CoachService(
-            provider, new NoDataInsights(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new PassCoachQuota(), new CoachTestUser(), new FixedTimeProvider())
+            provider, new NoDataInsights(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), CoachTestBudget.Pass(), new FixedTimeProvider())
             .AnswerAsync("Wie entwickelt sich mein Gewicht?", TestContext.CancellationToken);
 
         Assert.IsEmpty(answer.Facts);
@@ -95,7 +95,7 @@ public sealed class CoachServiceTests
                 {"summary":"ErnÃ¤hrungsdaten vorhanden.","observations":[],"dataGaps":[],"suggestions":[]}
                 """)));
         CoachAnswer answer = await new CoachService(
-            provider, new NutritionInsightsStub(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new PassCoachQuota(), new CoachTestUser(), new FixedTimeProvider())
+            provider, new NutritionInsightsStub(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), CoachTestBudget.Pass(), new FixedTimeProvider())
             .AnswerAsync("Wie sieht meine ErnÃ¤hrung aus?", TestContext.CancellationToken);
 
         Assert.Contains(item => item.TextValue == NutritionSources.MealDiary, answer.Facts);
@@ -341,7 +341,7 @@ public sealed class CoachServiceTests
             Response(Message(EmptyAnswer)));
 
         CoachAnswer answer = await new CoachService(
-            provider, insights, new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new PassCoachQuota(), new CoachTestUser(), new FixedTimeProvider())
+            provider, insights, new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), CoachTestBudget.Pass(), new FixedTimeProvider())
             .AnswerAsync("Vergleiche die Woche mit dem Monat", TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(
@@ -358,7 +358,7 @@ public sealed class CoachServiceTests
             Response(Message(EmptyAnswer)));
 
         CoachAnswer answer = await new CoachService(
-            provider, new VolumeInsights(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new PassCoachQuota(), new CoachTestUser(), new FixedTimeProvider())
+            provider, new VolumeInsights(), new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), CoachTestBudget.Pass(), new FixedTimeProvider())
             .AnswerAsync("Vergleiche mein Volumen", TestContext.CancellationToken);
 
         // 70 kg·rep over 7 days and 300 over 30 days are both 10 per day.
@@ -378,7 +378,7 @@ public sealed class CoachServiceTests
         var now = new DateTimeOffset(2026, 8, 17, 22, 30, 0, TimeSpan.Zero);
 
         await new CoachService(
-            provider, insights, new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), new PassCoachQuota(), new CoachTestUser(), new FixedTimeProvider(now))
+            provider, insights, new FakeHistory(), new FakeExercises(), new FixedCoachMemories(), CoachTestBudget.Pass(), new FixedTimeProvider(now))
             .AnswerAsync("Wie entwickelt sich mein Gewicht?", TestContext.CancellationToken);
 
         Assert.AreEqual(new DateOnly(2026, 8, 18), insights.Calls[0].Through);
@@ -449,8 +449,7 @@ public sealed class CoachServiceTests
         new FakeHistory(),
         new FakeExercises(),
         new FixedCoachMemories(),
-        quota,
-        user,
+        new CoachRequestBudget(quota, user),
         new FixedTimeProvider());
 
     private const string EmptyAnswer = """
@@ -475,8 +474,7 @@ public sealed class CoachServiceTests
         new FakeHistory(),
         new FakeExercises(),
         new FixedCoachMemories(notes),
-        new PassCoachQuota(),
-        new CoachTestUser(),
+        CoachTestBudget.Pass(),
         new FixedTimeProvider());
 
     private static JsonElement Response(params object[] output) => JsonSerializer.SerializeToElement(new { output });
