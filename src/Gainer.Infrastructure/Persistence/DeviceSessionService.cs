@@ -101,9 +101,10 @@ internal sealed class DeviceSessionService(
 
         // Within the grace period the previous token stays the reference, so a client whose
         // response was lost can retry again and again until the grace period ends. Each retry
-        // discards the last issued token (never used) and remembers it: if it shows up later,
-        // someone else used the previous token and the session is revoked. Once the issued
-        // successor is used, the previous token is replaced and no longer qualifies.
+        // discards the last issued token (never used). Only the first one is remembered: if it
+        // shows up later, someone else used the previous token and the session is revoked. Later
+        // discarded tokens are simply unknown, so a second retry cannot overwrite that trigger.
+        // Once the issued successor is used, the previous token no longer qualifies.
         string token = CreateToken();
         if (presentedCurrent)
         {
@@ -111,7 +112,7 @@ internal sealed class DeviceSessionService(
             session.RotatedAt = now;
             session.DiscardedAt = null;
         }
-        else
+        else if (session.DiscardedAt is null)
         {
             session.DiscardedRefreshTokenHash = session.RefreshTokenHash;
             session.DiscardedAt = now;
