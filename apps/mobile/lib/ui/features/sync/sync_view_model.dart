@@ -251,7 +251,8 @@ class SyncViewModel extends ChangeNotifier {
     );
   }
 
-  Future<void> recoverExpiredTargetHandover() async {
+  /// `true`, wenn dieses Gerät danach das Schreibgerät ist.
+  Future<bool?> recoverExpiredTargetHandover() async {
     final activeWriter = await _run(
       () async {
         if (!isOnline) throw StateError('offline');
@@ -267,6 +268,7 @@ class SyncViewModel extends ChangeNotifier {
       statusMessage = 'Die Übergabe ist abgelaufen. Dieses Gerät bleibt schreibgeschützt; lokale Daten und ausstehende Änderungen bleiben geschützt.';
       notifyListeners();
     }
+    return activeWriter;
   }
 
   Future<void> acceptServerVersion(String conflictId) => _run(

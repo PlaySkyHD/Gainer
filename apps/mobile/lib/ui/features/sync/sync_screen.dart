@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
+import '../../../data/models/api/sync_api_models.dart'
+    show CompleteSyncHandoverResponse;
 import '../../../data/models/local/local_mutation.dart';
 import '../../../data/repositories/sync/local_conflict_recovery.dart'
     show waterIntakeAggregateType;
@@ -19,6 +21,8 @@ class SyncScreen extends StatefulWidget {
     required this.isOnline,
     required this.accountId,
     required this.apiOrigin,
+    this.isWriter = true,
+    this.onBecameWriter,
     this.isScopeActive,
     super.key,
   });
@@ -27,6 +31,14 @@ class SyncScreen extends StatefulWidget {
   final bool isOnline;
   final String accountId;
   final String apiOrigin;
+
+  /// Ob dieses Gerät das eingetragene Schreibgerät ist. Nur dann kann es die
+  /// Übergabe starten. `null`, solange die Rolle noch nicht geklärt ist.
+  final bool? isWriter;
+
+  /// Wird nach einer erfolgreichen Übernahme gerufen: Dieses Gerät ist dann
+  /// das Schreibgerät.
+  final VoidCallback? onBecameWriter;
   final bool Function()? isScopeActive;
 
   @override
@@ -139,10 +151,29 @@ class _SyncScreenState extends State<SyncScreen> {
           footer: 'Starte die Übergabe auf dem bisherigen Gerät. Danach gibst du die angezeigten Übergabedaten auf dem neuen Gerät ein.',
           children: [
             GainerListRow(
+              key: const ValueKey('sync-writer-status'),
+              title: 'Schreibgerät',
+              leadingIcon: CupertinoIcons.pencil_circle,
+              value: switch (widget.isWriter) {
+                true => 'Dieses Gerät',
+                false => 'Anderes Gerät',
+                null => 'Wird geprüft …',
+              },
+            ),
+            GainerListRow(
               title: 'Dieses Gerät ablösen',
+              subtitle: switch (widget.isWriter) {
+                true => null,
+                false => 'Nur das Schreibgerät kann die Übergabe starten. Gib auf dem bisherigen Schreibgerät die Übergabedaten aus und nimm sie hier unter „Übergabe annehmen“ an.',
+                null => null,
+              },
               leadingIcon: CupertinoIcons.arrow_2_squarepath,
-              showChevron: true,
-              onTap: !_model.isOnline || _model.isBusy || _model.isLoading
+              showChevron: widget.isWriter != false,
+              onTap:
+                  widget.isWriter == false ||
+                      !_model.isOnline ||
+                      _model.isBusy ||
+                      _model.isLoading
                   ? null
                   : _confirmAndBegin,
             ),
@@ -291,7 +322,7 @@ class _SyncScreenState extends State<SyncScreen> {
             showChevron: true,
             onTap: !_model.isOnline || _model.isBusy
                 ? null
-                : _model.resumeTargetHandover,
+                : _resumeTargetHandover,
           ),
           if (expired)
             GainerListRow(
@@ -300,7 +331,7 @@ class _SyncScreenState extends State<SyncScreen> {
               showChevron: true,
               onTap: !_model.isOnline || _model.isBusy
                   ? null
-                  : _model.recoverExpiredTargetHandover,
+                  : _recoverExpiredTargetHandover,
             ),
         ],
       ),
@@ -614,13 +645,40 @@ class _SyncScreenState extends State<SyncScreen> {
       _model.reportInputError('Ablaufzeit bitte im ISO-8601-Format eingeben.');
       return;
     }
-    await _model.completeHandover(
+    final result = await _model.completeHandover(
       handoverId: _handoverId.text,
       oneTimeCode: _oneTimeCode.text,
       sourceClientId: _sourceClientId.text,
       frozenRevision: _revision.text,
       expiresAtUtc: expiry,
     );
+    // Der Einmalcode ist verbraucht: Nichts davon darf stehen bleiben.
+    _afterCompletion(result);
+  }
+
+  Future<void> _recoverExpiredTargetHandover() async {
+    if (await _model.recoverExpiredTargetHandover() == true) {
+      widget.onBecameWriter?.call();
+    }
+  }
+
+  Future<void> _resumeTargetHandover() async =>
+      _afterCompletion(await _model.resumeTargetHandover());
+
+  void _afterCompletion(CompleteSyncHandoverResponse? result) {
+    if (result == null) return;
+    widget.onBecameWriter?.call();
+    if (mounted) _clearHandoverInput();
+  }
+
+  void _clearHandoverInput() {
+    _handoverId.clear();
+    _oneTimeCode.clear();
+    _sourceClientId.clear();
+    _revision.clear();
+    _expiresAtUtc.clear();
+    _transferBundle.clear();
+    setState(() => _parsedTransferBundle = null);
   }
 
   Future<void> _parseTransferBundle() async {

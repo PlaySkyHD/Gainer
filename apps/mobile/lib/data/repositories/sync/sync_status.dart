@@ -15,6 +15,7 @@ class SyncStatus {
     this.lastSyncedAtUtc,
     this.pendingCount = 0,
     this.isWriter = true,
+    this.writerKnown = false,
     this.upgradeRequired = false,
   });
 
@@ -32,12 +33,19 @@ class SyncStatus {
   /// (Server `upgrade_required` oder unbekannte Ressource im Pull).
   final bool upgradeRequired;
 
+  /// `true`, sobald ein Sync-Lauf oder eine Übergabe in dieser Sitzung die
+  /// Rolle geklärt hat. Sie wird nicht gespeichert; bis dahin ist [isWriter]
+  /// nur ein Platzhalter und darf nicht als Aussage angezeigt werden.
+  final bool writerKnown;
+
   SyncStatus copyWith({
     DateTime? lastSyncedAtUtc,
     int? pendingCount,
     bool? isWriter,
+    bool? writerKnown,
     bool? upgradeRequired,
   }) => SyncStatus(
+    writerKnown: writerKnown ?? this.writerKnown,
     lastSyncedAtUtc: lastSyncedAtUtc ?? this.lastSyncedAtUtc,
     pendingCount: pendingCount ?? this.pendingCount,
     isWriter: isWriter ?? this.isWriter,
@@ -50,11 +58,17 @@ class SyncStatus {
       other.lastSyncedAtUtc == lastSyncedAtUtc &&
       other.pendingCount == pendingCount &&
       other.isWriter == isWriter &&
+      other.writerKnown == writerKnown &&
       other.upgradeRequired == upgradeRequired;
 
   @override
-  int get hashCode =>
-      Object.hash(lastSyncedAtUtc, pendingCount, isWriter, upgradeRequired);
+  int get hashCode => Object.hash(
+    lastSyncedAtUtc,
+    pendingCount,
+    isWriter,
+    writerKnown,
+    upgradeRequired,
+  );
 }
 
 /// Hält den [SyncStatus] eines Kontos aktuell: nach jedem Sync-Lauf und nach
@@ -112,6 +126,13 @@ class SyncStatusTracker extends ValueNotifier<SyncStatus> {
           SyncRunState.retryPending => true,
           _ => value.isWriter,
         };
+        final writerDecided = switch (report.state) {
+          SyncRunState.inactiveClient ||
+          SyncRunState.idle ||
+          SyncRunState.synced ||
+          SyncRunState.retryPending => true,
+          _ => false,
+        };
         final at = now.toUtc();
         if (reachedServer) {
           await store.writeSyncMetadata(
@@ -134,10 +155,17 @@ class SyncStatusTracker extends ValueNotifier<SyncStatus> {
             lastSyncedAtUtc: reachedServer ? at : null,
             pendingCount: await _pendingCount(),
             isWriter: writer,
+            writerKnown: value.writerKnown || writerDecided,
             upgradeRequired: upgradeRequired,
           ),
         );
       });
+
+  /// Nach einer erfolgreichen Übergabe ist dieses Gerät das Schreibgerät,
+  /// noch bevor der nächste Sync-Lauf es meldet.
+  void markWriter() {
+    _publish(value.copyWith(isWriter: true, writerKnown: true));
+  }
 
   Future<int> _pendingCount() async => (await store.readOutbox())
       .where((mutation) => mutation.status != LocalMutationStatus.clean)

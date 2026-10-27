@@ -138,6 +138,21 @@ void main() {
     expect(restarted.value.lastSyncedAtUtc, now);
   });
 
+  test('writer role is unknown until a run or a handover decides it', () async {
+    expect(tracker.value.writerKnown, isFalse);
+    await tracker.recordRun(_report(SyncRunState.authBlocked), now);
+    expect(tracker.value.writerKnown, isFalse);
+    await tracker.recordRun(_report(SyncRunState.inactiveClient), now);
+    expect(tracker.value.writerKnown, isTrue);
+    expect(tracker.value.isWriter, isFalse);
+
+    final fresh = SyncStatusTracker(store: store);
+    addTearDown(fresh.dispose);
+    fresh.markWriter();
+    expect(fresh.value.writerKnown, isTrue);
+    expect(fresh.value.isWriter, isTrue);
+  });
+
   test(
     'another writing device shows up as not writer until taken over',
     () async {

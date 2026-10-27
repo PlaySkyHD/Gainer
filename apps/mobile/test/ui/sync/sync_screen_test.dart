@@ -8,6 +8,7 @@ import 'package:gainer_mobile/data/models/local/local_mutation.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_conflict_recovery.dart';
 import 'package:gainer_mobile/data/repositories/sync/sync_repository.dart';
 import 'package:gainer_mobile/data/services/local/pending_handover_secret_store.dart';
+import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/core/theme.dart';
 import 'package:gainer_mobile/ui/features/sync/sync_screen.dart';
 
@@ -322,6 +323,263 @@ void main() {
       expect(sync.completed!.expiresAtUtc, expiry);
     },
   );
+
+  testWidgets('non-writer device cannot start a handover and says why', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions();
+    await tester.pumpWidget(_app(sync, isWriter: false));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Anderes Gerät'), findsOneWidget);
+    expect(find.textContaining('Nur das Schreibgerät kann'), findsOneWidget);
+    await tester.tap(find.text('Dieses Gerät ablösen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Übergabe starten'), findsNothing);
+    expect(sync.beginCalls, 0);
+  });
+
+  testWidgets('writer device shows its role and can start a handover', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(_app(_SyncActions()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dieses Gerät'), findsOneWidget);
+    expect(find.textContaining('Nur das Schreibgerät kann'), findsNothing);
+    await tester.tap(find.text('Dieses Gerät ablösen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Übergabe starten'), findsOneWidget);
+  });
+
+  for (final scale in [1.3, 2.0]) {
+    testWidgets('writer rows do not overflow at text scale $scale', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        _app(_SyncActions(), isWriter: false, textScale: scale),
+      );
+      await tester.pumpAndSettle();
+      for (final text in [
+        'Schreibgerät',
+        'Anderes Gerät',
+        'Dieses Gerät ablösen',
+      ]) {
+        await tester.scrollUntilVisible(
+          find.text(text),
+          100,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text(text), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+    'expired target recovery that makes this device writer notifies',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final sync = _SyncActions()
+        ..recoveryBecomesWriter = true
+        ..pending = PendingHandoverRecord(
+          apiOrigin: 'https://gainer.markfort.xyz',
+          accountId: 'a1234567-1234-4234-8234-123456789abc',
+          requestId: 'd1234567-1234-4234-8234-123456789abc',
+          sourceClientId: 'b1234567-1234-4234-8234-123456789abc',
+          targetClientId: 'target-client',
+          handoverId: 'c1234567-1234-4234-8234-123456789abc',
+          phase: 'targetCompletePending',
+          frozenRevision: 41,
+          expiresAtUtc: DateTime.now().toUtc().subtract(
+            const Duration(minutes: 1),
+          ),
+          oneTimeCode: 'one_time-code-123',
+        );
+      var becameWriter = 0;
+      await tester.pumpWidget(
+        _app(sync, isWriter: false, onBecameWriter: () => becameWriter++),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Nach Serverprüfung lokal freigeben'));
+      await tester.pumpAndSettle();
+
+      expect(sync.recoveryCalls, 1);
+      expect(becameWriter, 1);
+    },
+  );
+
+  testWidgets('unknown writer role claims nothing but still allows handover', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions();
+    await tester.pumpWidget(_app(sync, isWriter: null));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Wird geprüft …'), findsOneWidget);
+    expect(find.text('Dieses Gerät'), findsNothing);
+    expect(find.text('Anderes Gerät'), findsNothing);
+    expect(find.textContaining('Nur das Schreibgerät kann'), findsNothing);
+    await tester.tap(find.text('Dieses Gerät ablösen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Übergabe starten'), findsOneWidget);
+  });
+
+  testWidgets('role row shows this device after a completed handover', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions();
+    final writer = ValueNotifier<bool?>(false);
+    addTearDown(writer.dispose);
+    final expiry = DateTime.now().toUtc().add(const Duration(hours: 1));
+    await tester.pumpWidget(
+      ValueListenableBuilder<bool?>(
+        valueListenable: writer,
+        builder: (_, value, _) => _app(
+          sync,
+          isWriter: value,
+          onBecameWriter: () => writer.value = true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Anderes Gerät'), findsOneWidget);
+    await tester.enterText(
+      find.byType(CupertinoTextField).at(0),
+      '{"kind":"gainer-sync-handover","version":1,"accountId":"a1234567-1234-4234-8234-123456789abc","apiOrigin":"https://gainer.markfort.xyz","sourceClientId":"b1234567-1234-4234-8234-123456789abc","handoverId":"c1234567-1234-4234-8234-123456789abc","oneTimeCode":"one_time-code-123","frozenRevision":41,"expiresAtUtc":"${expiry.toIso8601String()}"}',
+    );
+    tester.testTextInput.hide();
+    await tester.pump();
+    await tester.tap(find.text('Übergabedaten einfügen'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('Gerätewechsel bestätigen'));
+    await tester.tap(find.text('Gerätewechsel bestätigen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Übernehmen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dieses Gerät'), findsOneWidget);
+    expect(find.text('Anderes Gerät'), findsNothing);
+  });
+
+  testWidgets('resuming a target handover clears the accept form', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions();
+    var becameWriter = 0;
+    final expiry = DateTime.now().toUtc().add(const Duration(hours: 1));
+    await tester.pumpWidget(_app(sync, onBecameWriter: () => becameWriter++));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(CupertinoTextField).at(0),
+      '{"kind":"gainer-sync-handover","version":1,"accountId":"a1234567-1234-4234-8234-123456789abc","apiOrigin":"https://gainer.markfort.xyz","sourceClientId":"b1234567-1234-4234-8234-123456789abc","handoverId":"c1234567-1234-4234-8234-123456789abc","oneTimeCode":"one_time-code-123","frozenRevision":41,"expiresAtUtc":"${expiry.toIso8601String()}"}',
+    );
+    tester.testTextInput.hide();
+    await tester.pump();
+    await tester.tap(find.text('Übergabedaten einfügen'));
+    await tester.pump();
+    expect(find.textContaining('Quellgerät b1234567'), findsOneWidget);
+
+    sync.pending = PendingHandoverRecord(
+      apiOrigin: 'https://gainer.markfort.xyz',
+      accountId: 'a1234567-1234-4234-8234-123456789abc',
+      requestId: 'd1234567-1234-4234-8234-123456789abc',
+      sourceClientId: 'b1234567-1234-4234-8234-123456789abc',
+      targetClientId: 'target-client',
+      handoverId: 'c1234567-1234-4234-8234-123456789abc',
+      phase: 'targetCompletePending',
+      frozenRevision: 41,
+      expiresAtUtc: expiry,
+      oneTimeCode: 'one_time-code-123',
+    );
+    await tester.ensureVisible(find.text('Status aktualisieren'));
+    await tester.tap(find.text('Status aktualisieren'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Übernahme fortsetzen'));
+    await tester.pumpAndSettle();
+
+    expect(sync.completed, isNotNull);
+    expect(becameWriter, 1);
+    expect(find.textContaining('Quellgerät b1234567'), findsNothing);
+    final fields = tester.widgetList<CupertinoTextField>(
+      find.byType(CupertinoTextField),
+    );
+    expect(fields, isNotEmpty);
+    for (final field in fields) {
+      expect(field.controller!.text, isEmpty);
+    }
+  });
+
+  testWidgets('successful handover completion clears the accept form', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sync = _SyncActions();
+    final expiry = DateTime.now().toUtc().add(const Duration(hours: 1));
+    await tester.pumpWidget(_app(sync));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(CupertinoTextField).at(0),
+      '{"kind":"gainer-sync-handover","version":1,"accountId":"a1234567-1234-4234-8234-123456789abc","apiOrigin":"https://gainer.markfort.xyz","sourceClientId":"b1234567-1234-4234-8234-123456789abc","handoverId":"c1234567-1234-4234-8234-123456789abc","oneTimeCode":"one_time-code-123","frozenRevision":41,"expiresAtUtc":"${expiry.toIso8601String()}"}',
+    );
+    tester.testTextInput.hide();
+    await tester.pump();
+    await tester.tap(find.text('Übergabedaten einfügen'));
+    await tester.pump();
+    await tester.tap(find.text('Manuell eingeben (erweitert)'));
+    await tester.pump();
+    expect(find.textContaining('Quellgerät b1234567'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Gerätewechsel bestätigen'));
+    await tester.tap(find.text('Gerätewechsel bestätigen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Übernehmen'));
+    await tester.pumpAndSettle();
+    expect(sync.completed, isNotNull);
+
+    final fields = tester.widgetList<CupertinoTextField>(
+      find.byType(CupertinoTextField),
+    );
+    expect(fields, isNotEmpty);
+    for (final field in fields) {
+      expect(field.controller!.text, isEmpty);
+    }
+    expect(find.textContaining('Quellgerät b1234567'), findsNothing);
+    final confirm = tester.widget<GainerPillButton>(
+      find.byKey(const ValueKey('sync-confirm-handover')),
+    );
+    expect(confirm.onPressed, isNull);
+  });
 
   testWidgets('conflict resolution is explicit and shows destructive warning', (
     tester,
@@ -722,13 +980,25 @@ LocalConflictRecord _conflict(String id, String type, String code) =>
       detail: {'message': 'abgelehnt'},
     );
 
-Widget _app(MobileSyncActions sync) => CupertinoApp(
+Widget _app(
+  MobileSyncActions sync, {
+  bool? isWriter = true,
+  double textScale = 1,
+  VoidCallback? onBecameWriter,
+}) => CupertinoApp(
   theme: GainerTheme.light,
+  builder: (context, child) => MediaQuery(
+    data: MediaQuery.of(context)
+        .copyWith(textScaler: TextScaler.linear(textScale)),
+    child: child!,
+  ),
   home: SyncScreen(
     sync: sync,
     isOnline: true,
     accountId: 'a1234567-1234-4234-8234-123456789abc',
     apiOrigin: 'https://gainer.markfort.xyz',
+    isWriter: isWriter,
+    onBecameWriter: onBecameWriter,
   ),
 );
 
@@ -745,6 +1015,7 @@ class _SyncActions implements MobileSyncActions {
   int beginCalls = 0;
   int pendingReads = 0;
   int recoveryCalls = 0;
+  bool recoveryBecomesWriter = false;
   final retriedConflictIds = <String>[];
 
   @override
@@ -795,6 +1066,7 @@ class _SyncActions implements MobileSyncActions {
       frozenRevision: frozenRevision,
       expiresAtUtc: expiresAtUtc,
     );
+    pending = null;
     return CompleteSyncHandoverResponse(
       handoverId: handoverId,
       targetClientId: 'target-client',
@@ -811,7 +1083,7 @@ class _SyncActions implements MobileSyncActions {
   Future<bool> recoverExpiredTargetHandover() async {
     recoveryCalls++;
     pending = null;
-    return false;
+    return recoveryBecomesWriter;
   }
 
   @override
