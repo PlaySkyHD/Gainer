@@ -504,7 +504,7 @@ class BodyRepository {
         envelope: existing == null
             ? localEnvelope(aggregateId: id, workingCopy: checkIn.toJson())
             : _pendingEnvelope(existing, checkIn.toJson()),
-        resourceExpectations: [_expectation(id, existing)],
+        resourceExpectations: _checkInExpectations(id, localDate, existing),
         createdAtUtc: now,
       ),
     );
@@ -622,7 +622,7 @@ class BodyRepository {
           localMetadataWrites: {
             ledgerKey: {'probes': probes},
           },
-          resourceExpectations: [_expectation(id, existing)],
+          resourceExpectations: _checkInExpectations(id, localDate, existing),
           mutationGuard: sessionGuard,
           createdAtUtc: now,
         ),
@@ -658,6 +658,27 @@ LocalResourceExpectation _expectation(
   optimisticVersion: existing?.optimisticVersion,
   serverVersion: existing?.serverVersion,
 );
+
+/// Wie [_expectation]; ein neuer Check-in erwartet zusätzlich, dass bis zum
+/// Commit keine andere Zeile für [localDate] entstanden ist. Ein Pull kann
+/// den Server-Check-in des Tages unter einer anderen ID schreiben; der Server
+/// lehnt einen zweiten Check-in je Tag ab und der Eintrag hinge in der Outbox.
+/// Der Store wirft dann [LocalResourceChangedException] und
+/// [BodyRepository._serializedCheckIn] liest neu und ändert die Serverzeile.
+List<LocalResourceExpectation> _checkInExpectations(
+  String id,
+  String localDate,
+  LocalAggregateEnvelope<Object?>? existing,
+) => [
+  _expectation(id, existing),
+  if (existing == null)
+    LocalUniqueFieldExpectation(
+      aggregateType: _dailyCheckInType,
+      aggregateId: id,
+      field: 'localDate',
+      value: localDate,
+    ),
+];
 
 DailyCheckIn _copyCheckIn(
   DailyCheckIn prior, {

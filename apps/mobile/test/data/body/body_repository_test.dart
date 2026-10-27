@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/models/local/local_aggregate.dart';
+import 'package:gainer_mobile/data/models/local/local_mutation.dart';
 import 'package:gainer_mobile/data/repositories/body/body_repository.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart'
     show NutritionSaveException;
@@ -359,6 +361,80 @@ void main() {
       );
       // Eine Wiederholungsschicht: genau drei Versuche, nicht neun.
       expect(attempts, 3);
+    });
+
+    group('Pull zwischen Lesen und Anlegen', () {
+      final serverId = testId(900);
+
+      /// Schreibt den Server-Check-in des Tages unter eigener ID, wie ein
+      /// Sync-Pull.
+      Future<void> pullServerCheckIn() => database
+          .into(database.localResources)
+          .insert(
+            LocalResourcesCompanion.insert(
+              aggregateType: 'daily-check-in',
+              aggregateId: serverId,
+              envelopeJson: serverEnvelope(
+                aggregateId: serverId,
+                snapshot: const DailyCheckIn(
+                  localDate: '2026-10-12',
+                  weightKg: 72,
+                  caloriesKcal: 1800,
+                  proteinGrams: null,
+                  carbohydrateGrams: null,
+                  fatGrams: null,
+                  steps: 4000,
+                  sleepMinutes: null,
+                  createdAtUtc: '2026-10-12T06:00:00.000Z',
+                  updatedAtUtc: '2026-10-12T06:00:00.000Z',
+                ).toJson(),
+                version: 3,
+              ).encode(),
+              updatedAtEpochMs: 0,
+            ),
+          );
+
+      Future<void> expectSingleServerCheckIn(double weightKg) async {
+        final rows = await repository.store.readAggregates('daily-check-in');
+        expect(rows.map((row) => row.aggregateId), [serverId]);
+        final outbox = await repository.store.readOutbox(
+          aggregateType: 'daily-check-in',
+        );
+        expect(outbox.single.aggregateId, serverId);
+        expect(outbox.single.operation, LocalMutationOperation.update);
+        expect(outbox.single.baseVersion, 3);
+        final value = (await repository.read()).checkIns.single.value;
+        expect(value.weightKg, weightKg);
+        expect(value.steps, 4000);
+      }
+
+      setUp(() {
+        var pulled = false;
+        repository.beforeCheckInCommitForTesting = () async {
+          if (pulled) return;
+          pulled = true;
+          await pullServerCheckIn();
+        };
+      });
+
+      test('saveCheckIn ändert den gezogenen Check-in', () async {
+        final saved = await repository.saveCheckIn(input(2500));
+        expect(saved, serverId);
+        await expectSingleServerCheckIn(71);
+      });
+
+      test('Health-Import ändert den gezogenen Check-in', () async {
+        final result = await repository.importHealthWeight(
+          probeId: 'p1',
+          localDate: '2026-10-12',
+          weightKg: 70,
+          replaceExistingCheckIn: true,
+          sessionGuard: () => true,
+        );
+        expect(result.status, HealthCheckInCommitStatus.imported);
+        expect(result.checkInId, serverId);
+        await expectSingleServerCheckIn(70);
+      });
     });
   });
 

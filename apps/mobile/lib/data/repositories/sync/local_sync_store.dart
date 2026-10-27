@@ -23,6 +23,24 @@ class LocalResourceExpectation {
   final int? serverVersion;
 }
 
+/// Erwartet beim Commit, dass kein anderes Aggregat vom Typ [aggregateType]
+/// als [aggregateId] im Arbeitsstand das Feld [field] mit [value] hat. Für
+/// Aggregate mit fachlichem Schlüssel (ein Check-in je Tag): Ein Pull zwischen
+/// Lesen und Commit kann die Serverzeile desselben Schlüssels unter einer
+/// anderen ID schreiben; die ID-Erwartung allein bemerkt das nicht.
+class LocalUniqueFieldExpectation extends LocalResourceExpectation {
+  const LocalUniqueFieldExpectation({
+    required super.aggregateType,
+    required super.aggregateId,
+    required this.field,
+    required this.value,
+  }) : super(optimisticVersion: null, serverVersion: null);
+
+  /// Schlüssel in der Arbeitskopie, ohne Punkte (Teil eines JSON-Pfads).
+  final String field;
+  final String value;
+}
+
 const _resourceChangedMessage =
     'A local resource changed during the transaction.';
 
@@ -381,29 +399,59 @@ class LocalSyncStore {
     List<LocalResourceExpectation> expectations,
   ) async {
     for (final expectation in expectations) {
-      final row =
-          await (database.select(database.localResources)..where(
-                (t) =>
-                    t.aggregateType.equals(expectation.aggregateType) &
-                    t.aggregateId.equals(expectation.aggregateId),
-              ))
-              .getSingleOrNull();
-      if (expectation.optimisticVersion == null) {
-        if (row != null) {
-          throw LocalResourceChangedException();
-        }
-      } else if (row == null) {
-        throw LocalResourceChangedException();
+      if (expectation is LocalUniqueFieldExpectation) {
+        await _verifyUniqueField(expectation);
       } else {
-        final value = LocalAggregateEnvelope<Object?>.fromJson(
-          jsonDecode(row.envelopeJson) as Map<String, dynamic>,
-        );
-        if (value.optimisticVersion != expectation.optimisticVersion ||
-            value.serverVersion != expectation.serverVersion) {
-          throw LocalResourceChangedException();
-        }
+        await _verifyResourceVersion(expectation);
       }
     }
+  }
+
+  Future<void> _verifyResourceVersion(
+    LocalResourceExpectation expectation,
+  ) async {
+    final row =
+        await (database.select(database.localResources)..where(
+              (t) =>
+                  t.aggregateType.equals(expectation.aggregateType) &
+                  t.aggregateId.equals(expectation.aggregateId),
+            ))
+            .getSingleOrNull();
+    if (expectation.optimisticVersion == null) {
+      if (row != null) {
+        throw LocalResourceChangedException();
+      }
+    } else if (row == null) {
+      throw LocalResourceChangedException();
+    } else {
+      final value = LocalAggregateEnvelope<Object?>.fromJson(
+        jsonDecode(row.envelopeJson) as Map<String, dynamic>,
+      );
+      if (value.optimisticVersion != expectation.optimisticVersion ||
+          value.serverVersion != expectation.serverVersion) {
+        throw LocalResourceChangedException();
+      }
+    }
+  }
+
+  Future<void> _verifyUniqueField(
+    LocalUniqueFieldExpectation expectation,
+  ) async {
+    final other = await database
+        .customSelect(
+          'SELECT 1 FROM local_resources '
+          'WHERE aggregate_type = ? AND aggregate_id != ? '
+          'AND json_extract(envelope_json, ?) = ? LIMIT 1',
+          variables: [
+            Variable.withString(expectation.aggregateType),
+            Variable.withString(expectation.aggregateId),
+            Variable.withString('\$.workingCopy.${expectation.field}'),
+            Variable.withString(expectation.value),
+          ],
+          readsFrom: {database.localResources},
+        )
+        .getSingleOrNull();
+    if (other != null) throw LocalResourceChangedException();
   }
 
   Future<void> _verifyMetadataExpectations(
