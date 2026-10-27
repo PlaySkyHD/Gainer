@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../../data/models/api/api_models.dart';
+import '../../../domain/models/training/workout_input.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import '../training/training_format.dart';
@@ -55,9 +56,17 @@ class TodayWeightOverview extends StatelessWidget {
 /// Trainingsübersicht der letzten Tage mit Hinweisen zum Dashboard-Stand.
 /// Ohne Dashboard-Daten bleibt sie leer.
 class TodayTrainingOverview extends StatelessWidget {
-  const TodayTrainingOverview({required this.viewModel, this.onTap, super.key});
+  const TodayTrainingOverview({
+    required this.viewModel,
+    this.weightUnit = WeightUnit.kg,
+    this.onTap,
+    super.key,
+  });
 
   final ProgressViewModel viewModel;
+
+  /// Gewichtseinheit des Kontos für das Trainingsvolumen.
+  final WeightUnit weightUnit;
   final VoidCallback? onTap;
 
   @override
@@ -68,7 +77,7 @@ class TodayTrainingOverview extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _TrainingCard(data: data, onTap: onTap ?? _noop),
+        _TrainingCard(data: data, unit: weightUnit, onTap: onTap ?? _noop),
         if (data.training.bodyweightMissing) ...[
           const SizedBox(height: GainerSpacing.m),
           const Padding(
@@ -317,9 +326,14 @@ class _WeightAgeLabel extends StatelessWidget {
 }
 
 class _TrainingCard extends StatelessWidget {
-  const _TrainingCard({required this.data, required this.onTap});
+  const _TrainingCard({
+    required this.data,
+    required this.unit,
+    required this.onTap,
+  });
 
   final ApiDashboardInsights data;
+  final WeightUnit unit;
   final VoidCallback onTap;
 
   @override
@@ -338,7 +352,7 @@ class _TrainingCard extends StatelessWidget {
           ),
           const SizedBox(height: GainerSpacing.xxs),
           _SecondaryText(
-            'Volumen ${formatGermanNumber(data.training.volumeKgRepetitions)} kg · 30 Tage',
+            'Volumen ${formatStatisticsVolume(data.training.volumeKgRepetitions, unit)} · 30 Tage',
           ),
         ],
       ],

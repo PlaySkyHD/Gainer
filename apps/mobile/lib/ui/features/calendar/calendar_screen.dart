@@ -8,6 +8,7 @@ import '../../../data/repositories/nutrition/nutrition_repository.dart';
 import '../../../data/repositories/training/training_log_repository.dart';
 import '../../../domain/models/cardio/cardio_session.dart';
 import '../../../domain/models/training/training_schedule.dart';
+import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
@@ -20,6 +21,8 @@ import '../training/active_workout_controller.dart';
 import '../training/plan_start.dart';
 import '../training/schedule_day_actions.dart';
 import '../training/training_schedule_sheet.dart';
+import '../training/training_statistics_view_model.dart'
+    show readStatisticsWeightUnit;
 import '../training/workout_screen.dart';
 import 'calendar_day_view.dart';
 import 'calendar_month_grid.dart';
@@ -155,6 +158,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   /// Lädt Kalender, Dashboard und Schritte neu.
   Future<void> _reloadAll() => Future.wait([
     _viewModel.load(),
+    // Veröffentlicht die Kontoeinheit im Notifier der Einstellungen.
+    readStatisticsWeightUnit(widget.training.preferences),
     if (widget.overview case final overview?) overview.load(),
     _refreshSteps(),
   ]);
@@ -371,27 +376,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
         else
           const SizedBox.shrink()
       else
-        CalendarDayView(
-          day: day,
-          today: model.today,
-          projection: projection,
-          overview: widget.overview,
-          onStart: _start,
-          onSetup: _openSchedule,
-          onActions: _openActions,
-          onOpenWorkout: _openWorkout,
-          onOpenCardio: widget.cardio == null ? null : _openCardio,
-          onOpenNutrition: () =>
-              widget.onOpenNutritionDay?.call(model.selected.toIso()),
-          onOpenCheckIn: () => widget.onOpenCheckInDay == null
-              ? widget.onOpenArea?.call(MobileArea.body)
-              : widget.onOpenCheckInDay!(model.selected.toIso()),
-          onDayKind: () => _chooseDayKind(day),
-          onOpenTraining: () => widget.onOpenArea?.call(MobileArea.training),
-          // Neben der Datumsüberschrift statt in der Kopfzeile: Dort
-          // läge es bei langen Daten über dem Pfeil der Tages-Pille.
-          onToday: model.selected == model.today ? null : model.goToToday,
-          liveSteps: _todaySteps,
+        // Die Einheit folgt Änderungen in den Einstellungen sofort.
+        ValueListenableBuilder<WeightUnit>(
+          valueListenable: widget.training.preferences.weightUnit,
+          builder: (context, unit, _) => _dayView(model, day, projection, unit),
         ),
       // Der Kalender steht unten: Meist interessiert der heutige Tag.
       const SizedBox(height: GainerSpacing.l),
@@ -407,4 +395,33 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
     ];
   }
+
+  Widget _dayView(
+    CalendarViewModel model,
+    CalendarDay day,
+    TrainingScheduleProjection projection,
+    WeightUnit unit,
+  ) => CalendarDayView(
+    day: day,
+    today: model.today,
+    projection: projection,
+    overview: widget.overview,
+    weightUnit: unit,
+    onStart: _start,
+    onSetup: _openSchedule,
+    onActions: _openActions,
+    onOpenWorkout: _openWorkout,
+    onOpenCardio: widget.cardio == null ? null : _openCardio,
+    onOpenNutrition: () =>
+        widget.onOpenNutritionDay?.call(model.selected.toIso()),
+    onOpenCheckIn: () => widget.onOpenCheckInDay == null
+        ? widget.onOpenArea?.call(MobileArea.body)
+        : widget.onOpenCheckInDay!(model.selected.toIso()),
+    onDayKind: () => _chooseDayKind(day),
+    onOpenTraining: () => widget.onOpenArea?.call(MobileArea.training),
+    // Neben der Datumsüberschrift statt in der Kopfzeile: Dort
+    // läge es bei langen Daten über dem Pfeil der Tages-Pille.
+    onToday: model.selected == model.today ? null : model.goToToday,
+    liveSteps: _todaySteps,
+  );
 }
