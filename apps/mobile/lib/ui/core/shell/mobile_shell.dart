@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../data/repositories/health/health_steps_sync.dart';
 import '../../../data/repositories/strava/strava_service.dart';
 import '../../../data/repositories/sync/data_export_service.dart';
+import '../../../data/repositories/sync/sync_status.dart';
 import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../features/access/account_operator_screen.dart';
 import '../../features/access/logout_everywhere.dart';
@@ -271,12 +272,17 @@ class _MoreScreen extends StatelessWidget {
               showChevron: true,
               onTap: () => Navigator.of(context).push(
                 CupertinoPageRoute<void>(
-                  builder: (_) => SyncScreen(
-                    sync: account.sync,
-                    isOnline: account.online,
-                    accountId: account.store.accountId,
-                    apiOrigin: account.api.configuration.canonicalApiOrigin,
-                    isScopeActive: account.isSessionActive,
+                  builder: (_) => ValueListenableBuilder<SyncStatus>(
+                    valueListenable: account.syncStatus,
+                    builder: (_, status, _) => SyncScreen(
+                      sync: account.sync,
+                      isOnline: account.online,
+                      accountId: account.store.accountId,
+                      apiOrigin: account.api.configuration.canonicalApiOrigin,
+                      isWriter: status.writerKnown ? status.isWriter : null,
+                      onBecameWriter: account.markThisDeviceWriter,
+                      isScopeActive: account.isSessionActive,
+                    ),
                   ),
                 ),
               ),
