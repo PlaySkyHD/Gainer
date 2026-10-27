@@ -160,8 +160,8 @@ class _Separator extends StatelessWidget {
   }
 }
 
-/// Zeitwähler im Sheet. Liefert die gewählte Zeit in UTC, minutengenau, oder
-/// `null` bei Abbruch. Ungültige Zeiten zeigen einen Feldfehler und lassen
+/// Zeitwähler im Sheet. Liefert die gewählte Zeit in UTC (minutengenau) oder `null` bei
+/// Abbruch und bei unveränderter Zeit; `initial` behält so seine Sekunden. Ungültige Zeiten zeigen einen Feldfehler und lassen
 /// „Fertig“ wirkungslos.
 Future<DateTime?> showWorkoutTimeSheet({
   required BuildContext context,
@@ -192,28 +192,37 @@ class _WorkoutTimeSheet extends StatefulWidget {
 }
 
 class _WorkoutTimeSheetState extends State<_WorkoutTimeSheet> {
-  late DateTime _value = widget.initial.toLocal();
-  late String? _error = widget.validate(_utc(_value));
+  late final DateTime _initial = widget.initial.toLocal();
 
-  /// Sekundengenau wie die übrigen Trainingszeiten; der Wähler arbeitet minutengenau.
-  static DateTime _utc(DateTime local) => DateTime(
-    local.year,
-    local.month,
-    local.day,
-    local.hour,
-    local.minute,
-  ).toUtc();
+  /// Aktuelle Wählerzeit (lokal).
+  late DateTime _value = _initial;
+  late String? _error = widget.validate(_result());
+
+  static DateTime _toMinute(DateTime local) =>
+      DateTime(local.year, local.month, local.day, local.hour, local.minute);
+
+  /// Zeigt der Wähler dieselbe Minute wie `initial`, bleibt `initial` samt
+  /// Sekunden und Millisekunden erhalten. Sonst gelten Datum, Stunde und
+  /// Minute des Wählers, Sekunden und Millisekunden sind dann 0.
+  DateTime _result() {
+    final picked = _toMinute(_value);
+    if (picked == _toMinute(_initial)) return widget.initial.toUtc();
+    return picked.toUtc();
+  }
 
   void _changed(DateTime value) {
     setState(() {
       _value = value;
-      _error = widget.validate(_utc(value));
+      _error = widget.validate(_result());
     });
   }
 
+  /// Unveränderte Zeit schließt wie „Abbrechen“ mit `null`, damit kein
+  /// überflüssiger Speicher- und Sync-Eintrag entsteht.
   void _save() {
     if (_error != null) return;
-    Navigator.of(context).pop(_utc(_value));
+    final result = _result();
+    Navigator.of(context).pop(result == widget.initial.toUtc() ? null : result);
   }
 
   @override
@@ -262,7 +271,7 @@ class _WorkoutTimeSheetState extends State<_WorkoutTimeSheet> {
                 height: 216,
                 child: CupertinoDatePicker(
                   mode: CupertinoDatePickerMode.dateAndTime,
-                  initialDateTime: _value,
+                  initialDateTime: _initial,
                   use24hFormat: true,
                   minuteInterval: 1,
                   onDateTimeChanged: _changed,

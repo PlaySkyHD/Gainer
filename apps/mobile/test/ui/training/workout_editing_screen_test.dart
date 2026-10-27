@@ -615,6 +615,79 @@ void main() {
     );
   });
 
+  testWidgets('Startzeit ohne Bewegen des Wählers behält die Sekunden', (
+    tester,
+  ) async {
+    final start = DateTime(2026, 10, 15, 17, 41, 35).toUtc();
+    final id = await seedActive(
+      tester,
+      title: 'Legs 2',
+      start: start,
+      end: DateTime(2026, 10, 15, 19).toUtc(),
+    );
+    await pumpWorkout(tester, id);
+
+    await tester.tap(find.text('Startzeit'));
+    await settle(tester);
+    await tester.tap(find.text('Fertig'));
+    await settle(tester);
+
+    final workout = await stored(tester, id);
+    expect(workout!.startedAtUtc, start);
+  });
+
+  testWidgets(
+    'Endzeit eines sehr kurzen Trainings erlaubt Fertig unverändert',
+    (tester) async {
+      final start = DateTime(2026, 10, 15, 17, 41, 10).toUtc();
+      final end = DateTime(2026, 10, 15, 17, 41, 50).toUtc();
+      final id = await seedActive(tester, start: start, end: end);
+      await pumpWorkout(tester, id);
+
+      await tester.tap(find.text('Endzeit'));
+      await settle(tester);
+      expect(
+        find.text('Die Endzeit muss nach der Startzeit liegen.'),
+        findsNothing,
+      );
+      await tester.tap(find.text('Fertig'));
+      await settle(tester);
+
+      expect(find.byType(CupertinoDatePicker), findsNothing);
+      final workout = await stored(tester, id);
+      expect(workout!.endedAtUtc, end);
+    },
+  );
+
+  testWidgets('Wähler eine Minute weiter und zurück lässt die Endzeit stehen', (
+    tester,
+  ) async {
+    final start = DateTime(2026, 10, 15, 17, 41, 10).toUtc();
+    final end = DateTime(2026, 10, 15, 17, 41, 50).toUtc();
+    final id = await seedActive(tester, start: start, end: end);
+    await pumpWorkout(tester, id);
+
+    await tester.tap(find.text('Endzeit'));
+    await settle(tester);
+    final picker = tester.widget<CupertinoDatePicker>(
+      find.byType(CupertinoDatePicker),
+    );
+    picker.onDateTimeChanged(DateTime(2026, 10, 15, 17, 42));
+    await tester.pump();
+    picker.onDateTimeChanged(DateTime(2026, 10, 15, 17, 41));
+    await tester.pump();
+    expect(
+      find.text('Die Endzeit muss nach der Startzeit liegen.'),
+      findsNothing,
+    );
+    await tester.tap(find.text('Fertig'));
+    await settle(tester);
+
+    expect(find.byType(CupertinoDatePicker), findsNothing);
+    final workout = await stored(tester, id);
+    expect(workout!.endedAtUtc, end);
+  });
+
   testWidgets('ungültige Endzeit zeigt Feldfehler und lässt den Stand', (
     tester,
   ) async {
