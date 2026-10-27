@@ -226,8 +226,8 @@ class NutritionViewModel extends ChangeNotifier {
     operation: NutritionErrorOperation.diary,
   );
 
-  /// Speichert den bearbeiteten Eintrag; Quelle und Nährwertsnapshot bleiben
-  /// die des Originals.
+  /// Speichert den bearbeiteten Eintrag. [updated] entsteht per `copyWith` aus
+  /// dem Original, damit ID, Position, Quelle und Nährwertsnapshot bleiben.
   Future<void> updateEntry(NutritionEntry updated) => _run(
     () async {
       await repository.saveEntry(localDate, updated);
