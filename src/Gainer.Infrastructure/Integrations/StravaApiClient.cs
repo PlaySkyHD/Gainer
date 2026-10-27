@@ -267,10 +267,14 @@ public sealed partial class StravaApiClient(
             "Strava answered {Status} for {Method} {Path}: {Body}",
             status,
             response.RequestMessage?.Method.Method,
-            response.RequestMessage?.RequestUri?.AbsolutePath,
+            RedactedPath(response.RequestMessage?.RequestUri),
             excerpt);
         throw new StravaApiException(failure, $"Strava answered {status}.", status);
     }
+
+    /// <summary>Replaces upload and activity IDs in the path, so logs never carry Strava identifiers.</summary>
+    internal static string? RedactedPath(Uri? uri) =>
+        uri is null ? null : string.Join('/', uri.AbsolutePath.Split('/').Select(static segment => segment.Length > 0 && segment.All(char.IsAsciiDigit) ? "{id}" : segment));
 
     private static async Task<StravaUploadState?> TryReadUploadAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {

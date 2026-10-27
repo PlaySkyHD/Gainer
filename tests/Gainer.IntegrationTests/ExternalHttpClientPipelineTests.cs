@@ -131,6 +131,13 @@ public sealed class ExternalHttpClientPipelineTests
         Assert.IsFalse(logs.Messages.Any(message => message.Contains("40084107", StringComparison.Ordinal)), "Barcodes in request paths must not reach the logs.");
     }
 
+    [TestMethod]
+    [DataRow("https://www.strava.com/api/v3/uploads/123456789", "/api/v3/uploads/{id}")]
+    [DataRow("https://www.strava.com/api/v3/activities/987654321?include_all_efforts=false", "/api/v3/activities/{id}")]
+    [DataRow("https://www.strava.com/api/v3/uploads", "/api/v3/uploads")]
+    public void StravaErrorLogsCarryNoIdentifiers(string uri, string expected) =>
+        Assert.AreEqual(expected, StravaApiClient.RedactedPath(new Uri(uri)));
+
     private static ServiceProvider BuildServices(CountingHandler handler, params (string Key, string Value)[] settings) =>
         BuildServices(handler, null, settings);
 
