@@ -2020,6 +2020,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               components: components,
               saveError: saveError,
               saving: saving,
+              onInvalid: (message) => setDialogState(() => saveError = message),
               save: (value) async {
                 final vm = widget.viewModel;
                 setDialogState(() {
@@ -2058,6 +2059,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     required List<ReusableMealComponent> components,
     required String? saveError,
     required bool saving,
+    required ValueChanged<String> onInvalid,
     required Future<void> Function(ReusableMeal value) save,
   }) {
     void refresh() => setDialogState(() {});
@@ -2071,8 +2073,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
       error: saveError,
       onSave: _canSaveRecipe(name, portion, components) && !saving
           ? () {
-              // Die Validierung des Modells kann werfen; wie zuvor als
-              // Eingabefehler melden und den Editor schließen.
+              // Die Validierung des Modells kann werfen; der Editor bleibt mit
+              // dem Entwurf und der Meldung offen.
               try {
                 final value = _reusableMealFromDraft(
                   name: name,
@@ -2082,11 +2084,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                 );
                 save(value);
               } catch (error) {
-                widget.viewModel.reportInputError(
-                  error.toString(),
-                  operation: NutritionErrorOperation.planning,
-                );
-                Navigator.pop(context);
+                onInvalid(error.toString());
               }
             }
           : null,

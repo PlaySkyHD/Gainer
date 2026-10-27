@@ -515,35 +515,39 @@ class NutritionViewModel extends ChangeNotifier {
     final draft = mealEstimateDraft;
     if (draft == null || !draft.components.contains(item)) return false;
     var saved = false;
-    final ran = await _run(() async {
-      final open = mealEstimateDraft;
-      if (open == null || !open.components.contains(item)) return;
-      // 0 kcal ist gültig, z. B. für den Bestandteil „Salz“. Die Prüfung
-      // läuft in `_run`, damit die Meldung im Fehlerbereich erscheint.
-      if (item.amountGrams <= 0 || item.totals.kilocalories < 0) {
-        throw const NutritionValidationException({
-          'estimate': 'Der Schätzwert ist nicht gültig und muss manuell ergänzt werden.',
-        });
-      }
-      final per100 = calculatePer100Totals(
-        amountGrams: item.amountGrams,
-        totals: item.totals,
-      );
-      final position = await _nextPosition();
-      await repository.saveEntry(
-        localDate,
-        _estimatedEntry(item, draft, per100, position),
-      );
-      saved = true;
-      await _refresh();
-      // Nur den übernommenen Bestandteil entfernen; die übrigen bleiben
-      // zum Prüfen stehen. Eine inzwischen neue Schätzung bleibt unberührt.
-      if (identical(mealEstimateDraft, open)) {
-        mealEstimateDraft = _withoutComponent(open, item, draft);
-      }
-      statusMessage = 'Geprüfte Schätzung als Eintrag gespeichert.';
-      _notify();
-    }, saving: true);
+    final ran = await _run(
+      () async {
+        final open = mealEstimateDraft;
+        if (open == null || !open.components.contains(item)) return;
+        // 0 kcal ist gültig, z. B. für den Bestandteil „Salz“. Die Prüfung
+        // läuft in `_run`, damit die Meldung im Fehlerbereich erscheint.
+        if (item.amountGrams <= 0 || item.totals.kilocalories < 0) {
+          throw const NutritionValidationException({
+            'estimate': 'Der Schätzwert ist nicht gültig und muss manuell ergänzt werden.',
+          });
+        }
+        final per100 = calculatePer100Totals(
+          amountGrams: item.amountGrams,
+          totals: item.totals,
+        );
+        final position = await _nextPosition();
+        await repository.saveEntry(
+          localDate,
+          _estimatedEntry(item, draft, per100, position),
+        );
+        saved = true;
+        await _refresh();
+        // Nur den übernommenen Bestandteil entfernen; die übrigen bleiben
+        // zum Prüfen stehen. Eine inzwischen neue Schätzung bleibt unberührt.
+        if (identical(mealEstimateDraft, open)) {
+          mealEstimateDraft = _withoutComponent(open, item, draft);
+        }
+        statusMessage = 'Geprüfte Schätzung als Eintrag gespeichert.';
+        _notify();
+      },
+      saving: true,
+      operation: NutritionErrorOperation.estimate,
+    );
     return ran && saved;
   }
 
@@ -804,6 +808,12 @@ class NutritionViewModel extends ChangeNotifier {
     try {
       await action();
       succeeded = true;
+      // Eine währenddessen abgewiesene zweite Mutation hinterließ nur eine
+      // Meldung; neben dem Erfolg wäre sie veraltet.
+      if (errorMessage == rejectedMessage) {
+        errorMessage = null;
+        errorOperation = null;
+      }
     } catch (error) {
       if (!_disposed) {
         errorMessage = _messageFor(error);

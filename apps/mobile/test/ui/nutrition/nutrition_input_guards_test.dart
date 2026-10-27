@@ -180,6 +180,26 @@ void main() {
       expect(repository.saveCalls, 0);
     });
 
+    test('a double tap leaves no stale rejection after the first save '
+        'succeeds', () async {
+      final viewModel = NutritionViewModel(
+        repository: newRepository(),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      repository.saveGate = Completer<void>();
+
+      final first = viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      final second = viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      repository.saveGate!.complete();
+
+      expect(await second, isFalse);
+      expect(await first, isTrue);
+      expect(viewModel.errorMessage, isNull);
+      expect(viewModel.errorOperation, isNull);
+    });
+
     test('a second action while saving is ignored', () async {
       final viewModel = NutritionViewModel(
         repository: newRepository(),
