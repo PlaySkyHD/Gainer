@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
 
+import '../../../domain/models/nutrition/nutrition.dart';
 import '../../../domain/models/nutrition/water_intake.dart';
 import '../../models/local/local_aggregate.dart';
 import '../../models/local/local_mutation.dart';
@@ -13,7 +14,8 @@ import 'local_sync_store.dart' show newUuidV4;
 const dailyCheckInAggregateType = 'daily-check-in';
 const nutritionDayAggregateType = 'nutrition-day';
 
-typedef _DayMerge = Map<String, Object?> Function(
+/// Zusammengeführter Arbeitsstand oder `null`, wenn er ungültig wäre.
+typedef _DayMerge = Map<String, Object?>? Function(
   Map<String, dynamic> snapshot,
   Map<String, dynamic> local,
 );
@@ -69,6 +71,7 @@ Future<LocalAggregateEnvelope<Object?>?> adoptLocalDay({
     return null;
   }
   final merged = merge(snapshot, local.workingCopy);
+  if (merged == null) return null;
   await _dropLocalDay(database, day, local.aggregateId, rows);
   await database
       .into(database.localOutbox)
@@ -114,64 +117,56 @@ Map<String, Object?> _mergedWorkingCopy(
 };
 
 /// Wie [_mergedWorkingCopy]; die Einträge des Servers bleiben, die lokal
-/// angelegten folgen je Mahlzeit dahinter. Der lokale Tag begann leer, alle
-/// seine Einträge sind also neu.
-Map<String, Object?> _mergedNutritionDay(
+/// angelegten folgen je Mahlzeit dahinter ([NutritionDay.replace]). Der
+/// lokale Tag begann leer, alle seine Einträge sind also neu. Wäre der
+/// zusammengeführte Tag ungültig (z. B. mehr als 200 Einträge), gibt es
+/// nichts zu übernehmen (`null`); der lokale Eintrag bleibt als Konflikt.
+Map<String, Object?>? _mergedNutritionDay(
   Map<String, dynamic> snapshot,
   Map<String, dynamic> local,
 ) {
-  final server = _entryMaps(snapshot['entries']);
-  final known = {for (final entry in server) entry['entryId']};
-  final nextPosition = <Object?, int>{};
-  for (final entry in server) {
-    nextPosition[entry['meal']] = math.max(
-      nextPosition[entry['meal']] ?? 0,
-      _position(entry) + 1,
-    );
+  try {
+    var day = NutritionDay.fromJson(snapshot);
+    final known = {for (final entry in day.entries) entry.entryId};
+    for (final entry in NutritionDay.fromJson(local).entries) {
+      if (!known.contains(entry.entryId)) day = day.replace(entry);
+    }
+    return {
+      ..._mergedWorkingCopy(snapshot, local),
+      'entries': day.toJson()['entries'],
+    };
+  } on NutritionValidationException {
+    return null;
+  } on FormatException {
+    return null;
   }
-  final added = [
-    for (final entry in _entryMaps(local['entries']))
-      if (!known.contains(entry['entryId']))
-        {...entry, 'position': _take(nextPosition, entry['meal'])},
-  ];
-  return {
-    ..._mergedWorkingCopy(snapshot, local),
-    'entries': [...server, ...added],
-  };
 }
 
-/// Wie [_mergedWorkingCopy]; die lokale Menge kommt zur Servermenge hinzu,
-/// weil der lokale Tag bei 0 ml begann.
+/// Lokaler, nie gesendeter Merker der Wassermenge: Der Tag wurde mit
+/// „Menge setzen“ geändert, seine Menge ist also eine absolute Tagessumme
+/// und keine Summe von Zugaben ab 0 ml.
+const waterAmountSetLocallyKey = 'amountSetLocally';
+
+/// Wie [_mergedWorkingCopy]. Hat der lokale Tag nur Zugaben gesammelt, kommt
+/// seine Menge zur Servermenge hinzu, weil er bei 0 ml begann. Wurde die
+/// Menge lokal gesetzt, gilt sie als absolute Tagessumme.
 Map<String, Object?> _mergedWaterDay(
   Map<String, dynamic> snapshot,
   Map<String, dynamic> local,
-) => {
-  ..._mergedWorkingCopy(snapshot, local),
-  'amountMl': math.min(
-    _amount(snapshot['amountMl']) + _amount(local['amountMl']),
-    WaterIntakeLimits.maxDailyMl,
-  ),
-};
-
-List<Map<String, dynamic>> _entryMaps(Object? entries) => [
-  if (entries is List)
-    for (final entry in entries)
-      if (entry is Map<String, dynamic>) entry,
-];
-
-int _position(Map<String, dynamic> entry) {
-  final value = entry['position'];
-  return value is num ? value.toInt() : 0;
+) {
+  final localAmount = _amount(local['amountMl']);
+  return {
+    ...(_mergedWorkingCopy(snapshot, local)..remove(waterAmountSetLocallyKey)),
+    'amountMl': local[waterAmountSetLocallyKey] == true
+        ? localAmount
+        : math.min(
+            _amount(snapshot['amountMl']) + localAmount,
+            WaterIntakeLimits.maxDailyMl,
+          ),
+  };
 }
 
 int _amount(Object? value) => value is num ? value.toInt() : 0;
-
-/// Nächste freie Position von [meal]; rückt sie danach weiter.
-int _take(Map<Object?, int> nextPosition, Object? meal) {
-  final position = nextPosition[meal] ?? 0;
-  nextPosition[meal] = position + 1;
-  return position;
-}
 
 typedef _Day = ({String aggregateType, String accountId});
 

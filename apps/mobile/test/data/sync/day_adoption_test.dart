@@ -50,6 +50,7 @@ void main() {
   late List<Map<String, dynamic>> mutations;
   late bool activeWriter;
   var counter = 0x400;
+  var serverEntryCount = 1;
 
   Map<String, dynamic> serverBatch() => {
     'batchId': _id(0x901),
@@ -64,7 +65,14 @@ void main() {
         'snapshot': {
           'nutritionDayId': _serverNutritionDayId,
           'localDate': _day,
-          'entries': [_entryJson(_serverEntryId, 'Server')],
+          'entries': [
+            _entryJson(_serverEntryId, 'Server'),
+            for (var index = 1; index < serverEntryCount; index++)
+              {
+                ..._entryJson(_id(0x1000 + index), 'Server $index'),
+                'position': index,
+              },
+          ],
           'createdAtUtc': '2026-10-12T06:00:00Z',
           'updatedAtUtc': '2026-10-12T06:00:00Z',
           'version': 3,
@@ -160,6 +168,7 @@ void main() {
     counter = 0x400;
     mutations = [];
     activeWriter = true;
+    serverEntryCount = 1;
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen(handle);
     database = LocalDatabase(NativeDatabase.memory());
@@ -229,6 +238,48 @@ void main() {
     expect(entries.map((entry) => entry.position), [0, 1]);
     expect(await water.read(_day), 1100);
   }
+
+  test('ein Ernährungstag über 200 Einträgen wird nicht übernommen', () async {
+    activeWriter = false;
+    serverEntryCount = 200;
+    await saveOffline();
+    final localId = (await store.readAggregates('nutrition-day'))
+        .single
+        .aggregateId;
+
+    await sync.synchronize(now: DateTime.utc(2026, 10, 12, 10));
+
+    final rows = await store.readAggregates('nutrition-day');
+    expect(rows.map((row) => row.aggregateId).toSet(), {
+      localId,
+      _serverNutritionDayId,
+    });
+    final waiting = (await store.readOutbox(aggregateType: 'nutrition-day'))
+        .single;
+    expect(waiting.aggregateId, localId);
+    expect(waiting.operation, LocalMutationOperation.create);
+    final server = rows.singleWhere(
+      (row) => row.aggregateId == _serverNutritionDayId,
+    );
+    expect(server.serverVersion, 3);
+    expect((server.workingCopy! as Map)['entries'], hasLength(200));
+  });
+
+  test('eine lokal gesetzte Wassermenge gilt als Tagessumme', () async {
+    activeWriter = false;
+    await water.add(_day, 200);
+    await water.setAmount(_day, 300);
+    await water.add(_day, 50);
+
+    await sync.synchronize(now: DateTime.utc(2026, 10, 12, 10));
+
+    await expectAdopted(waterIntakeAggregateType, _serverWaterDayId);
+    expect(await water.read(_day), 350);
+    final waiting = (await store.readOutbox(
+      aggregateType: waterIntakeAggregateType,
+    )).single;
+    expect((waiting.body! as Map).containsKey('amountSetLocally'), isFalse);
+  });
 
   test(
     'nicht gesendete Tage werden zu Änderungen der gezogenen Tage',

@@ -223,6 +223,42 @@ void main() {
     expect(await water.read(_day), 1100);
   });
 
+  test('a pulled server day wins over a not adopted local day of the same '
+      'date (#298)', () async {
+    // Der lokale Tag F war beim Pull im Versand und wurde nicht übernommen.
+    await water.add(_day, 200);
+    final localId = water.dayIdFor(_day);
+    const serverId = '00000000-0000-4000-8000-000000000901';
+    await database
+        .into(database.localResources)
+        .insert(
+          LocalResourcesCompanion.insert(
+            aggregateType: waterIntakeAggregateType,
+            aggregateId: serverId,
+            envelopeJson: serverEnvelope(
+              aggregateId: serverId,
+              snapshot: const {
+                'localDate': _day,
+                'amountMl': 900,
+                'createdAtUtc': '2026-10-25T06:00:00Z',
+                'updatedAtUtc': '2026-10-25T06:00:00Z',
+              },
+              version: 3,
+            ).encode(),
+            updatedAtEpochMs: 0,
+          ),
+        );
+
+    expect(await water.read(_day), 900);
+    expect(await water.add(_day, 100), 1000);
+
+    final sent = (await outbox()).where((m) => m.aggregateId != localId);
+    expect(sent.single.aggregateId, serverId);
+    expect(sent.single.operation, LocalMutationOperation.update);
+    expect(payloadOf(sent.single), containsPair('baseVersion', 3));
+    expect(payloadOf(sent.single), containsPair('amountMl', 1000));
+  });
+
   test('a day that keeps changing gives up after a few attempts', () async {
     await water.add(_day, 500);
     var version = 0;
