@@ -43,6 +43,8 @@ import '../platform/pigeon_pending_handover_secret_store.dart';
 import '../platform/pigeon_secure_session_platform.dart';
 import 'sync_foreground_scheduler.dart';
 
+const _routeAccountChangedMessage =
+    'The account changed before the native route opened.';
 const _operatorAccessRequiredMessage = 'Operator access is required.';
 const _operatorOnlineRequiredMessage =
     'Operatoraktionen erfordern eine Online-Sitzung.';
@@ -377,18 +379,14 @@ class MobileAuthController extends ChangeNotifier
         !identical(account, routeScope) ||
         generation != _sessionGeneration ||
         !routeScope.isSessionActive()) {
-      throw StateError('The account changed before the native route opened.');
+      throw StateError(_routeAccountChangedMessage);
     }
     final index = switch (request.destination) {
       NativeAppRoute.training => MobileArea.training.index,
       NativeAppRoute.checkIn => MobileArea.body.index,
       NativeAppRoute.nutrition => MobileArea.nutrition.index,
     };
-    if (_disposed ||
-        !identical(account, routeScope) ||
-        generation != _sessionGeneration) {
-      throw StateError('The account changed before the native route opened.');
-    }
+    _assertRouteAccountUnchanged(routeScope, generation);
     // Widget und Kurzbefehl zeigen den Tab selbst; ein offenes Vollbild
     // darüber würde ihn verdecken. Die Live Activity holt dagegen das
     // laufende Training bzw. die Cardio-Einheit nach vorn.
@@ -403,17 +401,21 @@ class MobileAuthController extends ChangeNotifier
       // Beim Kaltstart liest `load()` den Cardio-Entwurf noch; erst danach
       // stimmt `isRunning`.
       await routeScope.cardioSession.restored;
-      if (_disposed ||
-          !identical(account, routeScope) ||
-          generation != _sessionGeneration) {
-        throw StateError('The account changed before the native route opened.');
-      }
+      _assertRouteAccountUnchanged(routeScope, generation);
       final active = routeScope.activeWorkout.active;
       if (routeScope.cardioSession.isRunning) {
         shell.requestOpenCardio();
       } else if (active != null) {
         shell.requestOpenWorkout(active.workoutId);
       }
+    }
+  }
+
+  void _assertRouteAccountUnchanged(AccountScope routeScope, int generation) {
+    if (_disposed ||
+        !identical(account, routeScope) ||
+        generation != _sessionGeneration) {
+      throw StateError(_routeAccountChangedMessage);
     }
   }
 

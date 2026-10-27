@@ -183,33 +183,64 @@ void validateDailyCheckIn({
   if (!weightKg.isFinite || weightKg <= 0) {
     errors['weightKg'] = 'Das Gewicht muss positiv sein.';
   }
-  for (final (name, value) in [
+  _validateNutritionValues(errors, [
     ('caloriesKcal', caloriesKcal),
     ('proteinGrams', proteinGrams),
     ('carbohydrateGrams', carbohydrateGrams),
     ('fatGrams', fatGrams),
-  ]) {
+  ]);
+  if (steps != null && steps < 0) {
+    errors['steps'] = 'Schritte dürfen nicht negativ sein.';
+  }
+  _validateOptionalRange(
+    errors,
+    'sleepMinutes',
+    sleepMinutes,
+    0,
+    1440,
+    'Schlaf muss zwischen 0 und 1440 Minuten liegen.',
+  );
+  _validateOptionalRange(
+    errors,
+    'restingHeartRateBpm',
+    restingHeartRateBpm,
+    25,
+    150,
+    'Der Ruhepuls muss zwischen 25 und 150 bpm liegen.',
+  );
+  _validateOptionalRange(
+    errors,
+    'restingHrvMs',
+    restingHrvMs,
+    1,
+    300,
+    'Die HRV muss zwischen 1 und 300 ms liegen.',
+  );
+  if (errors.isNotEmpty) {
+    throw BodyTrackingValidationException(errors);
+  }
+}
+
+void _validateNutritionValues(
+  Map<String, String> errors,
+  List<(String, double?)> values,
+) {
+  for (final (name, value) in values) {
     if (value != null && (!value.isFinite || value < 0)) {
       errors[name] = 'Der Wert darf nicht negativ sein.';
     }
   }
-  if (steps != null && steps < 0) {
-    errors['steps'] = 'Schritte dürfen nicht negativ sein.';
-  }
-  if (sleepMinutes != null && (sleepMinutes < 0 || sleepMinutes > 1440)) {
-    errors['sleepMinutes'] = 'Schlaf muss zwischen 0 und 1440 Minuten liegen.';
-  }
-  if (restingHeartRateBpm != null &&
-      (restingHeartRateBpm < 25 || restingHeartRateBpm > 150)) {
-    errors['restingHeartRateBpm'] =
-        'Der Ruhepuls muss zwischen 25 und 150 bpm liegen.';
-  }
-  if (restingHrvMs != null && (restingHrvMs < 1 || restingHrvMs > 300)) {
-    errors['restingHrvMs'] = 'Die HRV muss zwischen 1 und 300 ms liegen.';
-  }
-  if (errors.isNotEmpty) {
-    throw BodyTrackingValidationException(errors);
-  }
+}
+
+void _validateOptionalRange(
+  Map<String, String> errors,
+  String key,
+  int? value,
+  int min,
+  int max,
+  String message,
+) {
+  if (value != null && (value < min || value > max)) errors[key] = message;
 }
 
 double weightForDisplay(double kilograms, BodyWeightUnit unit) =>

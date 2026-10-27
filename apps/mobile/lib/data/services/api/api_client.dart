@@ -13,6 +13,8 @@ const syncProtocolVersion = 3;
 /// Keychain checkpoint format. Version 1 held cookies, version 2 a refresh token.
 const secureCheckpointSchemaVersion = 2;
 
+const _coachMemoriesPath = '/api/v1/coach/memories';
+
 class ApiConfiguration {
   ApiConfiguration({
     required this.apiOrigin,
@@ -212,7 +214,7 @@ class ApiClient {
 
   /// Notizen des Coach-Gedächtnisses, neueste zuerst.
   Future<ApiCoachMemoryList> listCoachMemories() async {
-    final response = await _request('GET', '/api/v1/coach/memories');
+    final response = await _request('GET', _coachMemoriesPath);
     return ApiCoachMemoryList.fromJson(_asObject(response.data));
   }
 
@@ -225,7 +227,7 @@ class ApiClient {
   ) async {
     final response = await _mutate(
       'POST',
-      '/api/v1/coach/memories',
+      _coachMemoriesPath,
       body: _coachMemoryBody(category, text),
     );
     return ApiCoachMemory.fromJson(_asObject(response.data));
@@ -255,7 +257,7 @@ class ApiClient {
     }
     final response = await _mutate(
       'PUT',
-      '/api/v1/coach/memories/$id',
+      '$_coachMemoriesPath/$id',
       body: {
         ..._coachMemoryBody(category, text),
         'category': unknownCategory ?? category.wireName,
@@ -267,12 +269,12 @@ class ApiClient {
 
   Future<void> deleteCoachMemory(String id) async {
     _validateIdentifier(id, 'id');
-    await _mutate('DELETE', '/api/v1/coach/memories/$id');
+    await _mutate('DELETE', '$_coachMemoriesPath/$id');
   }
 
   /// „Alles vergessen“.
   Future<void> deleteAllCoachMemories() async {
-    await _mutate('DELETE', '/api/v1/coach/memories');
+    await _mutate('DELETE', _coachMemoriesPath);
   }
 
   Map<String, Object?> _coachMemoryBody(

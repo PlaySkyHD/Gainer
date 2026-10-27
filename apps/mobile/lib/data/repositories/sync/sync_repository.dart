@@ -314,13 +314,8 @@ class SyncRepository implements MobileSyncActions {
     await store.ensureAccountBound();
     await store.conflictLegacyFailedMutations();
     await _refreshSyncLease();
-    final session = await api.getSession();
-    if (session == null) {
-      return _blockAuthorization('authentication_required');
-    }
-    if (session.userId.toLowerCase() != store.accountId.toLowerCase()) {
-      return _blockAuthorization('account_changed');
-    }
+    final sessionBlock = await _sessionBlock();
+    if (sessionBlock != null) return sessionBlock;
     final clientId = await installationIdentity.getOrCreateInstallationId();
     SyncClientRegistrationResponse registration;
     try {
@@ -372,6 +367,18 @@ class SyncRepository implements MobileSyncActions {
       pulled: pulled,
       timestamp: timestamp,
     );
+  }
+
+  /// Abbruchbericht, wenn keine Sitzung besteht oder das Konto gewechselt hat.
+  Future<SyncRunReport?> _sessionBlock() async {
+    final session = await api.getSession();
+    if (session == null) {
+      return _blockAuthorization('authentication_required');
+    }
+    if (session.userId.toLowerCase() != store.accountId.toLowerCase()) {
+      return _blockAuthorization('account_changed');
+    }
+    return null;
   }
 
   /// Pull mit der Fehlerbehandlung, die jeder Aufrufer braucht. Liefert bei
@@ -493,10 +500,7 @@ class SyncRepository implements MobileSyncActions {
       for (final record in candidates) {
         // Wartende Referenz: überspringen, pending lassen, kein Konflikt und
         // kein Backoff, damit der Rest weiterläuft (D3).
-        if (SyncPayloadCodec.referencedAggregateIds(record)
-            .any(waiting.contains)) {
-          continue;
-        }
+        if (_awaitsReference(record, waiting)) continue;
         attempted.add(record.mutationId);
         progressed = true;
         await _refreshSyncLease();
@@ -508,32 +512,7 @@ class SyncRepository implements MobileSyncActions {
         );
         if (syncing == null) continue;
         try {
-          final request = _toRequest(syncing, clientId);
-          final response = await api.pushMutation(
-            mutationId: syncing.mutationId,
-            mutation: request,
-            expectedAccountId: store.accountId,
-          );
-          if (response.mutationId != syncing.mutationId) {
-            throw const FormatException(
-              'Sync response mutation id does not match the request.',
-            );
-          }
-          // Keep the same id/payload until pull applies the canonical server
-          // batch. This makes a timeout/retry safe under server idempotency.
-          await store.updateMutation(
-            _copyMutation(
-              syncing,
-              status: LocalMutationStatus.clean,
-              clearError: true,
-            ),
-          );
-          await store.deleteSyncMetadata(
-            _healGuardKey(syncing.aggregateType, syncing.aggregateId),
-          );
-          if (syncing.operation == LocalMutationOperation.create) {
-            waiting.remove(syncing.aggregateId);
-          }
+          await _pushClaimed(syncing, clientId, waiting);
           pushed++;
         } on ApiException catch (error) {
           final shouldStop = await _handlePushError(syncing, error, timestamp);
@@ -545,6 +524,43 @@ class SyncRepository implements MobileSyncActions {
       if (!progressed) break;
     }
     return (pushed: pushed, stopState: null);
+  }
+
+  bool _awaitsReference(LocalMutation record, Set<String> waiting) =>
+      SyncPayloadCodec.referencedAggregateIds(record).any(waiting.contains);
+
+  /// Sendet einen reservierten Eintrag und markiert ihn als gesendet.
+  Future<void> _pushClaimed(
+    LocalMutation syncing,
+    String clientId,
+    Set<String> waiting,
+  ) async {
+    final request = _toRequest(syncing, clientId);
+    final response = await api.pushMutation(
+      mutationId: syncing.mutationId,
+      mutation: request,
+      expectedAccountId: store.accountId,
+    );
+    if (response.mutationId != syncing.mutationId) {
+      throw const FormatException(
+        'Sync response mutation id does not match the request.',
+      );
+    }
+    // Keep the same id/payload until pull applies the canonical server
+    // batch. This makes a timeout/retry safe under server idempotency.
+    await store.updateMutation(
+      _copyMutation(
+        syncing,
+        status: LocalMutationStatus.clean,
+        clearError: true,
+      ),
+    );
+    await store.deleteSyncMetadata(
+      _healGuardKey(syncing.aggregateType, syncing.aggregateId),
+    );
+    if (syncing.operation == LocalMutationOperation.create) {
+      waiting.remove(syncing.aggregateId);
+    }
   }
 
   Future<SyncRunReport> _stopAfterPush(SyncRunState state, int pushed) async {
@@ -1019,13 +1035,7 @@ class SyncRepository implements MobileSyncActions {
       serverSnapshot: null,
       workingCopy: keepWorkingCopy && old != null
           ? old.workingCopy
-          : {
-              'deletedAtUtc':
-                  (old?.workingCopy is Map
-                      ? (old!.workingCopy! as Map)['deletedAtUtc']
-                      : null) ??
-                  DateTime.now().toUtc().toIso8601String(),
-            },
+          : _tombstoneWorkingCopy(old),
       serverVersion: change.version,
       optimisticVersion: old?.optimisticVersion ?? change.version,
       syncState: keepWorkingCopy
@@ -1042,6 +1052,16 @@ class SyncRepository implements MobileSyncActions {
             updatedAtEpochMs: DateTime.now().toUtc().millisecondsSinceEpoch,
           ),
         );
+  }
+
+  Map<String, Object?> _tombstoneWorkingCopy(
+    LocalAggregateEnvelope<Object?>? old,
+  ) {
+    final working = old?.workingCopy;
+    final previous = working is Map ? working['deletedAtUtc'] : null;
+    return {
+      'deletedAtUtc': previous ?? DateTime.now().toUtc().toIso8601String(),
+    };
   }
 
   Future<void> _applyUpsert(
@@ -1366,6 +1386,35 @@ class SyncRepository implements MobileSyncActions {
     }
   }
 
+  Future<void> _recordConflict(
+    LocalMutation mutation,
+    ApiException error,
+    DateTime now,
+    Map<String, Object?> extraDetail,
+  ) async {
+    await store.upsertConflict(
+      LocalConflictRecord(
+        conflictId: mutation.mutationId,
+        aggregateType: mutation.aggregateType,
+        aggregateId: mutation.aggregateId,
+        createdAtUtc: now,
+        code: error.code,
+        detail: {
+          'message': error.message,
+          'mutationId': mutation.mutationId,
+          ...extraDetail,
+        },
+      ),
+    );
+    await store.updateMutation(
+      _copyMutation(
+        mutation,
+        status: LocalMutationStatus.conflict,
+        lastErrorCode: error.code,
+      ),
+    );
+  }
+
   Future<SyncRunState?> _handlePushError(
     LocalMutation mutation,
     ApiException error,
@@ -1425,30 +1474,12 @@ class SyncRepository implements MobileSyncActions {
               mutation.aggregateId,
             ))?.serverVersion
           : null;
-      await store.upsertConflict(
-        LocalConflictRecord(
-          conflictId: mutation.mutationId,
-          aggregateType: mutation.aggregateType,
-          aggregateId: mutation.aggregateId,
-          createdAtUtc: now,
-          code: error.code,
-          detail: {
-            'message': error.message,
-            'mutationId': mutation.mutationId,
-            if (error.code == 'stale_base_version') ...{
-              'baseVersion': mutation.baseVersion,
-              'knownServerVersion': known,
-            },
-          },
-        ),
-      );
-      await store.updateMutation(
-        _copyMutation(
-          mutation,
-          status: LocalMutationStatus.conflict,
-          lastErrorCode: error.code,
-        ),
-      );
+      await _recordConflict(mutation, error, now, {
+        if (error.code == 'stale_base_version') ...{
+          'baseVersion': mutation.baseVersion,
+          'knownServerVersion': known,
+        },
+      });
       return null;
     }
     if ((error.statusCode == 422 || error.statusCode == 400) &&
@@ -1456,54 +1487,18 @@ class SyncRepository implements MobileSyncActions {
       // Field errors cannot be fixed by resending the same payload, so they
       // stay visible as a conflict on the aggregate until the user decides.
       // A 400 comes from model binding before the sync handler runs.
-      await store.upsertConflict(
-        LocalConflictRecord(
-          conflictId: mutation.mutationId,
-          aggregateType: mutation.aggregateType,
-          aggregateId: mutation.aggregateId,
-          createdAtUtc: now,
-          code: error.code,
-          detail: {
-            'message': error.message,
-            'mutationId': mutation.mutationId,
-            'errors': error.errors ?? const {},
-          },
-        ),
-      );
-      await store.updateMutation(
-        _copyMutation(
-          mutation,
-          status: LocalMutationStatus.conflict,
-          lastErrorCode: error.code,
-        ),
-      );
+      await _recordConflict(mutation, error, now, {
+        'errors': error.errors ?? const {},
+      });
       return null;
     }
     if (_isPermanentRejection(error)) {
       // Dauerhafte Ablehnung (z. B. 422 `invalid_payload`, 400, 413, 415):
       // Dieselben Daten scheitern erneut. Ohne Konflikt blockierte der Eintrag
       // seine Ressource still und dauerhaft, mit Backoff ohne Ende.
-      await store.upsertConflict(
-        LocalConflictRecord(
-          conflictId: mutation.mutationId,
-          aggregateType: mutation.aggregateType,
-          aggregateId: mutation.aggregateId,
-          createdAtUtc: now,
-          code: error.code,
-          detail: {
-            'message': error.message,
-            'mutationId': mutation.mutationId,
-            permanentRejectionDetailKey: true,
-          },
-        ),
-      );
-      await store.updateMutation(
-        _copyMutation(
-          mutation,
-          status: LocalMutationStatus.conflict,
-          lastErrorCode: error.code,
-        ),
-      );
+      await _recordConflict(mutation, error, now, {
+        permanentRejectionDetailKey: true,
+      });
       return null;
     }
     await _scheduleRetry(mutation, error, now);

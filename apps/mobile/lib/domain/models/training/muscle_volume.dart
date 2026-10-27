@@ -83,15 +83,9 @@ class MuscleVolume {
   }) {
     final builder = _Builder(exercisesById);
     for (final workout in workouts) {
-      if (workout.endedAtUtc == null || workout.deletedAtUtc != null) continue;
-      final started = workout.startedAtUtc;
-      if (started.isBefore(fromUtc) || !started.isBefore(toUtc)) continue;
+      if (!_countsInRange(workout, fromUtc, toUtc)) continue;
       for (final block in workout.exercises) {
-        var sets = 0;
-        for (final set in block.sets) {
-          if (set.setType == SetType.warmup) continue;
-          if (isSetRecorded(set, block.exerciseTypeSnapshot)) sets++;
-        }
+        final sets = _recordedWorkingSets(block);
         if (sets == 0) continue;
         builder.add(
           block.sourceExerciseId,
@@ -101,6 +95,28 @@ class MuscleVolume {
       }
     }
     return builder.build();
+  }
+
+  static bool _countsInRange(
+    Workout workout,
+    DateTime fromUtc,
+    DateTime toUtc,
+  ) {
+    final ongoingOrDeleted =
+        workout.endedAtUtc == null || workout.deletedAtUtc != null;
+    final started = workout.startedAtUtc;
+    return !ongoingOrDeleted &&
+        !started.isBefore(fromUtc) &&
+        started.isBefore(toUtc);
+  }
+
+  static int _recordedWorkingSets(WorkoutBlock block) {
+    var sets = 0;
+    for (final set in block.sets) {
+      if (set.setType == SetType.warmup) continue;
+      if (isSetRecorded(set, block.exerciseTypeSnapshot)) sets++;
+    }
+    return sets;
   }
 
   final Map<Muscle, List<MuscleContribution>> _contributions;

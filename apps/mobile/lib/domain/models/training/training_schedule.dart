@@ -373,6 +373,23 @@ class TrainingSchedule {
     return !isCycle || effectiveCycleIndex(today) == todaySlotIndex;
   }
 
+  /// Verschiebungen, die vor [boundary] enden, gehen in den Anker ein.
+  ({LocalDay? anchor, List<TrainingScheduleShift> keptShifts}) _foldShifts(
+    LocalDay boundary,
+  ) {
+    var anchor = anchorDate;
+    final keptShifts = <TrainingScheduleShift>[];
+    for (final shift in shifts) {
+      if (anchor != null &&
+          !shift.fromDate.addDays(shift.days).isAfter(boundary)) {
+        anchor = anchor.addDays(shift.days);
+      } else {
+        keptShifts.add(shift);
+      }
+    }
+    return (anchor: anchor, keptShifts: keptShifts);
+  }
+
   /// Wie viele Tage die Vergangenheit beim Verdichten mindestens unverändert
   /// bleibt (gut 13 Monate).
   static const compactionKeepDays = 400;
@@ -406,16 +423,7 @@ class TrainingSchedule {
       if (kept.length == exceptions.length) return this;
       return copyWith(exceptions: kept);
     }
-    var anchor = anchorDate;
-    final keptShifts = <TrainingScheduleShift>[];
-    for (final shift in shifts) {
-      if (anchor != null &&
-          !shift.fromDate.addDays(shift.days).isAfter(boundary)) {
-        anchor = anchor.addDays(shift.days);
-      } else {
-        keptShifts.add(shift);
-      }
-    }
+    final (:anchor, :keptShifts) = _foldShifts(boundary);
     return TrainingSchedule(
       scheduleId: scheduleId,
       mode: mode,
@@ -707,6 +715,42 @@ class TrainingScheduleProjection {
   bool isEffective(TrainingScheduleException exception) =>
       basePlanOn(exception.date) == exception.planId;
 
+  ({ScheduleBaseKind kind, int? slotIndex, String? archived, String? basePlan})
+  _baseOf(TrainingSchedule active, _RawSlot raw) {
+    switch (raw) {
+      case _SlotAt(:final index):
+        final planId = active.slots[index].planId;
+        if (_isActivePlan(planId)) {
+          return (
+            kind: ScheduleBaseKind.training,
+            slotIndex: index,
+            archived: null,
+            basePlan: planId,
+          );
+        }
+        return (
+          kind: ScheduleBaseKind.rest,
+          slotIndex: index,
+          archived: planId,
+          basePlan: null,
+        );
+      case _PausedSlot():
+        return (
+          kind: ScheduleBaseKind.paused,
+          slotIndex: null,
+          archived: null,
+          basePlan: null,
+        );
+      case _NoSlot():
+        return (
+          kind: ScheduleBaseKind.none,
+          slotIndex: null,
+          archived: null,
+          basePlan: null,
+        );
+    }
+  }
+
   ScheduleDay day(LocalDay date) {
     final active = schedule;
     if (active == null) {
@@ -716,27 +760,10 @@ class TrainingScheduleProjection {
         trainings: const [],
       );
     }
-    final raw = active._rawSlot(date);
-    final ScheduleBaseKind kind;
-    int? slotIndex;
-    String? archived;
-    String? basePlan;
-    switch (raw) {
-      case _NoSlot():
-        kind = ScheduleBaseKind.none;
-      case _PausedSlot():
-        kind = ScheduleBaseKind.paused;
-      case _SlotAt(:final index):
-        slotIndex = index;
-        final planId = active.slots[index].planId;
-        if (_isActivePlan(planId)) {
-          kind = ScheduleBaseKind.training;
-          basePlan = planId;
-        } else {
-          kind = ScheduleBaseKind.rest;
-          if (planId != null) archived = planId;
-        }
-    }
+    final (:kind, :slotIndex, :archived, :basePlan) = _baseOf(
+      active,
+      active._rawSlot(date),
+    );
 
     final finished = _finishedByDay[date] ?? const <Workout>[];
     final entries = <(String, LocalDay, TrainingScheduleException?)>[];
@@ -846,24 +873,9 @@ class TrainingScheduleProjection {
     final actions = <ScheduleAction>[];
     switch (training.status) {
       case ScheduledTrainingStatus.planned:
-        if (date.isBefore(today)) break;
-        if (active.isCycle && !training.isMovedIn) {
-          actions
-            ..add(ScheduleAction.shiftRhythm(1))
-            ..add(ScheduleAction.shiftRhythm(2));
-        }
-        actions
-          ..add(ScheduleAction.moveSingle(date.addDays(1)))
-          ..add(ScheduleAction.moveSingle(date.addDays(2)))
-          ..add(const ScheduleAction.skip());
-        if (training.isMovedIn) actions.add(const ScheduleAction.undo());
+        _addPlannedActions(actions, active, training);
       case ScheduledTrainingStatus.missed:
-        if (date.daysUntil(today) > catchUpWindowDays) break;
-        actions.add(const ScheduleAction.catchUpToday());
-        if (active.isCycle && !training.isMovedIn) {
-          actions.add(const ScheduleAction.continueFromToday());
-        }
-        if (training.isMovedIn) actions.add(const ScheduleAction.undo());
+        _addMissedActions(actions, active, training);
       case ScheduledTrainingStatus.skipped:
         if (!date.isBefore(today)) actions.add(const ScheduleAction.undo());
       case ScheduledTrainingStatus.moved:
@@ -876,6 +888,38 @@ class TrainingScheduleProjection {
         break;
     }
     return actions;
+  }
+
+  void _addPlannedActions(
+    List<ScheduleAction> actions,
+    TrainingSchedule active,
+    ScheduledTraining training,
+  ) {
+    final date = training.date;
+    if (date.isBefore(today)) return;
+    if (active.isCycle && !training.isMovedIn) {
+      actions
+        ..add(const ScheduleAction.shiftRhythm(1))
+        ..add(const ScheduleAction.shiftRhythm(2));
+    }
+    actions
+      ..add(ScheduleAction.moveSingle(date.addDays(1)))
+      ..add(ScheduleAction.moveSingle(date.addDays(2)))
+      ..add(const ScheduleAction.skip());
+    if (training.isMovedIn) actions.add(const ScheduleAction.undo());
+  }
+
+  void _addMissedActions(
+    List<ScheduleAction> actions,
+    TrainingSchedule active,
+    ScheduledTraining training,
+  ) {
+    if (training.date.daysUntil(today) > catchUpWindowDays) return;
+    actions.add(const ScheduleAction.catchUpToday());
+    if (active.isCycle && !training.isMovedIn) {
+      actions.add(const ScheduleAction.continueFromToday());
+    }
+    if (training.isMovedIn) actions.add(const ScheduleAction.undo());
   }
 
   /// Wendet eine zulässige Aktion an und liefert den neuen Stand.

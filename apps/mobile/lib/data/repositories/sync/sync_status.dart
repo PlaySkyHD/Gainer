@@ -119,18 +119,22 @@ class SyncStatusTracker extends ValueNotifier<SyncStatus> {
             at.toIso8601String(),
           );
         }
+        // Nur ein Lauf, der Registrierung und Pull geschafft hat, löst
+        // den Bedarf auf; Anmeldefehler oder ein laufender Sync nicht.
+        final bool upgradeRequired;
+        if (report.state == SyncRunState.upgradeRequired) {
+          upgradeRequired = true;
+        } else if (reachedServer) {
+          upgradeRequired = false;
+        } else {
+          upgradeRequired = value.upgradeRequired;
+        }
         _publish(
           value.copyWith(
             lastSyncedAtUtc: reachedServer ? at : null,
             pendingCount: await _pendingCount(),
             isWriter: writer,
-            // Nur ein Lauf, der Registrierung und Pull geschafft hat, löst
-            // den Bedarf auf; Anmeldefehler oder ein laufender Sync nicht.
-            upgradeRequired: report.state == SyncRunState.upgradeRequired
-                ? true
-                : reachedServer
-                ? false
-                : value.upgradeRequired,
+            upgradeRequired: upgradeRequired,
           ),
         );
       });

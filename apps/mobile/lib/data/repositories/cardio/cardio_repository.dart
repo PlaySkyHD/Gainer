@@ -132,24 +132,10 @@ class CardioRepository {
   static CardioSession sanitize(CardioSession session, {DateTime? now}) {
     final stamp = now ?? session.updatedAtUtc;
     final started = session.startedAtUtc.toUtc();
-    var ended = session.endedAtUtc.toUtc();
-    if (!ended.isAfter(started)) {
-      ended = started.add(const Duration(seconds: 1));
-    }
-    const maxDuration = Duration(hours: 24);
-    if (ended.difference(started) > maxDuration) {
-      ended = started.add(maxDuration);
-    }
+    final ended = _clampedEnd(started, session.endedAtUtc.toUtc());
     final interval = session.sampleIntervalSeconds.clamp(1, 60);
     final maxValues =
         (ended.difference(started).inSeconds / interval).ceil() + 1;
-    double? within(double? value, double max) =>
-        value != null && value.isFinite && value >= 0 && value <= max
-        ? value
-        : null;
-    final name = session.sensorName?.trim();
-    final note = session.notes?.trim();
-    final template = session.templateName?.trim();
     final phases = [
       for (final phase in session.phases)
         CardioPhase(
@@ -177,26 +163,48 @@ class CardioRepository {
         for (final rr in session.rrIntervalsMs)
           if (rr >= 200 && rr <= 3000) rr,
       ].take(_maxRrValues).toList(),
-      sensorName: name == null || name.isEmpty
-          ? null
-          : (name.length > 100 ? name.substring(0, 100) : name),
-      distanceKm: within(session.distanceKm, maxDistanceKm),
-      averagePowerWatts: within(session.averagePowerWatts, maxPowerWatts),
-      energyKcal: within(session.energyKcal, maxEnergyKcal),
-      notes: note == null || note.isEmpty
-          ? null
-          : (note.length > 2000 ? note.substring(0, 2000) : note),
+      sensorName: _trimmedOrNull(session.sensorName, 100),
+      distanceKm: _withinOrNull(session.distanceKm, maxDistanceKm),
+      averagePowerWatts: _withinOrNull(
+        session.averagePowerWatts,
+        maxPowerWatts,
+      ),
+      energyKcal: _withinOrNull(session.energyKcal, maxEnergyKcal),
+      notes: _trimmedOrNull(session.notes, 2000),
       recoveryStartBpm: _validRecovery(session)
           ? session.recoveryStartBpm
           : null,
       recoveryEndBpm: _validRecovery(session) ? session.recoveryEndBpm : null,
-      templateName: template == null || template.isEmpty
-          ? null
-          : (template.length > 100 ? template.substring(0, 100) : template),
+      templateName: _trimmedOrNull(session.templateName, 100),
       phases: CardioPhase.isValidList(phases) ? phases : const [],
       createdAtUtc: stamp,
       updatedAtUtc: stamp,
     );
+  }
+
+  /// Ende nach Start und höchstens 24 h danach.
+  static DateTime _clampedEnd(DateTime started, DateTime end) {
+    var ended = end;
+    if (!ended.isAfter(started)) {
+      ended = started.add(const Duration(seconds: 1));
+    }
+    const maxDuration = Duration(hours: 24);
+    if (ended.difference(started) > maxDuration) {
+      ended = started.add(maxDuration);
+    }
+    return ended;
+  }
+
+  static double? _withinOrNull(double? value, double max) =>
+      value != null && value.isFinite && value >= 0 && value <= max
+      ? value
+      : null;
+
+  /// Gekürzter Text; leer oder null ergibt null.
+  static String? _trimmedOrNull(String? raw, int maxLength) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) return null;
+    return value.length > maxLength ? value.substring(0, maxLength) : value;
   }
 
   /// Beide Erholungswerte vorhanden und 25–250.

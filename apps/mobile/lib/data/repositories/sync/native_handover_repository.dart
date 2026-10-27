@@ -111,6 +111,21 @@ class NativeHandoverRepository {
     }
   }
 
+  bool _isDifferentCompletion(
+    PendingHandoverRecord prior, {
+    required String handoverId,
+    required int frozenRevision,
+    required String targetClientId,
+    required String sourceClientId,
+    required String oneTimeCode,
+  }) =>
+      prior.handoverId != handoverId ||
+      prior.frozenRevision != frozenRevision ||
+      prior.targetClientId != targetClientId ||
+      prior.sourceClientId != sourceClientId ||
+      prior.oneTimeCode != oneTimeCode ||
+      prior.expiresAtUtc == null;
+
   Future<CompleteSyncHandoverResponse> complete({
     required String handoverId,
     required String oneTimeCode,
@@ -135,12 +150,14 @@ class NativeHandoverRepository {
     }
     final clientId = await installationIdentity.getOrCreateInstallationId();
     if (isReplay &&
-        (prior!.handoverId != handoverId ||
-            prior.frozenRevision != frozenRevision ||
-            prior.targetClientId != clientId ||
-            prior.sourceClientId != sourceClientId ||
-            prior.oneTimeCode != oneTimeCode ||
-            prior.expiresAtUtc == null)) {
+        _isDifferentCompletion(
+          prior!,
+          handoverId: handoverId,
+          frozenRevision: frozenRevision,
+          targetClientId: clientId,
+          sourceClientId: sourceClientId,
+          oneTimeCode: oneTimeCode,
+        )) {
       throw StateError('A different handover completion is already pending.');
     }
     final record = PendingHandoverRecord(

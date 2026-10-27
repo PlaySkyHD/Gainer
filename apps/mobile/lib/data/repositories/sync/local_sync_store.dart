@@ -226,39 +226,14 @@ class LocalSyncStore {
         body,
       );
 
-      if (tail?.removesResource ?? false) {
-        // Angelegt und vor dem Senden gelöscht: Der Server erfährt nie von der
-        // Ressource, also bleibt auch lokal nichts zurück.
-        await (database.delete(database.localResources)..where(
-              (t) =>
-                  t.aggregateType.equals(aggregateType) &
-                  t.aggregateId.equals(aggregateId),
-            ))
-            .go();
-      } else {
-        await database
-            .into(database.localResources)
-            .insertOnConflictUpdate(
-              LocalResourcesCompanion.insert(
-                aggregateType: aggregateType,
-                aggregateId: aggregateId,
-                envelopeJson: envelopeJson,
-                updatedAtEpochMs: created.millisecondsSinceEpoch,
-              ),
-            );
-      }
-      for (final (relatedType, related, relatedEnvelopeJson) in relatedJson) {
-        await database
-            .into(database.localResources)
-            .insertOnConflictUpdate(
-              LocalResourcesCompanion.insert(
-                aggregateType: relatedType,
-                aggregateId: related.aggregateId,
-                envelopeJson: relatedEnvelopeJson,
-                updatedAtEpochMs: created.millisecondsSinceEpoch,
-              ),
-            );
-      }
+      await _writeResources(
+        removesResource: tail?.removesResource ?? false,
+        aggregateType: aggregateType,
+        aggregateId: aggregateId,
+        envelopeJson: envelopeJson,
+        relatedJson: relatedJson,
+        updatedAtEpochMs: created.millisecondsSinceEpoch,
+      );
       afterEnvelopeWriteForTesting?.call();
       final LocalMutation committedMutation;
       if (tail != null && tail.removesResource) {
@@ -532,6 +507,50 @@ class LocalSyncStore {
             baseVersion: Value(mutation.baseVersion),
           ),
         );
+  }
+
+  Future<void> _writeResources({
+    required bool removesResource,
+    required String aggregateType,
+    required String aggregateId,
+    required String envelopeJson,
+    required List<(String, LocalAggregateEnvelope<Object?>, String)>
+    relatedJson,
+    required int updatedAtEpochMs,
+  }) async {
+    if (removesResource) {
+      // Angelegt und vor dem Senden gelöscht: Der Server erfährt nie von der
+      // Ressource, also bleibt auch lokal nichts zurück.
+      await (database.delete(database.localResources)..where(
+            (t) =>
+                t.aggregateType.equals(aggregateType) &
+                t.aggregateId.equals(aggregateId),
+          ))
+          .go();
+    } else {
+      await database
+          .into(database.localResources)
+          .insertOnConflictUpdate(
+            LocalResourcesCompanion.insert(
+              aggregateType: aggregateType,
+              aggregateId: aggregateId,
+              envelopeJson: envelopeJson,
+              updatedAtEpochMs: updatedAtEpochMs,
+            ),
+          );
+    }
+    for (final (relatedType, related, relatedEnvelopeJson) in relatedJson) {
+      await database
+          .into(database.localResources)
+          .insertOnConflictUpdate(
+            LocalResourcesCompanion.insert(
+              aggregateType: relatedType,
+              aggregateId: related.aggregateId,
+              envelopeJson: relatedEnvelopeJson,
+              updatedAtEpochMs: updatedAtEpochMs,
+            ),
+          );
+    }
   }
 
   /// Der letzte Outbox-Eintrag der Ressource, wenn er noch nie geclaimt oder

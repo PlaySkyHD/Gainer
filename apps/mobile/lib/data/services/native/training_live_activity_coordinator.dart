@@ -146,12 +146,7 @@ class TrainingLiveActivityCoordinator {
 
     final workout = activeWorkout.active;
     if (workout == null || !workout.isActive) {
-      if (_sessionId != null) {
-        await _endOwned();
-      } else if (_cleanupPending) {
-        _cleanupPending = false;
-        await _call(platform.endAll);
-      }
+      await _endWithoutActiveWorkout();
       return;
     }
 
@@ -165,6 +160,15 @@ class TrainingLiveActivityCoordinator {
     final state = _stateFor(workout);
     if (state == _sent) return;
     await _push(state);
+  }
+
+  Future<void> _endWithoutActiveWorkout() async {
+    if (_sessionId != null) {
+      await _endOwned();
+    } else if (_cleanupPending) {
+      _cleanupPending = false;
+      await _call(platform.endAll);
+    }
   }
 
   /// Lädt das Tagebuch genau einmal je Training. Ein Lesefehler gilt als leer.
