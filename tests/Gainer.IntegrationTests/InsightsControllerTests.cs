@@ -37,6 +37,44 @@ public sealed class InsightsControllerTests
         Assert.AreEqual(new DateOnly(2026, 8, 17), queries.Through);
     }
 
+    [TestMethod]
+    [DataRow("0001-01-01")]
+    [DataRow("9999-12-31")]
+    [DataRow("1926-08-16")]
+    [DataRow("2126-08-19")]
+    public async Task DashboardRejectsAThroughDateFarFromToday(string through)
+    {
+        var queries = new RecordingInsights();
+        var controller = new InsightsController(queries, new FixedTimeProvider(new DateTimeOffset(2026, 8, 17, 12, 0, 0, TimeSpan.Zero)));
+
+        ActionResult<DashboardInsightsResponse> result = await controller.Dashboard(
+            DateOnly.Parse(through, System.Globalization.CultureInfo.InvariantCulture),
+            timeZone: "UTC",
+            cancellationToken: TestContext.CancellationToken);
+
+        var problem = Assert.IsInstanceOfType<ObjectResult>(result.Result);
+        var details = Assert.IsInstanceOfType<ValidationProblemDetails>(problem.Value);
+        Assert.IsTrue(details.Errors.ContainsKey("through"));
+        Assert.IsNull(queries.Through);
+    }
+
+    [TestMethod]
+    [DataRow("1926-08-17")]
+    [DataRow("2126-08-17")]
+    [DataRow("2026-08-17")]
+    public async Task DashboardAcceptsAThroughDateInsideTheRange(string through)
+    {
+        var queries = new RecordingInsights();
+        var controller = new InsightsController(queries, new FixedTimeProvider(new DateTimeOffset(2026, 8, 17, 12, 0, 0, TimeSpan.Zero)));
+        DateOnly requested = DateOnly.Parse(through, System.Globalization.CultureInfo.InvariantCulture);
+
+        ActionResult<DashboardInsightsResponse> result = await controller.Dashboard(
+            requested, timeZone: "UTC", cancellationToken: TestContext.CancellationToken);
+
+        Assert.IsInstanceOfType<OkObjectResult>(result.Result);
+        Assert.AreEqual(requested, queries.Through);
+    }
+
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
