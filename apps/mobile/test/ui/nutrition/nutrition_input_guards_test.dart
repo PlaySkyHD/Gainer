@@ -97,6 +97,109 @@ void main() {
       expect(viewModel.mealEstimateDraft!.components, [reis]);
     });
 
+    test('a rejected removal and move return false', () async {
+      final viewModel = NutritionViewModel(
+        repository: newRepository(),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      await viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      final id = viewModel.snapshot!.day.entries.single.entryId;
+      repository.saveGate = Completer<void>();
+      final saving = viewModel.addFood(_food('Birne'), amountGrams: 100);
+
+      expect(await viewModel.removeEntry(id), isFalse);
+      expect(await viewModel.moveEntry(id, NutritionMeal.dinner, 0), isFalse);
+      viewModel.reportRejected(NutritionErrorOperation.diary);
+      expect(viewModel.errorMessage, NutritionViewModel.rejectedMessage);
+
+      repository.saveGate!.complete();
+      await saving;
+      expect(viewModel.snapshot!.day.entries, hasLength(2));
+    });
+
+    test('a rejected search during a failing save keeps the real error and a '
+        'rejected save does not show a stale one', () async {
+      final online = _EstimateOnline([_component('Pizza')])
+        ..gate = Completer<void>();
+      final viewModel = NutritionViewModel(
+        repository: newRepository(online: online),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      repository.saveGate = Completer<void>();
+      repository.saveError = LocalResourceChangedException();
+
+      final estimating = viewModel.estimateMeal('Pizza');
+      await Future<void>.delayed(Duration.zero);
+      final saving = viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      // Die Suche wird abgewiesen, weil die Schätzung liest.
+      await viewModel.searchFoods('Apfel');
+      repository.saveGate!.complete();
+
+      expect(await saving, isFalse);
+      expect(
+        viewModel.failureMessage(),
+        isNot(NutritionViewModel.rejectedMessage),
+      );
+      expect(viewModel.failureMessage(), contains('Synchronisieren'));
+
+      online.gate!.complete();
+      await estimating;
+      // Eine abgewiesene Mutation meldet sich selbst, nicht den alten Fehler.
+      repository.saveGate = Completer<void>();
+      final first = viewModel.addFood(_food('Birne'), amountGrams: 100);
+      expect(await viewModel.addFood(_food('Kiwi'), amountGrams: 100), isFalse);
+      expect(viewModel.failureMessage(), NutritionViewModel.rejectedMessage);
+      repository.saveGate!.complete();
+      await first;
+    });
+
+    test('an invalid estimate component reports a message instead of '
+        'throwing', () async {
+      final viewModel = NutritionViewModel(
+        repository: newRepository(),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      const empty = NutritionEstimateComponent(
+        name: 'Nichts',
+        amountGrams: 0,
+        totals: NutritionTotals(kilocalories: 0),
+        confidence: 'low',
+        dataGaps: [],
+      );
+      viewModel.mealEstimateDraft = _draft([empty]);
+
+      expect(await viewModel.confirmEstimatedComponent(empty), isFalse);
+
+      expect(viewModel.errorMessage, contains('nicht gültig'));
+      expect(repository.saveCalls, 0);
+    });
+
+    test('a double tap leaves no stale rejection after the first save '
+        'succeeds', () async {
+      final viewModel = NutritionViewModel(
+        repository: newRepository(),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      repository.saveGate = Completer<void>();
+
+      final first = viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      final second = viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      repository.saveGate!.complete();
+
+      expect(await second, isFalse);
+      expect(await first, isTrue);
+      expect(viewModel.errorMessage, isNull);
+      expect(viewModel.errorOperation, isNull);
+    });
+
     test('a second action while saving is ignored', () async {
       final viewModel = NutritionViewModel(
         repository: newRepository(),
@@ -424,6 +527,140 @@ void main() {
       expect(repository.saveCalls, 0);
       expect(viewModel.snapshot!.day.entries, hasLength(1));
       expect(viewModel.errorMessage, contains('Menge'));
+    });
+
+    testWidgets('a swipe delete rejected while saving keeps the row and '
+        'shows a message', (tester) async {
+      newRepository();
+      final viewModel = await pump(tester, seedRecent: true);
+      final row = find.byKey(ValueKey('nutrition-entry-${_id(200)}'));
+      repository.saveGate = Completer<void>();
+      final saving = viewModel.addFood(_food('Birne'), amountGrams: 100);
+      await tester.pump();
+      expect(viewModel.canSave, isFalse);
+
+      // Der Ladekreis des laufenden Speicherns animiert endlos.
+      await tester.drag(row, const Offset(-500, 0));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Löschen').last);
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(row, findsOneWidget);
+      expect(viewModel.snapshot!.day.entries.map((e) => e.productName), [
+        'Haferflocken',
+      ]);
+      expect(find.text(NutritionViewModel.rejectedMessage), findsOneWidget);
+
+      repository.saveGate!.complete();
+      await saving;
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the suggested template button shows a message when it is '
+        'rejected', (tester) async {
+      newRepository();
+      await repository.saveEntry(
+        '2026-10-11',
+        NutritionEntry(
+          entryId: _id(210),
+          meal: NutritionMeal.breakfast,
+          position: 0,
+          productName: 'Müsli',
+          brand: null,
+          amountGrams: 50,
+          per100Grams: const NutritionTotals(kilocalories: 370),
+          source: const NutritionSource(
+            provider: 'Open Food Facts',
+            basisGrams: 100,
+          ),
+        ),
+      );
+      await repository.saveDayAsTemplate(
+        '2026-10-11',
+        name: 'Standard',
+        dayKind: NutritionDayKind.rest,
+      );
+      repository.saveCalls = 0;
+      final viewModel = await pump(tester);
+      final suggestion = find.byKey(
+        const ValueKey('nutrition-template-suggestion'),
+      );
+      expect(suggestion, findsOneWidget);
+      final button = find.descendant(
+        of: suggestion,
+        matching: find.byType(GainerPillButton),
+      );
+      // Der Handler bleibt von einem Tipp kurz vor dem Sperren erhalten.
+      final onPressed = tester.widget<GainerPillButton>(button).onPressed!;
+      repository.saveGate = Completer<void>();
+      final saving = viewModel.addFood(_food('Birne'), amountGrams: 100);
+      await tester.pump();
+      expect(viewModel.canSave, isFalse);
+
+      onPressed();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.text(NutritionViewModel.rejectedMessage), findsOneWidget);
+
+      repository.saveGate!.complete();
+      await saving;
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a failed entry edit shows the error on the edit page', (
+      tester,
+    ) async {
+      newRepository();
+      await pump(tester, seedRecent: true);
+      await tester.tap(find.byKey(ValueKey('nutrition-entry-${_id(200)}')));
+      await tester.pumpAndSettle();
+      repository.saveError = LocalResourceChangedException();
+
+      await tester.tap(find.widgetWithText(GainerPillButton, 'Sichern'));
+      await tester.pumpAndSettle();
+
+      const message =
+          'Der Tag hat sich gerade beim Synchronisieren geändert. '
+          'Bitte versuche es noch einmal.';
+      final page = find.ancestor(
+        of: find.byKey(const ValueKey('nutrition-edit-close')),
+        matching: find.byType(CupertinoPageScaffold),
+      );
+      expect(page, findsOneWidget);
+      expect(
+        find.descendant(of: page, matching: find.text(message)),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the targets sheet stays open with a message when saving is '
+        'rejected', (tester) async {
+      newRepository();
+      final viewModel = await pump(tester);
+      await tester.tap(find.byKey(const ValueKey('nutrition-more-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ziele'));
+      await tester.pumpAndSettle();
+      repository.saveGate = Completer<void>();
+      final saving = viewModel.addFood(_food('Birne'), amountGrams: 100);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('nutrition-targets-save')));
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(
+        find.byKey(const ValueKey('nutrition-targets-save')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('nutrition-targets-save-error')),
+        findsOneWidget,
+      );
+      expect(find.text(NutritionViewModel.rejectedMessage), findsOneWidget);
+
+      repository.saveGate!.complete();
+      await saving;
+      await tester.pumpAndSettle();
     });
 
     testWidgets('a double tap on an estimate component books it once', (

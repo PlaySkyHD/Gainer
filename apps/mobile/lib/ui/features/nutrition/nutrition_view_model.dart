@@ -216,7 +216,7 @@ class NutritionViewModel extends ChangeNotifier {
     statusMessage = '„$productName“ hinzugefügt.';
   }, saving: true);
 
-  Future<void> removeEntry(String entryId) => _run(
+  Future<bool> removeEntry(String entryId) => _run(
     () async {
       await repository.removeEntry(localDate, entryId);
       await _refresh();
@@ -228,7 +228,7 @@ class NutritionViewModel extends ChangeNotifier {
 
   /// Speichert den bearbeiteten Eintrag. [updated] entsteht per `copyWith` aus
   /// dem Original, damit ID, Position, Quelle und Nährwertsnapshot bleiben.
-  Future<void> updateEntry(NutritionEntry updated) => _run(
+  Future<bool> updateEntry(NutritionEntry updated) => _run(
     () async {
       await repository.saveEntry(localDate, updated);
       await _refresh();
@@ -239,7 +239,7 @@ class NutritionViewModel extends ChangeNotifier {
     operation: NutritionErrorOperation.diary,
   );
 
-  Future<void> moveEntry(String entryId, NutritionMeal meal, int position) =>
+  Future<bool> moveEntry(String entryId, NutritionMeal meal, int position) =>
       _run(
         () async {
           await repository.moveEntry(localDate, entryId, meal, position);
@@ -249,7 +249,7 @@ class NutritionViewModel extends ChangeNotifier {
         operation: NutritionErrorOperation.diary,
       );
 
-  Future<void> addReusableMeal(
+  Future<bool> addReusableMeal(
     String id,
     NutritionMeal meal, {
     double? portionScale,
@@ -264,7 +264,7 @@ class NutritionViewModel extends ChangeNotifier {
     statusMessage = 'Gericht als unabhängige Mahlzeit übernommen.';
   }, saving: true);
 
-  Future<void> saveReusableMeal({
+  Future<bool> saveReusableMeal({
     String? id,
     required ReusableMeal meal,
     NutritionErrorOperation operation = NutritionErrorOperation.planning,
@@ -278,7 +278,7 @@ class NutritionViewModel extends ChangeNotifier {
     operation: operation,
   );
 
-  Future<void> archiveReusableMeal(String id) => _run(
+  Future<bool> archiveReusableMeal(String id) => _run(
     () async {
       await repository.archiveReusableMeal(id);
       await _refresh();
@@ -289,7 +289,7 @@ class NutritionViewModel extends ChangeNotifier {
   );
 
   /// Speichert die Ziele mit Wirkung ab heute.
-  Future<void> saveTargets({
+  Future<bool> saveTargets({
     required NutritionDayTarget training,
     required NutritionDayTarget? restDay,
     required double? saltGrams,
@@ -310,7 +310,7 @@ class NutritionViewModel extends ChangeNotifier {
   );
 
   /// Legt die Tagesart des geöffneten Tages fest; null heißt automatisch.
-  Future<void> setDayKind(NutritionDayKind? kind) => _run(
+  Future<bool> setDayKind(NutritionDayKind? kind) => _run(
     () async {
       await repository.setDayKind(localDate, kind);
       await _refresh();
@@ -320,7 +320,7 @@ class NutritionViewModel extends ChangeNotifier {
   );
 
   /// Speichert den geöffneten Tag als neue Vorlage oder überschreibt eine.
-  Future<void> saveDayAsTemplate({
+  Future<bool> saveDayAsTemplate({
     String? overwriteId,
     String? name,
     NutritionDayKind? dayKind,
@@ -342,7 +342,7 @@ class NutritionViewModel extends ChangeNotifier {
   );
 
   /// Übernimmt die Einträge der Vorlage in den geöffneten Tag.
-  Future<void> applyTemplate(
+  Future<bool> applyTemplate(
     String templateId, {
     TemplateApplyMode mode = TemplateApplyMode.append,
   }) => _run(
@@ -355,7 +355,7 @@ class NutritionViewModel extends ChangeNotifier {
     operation: NutritionErrorOperation.diary,
   );
 
-  Future<void> updateTemplate(
+  Future<bool> updateTemplate(
     String templateId, {
     required String name,
     required NutritionDayKind? dayKind,
@@ -375,7 +375,7 @@ class NutritionViewModel extends ChangeNotifier {
     operation: NutritionErrorOperation.planning,
   );
 
-  Future<void> deleteTemplate(String templateId) => _run(
+  Future<bool> deleteTemplate(String templateId) => _run(
     () async {
       await repository.deleteTemplate(templateId);
       await _refresh();
@@ -514,35 +514,40 @@ class NutritionViewModel extends ChangeNotifier {
   ) async {
     final draft = mealEstimateDraft;
     if (draft == null || !draft.components.contains(item)) return false;
-    // 0 kcal ist gültig, z. B. für den Bestandteil „Salz“.
-    if (item.amountGrams <= 0 || item.totals.kilocalories < 0) {
-      throw StateError(
-        'Der Schätzwert ist nicht gültig und muss manuell ergänzt werden.',
-      );
-    }
-    final per100 = calculatePer100Totals(
-      amountGrams: item.amountGrams,
-      totals: item.totals,
-    );
     var saved = false;
-    final ran = await _run(() async {
-      final open = mealEstimateDraft;
-      if (open == null || !open.components.contains(item)) return;
-      final position = await _nextPosition();
-      await repository.saveEntry(
-        localDate,
-        _estimatedEntry(item, draft, per100, position),
-      );
-      saved = true;
-      await _refresh();
-      // Nur den übernommenen Bestandteil entfernen; die übrigen bleiben
-      // zum Prüfen stehen. Eine inzwischen neue Schätzung bleibt unberührt.
-      if (identical(mealEstimateDraft, open)) {
-        mealEstimateDraft = _withoutComponent(open, item, draft);
-      }
-      statusMessage = 'Geprüfte Schätzung als Eintrag gespeichert.';
-      _notify();
-    }, saving: true);
+    final ran = await _run(
+      () async {
+        final open = mealEstimateDraft;
+        if (open == null || !open.components.contains(item)) return;
+        // 0 kcal ist gültig, z. B. für den Bestandteil „Salz“. Die Prüfung
+        // läuft in `_run`, damit die Meldung im Fehlerbereich erscheint.
+        if (item.amountGrams <= 0 || item.totals.kilocalories < 0) {
+          throw const NutritionValidationException({
+            'estimate': 'Der Schätzwert ist nicht gültig und muss manuell ergänzt werden.',
+          });
+        }
+        final per100 = calculatePer100Totals(
+          amountGrams: item.amountGrams,
+          totals: item.totals,
+        );
+        final position = await _nextPosition();
+        await repository.saveEntry(
+          localDate,
+          _estimatedEntry(item, draft, per100, position),
+        );
+        saved = true;
+        await _refresh();
+        // Nur den übernommenen Bestandteil entfernen; die übrigen bleiben
+        // zum Prüfen stehen. Eine inzwischen neue Schätzung bleibt unberührt.
+        if (identical(mealEstimateDraft, open)) {
+          mealEstimateDraft = _withoutComponent(open, item, draft);
+        }
+        statusMessage = 'Geprüfte Schätzung als Eintrag gespeichert.';
+        _notify();
+      },
+      saving: true,
+      operation: NutritionErrorOperation.estimate,
+    );
     return ran && saved;
   }
 
@@ -749,6 +754,23 @@ class NutritionViewModel extends ChangeNotifier {
     _notify();
   }
 
+  static const rejectedMessage =
+      'Gerade läuft ein anderer Vorgang. Bitte versuche es gleich noch einmal.';
+
+  /// Meldung zu einer fehlgeschlagenen Mutation: ihr Fehler oder, wenn sie
+  /// abgewiesen wurde, [rejectedMessage]. Die Abweisung steht im Ergebnis der
+  /// Mutation selbst ([_run] hinterlegt sie in [errorMessage]); abgewiesene
+  /// Lesevorgänge (Suche, Schätzung) ändern nichts und verfälschen sie nicht.
+  String failureMessage() => errorMessage ?? rejectedMessage;
+
+  /// Zeigt eine abgewiesene Mutation im Bereich [operation]. Ein Fehler der
+  /// Aktion steht schon in [errorMessage] und bleibt unverändert.
+  void reportRejected(NutritionErrorOperation operation) {
+    if (_disposed || errorMessage != rejectedMessage) return;
+    errorOperation = operation;
+    _notify();
+  }
+
   /// Führt [action] aus und liefert true, wenn sie lief und ohne Fehler
   /// endete. Eine abgewiesene Aktion (zweiter Tipp, Speichern während des
   /// Tageswechsels) liefert false; Aufrufer schließen oder leeren Eingaben nur
@@ -763,7 +785,15 @@ class NutritionViewModel extends ChangeNotifier {
     NutritionErrorOperation operation = NutritionErrorOperation.entry,
   }) async {
     if (_disposed) return false;
-    if (saving ? !canSave : _reading) return false;
+    if (saving ? !canSave : _reading) {
+      // Nur Mutationen merken die Abweisung (ohne Benachrichtigung; der
+      // Aufrufer meldet sie über [reportRejected] oder [failureMessage]).
+      if (saving) {
+        errorMessage = rejectedMessage;
+        errorOperation = operation;
+      }
+      return false;
+    }
     if (saving) {
       isSaving = true;
     } else {
@@ -778,6 +808,12 @@ class NutritionViewModel extends ChangeNotifier {
     try {
       await action();
       succeeded = true;
+      // Eine währenddessen abgewiesene zweite Mutation hinterließ nur eine
+      // Meldung; neben dem Erfolg wäre sie veraltet.
+      if (errorMessage == rejectedMessage) {
+        errorMessage = null;
+        errorOperation = null;
+      }
     } catch (error) {
       if (!_disposed) {
         errorMessage = _messageFor(error);
