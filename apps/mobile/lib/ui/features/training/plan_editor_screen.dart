@@ -442,6 +442,13 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
   Widget build(BuildContext context) {
     final name = _nameController.text.trim();
     final canStart = _persisted != null && !_dirty;
+    // Bei bestehenden Plänen ist _persisted bis zum Laden null; nur neue
+    // Pläne (ohne planId) gelten dann als speicherbar.
+    final canSave =
+        _saving == null &&
+        !_loading &&
+        _loadError == null &&
+        (_dirty || _persisted == null);
     return PopScope(
       canPop: !_dirty,
       onPopInvokedWithResult: (didPop, _) {
@@ -452,9 +459,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
         trailing: [
           GainerPillButton(
             label: 'Speichern',
-            onPressed: _saving == null && (_dirty || _persisted == null)
-                ? _save
-                : null,
+            onPressed: canSave ? _save : null,
           ),
         ],
         children: _buildChildren(canStart),
