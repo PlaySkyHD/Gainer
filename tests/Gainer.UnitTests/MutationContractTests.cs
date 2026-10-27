@@ -78,7 +78,7 @@ public sealed class MutationContractTests
 
     private sealed record CompleteWorkoutMutation(
         MutationMetadata Metadata,
-        AtomicMutationScope Scope) : ITypedMutation<bool>;
+        AtomicMutationScope Scope) : ITypedMutation;
 
     private sealed record TestSnapshot(ResourceKey Resource, long Version) : IResourceSnapshot;
 }

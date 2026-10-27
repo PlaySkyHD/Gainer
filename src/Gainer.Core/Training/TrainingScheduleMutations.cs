@@ -20,7 +20,7 @@ public sealed record TrainingScheduleValues(
     IReadOnlyList<TrainingScheduleShiftValues> Shifts,
     IReadOnlyList<TrainingScheduleExceptionValues> Exceptions);
 
-public sealed record SaveTrainingScheduleMutation : ITypedMutation<TrainingScheduleSnapshot>
+public sealed record SaveTrainingScheduleMutation : ITypedMutation
 {
     private SaveTrainingScheduleMutation(MutationMetadata metadata, long baseVersion, TrainingScheduleValues schedule)
     {
@@ -54,7 +54,7 @@ public sealed record SaveTrainingScheduleMutation : ITypedMutation<TrainingSched
     }
 }
 
-public sealed record DeleteTrainingScheduleMutation : ITypedMutation<long>
+public sealed record DeleteTrainingScheduleMutation : ITypedMutation
 {
     private DeleteTrainingScheduleMutation(MutationMetadata metadata, Guid scheduleId, long baseVersion)
     {

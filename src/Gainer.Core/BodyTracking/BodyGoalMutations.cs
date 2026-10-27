@@ -4,7 +4,7 @@ namespace Gainer.Core.BodyTracking;
 
 public sealed record ActiveBodyGoalExpectation(Guid GoalId, long Version);
 
-public sealed record ActivateBodyGoalMutation : ITypedMutation<BodyGoalSnapshot>
+public sealed record ActivateBodyGoalMutation : ITypedMutation
 {
     private ActivateBodyGoalMutation(
         MutationMetadata metadata,

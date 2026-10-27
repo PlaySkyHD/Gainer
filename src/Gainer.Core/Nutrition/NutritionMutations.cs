@@ -94,7 +94,7 @@ public sealed record NutritionEntryInput
     }
 }
 
-public sealed record SaveNutritionDayMutation : ITypedMutation<NutritionDaySnapshot>
+public sealed record SaveNutritionDayMutation : ITypedMutation
 {
     private SaveNutritionDayMutation(
         MutationMetadata metadata,
@@ -177,7 +177,7 @@ public sealed record NutritionDaySnapshot(
     public ResourceKey Resource => ResourceKey.Create(ResourceKind.NutritionDay, NutritionDayId);
 }
 
-public sealed record DeleteNutritionDayMutation : ITypedMutation<long>
+public sealed record DeleteNutritionDayMutation : ITypedMutation
 {
     private DeleteNutritionDayMutation(MutationMetadata metadata, Guid nutritionDayId, long baseVersion)
     {

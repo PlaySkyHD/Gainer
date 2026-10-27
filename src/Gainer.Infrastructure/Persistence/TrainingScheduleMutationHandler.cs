@@ -200,7 +200,7 @@ public sealed class TrainingScheduleMutationHandler(
         for (int position = 0; position < values.Exceptions.Count; position++)
         {
             TrainingScheduleExceptionValues exception = values.Exceptions[position];
-            context.TrainingScheduleExceptions.Add(new TrainingScheduleException
+            context.TrainingScheduleExceptions.Add(new TrainingScheduleDeviation
             {
                 Id = Guid.NewGuid(),
                 ScheduleId = scheduleId,

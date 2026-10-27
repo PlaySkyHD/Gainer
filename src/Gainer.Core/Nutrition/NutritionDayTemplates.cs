@@ -37,7 +37,7 @@ public sealed record NutritionDayTemplateSnapshot(
     public ResourceKey Resource => ResourceKey.Create(ResourceKind.NutritionDayTemplate, TemplateId);
 }
 
-public sealed record SaveNutritionDayTemplateMutation : ITypedMutation<NutritionDayTemplateSnapshot>
+public sealed record SaveNutritionDayTemplateMutation : ITypedMutation
 {
     private SaveNutritionDayTemplateMutation(
         MutationMetadata metadata,
@@ -90,7 +90,7 @@ public sealed record SaveNutritionDayTemplateMutation : ITypedMutation<Nutrition
     }
 }
 
-public sealed record DeleteNutritionDayTemplateMutation : ITypedMutation<long>
+public sealed record DeleteNutritionDayTemplateMutation : ITypedMutation
 {
     private DeleteNutritionDayTemplateMutation(MutationMetadata metadata, Guid templateId, long baseVersion)
     {

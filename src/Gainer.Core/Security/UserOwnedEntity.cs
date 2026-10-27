@@ -4,5 +4,5 @@ namespace Gainer.Core.Security;
 public abstract class UserOwnedEntity : IUserOwnedEntity
 {
     /// <inheritdoc />
-    public Guid UserId { get; private set; }
+    public Guid UserId { get; }
 }
