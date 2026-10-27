@@ -443,7 +443,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           },
           onAddMultiple: () => _offerMultipleAdd(meal),
           onEdit: _editEntry,
-          onRemove: (entry) => vm.removeEntry(entry.entryId),
+          onRemove: _removeEntry,
           onConfirmRemove: (entry) => confirmGainerDelete(
             context,
             title: 'Eintrag löschen?',
@@ -454,6 +454,15 @@ class _NutritionScreenState extends State<NutritionScreen> {
         ),
       ),
   ];
+
+  /// Entfernt den Eintrag. Liefert false, wenn er bleibt; dann steht die
+  /// Meldung im Tagebuch.
+  Future<bool> _removeEntry(NutritionEntry entry) async {
+    final vm = widget.viewModel;
+    final removed = await vm.removeEntry(entry.entryId);
+    if (!removed) vm.reportRejected(NutritionErrorOperation.diary);
+    return removed;
+  }
 
   /// Ordnet die Einträge einer Mahlzeit per Einzelschritten in [targetIds]
   /// um. Jeder Schritt ist ein `moveEntry` wie bisher beim Nach-oben-Schieben.
@@ -470,7 +479,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
       current
         ..removeAt(from)
         ..insert(target, id);
-      await widget.viewModel.moveEntry(id, meal, target);
+      final moved = await widget.viewModel.moveEntry(id, meal, target);
+      if (!moved) {
+        // Weitere Schritte würden auf einer falschen Reihenfolge aufbauen.
+        widget.viewModel.reportRejected(NutritionErrorOperation.diary);
+        return;
+      }
       if (!mounted) return;
     }
   }
@@ -547,20 +561,22 @@ class _NutritionScreenState extends State<NutritionScreen> {
     final projection = await vm.repository.readProjection();
     if (!mounted) return;
     final training = widget.training;
-    final input = await showNutritionTargetsEditor(
+    await showNutritionTargetsEditor(
       context,
       current: current,
       hasSchedule: projection.schedule != null,
       onSetUpSchedule: training == null
           ? null
           : () => showTrainingScheduleSheet(context, repository: training),
-    );
-    if (input == null || !mounted) return;
-    await vm.saveTargets(
-      training: input.training,
-      restDay: input.restDay,
-      saltGrams: input.saltGrams,
-      fiberGrams: input.fiberGrams,
+      onSave: (input) async =>
+          await vm.saveTargets(
+            training: input.training,
+            restDay: input.restDay,
+            saltGrams: input.saltGrams,
+            fiberGrams: input.fiberGrams,
+          )
+          ? null
+          : vm.failureMessage(),
     );
   }
 
@@ -571,7 +587,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
       current: snapshot.day.dayKind,
     );
     if (!result.changed || !mounted) return;
-    await widget.viewModel.setDayKind(result.kind);
+    final vm = widget.viewModel;
+    if (!await vm.setDayKind(result.kind)) {
+      vm.reportRejected(NutritionErrorOperation.diary);
+    }
   }
 
   Future<void> _saveDayAsTemplate() async {
@@ -581,9 +600,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
     if (!mounted) return;
     switch (choice) {
       case SaveAsNewTemplate(:final name, :final dayKind):
-        await vm.saveDayAsTemplate(name: name, dayKind: dayKind);
+        if (!await vm.saveDayAsTemplate(name: name, dayKind: dayKind)) {
+          vm.reportRejected(NutritionErrorOperation.planning);
+        }
       case OverwriteTemplate(:final templateId):
-        await vm.saveDayAsTemplate(overwriteId: templateId);
+        if (!await vm.saveDayAsTemplate(overwriteId: templateId)) {
+          vm.reportRejected(NutritionErrorOperation.planning);
+        }
       case null:
     }
   }
@@ -603,7 +626,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
       if (chosen == null || !mounted) return;
       mode = chosen;
     }
-    await vm.applyTemplate(template.templateId, mode: mode);
+    if (!await vm.applyTemplate(template.templateId, mode: mode)) {
+      vm.reportRejected(NutritionErrorOperation.diary);
+    }
   }
 
   /// Öffnet den gemeinsamen Hinzufügen-Dialog als Sheet. Für [DayMealTarget]
@@ -1487,7 +1512,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       key: ValueKey('day-template-row-${template.templateId}'),
                       template: template,
                       onOpen: () => _openTemplate(template),
-                      onDelete: () => vm.deleteTemplate(template.templateId),
+                      onDelete: () async {
+                        if (!await vm.deleteTemplate(template.templateId)) {
+                          vm.reportRejected(NutritionErrorOperation.planning);
+                        }
+                      },
                     ),
                   if (vm.snapshot?.templates.isEmpty ?? true)
                     const GainerListRow(title: 'Noch keine Vorlagen'),
@@ -1518,7 +1547,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
             ? () => _editReusableMeal(id: meal.id, existing: meal.value)
             : null,
         onArchive: meal.value.status == 'Active'
-            ? () => vm.archiveReusableMeal(meal.id)
+            ? () async {
+                if (!await vm.archiveReusableMeal(meal.id)) {
+                  vm.reportRejected(NutritionErrorOperation.planning);
+                }
+              }
             : null,
       ),
   ];
@@ -1526,41 +1559,55 @@ class _NutritionScreenState extends State<NutritionScreen> {
   /// Bearbeitet eine Vorlage: Name, Tagesart und Einträge je Mahlzeit. Der
   /// Entwurf bleibt lokal, bis „Sichern“ ihn speichert.
   Future<void> _openTemplate(NutritionDayTemplate template) async {
-    // Der Entwurf lebt im State der Route; das Ergebnis kommt per `pop`.
-    final saved = await Navigator.of(context).push<_TemplateResult>(
-      CupertinoPageRoute<_TemplateResult>(
+    // Der Entwurf lebt im State der Route. Sie schließt erst, wenn das
+    // Speichern gelang; sonst bleibt der Entwurf mit Meldung offen.
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
         builder: (context) => _Owned<_TemplateDraft>(
           create: () => _TemplateDraft(template),
           release: (draft) => draft.dispose(),
           builder: (context, draft) => StatefulBuilder(
             builder: (context, setPageState) =>
-                _templateEditorPage(context, setPageState, draft),
+                _templateEditorPage(context, setPageState, draft, template),
           ),
         ),
       ),
     );
-    if (saved == null || !mounted) return;
-    await widget.viewModel.updateTemplate(
+  }
+
+  Future<void> _saveTemplate(
+    BuildContext pageContext,
+    StateSetter setPageState,
+    _TemplateDraft draft,
+    NutritionDayTemplate template,
+  ) async {
+    final vm = widget.viewModel;
+    setPageState(() => draft.saveError = null);
+    final saved = await vm.updateTemplate(
       template.templateId,
-      name: saved.name,
-      dayKind: saved.dayKind,
-      entries: saved.entries,
+      name: draft.name.text.trim(),
+      dayKind: draft.dayKind,
+      entries: List.of(draft.entries),
     );
+    if (!pageContext.mounted) return;
+    if (saved) {
+      Navigator.pop(pageContext);
+    } else {
+      setPageState(() => draft.saveError = vm.failureMessage());
+    }
   }
 
   Widget _templateEditorPage(
     BuildContext context,
     StateSetter setPageState,
     _TemplateDraft draft,
+    NutritionDayTemplate template,
   ) => _FormPage(
     title: 'Vorlage bearbeiten',
     closeKey: const ValueKey('day-template-close'),
+    error: draft.saveError,
     onSave: draft.canSave
-        ? () => Navigator.pop<_TemplateResult>(context, (
-            name: draft.name.text.trim(),
-            dayKind: draft.dayKind,
-            entries: List.of(draft.entries),
-          ))
+        ? () => _saveTemplate(context, setPageState, draft, template)
         : null,
     children: [
       GainerGroupedSection(
@@ -1816,7 +1863,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     NutritionMeal meal,
   ) async {
     final brand = c.brand.text.trim().isEmpty ? null : c.brand.text;
-    await widget.viewModel.updateEntry(
+    final saved = await widget.viewModel.updateEntry(
       entry.copyWith(
         meal: meal,
         productName: c.name.text,
@@ -1836,8 +1883,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
         clearPieces: true,
       ),
     );
-    if (widget.viewModel.errorMessage == null &&
-        routeContext.mounted &&
+    if (!saved) {
+      widget.viewModel.reportRejected(NutritionErrorOperation.diary);
+      return;
+    }
+    if (routeContext.mounted &&
         ModalRoute.of(routeContext)?.isCurrent == true) {
       Navigator.pop(routeContext, (meal: meal));
     }
@@ -1897,51 +1947,56 @@ class _NutritionScreenState extends State<NutritionScreen> {
     // Lokaler Entwurf: bleibt bis „Sichern“ unverändert gegenüber dem
     // gespeicherten Gericht und berührt nie einen Ernährungstag.
     final components = <ReusableMealComponent>[...?existing?.components];
-    try {
-      // Die Controller leben im State der Route; das Gericht kommt per `pop`.
-      final value = await Navigator.of(context).push<ReusableMeal>(
-        CupertinoPageRoute<ReusableMeal>(
-          builder: (context) => _Owned<_RecipeControllers>(
-            create: () => (
-              name: TextEditingController(text: existing?.name ?? ''),
-              description: TextEditingController(
-                text: existing?.description ?? '',
-              ),
-              portion: TextEditingController(
-                text: _grams(existing?.standardPortion ?? 1),
-              ),
+    String? saveError;
+    // Die Controller leben im State der Route. Sie schließt erst, wenn das
+    // Speichern gelang; sonst bleibt der Entwurf mit Meldung offen.
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
+        builder: (context) => _Owned<_RecipeControllers>(
+          create: () => (
+            name: TextEditingController(text: existing?.name ?? ''),
+            description: TextEditingController(
+              text: existing?.description ?? '',
             ),
-            release: (c) {
-              c.name.dispose();
-              c.description.dispose();
-              c.portion.dispose();
-            },
-            builder: (context, c) => StatefulBuilder(
-              builder: (context, setDialogState) => _recipeEditorPage(
-                context,
-                setDialogState,
-                existing: existing,
-                name: c.name,
-                description: c.description,
-                portion: c.portion,
-                components: components,
-              ),
+            portion: TextEditingController(
+              text: _grams(existing?.standardPortion ?? 1),
+            ),
+          ),
+          release: (c) {
+            c.name.dispose();
+            c.description.dispose();
+            c.portion.dispose();
+          },
+          builder: (context, c) => StatefulBuilder(
+            builder: (context, setDialogState) => _recipeEditorPage(
+              context,
+              setDialogState,
+              existing: existing,
+              name: c.name,
+              description: c.description,
+              portion: c.portion,
+              components: components,
+              saveError: saveError,
+              save: (value) async {
+                final vm = widget.viewModel;
+                setDialogState(() => saveError = null);
+                final saved = await vm.saveReusableMeal(
+                  id: id,
+                  meal: value,
+                  operation: NutritionErrorOperation.planning,
+                );
+                if (!context.mounted) return;
+                if (saved) {
+                  Navigator.pop(context);
+                } else {
+                  setDialogState(() => saveError = vm.failureMessage());
+                }
+              },
             ),
           ),
         ),
-      );
-      if (value == null || !mounted) return;
-      await widget.viewModel.saveReusableMeal(
-        id: id,
-        meal: value,
-        operation: NutritionErrorOperation.planning,
-      );
-    } catch (error) {
-      widget.viewModel.reportInputError(
-        error.toString(),
-        operation: NutritionErrorOperation.planning,
-      );
-    }
+      ),
+    );
   }
 
   Widget _recipeEditorPage(
@@ -1952,6 +2007,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
     required TextEditingController description,
     required TextEditingController portion,
     required List<ReusableMealComponent> components,
+    required String? saveError,
+    required Future<void> Function(ReusableMeal value) save,
   }) {
     void refresh() => setDialogState(() {});
     final totalKcal = components.fold<double>(
@@ -1961,6 +2018,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     return _FormPage(
       title: existing == null ? 'Neues Gericht' : 'Gericht bearbeiten',
       closeKey: const ValueKey('nutrition-recipe-close'),
+      error: saveError,
       onSave: _canSaveRecipe(name, portion, components)
           ? () {
               // Die Validierung des Modells kann werfen; wie zuvor als
@@ -1972,13 +2030,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
                   portion: portion,
                   components: components,
                 );
-                Navigator.pop<ReusableMeal>(context, value);
+                save(value);
               } catch (error) {
                 widget.viewModel.reportInputError(
                   error.toString(),
                   operation: NutritionErrorOperation.planning,
                 );
-                Navigator.pop<ReusableMeal>(context);
+                Navigator.pop(context);
               }
             }
           : null,
@@ -2276,8 +2334,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
       components.length <= 50;
 
   Future<void> _addReusableMeal(String id, ReusableMeal meal) async {
-    // Der Controller lebt im State des Sheets; die Portion kommt per `pop`.
-    final portionScale = await showGainerSheet<double>(
+    // Der Controller lebt im State des Sheets. Es schließt erst, wenn die
+    // Übernahme gelang; sonst bleibt es mit Meldung offen.
+    String? saveError;
+    await showGainerSheet<void>(
       context: context,
       builder: (sheetContext) => _Owned<TextEditingController>(
         create: () => TextEditingController(text: _grams(meal.standardPortion)),
@@ -2291,6 +2351,16 @@ class _NutritionScreenState extends State<NutritionScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 GainerSheetHeader(title: '${meal.name} übernehmen'),
+                if (saveError case final message?)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: GainerSpacing.m,
+                    ),
+                    child: Semantics(
+                      liveRegion: true,
+                      child: _notice(context, message, isError: true),
+                    ),
+                  ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     GainerSpacing.m,
@@ -2319,7 +2389,23 @@ class _NutritionScreenState extends State<NutritionScreen> {
                     label: _applyLabel,
                     expand: true,
                     onPressed: valid
-                        ? () => Navigator.of(sheetContext).pop(portion)
+                        ? () async {
+                            final vm = widget.viewModel;
+                            setSheetState(() => saveError = null);
+                            final added = await vm.addReusableMeal(
+                              id,
+                              vm.selectedMeal,
+                              portionScale: portion,
+                            );
+                            if (!context.mounted) return;
+                            if (added) {
+                              Navigator.of(sheetContext).pop();
+                            } else {
+                              setSheetState(
+                                () => saveError = vm.failureMessage(),
+                              );
+                            }
+                          }
                         : null,
                   ),
                 ),
@@ -2330,13 +2416,6 @@ class _NutritionScreenState extends State<NutritionScreen> {
         ),
       ),
     );
-    if (portionScale != null && mounted) {
-      await widget.viewModel.addReusableMeal(
-        id,
-        widget.viewModel.selectedMeal,
-        portionScale: portionScale,
-      );
-    }
   }
 
   Future<T?> _chooseFromSheet<T>({
@@ -2893,6 +2972,7 @@ class _FormPage extends StatelessWidget {
     required this.title,
     required this.children,
     required this.onSave,
+    this.error,
     this.closeKey,
     this.closeLabel = 'Schließen',
   });
@@ -2900,6 +2980,9 @@ class _FormPage extends StatelessWidget {
   final String title;
   final List<Widget> children;
   final VoidCallback? onSave;
+
+  /// Meldung, wenn das Sichern scheiterte; die Seite bleibt dann offen.
+  final String? error;
   final Key? closeKey;
   final String closeLabel;
 
@@ -2933,7 +3016,14 @@ class _FormPage extends StatelessWidget {
                     GainerSpacing.m,
                     GainerSpacing.l,
                   ),
-                  children: children,
+                  children: [
+                    if (error case final message?)
+                      Semantics(
+                        liveRegion: true,
+                        child: _notice(context, message, isError: true),
+                      ),
+                    ...children,
+                  ],
                 ),
               ),
             ],
@@ -3099,12 +3189,6 @@ class _EntryEditControllers {
   }
 }
 
-typedef _TemplateResult = ({
-  String name,
-  NutritionDayKind? dayKind,
-  List<NutritionEntry> entries,
-});
-
 /// Lokaler Entwurf einer Tagesvorlage im Editor.
 class _TemplateDraft {
   _TemplateDraft(NutritionDayTemplate template)
@@ -3118,6 +3202,9 @@ class _TemplateDraft {
   NutritionDayKind? dayKind;
   final List<NutritionEntry> entries;
   bool _entriesChanged = false;
+
+  /// Meldung des letzten gescheiterten Sicherns.
+  String? saveError;
 
   List<NutritionEntry> entriesOf(NutritionMeal meal) => [
     for (final entry in entries)
@@ -3563,7 +3650,7 @@ class _MealSection extends StatelessWidget {
   /// Langes Drücken auf „Hinzufügen“.
   final VoidCallback onAddMultiple;
   final ValueChanged<NutritionEntry> onEdit;
-  final ValueChanged<NutritionEntry> onRemove;
+  final Future<bool> Function(NutritionEntry entry) onRemove;
   final Future<bool> Function(NutritionEntry entry) onConfirmRemove;
   final Future<void> Function(
     List<NutritionEntry> ordered,
@@ -3608,8 +3695,9 @@ class _MealSection extends StatelessWidget {
     NutritionEntry entry,
   ) => GainerSwipeToDelete(
     dismissKey: ValueKey('nutrition-swipe-${entry.entryId}'),
-    confirm: () => onConfirmRemove(entry),
-    onDeleted: () => onRemove(entry),
+    // Die Zeile verschwindet nur, wenn das Entfernen gelang.
+    confirm: () async => await onConfirmRemove(entry) && await onRemove(entry),
+    onDeleted: () {},
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onLongPress: () => _showEntryActions(context, ordered, entry),
@@ -3666,7 +3754,7 @@ class _MealSection extends StatelessWidget {
         );
         if (ids != null) await onMoveTo(ordered, ids);
       case _EntryAction.remove:
-        if (await onConfirmRemove(entry)) onRemove(entry);
+        if (await onConfirmRemove(entry)) await onRemove(entry);
       case null:
     }
   }

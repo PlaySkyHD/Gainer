@@ -13,20 +13,27 @@ typedef NutritionTargetsInput = ({
   double? fiberGrams,
 });
 
-/// Öffnet den Editor für die Ziele. Liefert die Eingaben oder null bei
-/// Abbruch; gespeichert wird beim Aufrufer.
-Future<NutritionTargetsInput?> showNutritionTargetsEditor(
+/// Speichert die Ziele; liefert null bei Erfolg, sonst die Fehlermeldung.
+typedef NutritionTargetsSave = Future<String?> Function(
+  NutritionTargetsInput input,
+);
+
+/// Öffnet den Editor für die Ziele. Gelingt [onSave], schließt das Sheet;
+/// sonst bleibt es mit den Eingaben offen und zeigt den Fehler.
+Future<void> showNutritionTargetsEditor(
   BuildContext context, {
   required NutritionTargetVersion? current,
   required bool hasSchedule,
+  required NutritionTargetsSave onSave,
   VoidCallback? onSetUpSchedule,
-}) => showGainerSheet<NutritionTargetsInput>(
+}) => showGainerSheet<void>(
   context: context,
   heightFactor: 0.92,
   builder: (_) => NutritionTargetsEditor(
     current: current,
     hasSchedule: hasSchedule,
     onSetUpSchedule: onSetUpSchedule,
+    onSave: onSave,
   ),
 );
 
@@ -36,12 +43,17 @@ class NutritionTargetsEditor extends StatefulWidget {
     required this.current,
     required this.hasSchedule,
     this.onSetUpSchedule,
+    this.onSave,
     super.key,
   });
 
   final NutritionTargetVersion? current;
   final bool hasSchedule;
   final VoidCallback? onSetUpSchedule;
+
+  /// Speichert die Eingaben. Ohne [onSave] schließt das Sheet mit den
+  /// Eingaben als Ergebnis.
+  final NutritionTargetsSave? onSave;
 
   @override
   State<NutritionTargetsEditor> createState() => _NutritionTargetsEditorState();
@@ -61,6 +73,8 @@ class _NutritionTargetsEditorState extends State<NutritionTargetsEditor> {
           NutritionTargetVersion.defaultSaltGrams,
     ),
   );
+  bool _saving = false;
+  String? _saveError;
   late final _fiber = TextEditingController(
     text: _plain(
       widget.current?.effectiveFiberGrams ??
@@ -107,7 +121,7 @@ class _NutritionTargetsEditorState extends State<NutritionTargetsEditor> {
       _saltValid &&
       _fiberValid;
 
-  void _save() {
+  Future<void> _save() async {
     final training = _training.target;
     if (training == null) return;
     final salt = _saltValue;
@@ -120,12 +134,31 @@ class _NutritionTargetsEditorState extends State<NutritionTargetsEditor> {
     final keepFiberDefault =
         widget.current?.fiberGrams == null &&
         fiber == NutritionTargetVersion.defaultFiberGrams;
-    Navigator.of(context).pop<NutritionTargetsInput>((
+    final input = (
       training: training,
       restDay: _restEnabled ? _rest.target : null,
       saltGrams: keepDefault ? null : salt,
       fiberGrams: keepFiberDefault ? null : fiber,
-    ));
+    );
+    final onSave = widget.onSave;
+    if (onSave == null) {
+      Navigator.of(context).pop<NutritionTargetsInput>(input);
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    final error = await onSave(input);
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() {
+        _saving = false;
+        _saveError = error;
+      });
+    }
   }
 
   @override
@@ -162,7 +195,8 @@ class _NutritionTargetsEditorState extends State<NutritionTargetsEditor> {
               GainerPillButton(
                 key: const ValueKey('nutrition-targets-save'),
                 label: 'Sichern',
-                onPressed: _canSave ? _save : null,
+                isLoading: _saving,
+                onPressed: _canSave && !_saving ? _save : null,
               ),
             ],
           ),
@@ -177,6 +211,20 @@ class _NutritionTargetsEditorState extends State<NutritionTargetsEditor> {
               GainerSpacing.l,
             ),
             children: [
+              if (_saveError case final message?)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: GainerSpacing.s),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      message,
+                      key: const ValueKey('nutrition-targets-save-error'),
+                      style: GainerTypography.body.copyWith(
+                        color: colors.destructive,
+                      ),
+                    ),
+                  ),
+                ),
               ..._targetGroup(
                 title: _restEnabled ? 'Trainingstag' : 'Ziel pro Tag',
                 fields: _training,

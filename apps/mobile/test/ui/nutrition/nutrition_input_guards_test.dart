@@ -97,6 +97,51 @@ void main() {
       expect(viewModel.mealEstimateDraft!.components, [reis]);
     });
 
+    test('a rejected removal and move return false', () async {
+      final viewModel = NutritionViewModel(
+        repository: newRepository(),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      await viewModel.addFood(_food('Apfel'), amountGrams: 100);
+      final id = viewModel.snapshot!.day.entries.single.entryId;
+      repository.saveGate = Completer<void>();
+      final saving = viewModel.addFood(_food('Birne'), amountGrams: 100);
+
+      expect(await viewModel.removeEntry(id), isFalse);
+      expect(await viewModel.moveEntry(id, NutritionMeal.dinner, 0), isFalse);
+      viewModel.reportRejected(NutritionErrorOperation.diary);
+      expect(viewModel.errorMessage, NutritionViewModel.rejectedMessage);
+
+      repository.saveGate!.complete();
+      await saving;
+      expect(viewModel.snapshot!.day.entries, hasLength(2));
+    });
+
+    test('an invalid estimate component reports a message instead of '
+        'throwing', () async {
+      final viewModel = NutritionViewModel(
+        repository: newRepository(),
+        localDate: _date,
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.load();
+      const empty = NutritionEstimateComponent(
+        name: 'Nichts',
+        amountGrams: 0,
+        totals: NutritionTotals(kilocalories: 0),
+        confidence: 'low',
+        dataGaps: [],
+      );
+      viewModel.mealEstimateDraft = _draft([empty]);
+
+      expect(await viewModel.confirmEstimatedComponent(empty), isFalse);
+
+      expect(viewModel.errorMessage, contains('nicht gültig'));
+      expect(repository.saveCalls, 0);
+    });
+
     test('a second action while saving is ignored', () async {
       final viewModel = NutritionViewModel(
         repository: newRepository(),
@@ -424,6 +469,63 @@ void main() {
       expect(repository.saveCalls, 0);
       expect(viewModel.snapshot!.day.entries, hasLength(1));
       expect(viewModel.errorMessage, contains('Menge'));
+    });
+
+    testWidgets('a swipe delete rejected while saving keeps the row and '
+        'shows a message', (tester) async {
+      newRepository();
+      final viewModel = await pump(tester, seedRecent: true);
+      final row = find.byKey(ValueKey('nutrition-entry-${_id(200)}'));
+      repository.saveGate = Completer<void>();
+      final saving = viewModel.addFood(_food('Birne'), amountGrams: 100);
+      await tester.pump();
+      expect(viewModel.canSave, isFalse);
+
+      // Der Ladekreis des laufenden Speicherns animiert endlos.
+      await tester.drag(row, const Offset(-500, 0));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Löschen').last);
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(row, findsOneWidget);
+      expect(viewModel.snapshot!.day.entries.map((e) => e.productName), [
+        'Haferflocken',
+      ]);
+      expect(find.text(NutritionViewModel.rejectedMessage), findsOneWidget);
+
+      repository.saveGate!.complete();
+      await saving;
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the targets sheet stays open with a message when saving is '
+        'rejected', (tester) async {
+      newRepository();
+      final viewModel = await pump(tester);
+      await tester.tap(find.byKey(const ValueKey('nutrition-more-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ziele'));
+      await tester.pumpAndSettle();
+      repository.saveGate = Completer<void>();
+      final saving = viewModel.addFood(_food('Birne'), amountGrams: 100);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('nutrition-targets-save')));
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(
+        find.byKey(const ValueKey('nutrition-targets-save')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('nutrition-targets-save-error')),
+        findsOneWidget,
+      );
+      expect(find.text(NutritionViewModel.rejectedMessage), findsOneWidget);
+
+      repository.saveGate!.complete();
+      await saving;
+      await tester.pumpAndSettle();
     });
 
     testWidgets('a double tap on an estimate component books it once', (
