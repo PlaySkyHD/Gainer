@@ -97,33 +97,9 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, path);
             using HttpResponseMessage response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
-            if (response.StatusCode == HttpStatusCode.NotFound)
-                throw new FoodCatalogException("product_not_found", "The product was not found.", false, 404);
-            if (!response.IsSuccessStatusCode)
-            {
-                bool temporary = response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable or HttpStatusCode.BadGateway or HttpStatusCode.GatewayTimeout;
-                throw new FoodCatalogException(
-                    temporary ? "provider_unavailable" : "provider_error",
-                    "The food catalog provider request failed.",
-                    temporary,
-                    (int)response.StatusCode);
-            }
-            if (response.Content.Headers.ContentLength is > 0 && response.Content.Headers.ContentLength > settings.MaximumResponseBytes)
-                throw new FoodCatalogException("provider_response_too_large", "The food catalog response is too large.", true);
+            EnsureUsableResponse(response);
             await using Stream input = await response.Content.ReadAsStreamAsync(timeout.Token);
-            await using var bounded = new MemoryStream(Math.Min(settings.MaximumResponseBytes, 64 * 1024));
-            byte[] buffer = new byte[16 * 1024];
-            int total = 0;
-            while (true)
-            {
-                int read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), timeout.Token);
-                if (read == 0) break;
-                total += read;
-                if (total > settings.MaximumResponseBytes)
-                    throw new FoodCatalogException("provider_response_too_large", "The food catalog response is too large.", true);
-                await bounded.WriteAsync(buffer.AsMemory(0, read), timeout.Token);
-            }
-            bounded.Position = 0;
+            await using MemoryStream bounded = await ReadBoundedAsync(input, timeout.Token);
             return await JsonDocument.ParseAsync(bounded, cancellationToken: timeout.Token);
         }
         catch (Exception exception) when (exception is TimeoutRejectedException ||
@@ -138,6 +114,49 @@ public sealed partial class OpenFoodFactsCatalog : IExternalFoodCatalog
         catch (JsonException exception)
         {
             throw Temporary("invalid_provider_response", "The food catalog provider returned invalid data.", innerException: exception);
+        }
+    }
+
+    private void EnsureUsableResponse(HttpResponseMessage response)
+    {
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            throw new FoodCatalogException("product_not_found", "The product was not found.", false, 404);
+        if (!response.IsSuccessStatusCode)
+        {
+            bool temporary = response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable or HttpStatusCode.BadGateway or HttpStatusCode.GatewayTimeout;
+            throw new FoodCatalogException(
+                temporary ? "provider_unavailable" : "provider_error",
+                "The food catalog provider request failed.",
+                temporary,
+                (int)response.StatusCode);
+        }
+        if (response.Content.Headers.ContentLength is > 0 && response.Content.Headers.ContentLength > settings.MaximumResponseBytes)
+            throw new FoodCatalogException("provider_response_too_large", "The food catalog response is too large.", true);
+    }
+
+    private async Task<MemoryStream> ReadBoundedAsync(Stream input, CancellationToken cancellationToken)
+    {
+        var bounded = new MemoryStream(Math.Min(settings.MaximumResponseBytes, 64 * 1024));
+        try
+        {
+            byte[] buffer = new byte[16 * 1024];
+            int total = 0;
+            while (true)
+            {
+                int read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+                if (read == 0) break;
+                total += read;
+                if (total > settings.MaximumResponseBytes)
+                    throw new FoodCatalogException("provider_response_too_large", "The food catalog response is too large.", true);
+                await bounded.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            }
+            bounded.Position = 0;
+            return bounded;
+        }
+        catch
+        {
+            await bounded.DisposeAsync();
+            throw;
         }
     }
 

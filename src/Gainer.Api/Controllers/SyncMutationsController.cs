@@ -37,19 +37,8 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         }
         try
         {
-            // A missing list or null entries pass through unchanged; the processor rejects them as invalid_resources.
-            var content = new CanonicalMutationContent(
-                request.ProtocolVersion,
-                request.ClientId,
-                request.ClientSequence,
-                request.Operation,
-                request.Resources?.Select(item => item is null
-                    ? null!
-                    : new CanonicalResourceVersion(item.ResourceType, item.ResourceId, item.BaseVersion)).ToList()!,
-                request.DependsOnMutationId,
-                request.Payload);
             ProcessedSyncMutationResult result = await processor.ProcessAsync(
-                new ProcessSyncMutationCommand(mutationId, content), cancellationToken);
+                new ProcessSyncMutationCommand(mutationId, ToContent(request)), cancellationToken);
             return Ok(new PushMutationResponse(
                 result.MutationId,
                 result.Replayed,
@@ -119,6 +108,19 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
             return SyncProblem(StatusCodes.Status409Conflict, "resource_conflict", "The resource changed or is unavailable.");
         }
     }
+
+    // A missing list or null entries pass through unchanged; the processor rejects them as invalid_resources.
+    private static CanonicalMutationContent ToContent(PushMutationRequest request) => new(
+        request.ProtocolVersion,
+        request.ClientId,
+        request.ClientSequence,
+        request.Operation,
+        request.Resources?.Select(ToResourceVersion).ToList()!,
+        request.DependsOnMutationId,
+        request.Payload);
+
+    private static CanonicalResourceVersion ToResourceVersion(ResourceVersionRequest? item) =>
+        item is null ? null! : new CanonicalResourceVersion(item.ResourceType, item.ResourceId, item.BaseVersion);
 
     private ObjectResult SyncProblem(int status, string code, string title) =>
         SyncProblemResults.Create(HttpContext, status, code, title);

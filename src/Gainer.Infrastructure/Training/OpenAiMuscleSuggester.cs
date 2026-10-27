@@ -53,6 +53,9 @@ public sealed class OpenAiMuscleSuggester(
     IUserContext userContext) : IMuscleSuggester
 {
     private const int MaximumExplanationLength = 300;
+    private const string StringType = "string";
+    private const string QuestionKind = "question";
+    private const string QuestionProperty = "question";
 
     public async Task<MuscleSuggestionResult> SuggestAsync(
         MuscleSuggestionInput input,
@@ -131,7 +134,7 @@ public sealed class OpenAiMuscleSuggester(
         ProviderReply reply = JsonSerializer.Deserialize<ProviderReply>(json, JsonOptions)
             ?? throw new JsonException("The reply payload is missing.");
 
-        if (reply.Kind == "question")
+        if (reply.Kind == QuestionKind)
         {
             string? question = reply.Question?.Trim();
             string[] options = (reply.Options ?? [])
@@ -162,27 +165,27 @@ public sealed class OpenAiMuscleSuggester(
     {
         type = "array",
         maxItems = maximum,
-        items = new { type = "string", @enum = MuscleKeys.Known },
+        items = new { type = StringType, @enum = MuscleKeys.Known },
     };
 
     private static readonly object ReplySchema = new
     {
         type = "object",
         additionalProperties = false,
-        required = new[] { "kind", "question", "options", "primaryMuscles", "secondaryMuscles", "explanation" },
+        required = new[] { "kind", QuestionProperty, "options", "primaryMuscles", "secondaryMuscles", "explanation" },
         properties = new
         {
-            kind = new { type = "string", @enum = new[] { "question", "suggestion" } },
-            question = new { type = new[] { "string", "null" }, maxLength = MuscleSuggestionInput.MaximumTextLength },
+            kind = new { type = StringType, @enum = new[] { QuestionKind, "suggestion" } },
+            question = new { type = new[] { StringType, "null" }, maxLength = MuscleSuggestionInput.MaximumTextLength },
             options = new
             {
                 type = "array",
                 maxItems = MuscleSuggestionResult.MaximumOptions,
-                items = new { type = "string", maxLength = 60 },
+                items = new { type = StringType, maxLength = 60 },
             },
             primaryMuscles = MuscleList(MuscleKeys.MaximumPrimary),
             secondaryMuscles = MuscleList(MuscleKeys.MaximumSecondary),
-            explanation = new { type = new[] { "string", "null" }, maxLength = MaximumExplanationLength },
+            explanation = new { type = new[] { StringType, "null" }, maxLength = MaximumExplanationLength },
         },
     };
 
@@ -190,15 +193,15 @@ public sealed class OpenAiMuscleSuggester(
     {
         type = "object",
         additionalProperties = false,
-        required = new[] { "kind", "question", "options", "primaryMuscles", "secondaryMuscles", "explanation" },
+        required = new[] { "kind", QuestionProperty, "options", "primaryMuscles", "secondaryMuscles", "explanation" },
         properties = new
         {
-            kind = new { type = "string", @enum = new[] { "suggestion" } },
+            kind = new { type = StringType, @enum = new[] { "suggestion" } },
             question = new { type = "null" },
-            options = new { type = "array", maxItems = 0, items = new { type = "string" } },
+            options = new { type = "array", maxItems = 0, items = new { type = StringType } },
             primaryMuscles = MuscleList(MuscleKeys.MaximumPrimary),
             secondaryMuscles = MuscleList(MuscleKeys.MaximumSecondary),
-            explanation = new { type = "string", maxLength = MaximumExplanationLength },
+            explanation = new { type = StringType, maxLength = MaximumExplanationLength },
         },
     };
 

@@ -76,6 +76,15 @@ public static class StravaExportNames
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown export kind."),
     };
 
+    public static string ToWire(StravaExportStatus status) => status switch
+    {
+        StravaExportStatus.Pending => "pending",
+        StravaExportStatus.Processing => "processing",
+        StravaExportStatus.Completed => "completed",
+        StravaExportStatus.Failed => "failed",
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown export status."),
+    };
+
     public static bool TryParseKind(string? value, out StravaExportKind kind)
     {
         switch (value)
@@ -91,13 +100,4 @@ public static class StravaExportNames
                 return false;
         }
     }
-
-    public static string ToWire(StravaExportStatus status) => status switch
-    {
-        StravaExportStatus.Pending => "pending",
-        StravaExportStatus.Processing => "processing",
-        StravaExportStatus.Completed => "completed",
-        StravaExportStatus.Failed => "failed",
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown export status."),
-    };
 }

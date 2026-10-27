@@ -90,7 +90,7 @@ public sealed class StravaIntegrationService(
         }
         catch (StravaApiException exception)
         {
-            logger.LogWarning("Strava code exchange failed with {Failure} ({Status}).", exception.Failure, exception.StatusCode);
+            logger.LogWarning(exception, "Strava code exchange failed with {Failure} ({Status}).", exception.Failure, exception.StatusCode);
             return StravaAuthorizationResult.Failed;
         }
         if (issued.AthleteId is not { } athleteId || athleteId <= 0)
@@ -156,7 +156,10 @@ public sealed class StravaIntegrationService(
             catch (StravaApiException exception)
             {
                 // Best effort: the tokens are deleted anyway; the user can also remove Gainer in Strava.
-                logger.LogInformation("Strava deauthorization failed with {Failure}.", exception.Failure);
+                if (logger.IsEnabled(LogLevel.Information))
+                {
+                    logger.LogInformation(exception, "Strava deauthorization failed with {Failure}.", exception.Failure);
+                }
             }
         }
         context.StravaConnections.Remove(connection);

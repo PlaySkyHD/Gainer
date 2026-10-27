@@ -15,7 +15,7 @@ namespace Gainer.Api.Controllers;
 [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
 public sealed class StravaController(IStravaIntegrationService strava, IOptions<StravaOptions> options) : ControllerBase
 {
-    public const string CallbackPath = "/" + ApiConstants.Version1Route + "/integrations/strava/callback";
+    public const string CallbackRoute = ApiConstants.Version1Route + "/integrations/strava/callback";
 
     [HttpGet]
     [ProducesResponseType<StravaStatusResponse>(StatusCodes.Status200OK)]
@@ -106,7 +106,7 @@ public sealed class StravaController(IStravaIntegrationService strava, IOptions<
     private string CallbackUrl() =>
         options.Value.CallbackUrl is { Length: > 0 } configured
             ? configured
-            : $"{Request.Scheme}://{Request.Host}{Request.PathBase}{CallbackPath}";
+            : $"{Request.Scheme}://{Request.Host}{Request.PathBase}/{CallbackRoute}";
 
     private ActionResult<T> Handle<T>(Func<ActionResult<T>> action)
     {

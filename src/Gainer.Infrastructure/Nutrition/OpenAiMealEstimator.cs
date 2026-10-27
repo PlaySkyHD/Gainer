@@ -119,7 +119,7 @@ public sealed class OpenAiMealEstimator(
         }
         catch (OpenAiProviderException exception) when (exception.StatusCode == 400)
         {
-            logger?.LogWarning("Meal estimate web search was rejected by the provider; estimating without it.");
+            logger?.LogWarning(exception, "Meal estimate web search was rejected by the provider; estimating without it.");
             return await provider.CreateResponseAsync(BuildRequest(text, image, null), cancellationToken);
         }
     }
@@ -240,6 +240,7 @@ public sealed class OpenAiMealEstimator(
         RespectRequiredConstructorParameters = true,
     };
     private const string NumberType = "number";
+    private const string StringType = "string";
     private static readonly string[] NullableNumberType = [NumberType, "null"];
     private static readonly object NullableNumberSchema = new
     {
@@ -266,7 +267,7 @@ public sealed class OpenAiMealEstimator(
                     required = new[] { "name", "amountGrams", "kilocalories", "proteinGrams", "carbohydrateGrams", "fatGrams", "saltGrams", "fiberGrams", "sourceUrl", "pieceCount", "pieceGrams", "confidence", "dataGaps" },
                     properties = new
                     {
-                        name = new { type = "string", maxLength = NutritionLimits.MaxComponentNameLength },
+                        name = new { type = StringType, maxLength = NutritionLimits.MaxComponentNameLength },
                         amountGrams = new { type = NumberType, minimum = NutritionLimits.MinAmountGrams, maximum = NutritionLimits.MaxAmountGrams },
                         kilocalories = new { type = NumberType, minimum = 0, maximum = NutritionLimits.MaxDailyKilocalories },
                         proteinGrams = NullableNumberSchema,
@@ -274,11 +275,11 @@ public sealed class OpenAiMealEstimator(
                         fatGrams = NullableNumberSchema,
                         saltGrams = new { type = NullableNumberType, minimum = 0, maximum = NutritionLimits.MaxSaltGramsPer100Grams },
                         fiberGrams = NullableNumberSchema,
-                        sourceUrl = new { type = new[] { "string", "null" }, maxLength = MaxSourceUrlLength },
+                        sourceUrl = new { type = new[] { StringType, "null" }, maxLength = MaxSourceUrlLength },
                         pieceCount = new { type = NullableNumberType, minimum = 0, maximum = NutritionPortion.MaxPieceCount },
                         pieceGrams = new { type = NullableNumberType, minimum = 0, maximum = NutritionPortion.MaxPieceGrams },
-                        confidence = new { type = "string", @enum = new[] { "low", "medium", "high" } },
-                        dataGaps = new { type = "array", maxItems = NutritionLimits.MaxDataGapsPerEstimateComponent, items = new { type = "string", maxLength = NutritionLimits.MaxDataGapLength } },
+                        confidence = new { type = StringType, @enum = new[] { "low", "medium", "high" } },
+                        dataGaps = new { type = "array", maxItems = NutritionLimits.MaxDataGapsPerEstimateComponent, items = new { type = StringType, maxLength = NutritionLimits.MaxDataGapLength } },
                     },
                 },
             },

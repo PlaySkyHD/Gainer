@@ -24,6 +24,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
 {
     private const string PositionNonNegativeCheck = "\"Position\" >= 0";
     private const string NameNotBlankCheck = "length(trim(\"Name\")) > 0";
+    private const string ByteaColumnType = "bytea";
     private static readonly JsonSerializerOptions PhaseJsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>Hash-only metadata for pending account invitations.</summary>
@@ -254,7 +255,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             handover.Property(item => item.UserId).ValueGeneratedNever();
             handover.Property(item => item.Id).ValueGeneratedNever();
             handover.Property(item => item.RequestId).ValueGeneratedNever();
-            handover.Property(item => item.CodeHash).HasColumnType("bytea").IsRequired();
+            handover.Property(item => item.CodeHash).HasColumnType(ByteaColumnType).IsRequired();
             handover.Property(item => item.ProtectedCode).HasMaxLength(4096);
             handover.Property(item => item.Status).HasMaxLength(16).IsRequired();
             handover.HasIndex(item => new { item.UserId, item.RequestId }).IsUnique();
@@ -281,7 +282,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             mutation.HasKey(item => new { item.UserId, item.MutationId });
             mutation.Property(item => item.UserId).ValueGeneratedNever();
             mutation.Property(item => item.MutationId).ValueGeneratedNever();
-            mutation.Property(item => item.ContentHash).HasColumnType("bytea");
+            mutation.Property(item => item.ContentHash).HasColumnType(ByteaColumnType);
             mutation.Property(item => item.ResultJson).HasColumnType("jsonb").IsRequired();
             mutation.HasIndex(item => new { item.UserId, item.ClientId, item.ClientSequence }).IsUnique();
             mutation.HasOne<AppUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
@@ -331,6 +332,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             item.HasOne<AppUser>().WithMany().HasForeignKey(value => value.UserId).OnDelete(DeleteBehavior.Cascade);
         });
     }
+
+    private static string? SerializePhases(IReadOnlyList<CardioPhaseValues>? phases) =>
+        phases == null ? null : JsonSerializer.Serialize(phases, PhaseJsonOptions);
+
+    private static IReadOnlyList<CardioPhaseValues>? DeserializePhases(string? json) =>
+        json == null ? null : JsonSerializer.Deserialize<CardioPhaseValues[]>(json, PhaseJsonOptions);
+
+    private static bool PhasesEqual(IReadOnlyList<CardioPhaseValues>? left, IReadOnlyList<CardioPhaseValues>? right) =>
+        left == null ? right == null : right != null && left.SequenceEqual(right);
+
+    private static int PhasesHash(IReadOnlyList<CardioPhaseValues>? phases) =>
+        phases == null ? 0 : phases.Aggregate(0, (hash, phase) => HashCode.Combine(hash, phase));
+
+    private static IReadOnlyList<CardioPhaseValues>? PhasesSnapshot(IReadOnlyList<CardioPhaseValues>? phases) =>
+        phases?.ToArray();
 
     private static void ConfigureTraining(ModelBuilder modelBuilder)
     {
@@ -596,12 +612,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             session.Property(item => item.Phases)
                 .HasColumnType("jsonb")
                 .HasConversion(
-                    phases => phases == null ? null : JsonSerializer.Serialize(phases, PhaseJsonOptions),
-                    json => json == null ? null : (IReadOnlyList<CardioPhaseValues>?)JsonSerializer.Deserialize<CardioPhaseValues[]>(json, PhaseJsonOptions),
+                    phases => SerializePhases(phases),
+                    json => DeserializePhases(json),
                     new ValueComparer<IReadOnlyList<CardioPhaseValues>?>(
-                        (left, right) => left == null ? right == null : right != null && left.SequenceEqual(right),
-                        phases => phases == null ? 0 : phases.Aggregate(0, (hash, phase) => HashCode.Combine(hash, phase)),
-                        phases => phases == null ? null : phases.ToArray()));
+                        (left, right) => PhasesEqual(left, right),
+                        phases => PhasesHash(phases),
+                        phases => PhasesSnapshot(phases)));
             session.Property(item => item.Version).IsConcurrencyToken();
             session.HasIndex(item => new { item.UserId, item.StartedAtUtc })
                 .IsDescending(false, true);
@@ -998,7 +1014,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
         {
             invitation.ToTable("account_invitations", DatabaseSchemas.Identity);
             invitation.HasKey(item => item.Id);
-            invitation.Property(item => item.TokenHash).HasColumnType("bytea").IsRequired();
+            invitation.Property(item => item.TokenHash).HasColumnType(ByteaColumnType).IsRequired();
             invitation.Property(item => item.Version).IsConcurrencyToken();
             invitation.HasIndex(item => item.UserId).IsUnique();
             invitation.HasIndex(item => item.TokenHash).IsUnique();
@@ -1019,9 +1035,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
             session.HasKey(item => item.Id);
             session.Property(item => item.Id).ValueGeneratedNever();
             session.Property(item => item.DeviceName).HasMaxLength(100).IsRequired();
-            session.Property(item => item.RefreshTokenHash).HasColumnType("bytea").IsRequired();
-            session.Property(item => item.PreviousRefreshTokenHash).HasColumnType("bytea");
-            session.Property(item => item.DiscardedRefreshTokenHash).HasColumnType("bytea");
+            session.Property(item => item.RefreshTokenHash).HasColumnType(ByteaColumnType).IsRequired();
+            session.Property(item => item.PreviousRefreshTokenHash).HasColumnType(ByteaColumnType);
+            session.Property(item => item.DiscardedRefreshTokenHash).HasColumnType(ByteaColumnType);
             session.HasIndex(item => item.RefreshTokenHash).IsUnique();
             session.HasIndex(item => item.PreviousRefreshTokenHash).IsUnique();
             session.HasIndex(item => item.DiscardedRefreshTokenHash).IsUnique();

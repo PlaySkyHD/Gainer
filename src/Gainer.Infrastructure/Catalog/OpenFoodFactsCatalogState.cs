@@ -75,9 +75,15 @@ public sealed class OpenFoodFactsCatalogState(IOptions<OpenFoodFactsOptions> opt
             }
             if (abandoned)
             {
-                // Outside the lock: cancellation callbacks run synchronously.
-                try { call.Cancellation.Cancel(); }
-                catch (ObjectDisposedException) { } // the call finished in the meantime
+                // Outside the lock: the abandoning caller awaits the cancellation callbacks.
+                try
+                {
+                    await call.Cancellation.CancelAsync();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The call finished in the meantime.
+                }
                 _ = call.Task.ContinueWith(static task => task.Exception, TaskScheduler.Default); // nobody awaits it any more
             }
         }

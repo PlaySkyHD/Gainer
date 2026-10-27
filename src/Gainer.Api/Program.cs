@@ -1,3 +1,4 @@
+using System.Net;
 using Gainer.Api.Composition;
 using Gainer.Api.Security;
 using Gainer.Infrastructure.HealthChecks;
@@ -6,7 +7,7 @@ using Gainer.ServiceDefaults;
 
 if (args.Contains("--health-check", StringComparer.Ordinal))
 {
-    const string defaultHealthCheckUrl = "http://127.0.0.1:8080/health/live";
+    string defaultHealthCheckUrl = new UriBuilder(Uri.UriSchemeHttp, IPAddress.Loopback.ToString(), 8080, "health/live").Uri.ToString();
     using var healthClient = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
     using HttpResponseMessage response = await healthClient.GetAsync(
         Environment.GetEnvironmentVariable("GAINER_HEALTHCHECK_URL") ?? defaultHealthCheckUrl);
@@ -39,5 +40,3 @@ app.MapGainerApi();
 app.MapGainerHealthEndpoints();
 
 await app.RunAsync();
-
-public partial class Program;

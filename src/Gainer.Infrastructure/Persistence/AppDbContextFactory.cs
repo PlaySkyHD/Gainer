@@ -12,7 +12,7 @@ public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(
-                "Host=localhost;Database=gainer_design;Username=gainer;Password=design-time-only",
+                "Host=localhost;Database=gainer_design;Username=gainer",
                 npgsql => npgsql.MigrationsHistoryTable(
                     DatabaseSchemaVersion.MigrationHistoryTable,
                     DatabaseSchemaVersion.MigrationHistorySchema))

@@ -160,8 +160,8 @@ public sealed partial class CoachService(
         return data.ActiveGoal is null
             ? new ToolResult(data.AsOfRevision, [], ["No active goal is available."])
             : new ToolResult(data.AsOfRevision, [
-                Fact(data, "goal.kind", "goal", "Active goal", null, data.ActiveGoal.Kind.ToString(), null, "current", null),
-                Fact(data, "goal.target_weight", "goal", "Target weight", data.ActiveGoal.TargetWeightKg, null, "kg", "current", null),
+                Fact(data, "goal.kind", "goal", "Active goal", new FactValue(null, data.ActiveGoal.Kind.ToString(), null), "current"),
+                Fact(data, "goal.target_weight", "goal", "Target weight", new FactValue(data.ActiveGoal.TargetWeightKg, null, "kg"), "current"),
             ], []);
     }
 
@@ -171,9 +171,9 @@ public sealed partial class CoachService(
         DashboardInsightSnapshot data = await Dashboard(days, cancellationToken);
         var result = new List<CoachFact>();
         if (data.Weight.AverageKg is { } average)
-            result.Add(Fact(data, $"weight.avg.{days}", "weight", "Average weight", average, null, "kg", $"last {days} days", data.Weight.AverageAlgorithmVersion));
+            result.Add(Fact(data, $"weight.avg.{days}", "weight", "Average weight", new FactValue(average, null, "kg"), $"last {days} days", data.Weight.AverageAlgorithmVersion));
         if (data.Weight.TrendKgPerWeek is { } trend)
-            result.Add(Fact(data, $"weight.trend.{days}", "weight", "Weekly weight trend", trend, null, "kg/week", $"last {days} days", data.Weight.TrendAlgorithmVersion));
+            result.Add(Fact(data, $"weight.trend.{days}", "weight", "Weekly weight trend", new FactValue(trend, null, "kg/week"), $"last {days} days", data.Weight.TrendAlgorithmVersion));
         return new ToolResult(data.AsOfRevision, result, result.Count == 0 ? ["No weight measurements are available."] : []);
     }
 
@@ -182,15 +182,15 @@ public sealed partial class CoachService(
         int days = RequiredDays(args, "days");
         DashboardInsightSnapshot data = await Dashboard(days, cancellationToken);
         var result = new List<CoachFact>();
-        AddMetric(result, data, $"nutrition.calories.{days}", "Average calories", data.Nutrition.CaloriesKcal.Value, "kcal/day", days, data.Nutrition.AlgorithmVersion);
-        AddMetric(result, data, $"nutrition.protein.{days}", "Average protein", data.Nutrition.ProteinGrams.Value, "g/day", days, data.Nutrition.AlgorithmVersion);
-        AddMetric(result, data, $"nutrition.fiber.{days}", "Average fiber on days with fiber data", data.Nutrition.FiberGrams?.Value, "g/day", days, data.Nutrition.AlgorithmVersion);
+        AddMetric(result, data, $"nutrition.calories.{days}", "Average calories", data.Nutrition.CaloriesKcal.Value, "kcal/day", days);
+        AddMetric(result, data, $"nutrition.protein.{days}", "Average protein", data.Nutrition.ProteinGrams.Value, "g/day", days);
+        AddMetric(result, data, $"nutrition.fiber.{days}", "Average fiber on days with fiber data", data.Nutrition.FiberGrams?.Value, "g/day", days);
         if (data.Nutrition.MealDiaryDays > 0)
             result.Add(Fact(data, $"nutrition.source.diary.{days}", "nutrition-source", "Days sourced from meal diary",
-                data.Nutrition.MealDiaryDays, NutritionSources.MealDiary, "days", $"last {days} days", data.Nutrition.AlgorithmVersion));
+                new FactValue(data.Nutrition.MealDiaryDays, NutritionSources.MealDiary, "days"), $"last {days} days", data.Nutrition.AlgorithmVersion));
         if (data.Nutrition.LegacyCheckInDays > 0)
             result.Add(Fact(data, $"nutrition.source.legacy.{days}", "nutrition-source", "Days sourced from legacy check-ins",
-                data.Nutrition.LegacyCheckInDays, NutritionSources.LegacyCheckIn, "days", $"last {days} days", data.Nutrition.AlgorithmVersion));
+                new FactValue(data.Nutrition.LegacyCheckInDays, NutritionSources.LegacyCheckIn, "days"), $"last {days} days", data.Nutrition.AlgorithmVersion));
         return new ToolResult(data.AsOfRevision, result, result.Count == 0 ? ["No nutrition entries are available."] : []);
     }
 
@@ -219,14 +219,14 @@ public sealed partial class CoachService(
         DashboardInsightSnapshot data = await Dashboard(days, cancellationToken);
         var facts = new List<CoachFact>
         {
-            Fact(data, $"training.volume.{days}", "training", "Training volume", data.Training.VolumeKgRepetitions,
-                null, data.Training.VolumeUnit, $"last {days} days", data.Training.VolumeAlgorithmVersion),
-            Fact(data, $"training.workouts.{days}", "training", "Completed workouts", data.Training.WorkoutCount,
-                null, "workouts", $"last {days} days", null),
+            Fact(data, $"training.volume.{days}", "training", "Training volume",
+                new FactValue(data.Training.VolumeKgRepetitions, null, data.Training.VolumeUnit), $"last {days} days", data.Training.VolumeAlgorithmVersion),
+            Fact(data, $"training.workouts.{days}", "training", "Completed workouts",
+                new FactValue(data.Training.WorkoutCount, null, "workouts"), $"last {days} days"),
         };
         if (data.Training.BestSet is { } best)
             facts.Add(Fact(data, $"training.e1rm.{best.ExerciseId:N}.{days}", "strength", "Best estimated one-rep max",
-                best.EstimatedOneRepMaxKg, null, "kg", $"last {days} days", data.Training.EstimatedOneRepMaxAlgorithmVersion));
+                new FactValue(best.EstimatedOneRepMaxKg, null, "kg"), $"last {days} days", data.Training.EstimatedOneRepMaxAlgorithmVersion));
         return new ToolResult(data.AsOfRevision, facts, BodyweightGaps(data.Training.BodyweightMissing));
     }
 
@@ -274,9 +274,9 @@ public sealed partial class CoachService(
         decimal? currentValue = MetricValue(current, metric, currentDays);
         decimal? previousValue = MetricValue(previous, metric, previousDays);
         var facts = new List<CoachFact>();
-        AddComparisonFact(facts, current, metric, "current", currentDays, $"last {currentDays} days", unit, currentValue);
+        AddComparisonFact(facts, current, metric, "current", currentDays, $"last {currentDays} days", new FactValue(currentValue, null, unit));
         AddComparisonFact(facts, previous, metric, "comparison", previousDays,
-            $"{previousDays} days before the last {currentDays} days", unit, previousValue);
+            $"{previousDays} days before the last {currentDays} days", new FactValue(previousValue, null, unit));
         return new ToolResult(Math.Max(current.AsOfRevision, previous.AsOfRevision), facts,
             facts.Count < 2 ? ["The selected periods do not both contain enough data."] : []);
     }
@@ -460,15 +460,20 @@ public sealed partial class CoachService(
         element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
             ? value.GetString()! : throw new CoachResponseValidationException($"{name} is required.");
 
+    /// <summary>The measured number, the text value and the unit of one fact.</summary>
+    private readonly record struct FactValue(decimal? Number, string? Text, string? Unit);
+
     private static CoachFact Fact(
-        DashboardInsightSnapshot data, string suffix, string kind, string label, decimal? number, string? text,
-        string? unit, string period, string? algorithm) =>
-        new($"rev:{data.AsOfRevision}:{suffix}", kind, label, TrainingStatistics.RoundForOutput(number), text, unit, period, algorithm);
+        DashboardInsightSnapshot data, string suffix, string kind, string label, FactValue value, string period,
+        string? algorithm = null) =>
+        new($"rev:{data.AsOfRevision}:{suffix}", kind, label, TrainingStatistics.RoundForOutput(value.Number), value.Text,
+            value.Unit, period, algorithm);
 
     private static void AddMetric(List<CoachFact> facts, DashboardInsightSnapshot data, string suffix, string label,
-        decimal? value, string unit, int days, string algorithm)
+        decimal? value, string unit, int days)
     {
-        if (value is { } number) facts.Add(Fact(data, suffix, "nutrition", label, number, null, unit, $"last {days} days", algorithm));
+        if (value is { } number)
+            facts.Add(Fact(data, suffix, "nutrition", label, new FactValue(number, null, unit), $"last {days} days", data.Nutrition.AlgorithmVersion));
     }
 
     private static decimal? MetricValue(DashboardInsightSnapshot value, string metric, int days) => metric switch
@@ -481,10 +486,10 @@ public sealed partial class CoachService(
     };
 
     private static void AddComparisonFact(List<CoachFact> facts, DashboardInsightSnapshot data, string metric,
-        string side, int days, string period, string? unit, decimal? value)
+        string side, int days, string period, FactValue value)
     {
-        if (value is { } number) facts.Add(Fact(data, $"compare.{metric}.{side}.{days}", "comparison", metric,
-            number, null, unit, period, null));
+        if (value.Number is not null)
+            facts.Add(Fact(data, $"compare.{metric}.{side}.{days}", "comparison", metric, value, period));
     }
 
     private sealed record ToolResult(long AsOfRevision, IReadOnlyList<CoachFact> Facts, IReadOnlyList<string> DataGaps);

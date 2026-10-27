@@ -12,7 +12,7 @@ timeout_min=120
 interval=60
 prs=()
 
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --timeout) timeout_min="${2:-x}"; shift 2 || shift ;;
     --interval) interval="${2:-x}"; shift 2 || shift ;;
@@ -33,29 +33,29 @@ check_pr() {
   local n="$1" pr state merged mstate sha suites runs failed
   if ! pr=$(gh api "repos/$repo/pulls/$n" --jq '[.state, .merged, (.mergeable_state // "unknown"), .head.sha] | join("|")' 2>/dev/null); then
     errors[$n]=$(( ${errors[$n]:-0} + 1 ))
-    if [ "${errors[$n]}" -ge 3 ]; then
-      echo "#$n: not readable (not found or gh error)"; attention=1; done_pr[$n]=1
+    if [[ "${errors[$n]}" -ge 3 ]]; then
+      echo "#$n: not readable (not found or gh error)" >&2; attention=1; done_pr[$n]=1
     fi
     return
   fi
   errors[$n]=0
   IFS='|' read -r state merged mstate sha <<<"$pr"
-  if [ "$merged" = "true" ]; then echo "#$n: merged"; done_pr[$n]=1; return; fi
-  if [ "$state" != "open" ]; then echo "#$n: closed without merge"; attention=1; done_pr[$n]=1; return; fi
-  if [ "$mstate" = "dirty" ]; then echo "#$n: merge conflict with base"; attention=1; done_pr[$n]=1; return; fi
+  if [[ "$merged" = "true" ]]; then echo "#$n: merged"; done_pr[$n]=1; return; fi
+  if [[ "$state" != "open" ]]; then echo "#$n: closed without merge"; attention=1; done_pr[$n]=1; return; fi
+  if [[ "$mstate" = "dirty" ]]; then echo "#$n: merge conflict with base"; attention=1; done_pr[$n]=1; return; fi
   # Suites exist before their runs do (late workflows, jobs behind needs:).
   suites=$(gh api "repos/$repo/commits/$sha/check-suites?per_page=100" \
     --jq '[.check_suites[] | select(.latest_check_runs_count > 0 or .app.slug == "github-actions") | select(.status != "completed")] | length' 2>/dev/null) || return 0
-  [ "$suites" = "0" ] || return 0
+  [[ "$suites" = "0" ]] || return 0
   runs=$(gh api "repos/$repo/commits/$sha/check-runs?per_page=100" \
     --jq '[.check_runs[] | .status + "/" + (.conclusion // "-") + "/" + .name] | .[]' 2>/dev/null) || return 0
-  [ -n "$runs" ] || return 0                       # checks not registered yet
+  [[ -n "$runs" ]] || return 0                       # checks not registered yet
   if grep -qvE '^completed/' <<<"$runs"; then return 0; fi   # still running
   failed=$(grep -E '^completed/(failure|timed_out|cancelled|action_required|startup_failure|stale)/' <<<"$runs" \
     | cut -d/ -f3- | paste -sd, - || true)
-  if [ -n "$failed" ]; then
+  if [[ -n "$failed" ]]; then
     echo "#$n: checks failed: $failed"; attention=1
-  elif [ "$mstate" = "unknown" ]; then
+  elif [[ "$mstate" = "unknown" ]]; then
     return 0                                       # GitHub still computes mergeability
   else
     echo "#$n: checks passed (mergeable_state: $mstate)"
@@ -66,14 +66,14 @@ check_pr() {
 while :; do
   open=0
   for n in "${prs[@]}"; do
-    [ -n "${done_pr[$n]:-}" ] && continue
+    [[ -n "${done_pr[$n]:-}" ]] && continue
     check_pr "$n"
-    [ -n "${done_pr[$n]:-}" ] || open=1
+    [[ -n "${done_pr[$n]:-}" ]] || open=1
   done
-  [ "$open" -eq 0 ] && exit "$attention"
-  if [ "$SECONDS" -ge "$deadline" ]; then
+  [[ "$open" -eq 0 ]] && exit "$attention"
+  if [[ "$SECONDS" -ge "$deadline" ]]; then
     pending=""
-    for n in "${prs[@]}"; do [ -n "${done_pr[$n]:-}" ] || pending+="#$n "; done
+    for n in "${prs[@]}"; do [[ -n "${done_pr[$n]:-}" ]] || pending+="#$n "; done
     echo "timeout after ${timeout_min} min, still pending: ${pending% }"
     exit 2
   fi
