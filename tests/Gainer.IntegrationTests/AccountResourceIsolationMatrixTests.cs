@@ -67,7 +67,7 @@ public sealed partial class AccountResourceIsolationMatrixTests
         await using var api = await TwoUserHttpApp.StartAsync(Fixture, configure: StravaConfiguration);
         await ConnectStravaAsync(api, api.FirstUser);
         await ConnectStravaAsync(api, api.SecondUser);
-        await TwoUserApiIsolationMatrix.VerifyForeignAccessAsync(new StravaExportScenario(api, Fixture));
+        await TwoUserApiIsolationMatrix.VerifyForeignAccessAsync(new StravaExportScenario(api));
     }
 
     [TestMethod]
@@ -203,7 +203,7 @@ public sealed partial class AccountResourceIsolationMatrixTests
                 : WebEncoders.Base64UrlEncode(id.ToByteArray());
     }
 
-    private sealed class StravaExportScenario(TwoUserHttpApp api, PostgreSqlTestFixture fixture)
+    private sealed class StravaExportScenario(TwoUserHttpApp api)
         : HttpScenarioBase(api), ITwoUserApiIsolationScenario<Guid>
     {
         // Exports are queued by a POST and cannot be removed through the API.
