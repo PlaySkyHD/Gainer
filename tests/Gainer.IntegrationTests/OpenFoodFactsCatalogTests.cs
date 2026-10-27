@@ -157,6 +157,7 @@ public sealed class OpenFoodFactsCatalogTests
     }
 
     [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = false)]
     public async Task RateLimitTimeoutInvalidJsonAndOversizedResponseMapToStableCodes()
     {
         var limitedHandler = new QueueHandler(
@@ -177,7 +178,7 @@ public sealed class OpenFoodFactsCatalogTests
         Assert.AreEqual("provider_response_too_large", oversized.Code);
 
         FoodCatalogException timeout = await Assert.ThrowsAsync<FoodCatalogException>(() =>
-            Create(new QueueHandler(Response(HttpStatusCode.OK, Product()), delay: TimeSpan.FromSeconds(2)), configure: options => options.TimeoutSeconds = 1)
+            Create(new QueueHandler(Response(HttpStatusCode.OK, Product()), delay: Timeout.InfiniteTimeSpan), configure: options => options.TimeoutSeconds = 1)
                 .GetByBarcodeAsync("12345678"));
         Assert.AreEqual("provider_timeout", timeout.Code);
     }
@@ -322,7 +323,7 @@ public sealed class OpenFoodFactsCatalogTests
             RequestCount++;
             RequestUri = request.RequestUri;
             UserAgent = request.Headers.UserAgent.ToString();
-            if (delay > TimeSpan.Zero) await Task.Delay(delay, cancellationToken);
+            if (delay != TimeSpan.Zero) await Task.Delay(delay, cancellationToken);
             return responses.Dequeue();
         }
     }
