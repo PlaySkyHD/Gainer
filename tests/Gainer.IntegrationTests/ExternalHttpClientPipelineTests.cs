@@ -128,7 +128,7 @@ public sealed class ExternalHttpClientPipelineTests
             scope.ServiceProvider.GetRequiredService<IExternalFoodCatalog>().GetByBarcodeAsync("40084107", TestContext.CancellationToken));
 
         Assert.AreEqual(1, handler.Calls);
-        Assert.IsFalse(logs.Messages.Any(message => message.Contains("40084107", StringComparison.Ordinal)), "Barcodes in request paths must not reach the logs.");
+        Assert.DoesNotContain("40084107", string.Join('\n', logs.Messages), "Barcodes in request paths must not reach the logs.");
     }
 
     [TestMethod]
