@@ -9,9 +9,9 @@ class LicensesScreen extends StatelessWidget {
   const LicensesScreen({super.key});
 
   @override
-  Widget build(BuildContext context) => GainerScaffold(
+  Widget build(BuildContext context) => const GainerScaffold(
     title: 'Lizenzen',
-    children: const [
+    children: [
       GainerGroupedSection(
         header: 'Lebensmittel (BLS)',
         footer: BlsFoodCatalog.attribution,

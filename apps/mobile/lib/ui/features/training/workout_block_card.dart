@@ -306,8 +306,6 @@ class WorkoutBlockCard extends StatelessWidget {
   /// Notiz, Superset, Statistik und Gewichtseinheit.
   Future<void> _showBlockMenu(BuildContext context) async {
     final next = viewModel.blockAfter(block.workoutExerciseId);
-    final inSuperset = block.supersetId != null;
-    final connectedToNext = inSuperset && next?.supersetId == block.supersetId;
     final unit = viewModel.weightUnit;
     final action = await showGainerActionSheet<_BlockAction>(
       context: context,
@@ -330,61 +328,78 @@ class WorkoutBlockCard extends StatelessWidget {
           destructive: true,
         ),
       ],
-      groups: [
-        [
-          const GainerSheetAction(
-            label: 'Notiz bearbeiten',
-            icon: CupertinoIcons.doc_text,
-            value: _BlockAction.note,
-          ),
-          if (viewModel.hasExercise(block.sourceExerciseId))
-            GainerSheetAction(
-              label: viewModel.isBaseExercise(block.sourceExerciseId)
-                  ? 'Übung anzeigen'
-                  : 'Übung bearbeiten',
-              icon: CupertinoIcons.pencil,
-              value: _BlockAction.editExercise,
-            ),
-          if (next != null && !connectedToNext)
-            const GainerSheetAction(
-              label: 'Mit nächster Übung verbinden',
-              icon: CupertinoIcons.link,
-              value: _BlockAction.connect,
-            ),
-          if (inSuperset)
-            const GainerSheetAction(
-              label: 'Aus Superset lösen',
-              icon: CupertinoIcons.link_circle_fill,
-              value: _BlockAction.detach,
-            ),
-        ],
-        const [
-          GainerSheetAction(
-            label: 'Verlauf',
-            icon: CupertinoIcons.clock,
-            value: _BlockAction.history,
-          ),
-          GainerSheetAction(
-            label: 'Graphen',
-            icon: CupertinoIcons.chart_bar,
-            value: _BlockAction.chart,
-          ),
-          GainerSheetAction(
-            label: 'Persönliche Rekorde',
-            icon: CupertinoIcons.rosette,
-            value: _BlockAction.records,
-          ),
-        ],
-        [
-          GainerSheetAction(
-            label: 'Gewichtseinheit: ${unit.label}',
-            icon: CupertinoIcons.arrow_2_squarepath,
-            value: _BlockAction.toggleWeightUnit,
-          ),
-        ],
-      ],
+      groups: _blockMenuGroups(next, unit),
     );
     if (!context.mounted) return;
+    await _runBlockAction(context, action, unit);
+  }
+
+  List<List<GainerSheetAction<_BlockAction>>> _blockMenuGroups(
+    WorkoutBlock? next,
+    WeightUnit unit,
+  ) {
+    final inSuperset = block.supersetId != null;
+    final connectedToNext = inSuperset && next?.supersetId == block.supersetId;
+    return [
+      [
+        const GainerSheetAction(
+          label: 'Notiz bearbeiten',
+          icon: CupertinoIcons.doc_text,
+          value: _BlockAction.note,
+        ),
+        if (viewModel.hasExercise(block.sourceExerciseId))
+          GainerSheetAction(
+            label: viewModel.isBaseExercise(block.sourceExerciseId)
+                ? 'Übung anzeigen'
+                : 'Übung bearbeiten',
+            icon: CupertinoIcons.pencil,
+            value: _BlockAction.editExercise,
+          ),
+        if (next != null && !connectedToNext)
+          const GainerSheetAction(
+            label: 'Mit nächster Übung verbinden',
+            icon: CupertinoIcons.link,
+            value: _BlockAction.connect,
+          ),
+        if (inSuperset)
+          const GainerSheetAction(
+            label: 'Aus Superset lösen',
+            icon: CupertinoIcons.link_circle_fill,
+            value: _BlockAction.detach,
+          ),
+      ],
+      const [
+        GainerSheetAction(
+          label: 'Verlauf',
+          icon: CupertinoIcons.clock,
+          value: _BlockAction.history,
+        ),
+        GainerSheetAction(
+          label: 'Graphen',
+          icon: CupertinoIcons.chart_bar,
+          value: _BlockAction.chart,
+        ),
+        GainerSheetAction(
+          label: 'Persönliche Rekorde',
+          icon: CupertinoIcons.rosette,
+          value: _BlockAction.records,
+        ),
+      ],
+      [
+        GainerSheetAction(
+          label: 'Gewichtseinheit: ${unit.label}',
+          icon: CupertinoIcons.arrow_2_squarepath,
+          value: _BlockAction.toggleWeightUnit,
+        ),
+      ],
+    ];
+  }
+
+  Future<void> _runBlockAction(
+    BuildContext context,
+    _BlockAction? action,
+    WeightUnit unit,
+  ) async {
     final blockId = block.workoutExerciseId;
     switch (action) {
       case _BlockAction.move:

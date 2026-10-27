@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import 'cardio_feature.dart';
 import 'cardio_format.dart';
 import 'cardio_live_screen.dart';
+import 'cardio_session_controller.dart';
 import 'cardio_settings_screen.dart';
 import 'cardio_start_sheet.dart';
 
@@ -74,6 +75,17 @@ class _CardioOfferCardState extends State<CardioOfferCard> {
     await openCardioLive(context, widget.feature);
   }
 
+  String _strapText(CardioSessionController session) {
+    if (session.sensorId == null) {
+      return 'Kein Gurt – es wird kein Puls erfasst';
+    }
+    final status = cardioSensorStatus(
+      session.connectionState,
+      batteryPercent: session.batteryPercent,
+    );
+    return '${session.sensorName ?? 'Pulsgurt'} · $status';
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = widget.feature.session;
@@ -88,13 +100,8 @@ class _CardioOfferCardState extends State<CardioOfferCard> {
         final template = values.lastTemplate;
         final missingZones =
             template != null && template.needsZones && values.zones.isEmpty;
-        final target = template != null
-            ? template.name
-            : 'Zielbereich ${values.lastZone} bpm';
-        final strap = session.sensorId == null
-            ? 'Kein Gurt – es wird kein Puls erfasst'
-            : '${session.sensorName ?? 'Pulsgurt'} · '
-                  '${cardioSensorStatus(session.connectionState, batteryPercent: session.batteryPercent)}';
+        final target = template?.name ?? 'Zielbereich ${values.lastZone} bpm';
+        final strap = _strapText(session);
         return Padding(
           padding: const EdgeInsets.only(top: GainerSpacing.m),
           child: GainerCard(

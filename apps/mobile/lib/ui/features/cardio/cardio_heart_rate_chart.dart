@@ -127,6 +127,13 @@ class CardioChartPainter extends CustomPainter {
         plot.bottom -
         plot.height * (bpm - range.low) / (range.high - range.low);
 
+    _paintBands(canvas, plot, yOf);
+    _paintGrid(canvas, plot, range, yOf);
+    if (heartRateBpm.isEmpty) return;
+    _paintLine(canvas, plot, yOf);
+  }
+
+  void _paintBands(Canvas canvas, Rect plot, double Function(num) yOf) {
     final bandPaint = Paint()..color = lineColor.withValues(alpha: .16);
     if (phases.isNotEmpty) {
       // Stufen: je Phase ein Band über deren Zeitraum, am Ende der Kurve
@@ -164,7 +171,14 @@ class CardioChartPainter extends CustomPainter {
         bandPaint,
       );
     }
+  }
 
+  void _paintGrid(
+    Canvas canvas,
+    Rect plot,
+    ({int low, int high}) range,
+    double Function(num) yOf,
+  ) {
     final grid = Paint()
       ..color = gridColor
       ..strokeWidth = 0.5;
@@ -181,9 +195,10 @@ class CardioChartPainter extends CustomPainter {
         Offset(axisWidth - label.width - 6, y - label.height / 2),
       );
     }
+  }
 
+  void _paintLine(Canvas canvas, Rect plot, double Function(num) yOf) {
     final count = heartRateBpm.length;
-    if (count == 0) return;
     double xOf(int index) => count == 1
         ? plot.center.dx
         : plot.left + plot.width * index / (count - 1);

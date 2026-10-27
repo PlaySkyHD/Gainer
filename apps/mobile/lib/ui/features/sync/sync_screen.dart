@@ -158,9 +158,9 @@ class _SyncScreenState extends State<SyncScreen> {
   List<Widget> _conflictSection(BuildContext context) {
     if (_model.isLoading) {
       return [
-        GainerGroupedSection(
+        const GainerGroupedSection(
           header: 'Sync-Konflikte',
-          children: const [
+          children: [
             Padding(
               padding: EdgeInsets.all(GainerSpacing.m),
               child: Center(child: CupertinoActivityIndicator()),
@@ -169,7 +169,6 @@ class _SyncScreenState extends State<SyncScreen> {
         ),
       ];
     }
-    final enabled = !_model.isBusy && widget.isOnline;
     return [
       GainerGroupedSection(
         header: 'Sync-Konflikte',
@@ -178,55 +177,60 @@ class _SyncScreenState extends State<SyncScreen> {
             : null,
         children: _model.conflicts.isEmpty
             ? const [GainerListRow(title: 'Keine ungelösten Konflikte')]
-            : [
-                if (_model.isSelecting) ...[
-                  GainerListRow(
-                    key: const ValueKey('sync-select-all'),
-                    title: _model.allSelected
-                        ? 'Auswahl aufheben'
-                        : 'Alle auswählen',
-                    leadingIcon: CupertinoIcons.checkmark_circle,
-                    onTap: _model.toggleSelectAll,
-                  ),
-                  GainerListRow(
-                    key: const ValueKey('sync-select-done'),
-                    title: 'Auswahl beenden',
-                    leadingIcon: CupertinoIcons.xmark_circle,
-                    onTap: _model.stopSelecting,
-                  ),
-                ] else
-                  GainerListRow(
-                    key: const ValueKey('sync-select-start'),
-                    title: 'Auswählen',
-                    leadingIcon: CupertinoIcons.checkmark_circle,
-                    onTap: _model.isBusy ? null : _model.startSelecting,
-                  ),
-                for (final conflict in _model.conflicts) _conflictRow(conflict),
-              ],
+            : _conflictRows(),
       ),
-      if (_model.isSelecting && _model.conflicts.isNotEmpty) ...[
-        const SizedBox(height: GainerSpacing.m),
-        GainerPillButton(
-          key: const ValueKey('sync-force-selected'),
-          label: 'Lokalen Stand erzwingen',
-          icon: CupertinoIcons.arrow_up_circle,
-          expand: true,
-          onPressed: enabled && _model.forceableSelection.isNotEmpty
-              ? () => _confirmForce(_model.forceableSelection)
-              : null,
-        ),
-        const SizedBox(height: GainerSpacing.s),
-        GainerPillButton(
-          key: const ValueKey('sync-accept-selected'),
-          label: 'Serverstand übernehmen',
-          icon: CupertinoIcons.cloud_download,
-          variant: GainerPillVariant.tonal,
-          expand: true,
-          onPressed: enabled && _model.acceptableSelection.isNotEmpty
-              ? () => _confirmAccept(_model.acceptableSelection)
-              : null,
-        ),
-      ],
+      if (_model.isSelecting && _model.conflicts.isNotEmpty) ..._bulkActions(),
+    ];
+  }
+
+  List<Widget> _conflictRows() => [
+    if (_model.isSelecting) ...[
+      GainerListRow(
+        key: const ValueKey('sync-select-all'),
+        title: _model.allSelected ? 'Auswahl aufheben' : 'Alle auswählen',
+        leadingIcon: CupertinoIcons.checkmark_circle,
+        onTap: _model.toggleSelectAll,
+      ),
+      GainerListRow(
+        key: const ValueKey('sync-select-done'),
+        title: 'Auswahl beenden',
+        leadingIcon: CupertinoIcons.xmark_circle,
+        onTap: _model.stopSelecting,
+      ),
+    ] else
+      GainerListRow(
+        key: const ValueKey('sync-select-start'),
+        title: 'Auswählen',
+        leadingIcon: CupertinoIcons.checkmark_circle,
+        onTap: _model.isBusy ? null : _model.startSelecting,
+      ),
+    for (final conflict in _model.conflicts) _conflictRow(conflict),
+  ];
+
+  List<Widget> _bulkActions() {
+    final enabled = !_model.isBusy && widget.isOnline;
+    return [
+      const SizedBox(height: GainerSpacing.m),
+      GainerPillButton(
+        key: const ValueKey('sync-force-selected'),
+        label: 'Lokalen Stand erzwingen',
+        icon: CupertinoIcons.arrow_up_circle,
+        expand: true,
+        onPressed: enabled && _model.forceableSelection.isNotEmpty
+            ? () => _confirmForce(_model.forceableSelection)
+            : null,
+      ),
+      const SizedBox(height: GainerSpacing.s),
+      GainerPillButton(
+        key: const ValueKey('sync-accept-selected'),
+        label: 'Serverstand übernehmen',
+        icon: CupertinoIcons.cloud_download,
+        variant: GainerPillVariant.tonal,
+        expand: true,
+        onPressed: enabled && _model.acceptableSelection.isNotEmpty
+            ? () => _confirmAccept(_model.acceptableSelection)
+            : null,
+      ),
     ];
   }
 
@@ -263,7 +267,7 @@ class _SyncScreenState extends State<SyncScreen> {
       ),
     ],
     'targetCompletePending' => _targetCompletePendingSections(pending),
-    _ => [
+    _ => const [
       _Footnote(
         'Für dieses Gerät liegt ein Übergabeschritt vor, den die App nicht sicher zuordnen kann. Es wurden keine Schreibrechte geändert.',
         warning: true,
@@ -452,23 +456,28 @@ class _SyncScreenState extends State<SyncScreen> {
   Widget _conflictRow(LocalConflictRecord conflict) {
     final info = _model.resourceInfos[conflict.conflictId];
     final selected = _model.selectedConflictIds.contains(conflict.conflictId);
-    final enabled = !_model.isBusy && widget.isOnline;
+    final IconData leadingIcon;
+    final VoidCallback? onTap;
+    if (_model.isSelecting) {
+      leadingIcon = selected
+          ? CupertinoIcons.checkmark_circle_fill
+          : CupertinoIcons.circle;
+      onTap = () => _model.toggleSelection(conflict.conflictId);
+    } else {
+      leadingIcon = CupertinoIcons.exclamationmark_triangle;
+      final enabled = !_model.isBusy && widget.isOnline;
+      onTap = enabled
+          ? () => _showConflictActions(conflict, info?.title)
+          : null;
+    }
     return GainerListRow(
       key: ValueKey('sync-conflict-${conflict.conflictId}'),
       title: _conflictTitle(conflict, info?.title),
       subtitle:
           '${_conflictReason(conflict)} · ${_formatDate(conflict.createdAtUtc)}',
-      leadingIcon: _model.isSelecting
-          ? (selected
-                ? CupertinoIcons.checkmark_circle_fill
-                : CupertinoIcons.circle)
-          : CupertinoIcons.exclamationmark_triangle,
+      leadingIcon: leadingIcon,
       showChevron: !_model.isSelecting,
-      onTap: _model.isSelecting
-          ? () => _model.toggleSelection(conflict.conflictId)
-          : enabled
-          ? () => _showConflictActions(conflict, info?.title)
-          : null,
+      onTap: onTap,
     );
   }
 

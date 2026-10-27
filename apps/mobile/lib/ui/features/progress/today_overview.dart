@@ -391,6 +391,16 @@ const _markerInset = 5.0;
 /// Fehlen gültige oder verschiedene Daten, verteilt x nach Index.
 List<Offset> weightChartPositions(List<ApiWeightPoint> points, Size size) {
   if (points.isEmpty) return const [];
+  final xAt = _weightChartX(points, size.width);
+  final yAt = _weightChartY(points, size.height);
+  return [for (var i = 0; i < points.length; i++) Offset(xAt(i), yAt(i))];
+}
+
+/// x-Position je Messpunkt: nach Datum, sonst gleichmäßig nach Index.
+double Function(int index) _weightChartX(
+  List<ApiWeightPoint> points,
+  double width,
+) {
   final days = <int>[];
   for (final point in points) {
     final day = _calendarDay(point.date);
@@ -401,8 +411,22 @@ List<Offset> weightChartPositions(List<ApiWeightPoint> points, Size size) {
   final firstDay = byDate ? days.reduce((a, b) => a < b ? a : b) : 0;
   final lastDay = byDate ? days.reduce((a, b) => a > b ? a : b) : 0;
   final dateSpan = lastDay - firstDay;
-  final inset = size.width < 2 * _markerInset ? size.width / 2 : _markerInset;
-  final usable = size.width - 2 * inset;
+  final inset = width < 2 * _markerInset ? width / 2 : _markerInset;
+  final usable = width - 2 * inset;
+  return (index) {
+    if (points.length == 1) return width / 2;
+    final share = dateSpan > 0
+        ? (days[index] - firstDay) / dateSpan
+        : index / (points.length - 1);
+    return inset + usable * share;
+  };
+}
+
+/// y-Position je Messpunkt: höheres Gewicht weiter oben.
+double Function(int index) _weightChartY(
+  List<ApiWeightPoint> points,
+  double height,
+) {
   var minValue = points.first.weightKg;
   var maxValue = minValue;
   for (final point in points) {
@@ -410,24 +434,12 @@ List<Offset> weightChartPositions(List<ApiWeightPoint> points, Size size) {
     if (point.weightKg > maxValue) maxValue = point.weightKg;
   }
   final range = maxValue - minValue;
-  return [
-    for (var i = 0; i < points.length; i++)
-      Offset(
-        points.length == 1
-            ? size.width / 2
-            : inset +
-                  usable *
-                      (dateSpan > 0
-                          ? (days[i] - firstDay) / dateSpan
-                          : i / (points.length - 1)),
-        range == 0
-            ? size.height / 2
-            : size.height -
-                  12 -
-                  ((points[i].weightKg - minValue) / range) *
-                      (size.height - 24),
-      ),
-  ];
+  return (index) {
+    if (range == 0) return height / 2;
+    return height -
+        12 -
+        ((points[index].weightKg - minValue) / range) * (height - 24);
+  };
 }
 
 class _WeightChart extends StatelessWidget {

@@ -197,6 +197,14 @@ class _DayCell extends StatelessWidget {
   final List<CalendarMarker> markers;
   final VoidCallback onTap;
 
+  FontWeight get _weight =>
+      isToday || isSelected ? FontWeight.w600 : FontWeight.w400;
+
+  Color? _fillColor(GainerColors colors) {
+    if (!isSelected) return null;
+    return isToday ? colors.accent : colors.primaryText;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = GainerDesign.colorsOf(context);
@@ -235,9 +243,7 @@ class _DayCell extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isSelected
-                      ? (isToday ? colors.accent : colors.primaryText)
-                      : null,
+                  color: _fillColor(colors),
                 ),
                 child: Text(
                   '${day.day}',
@@ -246,9 +252,7 @@ class _DayCell extends StatelessWidget {
                     color: isSelected && !isToday
                         ? colors.background
                         : textColor,
-                    fontWeight: isToday || isSelected
-                        ? FontWeight.w600
-                        : FontWeight.w400,
+                    fontWeight: _weight,
                   ),
                 ),
               ),

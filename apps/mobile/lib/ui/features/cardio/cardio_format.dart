@@ -34,8 +34,14 @@ String formatBpm(num value) =>
 String formatAverageBpm(double value) => '${formatCardioNumber(value)} bpm';
 
 /// Pulsänderung mit Vorzeichen und Minuszeichen: „−28 bpm“, „+3 bpm“.
-String formatBpmChange(int change) =>
-    '${change < 0 ? '−' : (change > 0 ? '+' : '')}${change.abs()} bpm';
+String formatBpmChange(int change) {
+  final sign = switch (change) {
+    < 0 => '−',
+    > 0 => '+',
+    _ => '',
+  };
+  return '$sign${change.abs()} bpm';
+}
 
 /// „78 %“.
 String formatPercent(double share) => '${(share * 100).round()} %';

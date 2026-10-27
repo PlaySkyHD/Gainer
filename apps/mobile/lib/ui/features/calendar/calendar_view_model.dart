@@ -471,32 +471,8 @@ class CalendarViewModel extends ChangeNotifier {
   ) {
     bool inRange(LocalDay day) => !day.isBefore(from) && !day.isAfter(to);
 
-    final workoutsByDay = <LocalDay, List<CalendarWorkout>>{};
-    for (final workout in history.workouts.reversed) {
-      if (!isCountedWorkout(workout)) continue;
-      final day = localDayOfUtc(workout.startedAtUtc);
-      if (!inRange(day)) continue;
-      final stats = workoutExerciseStats(
-        workout,
-        checkIns: history.checkIns,
-        catalog: history.exercises,
-      );
-      workoutsByDay
-          .putIfAbsent(day, () => [])
-          .add(
-            CalendarWorkout(
-              workout: workout,
-              volumeKg: stats.fold<double>(0, (sum, s) => sum + s.volumeKg),
-            ),
-          );
-    }
-
-    final cardioByDay = <LocalDay, List<CardioSession>>{};
-    for (final session in history.sessions.reversed) {
-      final day = localDayOfUtc(session.startedAtUtc);
-      if (!inRange(day)) continue;
-      cardioByDay.putIfAbsent(day, () => []).add(session);
-    }
+    final workoutsByDay = _workoutsByDay(history, inRange);
+    final cardioByDay = _cardioByDay(history, inRange);
 
     final checkInByDay = <LocalDay, DailyCheckIn>{
       for (final checkIn in history.checkIns)
@@ -524,8 +500,67 @@ class CalendarViewModel extends ChangeNotifier {
             );
     }
 
+    final nutritionByDay = _nutritionByDay(food?.days, targetOn);
+
+    return {
+      for (final day in projection.days(from, to))
+        day.date: CalendarDay(
+          date: day.date,
+          schedule: day,
+          workouts: workoutsByDay[day.date] ?? const [],
+          cardio: cardioByDay[day.date] ?? const [],
+          nutrition: nutritionByDay[day.date],
+          nutritionTarget: targetOn(day.date),
+          checkIn: checkInByDay[day.date],
+        ),
+    };
+  }
+
+  static Map<LocalDay, List<CalendarWorkout>> _workoutsByDay(
+    _History history,
+    bool Function(LocalDay day) inRange,
+  ) {
+    final workoutsByDay = <LocalDay, List<CalendarWorkout>>{};
+    for (final workout in history.workouts.reversed) {
+      if (!isCountedWorkout(workout)) continue;
+      final day = localDayOfUtc(workout.startedAtUtc);
+      if (!inRange(day)) continue;
+      final stats = workoutExerciseStats(
+        workout,
+        checkIns: history.checkIns,
+        catalog: history.exercises,
+      );
+      workoutsByDay
+          .putIfAbsent(day, () => [])
+          .add(
+            CalendarWorkout(
+              workout: workout,
+              volumeKg: stats.fold<double>(0, (sum, s) => sum + s.volumeKg),
+            ),
+          );
+    }
+    return workoutsByDay;
+  }
+
+  static Map<LocalDay, List<CardioSession>> _cardioByDay(
+    _History history,
+    bool Function(LocalDay day) inRange,
+  ) {
+    final cardioByDay = <LocalDay, List<CardioSession>>{};
+    for (final session in history.sessions.reversed) {
+      final day = localDayOfUtc(session.startedAtUtc);
+      if (!inRange(day)) continue;
+      cardioByDay.putIfAbsent(day, () => []).add(session);
+    }
+    return cardioByDay;
+  }
+
+  static Map<LocalDay, CalendarNutrition> _nutritionByDay(
+    List<NutritionDay>? days,
+    CalendarNutritionTarget? Function(LocalDay day) targetOn,
+  ) {
     final nutritionByDay = <LocalDay, CalendarNutrition>{};
-    for (final entry in food?.days ?? const <NutritionDay>[]) {
+    for (final entry in days ?? const <NutritionDay>[]) {
       if (entry.entries.isEmpty) continue;
       final day = _tryParseDay(entry.localDate);
       if (day == null) continue;
@@ -540,19 +575,7 @@ class CalendarViewModel extends ChangeNotifier {
         target: targetOn(day),
       );
     }
-
-    return {
-      for (final day in projection.days(from, to))
-        day.date: CalendarDay(
-          date: day.date,
-          schedule: day,
-          workouts: workoutsByDay[day.date] ?? const [],
-          cardio: cardioByDay[day.date] ?? const [],
-          nutrition: nutritionByDay[day.date],
-          nutritionTarget: targetOn(day.date),
-          checkIn: checkInByDay[day.date],
-        ),
-    };
+    return nutritionByDay;
   }
 
   void _notify() {

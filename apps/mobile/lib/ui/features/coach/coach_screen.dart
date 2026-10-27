@@ -148,44 +148,7 @@ class _CoachScreenState extends State<CoachScreen> {
       if (_visibleSuggestions(answer) case final indexes
           when indexes.isNotEmpty && widget.viewModel.memories != null) ...[
         const SizedBox(height: GainerSpacing.l),
-        GainerGroupedSection(
-          header: 'Merken?',
-          footer:
-              'Der Coach speichert nichts von selbst. Gemerkte Notizen '
-              'findest du oben rechts unter Gedächtnis.',
-          children: [
-            for (final index in indexes)
-              _MemorySuggestionRow(
-                key: ValueKey('coach-suggestion-$index'),
-                suggestion: answer.memorySuggestions[index],
-                state: widget.viewModel.suggestionState(index),
-                error: widget.viewModel.suggestionError(index),
-                onRemember: widget.viewModel.rememberBlockedReason == null
-                    ? () => widget.viewModel.remember(index)
-                    : null,
-                onDismiss: () => widget.viewModel.dismiss(index),
-              ),
-            // Sperrgrund und „Erneut prüfen“ nur, solange etwas zu merken ist.
-            if (widget.viewModel.rememberBlockedReason case final reason?
-                when widget.viewModel.hasOpenSuggestions)
-              Padding(
-                padding: const EdgeInsets.all(GainerSpacing.m),
-                child: Text(
-                  reason,
-                  key: const ValueKey('coach-remember-blocked'),
-                  style: GainerTypography.body.copyWith(color: colors.warning),
-                ),
-              ),
-            if (widget.viewModel.memoryOffline &&
-                widget.viewModel.hasOpenSuggestions)
-              GainerListRow(
-                key: const ValueKey('coach-remember-retry'),
-                title: 'Erneut prüfen',
-                leadingIcon: CupertinoIcons.arrow_clockwise,
-                onTap: widget.viewModel.refreshMemoryUsage,
-              ),
-          ],
-        ),
+        _memorySection(colors, answer, indexes),
       ],
       if (answer.suggestions.isNotEmpty) ...[
         const SizedBox(height: GainerSpacing.l),
@@ -213,6 +176,48 @@ class _CoachScreenState extends State<CoachScreen> {
       ],
     ];
   }
+
+  Widget _memorySection(
+    GainerColors colors,
+    ApiCoachResponse answer,
+    List<int> indexes,
+  ) => GainerGroupedSection(
+    header: 'Merken?',
+    footer:
+        'Der Coach speichert nichts von selbst. Gemerkte Notizen '
+        'findest du oben rechts unter Gedächtnis.',
+    children: [
+      for (final index in indexes)
+        _MemorySuggestionRow(
+          key: ValueKey('coach-suggestion-$index'),
+          suggestion: answer.memorySuggestions[index],
+          state: widget.viewModel.suggestionState(index),
+          error: widget.viewModel.suggestionError(index),
+          onRemember: widget.viewModel.rememberBlockedReason == null
+              ? () => widget.viewModel.remember(index)
+              : null,
+          onDismiss: () => widget.viewModel.dismiss(index),
+        ),
+      // Sperrgrund und „Erneut prüfen“ nur, solange etwas zu merken ist.
+      if (widget.viewModel.rememberBlockedReason case final reason?
+          when widget.viewModel.hasOpenSuggestions)
+        Padding(
+          padding: const EdgeInsets.all(GainerSpacing.m),
+          child: Text(
+            reason,
+            key: const ValueKey('coach-remember-blocked'),
+            style: GainerTypography.body.copyWith(color: colors.warning),
+          ),
+        ),
+      if (widget.viewModel.memoryOffline && widget.viewModel.hasOpenSuggestions)
+        GainerListRow(
+          key: const ValueKey('coach-remember-retry'),
+          title: 'Erneut prüfen',
+          leadingIcon: CupertinoIcons.arrow_clockwise,
+          onTap: widget.viewModel.refreshMemoryUsage,
+        ),
+    ],
+  );
 }
 
 /// Ein Vorschlag mit „Merken“ und „Verwerfen“, nach dem Speichern als gemerkt.

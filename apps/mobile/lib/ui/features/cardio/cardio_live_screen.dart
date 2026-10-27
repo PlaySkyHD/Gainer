@@ -79,37 +79,36 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
     }
   }
 
+  Future<_FinishAction?> _askFinish(
+    bool short,
+    int elapsedSeconds,
+  ) => showGainerStackedDialog<_FinishAction>(
+    context: context,
+    title: short ? 'Sehr kurze Einheit' : 'Einheit beenden?',
+    message: short
+        ? 'Die Einheit läuft erst seit $elapsedSeconds s. '
+              'Verwerfen oder trotzdem speichern?'
+        : 'Die Einheit wird gespeichert. „Verwerfen“ beendet sie ohne '
+              'Speichern.',
+    actions: [
+      if (short)
+        const GainerDialogAction(label: 'Speichern', value: _FinishAction.save)
+      else
+        const GainerDialogAction(label: 'Beenden', value: _FinishAction.save),
+      // Immer anbieten: Scheitert das Speichern, bleibt so ein Ausweg.
+      const GainerDialogAction(
+        label: 'Verwerfen',
+        value: _FinishAction.discard,
+        destructive: true,
+      ),
+      const GainerDialogAction(label: 'Abbrechen', value: _FinishAction.cancel),
+    ],
+  );
+
   Future<void> _finish() async {
     final session = widget.feature.session;
     final short = session.elapsed < cardioMinimumSaveDuration;
-    final action = await showGainerStackedDialog<_FinishAction>(
-      context: context,
-      title: short ? 'Sehr kurze Einheit' : 'Einheit beenden?',
-      message: short
-          ? 'Die Einheit läuft erst seit ${session.elapsed.inSeconds} s. '
-                'Verwerfen oder trotzdem speichern?'
-          : 'Die Einheit wird gespeichert. „Verwerfen“ beendet sie ohne '
-                'Speichern.',
-      actions: [
-        if (short)
-          const GainerDialogAction(
-            label: 'Speichern',
-            value: _FinishAction.save,
-          )
-        else
-          const GainerDialogAction(label: 'Beenden', value: _FinishAction.save),
-        // Immer anbieten: Scheitert das Speichern, bleibt so ein Ausweg.
-        const GainerDialogAction(
-          label: 'Verwerfen',
-          value: _FinishAction.discard,
-          destructive: true,
-        ),
-        const GainerDialogAction(
-          label: 'Abbrechen',
-          value: _FinishAction.cancel,
-        ),
-      ],
-    );
+    final action = await _askFinish(short, session.elapsed.inSeconds);
     if (!mounted || action == null || action == _FinishAction.cancel) return;
     // Eine längere Einheit geht nicht mit einem einzigen Tipp verloren.
     if (action == _FinishAction.discard && !short) {
@@ -126,36 +125,9 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
       _error = null;
     });
     try {
-      if (action == _FinishAction.discard) {
-        await session.discard();
-        if (mounted) Navigator.of(context).pop();
-        return;
-      }
-      final saved = await session.finish();
-      if (!mounted) return;
-      if (session.isRecovering) {
-        // Die Einheit ist gespeichert; die Erholung misst noch 60 s.
-        setState(() {
-          _finishing = false;
-          _savedId = saved.sessionId;
-        });
-        return;
-      }
-      await _openDetail(saved.sessionId);
+      await _completeSession(session, discard: action == _FinishAction.discard);
     } on CardioSessionDeletedException {
-      // Die Einheit war schon gespeichert und ist inzwischen gelöscht; der
-      // Entwurf ist aufgeräumt. Erklären und schließen.
-      if (!mounted) return;
-      _closing = true;
-      await showGainerStackedDialog<void>(
-        context: context,
-        title: 'Einheit gelöscht',
-        message:
-            'Diese Einheit wurde bereits gespeichert und danach gelöscht. '
-            'Sie wird nicht erneut gespeichert.',
-        actions: const [GainerDialogAction(label: 'OK', value: null)],
-      );
-      if (mounted) Navigator.of(context).pop();
+      await _closeAfterDeleted();
     } on Object {
       if (mounted) {
         setState(() {
@@ -164,6 +136,44 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
         });
       }
     }
+  }
+
+  Future<void> _completeSession(
+    CardioSessionController session, {
+    required bool discard,
+  }) async {
+    if (discard) {
+      await session.discard();
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+    final saved = await session.finish();
+    if (!mounted) return;
+    if (session.isRecovering) {
+      // Die Einheit ist gespeichert; die Erholung misst noch 60 s.
+      setState(() {
+        _finishing = false;
+        _savedId = saved.sessionId;
+      });
+      return;
+    }
+    await _openDetail(saved.sessionId);
+  }
+
+  /// Die Einheit war schon gespeichert und ist inzwischen gelöscht; der
+  /// Entwurf ist aufgeräumt. Erklären und schließen.
+  Future<void> _closeAfterDeleted() async {
+    if (!mounted) return;
+    _closing = true;
+    await showGainerStackedDialog<void>(
+      context: context,
+      title: 'Einheit gelöscht',
+      message:
+          'Diese Einheit wurde bereits gespeichert und danach gelöscht. '
+          'Sie wird nicht erneut gespeichert.',
+      actions: const [GainerDialogAction(label: 'OK', value: null)],
+    );
+    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _openDetail(String sessionId) async {
@@ -176,30 +186,34 @@ class _CardioLiveScreenState extends State<CardioLiveScreen> {
     );
   }
 
+  void _closeWhenDone(BuildContext context, CardioSessionController session) {
+    final savedId = _savedId;
+    if (savedId != null && !session.isRecovering && !_closing) {
+      // Erholung beendet oder übersprungen: weiter zur Einheit.
+      _closing = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openDetail(savedId);
+      });
+    }
+    if (!session.isRunning &&
+        !session.isRecovering &&
+        !_finishing &&
+        !_closing) {
+      // Die Einheit wurde anderswo beendet.
+      _closing = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).maybePop();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = widget.feature.session;
     return ListenableBuilder(
       listenable: session,
       builder: (context, _) {
-        final savedId = _savedId;
-        if (savedId != null && !session.isRecovering && !_closing) {
-          // Erholung beendet oder übersprungen: weiter zur Einheit.
-          _closing = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _openDetail(savedId);
-          });
-        }
-        if (!session.isRunning &&
-            !session.isRecovering &&
-            !_finishing &&
-            !_closing) {
-          // Die Einheit wurde anderswo beendet.
-          _closing = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) Navigator.of(context).maybePop();
-          });
-        }
+        _closeWhenDone(context, session);
         return GainerScaffold(
           title: 'Rad-Ergometer',
           leading: GainerToolbarButton(

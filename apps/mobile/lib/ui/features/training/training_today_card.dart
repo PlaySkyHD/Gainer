@@ -53,30 +53,7 @@ class TrainingTodayCard extends StatelessWidget {
         if (projection.actionsFor(training).isNotEmpty) training,
     ];
 
-    final String title;
-    final lines = <String>[];
-    if (open.isNotEmpty) {
-      title = 'Heute: ${open.first.planName}';
-      if (open.length > 1) {
-        lines.add('Danach: ${open.skip(1).map((t) => t.planName).join(', ')}');
-      }
-      if (done.isNotEmpty) {
-        lines.add('Erledigt: ${done.map((t) => t.planName).join(', ')}');
-      }
-    } else if (done.isNotEmpty) {
-      title = 'Heute erledigt: ${done.map((t) => t.planName).join(', ')}';
-    } else {
-      final next = projection.nextPlannedAfter(today);
-      title = next == null
-          ? 'Ruhetag'
-          : 'Ruhetag · Nächstes: ${next.planName} am '
-                '${scheduleDayShort(next.date, today)}';
-    }
-    for (final training in away) {
-      lines.add(
-        '${training.planName}: ${scheduledStatusLabel(training, today)}',
-      );
-    }
+    final (:title, :lines) = _headline(open, done, away);
 
     return Semantics(
       container: true,
@@ -135,6 +112,44 @@ class TrainingTodayCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Titel und Zusatzzeilen der Karte je nach Stand von heute.
+  ({String title, List<String> lines}) _headline(
+    List<ScheduledTraining> open,
+    List<ScheduledTraining> done,
+    List<ScheduledTraining> away,
+  ) {
+    final today = projection.today;
+    final String title;
+    final lines = <String>[];
+    if (open.isNotEmpty) {
+      title = 'Heute: ${open.first.planName}';
+      if (open.length > 1) {
+        lines.add('Danach: ${open.skip(1).map((t) => t.planName).join(', ')}');
+      }
+      if (done.isNotEmpty) {
+        lines.add('Erledigt: ${done.map((t) => t.planName).join(', ')}');
+      }
+    } else if (done.isNotEmpty) {
+      title = 'Heute erledigt: ${done.map((t) => t.planName).join(', ')}';
+    } else {
+      title = _restTitle();
+    }
+    for (final training in away) {
+      lines.add(
+        '${training.planName}: ${scheduledStatusLabel(training, today)}',
+      );
+    }
+    return (title: title, lines: lines);
+  }
+
+  String _restTitle() {
+    final today = projection.today;
+    final next = projection.nextPlannedAfter(today);
+    if (next == null) return 'Ruhetag';
+    return 'Ruhetag · Nächstes: ${next.planName} am '
+        '${scheduleDayShort(next.date, today)}';
   }
 
   Future<void> _openActions(

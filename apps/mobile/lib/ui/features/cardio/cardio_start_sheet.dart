@@ -185,17 +185,19 @@ class _CardioStartSheetState extends State<CardioStartSheet> {
     );
   }
 
+  String _phasesFooter(CardioTemplate template) {
+    final count = template.phases.length;
+    return '$count ${count == 1 ? 'Phase' : 'Phasen'} · '
+        '${formatTemplateTotal(template.totalSeconds)}. Das Ziel '
+        'wechselt automatisch.';
+  }
+
   Widget _phaseList(CardioTemplate template) {
     final zones = _values.zones;
     final colors = GainerDesign.colorsOf(context);
     return GainerGroupedSection(
       header: 'Phasen',
-      footer: _missingZones
-          ? null
-          : '${template.phases.length} '
-                '${template.phases.length == 1 ? 'Phase' : 'Phasen'} · '
-                '${formatTemplateTotal(template.totalSeconds)}. Das Ziel '
-                'wechselt automatisch.',
+      footer: _missingZones ? null : _phasesFooter(template),
       children: [
         for (final phase in template.phases)
           GainerListRow(title: formatTemplatePhase(phase, zones)),

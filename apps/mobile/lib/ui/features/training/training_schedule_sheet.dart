@@ -93,10 +93,6 @@ class _TrainingScheduleEditorState extends State<TrainingScheduleEditor> {
   }
 
   void _initDraft(TrainingSchedule? schedule) {
-    final active = [
-      for (final plan in _plans)
-        if (!plan.isArchived) plan,
-    ];
     if (schedule != null && schedule.isCycle) {
       _mode = TrainingScheduleMode.cycle;
       _cycle = [
@@ -105,19 +101,27 @@ class _TrainingScheduleEditorState extends State<TrainingScheduleEditor> {
       final index = schedule.effectiveCycleIndex(_today) ?? 0;
       _todayKey = _cycle.isEmpty ? null : _cycle[index].key;
     } else {
-      // Vorschlag: alle aktiven Pläne nacheinander, danach ein Ruhetag.
-      _cycle = [
-        for (final plan in active.take(maxCycleSlots - 1))
-          _Slot(_nextKey++, plan.planId),
-        if (active.isNotEmpty) _Slot(_nextKey++, null),
-      ];
-      _todayKey = _cycle.isEmpty ? null : _cycle.first.key;
+      _suggestCycle();
     }
     if (schedule != null && !schedule.isCycle && schedule.slots.length == 7) {
       _mode = TrainingScheduleMode.weekly;
       _weekly = [for (final slot in schedule.slots) slot.planId];
     }
     _dirty = schedule == null;
+  }
+
+  /// Vorschlag: alle aktiven Pläne nacheinander, danach ein Ruhetag.
+  void _suggestCycle() {
+    final active = [
+      for (final plan in _plans)
+        if (!plan.isArchived) plan,
+    ];
+    _cycle = [
+      for (final plan in active.take(maxCycleSlots - 1))
+        _Slot(_nextKey++, plan.planId),
+      if (active.isNotEmpty) _Slot(_nextKey++, null),
+    ];
+    _todayKey = _cycle.isEmpty ? null : _cycle.first.key;
   }
 
   Set<String> get _activePlanIds => {
@@ -601,6 +605,12 @@ class _TrainingScheduleEditorState extends State<TrainingScheduleEditor> {
     );
   }
 
+  String _previewDayLabel(int index, LocalDay date) => switch (index) {
+    0 => 'Heute',
+    1 => 'Morgen',
+    _ => scheduleDateLabel(date),
+  };
+
   Widget _preview(TrainingSchedule schedule, GainerColors colors) {
     final projection = TrainingScheduleProjection(
       schedule: schedule,
@@ -614,11 +624,7 @@ class _TrainingScheduleEditorState extends State<TrainingScheduleEditor> {
       children: [
         for (var i = 0; i < days.length; i++)
           _PreviewRow(
-            day: i == 0
-                ? 'Heute'
-                : i == 1
-                ? 'Morgen'
-                : scheduleDateLabel(days[i].date),
+            day: _previewDayLabel(i, days[i].date),
             value: _previewValue(days[i]),
             highlight: days[i].effective.isNotEmpty,
           ),

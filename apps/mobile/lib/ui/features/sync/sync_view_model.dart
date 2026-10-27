@@ -351,43 +351,57 @@ class SyncViewModel extends ChangeNotifier {
       if (hasServerState(id)) id,
   ];
 
+  int _byQueueOrder(String a, String b) {
+    final left = resourceInfos[a]!;
+    final right = resourceInfos[b]!;
+    final byTime = (left.firstQueuedAtUtc ?? DateTime.utc(0)).compareTo(
+      right.firstQueuedAtUtc ?? DateTime.utc(0),
+    );
+    if (byTime != 0) return byTime;
+    return left.firstSequence.compareTo(right.firstSequence);
+  }
+
+  /// Erzwingt jeden Konflikt einzeln; liefert die Zahl der Fehlschläge.
+  Future<int> _forceAll(List<String> ids) async {
+    var failed = 0;
+    for (final id in ids) {
+      try {
+        await sync.forceLocalState(
+          conflictId: id,
+          replacementMutationId: _newUuidV4(),
+          createdAtUtc: DateTime.now().toUtc(),
+        );
+      } catch (_) {
+        failed++;
+      }
+      _requireActiveScope();
+    }
+    return failed;
+  }
+
+  /// Startet einen Sync; ein Fehler gilt als „nicht synchronisiert“.
+  Future<bool> _synchronizeQuietly() async {
+    try {
+      final report = await sync.synchronize();
+      return report.state == SyncRunState.synced;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Erzwingt den lokalen Stand der Konflikte in der ursprünglichen Reihenfolge
   /// ihrer Änderungen (Übungen und Pläne vor Trainings) und startet danach einen
   /// Sync. Nicht erzwingbare Konflikte werden übersprungen.
   Future<void> forceLocalStates(Iterable<String> conflictIds) async {
-    final ids = conflictIds.where(canForce).toList()
-      ..sort((a, b) {
-        final left = resourceInfos[a]!;
-        final right = resourceInfos[b]!;
-        final byTime = (left.firstQueuedAtUtc ?? DateTime.utc(0)).compareTo(
-          right.firstQueuedAtUtc ?? DateTime.utc(0),
-        );
-        return byTime != 0
-            ? byTime
-            : left.firstSequence.compareTo(right.firstSequence);
-      });
+    final ids = conflictIds.where(canForce).toList()..sort(_byQueueOrder);
     if (ids.isEmpty) return;
     var failed = 0;
     var synced = false;
     await _run(
       () async {
-        for (final id in ids) {
-          try {
-            await sync.forceLocalState(
-              conflictId: id,
-              replacementMutationId: _newUuidV4(),
-              createdAtUtc: DateTime.now().toUtc(),
-            );
-          } catch (_) {
-            failed++;
-          }
-          _requireActiveScope();
-        }
+        failed = await _forceAll(ids);
         if (failed < ids.length && isOnline) {
-          try {
-            final report = await sync.synchronize();
-            synced = report.state == SyncRunState.synced;
-          } catch (_) {}
+          synced = await _synchronizeQuietly();
         }
         _requireActiveScope();
         await _refreshConflicts();

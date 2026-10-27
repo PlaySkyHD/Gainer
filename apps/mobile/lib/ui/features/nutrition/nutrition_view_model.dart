@@ -184,12 +184,7 @@ class NutritionViewModel extends ChangeNotifier {
     required String productName,
     String? brand,
     required double amountGrams,
-    required double kilocaloriesPer100Grams,
-    double? proteinGramsPer100,
-    double? carbohydrateGramsPer100,
-    double? fatGramsPer100,
-    double? saltGramsPer100,
-    double? fiberGramsPer100,
+    required NutritionTotals per100Grams,
     double? pieceGrams,
     double? pieceCount,
   }) => _run(() async {
@@ -211,14 +206,7 @@ class NutritionViewModel extends ChangeNotifier {
         productName: productName,
         brand: brand,
         amountGrams: amountGrams,
-        per100Grams: NutritionTotals(
-          kilocalories: kilocaloriesPer100Grams,
-          proteinGrams: proteinGramsPer100,
-          carbohydrateGrams: carbohydrateGramsPer100,
-          fatGrams: fatGramsPer100,
-          saltGrams: saltGramsPer100,
-          fiberGrams: fiberGramsPer100,
-        ),
+        per100Grams: per100Grams,
         source: null,
         pieceGrams: pieceGrams,
         pieceCount: pieceCount,
@@ -238,31 +226,11 @@ class NutritionViewModel extends ChangeNotifier {
     operation: NutritionErrorOperation.diary,
   );
 
-  Future<void> updateEntry({
-    required NutritionEntry original,
-    required NutritionMeal meal,
-    required String productName,
-    String? brand,
-    required double amountGrams,
-    required NutritionTotals per100Grams,
-    double? pieceGrams,
-    double? pieceCount,
-  }) => _run(
+  /// Speichert den bearbeiteten Eintrag. [updated] entsteht per `copyWith` aus
+  /// dem Original, damit ID, Position, Quelle und Nährwertsnapshot bleiben.
+  Future<void> updateEntry(NutritionEntry updated) => _run(
     () async {
-      await repository.saveEntry(
-        localDate,
-        original.copyWith(
-          meal: meal,
-          productName: productName,
-          brand: brand,
-          clearBrand: brand == null,
-          amountGrams: amountGrams,
-          per100Grams: per100Grams,
-          pieceGrams: pieceGrams,
-          pieceCount: pieceCount,
-          clearPieces: true,
-        ),
-      );
+      await repository.saveEntry(localDate, updated);
       await _refresh();
       statusMessage =
           'Eintrag aktualisiert; Quelle und Nährwertsnapshot bleiben erhalten.';
@@ -560,60 +528,80 @@ class NutritionViewModel extends ChangeNotifier {
     final ran = await _run(() async {
       final open = mealEstimateDraft;
       if (open == null || !open.components.contains(item)) return;
-      final current = snapshot ?? await repository.read(localDate);
-      final position =
-          current.day.entries
-              .where((entry) => entry.meal == selectedMeal)
-              .fold<int>(
-                0,
-                (max, entry) => entry.position > max ? entry.position : max,
-              ) +
-          1;
+      final position = await _nextPosition();
       await repository.saveEntry(
         localDate,
-        NutritionEntry(
-          entryId: repository.ids(),
-          meal: selectedMeal,
-          position: position,
-          productName: item.name,
-          brand: null,
-          amountGrams: item.amountGrams,
-          per100Grams: per100,
-          source: NutritionSource(
-            // Mit Websuche steht die Fundstelle dabei, z. B. „OpenAI · fddb.info“.
-            provider: switch (item.sourceHost) {
-              final host? => '${draft.provider} · $host',
-              null => draft.provider,
-            },
-            retrievedAtUtc: draft.estimatedAtUtc,
-            basisGrams: item.amountGrams,
-          ),
-          pieceGrams: item.pieceCount == null ? null : item.pieceGrams,
-          pieceCount: item.pieceGrams == null ? null : item.pieceCount,
-        ),
+        _estimatedEntry(item, draft, per100, position),
       );
       saved = true;
       await _refresh();
       // Nur den übernommenen Bestandteil entfernen; die übrigen bleiben
       // zum Prüfen stehen. Eine inzwischen neue Schätzung bleibt unberührt.
       if (identical(mealEstimateDraft, open)) {
-        final remaining = [
-          for (final component in open.components)
-            if (!identical(component, item)) component,
-        ];
-        mealEstimateDraft = remaining.isEmpty
-            ? null
-            : MealEstimateDraft(
-                components: List.unmodifiable(remaining),
-                provider: draft.provider,
-                schemaVersion: draft.schemaVersion,
-                estimatedAtUtc: draft.estimatedAtUtc,
-              );
+        mealEstimateDraft = _withoutComponent(open, item, draft);
       }
       statusMessage = 'Geprüfte Schätzung als Eintrag gespeichert.';
       _notify();
     }, saving: true);
     return ran && saved;
+  }
+
+  NutritionEntry _estimatedEntry(
+    NutritionEstimateComponent item,
+    MealEstimateDraft draft,
+    NutritionTotals per100,
+    int position,
+  ) => NutritionEntry(
+    entryId: repository.ids(),
+    meal: selectedMeal,
+    position: position,
+    productName: item.name,
+    brand: null,
+    amountGrams: item.amountGrams,
+    per100Grams: per100,
+    source: NutritionSource(
+      // Mit Websuche steht die Fundstelle dabei, z. B. „OpenAI · fddb.info“.
+      provider: switch (item.sourceHost) {
+        final host? => '${draft.provider} · $host',
+        null => draft.provider,
+      },
+      retrievedAtUtc: draft.estimatedAtUtc,
+      basisGrams: item.amountGrams,
+    ),
+    pieceGrams: item.pieceCount == null ? null : item.pieceGrams,
+    pieceCount: item.pieceGrams == null ? null : item.pieceCount,
+  );
+
+  /// Nächste freie Position in der gewählten Mahlzeit.
+  Future<int> _nextPosition() async {
+    final current = snapshot ?? await repository.read(localDate);
+    return current.day.entries
+            .where((entry) => entry.meal == selectedMeal)
+            .fold<int>(
+              0,
+              (max, entry) => entry.position > max ? entry.position : max,
+            ) +
+        1;
+  }
+
+  /// Der offene Vorschlag [open] ohne [item] (Kopfdaten aus [draft]); null, wenn
+  /// nichts übrig bleibt.
+  MealEstimateDraft? _withoutComponent(
+    MealEstimateDraft open,
+    NutritionEstimateComponent item,
+    MealEstimateDraft draft,
+  ) {
+    final remaining = [
+      for (final component in open.components)
+        if (!identical(component, item)) component,
+    ];
+    if (remaining.isEmpty) return null;
+    return MealEstimateDraft(
+      components: List.unmodifiable(remaining),
+      provider: draft.provider,
+      schemaVersion: draft.schemaVersion,
+      estimatedAtUtc: draft.estimatedAtUtc,
+    );
   }
 
   /// Verwirft einen offenen Vorschlag ohne Statusmeldung, z. B. beim Schließen.
