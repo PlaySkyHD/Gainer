@@ -197,8 +197,11 @@ class _PlanEntryEditorSheetState extends State<_PlanEntryEditorSheet> {
               GainerPillButton(
                 label: 'Fertig',
                 expand: true,
-                onPressed: () =>
-                    Navigator.of(context).pop(PlanEntryEdit(entry: _edited())),
+                onPressed: setsError != null
+                    ? null
+                    : () =>
+                          Navigator.of(context)
+                              .pop(PlanEntryEdit(entry: _edited())),
               ),
               if (widget.entry.supersetId != null) ...[
                 const SizedBox(height: GainerSpacing.xs),
@@ -206,9 +209,11 @@ class _PlanEntryEditorSheetState extends State<_PlanEntryEditorSheet> {
                   label: 'Superset lösen',
                   variant: GainerPillVariant.tonal,
                   expand: true,
-                  onPressed: () => Navigator.of(
-                    context,
-                  ).pop(PlanEntryEdit(entry: _edited(), unlinkSuperset: true)),
+                  onPressed: setsError != null
+                      ? null
+                      : () => Navigator.of(context).pop(
+                          PlanEntryEdit(entry: _edited(), unlinkSuperset: true),
+                        ),
                 ),
               ],
               const SizedBox(height: GainerSpacing.xs),

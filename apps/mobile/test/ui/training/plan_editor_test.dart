@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gainer_mobile/data/repositories/training/training_log_repository.dart';
 import 'package:gainer_mobile/domain/models/training/training_plan_model.dart';
 import 'package:gainer_mobile/domain/models/training/workout_model.dart';
+import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/plan_editor_screen.dart';
 
@@ -52,6 +53,33 @@ void main() {
     await tester.tap(pickerRow(name));
     await settle(tester);
   }
+
+  Future<TrainingPlanModel> seedThreeEntryPlan(WidgetTester tester) async {
+    final plan = await tester.runAsync(() async {
+      final pulldown = await seedExercise(harness, name: 'Latzug');
+      final tbar = await seedExercise(harness, name: 'TBar');
+      final highRow = await seedExercise(harness, name: 'HighRow');
+      await seedExercise(harness, name: 'Klimmzug');
+      return seedPlan(
+        harness,
+        name: 'Pull',
+        entries: [
+          planEntry(harness, exerciseId: pulldown.id),
+          planEntry(harness, exerciseId: tbar.id, supersetId: 'ss'),
+          planEntry(harness, exerciseId: highRow.id, supersetId: 'ss'),
+        ],
+      );
+    });
+    return plan!;
+  }
+
+  bool isEnabled(WidgetTester tester, String label) =>
+      tester
+          .widget<GainerPillButton>(
+            find.widgetWithText(GainerPillButton, label),
+          )
+          .onPressed !=
+      null;
 
   Future<void> save(WidgetTester tester) async {
     await tester.tap(find.text('Speichern'));
@@ -159,16 +187,64 @@ void main() {
       await tester.tap(find.byIcon(CupertinoIcons.minus_circle).last);
       await settle(tester);
     }
-    await tester.tap(find.text('Fertig'));
-    await settle(tester);
-    await save(tester);
 
     expect(
       find.text('Ein Eintrag braucht mindestens einen Satz.'),
       findsOneWidget,
     );
-    final plans = await tester.runAsync(harness.repository.readPlans);
-    expect(plans, isEmpty);
+    expect(isEnabled(tester, 'Fertig'), isFalse);
+    await tester.tap(find.text('Fertig'), warnIfMissed: false);
+    await settle(tester);
+    expect(find.text('Fertig'), findsOneWidget);
+  });
+
+  testWidgets('Fertig und Superset lösen sind bei Satzfehler deaktiviert', (
+    tester,
+  ) async {
+    final plan = await seedThreeEntryPlan(tester);
+    await pumpEditor(tester, planId: plan.planId);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('plan-entry-1')));
+    await tester.tap(find.byKey(const ValueKey('plan-entry-1')));
+    await settle(tester);
+    expect(isEnabled(tester, 'Fertig'), isTrue);
+    expect(isEnabled(tester, 'Superset lösen'), isTrue);
+
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(find.byIcon(CupertinoIcons.minus_circle).last);
+      await settle(tester);
+    }
+
+    expect(isEnabled(tester, 'Fertig'), isFalse);
+    expect(isEnabled(tester, 'Superset lösen'), isFalse);
+  });
+
+  testWidgets('Speichern ist beim Laden eines Plans deaktiviert', (
+    tester,
+  ) async {
+    final plan = await seedThreeEntryPlan(tester);
+    usePhoneSize(tester);
+    await tester.pumpWidget(
+      trainingTestApp(
+        home: PlanEditorScreen(
+          repository: harness.repository,
+          activeWorkout: activeWorkout,
+          planId: plan.planId,
+        ),
+      ),
+    );
+
+    expect(isEnabled(tester, 'Speichern'), isFalse);
+    await settle(tester);
+  });
+
+  testWidgets('Speichern ist nach einem Ladefehler deaktiviert', (
+    tester,
+  ) async {
+    await pumpEditor(tester, planId: 'gibt-es-nicht');
+
+    expect(find.text('Der Plan ist nicht verfügbar.'), findsOneWidget);
+    expect(isEnabled(tester, 'Speichern'), isFalse);
   });
 
   testWidgets('Summe aus Aufwärm- und Arbeitssätzen über 50 wird abgelehnt', (
@@ -200,18 +276,7 @@ void main() {
       find.text('Ein Eintrag darf höchstens 50 Sätze haben.'),
       findsOneWidget,
     );
-    await tester.tap(find.text('Fertig'));
-    await settle(tester);
-    await save(tester);
-
-    expect(
-      find.text('Ein Eintrag darf höchstens 50 Sätze haben.'),
-      findsOneWidget,
-    );
-    final stored = await tester.runAsync(
-      () => harness.repository.readPlan(plan.planId),
-    );
-    expect(stored!.entries.single.workingSets, 30);
+    expect(isEnabled(tester, 'Fertig'), isFalse);
   });
 
   testWidgets('Training beginnen übernimmt W, W, 1, 2, 3', (tester) async {
@@ -368,25 +433,6 @@ void main() {
     expect(plans!.map((plan) => plan.name), ['Push 2']);
     expect(find.text('Öffnen'), findsOneWidget);
   });
-
-  Future<TrainingPlanModel> seedThreeEntryPlan(WidgetTester tester) async {
-    final plan = await tester.runAsync(() async {
-      final pulldown = await seedExercise(harness, name: 'Latzug');
-      final tbar = await seedExercise(harness, name: 'TBar');
-      final highRow = await seedExercise(harness, name: 'HighRow');
-      await seedExercise(harness, name: 'Klimmzug');
-      return seedPlan(
-        harness,
-        name: 'Pull',
-        entries: [
-          planEntry(harness, exerciseId: pulldown.id),
-          planEntry(harness, exerciseId: tbar.id, supersetId: 'ss'),
-          planEntry(harness, exerciseId: highRow.id, supersetId: 'ss'),
-        ],
-      );
-    });
-    return plan!;
-  }
 
   Future<void> openEntryMenu(WidgetTester tester, int index) async {
     final button = find.descendant(
