@@ -47,9 +47,8 @@ internal static class SmartNutritionSnapshots
                 component.FatGramsPer100Grams,
                 component.SaltGramsPer100Grams,
                 component.FiberGramsPer100Grams),
-            component.Brand,
-            source,
-            NutritionPortion.From(component.PieceGrams, component.PieceCount));
+            new NutritionItemDetails(
+                component.Brand, source, NutritionPortion.From(component.PieceGrams, component.PieceCount)));
     }
 
     public static NutritionTargetScheduleSnapshot TargetSchedule(
@@ -71,25 +70,20 @@ internal static class SmartNutritionSnapshots
 
     public static NutritionTargetVersionDraft TargetVersion(NutritionTargetVersion version) =>
         NutritionTargetVersionDraft.Restore(
-            version.Id,
-            version.Name,
-            version.Category,
-            version.EffectiveFrom,
-            version.EffectiveUntil,
-            version.Kilocalories,
+            new NutritionTargetPhase(
+                version.Id, version.Name, version.Category, version.EffectiveFrom, version.EffectiveUntil),
             version.InputMode,
-            version.ProteinGrams,
-            version.CarbohydrateGrams,
-            version.FatGrams,
-            version.ProteinPercent,
-            version.CarbohydratePercent,
-            version.FatPercent,
-            version.Origin,
-            version.AlgorithmVersion,
-            version.Reason,
-            version.SaltGrams,
-            RestDay(version),
-            version.FiberGrams);
+            new NutritionMacroTargets(
+                version.Kilocalories,
+                version.ProteinGrams,
+                version.CarbohydrateGrams,
+                version.FatGrams,
+                version.ProteinPercent,
+                version.CarbohydratePercent,
+                version.FatPercent),
+            new NutritionTargetOptions(
+                version.Origin, version.AlgorithmVersion, version.Reason, version.SaltGrams, version.FiberGrams),
+            RestDay(version));
 
     private static NutritionRestDayTargetDraft? RestDay(NutritionTargetVersion version) =>
         version.RestKilocalories is not { } kilocalories

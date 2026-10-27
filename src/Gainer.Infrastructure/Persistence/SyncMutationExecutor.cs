@@ -108,8 +108,9 @@ public sealed class SyncMutationExecutor(
                     ValidateExpectations(content, expectations);
                     BodyGoalSnapshot snapshot = await new BodyGoalMutationHandler(context, userContext, timeProvider, collector)
                         .ActivateAsync(ActivateBodyGoalMutation.Create(
-                            Metadata(mutationId, content), payload.GoalId, kind, payload.StartWeightKg,
-                            payload.TargetWeightKg, payload.StartDate, payload.TargetDate, expected), cancellationToken);
+                            Metadata(mutationId, content), payload.GoalId,
+                            new BodyGoalPlan(kind, payload.StartWeightKg, payload.TargetWeightKg, payload.StartDate, payload.TargetDate),
+                            expected), cancellationToken);
                     return Result(collector, snapshot);
                 }
             case "createWorkout":
@@ -306,9 +307,8 @@ public sealed class SyncMutationExecutor(
                                 item.FatGramsPer100Grams,
                                 item.SaltGramsPer100Grams,
                                 item.FiberGramsPer100Grams),
-                            item.Brand,
-                            item.Source,
-                            NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
+                            new NutritionItemDetails(
+                                item.Brand, item.Source, NutritionPortion.From(item.PieceGrams, item.PieceCount)))).ToArray();
                     ReusableMealDraft values = ReusableMealDraft.Create(
                         payload.Name, payload.Description, payload.StandardPortion, components);
                     ReusableMealSnapshot snapshot = await new ReusableMealMutationHandler(context, userContext, timeProvider, collector)
@@ -366,29 +366,28 @@ public sealed class SyncMutationExecutor(
             if (legacy && effectiveUntil is null && index + 1 < orderedPayloads.Length)
                 effectiveUntil = orderedPayloads[index + 1].EffectiveFrom.AddDays(-1);
             return NutritionTargetVersionDraft.Restore(
-                item.TargetVersionId,
-                string.IsNullOrWhiteSpace(item.Name) ? "Ziel" : item.Name,
-                string.IsNullOrWhiteSpace(item.Category)
-                    ? NutritionGoalCategory.Custom
-                    : ParseGoalCategory(item.Category),
-                item.EffectiveFrom,
-                effectiveUntil,
-                item.Kilocalories,
+                new NutritionTargetPhase(
+                    item.TargetVersionId,
+                    string.IsNullOrWhiteSpace(item.Name) ? "Ziel" : item.Name,
+                    string.IsNullOrWhiteSpace(item.Category)
+                        ? NutritionGoalCategory.Custom
+                        : ParseGoalCategory(item.Category),
+                    item.EffectiveFrom,
+                    effectiveUntil),
                 string.IsNullOrWhiteSpace(item.InputMode)
                     ? NutritionTargetInputMode.Grams
                     : ParseTargetInputMode(item.InputMode),
-                item.ProteinGrams,
-                item.CarbohydrateGrams,
-                item.FatGrams,
-                item.ProteinPercent,
-                item.CarbohydratePercent,
-                item.FatPercent,
-                ParseTargetOrigin(item.Origin),
-                item.AlgorithmVersion,
-                item.Reason,
-                item.SaltGrams,
-                ToRestDayDraft(item.RestDay),
-                item.FiberGrams);
+                new NutritionMacroTargets(
+                    item.Kilocalories,
+                    item.ProteinGrams,
+                    item.CarbohydrateGrams,
+                    item.FatGrams,
+                    item.ProteinPercent,
+                    item.CarbohydratePercent,
+                    item.FatPercent),
+                new NutritionTargetOptions(
+                    ParseTargetOrigin(item.Origin), item.AlgorithmVersion, item.Reason, item.SaltGrams, item.FiberGrams),
+                ToRestDayDraft(item.RestDay));
         }).ToArray();
 
     private static NutritionRestDayTargetDraft? ToRestDayDraft(NutritionRestDayPayload? payload) =>
@@ -396,13 +395,14 @@ public sealed class SyncMutationExecutor(
             ? null
             : NutritionRestDayTargetDraft.Create(
                 RestDayInputMode(payload.InputMode),
-                payload.Kilocalories,
-                payload.ProteinGrams,
-                payload.CarbohydrateGrams,
-                payload.FatGrams,
-                payload.ProteinPercent,
-                payload.CarbohydratePercent,
-                payload.FatPercent);
+                new NutritionMacroTargets(
+                    payload.Kilocalories,
+                    payload.ProteinGrams,
+                    payload.CarbohydrateGrams,
+                    payload.FatGrams,
+                    payload.ProteinPercent,
+                    payload.CarbohydratePercent,
+                    payload.FatPercent));
 
     private static NutritionTargetInputMode RestDayInputMode(string? value) =>
         string.IsNullOrWhiteSpace(value) ? NutritionTargetInputMode.Grams : ParseTargetInputMode(value);
@@ -534,9 +534,7 @@ public sealed class SyncMutationExecutor(
                 item.FatGramsPer100Grams,
                 item.SaltGramsPer100Grams,
                 item.FiberGramsPer100Grams),
-            item.Brand,
-            item.Source,
-            NutritionPortion.From(item.PieceGrams, item.PieceCount))).ToArray();
+            new NutritionItemDetails(item.Brand, item.Source, NutritionPortion.From(item.PieceGrams, item.PieceCount)))).ToArray();
 
     private static NutritionDayKind? ParseDayKind(string? value)
     {

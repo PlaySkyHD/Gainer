@@ -336,7 +336,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     private static string? SerializePhases(IReadOnlyList<CardioPhaseValues>? phases) =>
         phases == null ? null : JsonSerializer.Serialize(phases, PhaseJsonOptions);
 
-    private static IReadOnlyList<CardioPhaseValues>? DeserializePhases(string? json) =>
+    private static CardioPhaseValues[]? DeserializePhases(string? json) =>
         json == null ? null : JsonSerializer.Deserialize<CardioPhaseValues[]>(json, PhaseJsonOptions);
 
     private static bool PhasesEqual(IReadOnlyList<CardioPhaseValues>? left, IReadOnlyList<CardioPhaseValues>? right) =>
@@ -345,7 +345,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserContext u
     private static int PhasesHash(IReadOnlyList<CardioPhaseValues>? phases) =>
         phases == null ? 0 : phases.Aggregate(0, (hash, phase) => HashCode.Combine(hash, phase));
 
-    private static IReadOnlyList<CardioPhaseValues>? PhasesSnapshot(IReadOnlyList<CardioPhaseValues>? phases) =>
+    private static CardioPhaseValues[]? PhasesSnapshot(IReadOnlyList<CardioPhaseValues>? phases) =>
         phases?.ToArray();
 
     private static void ConfigureTraining(ModelBuilder modelBuilder)

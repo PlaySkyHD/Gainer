@@ -73,22 +73,17 @@ public sealed class SmartNutritionDomainTests
     [TestMethod]
     public void SaltTargetDefaultsToSixGramsAndIsValidated()
     {
-        NutritionTargetVersionDraft standard = NutritionTargetVersionDraft.CreateInGrams(
-            Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null, 2500m, 180m, 260m, 80m);
+        NutritionTargetVersionDraft standard = NutritionTargetVersionDraft.CreateInGrams(new NutritionTargetPhase(Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1)), new NutritionMacroTargets(2500m, 180m, 260m, 80m));
         Assert.IsNull(standard.SaltGrams);
         Assert.AreEqual(6m, standard.EffectiveSaltGrams);
 
-        NutritionTargetVersionDraft custom = NutritionTargetVersionDraft.CreateInPercent(
-            Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null, 2000m, 30m, 40m, 30m,
-            saltGrams: 5m);
+        NutritionTargetVersionDraft custom = NutritionTargetVersionDraft.CreateInPercent(new NutritionTargetPhase(Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1)), 2000m, 30m, 40m, 30m, new NutritionTargetOptions(SaltGrams: 5m));
         Assert.AreEqual(5m, custom.EffectiveSaltGrams);
 
         foreach (decimal invalid in new[] { 0m, -1m, 101m })
         {
             NutritionValidationException error = Assert.Throws<NutritionValidationException>(() =>
-                NutritionTargetVersionDraft.CreateInGrams(
-                    Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null,
-                    2500m, 180m, 260m, 80m, saltGrams: invalid));
+                NutritionTargetVersionDraft.CreateInGrams(new NutritionTargetPhase(Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1)), new NutritionMacroTargets(2500m, 180m, 260m, 80m), new NutritionTargetOptions(SaltGrams: invalid)));
             Assert.IsTrue(error.Errors.ContainsKey("SaltGrams"));
         }
     }
@@ -96,22 +91,17 @@ public sealed class SmartNutritionDomainTests
     [TestMethod]
     public void FiberTargetDefaultsToThirtyGramsAndIsValidated()
     {
-        NutritionTargetVersionDraft standard = NutritionTargetVersionDraft.CreateInGrams(
-            Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null, 2500m, 180m, 260m, 80m);
+        NutritionTargetVersionDraft standard = NutritionTargetVersionDraft.CreateInGrams(new NutritionTargetPhase(Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1)), new NutritionMacroTargets(2500m, 180m, 260m, 80m));
         Assert.IsNull(standard.FiberGrams);
         Assert.AreEqual(30m, standard.EffectiveFiberGrams);
 
-        NutritionTargetVersionDraft custom = NutritionTargetVersionDraft.CreateInPercent(
-            Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null, 2000m, 30m, 40m, 30m,
-            fiberGrams: 25m);
+        NutritionTargetVersionDraft custom = NutritionTargetVersionDraft.CreateInPercent(new NutritionTargetPhase(Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1)), 2000m, 30m, 40m, 30m, new NutritionTargetOptions(FiberGrams: 25m));
         Assert.AreEqual(25m, custom.EffectiveFiberGrams);
 
         foreach (decimal invalid in new[] { 0m, -1m, 101m })
         {
             NutritionValidationException error = Assert.Throws<NutritionValidationException>(() =>
-                NutritionTargetVersionDraft.CreateInGrams(
-                    Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1), null,
-                    2500m, 180m, 260m, 80m, fiberGrams: invalid));
+                NutritionTargetVersionDraft.CreateInGrams(new NutritionTargetPhase(Guid.NewGuid(), "Ziel", NutritionGoalCategory.Custom, new DateOnly(2026, 10, 1)), new NutritionMacroTargets(2500m, 180m, 260m, 80m), new NutritionTargetOptions(FiberGrams: invalid)));
             Assert.IsTrue(error.Errors.ContainsKey("FiberGrams"));
         }
     }
@@ -132,12 +122,8 @@ public sealed class SmartNutritionDomainTests
     [TestMethod]
     public void TargetScheduleSortsVersionsAndFindsEffectiveVersion()
     {
-        NutritionTargetVersionDraft later = NutritionTargetVersionDraft.CreateInGrams(
-            Guid.NewGuid(), "Maintenance", NutritionGoalCategory.Maintenance,
-            new DateOnly(2026, 9, 1), null, 2700m, 190m, 300m, 80m);
-        NutritionTargetVersionDraft earlier = NutritionTargetVersionDraft.CreateInGrams(
-            Guid.NewGuid(), "Sommer Cut", NutritionGoalCategory.Cut,
-            new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), 2500m, 180m, 260m, 80m);
+        NutritionTargetVersionDraft later = NutritionTargetVersionDraft.CreateInGrams(new NutritionTargetPhase(Guid.NewGuid(), "Maintenance", NutritionGoalCategory.Maintenance, new DateOnly(2026, 9, 1)), new NutritionMacroTargets(2700m, 190m, 300m, 80m));
+        NutritionTargetVersionDraft earlier = NutritionTargetVersionDraft.CreateInGrams(new NutritionTargetPhase(Guid.NewGuid(), "Sommer Cut", NutritionGoalCategory.Cut, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), new NutritionMacroTargets(2500m, 180m, 260m, 80m));
 
         NutritionTargetScheduleDraft schedule = NutritionTargetScheduleDraft.Create([later, earlier]);
 
@@ -150,10 +136,7 @@ public sealed class SmartNutritionDomainTests
     [TestMethod]
     public void PercentageTargetDerivesCanonicalGramValuesWithFourFourNineRounding()
     {
-        NutritionTargetVersionDraft target = NutritionTargetVersionDraft.CreateInPercent(
-            Guid.NewGuid(), "Sommer Cut", NutritionGoalCategory.Cut,
-            new DateOnly(2026, 8, 1), new DateOnly(2026, 10, 31),
-            2000m, 30m, 40m, 30m);
+        NutritionTargetVersionDraft target = NutritionTargetVersionDraft.CreateInPercent(new NutritionTargetPhase(Guid.NewGuid(), "Sommer Cut", NutritionGoalCategory.Cut, new DateOnly(2026, 8, 1), new DateOnly(2026, 10, 31)), 2000m, 30m, 40m, 30m);
 
         Assert.AreEqual(NutritionTargetInputMode.Percent, target.InputMode);
         Assert.AreEqual(150m, target.ProteinGrams);
@@ -167,12 +150,8 @@ public sealed class SmartNutritionDomainTests
     [TestMethod]
     public void TargetScheduleRejectsOverlapsAndAllowsGaps()
     {
-        NutritionTargetVersionDraft august = NutritionTargetVersionDraft.CreateInGrams(
-            Guid.NewGuid(), "Cut", NutritionGoalCategory.Cut,
-            new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), 2500m, 180m, 260m, 80m);
-        NutritionTargetVersionDraft overlapping = NutritionTargetVersionDraft.CreateInGrams(
-            Guid.NewGuid(), "Maintenance", NutritionGoalCategory.Maintenance,
-            new DateOnly(2026, 8, 31), null, 2700m, 190m, 300m, 80m);
+        NutritionTargetVersionDraft august = NutritionTargetVersionDraft.CreateInGrams(new NutritionTargetPhase(Guid.NewGuid(), "Cut", NutritionGoalCategory.Cut, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), new NutritionMacroTargets(2500m, 180m, 260m, 80m));
+        NutritionTargetVersionDraft overlapping = NutritionTargetVersionDraft.CreateInGrams(new NutritionTargetPhase(Guid.NewGuid(), "Maintenance", NutritionGoalCategory.Maintenance, new DateOnly(2026, 8, 31)), new NutritionMacroTargets(2700m, 190m, 300m, 80m));
 
         NutritionValidationException conflict = Assert.Throws<NutritionValidationException>(() =>
             NutritionTargetScheduleDraft.Create([august, overlapping]));
@@ -187,9 +166,7 @@ public sealed class SmartNutritionDomainTests
     public void PercentageTargetsRequirePositiveDistributionThatTotalsOneHundred()
     {
         NutritionValidationException invalid = Assert.Throws<NutritionValidationException>(() =>
-            NutritionTargetVersionDraft.CreateInPercent(
-                Guid.NewGuid(), "Cut", NutritionGoalCategory.Cut,
-                new DateOnly(2026, 8, 1), null, 2000m, 30m, 35m, 30m));
+            NutritionTargetVersionDraft.CreateInPercent(new NutritionTargetPhase(Guid.NewGuid(), "Cut", NutritionGoalCategory.Cut, new DateOnly(2026, 8, 1)), 2000m, 30m, 35m, 30m));
 
         Assert.IsTrue(invalid.Errors.ContainsKey("MacroDistribution"));
     }
@@ -198,9 +175,7 @@ public sealed class SmartNutritionDomainTests
     public void TargetVersionsRejectAutomatedOriginsAndMetadata()
     {
         NutritionValidationException automated = Assert.Throws<NutritionValidationException>(() =>
-            NutritionTargetVersionDraft.Create(
-                Guid.NewGuid(), new DateOnly(2026, 8, 1), 2500m, 180m, 260m, 80m,
-                (NutritionTargetOrigin)2, "policy-v1", "Automated suggestion"));
+            NutritionTargetVersionDraft.Create(Guid.NewGuid(), new DateOnly(2026, 8, 1), new NutritionMacroTargets(2500m, 180m, 260m, 80m), new NutritionTargetOptions((NutritionTargetOrigin)2, "policy-v1", "Automated suggestion")));
 
         Assert.IsTrue(automated.Errors.ContainsKey("Origin"));
         Assert.IsTrue(automated.Errors.ContainsKey("AlgorithmVersion"));
@@ -210,18 +185,14 @@ public sealed class SmartNutritionDomainTests
     [TestMethod]
     public void TargetScheduleRejectsDuplicateEffectiveDatesAndOutOfRangeValues()
     {
-        NutritionTargetVersionDraft version = NutritionTargetVersionDraft.Create(
-            Guid.NewGuid(), new DateOnly(2026, 8, 1), 2500m, 180m, 260m, 80m,
-            NutritionTargetOrigin.Manual, null, null);
+        NutritionTargetVersionDraft version = NutritionTargetVersionDraft.Create(Guid.NewGuid(), new DateOnly(2026, 8, 1), new NutritionMacroTargets(2500m, 180m, 260m, 80m));
 
         NutritionValidationException duplicate = Assert.Throws<NutritionValidationException>(() =>
             NutritionTargetScheduleDraft.Create([version, version with { TargetVersionId = Guid.NewGuid() }]));
         Assert.IsTrue(duplicate.Errors.ContainsKey("Versions"));
 
         NutritionValidationException tooHigh = Assert.Throws<NutritionValidationException>(() =>
-            NutritionTargetVersionDraft.Create(
-                Guid.NewGuid(), new DateOnly(2026, 8, 1), NutritionLimits.MaxDailyKilocalories + 1m,
-                180m, 260m, 80m, NutritionTargetOrigin.Manual, null, null));
+            NutritionTargetVersionDraft.Create(Guid.NewGuid(), new DateOnly(2026, 8, 1), new NutritionMacroTargets(NutritionLimits.MaxDailyKilocalories + 1m, 180m, 260m, 80m)));
         Assert.IsTrue(tooHigh.Errors.ContainsKey("Kilocalories"));
 
         NutritionValidationException empty = Assert.Throws<NutritionValidationException>(() =>
@@ -229,10 +200,7 @@ public sealed class SmartNutritionDomainTests
         Assert.IsTrue(empty.Errors.ContainsKey("Versions"));
 
         NutritionValidationException invalidRange = Assert.Throws<NutritionValidationException>(() =>
-            NutritionTargetVersionDraft.CreateInGrams(
-                Guid.NewGuid(), "Cut", NutritionGoalCategory.Cut,
-                new DateOnly(2026, 9, 1), new DateOnly(2026, 8, 31),
-                2500m, 180m, 260m, 80m));
+            NutritionTargetVersionDraft.CreateInGrams(new NutritionTargetPhase(Guid.NewGuid(), "Cut", NutritionGoalCategory.Cut, new DateOnly(2026, 9, 1), new DateOnly(2026, 8, 31)), new NutritionMacroTargets(2500m, 180m, 260m, 80m)));
         Assert.IsTrue(invalidRange.Errors.ContainsKey("EffectiveUntil"));
     }
 
@@ -240,7 +208,7 @@ public sealed class SmartNutritionDomainTests
     public void MealEstimateDraftPreservesMissingMacrosAndUncertainty()
     {
         MealEstimateComponentDraft component = MealEstimateComponentDraft.Create(
-            "Sauce", 50m, 120m, null, 8m, null,
+            "Sauce", 50m, new MealEstimateNutrients(120m, CarbohydrateGrams: 8m),
             MealEstimateConfidence.Low, ["fat could not be estimated"]);
 
         MealEstimateDraft draft = MealEstimateDraft.Create(
@@ -261,7 +229,7 @@ public sealed class SmartNutritionDomainTests
         Assert.IsTrue(empty.Errors.ContainsKey("Components"));
 
         MealEstimateComponentDraft component = MealEstimateComponentDraft.Create(
-            "Food", 100m, 100m, null, null, null, MealEstimateConfidence.Medium, []);
+            "Food", 100m, new MealEstimateNutrients(100m), MealEstimateConfidence.Medium, []);
         NutritionValidationException oversized = Assert.Throws<NutritionValidationException>(() =>
             MealEstimateDraft.Create(
                 Enumerable.Repeat(component, NutritionLimits.MaxEstimateComponents + 1),

@@ -68,11 +68,11 @@ public sealed record ReusableMealComponentDraft(
         string? name,
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
-        string? brand = null,
-        NutritionSourceSnapshot? source = null,
-        NutritionPortion? portion = null)
+        NutritionItemDetails? details = null)
     {
         ArgumentNullException.ThrowIfNull(per100Grams);
+        details ??= new NutritionItemDetails();
+        (string? brand, NutritionSourceSnapshot? source, NutritionPortion? portion) = (details.Brand, details.Source, details.Portion);
         // A missing name in a sync payload is a validation error, not a server fault.
         name ??= string.Empty;
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);

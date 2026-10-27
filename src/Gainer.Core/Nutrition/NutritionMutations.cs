@@ -8,6 +8,12 @@ public sealed record NutritionSourceSnapshot(
     DateTime? RetrievedAtUtc,
     decimal BasisGrams);
 
+/// <summary>Optional descriptive details of a logged food item or meal component.</summary>
+public sealed record NutritionItemDetails(
+    string? Brand = null,
+    NutritionSourceSnapshot? Source = null,
+    NutritionPortion? Portion = null);
+
 public sealed record NutritionEntryInput
 {
     private NutritionEntryInput(
@@ -15,21 +21,19 @@ public sealed record NutritionEntryInput
         MealType meal,
         int position,
         string productName,
-        string? brand,
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
-        NutritionSourceSnapshot? source,
-        NutritionPortion? portion)
+        NutritionItemDetails details)
     {
         EntryId = entryId;
         Meal = meal;
         Position = position;
         ProductName = productName.Trim();
-        Brand = string.IsNullOrWhiteSpace(brand) ? null : brand.Trim();
+        Brand = string.IsNullOrWhiteSpace(details.Brand) ? null : details.Brand.Trim();
         AmountGrams = amountGrams;
         Per100Grams = per100Grams;
-        Source = source;
-        Portion = portion;
+        Source = details.Source;
+        Portion = details.Portion;
     }
 
     public Guid EntryId { get; }
@@ -49,11 +53,11 @@ public sealed record NutritionEntryInput
         string? productName,
         decimal amountGrams,
         NutritionPer100Grams per100Grams,
-        string? brand = null,
-        NutritionSourceSnapshot? source = null,
-        NutritionPortion? portion = null)
+        NutritionItemDetails? details = null)
     {
         ArgumentNullException.ThrowIfNull(per100Grams);
+        details ??= new NutritionItemDetails();
+        (string? brand, NutritionSourceSnapshot? source, NutritionPortion? portion) = (details.Brand, details.Source, details.Portion);
         // A missing name in a sync payload is a validation error, not a server fault.
         productName ??= string.Empty;
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -76,7 +80,7 @@ public sealed record NutritionEntryInput
         }
         portion?.Validate(amountGrams, errors);
         if (errors.Count > 0) throw new NutritionValidationException(errors);
-        return new NutritionEntryInput(entryId, meal, position, productName, brand, amountGrams, per100Grams, source, portion);
+        return new NutritionEntryInput(entryId, meal, position, productName, amountGrams, per100Grams, details);
     }
 
     /// <summary>The same per-100-gram ranges as reusable meal components; they keep every stored value inside its column range.</summary>

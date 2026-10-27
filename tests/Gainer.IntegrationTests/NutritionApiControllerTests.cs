@@ -77,9 +77,7 @@ public sealed class NutritionApiControllerTests
             new NutritionSourceSnapshot("Open Food Facts", "12345678", DateTime.UtcNow, 100m));
         var day = new NutritionDaySnapshot(
             Guid.NewGuid(), date, [entry], entry.Totals, DateTime.UtcNow, DateTime.UtcNow, 1);
-        var target = NutritionTargetVersionDraft.Create(
-            Guid.NewGuid(), date, 500m, 150m, 250m, 60m,
-            NutritionTargetOrigin.Manual, null, null);
+        var target = NutritionTargetVersionDraft.Create(Guid.NewGuid(), date, new NutritionMacroTargets(500m, 150m, 250m, 60m));
         var controller = Controller(
             new StubNutritionQueries(day, [entry]),
             new StubSmartNutritionQueries([], null, null, target));
@@ -106,9 +104,7 @@ public sealed class NutritionApiControllerTests
         var meal = new ReusableMealSnapshot(
             mealId, "Breakfast", null, 1m, ReusableMealStatus.Active, [component],
             DateTime.UtcNow, DateTime.UtcNow, 1);
-        var target = NutritionTargetVersionDraft.Create(
-            Guid.NewGuid(), new DateOnly(2026, 8, 1), 2500m, 180m, 300m, 65m,
-            NutritionTargetOrigin.Manual, null, null);
+        var target = NutritionTargetVersionDraft.Create(Guid.NewGuid(), new DateOnly(2026, 8, 1), new NutritionMacroTargets(2500m, 180m, 300m, 65m));
         var smart = new StubSmartNutritionQueries([meal], meal, null, target);
         var controller = Controller(new StubNutritionQueries(null, []), smart);
 
@@ -322,7 +318,7 @@ public sealed class NutritionApiControllerTests
         {
             Calls++;
             return Task.FromResult(MealEstimateDraft.Create(
-                [MealEstimateComponentDraft.Create("Oats", 100m, 370m, 13m, 60m, 7m, MealEstimateConfidence.Medium, [])],
+                [MealEstimateComponentDraft.Create("Oats", 100m, new MealEstimateNutrients(370m, 13m, 60m, 7m), MealEstimateConfidence.Medium, [])],
                 "test", "v1", DateTime.SpecifyKind(new DateTime(2026, 8, 19), DateTimeKind.Utc)));
         }
     }

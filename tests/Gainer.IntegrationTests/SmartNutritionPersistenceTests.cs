@@ -104,9 +104,7 @@ public sealed class SmartNutritionPersistenceTests
         await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
             var handler = new NutritionTargetScheduleMutationHandler(context, new TestUserContext(firstUser), time);
-            NutritionTargetVersionDraft changedAugust = NutritionTargetVersionDraft.Create(
-                august.TargetVersionId, august.EffectiveFrom, 2600m, august.ProteinGrams,
-                august.CarbohydrateGrams, august.FatGrams, august.Origin, august.AlgorithmVersion, august.Reason);
+            NutritionTargetVersionDraft changedAugust = NutritionTargetVersionDraft.Create(august.TargetVersionId, august.EffectiveFrom, new NutritionMacroTargets(2600m, august.ProteinGrams, august.CarbohydrateGrams, august.FatGrams), new NutritionTargetOptions(august.Origin, august.AlgorithmVersion, august.Reason));
             await Assert.ThrowsAsync<NutritionTargetScheduleConflictException>(() =>
                 handler.SaveAsync(SaveTargets(scheduleId, 2, changedAugust with { EffectiveUntil = new DateOnly(2026, 8, 31) }, september), TestContext.CancellationToken));
             Assert.AreEqual(2500m, (await new SmartNutritionQueries(context)
@@ -120,12 +118,8 @@ public sealed class SmartNutritionPersistenceTests
         (string connectionString, Guid firstUser, _) = await CreateDatabaseAsync();
         Guid scheduleId = Guid.NewGuid();
         var time = new FixedTimeProvider(new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero));
-        NutritionTargetVersionDraft current = NutritionTargetVersionDraft.CreateInGrams(
-            Guid.NewGuid(), "Sommer Cut", NutritionGoalCategory.Cut,
-            new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), 2500m, 180m, 260m, 80m);
-        NutritionTargetVersionDraft future = NutritionTargetVersionDraft.CreateInPercent(
-            Guid.NewGuid(), "Maintenance", NutritionGoalCategory.Maintenance,
-            new DateOnly(2026, 9, 2), new DateOnly(2026, 10, 31), 2800m, 30m, 40m, 30m);
+        NutritionTargetVersionDraft current = NutritionTargetVersionDraft.CreateInGrams(new NutritionTargetPhase(Guid.NewGuid(), "Sommer Cut", NutritionGoalCategory.Cut, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), new NutritionMacroTargets(2500m, 180m, 260m, 80m));
+        NutritionTargetVersionDraft future = NutritionTargetVersionDraft.CreateInPercent(new NutritionTargetPhase(Guid.NewGuid(), "Maintenance", NutritionGoalCategory.Maintenance, new DateOnly(2026, 9, 2), new DateOnly(2026, 10, 31)), 2800m, 30m, 40m, 30m);
 
         await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, firstUser))
         {
@@ -142,9 +136,7 @@ public sealed class SmartNutritionPersistenceTests
                 (await queries.GetEffectiveNutritionTargetAsync(new DateOnly(2026, 9, 2), TestContext.CancellationToken))?.InputMode);
             Assert.IsNull(await queries.GetEffectiveNutritionTargetAsync(new DateOnly(2026, 11, 1), TestContext.CancellationToken));
 
-            NutritionTargetVersionDraft editedFuture = NutritionTargetVersionDraft.CreateInPercent(
-                future.TargetVersionId, "Maintenance 2", NutritionGoalCategory.Maintenance,
-                future.EffectiveFrom, future.EffectiveUntil, 2900m, 30m, 40m, 30m);
+            NutritionTargetVersionDraft editedFuture = NutritionTargetVersionDraft.CreateInPercent(new NutritionTargetPhase(future.TargetVersionId, "Maintenance 2", NutritionGoalCategory.Maintenance, future.EffectiveFrom, future.EffectiveUntil), 2900m, 30m, 40m, 30m);
             NutritionTargetScheduleSnapshot edited = await new NutritionTargetScheduleMutationHandler(
                     context, new TestUserContext(firstUser), time)
                 .SaveAsync(SaveTargets(scheduleId, 1, current, editedFuture), TestContext.CancellationToken);
@@ -307,7 +299,7 @@ public sealed class SmartNutritionPersistenceTests
         ReusableMealComponentDraft.Create(id, position, name, 100m, new NutritionPer100Grams(100m, 10m, 20m, 5m));
 
     private static NutritionTargetVersionDraft Target(DateOnly effectiveFrom, decimal kcal) =>
-        NutritionTargetVersionDraft.Create(Guid.NewGuid(), effectiveFrom, kcal, 180m, 260m, 80m, NutritionTargetOrigin.Manual, null, null);
+        NutritionTargetVersionDraft.Create(Guid.NewGuid(), effectiveFrom, new NutritionMacroTargets(kcal, 180m, 260m, 80m));
 
     private static SaveNutritionTargetScheduleMutation SaveTargets(
         Guid id, long version, params NutritionTargetVersionDraft[] targets) =>

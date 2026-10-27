@@ -202,17 +202,17 @@ public sealed class OpenAiMealEstimator(
             MealEstimateComponentDraft.Create(
                 item.Name,
                 item.AmountGrams,
-                item.Kilocalories,
-                item.ProteinGrams,
-                item.CarbohydrateGrams,
-                item.FatGrams,
+                new MealEstimateNutrients(
+                    item.Kilocalories,
+                    item.ProteinGrams,
+                    item.CarbohydrateGrams,
+                    item.FatGrams,
+                    item.SaltGrams,
+                    item.FiberGrams),
                 ParseConfidence(item.Confidence),
                 item.DataGaps,
-                item.SaltGrams,
                 TrustedSource(item.SourceUrl, allowedDomains),
-                item.PieceCount,
-                item.PieceGrams,
-                item.FiberGrams)).ToArray();
+                new MealEstimatePieces(item.PieceCount, item.PieceGrams))).ToArray();
         return MealEstimateDraft.Create(components, "OpenAI", SchemaVersion, estimatedAtUtc);
     }
 

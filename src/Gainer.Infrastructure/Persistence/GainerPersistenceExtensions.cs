@@ -93,6 +93,8 @@ public static class GainerPersistenceExtensions
             .AddProviderResilience(static services => services.GetRequiredService<IOptions<StravaOptions>>().Value.TimeoutSeconds);
         builder.Services.TryAddSingleton<StravaExportSignal>();
         builder.Services.AddScoped<StravaTokenVault>();
+        builder.Services.AddScoped<StravaAuthorizationState>();
+        builder.Services.AddScoped<StravaIntegrationCollaborators>();
         builder.Services.AddScoped<IStravaIntegrationService, StravaIntegrationService>();
         builder.Services.AddScoped<StravaExportProcessor>();
         builder.Services.AddDbContext<AppDbContext>((serviceProvider, options) =>

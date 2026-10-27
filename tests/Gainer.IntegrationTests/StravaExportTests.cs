@@ -449,8 +449,8 @@ public sealed class StravaExportTests
         Assert.AreEqual(StravaIntegrationException.ResourceNotFinished, unfinished.Code);
 
         var off = new StravaIntegrationService(
-            context, new FixedUser(user), new BackgroundUserScope(), strava, Vault(), new StravaExportSignal(),
-            dataProtection, usedStates, Options.Create(new StravaOptions()), time, NullLogger<StravaIntegrationService>.Instance);
+            context, new FixedUser(user), new BackgroundUserScope(), Collaborators(),
+            Options.Create(new StravaOptions()), time, NullLogger<StravaIntegrationService>.Instance);
         Assert.IsFalse((await off.GetStatusAsync(TestContext.CancellationToken)).Configured);
         StravaIntegrationException notConfigured = Assert.ThrowsExactly<StravaIntegrationException>(() => off.BeginAuthorization("https://x.test/cb"));
         Assert.AreEqual(StravaIntegrationException.NotConfigured, notConfigured.Code);
@@ -477,14 +477,13 @@ public sealed class StravaExportTests
         context,
         user,
         scope,
-        strava,
-        Vault(),
-        new StravaExportSignal(),
-        dataProtection,
-        usedStates,
+        Collaborators(),
         Settings(),
         time,
         NullLogger<StravaIntegrationService>.Instance);
+
+    private StravaIntegrationCollaborators Collaborators() => new(
+        strava, Vault(), new StravaExportSignal(), new StravaAuthorizationState(dataProtection, usedStates));
 
     private StravaTokenVault Vault() => new(dataProtection, strava, time);
 

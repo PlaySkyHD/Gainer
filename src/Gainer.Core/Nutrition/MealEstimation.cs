@@ -7,6 +7,18 @@ public enum MealEstimateConfidence
     High = 3,
 }
 
+/// <summary>The nutrient values of one estimated component; macros not stated stay null.</summary>
+public sealed record MealEstimateNutrients(
+    decimal Kilocalories,
+    decimal? ProteinGrams = null,
+    decimal? CarbohydrateGrams = null,
+    decimal? FatGrams = null,
+    decimal? SaltGrams = null,
+    decimal? FiberGrams = null);
+
+/// <summary>The counted pieces of an estimated component, kept only when plausible for the amount.</summary>
+public sealed record MealEstimatePieces(decimal? Count, decimal? Grams);
+
 public sealed record MealEstimateComponentDraft(
     string Name,
     decimal AmountGrams,
@@ -25,20 +37,17 @@ public sealed record MealEstimateComponentDraft(
     public static MealEstimateComponentDraft Create(
         string name,
         decimal amountGrams,
-        decimal kilocalories,
-        decimal? proteinGrams,
-        decimal? carbohydrateGrams,
-        decimal? fatGrams,
+        MealEstimateNutrients nutrients,
         MealEstimateConfidence confidence,
         IEnumerable<string> dataGaps,
-        decimal? saltGrams = null,
         string? sourceUrl = null,
-        decimal? pieceCount = null,
-        decimal? pieceGrams = null,
-        decimal? fiberGrams = null)
+        MealEstimatePieces? pieces = null)
     {
         ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(nutrients);
         ArgumentNullException.ThrowIfNull(dataGaps);
+        (decimal kilocalories, decimal? proteinGrams, decimal? carbohydrateGrams, decimal? fatGrams, decimal? saltGrams, decimal? fiberGrams) =
+            (nutrients.Kilocalories, nutrients.ProteinGrams, nutrients.CarbohydrateGrams, nutrients.FatGrams, nutrients.SaltGrams, nutrients.FiberGrams);
         string normalizedName = name.Trim();
         string[] normalizedGaps = dataGaps
             .Where(item => !string.IsNullOrWhiteSpace(item))
@@ -64,7 +73,7 @@ public sealed record MealEstimateComponentDraft(
             normalizedGaps.Any(item => item.Length > NutritionLimits.MaxDataGapLength))
             errors[nameof(DataGaps)] = "Data gaps exceed the allowed limits.";
         if (errors.Count > 0) throw new NutritionValidationException(errors);
-        (decimal? count, decimal? grams) = ConsistentPortion(amountGrams, pieceCount, pieceGrams);
+        (decimal? count, decimal? grams) = ConsistentPortion(amountGrams, pieces?.Count, pieces?.Grams);
         return new MealEstimateComponentDraft(
             normalizedName, amountGrams, kilocalories, proteinGrams, carbohydrateGrams,
             fatGrams, confidence, normalizedGaps, saltGrams, sourceUrl, count, grams, fiberGrams);

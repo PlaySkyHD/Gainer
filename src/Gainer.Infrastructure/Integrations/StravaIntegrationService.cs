@@ -1,12 +1,7 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using Gainer.Core.Integrations;
 using Gainer.Core.Security;
 using Gainer.Infrastructure.Persistence;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -17,11 +12,7 @@ public sealed class StravaIntegrationService(
     AppDbContext context,
     IUserContext userContext,
     BackgroundUserScope backgroundUser,
-    IStravaApiClient strava,
-    StravaTokenVault tokens,
-    StravaExportSignal signal,
-    IDataProtectionProvider dataProtection,
-    IMemoryCache usedStates,
+    StravaIntegrationCollaborators collaborators,
     IOptions<StravaOptions> options,
     TimeProvider timeProvider,
     ILogger<StravaIntegrationService> logger) : IStravaIntegrationService
@@ -29,11 +20,10 @@ public sealed class StravaIntegrationService(
     /// <summary>Uploads and reading the athlete's name; nothing else.</summary>
     public const string RequiredScope = "activity:write";
     private const string RequestedScope = "read,activity:write";
-    private static readonly TimeSpan StateLifetime = TimeSpan.FromMinutes(10);
     private readonly StravaOptions settings = options.Value;
-
-    private ITimeLimitedDataProtector StateProtector =>
-        dataProtection.CreateProtector("Gainer.Strava.AuthorizationState.v1").ToTimeLimitedDataProtector();
+    private readonly IStravaApiClient strava = collaborators.Client;
+    private readonly StravaTokenVault tokens = collaborators.Tokens;
+    private readonly StravaExportSignal signal = collaborators.Signal;
 
     public async Task<StravaStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
@@ -46,8 +36,7 @@ public sealed class StravaIntegrationService(
     {
         Guid userId = CurrentUserId();
         EnsureConfigured();
-        string payload = JsonSerializer.Serialize(new StatePayload(userId, Convert.ToHexString(RandomNumberGenerator.GetBytes(16))));
-        string state = StateProtector.Protect(payload, StateLifetime);
+        string state = collaborators.AuthorizationState.Issue(userId);
         var query = new Dictionary<string, string>
         {
             ["client_id"] = settings.ClientId,
@@ -69,7 +58,7 @@ public sealed class StravaIntegrationService(
         string callbackUrl,
         CancellationToken cancellationToken = default)
     {
-        if (!settings.IsConfigured || !TryConsumeState(state, out Guid userId))
+        if (!settings.IsConfigured || !collaborators.AuthorizationState.TryConsume(state, out Guid userId))
         {
             return StravaAuthorizationResult.Failed;
         }
@@ -275,31 +264,6 @@ public sealed class StravaIntegrationService(
         }
     }
 
-    private bool TryConsumeState(string? state, out Guid userId)
-    {
-        userId = Guid.Empty;
-        if (string.IsNullOrEmpty(state) || state.Length > 4_000) return false;
-        StatePayload? payload;
-        try
-        {
-            payload = JsonSerializer.Deserialize<StatePayload>(StateProtector.Unprotect(state));
-        }
-        catch (Exception exception) when (exception is CryptographicException or JsonException or FormatException)
-        {
-            return false;
-        }
-        if (payload is null || payload.UserId == Guid.Empty) return false;
-
-        string key = "strava-state:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(state)));
-        lock (usedStates)
-        {
-            if (usedStates.TryGetValue(key, out _)) return false;
-            usedStates.Set(key, true, StateLifetime);
-        }
-        userId = payload.UserId;
-        return true;
-    }
-
     private StravaStatus ToStatus(StravaConnection? connection) => new(
         settings.IsConfigured,
         connection is not null,
@@ -318,6 +282,4 @@ public sealed class StravaIntegrationService(
 
     private Guid CurrentUserId() =>
         userContext.UserId ?? throw new UnauthorizedAccessException("An authenticated user is required.");
-
-    private sealed record StatePayload(Guid UserId, string Nonce);
 }
