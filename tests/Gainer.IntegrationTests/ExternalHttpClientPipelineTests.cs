@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Http.Resilience;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly.CircuitBreaker;
 using Polly.Timeout;
@@ -115,7 +116,25 @@ public sealed class ExternalHttpClientPipelineTests
         Assert.AreEqual("provider_rate_limited", exhausted.Code, "The request budget must be shared across instances.");
     }
 
-    private static ServiceProvider BuildServices(CountingHandler handler, params (string Key, string Value)[] settings)
+    [TestMethod]
+    public async Task OutboundRequestPathsAreNotLogged()
+    {
+        var handler = new CountingHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var logs = new CapturingLoggerProvider();
+        await using ServiceProvider services = BuildServices(handler, logs);
+        using IServiceScope scope = services.CreateScope();
+
+        await Assert.ThrowsAsync<FoodCatalogException>(() =>
+            scope.ServiceProvider.GetRequiredService<IExternalFoodCatalog>().GetByBarcodeAsync("40084107", TestContext.CancellationToken));
+
+        Assert.AreEqual(1, handler.Calls);
+        Assert.IsFalse(logs.Messages.Any(message => message.Contains("40084107", StringComparison.Ordinal)), "Barcodes in request paths must not reach the logs.");
+    }
+
+    private static ServiceProvider BuildServices(CountingHandler handler, params (string Key, string Value)[] settings) =>
+        BuildServices(handler, null, settings);
+
+    private static ServiceProvider BuildServices(CountingHandler handler, ILoggerProvider? logs, params (string Key, string Value)[] settings)
     {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -125,6 +144,12 @@ public sealed class ExternalHttpClientPipelineTests
             ["ConnectionStrings:gainer-db"] = "Host=localhost;Database=unused",
         });
         builder.Configuration.AddInMemoryCollection(settings.ToDictionary(s => s.Key, s => (string?)s.Value));
+        if (logs is not null)
+        {
+            builder.Logging.SetMinimumLevel(LogLevel.Trace);
+            builder.Logging.AddProvider(logs);
+        }
+
         builder.AddGainerServiceDefaults();
         builder.AddGainerPersistence();
         builder.Services.AddSingleton(TimeProvider.System);
@@ -143,6 +168,30 @@ public sealed class ExternalHttpClientPipelineTests
             Interlocked.Increment(ref calls);
             if (delay > TimeSpan.Zero) await Task.Delay(delay, cancellationToken);
             return respond(request);
+        }
+    }
+
+    private sealed class CapturingLoggerProvider : ILoggerProvider
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> messages = new();
+
+        public IEnumerable<string> Messages => messages;
+
+        public ILogger CreateLogger(string categoryName) => new CapturingLogger(messages);
+
+        public void Dispose()
+        {
+        }
+
+        private sealed class CapturingLogger(System.Collections.Concurrent.ConcurrentQueue<string> messages) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state)
+                where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+                messages.Enqueue(formatter(state, exception));
         }
     }
 

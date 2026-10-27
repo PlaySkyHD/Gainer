@@ -28,6 +28,8 @@ public static class GainerServiceDefaultsExtensions
         builder.Services.AddServiceDiscovery();
         builder.Services.ConfigureHttpClientDefaults(static httpClient =>
         {
+            // The default HttpClient loggers write the full request path, which carries barcodes and Strava IDs.
+            httpClient.RemoveAllLoggers();
             httpClient.AddStandardResilienceHandler();
             httpClient.AddServiceDiscovery();
         });
