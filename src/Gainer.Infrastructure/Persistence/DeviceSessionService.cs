@@ -21,8 +21,11 @@ public sealed class DeviceSessionOptions
     /// <summary>Optional upper bound from sign-in; unlimited when unset.</summary>
     public TimeSpan? AbsoluteLifetime { get; set; }
 
-    /// <summary>How long the token replaced by the last rotation is still accepted, for responses lost in transit.</summary>
-    public TimeSpan ReuseGracePeriod { get; set; } = TimeSpan.FromMinutes(1);
+    /// <summary>
+    /// How long the token replaced by the last rotation is still accepted, for responses lost in transit.
+    /// Mobile clients may be backgrounded or offline for hours before they retry; older tokens never get a grace.
+    /// </summary>
+    public TimeSpan ReuseGracePeriod { get; set; } = TimeSpan.FromHours(6);
 }
 
 internal sealed class DeviceSessionService(

@@ -164,7 +164,7 @@ public sealed class AuthenticationApiTests
             Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
         }
 
-        timeProvider.Advance(TimeSpan.FromMinutes(2));
+        timeProvider.Advance(TimeSpan.FromHours(7));
         using HttpResponseMessage reused = await BearerTestClient.RefreshAsync(client, first.RefreshToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, reused.StatusCode);
         Assert.AreEqual("invalid_refresh_token", await ReadCodeAsync(reused));
@@ -173,6 +173,44 @@ public sealed class AuthenticationApiTests
         Assert.AreEqual(HttpStatusCode.Unauthorized, current.StatusCode);
         using HttpResponseMessage revokedAccess = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, revokedAccess.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task PreviousTokenIsStillAcceptedMinutesAfterALostResponse()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        _ = await RefreshSucceedsAsync(client, first.RefreshToken);
+
+        timeProvider.Advance(TimeSpan.FromMinutes(30));
+        TokenResponse retried = await RefreshSucceedsAsync(client, first.RefreshToken);
+        client.UseAccessToken(retried.AccessToken);
+        using HttpResponseMessage session = await client.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, session.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task OlderPredecessorGetsNoGraceEvenWithinTheGracePeriod()
+    {
+        var timeProvider = new MutableTimeProvider(Start);
+        await using WebApplication app = await CreateApplicationAsync(timeProvider);
+        await CreateUserAsync(app, Email, Password);
+        using HttpClient client = CreateClient(app);
+        TokenResponse first = await BearerTestClient.LoginAsync(client, Email, Password);
+        TokenResponse second = await RefreshSucceedsAsync(client, first.RefreshToken);
+        TokenResponse third = await RefreshSucceedsAsync(client, second.RefreshToken);
+
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
+        using HttpResponseMessage reused = await BearerTestClient.RefreshAsync(client, first.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, reused.StatusCode);
+        Assert.AreEqual("invalid_refresh_token", await ReadCodeAsync(reused));
+
+        // Only the immediate predecessor is remembered; the older token is simply unknown.
+        TokenResponse retried = await RefreshSucceedsAsync(client, second.RefreshToken);
+        Assert.AreNotEqual(third.RefreshToken, retried.RefreshToken);
     }
 
     [TestMethod]
