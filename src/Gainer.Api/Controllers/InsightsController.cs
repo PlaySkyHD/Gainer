@@ -12,6 +12,9 @@ namespace Gainer.Api.Controllers;
 [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
 public sealed class InsightsController(IInsightQueries queries, TimeProvider timeProvider) : ControllerBase
 {
+    /// <summary>About 100 years; keeps the date arithmetic of the dashboard queries inside <see cref="DateOnly" />.</summary>
+    private const int MaximumThroughDistanceDays = 36_525;
+
     [HttpGet("dashboard")]
     [ProducesResponseType<DashboardInsightsResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -23,7 +26,12 @@ public sealed class InsightsController(IInsightQueries queries, TimeProvider tim
     {
         if (days is < 1 or > 365) return Validation("days", "Days must be between 1 and 365.");
         if (ResolveTimeZone(timeZone, out TimeZoneInfo zone) is { } error) return error;
-        DateOnly end = through ?? timeProvider.Today(zone);
+        DateOnly today = timeProvider.Today(zone);
+        if (through is { } requested && Math.Abs(requested.DayNumber - today.DayNumber) > MaximumThroughDistanceDays)
+        {
+            return Validation("through", "Through must be within 100 years of today.");
+        }
+        DateOnly end = through ?? today;
         return Ok(ToResponse(await queries.DashboardAsync(end, days, zone, cancellationToken)));
     }
 
