@@ -165,6 +165,49 @@ void main() {
     expect(find.text('7 Tage'), findsNothing);
   });
 
+  testWidgets('entry opens the 30 day view when only the month has data', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = await seededRepository(withEntries: false);
+    await repository.saveEntry(
+      '2026-10-02',
+      NutritionEntry(
+        entryId: '00000000-0000-4000-8000-000000000299',
+        meal: NutritionMeal.lunch,
+        position: 0,
+        productName: 'Essen',
+        brand: null,
+        amountGrams: 100,
+        per100Grams: const NutritionTotals(
+          kilocalories: 2000,
+          proteinGrams: 120,
+          carbohydrateGrams: 250,
+          fatGrams: 70,
+        ),
+        source: null,
+      ),
+    );
+    final viewModel = NutritionViewModel(
+      repository: repository,
+      localDate: today,
+    );
+    addTearDown(viewModel.dispose);
+    await tester.pumpWidget(app(NutritionScreen(viewModel: viewModel)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ø 30 Tage 2.000 kcal · Protein 120 g'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('nutrition-averages-entry')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 von 30 Tagen erfasst'), findsOneWidget);
+    expect(find.textContaining('in den letzten 7 Tagen'), findsNothing);
+  });
+
   testWidgets('segmented control switches between 7 and 30 days', (
     tester,
   ) async {
