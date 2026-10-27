@@ -34,6 +34,43 @@ String syncFailureMessage(Object error) {
   return 'Synchronisierung nicht möglich. Lokale Änderungen bleiben erhalten.';
 }
 
+/// Erklärt das Ergebnis eines Sync-Laufs auf Deutsch. Gemeinsam für den
+/// Abschnitt unter Mehr und das Banner in den Tabs.
+String syncRunMessage(SyncRunState state, {required bool takeOverWriting}) =>
+    switch (state) {
+      SyncRunState.synced =>
+        takeOverWriting
+            ? 'Dieses iPhone ist jetzt dein Schreibgerät. Änderungen synchronisiert.'
+            : 'Änderungen synchronisiert.',
+      SyncRunState.retryPending =>
+        'Änderungen warten auf einen erneuten Sync-Versuch.',
+      SyncRunState.authBlocked =>
+        'Bitte melde dich erneut an; lokale Änderungen bleiben gespeichert.',
+      SyncRunState.upgradeRequired =>
+        'Aktualisiere die App, um die Synchronisierung fortzusetzen.',
+      SyncRunState.inactiveClient => 'Ein anderes Gerät ist als Schreibgerät eingetragen. Änderungen von diesem iPhone werden erst übertragen, wenn es das Schreiben übernimmt.',
+      SyncRunState.busy => 'Synchronisierung läuft bereits.',
+      SyncRunState.idle =>
+        takeOverWriting
+            ? 'Dieses iPhone ist jetzt dein Schreibgerät.'
+            : 'Keine ausstehenden Änderungen.',
+    };
+
+/// Erklärt, warum eine Übernahme des Schreibens nicht geklappt hat; `null`,
+/// wenn nichts zu erklären ist. `synced`, `idle` und `retryPending` machen
+/// das Gerät zum Schreibgerät (die Änderungen folgen beim nächsten Versuch),
+/// bei `upgradeRequired` zeigt das Banner stattdessen den Update-Hinweis.
+String? takeOverProblemMessage(SyncRunState state) => switch (state) {
+  SyncRunState.synced ||
+  SyncRunState.idle ||
+  SyncRunState.retryPending ||
+  SyncRunState.upgradeRequired => null,
+  SyncRunState.authBlocked => syncRunMessage(state, takeOverWriting: true),
+  // „busy“ meldet auch pausierte Schreibzugriffe während einer Übergabe.
+  SyncRunState.busy => 'Die Synchronisierung läuft gerade oder ist während einer Geräteübergabe pausiert. Versuche es später erneut.',
+  SyncRunState.inactiveClient => 'Der Server hat dir das Schreiben nicht zugeteilt. Versuche es später erneut oder prüfe das andere Gerät.',
+};
+
 /// „gerade eben“, „vor 2 Min.“, „vor 3 Std.“, danach das Datum.
 String relativeSyncTime(DateTime lastSyncedAtUtc, DateTime now) {
   final age = now.toUtc().difference(lastSyncedAtUtc.toUtc());
@@ -96,23 +133,10 @@ class _SyncNowSectionState extends State<SyncNowSection> {
       }
       setState(() {
         _inactive = result.state == SyncRunState.inactiveClient;
-        _status = switch (result.state) {
-          SyncRunState.synced =>
-            takeOverWriting
-                ? 'Dieses iPhone ist jetzt dein Schreibgerät. Änderungen synchronisiert.'
-                : 'Änderungen synchronisiert.',
-          SyncRunState.retryPending =>
-            'Änderungen warten auf einen erneuten Sync-Versuch.',
-          SyncRunState.authBlocked => 'Bitte melde dich erneut an; lokale Änderungen bleiben gespeichert.',
-          SyncRunState.upgradeRequired =>
-            'Aktualisiere die App, um die Synchronisierung fortzusetzen.',
-          SyncRunState.inactiveClient => 'Ein anderes Gerät ist als Schreibgerät eingetragen. Änderungen von diesem iPhone werden erst übertragen, wenn es das Schreiben übernimmt.',
-          SyncRunState.busy => 'Synchronisierung läuft bereits.',
-          SyncRunState.idle =>
-            takeOverWriting
-                ? 'Dieses iPhone ist jetzt dein Schreibgerät.'
-                : 'Keine ausstehenden Änderungen.',
-        };
+        _status = syncRunMessage(
+          result.state,
+          takeOverWriting: takeOverWriting,
+        );
       });
     } catch (error) {
       if (mounted) setState(() => _status = syncFailureMessage(error));

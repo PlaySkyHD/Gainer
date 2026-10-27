@@ -20,16 +20,28 @@ void main() {
   late ValueNotifier<SyncStatus> status;
   late List<bool> calls;
   late Object? failure;
+  late SyncRunState outcome;
 
   Future<SyncRunReport> fake({bool takeOverWriting = false}) async {
     calls.add(takeOverWriting);
     if (failure case final error?) throw error;
     // Wie im echten Ablauf: nach der Übernahme meldet der Sync „Schreibgerät“.
-    status.value = status.value.copyWith(isWriter: true);
-    return _report(SyncRunState.synced);
+    // Wie SyncStatusTracker.recordRun: diese Zustände machen zum Schreibgerät.
+    if (const {
+      SyncRunState.synced,
+      SyncRunState.idle,
+      SyncRunState.retryPending,
+    }.contains(outcome)) {
+      status.value = status.value.copyWith(isWriter: true);
+    }
+    if (outcome == SyncRunState.upgradeRequired) {
+      status.value = status.value.copyWith(upgradeRequired: true);
+    }
+    return _report(outcome);
   }
 
   setUp(() {
+    outcome = SyncRunState.synced;
     status = ValueNotifier(const SyncStatus(isWriter: false));
     calls = [];
     failure = null;
@@ -142,6 +154,62 @@ void main() {
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
     expect(find.text('Dieses iPhone lädt nichts hoch'), findsOneWidget);
+  });
+
+  for (final (state, text) in [
+    (SyncRunState.authBlocked, 'melde dich erneut an'),
+    (SyncRunState.busy, 'während einer Geräteübergabe pausiert'),
+    (SyncRunState.inactiveClient, 'Server hat dir das Schreiben nicht'),
+  ]) {
+    testWidgets('Übernehmen ohne Ausnahme, Ergebnis $state wird erklärt', (
+      tester,
+    ) async {
+      outcome = state;
+      await tester.pumpWidget(banner());
+
+      await tester.tap(find.text('Übernehmen'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Übernehmen').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Übernehmen nicht möglich'), findsOneWidget);
+      expect(find.textContaining(text), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.text('Dieses iPhone lädt nichts hoch'), findsOneWidget);
+    });
+  }
+
+  for (final state in [SyncRunState.retryPending, SyncRunState.idle]) {
+    testWidgets('Übernehmen mit $state: Schreibgerät, kein Dialog', (
+      tester,
+    ) async {
+      outcome = state;
+      await tester.pumpWidget(banner());
+
+      await tester.tap(find.text('Übernehmen'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Übernehmen').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Übernehmen nicht möglich'), findsNothing);
+      expect(find.text('Dieses iPhone lädt nichts hoch'), findsNothing);
+    });
+  }
+
+  testWidgets('Übernehmen mit upgradeRequired: Update-Hinweis, kein Dialog', (
+    tester,
+  ) async {
+    outcome = SyncRunState.upgradeRequired;
+    await tester.pumpWidget(banner());
+
+    await tester.tap(find.text('Übernehmen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Übernehmen').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Übernehmen nicht möglich'), findsNothing);
+    expect(find.text('Bitte App aktualisieren'), findsOneWidget);
   });
 
   testWidgets('Tabs behalten ihren Zustand, wenn der Hinweis erscheint', (

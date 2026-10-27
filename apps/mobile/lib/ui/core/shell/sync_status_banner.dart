@@ -32,19 +32,20 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   Future<void> _takeOver() async {
     if (!await confirmTakeOverWriting(context) || !mounted) return;
     setState(() => _busy = true);
-    Object? failure;
+    String? problem;
     try {
-      await widget.synchronize(takeOverWriting: true);
+      final report = await widget.synchronize(takeOverWriting: true);
+      problem = takeOverProblemMessage(report.state);
     } catch (error) {
-      failure = error;
+      problem = syncFailureMessage(error);
     }
     if (!mounted) return;
     setState(() => _busy = false);
-    if (failure != null) {
+    if (problem != null) {
       await showGainerStackedDialog<bool>(
         context: context,
         title: 'Übernehmen nicht möglich',
-        message: syncFailureMessage(failure),
+        message: problem,
         actions: const [GainerDialogAction(label: 'OK', value: true)],
       );
     }
