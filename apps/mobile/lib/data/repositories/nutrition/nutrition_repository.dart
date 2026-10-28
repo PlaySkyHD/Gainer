@@ -522,7 +522,8 @@ class NutritionRepository {
   /// statt an die abgelehnte Anlage (wie WaterIntakeRepository._readDay).
   Future<LocalAggregateEnvelope<Object?>?> _dayRow(String localDate) async {
     final rows = (await store.readAggregates(_nutritionDayType))
-        .where((row) => _map(row.workingCopy)['localDate'] == localDate);
+        .where((row) => _map(row.workingCopy)['localDate'] == localDate)
+        .toList();
     return rows.where((row) => row.serverVersion != null).firstOrNull ??
         rows.firstOrNull;
   }
