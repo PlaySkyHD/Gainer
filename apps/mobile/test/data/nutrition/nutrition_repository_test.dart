@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/data/models/local/local_aggregate.dart';
 import 'package:gainer_mobile/data/repositories/nutrition/nutrition_repository.dart';
 import 'package:gainer_mobile/data/repositories/sync/local_sync_store.dart';
 import 'package:gainer_mobile/data/services/local/local_database.dart';
@@ -242,6 +243,62 @@ void main() {
       await directory.delete(recursive: true);
     }
   });
+
+  for (final (order, serverId) in [
+    ('before', testId(1)),
+    ('after', testId(900)),
+  ]) {
+    test('a confirmed day of the same date wins over a not adopted local day '
+        'inserted $order it (#316)', () async {
+      NutritionEntry entry(int id, String name) => NutritionEntry(
+        entryId: testId(id),
+        meal: NutritionMeal.breakfast,
+        position: 0,
+        productName: name,
+        brand: null,
+        amountGrams: 100,
+        per100Grams: const NutritionTotals(kilocalories: 100),
+        source: null,
+      );
+      await repository.saveEntry('2026-10-12', entry(50, 'Lokal'));
+      final localId = (await repository.store.readAggregates('nutrition-day'))
+          .single
+          .aggregateId;
+      final server = NutritionDay(
+        localDate: '2026-10-12',
+        entries: [entry(60, 'Server')],
+      ).toJson();
+      await database
+          .into(database.localResources)
+          .insert(
+            LocalResourcesCompanion.insert(
+              aggregateType: 'nutrition-day',
+              aggregateId: serverId,
+              envelopeJson: serverEnvelope(
+                aggregateId: serverId,
+                snapshot: server,
+                version: 3,
+              ).encode(),
+              updatedAtEpochMs: 0,
+            ),
+          );
+
+      final read = await repository.read('2026-10-12');
+      expect(read.day.entries.map((e) => e.productName), ['Server']);
+
+      await repository.saveEntry('2026-10-12', entry(61, 'Neu'));
+      final outbox = await repository.store.readOutbox(
+        aggregateType: 'nutrition-day',
+      );
+      // Die Änderung geht an die Serverzeile; die Anlage der lokalen Zeile
+      // bleibt unverändert in der Outbox und damit als Konflikt sichtbar.
+      final sent = outbox.where((m) => m.aggregateId == serverId).single;
+      expect(sent.operation.name, 'update');
+      expect(sent.baseVersion, 3);
+      final kept = outbox.where((m) => m.aggregateId == localId).single;
+      expect(kept.operation.name, 'create');
+    });
+  }
 
   group('label scan confirmation', () {
     NutritionLabelFieldDraft field(double? per100) => NutritionLabelFieldDraft(

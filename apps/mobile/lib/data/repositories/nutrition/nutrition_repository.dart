@@ -304,9 +304,7 @@ class NutritionRepository {
         'localDate': _invalidCalendarDayMessage,
       });
     }
-    final dayRow = (await store.readAggregates(_nutritionDayType))
-        .where((row) => _map(row.workingCopy)['localDate'] == localDate)
-        .firstOrNull;
+    final dayRow = await _dayRow(localDate);
     final day = dayRow == null
         ? NutritionDay(localDate: localDate, entries: const [])
         : NutritionDay.fromJson(_map(dayRow.workingCopy));
@@ -510,15 +508,23 @@ class NutritionRepository {
         'localDate': _invalidCalendarDayMessage,
       });
     }
-    final row = (await store.readAggregates(_nutritionDayType))
-        .where((row) => _map(row.workingCopy)['localDate'] == localDate)
-        .firstOrNull;
+    final row = await _dayRow(localDate);
     return (
       row: row,
       day: row == null
           ? NutritionDay(localDate: localDate, entries: const [])
           : NutritionDay.fromJson(_map(row.workingCopy)),
     );
+  }
+
+  /// Zeile von [localDate]. Eine vom Server bestätigte Zeile geht vor: Übernahm
+  /// der Pull einen lokalen Tag nicht, gehen Änderungen an die Serverzeile
+  /// statt an die abgelehnte Anlage (wie WaterIntakeRepository._readDay).
+  Future<LocalAggregateEnvelope<Object?>?> _dayRow(String localDate) async {
+    final rows = (await store.readAggregates(_nutritionDayType))
+        .where((row) => _map(row.workingCopy)['localDate'] == localDate);
+    return rows.where((row) => row.serverVersion != null).firstOrNull ??
+        rows.firstOrNull;
   }
 
   Future<void> saveEntry(String localDate, NutritionEntry entry) =>
