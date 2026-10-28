@@ -12,6 +12,7 @@ import '../../models/local/local_mutation.dart';
 import '../../services/platform/platform_ports.dart';
 import '../sync/local_sync_store.dart';
 import 'bls_food_catalog.dart';
+import 'day_row_selection.dart';
 import 'nutrition_preferences.dart';
 import 'water_intake_repository.dart';
 
@@ -401,7 +402,8 @@ class NutritionRepository {
   /// einmal dekodiert.
   Future<List<NutritionDay>> _readDaysBetween(String from, String to) async {
     final days = <NutritionDay>[];
-    for (final row in await store.readAggregates(_nutritionDayType)) {
+    final rows = onePerLocalDate(await store.readAggregates(_nutritionDayType));
+    for (final row in rows) {
       final body = _map(row.workingCopy);
       final date = body['localDate'];
       if (date is String &&
@@ -415,7 +417,7 @@ class NutritionRepository {
 
   Future<List<NutritionFood>> recentFoods({int limit = 20}) async {
     if (limit < 1 || limit > 50) throw RangeError.range(limit, 1, 50, 'limit');
-    final rows = await store.readAggregates(_nutritionDayType);
+    final rows = onePerLocalDate(await store.readAggregates(_nutritionDayType));
     final candidates = <({NutritionFood food, String stamp})>[];
     for (final row in rows) {
       final body = _map(row.workingCopy);
@@ -521,11 +523,7 @@ class NutritionRepository {
   /// der Pull einen lokalen Tag nicht, gehen Änderungen an die Serverzeile
   /// statt an die abgelehnte Anlage (wie WaterIntakeRepository._readDay).
   Future<LocalAggregateEnvelope<Object?>?> _dayRow(String localDate) async {
-    final rows = (await store.readAggregates(_nutritionDayType))
-        .where((row) => _map(row.workingCopy)['localDate'] == localDate)
-        .toList();
-    return rows.where((row) => row.serverVersion != null).firstOrNull ??
-        rows.firstOrNull;
+    return pickDayRow(await store.readAggregates(_nutritionDayType), localDate);
   }
 
   Future<void> saveEntry(String localDate, NutritionEntry entry) =>

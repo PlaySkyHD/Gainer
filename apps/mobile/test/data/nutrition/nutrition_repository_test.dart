@@ -300,6 +300,56 @@ void main() {
     });
   }
 
+  for (final (order, serverId) in [
+    ('before', testId(1)),
+    ('after', testId(900)),
+  ]) {
+    test('calendar, averages and recent foods use only the confirmed day of '
+        'a duplicated date, server row $order the local one (#320)', () async {
+      NutritionEntry entry(int id, String name, double kcal) => NutritionEntry(
+        entryId: testId(id),
+        meal: NutritionMeal.breakfast,
+        position: 0,
+        productName: name,
+        brand: null,
+        amountGrams: 100,
+        per100Grams: NutritionTotals(kilocalories: kcal),
+        source: const NutritionSource(basisGrams: 100),
+      );
+      await repository.saveEntry('2026-10-12', entry(50, 'Lokal', 100));
+      await database
+          .into(database.localResources)
+          .insert(
+            LocalResourcesCompanion.insert(
+              aggregateType: 'nutrition-day',
+              aggregateId: serverId,
+              envelopeJson: serverEnvelope(
+                aggregateId: serverId,
+                snapshot: NutritionDay(
+                  localDate: '2026-10-12',
+                  entries: [entry(60, 'Server', 300)],
+                ).toJson(),
+                version: 3,
+              ).encode(),
+              updatedAtEpochMs: 0,
+            ),
+          );
+
+      final calendar = await repository.readDays('2026-10-01', '2026-10-31');
+      expect(calendar.days, hasLength(1));
+      expect(calendar.days.single.entries.map((e) => e.productName), [
+        'Server',
+      ]);
+
+      final averages = await repository.readAverages('2026-10-12');
+      expect(averages.week.loggedDays, 1);
+      expect(averages.week.averageKilocalories, 300);
+
+      final foods = await repository.recentFoods();
+      expect(foods.map((f) => f.name), ['Server']);
+    });
+  }
+
   group('label scan confirmation', () {
     NutritionLabelFieldDraft field(double? per100) => NutritionLabelFieldDraft(
       originalValue: per100,
