@@ -11,6 +11,7 @@ import '../../models/local/local_mutation.dart';
 import '../sync/day_adoption.dart' show waterAmountSetLocallyKey;
 import '../sync/local_conflict_recovery.dart' show waterIntakeAggregateType;
 import '../sync/local_sync_store.dart';
+import 'day_row_selection.dart';
 
 export '../sync/local_conflict_recovery.dart' show waterIntakeAggregateType;
 
@@ -73,17 +74,11 @@ class WaterIntakeRepository {
   /// gesendet wurde, gehen weitere Änderungen an die Serverzeile statt an
   /// die abgelehnte Anlage. Sonst die Zeile mit fester ID.
   Future<LocalAggregateEnvelope<Object?>?> _readDay(String localDate) async {
-    final days = (await store.readAggregates(waterIntakeAggregateType))
-        .where((row) {
-          final working = row.workingCopy;
-          return working is Map && working['localDate'] == localDate;
-        })
-        .toList();
-    return days.where((row) => row.serverVersion != null).firstOrNull ??
-        days
-            .where((row) => row.aggregateId == dayIdFor(localDate))
-            .firstOrNull ??
-        days.firstOrNull;
+    return pickDayRow(
+      await store.readAggregates(waterIntakeAggregateType),
+      localDate,
+      preferred: (row) => row.aggregateId == dayIdFor(localDate),
+    );
   }
 
   /// Addiert [addedMl] und liefert die neue Tagesmenge.
