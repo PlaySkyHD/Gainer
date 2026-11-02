@@ -11,14 +11,14 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  crypto: 3.0.7
+  crypto: 3.0.8
   cupertino_icons: 2.0.0
   dio: 5.11.1
-  drift: 2.35.2
+  drift: 2.35.3
   path: 1.9.1
   path_provider: 2.1.6
   provider: 6.1.5+1
-  sqlite3: 3.7.1
+  sqlite3: 3.8.0
 dev_dependencies:
   integration_test:
     sdk: flutter
