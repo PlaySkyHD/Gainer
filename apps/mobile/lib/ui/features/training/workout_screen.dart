@@ -95,8 +95,11 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     _viewModel.load();
   }
 
-  /// Zuletzt gemeldeter Lebenszustand; der Screen entsteht im Vordergrund.
-  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
+  /// Zuletzt gemeldeter Lebenszustand. Entsteht der Screen im Hintergrund
+  /// (Kaltstart über die Live Activity), zählt der erste Wechsel nicht als
+  /// Verlassen.
+  AppLifecycleState _lifecycleState =
+      WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
 
   /// Ob beim Verlassen der App (Sperren, App-Wechsel) eine Tastatur offen war.
   bool _keyboardOpenOnLeave = false;

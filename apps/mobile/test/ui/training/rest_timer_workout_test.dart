@@ -206,6 +206,12 @@ void main() {
     // Tastatur, die iOS gleich wieder einblendet.
     expect(_hasFocus(tester, 0), isTrue);
     expect(find.byType(GainerNumericAccessoryBar), findsOneWidget);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await settle(tester);
+    await tester.tap(_labelled('Tastatur ausblenden'));
+    await settle(tester);
+    expect(_hasFocus(tester, 0), isFalse);
     disposeActive();
   });
 
