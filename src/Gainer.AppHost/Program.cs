@@ -44,7 +44,7 @@ var backupBlobs = builder
     .AddBlobs("backup-blobs");
 
 builder
-    .AddProject<Projects.Gainer_Api>("api")
+    .AddDotnetProject("api", "../Gainer.Api/Gainer.Api.csproj")
     .WithReference(database)
     .WithEnvironment("OpenFoodFacts__ContactEmail", openFoodFactsContactEmail)
     .WithEnvironment("MealEstimation__DailyRequestsPerUser", "20")

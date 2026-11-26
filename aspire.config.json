@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "src/Gainer.AppHost/Gainer.AppHost.csproj"
+  }
+}
