@@ -71,7 +71,7 @@ jobs:
           restore-keys: ${{ runner.os }}-sonar
 
       - name: Install Aspire CLI
-        run: dotnet tool install --global Aspire.Cli --version 13.6.1
+        run: dotnet tool install --global Aspire.Cli --version 17.0.0
 
       - name: Install SonarQube Cloud scanner and coverage tool
         run: |
