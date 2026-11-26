@@ -95,12 +95,32 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     _viewModel.load();
   }
 
+  /// Zuletzt gemeldeter Lebenszustand; der Screen entsteht im Vordergrund.
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
+
+  /// Ob beim Verlassen der App (Sperren, App-Wechsel) eine Tastatur offen war.
+  bool _keyboardOpenOnLeave = false;
+
   /// Kehrt die App zurück, ohne dass vorher eine Tastatur sichtbar war, hat kein
   /// Feld den Fokus; sonst öffnet iOS die Tastatur ungefragt.
+  ///
+  /// Ob die Tastatur offen war, zählt beim Verlassen: Beim Zurückkehren meldet
+  /// iOS sie erst nach `resumed` wieder. Würde der Fokus dann genommen, blendete
+  /// iOS die Tastatur trotzdem ein, aber ohne Feld, das sie wieder schließen kann.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed || !mounted) return;
-    if (View.of(context).viewInsets.bottom <= 0) _unfocus();
+    final previous = _lifecycleState;
+    _lifecycleState = state;
+    if (!mounted) return;
+    if (previous == AppLifecycleState.resumed &&
+        state != AppLifecycleState.resumed) {
+      _keyboardOpenOnLeave = View.of(context).viewInsets.bottom > 0;
+      return;
+    }
+    if (state != AppLifecycleState.resumed) return;
+    if (!_keyboardOpenOnLeave && View.of(context).viewInsets.bottom <= 0) {
+      _unfocus();
+    }
   }
 
   @override
