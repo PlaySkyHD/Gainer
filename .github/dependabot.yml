@@ -18,6 +18,9 @@ updates:
     schedule:
       interval: weekly
     groups:
+      # Aspire-Pakete müssen dieselbe Version haben, auch bei Major-Updates.
+      aspire:
+        patterns: ["Aspire.*"]
       dotnet:
         patterns: ["*"]
         update-types: [minor, patch]

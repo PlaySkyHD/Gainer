@@ -1,5 +1,6 @@
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting.Testing;
 
 namespace Gainer.IntegrationTests;
@@ -25,6 +26,7 @@ public sealed class AppHostTopologyTests
         Assert.IsInstanceOfType<PostgresDatabaseResource>(resources["gainer-db"]);
         Assert.IsInstanceOfType<AzureStorageResource>(resources["backup-storage"]);
         Assert.IsInstanceOfType<AzureBlobStorageResource>(resources["backup-blobs"]);
+        Assert.IsInstanceOfType<DotnetProjectResource>(resources["api"]);
         AssertHasReference(resources["api"], resources["gainer-db"]);
     }
 
