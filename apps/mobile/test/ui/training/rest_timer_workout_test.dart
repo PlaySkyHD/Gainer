@@ -172,6 +172,66 @@ void main() {
     expect(_hasFocus(tester, 0), isFalse);
   });
 
+  /// Sperren und über die Live Activity zurückkehren. iOS blendet die Tastatur
+  /// beim Sperren aus und meldet sie erst nach `resumed` wieder.
+  Future<void> lockAndReturn(WidgetTester tester) async {
+    final binding = tester.binding;
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.view.viewInsets = FakeViewPadding.zero;
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await settle(tester);
+  }
+
+  testWidgets('Rückkehr mit vorher offener Tastatur behält den Fokus', (
+    tester,
+  ) async {
+    final id = await seedActive(
+      blocks: [strengthBlock('Bankdrücken', 1, id: 'bench')],
+    );
+    await pumpWorkout(tester, id);
+    await startTimer(180);
+    _showKeyboard(tester);
+    await settle(tester);
+    await tester.tap(_field(0));
+    await settle(tester);
+    expect(_hasFocus(tester, 0), isTrue);
+
+    await lockAndReturn(tester);
+
+    // Das Feld behält den Fokus, also schließt „Tastatur ausblenden“ die
+    // Tastatur, die iOS gleich wieder einblendet.
+    expect(_hasFocus(tester, 0), isTrue);
+    expect(find.byType(GainerNumericAccessoryBar), findsOneWidget);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await settle(tester);
+    await tester.tap(_labelled('Tastatur ausblenden'));
+    await settle(tester);
+    expect(_hasFocus(tester, 0), isFalse);
+    disposeActive();
+  });
+
+  testWidgets('Rückkehr ohne vorher offene Tastatur nimmt den Fokus', (
+    tester,
+  ) async {
+    final id = await seedActive(
+      blocks: [strengthBlock('Bankdrücken', 1, id: 'bench')],
+    );
+    await pumpWorkout(tester, id);
+    await tester.tap(_field(0));
+    await settle(tester);
+    expect(_hasFocus(tester, 0), isTrue);
+
+    await lockAndReturn(tester);
+
+    expect(_hasFocus(tester, 0), isFalse);
+    disposeActive();
+  });
+
   testWidgets(
     'Weiter: das neu fokussierte Satzfeld liegt oberhalb der Leisten',
     (tester) async {
