@@ -7,6 +7,13 @@ updates:
     groups:
       base-images:
         patterns: ["*"]
+    # Ein .NET-Major in den Images braucht den Umstieg von TargetFramework
+    # und global.json; das ist ein eigener PR, kein Image-Update.
+    ignore:
+      - dependency-name: "dotnet/sdk"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "dotnet/aspnet"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker-compose
     directory: /deploy
