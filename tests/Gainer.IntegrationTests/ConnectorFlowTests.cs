@@ -30,6 +30,8 @@ public sealed class ConnectorFlowTests
     private const string BaseAddress = "https://gainer.markfort.xyz";
     private const string Password = "Correct-horse-42!";
     private static readonly DateTime Started = new(2026, 11, 20, 17, 0, 0, DateTimeKind.Utc);
+    private static readonly string[] ExpectedTools =
+        ["get_overview", "list_workouts", "get_workout", "search_exercises", "get_exercise_progress"];
     private static PostgreSqlTestFixture? fixture;
     private readonly List<string> keyRingPaths = [];
     private string connectionString = string.Empty;
@@ -81,14 +83,14 @@ public sealed class ConnectorFlowTests
         await using (McpClient mcp = await ConnectMcpAsync(app, tokens.AccessToken))
         {
             IList<McpClientTool> tools = await mcp.ListToolsAsync(cancellationToken: TestContext.CancellationToken);
-            CollectionAssert.AreEquivalent(
-                new[] { "get_overview", "list_workouts", "get_workout", "search_exercises", "get_exercise_progress" },
-                tools.Select(tool => tool.Name).ToArray());
+            Assert.AreSequenceEqual(
+                ExpectedTools.Order(StringComparer.Ordinal).ToArray(),
+                tools.Select(tool => tool.Name).Order(StringComparer.Ordinal).ToArray());
             Assert.IsTrue(tools.All(tool => tool.ProtocolTool.Annotations?.ReadOnlyHint == true));
 
             CallToolResult listed = await CallAsync(mcp, "list_workouts", new() { ["limit"] = 10 });
             string listedText = Text(listed);
-            StringAssert.Contains(listedText, ownWorkout.ToString());
+            Assert.Contains(ownWorkout.ToString(), listedText);
             Assert.DoesNotContain(foreignWorkout.ToString(), listedText);
 
             CallToolResult own = await CallAsync(mcp, "get_workout", new() { ["workoutId"] = ownWorkout });
@@ -99,6 +101,31 @@ public sealed class ConnectorFlowTests
 
             CallToolResult overview = await CallAsync(mcp, "get_overview", new() { ["days"] = 30 });
             Assert.IsFalse(overview.IsError ?? false);
+            CallToolResult previous = await CallAsync(mcp, "get_overview", new() { ["days"] = 7, ["endDaysAgo"] = 7 });
+            Assert.IsFalse(previous.IsError ?? false);
+
+            CallToolResult found = await CallAsync(mcp, "search_exercises", new() { ["limit"] = 5 });
+            Assert.IsFalse(found.IsError ?? false);
+            using JsonDocument exercises = JsonDocument.Parse(Text(found));
+            Guid exerciseId = exercises.RootElement.GetProperty("exercises")[0].GetProperty("exerciseId").GetGuid();
+            CallToolResult progress = await CallAsync(mcp, "get_exercise_progress", new() { ["exerciseId"] = exerciseId, ["days"] = 90 });
+            Assert.IsFalse(progress.IsError ?? false);
+            CallToolResult unknownExercise = await CallAsync(mcp, "get_exercise_progress", new() { ["exerciseId"] = Guid.NewGuid() });
+            Assert.IsTrue(unknownExercise.IsError);
+
+            // Out-of-range arguments are reported as tool errors.
+            foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
+            {
+                ("get_overview", new() { ["days"] = 5 }),
+                ("get_overview", new() { ["endDaysAgo"] = -1 }),
+                ("list_workouts", new() { ["limit"] = 0 }),
+                ("search_exercises", new() { ["limit"] = 51 }),
+                ("get_exercise_progress", new() { ["exerciseId"] = exerciseId, ["days"] = 5 }),
+            })
+            {
+                CallToolResult invalid = await CallAsync(mcp, tool, arguments);
+                Assert.IsTrue(invalid.IsError, tool);
+            }
         }
 
         // The connector token counts as missing outside MCP; the app token does not open MCP.
@@ -116,7 +143,7 @@ public sealed class ConnectorFlowTests
         using (HttpResponseMessage appOnMcp = await appClient.PostAsJsonAsync("/api/v1/mcp", new { }, TestContext.CancellationToken))
         {
             Assert.AreEqual(HttpStatusCode.Forbidden, appOnMcp.StatusCode);
-            StringAssert.Contains(appOnMcp.Headers.WwwAuthenticate.ToString(), "insufficient_scope");
+            Assert.Contains("insufficient_scope", appOnMcp.Headers.WwwAuthenticate.ToString());
         }
 
         // Refresh rotates through the OAuth endpoint.

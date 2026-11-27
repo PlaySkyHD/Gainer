@@ -10,6 +10,7 @@ namespace Gainer.Api.Controllers;
 
 /// <summary>OAuth discovery for connected assistants (RFC 9728 and RFC 8414).</summary>
 [ApiController]
+[Route(".well-known")]
 [ApiExplorerSettings(IgnoreApi = true)]
 [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
 public sealed class OAuthMetadataController(ConnectorEndpoints endpoints) : ControllerBase
@@ -17,8 +18,8 @@ public sealed class OAuthMetadataController(ConnectorEndpoints endpoints) : Cont
     /// <summary>Describes the MCP endpoint as a protected resource.</summary>
     [AllowAnonymous]
     [EnableRateLimiting(ApiConstants.SystemStatusRateLimitPolicy)]
-    [HttpGet(ConnectorEndpoints.ResourceMetadataPath)]
-    [HttpGet(ConnectorEndpoints.RootResourceMetadataPath)]
+    [HttpGet("oauth-protected-resource/api/v1/mcp")]
+    [HttpGet("oauth-protected-resource")]
     public ActionResult<ProtectedResourceMetadata> ProtectedResource() => Ok(new ProtectedResourceMetadata(
         endpoints.Resource,
         [endpoints.Origin],
@@ -29,7 +30,7 @@ public sealed class OAuthMetadataController(ConnectorEndpoints endpoints) : Cont
     /// <summary>Describes the authorization server.</summary>
     [AllowAnonymous]
     [EnableRateLimiting(ApiConstants.SystemStatusRateLimitPolicy)]
-    [HttpGet(ConnectorEndpoints.AuthorizationServerMetadataPath)]
+    [HttpGet("oauth-authorization-server")]
     public ActionResult<AuthorizationServerMetadata> AuthorizationServer() => Ok(new AuthorizationServerMetadata(
         endpoints.Origin,
         endpoints.AuthorizationEndpoint,

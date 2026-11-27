@@ -22,7 +22,7 @@ public sealed class ConnectorAuthorizationCodes(IMemoryCache cache)
     /// <summary>How long a code may be redeemed.</summary>
     public static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(60);
 
-    private readonly object gate = new();
+    private readonly Lock gate = new();
 
     public string Issue(ConnectorAuthorizationGrant grant)
     {

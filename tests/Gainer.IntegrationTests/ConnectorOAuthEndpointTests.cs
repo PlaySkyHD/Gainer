@@ -63,7 +63,7 @@ public sealed partial class ConnectorOAuthEndpointTests
 
         Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         string challenge = response.Headers.WwwAuthenticate.ToString();
-        StringAssert.Contains(challenge, $"resource_metadata=\"{Origin}/.well-known/oauth-protected-resource/api/v1/mcp\"");
+        Assert.Contains($"resource_metadata=\"{Origin}/.well-known/oauth-protected-resource/api/v1/mcp\"", challenge);
     }
 
     [TestMethod]
@@ -115,8 +115,62 @@ public sealed partial class ConnectorOAuthEndpointTests
 
         Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
         string html = await page.Content.ReadAsStringAsync(TestContext.CancellationToken);
-        StringAssert.Contains(html, "Gainer mit ChatGPT verbinden");
-        StringAssert.Contains(page.Headers.GetValues("Content-Security-Policy").Single(), "script-src 'self'");
+        Assert.Contains("Gainer mit ChatGPT verbinden", html);
+        Assert.Contains("script-src 'self'", page.Headers.GetValues("Content-Security-Policy").Single());
+    }
+
+    [TestMethod]
+    public async Task AuthorizationErrorsGoBackToTheClient()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        using HttpClient client = app.CreateClientWithoutRedirects();
+        string clientId = await RegisterAsync(client, TestContext.CancellationToken);
+        string challenge = Challenge(NewVerifier());
+
+        using HttpResponseMessage token = await client.GetAsync(
+            AuthorizeUrl(clientId, RedirectUri, challenge).Replace("response_type=code", "response_type=token", StringComparison.Ordinal),
+            TestContext.CancellationToken);
+        using HttpResponseMessage resource = await client.GetAsync(
+            AuthorizeUrl(clientId, RedirectUri, challenge).Replace("%2Fapi%2Fv1%2Fmcp", "%2Fother", StringComparison.Ordinal),
+            TestContext.CancellationToken);
+        using HttpResponseMessage missingClient = await client.GetAsync(
+            "/api/v1/oauth/authorize?response_type=code", TestContext.CancellationToken);
+
+        Assert.AreEqual("unsupported_response_type", Query(token.Headers.Location!)["error"]);
+        Assert.AreEqual("invalid_target", Query(resource.Headers.Location!)["error"]);
+        Assert.AreEqual(HttpStatusCode.BadRequest, missingClient.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ApprovalRejectsForeignRequestsAndPasskeyStates()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        using HttpClient client = app.CreateClientWithoutRedirects();
+        string clientId = await RegisterAsync(client, TestContext.CancellationToken);
+        using HttpResponseMessage page = await client.GetAsync(
+            AuthorizeUrl(clientId, RedirectUri, Challenge(NewVerifier())), TestContext.CancellationToken);
+        string request = ProtectedRequest(await page.Content.ReadAsStringAsync(TestContext.CancellationToken));
+
+        using HttpResponseMessage foreignRequest = await client.PostAsJsonAsync(
+            "/api/v1/oauth/authorize/approve",
+            new { request = "forged", state = "x", credentialJson = "{}" },
+            TestContext.CancellationToken);
+        using HttpResponseMessage foreignState = await client.PostAsJsonAsync(
+            "/api/v1/oauth/authorize/approve",
+            new { request, state = "forged", credentialJson = "{}" },
+            TestContext.CancellationToken);
+        using HttpResponseMessage confidential = await client.PostAsJsonAsync(
+            "/api/v1/oauth/register",
+            new { client_name = "ChatGPT", redirect_uris = new[] { RedirectUri }, token_endpoint_auth_method = "client_secret_basic" },
+            TestContext.CancellationToken);
+        using HttpResponseMessage script = await client.GetAsync("/api/v1/oauth/authorize.js", TestContext.CancellationToken);
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, foreignRequest.StatusCode);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, foreignState.StatusCode);
+        Assert.AreEqual(HttpStatusCode.BadRequest, confidential.StatusCode);
+        Assert.AreEqual("invalid_client_metadata", await ErrorAsync(confidential));
+        Assert.AreEqual(HttpStatusCode.OK, script.StatusCode);
+        Assert.Contains("navigator.credentials.get", await script.Content.ReadAsStringAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
