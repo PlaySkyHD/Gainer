@@ -1056,17 +1056,34 @@ class ApiInvitation {
 
 /// Error fields are read from both top-level API extensions and ProblemDetails.
 class ApiProblem {
-  const ApiProblem({this.title, this.detail, this.code, this.errors});
+  const ApiProblem({
+    this.title,
+    this.detail,
+    this.code,
+    this.errors,
+    this.serverVersion,
+    this.serverDeleted = false,
+  });
 
   final String? title;
   final String? detail;
   final String? code;
   final Map<String, Object?>? errors;
 
+  /// Bei `stale_base_version`: aktuelle Serverversion der einzigen Ressource
+  /// der Mutation, `null`, wenn der Server sie nicht nennt.
+  final int? serverVersion;
+
+  /// Die aktuelle Serverversion ist eine Löschung.
+  final bool serverDeleted;
+
   String get message => detail ?? title ?? 'Die Anfrage ist fehlgeschlagen.';
 
   factory ApiProblem.fromJson(Map<String, dynamic> json) {
     final extensions = json['extensions'];
+    Object? field(String name) =>
+        json[name] ??
+        (extensions is Map<String, dynamic> ? extensions[name] : null);
     return ApiProblem(
       title: json['title'] as String?,
       detail: json['detail'] as String?,
@@ -1078,6 +1095,11 @@ class ApiProblem {
       errors: json['errors'] is Map<String, dynamic>
           ? Map<String, Object?>.from(json['errors'] as Map<String, dynamic>)
           : null,
+      serverVersion: switch (field('serverVersion')) {
+        final int version when version >= 0 => version,
+        _ => null,
+      },
+      serverDeleted: field('serverDeleted') == true,
     );
   }
 }

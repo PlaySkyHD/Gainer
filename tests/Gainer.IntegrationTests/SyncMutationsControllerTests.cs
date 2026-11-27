@@ -44,6 +44,23 @@ public sealed class SyncMutationsControllerTests
     }
 
     [TestMethod]
+    public async Task StaleConflictCarriesTheServerVersionOnlyWhenKnown()
+    {
+        SyncMutationsController controller = Controller(new StubProcessor(new SyncMutationConflictException(3, serverDeleted: false)));
+        ActionResult<PushMutationResponse> action = await controller.Push(
+            Guid.NewGuid(), Request(Guid.NewGuid()), CancellationToken.None);
+        ProblemDetails problem = (ProblemDetails)((ObjectResult)action.Result!).Value!;
+        Assert.AreEqual("stale_base_version", problem.Extensions["code"]);
+        Assert.AreEqual(3L, problem.Extensions["serverVersion"]);
+        Assert.IsFalse((bool)problem.Extensions["serverDeleted"]!);
+
+        SyncMutationsController unknown = Controller(new StubProcessor(new SyncMutationConflictException("stale_base_version", "conflict")));
+        ActionResult<PushMutationResponse> withoutVersion = await unknown.Push(
+            Guid.NewGuid(), Request(Guid.NewGuid()), CancellationToken.None);
+        Assert.IsFalse(((ProblemDetails)((ObjectResult)withoutVersion.Result!).Value!).Extensions.ContainsKey("serverVersion"));
+    }
+
+    [TestMethod]
     public async Task CardioSessionValidationMapsTo422ValidationFailedWithErrors()
     {
         var errors = new Dictionary<string, string> { ["HeartRateBpm"] = "bad" };

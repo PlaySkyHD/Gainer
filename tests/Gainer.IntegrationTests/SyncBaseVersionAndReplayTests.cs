@@ -38,6 +38,39 @@ public sealed class SyncBaseVersionAndReplayTests
     }
 
     [TestMethod]
+    public async Task StaleConflictNamesTheServerVersionOfTheOwnResourceOnly()
+    {
+        (string connectionString, Guid user, Guid client) = await SetupAsync();
+        Guid workoutId = Guid.NewGuid();
+        await Apply(connectionString, user, client, 1,
+            Command("createWorkout", "Workout", workoutId, 0, new { workout = Workout(workoutId, "Pull 2") }));
+
+        // The response to the create was lost: the device sends its state again as a new create.
+        SyncMutationConflictException repeatedCreate = await ExpectStale(connectionString, user, client, 2,
+            Command("createWorkout", "Workout", workoutId, 0, new { workout = Workout(workoutId, "Pull 2 beendet") }));
+        Assert.AreEqual(1L, repeatedCreate.ServerVersion);
+        Assert.IsFalse(repeatedCreate.ServerDeleted);
+
+        // With that version the device rebases its own state and the save goes through.
+        await Apply(connectionString, user, client, 2,
+            Command("saveWorkout", "Workout", workoutId, 1, new { baseVersion = 1, workout = Workout(workoutId, "Pull 2 beendet") }));
+        SyncMutationConflictException staleSave = await ExpectStale(connectionString, user, client, 3,
+            Command("saveWorkout", "Workout", workoutId, 1, new { baseVersion = 1, workout = Workout(workoutId, "Alt") }));
+        Assert.AreEqual(2L, staleSave.ServerVersion);
+
+        // Another account never learns the version: its save of the foreign id finds nothing.
+        (Guid otherUser, Guid otherClient) = await AddUserAsync(connectionString);
+        await using AppDbContext other = PostgreSqlTestFixture.CreateContext(connectionString, otherUser);
+        SyncMutationConflictException foreign = await Assert.ThrowsExactlyAsync<SyncMutationConflictException>(() =>
+            Processor(other, otherUser).ProcessAsync(For(
+                Command("saveWorkout", "Workout", workoutId, 2, new { baseVersion = 2, workout = Workout(workoutId, "Fremd") }),
+                otherClient,
+                1), TestContext.CancellationToken));
+        Assert.AreEqual("resource_not_found", foreign.Code);
+        Assert.IsNull(foreign.ServerVersion);
+    }
+
+    [TestMethod]
     public async Task WorkoutSavedFromAStaleBaseVersionIsStaleBaseVersion()
     {
         (string connectionString, Guid user, Guid client) = await SetupAsync();
@@ -212,12 +245,14 @@ public sealed class SyncBaseVersionAndReplayTests
         _ = await Processor(context, user).ProcessAsync(For(command, client, sequence));
     }
 
-    private static async Task ExpectStale(string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
+    private static async Task<SyncMutationConflictException> ExpectStale(
+        string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
     {
         await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         SyncMutationConflictException conflict = await Assert.ThrowsExactlyAsync<SyncMutationConflictException>(() =>
             Processor(context, user).ProcessAsync(For(command, client, sequence)));
         Assert.AreEqual("stale_base_version", conflict.Code);
+        return conflict;
     }
 
     private static SyncMutationProcessor Processor(AppDbContext context, Guid userId)
@@ -237,11 +272,21 @@ public sealed class SyncBaseVersionAndReplayTests
     private static async Task<(string ConnectionString, Guid User, Guid Client)> SetupAsync()
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
+        {
+            await context.Database.MigrateAsync();
+        }
+
+        (Guid user, Guid client) = await AddUserAsync(connectionString);
+        return (connectionString, user, client);
+    }
+
+    private static async Task<(Guid User, Guid Client)> AddUserAsync(string connectionString)
+    {
         Guid user = Guid.NewGuid();
         Guid client = Guid.NewGuid();
         await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
-            await context.Database.MigrateAsync();
             context.Users.Add(User(user));
             await context.SaveChangesAsync();
         }
@@ -264,7 +309,7 @@ public sealed class SyncBaseVersionAndReplayTests
             });
             await context.SaveChangesAsync();
         }
-        return (connectionString, user, client);
+        return (user, client);
     }
 
     private static AppUser User(Guid id) => new()

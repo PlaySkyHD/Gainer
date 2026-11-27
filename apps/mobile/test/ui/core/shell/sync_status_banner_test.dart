@@ -57,6 +57,67 @@ void main() {
     ),
   );
 
+  testWidgets('abgelehnte Änderungen: Hinweis öffnet die Konflikte', (
+    tester,
+  ) async {
+    var opened = 0;
+    status.value = const SyncStatus(conflictCount: 2);
+    await tester.pumpWidget(
+      componentHarness(
+        child: SyncStatusBanner(
+          status: status,
+          synchronize: fake,
+          onOpenConflicts: () => opened++,
+          child: const Center(child: Text('Inhalt')),
+        ),
+      ),
+    );
+
+    expect(find.text('2 Änderungen nicht gespeichert'), findsOneWidget);
+    expect(find.text('Inhalt'), findsOneWidget);
+    await tester.tap(find.text('Ansehen'));
+    expect(opened, 1);
+
+    status.value = const SyncStatus(conflictCount: 1);
+    await tester.pump();
+    expect(find.text('1 Änderung nicht gespeichert'), findsOneWidget);
+
+    // Ein anderes Schreibgerät geht vor: Ohne Schreibrecht hilft Auflösen nicht.
+    status.value = const SyncStatus(conflictCount: 1, isWriter: false);
+    await tester.pump();
+    expect(find.text('Dieses iPhone lädt nichts hoch'), findsOneWidget);
+    expect(find.byKey(const ValueKey('sync-conflict-banner')), findsNothing);
+
+    status.value = const SyncStatus();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('sync-conflict-banner')), findsNothing);
+  });
+
+  for (final scale in [1.0, 1.3, 2.0]) {
+    testWidgets('Konflikthinweis läuft bei Textgröße $scale nicht über', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      status.value = const SyncStatus(conflictCount: 12);
+      await tester.pumpWidget(
+        componentHarness(
+          textScale: scale,
+          child: SyncStatusBanner(
+            status: status,
+            synchronize: fake,
+            onOpenConflicts: () {},
+            child: const SizedBox.expand(),
+          ),
+        ),
+      );
+
+      expect(find.text('12 Änderungen nicht gespeichert'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('Schreibgerät: kein Hinweis, Inhalt bleibt sichtbar', (
     tester,
   ) async {

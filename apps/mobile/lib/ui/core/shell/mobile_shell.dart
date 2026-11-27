@@ -26,11 +26,37 @@ import '../../features/training/compact_training_bar.dart';
 import '../../features/training/training_home_screen.dart';
 import '../../features/training/workout_screen.dart';
 import '../components/components.dart';
+import '../navigation/single_instance_route.dart';
 import '../theme.dart';
 import '../view_models/mobile_shell_view_model.dart';
 import 'mobile_tab_scaffold.dart';
 import 'sync_now_section.dart';
 import 'sync_status_banner.dart';
+
+/// Öffnet „Sync & Gerät“ aus dem Mehr-Menü oder dem Konflikthinweis, aber
+/// nur einmal: Der Hinweis liegt über den Tabs und bliebe sonst über einer
+/// schon offenen Seite antippbar. Danach zählt der Status neu, weil die Seite
+/// Konflikte direkt im Speicher auflöst.
+Future<void> openSyncScreen(BuildContext context, AccountScope account) async {
+  await pushSingleInstance<void>(
+    context,
+    key: 'sync-screen',
+    fullscreenDialog: false,
+    builder: (_) => ValueListenableBuilder<SyncStatus>(
+      valueListenable: account.syncStatus,
+      builder: (_, status, _) => SyncScreen(
+        sync: account.sync,
+        isOnline: account.online,
+        accountId: account.store.accountId,
+        apiOrigin: account.api.configuration.canonicalApiOrigin,
+        isWriter: status.writerKnown ? status.isWriter : null,
+        onBecameWriter: account.markThisDeviceWriter,
+        isScopeActive: account.isSessionActive,
+      ),
+    ),
+  );
+  await account.refreshSyncStatus();
+}
 
 class MobileShell extends StatelessWidget {
   const MobileShell({
@@ -59,6 +85,7 @@ class MobileShell extends StatelessWidget {
             contentWrapper: (context, content) => SyncStatusBanner(
               status: account.syncStatus,
               synchronize: account.synchronize,
+              onOpenConflicts: () => openSyncScreen(context, account),
               child: content,
             ),
             tabBuilder: (context, area) => CupertinoTabView(
@@ -271,22 +298,7 @@ class _MoreScreen extends StatelessWidget {
               title: 'Sync & Gerätewechsel',
               leadingIcon: CupertinoIcons.arrow_2_squarepath,
               showChevron: true,
-              onTap: () => Navigator.of(context).push(
-                CupertinoPageRoute<void>(
-                  builder: (_) => ValueListenableBuilder<SyncStatus>(
-                    valueListenable: account.syncStatus,
-                    builder: (_, status, _) => SyncScreen(
-                      sync: account.sync,
-                      isOnline: account.online,
-                      accountId: account.store.accountId,
-                      apiOrigin: account.api.configuration.canonicalApiOrigin,
-                      isWriter: status.writerKnown ? status.isWriter : null,
-                      onBecameWriter: account.markThisDeviceWriter,
-                      isScopeActive: account.isSessionActive,
-                    ),
-                  ),
-                ),
-              ),
+              onTap: () => openSyncScreen(context, account),
             ),
             GainerListRow(
               key: const ValueKey('account-data-export'),

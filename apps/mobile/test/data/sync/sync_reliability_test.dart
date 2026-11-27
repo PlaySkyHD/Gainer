@@ -46,6 +46,8 @@ typedef _Rejection = ({int status, String code});
 
 void main() {
   late HttpServer server;
+  // Serverversion, die eine Ablehnung `stale_base_version` nennt.
+  int? staleServerVersion;
   late LocalDatabase database;
   late LocalSyncStore store;
   late ApiClient api;
@@ -98,7 +100,11 @@ void main() {
         if (rejection != null) {
           request.response.statusCode = rejection.status;
           request.response.write(
-            jsonEncode({'code': rejection.code, 'message': 'abgelehnt'}),
+            jsonEncode({
+              'code': rejection.code,
+              'message': 'abgelehnt',
+              'serverVersion': ?staleServerVersion,
+            }),
           );
         } else {
           request.response.write(
@@ -367,6 +373,77 @@ void main() {
         ),
       );
     }
+
+    test(
+      'a lost create response is rebased on the server version and resent',
+      () async {
+        await startAndLog(nextId());
+        staleServerVersion = 1;
+        addTearDown(() => staleServerVersion = null);
+        onMutation = (body, index) async =>
+            index == 0 ? (status: 409, code: 'stale_base_version') : null;
+
+        final report = await sync.synchronize(now: now);
+
+        expect(sentOperations(), ['createWorkout', 'saveWorkout']);
+        expect(mutations.last['resources'].single['baseVersion'], 1);
+        expect(report.pushed, 1);
+        expect(await conflictCount(), 0);
+      },
+    );
+
+    test(
+      'a workout the server knows is deleted there instead of being dropped',
+      () async {
+        final workout = await startAndLog(nextId());
+        staleServerVersion = 1;
+        addTearDown(() => staleServerVersion = null);
+        onMutation = (body, index) async {
+          if (index == 0) {
+            // Die Anlage kam an, die Antwort nicht; danach verwirft der
+            // Nutzer das Training lokal.
+            await training.deleteWorkout(workout.workoutId);
+            return (status: 409, code: 'stale_base_version');
+          }
+          return null;
+        };
+
+        await sync.synchronize(now: now);
+
+        expect(sentOperations(), ['createWorkout', 'deleteWorkout']);
+        expect(mutations.last['resources'].single['baseVersion'], 1);
+        expect(await conflictCount(), 0);
+      },
+    );
+
+    test('after taking over writing, rebasing waits for a full pull', () async {
+      await startAndLog(nextId());
+      staleServerVersion = 1;
+      addTearDown(() => staleServerVersion = null);
+      onMutation = (body, index) async =>
+          (status: 409, code: 'stale_base_version');
+
+      await sync.synchronize(now: now, takeOverWriting: true);
+
+      // Der Server kann fremde, noch nicht gezogene Stände halten: kein
+      // stilles Überschreiben, sondern ein Konflikt.
+      expect(sentOperations(), ['createWorkout']);
+      expect(await conflictCount(), 1);
+      expect(await store.readSyncMetadata('auto-rebase:needs-pull'), isNull);
+    });
+
+    test('rebasing on the same server version is tried only once', () async {
+      await startAndLog(nextId());
+      staleServerVersion = 1;
+      addTearDown(() => staleServerVersion = null);
+      onMutation = (body, index) async =>
+          (status: 409, code: 'stale_base_version');
+
+      await sync.synchronize(now: now);
+
+      expect(sentOperations(), ['createWorkout', 'saveWorkout']);
+      expect(await conflictCount(), 1);
+    });
 
     test('stale_base_version with a newer local state and no foreign change is resent', () async {
       final (planId, plan) = await seedServerPlan();

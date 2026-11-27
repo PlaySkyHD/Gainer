@@ -323,6 +323,11 @@ class SyncRepository implements MobileSyncActions {
       takeOverWriting,
     );
     if (registrationBlock != null) return registrationBlock;
+    if (takeOverWriting) {
+      // Bis zum nächsten vollständigen Pull kann der Server fremde Stände
+      // halten, die dieses Gerät nie gesehen hat (siehe _rebaseOnServerVersion).
+      await store.writeSyncMetadata(_rebaseNeedsPullKey, true);
+    }
     await _resumeAfterProtocolUpgrade();
 
     final rounds = await _syncRounds(registration!, clientId, timestamp);
@@ -392,6 +397,9 @@ class SyncRepository implements MobileSyncActions {
       final stop = await _pullOrStop(pushed: pushed, pulledBefore: pulled);
       if (stop != null) return (pushed: pushed, pulled: pulled, stop: stop);
       pulled += _appliedInPull;
+      if (registration.isActiveWriter) {
+        await store.deleteSyncMetadata(_rebaseNeedsPullKey);
+      }
       if (!registration.isActiveWriter || await _healStaleConflicts() == 0) {
         break;
       }
@@ -1337,13 +1345,17 @@ class SyncRepository implements MobileSyncActions {
     'resource_not_found',
   };
 
+  /// Gesetzt nach „Übernehmen“ bis zum nächsten vollständigen Pull.
+  static const _rebaseNeedsPullKey = 'auto-rebase:needs-pull';
+
   static String _healGuardKey(String aggregateType, String aggregateId) =>
       'auto-heal:$aggregateType:$aggregateId';
 
   /// Löst eindeutige Ablehnungen ohne Rückfrage. Gibt `true` zurück, wenn der
   /// Eintrag erledigt oder neu eingereiht ist und kein Konflikt entstehen soll.
-  /// `stale_base_version` entscheidet erst [_healStaleConflicts] nach dem Pull,
-  /// weil erst dann der Serverstand bekannt ist.
+  /// `stale_base_version` mit einer dem Gerät unbekannten Serverversion setzt
+  /// [_rebaseOnServerVersion] schon hier auf; alle übrigen entscheidet
+  /// [_healStaleConflicts] nach dem Pull, wenn der Serverstand bekannt ist.
   Future<bool> _tryAutoHeal(LocalMutation mutation, ApiException error) async {
     final type = mutation.aggregateType;
     final id = mutation.aggregateId;
@@ -1355,11 +1367,19 @@ class SyncRepository implements MobileSyncActions {
     }
     final rows = await _aggregateRows(type, id);
     if (rows.any(_spansResources)) return false;
+    // Vor dem Verwerfen: Nennt der Server eine Version, kennt er die
+    // Ressource, auch wenn die lokale Kopie es nicht weiß.
+    if (error.code == 'stale_base_version' &&
+        await _rebaseOnServerVersion(mutation, error)) {
+      return true;
+    }
     final working = envelope.workingCopy;
     final deleted =
         rows.lastOrNull?.operation == LocalMutationOperation.delete ||
         (working is Map && working['deletedAtUtc'] != null);
-    if (deleted && envelope.serverVersion == null) {
+    if (deleted &&
+        envelope.serverVersion == null &&
+        error.serverVersion == null) {
       await store.discardLocalResource(type, id);
       return true;
     }
@@ -1381,6 +1401,52 @@ class SyncRepository implements MobileSyncActions {
     }
     if (error.code == 'stale_base_version') return false;
     return _requeueIfNewer(mutation, rows, working, error.code);
+  }
+
+  /// Nennt der Server bei `stale_base_version` seine aktuelle Version und
+  /// ist sie neuer als alles Gezogene, ist sie der eigene Stand dieses
+  /// Geräts: Nur das Schreibgerät sendet, eine Geräteübergabe zieht vorher
+  /// bis zum eingefrorenen Stand, und nach „Übernehmen“ wartet das Aufsetzen
+  /// auf den ersten vollständigen Pull ([_rebaseNeedsPullKey]). Typisch ist
+  /// eine verlorene Antwort im Funkloch: Der Server hat die Änderung
+  /// gespeichert, die App kennt nur die alte Version und sendet erneut, etwa
+  /// eine Anlage als zweite Anlage. Der lokale Stand geht dann auf dieser
+  /// Version neu hinaus. Je Ressource und Serverversion nur ein Versuch.
+  Future<bool> _rebaseOnServerVersion(
+    LocalMutation rejected,
+    ApiException error,
+  ) async {
+    final version = error.serverVersion;
+    if (version == null || error.serverDeleted) return false;
+    if (await store.readSyncMetadata(_rebaseNeedsPullKey) == true) {
+      return false;
+    }
+    // Eine schon gezogene Version kann fremd sein; über sie entscheidet
+    // [_healStaleConflicts] mit der Kennzeichnung fremder Änderungen.
+    final known =
+        (await store.readAggregate(
+          rejected.aggregateType,
+          rejected.aggregateId,
+        ))?.serverVersion ??
+        0;
+    if (version <= known) return false;
+    // Nur die zuletzt versuchte Version: Ein Erfolg hebt die Serverversion,
+    // ein erneuter Fehlschlag auf derselben Version bleibt ein Konflikt.
+    final key = 'auto-rebase:${rejected.aggregateType}:${rejected.aggregateId}';
+    if (await store.readSyncMetadata(key) == version) return false;
+    try {
+      await store.requeueLocalState(
+        aggregateType: rejected.aggregateType,
+        aggregateId: rejected.aggregateId,
+        replacementMutationId: newUuidV4(),
+        createdAtUtc: DateTime.now().toUtc(),
+        rebaseOnServerVersion: version,
+      );
+    } on StateError {
+      return false;
+    }
+    await store.writeSyncMetadata(key, version);
+    return true;
   }
 
   /// Reiht den aktuellen lokalen Stand einmal neu ein, wenn er neuer ist als

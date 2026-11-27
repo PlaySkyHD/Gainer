@@ -776,6 +776,12 @@ class AccountScope {
   /// Letzter Sync-Zeitpunkt, wartende Änderungen und Schreibgerät-Status.
   ValueListenable<SyncStatus> get syncStatus => _syncStatusTracker;
 
+  /// Zählt wartende Änderungen und Konflikte neu, etwa nachdem der Nutzer
+  /// Konflikte unter „Sync & Gerät“ aufgelöst hat.
+  Future<void> refreshSyncStatus() async {
+    if (isSessionActive()) await _syncStatusTracker.refreshPending();
+  }
+
   /// Hält fest, dass dieses Gerät nach einer Übergabe das Schreibgerät ist.
   void markThisDeviceWriter() {
     if (isSessionActive()) _syncStatusTracker.markWriter();

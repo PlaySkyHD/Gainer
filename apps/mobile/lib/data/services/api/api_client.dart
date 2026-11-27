@@ -38,6 +38,8 @@ class ApiException implements Exception {
     required this.code,
     required this.message,
     this.errors,
+    this.serverVersion,
+    this.serverDeleted = false,
   });
 
   final int? statusCode;
@@ -46,6 +48,12 @@ class ApiException implements Exception {
 
   /// Feldfehler eines `validation_failed`-Problems, nach Feldschlüssel.
   final Map<String, Object?>? errors;
+
+  /// Bei `stale_base_version`: aktuelle Serverversion der Ressource.
+  final int? serverVersion;
+
+  /// Die aktuelle Serverversion ist eine Löschung.
+  final bool serverDeleted;
 
   @override
   String toString() => message;
@@ -993,6 +1001,8 @@ class ApiClient {
         code: problem.code ?? 'http_$status',
         message: problem.message,
         errors: problem.errors,
+        serverVersion: problem.serverVersion,
+        serverDeleted: problem.serverDeleted,
       );
     }
   }
