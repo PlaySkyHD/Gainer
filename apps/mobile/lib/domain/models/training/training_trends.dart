@@ -149,90 +149,50 @@ class TrainingTrends {
           (day, checkIn.weightKg),
     ];
     final start = _periodStart(period, today, entries, weights);
-    final bucketStarts = _bucketStarts(period, start, today);
-    int bucketOf(LocalDay day) {
-      var index = bucketStarts.length - 1;
-      while (index > 0 && day.isBefore(bucketStarts[index])) {
-        index--;
-      }
-      return index;
-    }
-
-    bool inPeriod(LocalDay day) => !day.isBefore(start) && !day.isAfter(today);
-
-    final count = bucketStarts.length;
-    final workouts = List<int>.filled(count, 0);
-    final minutes = List<double>.filled(count, 0);
-    final volume = List<double>.filled(count, 0);
-    final sets = List<int>.filled(count, 0);
-    final reps = List<int>.filled(count, 0);
-    var totalDuration = Duration.zero;
-    var workoutCount = 0;
-    for (final entry in entries) {
-      if (!inPeriod(entry.day)) continue;
-      final index = bucketOf(entry.day);
-      workouts[index]++;
-      minutes[index] += entry.duration.inSeconds / 60;
-      volume[index] += entry.volumeKg;
-      sets[index] += entry.setCount;
-      reps[index] += entry.repetitions;
-      totalDuration += entry.duration;
-      workoutCount++;
-    }
-
-    final weightSums = List<double>.filled(count, 0);
-    final weightCounts = List<int>.filled(count, 0);
-    (LocalDay, double)? latest;
-    for (final (day, kg) in weights) {
-      if (!inPeriod(day)) continue;
-      final index = bucketOf(day);
-      weightSums[index] += kg;
-      weightCounts[index]++;
-      if (latest == null || !day.isBefore(latest.$1)) latest = (day, kg);
-    }
-
-    final setCount = sets.fold(0, (sum, value) => sum + value);
-    final repetitions = reps.fold(0, (sum, value) => sum + value);
+    final buckets = _Buckets(start, today, _bucketStarts(period, start, today));
+    final sums = _WorkoutSums(buckets, entries);
+    final body = _WeightSums(buckets, weights);
+    final workoutCount = sums.workoutCount;
     final weeks = (start.daysUntil(today) + 1) / 7;
     return TrainingTrends(
       period: period,
       start: start,
       today: today,
-      bucketStarts: bucketStarts,
+      bucketStarts: buckets.starts,
       workoutCount: workoutCount,
       workoutsPerWeek: workoutCount / weeks,
       averageDuration: workoutCount == 0
           ? null
-          : Duration(seconds: totalDuration.inSeconds ~/ workoutCount),
-      totalDuration: totalDuration,
-      volumeKg: volume.fold<double>(0, (sum, value) => sum + value),
-      setCount: setCount,
-      repetitions: repetitions,
-      repetitionsPerSet: setCount == 0 ? null : repetitions / setCount,
-      latestBodyweightKg: latest?.$2,
+          : Duration(seconds: sums.totalDuration.inSeconds ~/ workoutCount),
+      totalDuration: sums.totalDuration,
+      volumeKg: _sum(sums.volume),
+      setCount: _sum(sums.sets).toInt(),
+      repetitions: _sum(sums.reps).toInt(),
+      repetitionsPerSet: _ratio(_sum(sums.reps), _sum(sums.sets)),
+      latestBodyweightKg: body.latestKg,
       series: {
-        TrendMetric.workoutsPerWeek: [
-          for (final value in workouts) value.toDouble(),
-        ],
-        TrendMetric.averageDuration: [
-          for (var i = 0; i < count; i++)
-            workouts[i] == 0 ? null : minutes[i] / workouts[i],
-        ],
-        TrendMetric.totalDuration: minutes,
-        TrendMetric.volume: volume,
-        TrendMetric.sets: [for (final value in sets) value.toDouble()],
-        TrendMetric.repetitions: [for (final value in reps) value.toDouble()],
-        TrendMetric.repetitionsPerSet: [
-          for (var i = 0; i < count; i++)
-            sets[i] == 0 ? null : reps[i] / sets[i],
-        ],
-        TrendMetric.bodyweight: [
-          for (var i = 0; i < count; i++)
-            weightCounts[i] == 0 ? null : weightSums[i] / weightCounts[i],
-        ],
+        TrendMetric.workoutsPerWeek: sums.workouts,
+        TrendMetric.averageDuration: _ratios(sums.minutes, sums.workouts),
+        TrendMetric.totalDuration: sums.minutes,
+        TrendMetric.volume: sums.volume,
+        TrendMetric.sets: sums.sets,
+        TrendMetric.repetitions: sums.reps,
+        TrendMetric.repetitionsPerSet: _ratios(sums.reps, sums.sets),
+        TrendMetric.bodyweight: _ratios(body.sums, body.counts),
       },
     );
   }
+
+  static double _sum(List<double> values) =>
+      values.fold<double>(0, (sum, value) => sum + value);
+
+  /// Quotient oder `null`, wenn der Nenner 0 ist (keine Daten).
+  static double? _ratio(double value, double count) =>
+      count == 0 ? null : value / count;
+
+  static List<double?> _ratios(List<double> values, List<double> counts) => [
+    for (var i = 0; i < values.length; i++) _ratio(values[i], counts[i]),
+  ];
 
   static LocalDay? _tryParse(String value) {
     try {
@@ -289,5 +249,84 @@ class TrainingTrends {
       }
     }
     return starts;
+  }
+}
+
+/// Abschnitte eines Zeitraums und die Zuordnung eines Tages.
+class _Buckets {
+  _Buckets(this.start, this.today, this.starts);
+
+  final LocalDay start;
+  final LocalDay today;
+  final List<LocalDay> starts;
+
+  int get length => starts.length;
+
+  bool contains(LocalDay day) => !day.isBefore(start) && !day.isAfter(today);
+
+  int indexOf(LocalDay day) {
+    var index = starts.length - 1;
+    while (index > 0 && day.isBefore(starts[index])) {
+      index--;
+    }
+    return index;
+  }
+}
+
+/// Trainingssummen je Abschnitt.
+class _WorkoutSums {
+  _WorkoutSums(_Buckets buckets, List<WorkoutTrendEntry> entries)
+    : workouts = List.filled(buckets.length, 0),
+      minutes = List.filled(buckets.length, 0),
+      volume = List.filled(buckets.length, 0),
+      sets = List.filled(buckets.length, 0),
+      reps = List.filled(buckets.length, 0) {
+    for (final entry in entries) {
+      if (buckets.contains(entry.day)) _add(buckets.indexOf(entry.day), entry);
+    }
+  }
+
+  final List<double> workouts;
+  final List<double> minutes;
+  final List<double> volume;
+  final List<double> sets;
+  final List<double> reps;
+  var totalDuration = Duration.zero;
+  var workoutCount = 0;
+
+  void _add(int index, WorkoutTrendEntry entry) {
+    workouts[index]++;
+    minutes[index] += entry.duration.inSeconds / 60;
+    volume[index] += entry.volumeKg;
+    sets[index] += entry.setCount;
+    reps[index] += entry.repetitions;
+    totalDuration += entry.duration;
+    workoutCount++;
+  }
+}
+
+/// Check-in-Gewichte je Abschnitt und der jüngste im Zeitraum.
+class _WeightSums {
+  _WeightSums(_Buckets buckets, List<(LocalDay, double)> weights)
+    : sums = List.filled(buckets.length, 0),
+      counts = List.filled(buckets.length, 0) {
+    for (final (day, kg) in weights) {
+      if (buckets.contains(day)) _add(buckets.indexOf(day), day, kg);
+    }
+  }
+
+  final List<double> sums;
+  final List<double> counts;
+  LocalDay? _latestDay;
+  double? latestKg;
+
+  void _add(int index, LocalDay day, double kg) {
+    sums[index] += kg;
+    counts[index]++;
+    final latest = _latestDay;
+    if (latest == null || !day.isBefore(latest)) {
+      _latestDay = day;
+      latestKg = kg;
+    }
   }
 }
