@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\contracts\fixtures\training-statistics.json" Link="Fixtures\training-statistics.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\contracts\fixtures\*.json" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

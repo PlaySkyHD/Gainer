@@ -1,0 +1,869 @@
+{
+  "rules": [
+    "Eingabe: beendete, nicht gelöschte Trainings (endedAtUtc gesetzt, deletedAtUtc null); je Training Sätze, Wiederholungen und Volumen nach den Regeln von training-statistics.json (includeWarmups wie im Fall).",
+    "Lokaler Tag eines Trainings = Datum von startedAtUtc in timeZone. Dauer = endedAtUtc − startedAtUtc, negativ als 0.",
+    "Zeitraum: fourWeeks beginnt am Montag der Woche von today minus 3 Wochen, threeMonths minus 12 Wochen; year am Monatsersten 11 Monate vor dem Monat von today; all am Monatsersten des frühesten Trainings- oder Check-in-Tages (ohne Daten: Monat von today). Er endet mit today.",
+    "Abschnitte: fourWeeks und threeMonths wöchentlich ab start, year und all monatlich; der letzte Abschnitt enthält today. Trainings und Check-ins außerhalb von start bis today zählen nicht.",
+    "workoutsPerWeek gesamt = Zahl der Trainings / ((Tage von start bis today inklusive) / 7); in series ist workoutsPerWeek die Zahl der Trainings je Abschnitt.",
+    "averageDurationSeconds = ganzzahlig abgerundete Gesamtdauer in Sekunden / Trainings (ganzzahlige Division); null ohne Training. series.totalDuration und series.averageDuration in Minuten (ganze Sekunden je Training / 60).",
+    "repetitionsPerSet = Wiederholungen / Sätze, null ohne Satz. series.bodyweight = Mittel der Check-in-Gewichte je Abschnitt, null ohne Check-in. latestBodyweightKg = Check-in mit dem jüngsten Tag im Zeitraum.",
+    "Zahlen werden auf 2 Nachkommastellen (Hälfte aufrunden) verglichen; null muss null sein."
+  ],
+  "cases": [
+    {
+      "name": "vier-wochen-dst-und-luecken",
+      "description": "Wochengrenzen über das Ende der Sommerzeit, Aufwärmsätze ausgeschlossen, leere aktuelle Woche, laufendes und gelöschtes Training zählen nicht.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-11-04",
+      "period": "fourWeeks",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [
+        {
+          "localDate": "2026-10-10",
+          "weightKg": 80
+        },
+        {
+          "localDate": "2026-10-13",
+          "weightKg": 81
+        },
+        {
+          "localDate": "2026-10-15",
+          "weightKg": 82
+        },
+        {
+          "localDate": "2026-10-28",
+          "weightKg": 83.5
+        },
+        {
+          "localDate": "2026-11-05",
+          "weightKg": 90
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "wA",
+          "title": "wA",
+          "startedAtUtc": "2026-10-11T21:30:00Z",
+          "endedAtUtc": "2026-10-11T22:30:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "wA-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "wA-bench-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "wB",
+          "title": "wB",
+          "startedAtUtc": "2026-10-11T22:30:00Z",
+          "endedAtUtc": "2026-10-11T23:15:30Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "wB-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "wB-bench-0",
+                  "setType": "warmup",
+                  "weightKg": 40,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "wB-bench-1",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "wB-bench-2",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "wC",
+          "title": "wC",
+          "startedAtUtc": "2026-10-25T22:30:00Z",
+          "endedAtUtc": "2026-10-25T23:30:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "wC-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "wC-bench-0",
+                  "setType": "normal",
+                  "weightKg": 80,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "wC-bench-1",
+                  "setType": "normal",
+                  "weightKg": 80,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "wC-bench-2",
+                  "setType": "normal",
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "wD",
+          "title": "wD",
+          "startedAtUtc": "2026-10-25T23:30:00Z",
+          "endedAtUtc": "2026-10-26T00:20:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "wD-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "wD-bench-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "wE",
+          "title": "wE",
+          "startedAtUtc": "2026-11-03T08:00:00Z",
+          "endedAtUtc": null,
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "wE-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "wE-bench-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "wF",
+          "title": "wF",
+          "startedAtUtc": "2026-11-03T08:00:00Z",
+          "endedAtUtc": "2026-11-03T09:00:00Z",
+          "deletedAtUtc": "2026-11-03T10:00:00Z",
+          "exercises": [
+            {
+              "workoutExerciseId": "wF-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "wF-bench-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "start": "2026-10-12",
+        "bucketStarts": [
+          "2026-10-12",
+          "2026-10-19",
+          "2026-10-26",
+          "2026-11-02"
+        ],
+        "workoutCount": 3,
+        "workoutsPerWeek": 0.88,
+        "averageDurationSeconds": 3110,
+        "totalDurationSeconds": 9330,
+        "volumeKg": 2180,
+        "setCount": 5,
+        "repetitions": 31,
+        "repetitionsPerSet": 6.2,
+        "latestBodyweightKg": 83.5,
+        "series": {
+          "workoutsPerWeek": [
+            1,
+            1,
+            1,
+            0
+          ],
+          "averageDuration": [
+            45.5,
+            60,
+            50,
+            null
+          ],
+          "totalDuration": [
+            45.5,
+            60,
+            50,
+            0
+          ],
+          "volume": [
+            1080,
+            800,
+            300,
+            0
+          ],
+          "sets": [
+            2,
+            2,
+            1,
+            0
+          ],
+          "repetitions": [
+            18,
+            10,
+            3,
+            0
+          ],
+          "repetitionsPerSet": [
+            9,
+            5,
+            3,
+            null
+          ],
+          "bodyweight": [
+            81.5,
+            null,
+            83.5,
+            null
+          ]
+        }
+      }
+    },
+    {
+      "name": "jahr-monatsgrenzen-aufwaermen-koerpergewicht",
+      "description": "Monatsweise über ein Jahr, Aufwärmsätze eingeschlossen, Körpergewichtsübung mit Check-in vor dem Zeitraum, Monatsgrenze in lokaler Zeit.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-03-15",
+      "period": "year",
+      "includeWarmups": true,
+      "exercises": [
+        {
+          "id": "pullup",
+          "exerciseType": "bodyweightOnly"
+        },
+        {
+          "id": "bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [
+        {
+          "localDate": "2025-03-20",
+          "weightKg": 75
+        },
+        {
+          "localDate": "2025-06-10",
+          "weightKg": 76
+        },
+        {
+          "localDate": "2025-06-20",
+          "weightKg": 78
+        },
+        {
+          "localDate": "2026-03-15",
+          "weightKg": 77
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "y0",
+          "title": "y0",
+          "startedAtUtc": "2025-03-31T21:30:00Z",
+          "endedAtUtc": "2025-03-31T22:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "y0-pullup",
+              "sourceExerciseId": "pullup",
+              "exerciseNameSnapshot": "Klimmzug",
+              "exerciseTypeSnapshot": "bodyweightOnly",
+              "sets": [
+                {
+                  "setId": "y0-pullup-0",
+                  "setType": "normal",
+                  "repetitions": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "y1",
+          "title": "y1",
+          "startedAtUtc": "2025-03-31T22:30:00Z",
+          "endedAtUtc": "2025-03-31T23:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "y1-pullup",
+              "sourceExerciseId": "pullup",
+              "exerciseNameSnapshot": "Klimmzug",
+              "exerciseTypeSnapshot": "bodyweightOnly",
+              "sets": [
+                {
+                  "setId": "y1-pullup-0",
+                  "setType": "warmup",
+                  "repetitions": 5
+                },
+                {
+                  "setId": "y1-pullup-1",
+                  "setType": "normal",
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "y3",
+          "title": "y3",
+          "startedAtUtc": "2026-02-28T22:30:00Z",
+          "endedAtUtc": "2026-02-28T23:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "y3-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "y3-bench-0",
+                  "setType": "normal",
+                  "weightKg": 50,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "y2",
+          "title": "y2",
+          "startedAtUtc": "2026-02-28T23:30:00Z",
+          "endedAtUtc": "2026-03-01T00:30:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "y2-pullup",
+              "sourceExerciseId": "pullup",
+              "exerciseNameSnapshot": "Klimmzug",
+              "exerciseTypeSnapshot": "bodyweightOnly",
+              "sets": [
+                {
+                  "setId": "y2-pullup-0",
+                  "setType": "normal",
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "start": "2025-04-01",
+        "bucketStarts": [
+          "2025-04-01",
+          "2025-05-01",
+          "2025-06-01",
+          "2025-07-01",
+          "2025-08-01",
+          "2025-09-01",
+          "2025-10-01",
+          "2025-11-01",
+          "2025-12-01",
+          "2026-01-01",
+          "2026-02-01",
+          "2026-03-01"
+        ],
+        "workoutCount": 3,
+        "workoutsPerWeek": 0.06,
+        "averageDurationSeconds": 2400,
+        "totalDurationSeconds": 7200,
+        "volumeKg": 2249,
+        "setCount": 4,
+        "repetitions": 33,
+        "repetitionsPerSet": 8.25,
+        "latestBodyweightKg": 77,
+        "series": {
+          "workoutsPerWeek": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ],
+          "averageDuration": [
+            30,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            30,
+            60
+          ],
+          "totalDuration": [
+            30,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            30,
+            60
+          ],
+          "volume": [
+            1125,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            500,
+            624
+          ],
+          "sets": [
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ],
+          "repetitions": [
+            15,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            10,
+            8
+          ],
+          "repetitionsPerSet": [
+            7.5,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            10,
+            8
+          ],
+          "bodyweight": [
+            null,
+            null,
+            77,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            77
+          ]
+        }
+      }
+    },
+    {
+      "name": "alle-ohne-daten",
+      "description": "Ohne Training und Check-in: ein Abschnitt im Monat von today, keine Durchschnitte.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-11-26",
+      "period": "all",
+      "includeWarmups": false,
+      "exercises": [],
+      "checkIns": [],
+      "workouts": [],
+      "expected": {
+        "start": "2026-11-01",
+        "bucketStarts": [
+          "2026-11-01"
+        ],
+        "workoutCount": 0,
+        "workoutsPerWeek": 0,
+        "averageDurationSeconds": null,
+        "totalDurationSeconds": 0,
+        "volumeKg": 0,
+        "setCount": 0,
+        "repetitions": 0,
+        "repetitionsPerSet": null,
+        "latestBodyweightKg": null,
+        "series": {
+          "workoutsPerWeek": [
+            0
+          ],
+          "averageDuration": [
+            null
+          ],
+          "totalDuration": [
+            0
+          ],
+          "volume": [
+            0
+          ],
+          "sets": [
+            0
+          ],
+          "repetitions": [
+            0
+          ],
+          "repetitionsPerSet": [
+            null
+          ],
+          "bodyweight": [
+            null
+          ]
+        }
+      }
+    },
+    {
+      "name": "alle-ab-erstem-check-in",
+      "description": "Alle: Beginn im Monat des frühesten Check-ins, leere Monate ohne Durchschnitt.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-11-26",
+      "period": "all",
+      "includeWarmups": false,
+      "exercises": [
+        {
+          "id": "bench",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [
+        {
+          "localDate": "2026-09-15",
+          "weightKg": 70
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "a1",
+          "title": "a1",
+          "startedAtUtc": "2026-10-05T16:00:00Z",
+          "endedAtUtc": "2026-10-05T16:40:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "a1-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "a1-bench-0",
+                  "setType": "normal",
+                  "weightKg": 50,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "start": "2026-09-01",
+        "bucketStarts": [
+          "2026-09-01",
+          "2026-10-01",
+          "2026-11-01"
+        ],
+        "workoutCount": 1,
+        "workoutsPerWeek": 0.08,
+        "averageDurationSeconds": 2400,
+        "totalDurationSeconds": 2400,
+        "volumeKg": 500,
+        "setCount": 1,
+        "repetitions": 10,
+        "repetitionsPerSet": 10,
+        "latestBodyweightKg": 70,
+        "series": {
+          "workoutsPerWeek": [
+            0,
+            1,
+            0
+          ],
+          "averageDuration": [
+            null,
+            40,
+            null
+          ],
+          "totalDuration": [
+            0,
+            40,
+            0
+          ],
+          "volume": [
+            0,
+            500,
+            0
+          ],
+          "sets": [
+            0,
+            1,
+            0
+          ],
+          "repetitions": [
+            0,
+            10,
+            0
+          ],
+          "repetitionsPerSet": [
+            null,
+            10,
+            null
+          ],
+          "bodyweight": [
+            70,
+            null,
+            null
+          ]
+        }
+      }
+    },
+    {
+      "name": "drei-monate-wochen",
+      "description": "3 M: 13 Wochen ab dem Montag zwölf Wochen vor der aktuellen Woche.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-11-26",
+      "period": "threeMonths",
+      "includeWarmups": false,
+      "exercises": [],
+      "checkIns": [],
+      "workouts": [],
+      "expected": {
+        "start": "2026-08-31",
+        "bucketStarts": [
+          "2026-08-31",
+          "2026-09-07",
+          "2026-09-14",
+          "2026-09-21",
+          "2026-09-28",
+          "2026-10-05",
+          "2026-10-12",
+          "2026-10-19",
+          "2026-10-26",
+          "2026-11-02",
+          "2026-11-09",
+          "2026-11-16",
+          "2026-11-23"
+        ],
+        "workoutCount": 0,
+        "workoutsPerWeek": 0,
+        "averageDurationSeconds": null,
+        "totalDurationSeconds": 0,
+        "volumeKg": 0,
+        "setCount": 0,
+        "repetitions": 0,
+        "repetitionsPerSet": null,
+        "latestBodyweightKg": null,
+        "series": {
+          "workoutsPerWeek": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "averageDuration": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "totalDuration": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "volume": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "sets": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "repetitions": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "repetitionsPerSet": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "bodyweight": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        }
+      }
+    }
+  ]
+}

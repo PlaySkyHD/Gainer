@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Gainer.Core.Insights;
 using Gainer.Core.Training;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -46,13 +47,20 @@ public sealed class GainerCardioTools(ICardioSessionQueries cardio, TimeProvider
     [Description("One cardio session in full: the fields of list_cardio_sessions plus the target heart rate zone, " +
         "the heart rate series in bpm (one value per sampleIntervalSeconds from the start; 0 means no signal), the " +
         "RR intervals in ms as recorded, the sensor name, the planned phases of a guided session (offset and " +
-        "duration in seconds, name, zone) and the recovery heart rate at the end and one minute later.")]
+        "duration in seconds, name, zone) and the recovery heart rate at the end and one minute later. Metrics as on " +
+        "the app's detail screen: active duration in seconds, average heart rate with decimals, time and share (percent " +
+        "of samples with signal) in the target zone, where with phases the zone of the phase at each sample counts and " +
+        "otherwise the session's target zone (omitted without any zone or signal), HRV as RMSSD in ms from the RR " +
+        "intervals (values outside 300-2000 ms and jumps above 20 % are artifacts; omitted below 30 valid differences) " +
+        "and the recovery change in bpm (end minus start, negative is a drop). Heart rate zones, the weekly cardio " +
+        "target and the maximum heart rate are stored only on the phone, so zone progress is not available.")]
     public async Task<CardioSessionResult> GetCardioSession(
         [Description("ID of the session from list_cardio_sessions.")] Guid sessionId,
         CancellationToken cancellationToken = default)
     {
         CardioSessionSnapshot session = await cardio.GetAsync(sessionId, cancellationToken)
             ?? throw new McpException("The cardio session was not found.");
+        CardioAnalysis analysis = CardioAnalysis.Of(session);
         return new CardioSessionResult(
             session.SessionId,
             session.ActivityType,
@@ -76,7 +84,14 @@ public sealed class GainerCardioTools(ICardioSessionQueries cardio, TimeProvider
                     phase.StartOffsetSeconds, phase.DurationSeconds, phase.Name, phase.LowBpm, phase.HighBpm))
                 .ToList(),
             session.RecoveryStartBpm,
-            session.RecoveryEndBpm);
+            session.RecoveryEndBpm,
+            new CardioMetricsResult(
+                (int)analysis.ActiveDuration.TotalSeconds,
+                TrainingStatistics.RoundForOutput(analysis.AverageBpm),
+                analysis.ZoneShare is null ? null : (int)analysis.TimeInZone.TotalSeconds,
+                analysis.ZoneShare is { } share ? TrainingStatistics.RoundForOutput(share * 100) : null,
+                analysis.RmssdMs,
+                analysis.RecoveryDropBpm));
     }
 
     private static int Minutes(DateTime startedAtUtc, DateTime endedAtUtc) =>
@@ -122,7 +137,16 @@ public sealed record CardioSessionResult(
     string? SensorName,
     IReadOnlyList<CardioPhaseResult> Phases,
     int? RecoveryStartBpm,
-    int? RecoveryEndBpm);
+    int? RecoveryEndBpm,
+    CardioMetricsResult Metrics);
+
+public sealed record CardioMetricsResult(
+    int ActiveDurationSeconds,
+    decimal? AverageHeartRateBpm,
+    int? TimeInTargetZoneSeconds,
+    decimal? TargetZoneSharePercent,
+    int? HrvRmssdMs,
+    int? RecoveryChangeBpm);
 
 public sealed record CardioZoneResult(int LowBpm, int HighBpm);
 

@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using Gainer.Core.Insights;
 using Gainer.Core.Nutrition;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace Gainer.Api.Mcp;
@@ -45,6 +47,57 @@ public sealed class GainerNutritionTools(
         }
 
         return new NutritionDaysResult(days);
+    }
+
+    [McpServerTool(Name = "get_nutrition_averages", Title = "Ernährungsdurchschnitt", ReadOnly = true,
+        Idempotent = true, OpenWorld = false, UseStructuredContent = true)]
+    [Description("The app's nutrition averages for the last 7 or 30 local days: the window ends today when today " +
+        "has entries, otherwise yesterday, so an unstarted day does not lower the averages. Averages per logged day " +
+        "(days with entries; empty days do not count) of kcal and of protein, carbohydrates, fat, fiber and salt in " +
+        "grams (each over the logged days that have a value), how many logged days were within ±10 % of that day's " +
+        "kcal target (inclusive) out of the logged days with a target, the average target, and the kcal per day " +
+        "(omitted for days without entries). The target of a day is the target version in effect; its rest-day " +
+        "target applies only when the day is explicitly set as rest day. Unlike the app, days without a chosen day " +
+        "type always use the training-day target, because the automatic day type from the training schedule is " +
+        "only computed on the phone.")]
+    public async Task<NutritionAveragesResult> GetNutritionAverages(
+        [Description("Window length in days: 7 or 30.")] int days = 7,
+        CancellationToken cancellationToken = default)
+    {
+        if (days is not (7 or 30))
+        {
+            throw new McpException("days must be 7 or 30.");
+        }
+
+        DateOnly today = McpDates.Today(timeProvider);
+        NutritionAverageDayInput[] logged = (await nutrition.GetDaysAsync(today.AddDays(-days), today, cancellationToken))
+            .Select(day => new NutritionAverageDayInput(day.LocalDate, day.Entries.Count > 0 ? day.Totals : null, day.DayKind))
+            .ToArray();
+        NutritionAverageTargetInput[] targets =
+            ((await smartNutrition.GetNutritionTargetScheduleAsync(cancellationToken))?.Versions ?? [])
+            .Select(version => new NutritionAverageTargetInput(
+                version.EffectiveFrom, version.EffectiveUntil, version.Kilocalories, version.RestDay?.Kilocalories))
+            .ToArray();
+        NutritionAveragesSnapshot averages = NutritionAverages.Compute(logged, targets, today, days);
+        return new NutritionAveragesResult(
+            averages.WindowDays,
+            averages.From,
+            averages.Through,
+            averages.IncludesToday,
+            averages.LoggedDays,
+            Round(averages.AverageKilocalories),
+            Round(averages.AverageProteinGrams),
+            Round(averages.AverageCarbohydrateGrams),
+            Round(averages.AverageFatGrams),
+            Round(averages.AverageFiberGrams),
+            Round(averages.AverageSaltGrams),
+            Round(averages.AverageTargetKilocalories),
+            averages.DaysWithinTarget,
+            averages.DaysWithTarget,
+            averages.Days
+                .Select(day => new NutritionAverageDayResult(day.Date, Round(day.Kilocalories), Round(day.TargetKilocalories),
+                    day.Kilocalories is null ? null : day.WithinTarget))
+                .ToList());
     }
 
     [McpServerTool(Name = "get_nutrition_targets", Title = "Ernährungsziele", ReadOnly = true, Idempotent = true,
@@ -113,6 +166,8 @@ public sealed class GainerNutritionTools(
             .OrderByDescending(version => version.EffectiveFrom)
             .FirstOrDefault();
 
+    private static decimal? Round(decimal? value) => TrainingStatistics.RoundForOutput(value);
+
     private static NutritionEntryResult Entry(NutritionEntrySnapshot entry) => new(
         entry.Meal,
         entry.ProductName,
@@ -153,6 +208,25 @@ public sealed record NutritionEntryResult(
     decimal Grams,
     decimal? Pieces,
     NutritionTotals Nutrition);
+
+public sealed record NutritionAveragesResult(
+    int Days,
+    DateOnly From,
+    DateOnly Through,
+    bool IncludesToday,
+    int LoggedDays,
+    decimal? AverageKilocalories,
+    decimal? AverageProteinGrams,
+    decimal? AverageCarbohydrateGrams,
+    decimal? AverageFatGrams,
+    decimal? AverageFiberGrams,
+    decimal? AverageSaltGrams,
+    decimal? AverageTargetKilocalories,
+    int DaysWithinTarget,
+    int DaysWithTarget,
+    IReadOnlyList<NutritionAverageDayResult> DailyKilocalories);
+
+public sealed record NutritionAverageDayResult(DateOnly Date, decimal? Kilocalories, decimal? TargetKilocalories, bool? WithinTarget);
 
 public sealed record NutritionTargetsResult(IReadOnlyList<NutritionTargetResult> Versions);
 
