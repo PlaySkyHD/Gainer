@@ -10,6 +10,7 @@ import '../../../domain/models/training/exercise_catalog_model.dart';
 import '../../../domain/models/training/training_heatmap.dart';
 import '../../../domain/models/training/training_schedule.dart';
 import '../../../domain/models/training/training_statistics.dart';
+import '../../../domain/models/training/training_trends.dart';
 import '../../../domain/models/training/workout_input.dart';
 import '../../../domain/models/training/workout_model.dart';
 import '../cardio/cardio_format.dart' show formatCardioNumber;
@@ -160,6 +161,15 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
 
   /// Null, solange nicht geladen oder wenn die Einheiten nicht lesbar sind.
   TrainingHeatmap? heatmap;
+
+  /// Verlaufskacheln für [trendPeriod]; null, solange nicht geladen.
+  TrainingTrends? trends;
+  TrendPeriod trendPeriod = TrendPeriod.threeMonths;
+  List<WorkoutTrendEntry> _trendEntries = const [];
+  List<DailyCheckIn> _checkIns = const [];
+
+  /// Ohne Training und Check-in entfällt der Bereich „Verlauf“.
+  bool get hasTrendData => _trendEntries.isNotEmpty || _checkIns.isNotEmpty;
   bool includeWarmups = false;
 
   /// Gewichtseinheit des Kontos für die Anzeige.
@@ -205,6 +215,14 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
         inputs,
         includeWarmups: includeWarmups,
       );
+      _checkIns = inputs.checkIns;
+      _trendEntries = workoutTrendEntries(
+        inputs.workouts,
+        checkIns: inputs.checkIns,
+        catalog: inputs.catalog,
+        includeWarmups: includeWarmups,
+      );
+      _computeTrends();
       if (withHeatmap) {
         final sessions = await _readCardioSessions();
         if (_disposed) return;
@@ -252,7 +270,24 @@ class TrainingStatisticsViewModel extends ChangeNotifier {
     }
   }
 
-  /// Speichert den Schalter und berechnet nur die Übungen neu; Cardio und
+  /// Wechselt den Zeitraum der Verlaufskacheln; die Daten bleiben geladen.
+  void selectTrendPeriod(TrendPeriod period) {
+    if (period == trendPeriod) return;
+    trendPeriod = period;
+    if (trends != null) _computeTrends();
+    _notify();
+  }
+
+  void _computeTrends() {
+    trends = TrainingTrends.compute(
+      _trendEntries,
+      checkIns: _checkIns,
+      period: trendPeriod,
+      today: repository.schedule.today(),
+    );
+  }
+
+  /// Speichert den Schalter und berechnet Übungen und Verlauf neu; Cardio und
   /// Heatmap hängen nicht von Aufwärmsätzen ab.
   Future<void> setIncludeWarmups(bool value) async {
     await writeIncludeWarmupSets(repository.store, value);

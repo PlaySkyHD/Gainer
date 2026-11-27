@@ -11,6 +11,7 @@ import 'muscle_map_screen.dart';
 import 'training_format.dart';
 import 'training_heatmap_card.dart';
 import 'training_statistics_view_model.dart';
+import 'training_trend_tiles.dart';
 import 'warmup_sets_row.dart';
 
 /// Statistik-Segment: alle trainierten Übungen mit aktuellem Rekord. Die
@@ -72,6 +73,17 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
       builder: (context, _) {
         final colors = GainerDesign.colorsOf(context);
         final model = _viewModel;
+        // Krafttraining und Körpergewicht: nach Cardio, vor den Übungen.
+        final trendTiles = [
+          if (model.trends case final trends? when model.hasTrendData) ...[
+            TrainingTrendTiles(
+              trends: trends,
+              weightUnit: model.weightUnit,
+              onPeriodChanged: model.selectTrendPeriod,
+            ),
+            const SizedBox(height: GainerSpacing.l),
+          ],
+        ];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -85,8 +97,10 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
               ),
               const SizedBox(height: GainerSpacing.l),
             ],
-            if (widget.cardio case final cardio?) ...[
+            if (widget.cardio case final cardio?)
               CardioStatisticsArea(repository: cardio),
+            ...trendTiles,
+            if (widget.cardio != null) ...[
               const GainerSectionHeader(title: 'Kraft'),
               const SizedBox(height: GainerSpacing.xs),
             ],
