@@ -207,7 +207,8 @@ class _TrendTile extends StatelessWidget {
                   maxGap: last == 0 ? null : 1 / last,
                 ),
               ],
-              gridColor: const Color(0x00000000),
+              // Hilfslinien in Kartenfarbe: die Kachel zeigt nur die Linie.
+              gridColor: colors.surface,
               labelStyle: labelStyle,
             ),
             const SizedBox(height: GainerSpacing.xxs),
