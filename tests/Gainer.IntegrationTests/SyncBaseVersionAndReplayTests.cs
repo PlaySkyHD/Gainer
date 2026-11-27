@@ -65,7 +65,7 @@ public sealed class SyncBaseVersionAndReplayTests
             Processor(other, otherUser).ProcessAsync(For(
                 Command("saveWorkout", "Workout", workoutId, 2, new { baseVersion = 2, workout = Workout(workoutId, "Fremd") }),
                 otherClient,
-                1)));
+                1), TestContext.CancellationToken));
         Assert.AreEqual("resource_not_found", foreign.Code);
         Assert.IsNull(foreign.ServerVersion);
     }
