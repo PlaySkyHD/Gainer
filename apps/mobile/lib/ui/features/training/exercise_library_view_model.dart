@@ -6,7 +6,10 @@ import 'exercise_catalog_format.dart';
 
 /// Hält Übungen und Kategorien für die Übungsverwaltung mit Suche und Filter.
 class ExerciseLibraryViewModel extends ChangeNotifier {
-  ExerciseLibraryViewModel({required this.repository});
+  ExerciseLibraryViewModel({
+    required this.repository,
+    this.onlyWithoutMuscles = false,
+  });
 
   final TrainingLogRepository repository;
 
@@ -21,6 +24,9 @@ class ExerciseLibraryViewModel extends ChangeNotifier {
   String query = '';
   String? categoryId;
   bool showArchived = false;
+
+  /// Nur Übungen ohne Haupt- und Hilfsmuskeln.
+  bool onlyWithoutMuscles;
   bool _disposed = false;
 
   Future<void> load() async {
@@ -66,6 +72,11 @@ class ExerciseLibraryViewModel extends ChangeNotifier {
     _notify();
   }
 
+  void setOnlyWithoutMuscles(bool value) {
+    onlyWithoutMuscles = value;
+    _notify();
+  }
+
   CatalogCategory? categoryById(String id) {
     for (final category in categories) {
       if (category.id == id) return category;
@@ -73,7 +84,7 @@ class ExerciseLibraryViewModel extends ChangeNotifier {
     return null;
   }
 
-  /// Übungen nach Suche, Kategorie und Archiv-Schalter gefiltert.
+  /// Übungen nach Suche, Kategorie, Archiv- und Muskel-Schalter gefiltert.
   List<CatalogExercise> get visibleExercises {
     final needle = foldCatalogSearch(query.trim());
     final category = categoryId;
@@ -81,6 +92,7 @@ class ExerciseLibraryViewModel extends ChangeNotifier {
       for (final exercise in exercises)
         if ((showArchived || !exercise.isArchived) &&
             (category == null || exercise.categoryIds.contains(category)) &&
+            (!onlyWithoutMuscles || exercise.hasNoMuscles) &&
             (needle.isEmpty ||
                 foldCatalogSearch(exercise.name).contains(needle)))
           exercise,

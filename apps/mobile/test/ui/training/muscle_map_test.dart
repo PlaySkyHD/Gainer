@@ -6,6 +6,7 @@ import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/body_map.dart';
 import 'package:gainer_mobile/ui/features/training/exercise_editor_screen.dart';
+import 'package:gainer_mobile/ui/features/training/exercise_library_screen.dart';
 import 'package:gainer_mobile/ui/features/training/muscle_map_screen.dart';
 import 'package:gainer_mobile/ui/features/training/plan_editor_screen.dart';
 import 'package:gainer_mobile/ui/features/training/training_statistics_section.dart';
@@ -122,6 +123,44 @@ void main() {
     // Curls 3 Sätze als Hauptmuskel plus 1,5 aus Klimmzügen.
     expect(valueOf(tester, Muscle.biceps), '4,5 Sätze');
   });
+
+  testWidgets(
+    '„Alle Übungen ohne Muskeln“ zeigt auch Übungen außerhalb der Pläne',
+    (tester) async {
+      await tester.runAsync(
+        () => harness.repository.createCustomExercise(
+          CatalogExercise(
+            id: harness.repository.newId(),
+            name: 'Facepulls',
+            exerciseType: ExerciseKind.strength,
+            isBase: false,
+          ),
+        ),
+      );
+      await pumpScreen(tester);
+      final row = find.byKey(const ValueKey('muscle-map-all-without-muscles'));
+      await scrollIntoView(tester, row);
+
+      // Curls aus dem Pull-Plan und Facepulls ohne Plan.
+      final texts = tester.widgetList<Text>(
+        find.descendant(of: row, matching: find.byType(Text)),
+      );
+      final count = int.parse(texts.last.data!);
+      expect(count, greaterThanOrEqualTo(2));
+
+      await tester.tap(row);
+      await settle(tester);
+
+      expect(find.byType(ExerciseLibraryScreen), findsOneWidget);
+      final toggle = tester.widget<CupertinoSwitch>(
+        find.byKey(const ValueKey('exercise-library-without-muscles')),
+      );
+      expect(toggle.value, isTrue);
+      expect(find.text('Facepulls'), findsOneWidget);
+      expect(find.text('Curls'), findsOneWidget);
+      expect(find.text('Bankdrücken'), findsNothing);
+    },
+  );
 
   testWidgets('ein Plan zeigt nur seine Sätze', (tester) async {
     await pumpScreen(tester);

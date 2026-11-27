@@ -1,5 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gainer_mobile/domain/models/training/exercise_catalog_model.dart';
+import 'package:gainer_mobile/domain/models/training/muscles.dart';
+import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/core/components/components.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/exercise_library_screen.dart';
@@ -77,6 +80,30 @@ void main() {
       viewModel.setShowArchived(false);
       expect(visibleNames(), contains('Kniebeuge'));
       expect(visibleNames(), isNot(contains('Reha Band')));
+    });
+
+    test('„Nur ohne Muskeln“ zeigt nur Übungen ohne Muskeln', () async {
+      await seedOwnExercise(harness, name: 'Facepulls');
+      await harness.repository.createCustomExercise(
+        CatalogExercise(
+          id: harness.repository.newId(),
+          name: 'Schulterdrücken',
+          exerciseType: ExerciseKind.strength,
+          primaryMuscles: const [Muscle.chest],
+          isBase: false,
+        ),
+      );
+      await viewModel.load();
+      expect(visibleNames(), contains('Schulterdrücken'));
+
+      viewModel.setOnlyWithoutMuscles(true);
+
+      expect(visibleNames(), contains('Facepulls'));
+      expect(visibleNames(), isNot(contains('Schulterdrücken')));
+      expect(
+        viewModel.visibleExercises.every((exercise) => exercise.hasNoMuscles),
+        isTrue,
+      );
     });
   });
 

@@ -55,6 +55,12 @@ class MuscleMapViewModel extends ChangeNotifier {
 
   MuscleVolume get volume => _volume ??= _compute();
 
+  /// Nicht archivierte Übungen des Katalogs ohne Muskeln, auch außerhalb
+  /// von Plänen und Trainings.
+  int get catalogExercisesWithoutMuscles => _exercises.values
+      .where((exercise) => !exercise.isArchived && exercise.hasNoMuscles)
+      .length;
+
   /// True, wenn die Übung bekannt ist und ihr Editor geöffnet werden kann.
   bool canOpenExercise(String exerciseId) => _exercises.containsKey(exerciseId);
 
