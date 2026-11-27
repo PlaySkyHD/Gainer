@@ -21,7 +21,7 @@ Die API SHALL unter `/api/v1/mcp` einen MCP-Server über Streamable HTTP anbiete
 
 ### Requirement: Lesende Tools
 
-Der MCP-Server SHALL lesende Tools für Überblick, Trainings mit Zusammenfassung, Verlauf, Trainingstagen und Muskelvolumen, Pläne, Übungen, Cardio mit Kennzahlen, Ziele, Check-ins, Ernährung mit Durchschnitt, Wasser, Vorlagen, Ernährungsziele, Gerichte, Coach-Notizen und Strava anbieten, alle nur lesend. Sie MUST ausschließlich Daten des Nutzers der verbundenen App liefern und MUST NOT Daten schreiben. Datumsbereiche MUST begrenzt sein; ein zu großer Bereich ergibt einen Tool-Fehler.
+Der MCP-Server SHALL lesende Tools für alles anbieten, was die App zeigt: Überblick, Trainings, Statistik, Trainingsrhythmus, Pläne, Übungen, Cardio, Ziele, Check-ins, Ernährung mit Zielen und Durchschnitt, Wasser, Vorlagen, Gerichte, Coach-Notizen und Strava. Sie MUST ausschließlich Daten des Nutzers der verbundenen App liefern und MUST NOT Daten schreiben. Datumsbereiche MUST begrenzt sein; ein zu großer Bereich ergibt einen Tool-Fehler.
 
 #### Scenario: Fremdes Training
 - **GIVEN** Nutzer B besitzt ein Training
@@ -117,7 +117,24 @@ Der MCP-Server SHALL lesende Tools für Überblick, Trainings mit Zusammenfassun
 - **GIVEN** Nutzer A hat heute nichts und an drei der letzten sieben Tage gegessen, einer davon als Ruhetag festgelegt
 - **WHEN** die verbundene App `get_nutrition_averages` mit 7 Tagen aufruft
 - **THEN** endet das Fenster gestern und enthält Durchschnitte je erfasstem Tag, „2 von 3 Tagen im Zielbereich“ mit dem Ruhetag-Ziel für den Ruhetag und die kcal je Tag
+- **AND** an Tagen ohne festgelegte Tagesart gilt die automatische Tagesart aus Training und Rhythmus wie in der App
 - **AND** Daten von Nutzer B fehlen, und andere Fensterlängen als 7 oder 30 ergeben einen Tool-Fehler
+
+#### Scenario: Trainingsrhythmus
+- **GIVEN** Nutzer A hat einen Zyklus mit Push, Ruhetag, Pull und einem archivierten Plan, vor drei Tagen Push erledigt, gestern Pull verpasst und ein Pull-Training von übermorgen auf einen Ruhetag verschoben; Nutzer B hat einen eigenen Rhythmus
+- **WHEN** die verbundene App von Nutzer A `get_training_schedule` ohne Argumente aufruft
+- **THEN** enthält die Antwort Modus, Slots mit Plannamen und den heutigen Slot sowie heute und die nächsten 14 Tage mit Tagesart (Training, Ruhetag, pausiert, keine), geplanten Trainings mit Status (geplant, erledigt, verpasst, stattdessen, verschoben, übersprungen), Herkunfts- und Zieltag verschobener Trainings und der automatischen Tagesart für das Ernährungsziel
+- **AND** mit `from` in der Vergangenheit erscheinen erledigte Trainings mit den IDs der Trainings, die sie erfüllen, und verpasste Trainings
+- **AND** ein Bereich von 0 oder mehr als 62 Tagen ergibt einen Tool-Fehler, Pläne und Trainings von Nutzer B fehlen
+
+#### Scenario: Heutiges Training
+- **WHEN** die verbundene App `get_training_today` aufruft
+- **THEN** enthält die Antwort wie die Karte „Heute“ die Trainings von heute mit Status und das nächste offene Training innerhalb von 60 Tagen
+
+#### Scenario: Ziel eines Ernährungstags
+- **GIVEN** ein Ziel mit Ruhetag-Ziel, ein Tag mit erledigtem Training, ein Ruhetag laut Rhythmus und ein Ruhetag, den Nutzer A als Trainingstag festgelegt hat
+- **WHEN** die verbundene App `get_nutrition_days` für diese Tage aufruft
+- **THEN** nennt jeder Tag die automatische Tagesart und das geltende Ziel: das Trainingstag-Ziel am Trainingstag und am festgelegten Tag, das Ruhetag-Ziel am Ruhetag laut Rhythmus
 
 ### Requirement: OAuth-Discovery
 

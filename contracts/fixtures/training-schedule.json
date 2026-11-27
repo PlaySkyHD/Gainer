@@ -1,0 +1,1186 @@
+{
+  "rules": [
+    "Lokale Tage in timeZone (Europe/Berlin). Ein Training zählt nur beendet (endedAtUtc gesetzt) und nicht gelöscht (deletedAtUtc null), für den lokalen Tag seines Starts.",
+    "Ohne Rhythmus (schedule null) ist jeder Tag baseKind none ohne Trainings; nextPlanned und effectiveCycleIndex sind null.",
+    "Vor validFrom und ohne Slots ist ein Tag none. Feste Tage (weekly) brauchen genau 7 Slots, Position 0 = Montag, sonst none.",
+    "Zyklus (cycle): ohne anchorDate none. Verschiebungen mit fromDate <= Tag: liegt der Tag in [fromDate, fromDate + days), ist er paused; sonst summieren sich ihre days. Slot = (Tage von anchorDate bis Tag − Summe) modulo Slotzahl, nie negativ (auch vor dem Anker).",
+    "Slot mit aktivem (bekanntem, nicht archiviertem) Plan: baseKind training; sonst rest, archivedPlanId = Plan des Slots (auch unbekannt), null für echte Ruhetage. paused und none haben keinen slotIndex.",
+    "Trainings eines Tages: zuerst der Plan des Slots mit der ersten Ausnahme gleichen Tags und Plans, danach je Ausnahme (in gespeicherter Reihenfolge) mit movedToDate = Tag, date != Tag, die wirksam ist (an ihrem date sieht der Rhythmus ohne Ausnahmen noch denselben aktiven Plan vor); diese haben originDate = date der Ausnahme.",
+    "Mit Ausnahme: status skipped (ohne movedToDate) oder moved (movedToDate gesetzt). Sonst: done, wenn an dem Tag ein Training aus diesem Plan beendet wurde (completedBy); sonst planned ab today; sonst insteadOf, wenn ein anderes Training beendet wurde (instead), sonst missed. Trainings aus Plänen, die an dem Tag ohne Ausnahme anstehen (auch hierher verschobene), zählen nicht als anders.",
+    "isFree: keine Trainings außer moved und skipped. automaticDayKind: training, wenn an dem Tag ein Training beendet wurde oder nicht isFree; sonst rest (auch ohne Rhythmus).",
+    "nextPlanned: erstes Training mit status planned an einem der 60 Tage nach today. effectiveCycleIndex: nur Zyklus; Slot von today, an einem pausierten Tag (Slot des nächsten nicht pausierten Tags − Abstand) modulo Slotzahl.",
+    "Pläne heißen wie ihre planId; Plan-, Trainings- und Ausnahme-IDs sind lesbare Namen, die die Tests auf IDs abbilden."
+  ],
+  "cases": [
+    {
+      "name": "ohne-rhythmus",
+      "description": "Kein Rhythmus: jeder Tag none; ein beendetes Training macht den Tag zum Trainingstag, ein unbeendetes nicht.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-10-21",
+      "plans": [
+        {
+          "planId": "Push",
+          "name": "Push",
+          "isArchived": false
+        }
+      ],
+      "schedule": null,
+      "workouts": [
+        {
+          "workoutId": "w1",
+          "startedAtUtc": "2026-10-20T16:00:00Z",
+          "endedAtUtc": "2026-10-20T17:00:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": "Push"
+        },
+        {
+          "workoutId": "w2",
+          "startedAtUtc": "2026-10-19T16:00:00Z",
+          "endedAtUtc": null,
+          "deletedAtUtc": null,
+          "sourcePlanId": "Push"
+        }
+      ],
+      "from": "2026-10-19",
+      "through": "2026-10-21",
+      "expected": {
+        "effectiveCycleIndex": null,
+        "nextPlanned": null,
+        "days": [
+          {
+            "date": "2026-10-19",
+            "baseKind": "none",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-20",
+            "baseKind": "none",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": true,
+            "automaticDayKind": "training",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-21",
+            "baseKind": "none",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "zyklus-status-und-tagesgrenze",
+      "description": "Zyklus Push, Pull, Ruhetag: vor validFrom none, done, insteadOf (Planfremdes und freies Training), missed, Ruhetag mit Training, Training nach Mitternacht lokal am Folgetag, gelöschte und unbeendete Trainings zählen nicht, heute planned.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-10-21",
+      "plans": [
+        {
+          "planId": "Push",
+          "name": "Push",
+          "isArchived": false
+        },
+        {
+          "planId": "Pull",
+          "name": "Pull",
+          "isArchived": false
+        }
+      ],
+      "schedule": {
+        "mode": "cycle",
+        "anchorDate": "2026-10-14",
+        "validFrom": "2026-10-15",
+        "slots": [
+          "Push",
+          "Pull",
+          null
+        ],
+        "shifts": [],
+        "exceptions": []
+      },
+      "workouts": [
+        {
+          "workoutId": "pull-15",
+          "startedAtUtc": "2026-10-15T16:00:00Z",
+          "endedAtUtc": "2026-10-15T17:00:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": "Pull"
+        },
+        {
+          "workoutId": "pull-17",
+          "startedAtUtc": "2026-10-17T09:00:00Z",
+          "endedAtUtc": "2026-10-17T10:00:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": "Pull"
+        },
+        {
+          "workoutId": "frei-17",
+          "startedAtUtc": "2026-10-17T15:00:00Z",
+          "endedAtUtc": "2026-10-17T16:00:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": null
+        },
+        {
+          "workoutId": "frei-19",
+          "startedAtUtc": "2026-10-19T15:00:00Z",
+          "endedAtUtc": "2026-10-19T16:00:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": null
+        },
+        {
+          "workoutId": "push-geloescht-20",
+          "startedAtUtc": "2026-10-20T15:00:00Z",
+          "endedAtUtc": "2026-10-20T16:00:00Z",
+          "deletedAtUtc": "2026-10-20T17:00:00Z",
+          "sourcePlanId": "Push"
+        },
+        {
+          "workoutId": "push-offen-20",
+          "startedAtUtc": "2026-10-20T17:00:00Z",
+          "endedAtUtc": null,
+          "deletedAtUtc": null,
+          "sourcePlanId": "Push"
+        },
+        {
+          "workoutId": "push-nacht",
+          "startedAtUtc": "2026-10-20T22:30:00Z",
+          "endedAtUtc": "2026-10-20T23:30:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": "Push"
+        }
+      ],
+      "from": "2026-10-13",
+      "through": "2026-10-24",
+      "expected": {
+        "effectiveCycleIndex": 1,
+        "nextPlanned": {
+          "planId": "Push",
+          "date": "2026-10-23"
+        },
+        "days": [
+          {
+            "date": "2026-10-13",
+            "baseKind": "none",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-14",
+            "baseKind": "none",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-15",
+            "baseKind": "training",
+            "slotIndex": 1,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": true,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Pull",
+                "planName": "Pull",
+                "date": "2026-10-15",
+                "originDate": "2026-10-15",
+                "status": "done",
+                "movedToDate": null,
+                "completedBy": [
+                  "pull-15"
+                ],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-16",
+            "baseKind": "rest",
+            "slotIndex": 2,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-17",
+            "baseKind": "training",
+            "slotIndex": 0,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": true,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-10-17",
+                "originDate": "2026-10-17",
+                "status": "insteadOf",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": [
+                  "pull-17",
+                  "frei-17"
+                ]
+              }
+            ]
+          },
+          {
+            "date": "2026-10-18",
+            "baseKind": "training",
+            "slotIndex": 1,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Pull",
+                "planName": "Pull",
+                "date": "2026-10-18",
+                "originDate": "2026-10-18",
+                "status": "missed",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-19",
+            "baseKind": "rest",
+            "slotIndex": 2,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": true,
+            "automaticDayKind": "training",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-20",
+            "baseKind": "training",
+            "slotIndex": 0,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-10-20",
+                "originDate": "2026-10-20",
+                "status": "missed",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-21",
+            "baseKind": "training",
+            "slotIndex": 1,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": true,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Pull",
+                "planName": "Pull",
+                "date": "2026-10-21",
+                "originDate": "2026-10-21",
+                "status": "planned",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-22",
+            "baseKind": "rest",
+            "slotIndex": 2,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-23",
+            "baseKind": "training",
+            "slotIndex": 0,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-10-23",
+                "originDate": "2026-10-23",
+                "status": "planned",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-24",
+            "baseKind": "training",
+            "slotIndex": 1,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Pull",
+                "planName": "Pull",
+                "date": "2026-10-24",
+                "originDate": "2026-10-24",
+                "status": "planned",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "zyklus-verschoben-archiviert",
+      "description": "Anker nach validFrom (Modulo vor dem Anker), archivierter und unbekannter Plan als Ruhetag, zwei Verschiebungen mit pausierten Tagen (heute pausiert), Ende der Sommerzeit.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-10-22",
+      "plans": [
+        {
+          "planId": "Push",
+          "name": "Push",
+          "isArchived": false
+        },
+        {
+          "planId": "Pull",
+          "name": "Pull",
+          "isArchived": false
+        },
+        {
+          "planId": "Alt",
+          "name": "Alt",
+          "isArchived": true
+        }
+      ],
+      "schedule": {
+        "mode": "cycle",
+        "anchorDate": "2026-10-20",
+        "validFrom": "2026-10-10",
+        "slots": [
+          "Push",
+          "Alt",
+          "Pull",
+          "Geist"
+        ],
+        "shifts": [
+          {
+            "fromDate": "2026-10-22",
+            "days": 2
+          },
+          {
+            "fromDate": "2026-10-27",
+            "days": 1
+          }
+        ],
+        "exceptions": []
+      },
+      "workouts": [
+        {
+          "workoutId": "frei-25",
+          "startedAtUtc": "2026-10-25T00:30:00Z",
+          "endedAtUtc": "2026-10-25T01:30:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": null
+        },
+        {
+          "workoutId": "push-26",
+          "startedAtUtc": "2026-10-25T23:30:00Z",
+          "endedAtUtc": "2026-10-26T00:30:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": "Push"
+        }
+      ],
+      "from": "2026-10-17",
+      "through": "2026-10-28",
+      "expected": {
+        "effectiveCycleIndex": 0,
+        "nextPlanned": {
+          "planId": "Pull",
+          "date": "2026-10-24"
+        },
+        "days": [
+          {
+            "date": "2026-10-17",
+            "baseKind": "rest",
+            "slotIndex": 1,
+            "archivedPlanId": "Alt",
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-18",
+            "baseKind": "training",
+            "slotIndex": 2,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Pull",
+                "planName": "Pull",
+                "date": "2026-10-18",
+                "originDate": "2026-10-18",
+                "status": "missed",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-19",
+            "baseKind": "rest",
+            "slotIndex": 3,
+            "archivedPlanId": "Geist",
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-20",
+            "baseKind": "training",
+            "slotIndex": 0,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-10-20",
+                "originDate": "2026-10-20",
+                "status": "missed",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-21",
+            "baseKind": "rest",
+            "slotIndex": 1,
+            "archivedPlanId": "Alt",
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-22",
+            "baseKind": "paused",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-23",
+            "baseKind": "paused",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-24",
+            "baseKind": "training",
+            "slotIndex": 2,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Pull",
+                "planName": "Pull",
+                "date": "2026-10-24",
+                "originDate": "2026-10-24",
+                "status": "planned",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-25",
+            "baseKind": "rest",
+            "slotIndex": 3,
+            "archivedPlanId": "Geist",
+            "isFree": true,
+            "hasFinished": true,
+            "automaticDayKind": "training",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-26",
+            "baseKind": "training",
+            "slotIndex": 0,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": true,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-10-26",
+                "originDate": "2026-10-26",
+                "status": "done",
+                "movedToDate": null,
+                "completedBy": [
+                  "push-26"
+                ],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-27",
+            "baseKind": "paused",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-28",
+            "baseKind": "rest",
+            "slotIndex": 1,
+            "archivedPlanId": "Alt",
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "feste-tage-ausnahmen",
+      "description": "Feste Tage mit Verschiebungen (erledigt, verpasst, auf heute), Überspringen, unwirksamer Ausnahme und hierher verschobenem Plan, dessen Training nicht als anderes zählt.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-10-21",
+      "plans": [
+        {
+          "planId": "Push",
+          "name": "Push",
+          "isArchived": false
+        },
+        {
+          "planId": "Pull",
+          "name": "Pull",
+          "isArchived": false
+        },
+        {
+          "planId": "Beine",
+          "name": "Beine",
+          "isArchived": false
+        }
+      ],
+      "schedule": {
+        "mode": "weekly",
+        "anchorDate": null,
+        "validFrom": "2026-10-01",
+        "slots": [
+          "Push",
+          null,
+          "Pull",
+          null,
+          "Beine",
+          null,
+          null
+        ],
+        "shifts": [],
+        "exceptions": [
+          {
+            "date": "2026-10-12",
+            "planId": "Push",
+            "movedToDate": "2026-10-13"
+          },
+          {
+            "date": "2026-10-14",
+            "planId": "Pull",
+            "movedToDate": "2026-10-15"
+          },
+          {
+            "date": "2026-10-16",
+            "planId": "Beine",
+            "movedToDate": null
+          },
+          {
+            "date": "2026-10-19",
+            "planId": "Beine",
+            "movedToDate": "2026-10-20"
+          },
+          {
+            "date": "2026-10-09",
+            "planId": "Beine",
+            "movedToDate": "2026-10-19"
+          },
+          {
+            "date": "2026-10-23",
+            "planId": "Beine",
+            "movedToDate": "2026-10-21"
+          }
+        ]
+      },
+      "workouts": [
+        {
+          "workoutId": "push-13",
+          "startedAtUtc": "2026-10-13T16:00:00Z",
+          "endedAtUtc": "2026-10-13T17:00:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": "Push"
+        },
+        {
+          "workoutId": "beine-19",
+          "startedAtUtc": "2026-10-19T16:00:00Z",
+          "endedAtUtc": "2026-10-19T17:00:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": "Beine"
+        }
+      ],
+      "from": "2026-10-09",
+      "through": "2026-10-25",
+      "expected": {
+        "effectiveCycleIndex": null,
+        "nextPlanned": {
+          "planId": "Push",
+          "date": "2026-10-26"
+        },
+        "days": [
+          {
+            "date": "2026-10-09",
+            "baseKind": "training",
+            "slotIndex": 4,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": [
+              {
+                "planId": "Beine",
+                "planName": "Beine",
+                "date": "2026-10-09",
+                "originDate": "2026-10-09",
+                "status": "moved",
+                "movedToDate": "2026-10-19",
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-10",
+            "baseKind": "rest",
+            "slotIndex": 5,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-11",
+            "baseKind": "rest",
+            "slotIndex": 6,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-12",
+            "baseKind": "training",
+            "slotIndex": 0,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-10-12",
+                "originDate": "2026-10-12",
+                "status": "moved",
+                "movedToDate": "2026-10-13",
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-13",
+            "baseKind": "rest",
+            "slotIndex": 1,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": true,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-10-13",
+                "originDate": "2026-10-12",
+                "status": "done",
+                "movedToDate": null,
+                "completedBy": [
+                  "push-13"
+                ],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-14",
+            "baseKind": "training",
+            "slotIndex": 2,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": [
+              {
+                "planId": "Pull",
+                "planName": "Pull",
+                "date": "2026-10-14",
+                "originDate": "2026-10-14",
+                "status": "moved",
+                "movedToDate": "2026-10-15",
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-15",
+            "baseKind": "rest",
+            "slotIndex": 3,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Pull",
+                "planName": "Pull",
+                "date": "2026-10-15",
+                "originDate": "2026-10-14",
+                "status": "missed",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-16",
+            "baseKind": "training",
+            "slotIndex": 4,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": [
+              {
+                "planId": "Beine",
+                "planName": "Beine",
+                "date": "2026-10-16",
+                "originDate": "2026-10-16",
+                "status": "skipped",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-17",
+            "baseKind": "rest",
+            "slotIndex": 5,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-18",
+            "baseKind": "rest",
+            "slotIndex": 6,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-19",
+            "baseKind": "training",
+            "slotIndex": 0,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": true,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-10-19",
+                "originDate": "2026-10-19",
+                "status": "missed",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              },
+              {
+                "planId": "Beine",
+                "planName": "Beine",
+                "date": "2026-10-19",
+                "originDate": "2026-10-09",
+                "status": "done",
+                "movedToDate": null,
+                "completedBy": [
+                  "beine-19"
+                ],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-20",
+            "baseKind": "rest",
+            "slotIndex": 1,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-21",
+            "baseKind": "training",
+            "slotIndex": 2,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Pull",
+                "planName": "Pull",
+                "date": "2026-10-21",
+                "originDate": "2026-10-21",
+                "status": "planned",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              },
+              {
+                "planId": "Beine",
+                "planName": "Beine",
+                "date": "2026-10-21",
+                "originDate": "2026-10-23",
+                "status": "planned",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-22",
+            "baseKind": "rest",
+            "slotIndex": 3,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-23",
+            "baseKind": "training",
+            "slotIndex": 4,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": [
+              {
+                "planId": "Beine",
+                "planName": "Beine",
+                "date": "2026-10-23",
+                "originDate": "2026-10-23",
+                "status": "moved",
+                "movedToDate": "2026-10-21",
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-10-24",
+            "baseKind": "rest",
+            "slotIndex": 5,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-25",
+            "baseKind": "rest",
+            "slotIndex": 6,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "feste-tage-ohne-sieben-slots",
+      "description": "Feste Tage mit drei Slots planen nichts; der Tag vor validFrom ebenso.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-10-21",
+      "plans": [
+        {
+          "planId": "Push",
+          "name": "Push",
+          "isArchived": false
+        }
+      ],
+      "schedule": {
+        "mode": "weekly",
+        "anchorDate": null,
+        "validFrom": "2026-10-21",
+        "slots": [
+          "Push",
+          "Push",
+          "Push"
+        ],
+        "shifts": [],
+        "exceptions": []
+      },
+      "workouts": [],
+      "from": "2026-10-20",
+      "through": "2026-10-22",
+      "expected": {
+        "effectiveCycleIndex": null,
+        "nextPlanned": null,
+        "days": [
+          {
+            "date": "2026-10-20",
+            "baseKind": "none",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-21",
+            "baseKind": "none",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          },
+          {
+            "date": "2026-10-22",
+            "baseKind": "none",
+            "slotIndex": null,
+            "archivedPlanId": null,
+            "isFree": true,
+            "hasFinished": false,
+            "automaticDayKind": "rest",
+            "trainings": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "zyklus-heute-erledigt",
+      "description": "Ein Slot: heute zwei Trainings rund um den Beginn der Sommerzeit erledigen den Plan, gestern verpasst, morgen das nächste offene Training.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-03-29",
+      "plans": [
+        {
+          "planId": "Push",
+          "name": "Push",
+          "isArchived": false
+        }
+      ],
+      "schedule": {
+        "mode": "cycle",
+        "anchorDate": "2026-03-01",
+        "validFrom": "2026-03-01",
+        "slots": [
+          "Push"
+        ],
+        "shifts": [],
+        "exceptions": []
+      },
+      "workouts": [
+        {
+          "workoutId": "push-a",
+          "startedAtUtc": "2026-03-28T23:30:00Z",
+          "endedAtUtc": "2026-03-29T00:30:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": "Push"
+        },
+        {
+          "workoutId": "push-b",
+          "startedAtUtc": "2026-03-29T01:30:00Z",
+          "endedAtUtc": "2026-03-29T02:30:00Z",
+          "deletedAtUtc": null,
+          "sourcePlanId": "Push"
+        }
+      ],
+      "from": "2026-03-28",
+      "through": "2026-03-30",
+      "expected": {
+        "effectiveCycleIndex": 0,
+        "nextPlanned": {
+          "planId": "Push",
+          "date": "2026-03-30"
+        },
+        "days": [
+          {
+            "date": "2026-03-28",
+            "baseKind": "training",
+            "slotIndex": 0,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-03-28",
+                "originDate": "2026-03-28",
+                "status": "missed",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-03-29",
+            "baseKind": "training",
+            "slotIndex": 0,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": true,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-03-29",
+                "originDate": "2026-03-29",
+                "status": "done",
+                "movedToDate": null,
+                "completedBy": [
+                  "push-a",
+                  "push-b"
+                ],
+                "instead": []
+              }
+            ]
+          },
+          {
+            "date": "2026-03-30",
+            "baseKind": "training",
+            "slotIndex": 0,
+            "archivedPlanId": null,
+            "isFree": false,
+            "hasFinished": false,
+            "automaticDayKind": "training",
+            "trainings": [
+              {
+                "planId": "Push",
+                "planName": "Push",
+                "date": "2026-03-30",
+                "originDate": "2026-03-30",
+                "status": "planned",
+                "movedToDate": null,
+                "completedBy": [],
+                "instead": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

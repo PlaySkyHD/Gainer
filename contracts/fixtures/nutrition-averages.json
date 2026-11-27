@@ -4,7 +4,7 @@
     "Das Fenster umfasst windowDays Kalendertage und endet today, wenn today erfasst ist, sonst am Vortag (includesToday).",
     "Mittelwerte je erfasstem Tag; Eiweiß, Kohlenhydrate, Fett, Ballaststoffe und Salz nur über erfasste Tage mit einem Wert; null ohne solchen Tag.",
     "Ziel eines Tages: die Version mit effectiveFrom <= Tag <= effectiveUntil (offen ohne effectiveUntil). Hat sie ein Ruhetag-Ziel und ist der Tag als rest festgelegt, gilt dessen kcal, sonst die kcal der Version.",
-    "Grenze: Für erfasste Tage ohne festgelegte Tagesart unter einer Version mit Ruhetag-Ziel leitet die App die Tagesart aus Training und Rhythmus ab; das ist nicht Teil dieser Fixture. targetKilocalories steht deshalb nur für erfasste Tage.",
+    "Ohne festgelegte Tagesart gilt die automatische Tagesart aus Training und Rhythmus (automaticDayKind, Fixture training-schedule.json); diese Fixture legt die Tagesart an jedem erfassten Tag unter einer Version mit Ruhetag-Ziel fest. targetKilocalories steht nur für erfasste Tage.",
     "withinTarget: erfasster Tag mit Ziel und |kcal − Ziel| <= 10 % des Ziels (inklusive). daysWithTarget = erfasste Tage mit Ziel; averageTargetKilocalories = Mittel ihrer Ziele.",
     "Zahlen werden auf 2 Nachkommastellen verglichen."
   ],
