@@ -11,6 +11,7 @@ import 'muscle_map_screen.dart';
 import 'training_format.dart';
 import 'training_heatmap_card.dart';
 import 'training_statistics_view_model.dart';
+import 'training_trend_tiles.dart';
 import 'warmup_sets_row.dart';
 
 /// Statistik-Segment: alle trainierten Übungen mit aktuellem Rekord. Die
@@ -82,6 +83,14 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
               TrainingHeatmapCard(
                 heatmap: heatmap,
                 onOpenDay: widget.onOpenCalendarDay,
+              ),
+              const SizedBox(height: GainerSpacing.l),
+            ],
+            if (model.trends case final trends? when model.hasTrendData) ...[
+              TrainingTrendTiles(
+                trends: trends,
+                weightUnit: model.weightUnit,
+                onPeriodChanged: model.selectTrendPeriod,
               ),
               const SizedBox(height: GainerSpacing.l),
             ],

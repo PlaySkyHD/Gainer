@@ -63,6 +63,9 @@ void main() {
     );
     await settle(tester);
 
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('statistics-muscles')),
+    );
     await tester.tap(find.byKey(const ValueKey('statistics-muscles')));
     await settle(tester);
 
