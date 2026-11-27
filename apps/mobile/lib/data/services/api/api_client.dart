@@ -178,11 +178,7 @@ class ApiClient {
     required String window,
     String timeZone = 'Europe/Berlin',
   }) async {
-    if (!RegExp(
-      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-    ).hasMatch(exerciseId)) {
-      throw ArgumentError.value(exerciseId, 'exerciseId', 'Expected a UUID.');
-    }
+    _validateIdentifier(exerciseId, 'exerciseId');
     if (!const {'7', '30', '90', 'all'}.contains(window)) {
       throw ArgumentError.value(window, 'window', 'Expected 7, 30, 90 or all.');
     }
@@ -584,11 +580,7 @@ class ApiClient {
 
   /// Revokes a connected assistant; 404 when it is already gone.
   Future<void> deleteConnector(String id) async {
-    if (!RegExp(
-      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-    ).hasMatch(id)) {
-      throw ArgumentError.value(id, 'id', 'Expected a UUID.');
-    }
+    _validateIdentifier(id, 'id');
     await _mutate('DELETE', '/api/v1/auth/connectors/$id');
   }
 

@@ -561,6 +561,68 @@ void main() {
       }
     });
 
+    test('lists and disconnects connected assistants', () async {
+      const id = '0b6a1c4e-2f3d-4a5b-8c7d-9e0f1a2b3c4d';
+      final requests = <String>[];
+      var invalidList = false;
+      final server = await _TestApiServer.start((request) async {
+        requests.add('${request.method} ${request.uri.path}');
+        if (request.uri.path == '/api/v1/auth/login') {
+          return _json(request, _tokens(1));
+        }
+        expect(request.headers.value('authorization'), 'Bearer access-1');
+        if (request.uri.path == '/api/v1/auth/connectors' && invalidList) {
+          return _json(request, {'not': 'a list'});
+        }
+        if (request.uri.path == '/api/v1/auth/connectors') {
+          return _jsonList(request, [
+            {
+              'id': id,
+              'name': 'ChatGPT',
+              'createdAt': '2026-11-27T10:00:00+00:00',
+              'lastUsedAt': '2026-11-27T12:30:00+01:00',
+            },
+          ]);
+        }
+        if (request.method == 'DELETE') {
+          request.response.statusCode = HttpStatus.noContent;
+          return request.response.close();
+        }
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+      final api = ApiClient(
+        configuration: ApiConfiguration(
+          apiOrigin: server.origin,
+          allowInsecureLoopbackForDevelopment: true,
+        ),
+      );
+      try {
+        await api.login(
+          const ApiLoginRequest(email: 'member@example.test', password: 'pw'),
+        );
+        final listed = await api.listConnectors();
+        await api.deleteConnector(id);
+        invalidList = true;
+
+        expect(listed.single.id, id);
+        expect(listed.single.name, 'ChatGPT');
+        expect(listed.single.createdAt, DateTime.utc(2026, 11, 27, 10));
+        expect(listed.single.lastUsedAt, DateTime.utc(2026, 11, 27, 11, 30));
+        await expectLater(api.listConnectors(), throwsFormatException);
+        expect(() => api.deleteConnector('../x'), throwsArgumentError);
+        expect(requests, [
+          'POST /api/v1/auth/login',
+          'GET /api/v1/auth/connectors',
+          'DELETE /api/v1/auth/connectors/$id',
+          'GET /api/v1/auth/connectors',
+        ]);
+      } finally {
+        api.close();
+        await server.close();
+      }
+    });
+
     test('manages passkeys of the signed-in account', () async {
       final requests = <String>[];
       final server = await _TestApiServer.start((request) async {
