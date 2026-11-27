@@ -339,7 +339,8 @@ public sealed class ConnectorFlowTests
             JsonElement[] workouts = listed.RootElement.GetProperty("workouts").EnumerateArray().ToArray();
             Assert.AreSequenceEqual(new[] { evening, morning }, workouts.Select(item => item.GetProperty("workoutId").GetGuid()).ToArray());
             Assert.AreEqual(planId, workouts[0].GetProperty("sourcePlanId").GetGuid());
-            Assert.AreEqual(JsonValueKind.Null, workouts[1].GetProperty("sourcePlanId").ValueKind);
+            // Absent values are left out of tool results, not written as null.
+            Assert.IsFalse(workouts[1].TryGetProperty("sourcePlanId", out _));
             Assert.AreEqual(3, workouts[0].GetProperty("completedSets").GetInt32());
         }
 
