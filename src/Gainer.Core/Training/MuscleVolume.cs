@@ -140,8 +140,8 @@ public static class MuscleVolume
             foreach (Guid id in order)
             {
                 string name = names[id];
-                IReadOnlyList<string> primary = Known(exercises.GetValueOrDefault(id)?.PrimaryMuscles ?? []);
-                IReadOnlyList<string> secondary = Known(exercises.GetValueOrDefault(id)?.SecondaryMuscles ?? []);
+                string[] primary = Known(exercises.GetValueOrDefault(id)?.PrimaryMuscles ?? []);
+                string[] secondary = Known(exercises.GetValueOrDefault(id)?.SecondaryMuscles ?? []);
                 if (primary.Count == 0 && secondary.Count == 0)
                 {
                     withoutMuscles.Add(new ExerciseReference(id, name));
