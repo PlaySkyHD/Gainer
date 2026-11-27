@@ -26,6 +26,11 @@ Stack: .NET 10, ASP.NET Core mit Controllern, EF Core mit Npgsql, ASP.NET Core I
 - Migrationen: `dotnet ef migrations add` mit Startprojekt `src/Gainer.Infrastructure`, danach `dotnet format`.
 - Neue Antwortfelder sind optional. Der Build erzeugt `contracts/openapi/Gainer.Api.json`; die Datei gehört in den Commit.
 
+## MCP-Connector
+
+- Was die App zeigt, muss auch der lesende MCP-Server (`src/Gainer.Api/Mcp/`) liefern. Neue Daten, Ansichten, Kennzahlen oder Felder bekommen im selben PR ein Tool oder die Erweiterung eines bestehenden, samt Eintrag in der Spec `ai-connector` und einem Fall in `ConnectorFlowTests` mit zwei Nutzern.
+- Tools liefern eigene Ergebnis-Records ohne Sync-Interna, sind als nur lesend markiert und begrenzen Datumsbereiche. Rechnet die App eine Kennzahl selbst, rechnet der Server sie gleich (gemeinsame Fixture unter `contracts/fixtures/`).
+
 ## Code
 
 - File-scoped Namespaces, `sealed` als Standard, Nullable aktiv, `CancellationToken` durchreichen.

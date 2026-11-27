@@ -70,6 +70,8 @@ Erkenntnisse aus der Umsetzung von Trainingssystem, App-Design, Health-Check-in,
 - **Screens nur einmal öffnen.** Vollbilder, die von außen (Live Activity, Widget) oder nach einer Wartezeit geöffnet werden, laufen über `pushSingleInstance` (`lib/ui/core/navigation/single_instance_route.dart`). Sonst liegt eine zweite Instanz mit altem Stand darunter, die beim Schließen wieder erscheint und beim Speichern neuere Werte überschreiben kann.
 - **Prüfen-dann-Anlegen serialisieren.** Ein Doppeltipp startet asynchrone Abläufe zweimal. Abläufe wie „kein aktives Training → anlegen“ brauchen eine Warteschlange oder einen gemeinsamen laufenden Future; Flutter verhindert nur das doppelte Pushen synchroner Taps.
 
+- **MCP mitziehen.** Der lesende MCP-Server soll alles liefern, was die App zeigt. Nach der Einführung (#360) fehlte vieles, weil Kennzahlen wie Trends, Muskelkarte, Heatmap und Durchschnitte nur in Dart gerechnet wurden und Einstellungen wie Cardio-Zonen oder Wasserziel nur auf dem Gerät lagen. Das Nachziehen kostete mehrere PRs (#363, #364 und folgende). Neue Funktionen erweitern deshalb im selben PR das MCP-Tool, die Spec `ai-connector` und `ConnectorFlowTests`.
+
 ## 6. Sync
 
 - **Ein wartender Stand je Ressource.** Zwischenschritte (gestartet → geändert → beendet) einzeln nachzuspielen erzeugt Konflikte, sobald ein früher Schritt hängt. Neue Änderungen fassen den noch nicht gesendeten Eintrag zusammen.
