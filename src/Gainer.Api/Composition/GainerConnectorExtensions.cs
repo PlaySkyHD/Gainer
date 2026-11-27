@@ -45,6 +45,7 @@ public static class GainerConnectorExtensions
             .WithHttpTransport(options => options.Stateless = true)
             .WithTools<GainerMcpTools>(ToolJson)
             .WithTools<GainerTrainingTools>(ToolJson)
+            .WithTools<GainerStatisticsTools>(ToolJson)
             .WithTools<GainerCardioTools>(ToolJson)
             .WithTools<GainerBodyTools>(ToolJson)
             .WithTools<GainerNutritionTools>(ToolJson)

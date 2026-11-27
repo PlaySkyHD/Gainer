@@ -45,9 +45,9 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             .OrderByDescending(item => item.StartDate)
             .ThenByDescending(item => item.Id)
             .FirstOrDefaultAsync(cancellationToken);
-        List<TrainingWorkoutInput> loadedWorkouts = await FinishedWorkoutsAsync(
+        List<TrainingWorkoutInput> loadedWorkouts = await context.FinishedWorkoutsAsync(
             loadFromUtc, workoutThroughUtc, exerciseIds: null, cancellationToken);
-        Dictionary<Guid, ExerciseFactorInput> factors = await ExerciseFactorsAsync(loadedWorkouts, userId, cancellationToken);
+        Dictionary<Guid, ExerciseFactorInput> factors = await context.ExerciseFactorsAsync(loadedWorkouts, userId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         List<TrainingWorkoutInput> workouts = loadedWorkouts
@@ -110,9 +110,9 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             .Where(item => item.LocalDate <= localThrough)
             .OrderBy(item => item.LocalDate)
             .ToListAsync(cancellationToken);
-        List<TrainingWorkoutInput> workouts = await FinishedWorkoutsAsync(
+        List<TrainingWorkoutInput> workouts = await context.FinishedWorkoutsAsync(
             fromUtc: null, endExclusiveUtc, [exerciseId], cancellationToken);
-        Dictionary<Guid, ExerciseFactorInput> factors = await ExerciseFactorsAsync(workouts, userId, cancellationToken);
+        Dictionary<Guid, ExerciseFactorInput> factors = await context.ExerciseFactorsAsync(workouts, userId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         ExerciseHistory history = TrainingStatistics.History(
@@ -164,7 +164,7 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
         Guid[] exerciseIds = blocks.Select(item => item.SourceExerciseId).Distinct().ToArray();
         // Records need the history of the workout's exercises up to this workout; later ones change nothing.
         // The bound is exclusive and Postgres keeps microseconds, so one tick would drop this workout itself.
-        List<TrainingWorkoutInput> workouts = await FinishedWorkoutsAsync(
+        List<TrainingWorkoutInput> workouts = await context.FinishedWorkoutsAsync(
             fromUtc: null, toUtc: workout.EndedAtUtc!.Value.AddMilliseconds(1), exerciseIds, cancellationToken);
         // The counters follow the app's summary screen: every completed workout, week of this workout's start.
         List<DateTime> countedStarts = await context.Workouts.AsNoTracking()
@@ -176,7 +176,7 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             .Where(item => item.LocalDate <= startDay)
             .OrderBy(item => item.LocalDate)
             .ToListAsync(cancellationToken);
-        Dictionary<Guid, ExerciseFactorInput> factors = await ExerciseFactorsAsync(workouts, userId, cancellationToken);
+        Dictionary<Guid, ExerciseFactorInput> factors = await context.ExerciseFactorsAsync(workouts, userId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         CheckInWeight[] bodyweights = ToCheckInWeights(checkIns);
@@ -204,71 +204,6 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
     private async Task<long> CurrentRevisionAsync(CancellationToken cancellationToken) =>
         await context.UserSyncStates.AsNoTracking().Select(item => (long?)item.CurrentRevision)
             .SingleOrDefaultAsync(cancellationToken) ?? 0;
-
-    /// <summary>Beendete, nicht gelöschte Trainings mit Blöcken; Blöcke optional auf eine Übung begrenzt.</summary>
-    private async Task<List<TrainingWorkoutInput>> FinishedWorkoutsAsync(
-        DateTime? fromUtc,
-        DateTime? toUtc,
-        IReadOnlyCollection<Guid>? exerciseIds,
-        CancellationToken cancellationToken)
-    {
-        IQueryable<Workout> query = context.Workouts.AsNoTracking()
-            .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null);
-        if (toUtc is { } to) query = query.Where(item => item.EndedAtUtc < to);
-        if (fromUtc is { } from) query = query.Where(item => item.EndedAtUtc >= from);
-        var workouts = await query
-            .Select(item => new { item.Id, item.StartedAtUtc, item.EndedAtUtc })
-            .ToListAsync(cancellationToken);
-
-        Guid[] workoutIds = workouts.Select(item => item.Id).ToArray();
-        IQueryable<WorkoutExercise> blockQuery = context.WorkoutExercises.AsNoTracking()
-            .Where(item => workoutIds.Contains(item.WorkoutId));
-        if (exerciseIds is not null) blockQuery = blockQuery.Where(item => exerciseIds.Contains(item.SourceExerciseId));
-        var blocks = await blockQuery
-            .OrderBy(item => item.Position)
-            .Select(item => new { item.Id, item.WorkoutId, item.SourceExerciseId, item.ExerciseTypeSnapshot })
-            .ToListAsync(cancellationToken);
-
-        Guid[] blockIds = blocks.Select(item => item.Id).ToArray();
-        var sets = await context.WorkoutSets.AsNoTracking()
-            .Where(item => blockIds.Contains(item.WorkoutExerciseId))
-            .OrderBy(item => item.Position)
-            .Select(item => new { item.WorkoutExerciseId, item.SetType, item.WeightKg, item.Repetitions })
-            .ToListAsync(cancellationToken);
-
-        ILookup<Guid, TrainingSetInput> setsByBlock = sets.ToLookup(
-            item => item.WorkoutExerciseId,
-            item => new TrainingSetInput(item.SetType, item.WeightKg, item.Repetitions));
-        ILookup<Guid, TrainingBlockInput> blocksByWorkout = blocks.ToLookup(
-            item => item.WorkoutId,
-            item => new TrainingBlockInput(item.Id, item.SourceExerciseId, item.ExerciseTypeSnapshot,
-                setsByBlock[item.Id].ToArray()));
-        return workouts.Select(item => new TrainingWorkoutInput(
-            item.Id,
-            item.StartedAtUtc,
-            item.EndedAtUtc,
-            DeletedAtUtc: null,
-            blocksByWorkout[item.Id].ToArray())).ToList();
-    }
-
-    /// <summary>Katalogfaktoren der Übungen: Basiskatalog oder eigene Übungen des Nutzers.</summary>
-    private async Task<Dictionary<Guid, ExerciseFactorInput>> ExerciseFactorsAsync(
-        IEnumerable<TrainingWorkoutInput> workouts,
-        Guid userId,
-        CancellationToken cancellationToken)
-    {
-        Guid[] exerciseIds = workouts
-            .SelectMany(workout => workout.Exercises)
-            .Select(block => block.SourceExerciseId)
-            .Distinct()
-            .ToArray();
-        if (exerciseIds.Length == 0) return new Dictionary<Guid, ExerciseFactorInput>();
-        List<ExerciseFactorInput> rows = await context.Exercises.AsNoTracking()
-            .Where(item => exerciseIds.Contains(item.Id) && (item.OwnerUserId == null || item.OwnerUserId == userId))
-            .Select(item => new ExerciseFactorInput(item.Id, item.BodyweightFactor, item.WeightFactor))
-            .ToListAsync(cancellationToken);
-        return rows.ToDictionary(item => item.ExerciseId);
-    }
 
     private static CheckInWeight[] ToCheckInWeights(IEnumerable<DailyCheckIn> checkIns) =>
         checkIns.Select(item => new CheckInWeight(item.LocalDate, item.WeightKg)).ToArray();
