@@ -24,6 +24,10 @@ Stack: Flutter nur mit Cupertino-Widgets, `provider`, Drift als lokale Datenbank
 - Nichts anbieten, was im aktuellen Zustand nicht funktionieren kann.
 - Die Animations-Skills (`animate`, `review-animations`, `emil-design-eng` …) zeigen CSS und Framer Motion. In Flutter: `Curves.easeOut` statt `ease-out`, implizite Animationen (`AnimatedContainer`, `AnimatedOpacity`) statt CSS-Transitions, `SpringSimulation` für Federn, `MediaQuery.disableAnimationsOf(context)` statt `prefers-reduced-motion`.
 
+## MCP-Connector
+
+- Jede neue Ansicht, Karte, Grafik oder Kennzahl muss auch über den lesenden MCP-Server abfragbar sein. Liegen die Daten nur auf dem Gerät, gehören sie zuerst in den Sync; rechnet die App etwas Neues, zieht der Server die Berechnung mit derselben Fixture nach (siehe `backend.instructions.md`, Abschnitt „MCP-Connector“).
+
 ## Prüfen
 
 - In einem frischen Worktree zuerst `flutter pub get`. Ohne läuft der Analyzer mit einer langen Warnliste voll.
