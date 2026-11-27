@@ -5,6 +5,9 @@ using System.Text.Json;
 using Gainer.Api.Composition;
 using Gainer.Api.Security;
 using Gainer.Contracts.Security;
+using Gainer.Core.BodyTracking;
+using Gainer.Core.Coach;
+using Gainer.Core.Nutrition;
 using Gainer.Core.Mutations;
 using Gainer.Core.Security;
 using Gainer.Core.Training;
@@ -29,9 +32,16 @@ public sealed class ConnectorFlowTests
 {
     private const string BaseAddress = "https://gainer.markfort.xyz";
     private const string Password = "Correct-horse-42!";
-    private static readonly DateTime Started = new(2026, 11, 20, 17, 0, 0, DateTimeKind.Utc);
+    // Relative to today, so period-based tools (overview, 7-day figures) keep finding the seeded data.
+    private static readonly DateTime Started = DateTime.UtcNow.Date.AddDays(-1).AddHours(7);
+    private static readonly DateOnly Today = DateOnly.FromDateTime(
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Gainer.Core.Insights.LocalDays.Default));
     private static readonly string[] ExpectedTools =
-        ["get_overview", "list_workouts", "get_workout", "search_exercises", "get_exercise_progress"];
+    [
+        "get_overview", "list_workouts", "get_workout", "search_exercises", "get_exercise_progress",
+        "get_body_goals", "list_check_ins", "get_nutrition_days", "get_nutrition_targets", "list_saved_meals",
+        "list_coach_notes", "get_strava_status",
+    ];
     private static PostgreSqlTestFixture? fixture;
     private readonly List<string> keyRingPaths = [];
     private string connectionString = string.Empty;
@@ -73,6 +83,10 @@ public sealed class ConnectorFlowTests
         Guid other = await CreateUserAsync(app, "other@example.test");
         Guid ownWorkout = await SeedWorkoutAsync(owner, "Push");
         Guid foreignWorkout = await SeedWorkoutAsync(other, "Fremd");
+        await SeedCheckInAsync(owner, Today.AddDays(-2), 81.5m);
+        await SeedCheckInAsync(other, Today.AddDays(-1), 99m);
+        await SeedOwnDataAsync(owner, "Haferflocken", "Kein Training nach 21 Uhr", BodyGoalKind.Cut);
+        await SeedOwnDataAsync(other, "Fremdes Müsli", "Fremde Notiz", BodyGoalKind.Bulk);
         using var authenticator = new SoftwarePasskeyAuthenticator();
         using HttpClient appClient = CreateClient(app);
         await appClient.AuthenticateAsync("owner@example.test", Password);
@@ -112,6 +126,69 @@ public sealed class ConnectorFlowTests
             Assert.IsFalse(progress.IsError ?? false);
             CallToolResult unknownExercise = await CallAsync(mcp, "get_exercise_progress", new() { ["exerciseId"] = Guid.NewGuid() });
             Assert.IsTrue(unknownExercise.IsError);
+
+            // Body, nutrition and account data of the owner only.
+            using (JsonDocument checkIns = await JsonAsync(mcp, "list_check_ins", new()))
+            {
+                JsonElement single = checkIns.RootElement.GetProperty("checkIns").EnumerateArray().Single();
+                Assert.AreEqual(Today.AddDays(-2).ToString("yyyy-MM-dd"), single.GetProperty("date").GetString());
+                Assert.AreEqual(81.5m, single.GetProperty("weightKg").GetDecimal());
+                Assert.AreEqual(52, single.GetProperty("restingHrvMs").GetInt32());
+            }
+
+            using (JsonDocument summary = await JsonAsync(mcp, "get_overview", new() { ["days"] = 30 }))
+            {
+                JsonElement weight = summary.RootElement.GetProperty("weight");
+                Assert.AreEqual(81.5m, weight.GetProperty("series").EnumerateArray().Single().GetProperty("weightKg").GetDecimal());
+                Assert.AreEqual(81.5m, weight.GetProperty("sevenDayAverageKg").GetDecimal());
+                Assert.AreEqual(1, summary.RootElement.GetProperty("training").GetProperty("workoutsLast7Days").GetInt32());
+            }
+
+            using (JsonDocument goals = await JsonAsync(mcp, "get_body_goals", []))
+            {
+                Assert.AreEqual("Cut", goals.RootElement.GetProperty("active").GetProperty("kind").GetString());
+                Assert.AreEqual(0, goals.RootElement.GetProperty("history").GetArrayLength());
+            }
+
+            using (JsonDocument days = await JsonAsync(mcp, "get_nutrition_days", new()
+            {
+                ["from"] = Today.AddDays(-1).ToString("yyyy-MM-dd"),
+                ["through"] = Today.ToString("yyyy-MM-dd"),
+            }))
+            {
+                JsonElement[] list = days.RootElement.GetProperty("days").EnumerateArray().ToArray();
+                Assert.HasCount(2, list);
+                Assert.AreEqual("Haferflocken", list[0].GetProperty("entries")[0].GetProperty("product").GetString());
+                Assert.AreEqual("Breakfast", list[0].GetProperty("entries")[0].GetProperty("meal").GetString());
+                Assert.AreEqual(0, list[1].GetProperty("entries").GetArrayLength());
+                Assert.AreEqual(0m, list[1].GetProperty("totals").GetProperty("kilocalories").GetDecimal());
+            }
+
+            using (JsonDocument notes = await JsonAsync(mcp, "list_coach_notes", []))
+            {
+                JsonElement note = notes.RootElement.GetProperty("notes").EnumerateArray().Single();
+                Assert.AreEqual("Kein Training nach 21 Uhr", note.GetProperty("text").GetString());
+            }
+
+            foreach (string tool in new[] { "get_nutrition_targets", "list_saved_meals", "get_strava_status" })
+            {
+                CallToolResult result = await CallAsync(mcp, tool, []);
+                Assert.IsFalse(result.IsError ?? false, tool);
+            }
+
+            CallToolResult reversed = await CallAsync(mcp, "list_check_ins", new()
+            {
+                ["from"] = Today.ToString("yyyy-MM-dd"),
+                ["through"] = Today.AddDays(-1).ToString("yyyy-MM-dd"),
+            });
+            Assert.IsTrue(reversed.IsError);
+
+            CallToolResult tooLong = await CallAsync(mcp, "get_nutrition_days", new()
+            {
+                ["from"] = "2026-01-01",
+                ["through"] = "2026-03-01",
+            });
+            Assert.IsTrue(tooLong.IsError);
 
             // Out-of-range arguments are reported as tool errors.
             foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
@@ -346,6 +423,80 @@ public sealed class ConnectorFlowTests
                 new WorkoutValues(workoutId, title, null, Started, Started.AddHours(1), "exercise", null, null, [])),
             TestContext.CancellationToken);
         return workoutId;
+    }
+
+    private async Task<JsonDocument> JsonAsync(McpClient mcp, string tool, Dictionary<string, object?> arguments)
+    {
+        CallToolResult result = await CallAsync(mcp, tool, arguments);
+        Assert.IsFalse(result.IsError ?? false, $"{tool}: {Text(result)}");
+        return JsonDocument.Parse(Text(result));
+    }
+
+    /// <summary>A nutrition day with one entry yesterday, a coach note and an active goal for the user.</summary>
+    private async Task SeedOwnDataAsync(Guid userId, string product, string note, BodyGoalKind goal)
+    {
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
+        DateTime now = DateTime.UtcNow;
+        var day = new NutritionDay
+        {
+            Id = Guid.NewGuid(),
+            LocalDate = Today.AddDays(-1),
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+            Version = 1,
+        };
+        day.Entries.Add(new NutritionEntry
+        {
+            Id = Guid.NewGuid(),
+            NutritionDayId = day.Id,
+            Meal = MealType.Breakfast,
+            Position = 0,
+            ProductName = product,
+            AmountGrams = 80m,
+            Kilocalories = 300m,
+            ProteinGrams = 10m,
+            BasisGrams = 100m,
+            KilocaloriesPerBasis = 375m,
+            ProteinGramsPerBasis = 12.5m,
+        });
+        context.NutritionDays.Add(day);
+        context.CoachMemories.Add(new CoachMemory
+        {
+            Id = Guid.NewGuid(),
+            Category = CoachMemoryCategory.Preference,
+            Text = note,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+            Version = 1,
+        });
+        context.BodyGoals.Add(new BodyGoal
+        {
+            Id = Guid.NewGuid(),
+            Kind = goal,
+            StartWeightKg = 85m,
+            TargetWeightKg = 80m,
+            StartDate = Today.AddDays(-30),
+            CreatedAtUtc = now,
+            Version = 1,
+        });
+        await context.SaveChangesAsync(TestContext.CancellationToken);
+    }
+
+    private async Task SeedCheckInAsync(Guid userId, DateOnly date, decimal weightKg)
+    {
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
+        context.DailyCheckIns.Add(new DailyCheckIn
+        {
+            Id = Guid.NewGuid(),
+            LocalDate = date,
+            WeightKg = weightKg,
+            Steps = 9000,
+            RestingHrvMs = 52,
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow,
+            Version = 1,
+        });
+        await context.SaveChangesAsync(TestContext.CancellationToken);
     }
 
     private async Task<WebApplication> CreateApplicationAsync()

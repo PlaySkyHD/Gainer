@@ -16,6 +16,21 @@ public sealed class NutritionQueries(AppDbContext context) : INutritionQueries
         return day is null ? null : NutritionSnapshots.Day(day);
     }
 
+    public async Task<IReadOnlyList<NutritionDaySnapshot>> GetDaysAsync(
+        DateOnly from,
+        DateOnly through,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(through, from);
+        List<NutritionDay> days = await context.NutritionDays
+            .AsNoTracking()
+            .Include(item => item.Entries)
+            .Where(item => item.LocalDate >= from && item.LocalDate <= through)
+            .OrderBy(item => item.LocalDate)
+            .ToListAsync(cancellationToken);
+        return days.Select(day => NutritionSnapshots.Day(day)).ToList();
+    }
+
     public async Task<IReadOnlyList<NutritionEntrySnapshot>> GetRecentEntriesAsync(
         int limit,
         CancellationToken cancellationToken = default)

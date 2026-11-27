@@ -4,6 +4,12 @@ public interface INutritionQueries
 {
     Task<NutritionDaySnapshot?> GetDayAsync(DateOnly localDate, CancellationToken cancellationToken = default);
 
+    /// <summary>Logged days in the inclusive range with their entries, oldest first; days without a log are missing.</summary>
+    Task<IReadOnlyList<NutritionDaySnapshot>> GetDaysAsync(
+        DateOnly from,
+        DateOnly through,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<NutritionEntrySnapshot>> GetRecentEntriesAsync(
         int limit,
         CancellationToken cancellationToken = default);

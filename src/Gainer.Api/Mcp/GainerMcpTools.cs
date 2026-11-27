@@ -21,13 +21,13 @@ public sealed class GainerMcpTools(
     private const int MaximumWorkouts = 50;
     private const int MaximumExercises = 50;
 
-    private static TimeZoneInfo TimeZone => LocalDays.Default;
 
     /// <summary>Goal, body weight, nutrition and training of a period.</summary>
     [McpServerTool(Name = "get_overview", Title = "Überblick", ReadOnly = true, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true)]
     [Description("Summary of the user's fitness data for a period of local days: active goal, body weight (latest, " +
-        "average, weekly trend), average daily nutrition and strength training (workouts, volume, best set). " +
+        "average, average of the period's last 7 days, weekly trend and the daily weight series), average daily " +
+        "nutrition and strength training (workouts, workouts in the period's last 7 days, volume, best set). " +
         "Weights in kg, volume in kg × repetitions. Call twice with endDaysAgo to compare periods.")]
     public async Task<OverviewResult> GetOverview(
         [Description("Length of the period in days: 7, 30 or 90.")] int days = 30,
@@ -44,8 +44,8 @@ public sealed class GainerMcpTools(
             throw new McpException("endDaysAgo must be between 0 and 730.");
         }
 
-        DateOnly through = timeProvider.Today(TimeZone).AddDays(-endDaysAgo);
-        DashboardInsightSnapshot data = await insights.DashboardAsync(through, days, TimeZone, cancellationToken);
+        DateOnly through = McpDates.Today(timeProvider).AddDays(-endDaysAgo);
+        DashboardInsightSnapshot data = await insights.DashboardAsync(through, days, McpDates.TimeZone, cancellationToken);
         return new OverviewResult(
             data.From,
             data.Through,
@@ -57,7 +57,9 @@ public sealed class GainerMcpTools(
                 data.LatestWeight?.Date,
                 Round(data.Weight.AverageKg),
                 Round(data.Weight.TrendKgPerWeek),
-                data.Weight.ObservedDays),
+                data.Weight.ObservedDays,
+                Round(data.SevenDayWeight.AverageKg),
+                data.WeightSeries.Select(point => new WeightPointResult(point.Date, point.WeightKg)).ToList()),
             new NutritionResult(
                 Round(data.Nutrition.CaloriesKcal.Value),
                 Round(data.Nutrition.ProteinGrams.Value),
@@ -71,7 +73,8 @@ public sealed class GainerMcpTools(
                 data.Training.BestSet is { } best
                     ? new BestSetResult(best.ExerciseId, best.EffectiveWeightKg, best.Repetitions, Round(best.EstimatedOneRepMaxKg))
                     : null,
-                data.Training.BodyweightMissing));
+                data.Training.BodyweightMissing,
+                data.WorkoutsLast7Days));
     }
 
     /// <summary>Completed workouts, newest first.</summary>
@@ -171,7 +174,7 @@ public sealed class GainerMcpTools(
         ExerciseCatalogItem exercise = await exercises.ResolveAsync(exerciseId, includeArchived: true, cancellationToken)
             ?? throw new McpException("The exercise was not found.");
         ExerciseProgressSnapshot data = await insights.ExerciseProgressAsync(
-            exerciseId, days, timeProvider.GetUtcNow().UtcDateTime, TimeZone, cancellationToken);
+            exerciseId, days, timeProvider.GetUtcNow().UtcDateTime, McpDates.TimeZone, cancellationToken);
         return new ExerciseProgressResult(
             exercise.Id,
             exercise.Name,
@@ -212,7 +215,11 @@ public sealed record WeightResult(
     DateOnly? LatestDate,
     decimal? AverageKg,
     decimal? TrendKgPerWeek,
-    int DaysWithWeight);
+    int DaysWithWeight,
+    decimal? SevenDayAverageKg,
+    IReadOnlyList<WeightPointResult> Series);
+
+public sealed record WeightPointResult(DateOnly Date, decimal WeightKg);
 
 public sealed record NutritionResult(
     decimal? CaloriesKcalPerDay,
@@ -226,7 +233,8 @@ public sealed record TrainingResult(
     int Workouts,
     decimal VolumeKgRepetitions,
     BestSetResult? BestSet,
-    bool BodyweightMissingForSomeSets);
+    bool BodyweightMissingForSomeSets,
+    int WorkoutsLast7Days);
 
 public sealed record BestSetResult(Guid ExerciseId, decimal WeightKg, int Repetitions, decimal EstimatedOneRepMaxKg);
 

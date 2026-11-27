@@ -4,6 +4,9 @@ using Gainer.Api.Connectors;
 using Gainer.Api.Mcp;
 using Gainer.Api.Security;
 using Microsoft.AspNetCore.RateLimiting;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
 namespace Gainer.Api.Composition;
@@ -11,6 +14,12 @@ namespace Gainer.Api.Composition;
 /// <summary>Registers the MCP endpoint and the OAuth pieces for connected assistants.</summary>
 public static class GainerConnectorExtensions
 {
+    /// <summary>Tool results with enum names instead of numbers, so assistants read them without a key.</summary>
+    private static readonly JsonSerializerOptions ToolJson = new(McpJsonUtilities.DefaultOptions)
+    {
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     /// <summary>Rate limit of the MCP endpoint, per account.</summary>
     public const string McpRateLimitPolicy = "mcp";
 
@@ -34,7 +43,10 @@ public static class GainerConnectorExtensions
         services
             .AddMcpServer(options => options.ServerInfo = new Implementation { Name = "gainer", Version = "1.0.0" })
             .WithHttpTransport(options => options.Stateless = true)
-            .WithTools<GainerMcpTools>();
+            .WithTools<GainerMcpTools>(ToolJson)
+            .WithTools<GainerBodyTools>(ToolJson)
+            .WithTools<GainerNutritionTools>(ToolJson)
+            .WithTools<GainerAccountTools>(ToolJson);
         return services;
     }
 

@@ -10,4 +10,10 @@ public interface IBodyTrackingQueries
         int offset,
         int limit,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Check-ins whose local date lies in the inclusive range, oldest first.</summary>
+    Task<IReadOnlyList<DailyCheckInSnapshot>> GetCheckInsBetweenAsync(
+        DateOnly from,
+        DateOnly through,
+        CancellationToken cancellationToken = default);
 }
