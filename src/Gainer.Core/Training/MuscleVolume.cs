@@ -142,7 +142,7 @@ public static class MuscleVolume
                 string name = names[id];
                 string[] primary = Known(exercises.GetValueOrDefault(id)?.PrimaryMuscles ?? []);
                 string[] secondary = Known(exercises.GetValueOrDefault(id)?.SecondaryMuscles ?? []);
-                if (primary.Count == 0 && secondary.Count == 0)
+                if (primary.Length == 0 && secondary.Length == 0)
                 {
                     withoutMuscles.Add(new ExerciseReference(id, name));
                     continue;
