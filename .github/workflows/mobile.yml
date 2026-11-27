@@ -779,10 +779,18 @@ jobs:
           printf '%s' "$APP_STORE_CONNECT_PRIVATE_KEY" > "$key_file"
           chmod 600 "$key_file"
           unset APP_STORE_CONNECT_PRIVATE_KEY
-          xcrun altool --validate-app -f "$ipa" -t ios \
-            --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
-          xcrun altool --upload-app -f "$ipa" -t ios \
-            --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+          # altool exits 0 even when App Store Connect rejects the request (e.g. an expired agreement).
+          altool_checked() {
+            local log="$RUNNER_TEMP/altool-$1.log"
+            xcrun altool "--$1-app" -f "$ipa" -t ios \
+              --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" 2>&1 | tee "$log"
+            if grep -q 'ERROR:' "$log"; then
+              echo "::error::App Store Connect rejected altool $1. See the output above; an expired agreement must be accepted under Business in App Store Connect."
+              exit 1
+            fi
+          }
+          altool_checked validate
+          altool_checked upload
           {
             echo '### TestFlight upload submitted'
             echo "- Bundle: \`$IOS_BUNDLE_ID\`"
