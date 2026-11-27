@@ -6,6 +6,7 @@ import '../../../domain/models/training/muscles.dart';
 import '../../core/components/components.dart';
 import '../../core/theme.dart';
 import 'exercise_editor_screen.dart';
+import 'exercise_library_screen.dart';
 import 'muscle_map_view_model.dart';
 import 'muscle_map_widgets.dart';
 
@@ -82,6 +83,20 @@ class _MuscleMapScreenState extends State<MuscleMapScreen> {
       exerciseId: exerciseId,
     );
     if (changed && mounted) await _viewModel.load();
+  }
+
+  /// Übungsverwaltung mit „Nur ohne Muskeln“; danach neu laden, weil dort
+  /// Muskeln eingetragen worden sein können.
+  Future<void> _openAllWithoutMuscles() async {
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
+        builder: (_) => ExerciseLibraryScreen(
+          repository: widget.repository,
+          onlyWithoutMuscles: true,
+        ),
+      ),
+    );
+    if (mounted) await _viewModel.load();
   }
 
   void _openMuscle(Muscle muscle) =>
@@ -171,6 +186,11 @@ class _MuscleMapScreenState extends State<MuscleMapScreen> {
         ),
       ],
       const SizedBox(height: GainerSpacing.m),
+      _AllWithoutMusclesRow(
+        count: model.catalogExercisesWithoutMuscles,
+        onOpen: _openAllWithoutMuscles,
+      ),
+      const SizedBox(height: GainerSpacing.m),
       GainerGroupedSection(
         header: 'Sätze je Muskel',
         children: [
@@ -200,6 +220,30 @@ class _MuscleMapScreenState extends State<MuscleMapScreen> {
     return model.period == MuscleMapPeriod.week
         ? 'Erfasste Arbeitssätze der letzten 7 Tage. $half'
         : 'Erfasste Arbeitssätze der letzten 28 Tage, Ø pro Woche. $half';
+  }
+}
+
+/// Alle Übungen des Katalogs ohne Muskeln, nicht nur die der aktuellen Karte.
+/// Ohne solche Übungen ist die Zeile nicht antippbar.
+class _AllWithoutMusclesRow extends StatelessWidget {
+  const _AllWithoutMusclesRow({required this.count, required this.onOpen});
+
+  final int count;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return GainerGroupedSection(
+      children: [
+        GainerListRow(
+          key: const ValueKey('muscle-map-all-without-muscles'),
+          title: 'Alle Übungen ohne Muskeln',
+          value: count == 0 ? 'Keine' : '$count',
+          showChevron: count > 0,
+          onTap: count > 0 ? onOpen : null,
+        ),
+      ],
+    );
   }
 }
 

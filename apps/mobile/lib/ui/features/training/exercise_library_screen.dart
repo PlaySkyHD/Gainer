@@ -8,12 +8,19 @@ import 'exercise_catalog_format.dart';
 import 'exercise_editor_screen.dart';
 import 'exercise_library_view_model.dart';
 
-/// Übungsverwaltung: Basis- und eigene Übungen mit Suche, Kategorie-Filter
-/// und Archiv-Schalter. Tippen öffnet den Editor.
+/// Übungsverwaltung: Basis- und eigene Übungen mit Suche, Kategorie-Filter,
+/// Archiv- und Muskel-Schalter. Tippen öffnet den Editor.
 class ExerciseLibraryScreen extends StatefulWidget {
-  const ExerciseLibraryScreen({required this.repository, super.key});
+  const ExerciseLibraryScreen({
+    required this.repository,
+    this.onlyWithoutMuscles = false,
+    super.key,
+  });
 
   final TrainingLogRepository repository;
+
+  /// Startet mit „Nur ohne Muskeln“, etwa aus der Muskelübersicht.
+  final bool onlyWithoutMuscles;
 
   @override
   State<ExerciseLibraryScreen> createState() => _ExerciseLibraryScreenState();
@@ -25,6 +32,7 @@ const _allCategories = '';
 class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
   late final ExerciseLibraryViewModel _viewModel = ExerciseLibraryViewModel(
     repository: widget.repository,
+    onlyWithoutMuscles: widget.onlyWithoutMuscles,
   );
   final _searchController = TextEditingController();
 
@@ -123,6 +131,14 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                     onChanged: _viewModel.setShowArchived,
                   ),
                 ),
+                GainerListRow(
+                  title: 'Nur ohne Muskeln',
+                  trailing: CupertinoSwitch(
+                    key: const ValueKey('exercise-library-without-muscles'),
+                    value: _viewModel.onlyWithoutMuscles,
+                    onChanged: _viewModel.setOnlyWithoutMuscles,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: GainerSpacing.m),
@@ -142,7 +158,9 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
               GainerCard(
                 padding: const EdgeInsets.all(GainerSpacing.l),
                 child: Text(
-                  'Keine Übungen gefunden.',
+                  _viewModel.onlyWithoutMuscles
+                      ? 'Keine Übungen ohne Muskeln gefunden.'
+                      : 'Keine Übungen gefunden.',
                   textAlign: TextAlign.center,
                   style: GainerTypography.body.copyWith(
                     color: colors.secondaryText,

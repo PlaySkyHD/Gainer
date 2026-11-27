@@ -6,6 +6,7 @@ import 'package:gainer_mobile/domain/models/training/workout_model.dart';
 import 'package:gainer_mobile/ui/features/training/active_workout_controller.dart';
 import 'package:gainer_mobile/ui/features/training/body_map.dart';
 import 'package:gainer_mobile/ui/features/training/exercise_editor_screen.dart';
+import 'package:gainer_mobile/ui/features/training/exercise_library_screen.dart';
 import 'package:gainer_mobile/ui/features/training/muscle_map_screen.dart';
 import 'package:gainer_mobile/ui/features/training/plan_editor_screen.dart';
 import 'package:gainer_mobile/ui/features/training/training_statistics_section.dart';
@@ -121,6 +122,73 @@ void main() {
     await showRow(tester, Muscle.biceps);
     // Curls 3 Sätze als Hauptmuskel plus 1,5 aus Klimmzügen.
     expect(valueOf(tester, Muscle.biceps), '4,5 Sätze');
+  });
+
+  testWidgets(
+    '„Alle Übungen ohne Muskeln“ zeigt auch Übungen außerhalb der Pläne',
+    (tester) async {
+      await tester.runAsync(() async {
+        Future<CatalogExercise> create(String name) =>
+            harness.repository.createCustomExercise(
+              CatalogExercise(
+                id: harness.repository.newId(),
+                name: name,
+                exerciseType: ExerciseKind.strength,
+                isBase: false,
+              ),
+            );
+        await create('Facepulls');
+        final archived = await create('Alte Übung');
+        await harness.repository.archiveCustomExercise(archived.id);
+      });
+      await pumpScreen(tester);
+      final row = find.byKey(const ValueKey('muscle-map-all-without-muscles'));
+      await scrollIntoView(tester, row);
+
+      // Curls aus dem Pull-Plan und Facepulls ohne Plan; archivierte und
+      // schreibgeschützte Basisübungen zählen nicht.
+      expect(
+        find.descendant(of: row, matching: find.text('2')),
+        findsOneWidget,
+      );
+
+      await tester.tap(row);
+      await settle(tester);
+
+      expect(find.byType(ExerciseLibraryScreen), findsOneWidget);
+      final toggle = tester.widget<CupertinoSwitch>(
+        find.byKey(const ValueKey('exercise-library-without-muscles')),
+      );
+      expect(toggle.value, isTrue);
+      expect(find.text('Facepulls'), findsOneWidget);
+      expect(find.text('Curls'), findsOneWidget);
+      expect(find.text('Bankdrücken'), findsNothing);
+      expect(find.text('Alte Übung'), findsNothing);
+    },
+  );
+
+  testWidgets('ohne offene Übungen zeigt die Zeile „Keine“ und öffnet nichts', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final curl = (await harness.repository.readExercises()).firstWhere(
+        (exercise) => exercise.id == scenario.curlId,
+      );
+      await harness.repository.updateCustomExercise(
+        curl.copyWith(primaryMuscles: const [Muscle.biceps]),
+      );
+    });
+    await pumpScreen(tester);
+    final row = find.byKey(const ValueKey('muscle-map-all-without-muscles'));
+    await scrollIntoView(tester, row);
+
+    expect(
+      find.descendant(of: row, matching: find.text('Keine')),
+      findsOneWidget,
+    );
+    await tester.tap(row);
+    await settle(tester);
+    expect(find.byType(ExerciseLibraryScreen), findsNothing);
   });
 
   testWidgets('ein Plan zeigt nur seine Sätze', (tester) async {
