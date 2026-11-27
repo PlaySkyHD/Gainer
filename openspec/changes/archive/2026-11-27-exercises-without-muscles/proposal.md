@@ -7,7 +7,7 @@ Die Muskelübersicht listet unter „Ohne Muskeln“ nur Übungen, die in der ge
 ## What Changes
 
 - Die Übungsverwaltung erhält den Schalter „Nur ohne Muskeln“.
-- Die Muskelübersicht zeigt die Zeile „Alle Übungen ohne Muskeln“ mit der Anzahl nicht archivierter Übungen ohne Haupt- und Hilfsmuskeln. Sie öffnet die Übungsverwaltung mit eingeschaltetem Filter. Ohne solche Übungen zeigt sie „Keine“ und ist nicht antippbar.
+- Die Muskelübersicht zeigt die Zeile „Alle Übungen ohne Muskeln“ mit der Anzahl nicht archivierter eigener Übungen ohne Haupt- und Hilfsmuskeln. Schreibgeschützte Basisübungen zählen nicht, weil der Nutzer ihre Muskeln nicht nachtragen kann. Sie öffnet die Übungsverwaltung mit eingeschaltetem Filter. Ohne solche Übungen zeigt sie „Keine“ und ist nicht antippbar.
 - Nach der Rückkehr lädt die Muskelübersicht neu, damit eingetragene Muskeln sofort zählen.
 
 ## Capabilities

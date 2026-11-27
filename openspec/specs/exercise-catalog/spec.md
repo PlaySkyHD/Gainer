@@ -221,7 +221,7 @@ Der Server SHALL KI-Anfragen pro Nutzer und Tag begrenzen und bei Überschreitun
 
 ### Requirement: Übungen ohne Muskeln finden
 
-Die Übungsverwaltung SHALL einen Schalter „Nur ohne Muskeln“ anbieten, der nur Übungen ohne Haupt- und Hilfsmuskeln zeigt. Die Muskelübersicht SHALL unabhängig von Plänen und Trainings die Zeile „Alle Übungen ohne Muskeln“ mit der Anzahl nicht archivierter Übungen ohne Muskeln zeigen. Die Zeile MUST die Übungsverwaltung mit eingeschaltetem Schalter öffnen. Ohne solche Übungen MUST sie „Keine“ zeigen und darf nicht antippbar sein.
+Die Übungsverwaltung SHALL einen Schalter „Nur ohne Muskeln“ anbieten, der nur eigene Übungen ohne Haupt- und Hilfsmuskeln zeigt; schreibgeschützte Basisübungen MUST NOT erscheinen, weil der Nutzer ihre Muskeln nicht nachtragen kann. Die Muskelübersicht SHALL unabhängig von Plänen und Trainings die Zeile „Alle Übungen ohne Muskeln“ mit der Anzahl nicht archivierter eigener Übungen ohne Muskeln zeigen. Die Zeile MUST die Übungsverwaltung mit eingeschaltetem Schalter öffnen. Ohne solche Übungen MUST sie „Keine“ zeigen und darf nicht antippbar sein.
 
 #### Scenario: Übung außerhalb der Pläne
 - **GIVEN** die eigene Übung „Facepulls“ ohne Muskeln steht in keinem Plan und wurde nie trainiert

@@ -25,7 +25,7 @@ class ExerciseLibraryViewModel extends ChangeNotifier {
   String? categoryId;
   bool showArchived = false;
 
-  /// Nur Übungen ohne Haupt- und Hilfsmuskeln.
+  /// Nur eigene Übungen ohne Muskeln ([CatalogExercise.needsMuscles]).
   bool onlyWithoutMuscles;
   bool _disposed = false;
 
@@ -92,7 +92,7 @@ class ExerciseLibraryViewModel extends ChangeNotifier {
       for (final exercise in exercises)
         if ((showArchived || !exercise.isArchived) &&
             (category == null || exercise.categoryIds.contains(category)) &&
-            (!onlyWithoutMuscles || exercise.hasNoMuscles) &&
+            (!onlyWithoutMuscles || exercise.needsMuscles) &&
             (needle.isEmpty ||
                 foldCatalogSearch(exercise.name).contains(needle)))
           exercise,

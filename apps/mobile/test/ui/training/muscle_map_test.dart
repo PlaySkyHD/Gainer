@@ -127,26 +127,30 @@ void main() {
   testWidgets(
     '„Alle Übungen ohne Muskeln“ zeigt auch Übungen außerhalb der Pläne',
     (tester) async {
-      await tester.runAsync(
-        () => harness.repository.createCustomExercise(
-          CatalogExercise(
-            id: harness.repository.newId(),
-            name: 'Facepulls',
-            exerciseType: ExerciseKind.strength,
-            isBase: false,
-          ),
-        ),
-      );
+      await tester.runAsync(() async {
+        Future<CatalogExercise> create(String name) =>
+            harness.repository.createCustomExercise(
+              CatalogExercise(
+                id: harness.repository.newId(),
+                name: name,
+                exerciseType: ExerciseKind.strength,
+                isBase: false,
+              ),
+            );
+        await create('Facepulls');
+        final archived = await create('Alte Übung');
+        await harness.repository.archiveCustomExercise(archived.id);
+      });
       await pumpScreen(tester);
       final row = find.byKey(const ValueKey('muscle-map-all-without-muscles'));
       await scrollIntoView(tester, row);
 
-      // Curls aus dem Pull-Plan und Facepulls ohne Plan.
-      final texts = tester.widgetList<Text>(
-        find.descendant(of: row, matching: find.byType(Text)),
+      // Curls aus dem Pull-Plan und Facepulls ohne Plan; archivierte und
+      // schreibgeschützte Basisübungen zählen nicht.
+      expect(
+        find.descendant(of: row, matching: find.text('2')),
+        findsOneWidget,
       );
-      final count = int.parse(texts.last.data!);
-      expect(count, greaterThanOrEqualTo(2));
 
       await tester.tap(row);
       await settle(tester);
@@ -159,8 +163,33 @@ void main() {
       expect(find.text('Facepulls'), findsOneWidget);
       expect(find.text('Curls'), findsOneWidget);
       expect(find.text('Bankdrücken'), findsNothing);
+      expect(find.text('Alte Übung'), findsNothing);
     },
   );
+
+  testWidgets('ohne offene Übungen zeigt die Zeile „Keine“ und öffnet nichts', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final curl = (await harness.repository.readExercises()).firstWhere(
+        (exercise) => exercise.id == scenario.curlId,
+      );
+      await harness.repository.updateCustomExercise(
+        curl.copyWith(primaryMuscles: const [Muscle.biceps]),
+      );
+    });
+    await pumpScreen(tester);
+    final row = find.byKey(const ValueKey('muscle-map-all-without-muscles'));
+    await scrollIntoView(tester, row);
+
+    expect(
+      find.descendant(of: row, matching: find.text('Keine')),
+      findsOneWidget,
+    );
+    await tester.tap(row);
+    await settle(tester);
+    expect(find.byType(ExerciseLibraryScreen), findsNothing);
+  });
 
   testWidgets('ein Plan zeigt nur seine Sätze', (tester) async {
     await pumpScreen(tester);

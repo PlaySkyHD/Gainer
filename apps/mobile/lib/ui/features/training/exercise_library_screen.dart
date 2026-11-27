@@ -158,10 +158,8 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
               GainerCard(
                 padding: const EdgeInsets.all(GainerSpacing.l),
                 child: Text(
-                  _viewModel.onlyWithoutMuscles &&
-                          _viewModel.query.trim().isEmpty &&
-                          _viewModel.categoryId == null
-                      ? 'Alle Übungen haben Muskeln.'
+                  _viewModel.onlyWithoutMuscles
+                      ? 'Keine Übungen ohne Muskeln gefunden.'
                       : 'Keine Übungen gefunden.',
                   textAlign: TextAlign.center,
                   style: GainerTypography.body.copyWith(

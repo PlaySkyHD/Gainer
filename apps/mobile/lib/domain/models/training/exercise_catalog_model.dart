@@ -123,6 +123,10 @@ class CatalogExercise {
   /// Weder Haupt- noch Hilfsmuskeln: zählt in keiner Muskelübersicht.
   bool get hasNoMuscles => primaryMuscles.isEmpty && secondaryMuscles.isEmpty;
 
+  /// Eigene Übung ohne Muskeln, deren Muskeln der Nutzer nachtragen kann.
+  /// Basisübungen sind schreibgeschützt und zählen nicht.
+  bool get needsMuscles => !isBase && hasNoMuscles;
+
   /// Eigener Faktor vor Katalogwert. Ohne beides: 0 bei Kraft, sonst 1.
   double get effectiveBodyweightFactor =>
       bodyweightFactor ?? (exerciseType == ExerciseKind.strength ? 0 : 1);

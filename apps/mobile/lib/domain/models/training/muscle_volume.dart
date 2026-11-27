@@ -173,9 +173,7 @@ class _Builder {
     for (final MapEntry(key: id, value: sets) in _sets.entries) {
       final exercise = exercisesById[id];
       final name = _names[id]!;
-      final primary = exercise?.primaryMuscles ?? const <Muscle>[];
-      final secondary = exercise?.secondaryMuscles ?? const <Muscle>[];
-      if (primary.isEmpty && secondary.isEmpty) {
+      if (exercise == null || exercise.hasNoMuscles) {
         withoutMuscles.add((id: id, name: name));
         continue;
       }
@@ -188,10 +186,10 @@ class _Builder {
               workingSets: sets,
             ),
           );
-      for (final muscle in primary) {
+      for (final muscle in exercise.primaryMuscles) {
         put(muscle, MuscleRole.primary);
       }
-      for (final muscle in secondary) {
+      for (final muscle in exercise.secondaryMuscles) {
         put(muscle, MuscleRole.secondary);
       }
     }
