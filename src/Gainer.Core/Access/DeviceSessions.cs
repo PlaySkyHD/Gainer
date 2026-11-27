@@ -50,10 +50,23 @@ public interface IDeviceSessionService
         string deviceName,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Starts a session for an external assistant the account owner just approved.</summary>
+    /// <summary>
+    /// Starts a session for an external assistant the account owner just approved. An earlier session
+    /// of the same client for this account is revoked, so reconnecting leaves one connection.
+    /// </summary>
     Task<IssuedDeviceSession> CreateConnectorAsync(
         Guid userId,
         string clientName,
+        string connectorClient,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rotates the refresh token of a connector session created for <paramref name="connectorClient"/>.
+    /// Tokens of app sessions or of other clients are rejected without being rotated.
+    /// </summary>
+    Task<DeviceSessionRefreshResult> RefreshConnectorAsync(
+        string refreshToken,
+        string connectorClient,
         CancellationToken cancellationToken = default);
 
     /// <summary>Lists the active connector sessions of the account, newest first.</summary>
@@ -67,7 +80,7 @@ public interface IDeviceSessionService
         Guid userId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Exchanges a refresh token for a new one and extends the session.</summary>
+    /// <summary>Exchanges the refresh token of an app session for a new one and extends the session; connector tokens are rejected without being rotated.</summary>
     Task<DeviceSessionRefreshResult> RefreshAsync(
         string refreshToken,
         CancellationToken cancellationToken = default);

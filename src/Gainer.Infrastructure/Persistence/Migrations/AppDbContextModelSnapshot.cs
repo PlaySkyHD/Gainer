@@ -4735,6 +4735,9 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<byte[]>("ConnectorClientHash")
+                        .HasColumnType("bytea");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 

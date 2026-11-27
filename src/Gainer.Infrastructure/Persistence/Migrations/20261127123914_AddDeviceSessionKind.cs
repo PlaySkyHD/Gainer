@@ -10,6 +10,13 @@ public partial class AddDeviceSessionKind : Migration
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.AddColumn<byte[]>(
+            name: "ConnectorClientHash",
+            schema: "identity",
+            table: "device_sessions",
+            type: "bytea",
+            nullable: true);
+
         migrationBuilder.AddColumn<int>(
             name: "Kind",
             schema: "identity",
@@ -22,6 +29,11 @@ public partial class AddDeviceSessionKind : Migration
     /// <inheritdoc />
     protected override void Down(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.DropColumn(
+            name: "ConnectorClientHash",
+            schema: "identity",
+            table: "device_sessions");
+
         migrationBuilder.DropColumn(
             name: "Kind",
             schema: "identity",

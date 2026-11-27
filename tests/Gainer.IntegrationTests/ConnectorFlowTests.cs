@@ -101,14 +101,16 @@ public sealed class ConnectorFlowTests
             Assert.IsFalse(overview.IsError ?? false);
         }
 
-        // The connector token opens nothing but MCP; the app token does not open MCP.
+        // The connector token counts as missing outside MCP; the app token does not open MCP.
         using (HttpClient connector = CreateClient(app))
         {
             connector.UseAccessToken(tokens.AccessToken);
             using HttpResponseMessage session = await connector.GetAsync("/api/v1/auth/session", TestContext.CancellationToken);
             using HttpResponseMessage connectors = await connector.GetAsync("/api/v1/auth/connectors", TestContext.CancellationToken);
-            Assert.AreEqual(HttpStatusCode.Forbidden, session.StatusCode);
-            Assert.AreEqual(HttpStatusCode.Forbidden, connectors.StatusCode);
+            using HttpResponseMessage logoutAll = await connector.PostAsync("/api/v1/auth/logout-all", content: null, TestContext.CancellationToken);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, session.StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, connectors.StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, logoutAll.StatusCode);
         }
 
         using (HttpResponseMessage appOnMcp = await appClient.PostAsJsonAsync("/api/v1/mcp", new { }, TestContext.CancellationToken))
@@ -172,10 +174,67 @@ public sealed class ConnectorFlowTests
         Assert.AreEqual(HttpStatusCode.BadRequest, replay.StatusCode);
         Assert.AreEqual("invalid_grant", await ErrorAsync(replay));
 
-        // An app refresh token is no connector grant.
+        // An app refresh token is no connector grant, and rejecting it leaves the app session intact.
         using HttpResponseMessage appRefresh = await anonymous.PostAsync("/api/v1/oauth/token", Form(
             ("grant_type", "refresh_token"), ("client_id", clientId), ("refresh_token", appTokens.RefreshToken)), TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.BadRequest, appRefresh.StatusCode);
+        using HttpResponseMessage appStillRefreshes = await BearerTestClient.RefreshAsync(anonymous, appTokens.RefreshToken);
+        Assert.AreEqual(HttpStatusCode.OK, appStillRefreshes.StatusCode);
+
+        // A connector refresh token works only for its own client and not at the app endpoint.
+        OAuthTokens connector = (await first.Content.ReadFromJsonAsync<OAuthTokens>(TestContext.CancellationToken))!;
+        string otherClient = await RegisterAsync(anonymous, TestContext.CancellationToken);
+        using HttpResponseMessage foreignClient = await anonymous.PostAsync("/api/v1/oauth/token", Form(
+            ("grant_type", "refresh_token"), ("client_id", otherClient), ("refresh_token", connector.RefreshToken)), TestContext.CancellationToken);
+        using HttpResponseMessage atAppEndpoint = await BearerTestClient.RefreshAsync(anonymous, connector.RefreshToken);
+        using HttpResponseMessage ownClient = await anonymous.PostAsync("/api/v1/oauth/token", Form(
+            ("grant_type", "refresh_token"), ("client_id", clientId), ("refresh_token", connector.RefreshToken)), TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.BadRequest, foreignClient.StatusCode);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, atAppEndpoint.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, ownClient.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ReconnectingReplacesTheConnectionAndLogoutEverywhereEndsIt()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        await CreateUserAsync(app, "owner@example.test");
+        using var authenticator = new SoftwarePasskeyAuthenticator();
+        using HttpClient appClient = CreateClient(app);
+        await appClient.AuthenticateAsync("owner@example.test", Password);
+        await RegisterPasskeyAsync(appClient, authenticator);
+        using HttpClient anonymous = CreateClient(app);
+        string clientId = await RegisterAsync(anonymous, TestContext.CancellationToken);
+
+        OAuthTokens first = await ExchangeAsync(anonymous, authenticator, clientId);
+        OAuthTokens second = await ExchangeAsync(anonymous, authenticator, clientId);
+
+        List<ConnectorSessionResponse>? listed = await appClient.GetFromJsonAsync<List<ConnectorSessionResponse>>(
+            "/api/v1/auth/connectors", TestContext.CancellationToken);
+        Assert.HasCount(1, listed!);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, await McpStatusAsync(app, first.AccessToken));
+        Assert.AreNotEqual(HttpStatusCode.Unauthorized, await McpStatusAsync(app, second.AccessToken));
+
+        using HttpResponseMessage logoutAll = await appClient.PostAsync("/api/v1/auth/logout-all", content: null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.NoContent, logoutAll.StatusCode);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, await McpStatusAsync(app, second.AccessToken));
+    }
+
+    private async Task<OAuthTokens> ExchangeAsync(HttpClient client, SoftwarePasskeyAuthenticator authenticator, string clientId)
+    {
+        string verifier = NewVerifier();
+        string code = await ApproveAsync(client, authenticator, clientId, Challenge(verifier));
+        using HttpResponseMessage response = await client.PostAsync("/api/v1/oauth/token", CodeForm(clientId, code, verifier), TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
+        return (await response.Content.ReadFromJsonAsync<OAuthTokens>(TestContext.CancellationToken))!;
+    }
+
+    private async Task<HttpStatusCode> McpStatusAsync(WebApplication app, string accessToken)
+    {
+        using HttpClient client = CreateClient(app);
+        client.UseAccessToken(accessToken);
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/mcp", new { }, TestContext.CancellationToken);
+        return response.StatusCode;
     }
 
     private async Task<(string ClientId, OAuthTokens Tokens)> ConnectAsync(WebApplication app, SoftwarePasskeyAuthenticator authenticator)
