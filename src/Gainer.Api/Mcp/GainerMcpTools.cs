@@ -21,14 +21,13 @@ public sealed class GainerMcpTools(
     private const int MaximumWorkouts = 50;
     private const int MaximumExercises = 50;
 
-    private static TimeZoneInfo TimeZone => LocalDays.Default;
 
     /// <summary>Goal, body weight, nutrition and training of a period.</summary>
     [McpServerTool(Name = "get_overview", Title = "Überblick", ReadOnly = true, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true)]
     [Description("Summary of the user's fitness data for a period of local days: active goal, body weight (latest, " +
-        "average, 7-day average, weekly trend and the daily weight series), average daily nutrition and strength " +
-        "training (workouts, workouts in the last 7 days, volume, best set). " +
+        "average, average of the period's last 7 days, weekly trend and the daily weight series), average daily " +
+        "nutrition and strength training (workouts, workouts in the period's last 7 days, volume, best set). " +
         "Weights in kg, volume in kg × repetitions. Call twice with endDaysAgo to compare periods.")]
     public async Task<OverviewResult> GetOverview(
         [Description("Length of the period in days: 7, 30 or 90.")] int days = 30,
@@ -45,8 +44,8 @@ public sealed class GainerMcpTools(
             throw new McpException("endDaysAgo must be between 0 and 730.");
         }
 
-        DateOnly through = timeProvider.Today(TimeZone).AddDays(-endDaysAgo);
-        DashboardInsightSnapshot data = await insights.DashboardAsync(through, days, TimeZone, cancellationToken);
+        DateOnly through = McpDates.Today(timeProvider).AddDays(-endDaysAgo);
+        DashboardInsightSnapshot data = await insights.DashboardAsync(through, days, McpDates.TimeZone, cancellationToken);
         return new OverviewResult(
             data.From,
             data.Through,
@@ -175,7 +174,7 @@ public sealed class GainerMcpTools(
         ExerciseCatalogItem exercise = await exercises.ResolveAsync(exerciseId, includeArchived: true, cancellationToken)
             ?? throw new McpException("The exercise was not found.");
         ExerciseProgressSnapshot data = await insights.ExerciseProgressAsync(
-            exerciseId, days, timeProvider.GetUtcNow().UtcDateTime, TimeZone, cancellationToken);
+            exerciseId, days, timeProvider.GetUtcNow().UtcDateTime, McpDates.TimeZone, cancellationToken);
         return new ExerciseProgressResult(
             exercise.Id,
             exercise.Name,

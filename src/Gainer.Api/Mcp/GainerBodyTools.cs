@@ -13,10 +13,13 @@ public sealed class GainerBodyTools(IBodyTrackingQueries body, TimeProvider time
     [McpServerTool(Name = "get_body_goals", Title = "Ziele", ReadOnly = true, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true)]
     [Description("The active body goal (bulk, maintain or cut with start and target weight in kg and target date) " +
-        "and all earlier goals.")]
+        "and all earlier, ended goals, newest first.")]
     public async Task<BodyGoalsResult> GetBodyGoals(CancellationToken cancellationToken = default) => new(
-        await body.GetActiveGoalAsync(cancellationToken),
-        await body.GetGoalHistoryAsync(cancellationToken));
+        await body.GetActiveGoalAsync(cancellationToken) is { } active ? Goal(active) : null,
+        (await body.GetGoalHistoryAsync(cancellationToken)).Select(Goal).ToList());
+
+    private static BodyGoalResult Goal(BodyGoalSnapshot goal) => new(
+        goal.Kind, goal.StartWeightKg, goal.TargetWeightKg, goal.StartDate, goal.TargetDate, goal.EndedAtUtc);
 
     [McpServerTool(Name = "list_check_ins", Title = "Check-ins", ReadOnly = true, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true)]
@@ -46,7 +49,15 @@ public sealed class GainerBodyTools(IBodyTrackingQueries body, TimeProvider time
     }
 }
 
-public sealed record BodyGoalsResult(BodyGoalSnapshot? Active, IReadOnlyList<BodyGoalSnapshot> History);
+public sealed record BodyGoalsResult(BodyGoalResult? Active, IReadOnlyList<BodyGoalResult> History);
+
+public sealed record BodyGoalResult(
+    BodyGoalKind Kind,
+    decimal StartWeightKg,
+    decimal TargetWeightKg,
+    DateOnly StartDate,
+    DateOnly? TargetDate,
+    DateTime? EndedAtUtc);
 
 public sealed record CheckInListResult(DateOnly From, DateOnly Through, IReadOnlyList<CheckInResult> CheckIns);
 

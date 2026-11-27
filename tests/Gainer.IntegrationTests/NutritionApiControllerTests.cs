@@ -367,6 +367,8 @@ public sealed class NutritionApiControllerTests
     {
         public Task<NutritionDaySnapshot?> GetDayAsync(DateOnly localDate, CancellationToken cancellationToken = default) => Task.FromResult(day);
         public Task<IReadOnlyList<NutritionEntrySnapshot>> GetRecentEntriesAsync(int limit, CancellationToken cancellationToken = default) => Task.FromResult(recent);
+        public Task<IReadOnlyList<NutritionDaySnapshot>> GetDaysAsync(DateOnly from, DateOnly through, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<NutritionDaySnapshot>>([]);
     }
 
     private sealed class RequestUserNutritionQueries(IHttpContextAccessor accessor) : INutritionQueries
@@ -384,6 +386,9 @@ public sealed class NutritionApiControllerTests
 
         public Task<IReadOnlyList<NutritionEntrySnapshot>> GetRecentEntriesAsync(int limit, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<NutritionEntrySnapshot>>([]);
+
+        public Task<IReadOnlyList<NutritionDaySnapshot>> GetDaysAsync(DateOnly from, DateOnly through, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<NutritionDaySnapshot>>([]);
     }
 
     private sealed class HeaderAuthenticationHandler(
