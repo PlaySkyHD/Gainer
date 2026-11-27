@@ -103,8 +103,7 @@ void main() {
             jsonEncode({
               'code': rejection.code,
               'message': 'abgelehnt',
-              if (staleServerVersion != null)
-                'serverVersion': staleServerVersion,
+              'serverVersion': ?staleServerVersion,
             }),
           );
         } else {
@@ -392,6 +391,46 @@ void main() {
         expect(await conflictCount(), 0);
       },
     );
+
+    test(
+      'a workout the server knows is deleted there instead of being dropped',
+      () async {
+        final workout = await startAndLog(nextId());
+        staleServerVersion = 1;
+        addTearDown(() => staleServerVersion = null);
+        onMutation = (body, index) async {
+          if (index == 0) {
+            // Die Anlage kam an, die Antwort nicht; danach verwirft der
+            // Nutzer das Training lokal.
+            await training.deleteWorkout(workout.workoutId);
+            return (status: 409, code: 'stale_base_version');
+          }
+          return null;
+        };
+
+        await sync.synchronize(now: now);
+
+        expect(sentOperations(), ['createWorkout', 'deleteWorkout']);
+        expect(mutations.last['resources'].single['baseVersion'], 1);
+        expect(await conflictCount(), 0);
+      },
+    );
+
+    test('after taking over writing, rebasing waits for a full pull', () async {
+      await startAndLog(nextId());
+      staleServerVersion = 1;
+      addTearDown(() => staleServerVersion = null);
+      onMutation = (body, index) async =>
+          (status: 409, code: 'stale_base_version');
+
+      await sync.synchronize(now: now, takeOverWriting: true);
+
+      // Der Server kann fremde, noch nicht gezogene Stände halten: kein
+      // stilles Überschreiben, sondern ein Konflikt.
+      expect(sentOperations(), ['createWorkout']);
+      expect(await conflictCount(), 1);
+      expect(await store.readSyncMetadata('auto-rebase:needs-pull'), isNull);
+    });
 
     test('rebasing on the same server version is tried only once', () async {
       await startAndLog(nextId());

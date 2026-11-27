@@ -1081,6 +1081,9 @@ class ApiProblem {
 
   factory ApiProblem.fromJson(Map<String, dynamic> json) {
     final extensions = json['extensions'];
+    Object? field(String name) =>
+        json[name] ??
+        (extensions is Map<String, dynamic> ? extensions[name] : null);
     return ApiProblem(
       title: json['title'] as String?,
       detail: json['detail'] as String?,
@@ -1092,11 +1095,11 @@ class ApiProblem {
       errors: json['errors'] is Map<String, dynamic>
           ? Map<String, Object?>.from(json['errors'] as Map<String, dynamic>)
           : null,
-      serverVersion: switch (json['serverVersion']) {
+      serverVersion: switch (field('serverVersion')) {
         final int version when version >= 0 => version,
         _ => null,
       },
-      serverDeleted: json['serverDeleted'] == true,
+      serverDeleted: field('serverDeleted') == true,
     );
   }
 }

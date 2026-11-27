@@ -58,6 +58,16 @@ public sealed class SyncBaseVersionAndReplayTests
             Command("saveWorkout", "Workout", workoutId, 1, new { baseVersion = 1, workout = Workout(workoutId, "Alt") }));
         Assert.AreEqual(2L, staleSave.ServerVersion);
 
+        // Another account never learns the version: its save of the foreign id finds nothing.
+        (Guid otherUser, Guid otherClient) = await AddUserAsync(connectionString);
+        await using AppDbContext other = PostgreSqlTestFixture.CreateContext(connectionString, otherUser);
+        SyncMutationConflictException foreign = await Assert.ThrowsExactlyAsync<SyncMutationConflictException>(() =>
+            Processor(other, otherUser).ProcessAsync(For(
+                Command("saveWorkout", "Workout", workoutId, 2, new { baseVersion = 2, workout = Workout(workoutId, "Fremd") }),
+                otherClient,
+                1)));
+        Assert.AreEqual("resource_not_found", foreign.Code);
+        Assert.IsNull(foreign.ServerVersion);
     }
 
     [TestMethod]
@@ -262,11 +272,21 @@ public sealed class SyncBaseVersionAndReplayTests
     private static async Task<(string ConnectionString, Guid User, Guid Client)> SetupAsync()
     {
         string connectionString = await Fixture.CreateIsolatedDatabaseAsync();
+        await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
+        {
+            await context.Database.MigrateAsync();
+        }
+
+        (Guid user, Guid client) = await AddUserAsync(connectionString);
+        return (connectionString, user, client);
+    }
+
+    private static async Task<(Guid User, Guid Client)> AddUserAsync(string connectionString)
+    {
         Guid user = Guid.NewGuid();
         Guid client = Guid.NewGuid();
         await using (AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString))
         {
-            await context.Database.MigrateAsync();
             context.Users.Add(User(user));
             await context.SaveChangesAsync();
         }
@@ -289,7 +309,7 @@ public sealed class SyncBaseVersionAndReplayTests
             });
             await context.SaveChangesAsync();
         }
-        return (connectionString, user, client);
+        return (user, client);
     }
 
     private static AppUser User(Guid id) => new()

@@ -444,6 +444,8 @@ extension LocalConflictRecovery on LocalSyncStore {
     final deleted =
         operations.lastOrNull == LocalMutationOperation.delete.name ||
         (workingCopy is Map && workingCopy['deletedAtUtc'] != null);
+    // Basis des neuen Eintrags; die lokale Serverkopie und ihre Version
+    // bleiben, bis der Server antwortet oder ein Pull sie liefert.
     final serverVersion = rebaseOnServerVersion ?? envelope.serverVersion;
 
     await _deleteQueueAndConflicts(aggregateType, aggregateId);
@@ -494,7 +496,7 @@ extension LocalConflictRecovery on LocalSyncStore {
       aggregateId: envelope.aggregateId,
       serverSnapshot: envelope.serverSnapshot,
       workingCopy: workingCopy,
-      serverVersion: serverVersion,
+      serverVersion: envelope.serverVersion,
       optimisticVersion: envelope.optimisticVersion,
       syncState: LocalSyncState.pending,
     );
