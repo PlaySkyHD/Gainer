@@ -21,37 +21,20 @@ public sealed record CardioAnalysis(
     public static CardioAnalysis Of(CardioSessionSnapshot session)
     {
         ArgumentNullException.ThrowIfNull(session);
-        return FromSeries(
-            session.HeartRateBpm,
-            session.RrIntervalsMs,
-            session.SampleIntervalSeconds,
-            session.TargetZone,
-            session.Phases ?? [],
-            session.EndedAtUtc - session.StartedAtUtc,
-            session.RecoveryStartBpm,
-            session.RecoveryEndBpm);
-    }
-
-    public static CardioAnalysis FromSeries(
-        IReadOnlyList<int> heartRateBpm,
-        IReadOnlyList<int> rrIntervalsMs,
-        int sampleIntervalSeconds,
-        CardioTargetZone? zone,
-        IReadOnlyList<CardioPhaseValues> phases,
-        TimeSpan activeDuration,
-        int? recoveryStartBpm = null,
-        int? recoveryEndBpm = null)
-    {
+        IReadOnlyList<int> heartRateBpm = session.HeartRateBpm;
+        int sampleIntervalSeconds = session.SampleIntervalSeconds;
+        TimeSpan activeDuration = session.EndedAtUtc - session.StartedAtUtc;
         int[] withSignal = heartRateBpm.Where(bpm => bpm > 0).ToArray();
-        (int inZone, int targeted) = ZoneCounts(heartRateBpm, withSignal, sampleIntervalSeconds, zone, phases);
+        (int inZone, int targeted) = ZoneCounts(
+            heartRateBpm, withSignal, sampleIntervalSeconds, session.TargetZone, session.Phases ?? []);
         return new CardioAnalysis(
             activeDuration < TimeSpan.Zero ? TimeSpan.Zero : TimeSpan.FromSeconds(activeDuration.Ticks / TimeSpan.TicksPerSecond),
             withSignal.Length == 0 ? null : (decimal)withSignal.Sum() / withSignal.Length,
             withSignal.Length == 0 ? null : withSignal.Max(),
             TimeSpan.FromSeconds((long)inZone * sampleIntervalSeconds),
             targeted == 0 ? null : (decimal)inZone / targeted,
-            Rmssd(rrIntervalsMs),
-            recoveryStartBpm is { } startBpm && recoveryEndBpm is { } endBpm ? endBpm - startBpm : null);
+            Rmssd(session.RrIntervalsMs),
+            session.RecoveryStartBpm is { } startBpm && session.RecoveryEndBpm is { } endBpm ? endBpm - startBpm : null);
     }
 
     /// <summary>

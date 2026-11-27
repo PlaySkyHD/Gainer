@@ -113,14 +113,14 @@ public static class MuscleVolume
         workout.EndedAtUtc is not null && workout.DeletedAtUtc is null
             && workout.StartedAtUtc >= fromUtc && workout.StartedAtUtc < toUtc;
 
-    private static IReadOnlyList<string> Known(IEnumerable<string> keys) =>
-        keys.Where(MuscleKeys.IsKnown).Distinct(StringComparer.Ordinal).ToArray();
-
     private sealed class Builder(IReadOnlyDictionary<Guid, MuscleExerciseInput> exercises)
     {
         private readonly Dictionary<Guid, decimal> sets = [];
         private readonly Dictionary<Guid, string> names = [];
         private readonly List<Guid> order = [];
+
+        private static string[] Known(IEnumerable<string> keys) =>
+            keys.Where(MuscleKeys.IsKnown).Distinct(StringComparer.Ordinal).ToArray();
 
         public void Add(Guid exerciseId, string? fallbackName, decimal workingSets)
         {
