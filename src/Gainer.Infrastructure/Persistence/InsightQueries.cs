@@ -163,8 +163,9 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             .ToListAsync(cancellationToken);
         Guid[] exerciseIds = blocks.Select(item => item.SourceExerciseId).Distinct().ToArray();
         // Records need the history of the workout's exercises up to this workout; later ones change nothing.
+        // The bound is exclusive and Postgres keeps microseconds, so one tick would drop this workout itself.
         List<TrainingWorkoutInput> workouts = await FinishedWorkoutsAsync(
-            fromUtc: null, toUtc: workout.EndedAtUtc!.Value.AddTicks(1), exerciseIds, cancellationToken);
+            fromUtc: null, toUtc: workout.EndedAtUtc!.Value.AddMilliseconds(1), exerciseIds, cancellationToken);
         // The counters follow the app's summary screen: every completed workout, week of this workout's start.
         List<DateTime> countedStarts = await context.Workouts.AsNoTracking()
             .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null)
