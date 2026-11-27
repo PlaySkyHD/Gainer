@@ -1,3 +1,4 @@
+using Gainer.Core.Insights;
 using Gainer.Core.Training;
 using Microsoft.EntityFrameworkCore;
 
@@ -5,16 +6,34 @@ namespace Gainer.Infrastructure.Persistence;
 
 public sealed class WorkoutHistoryQueries(AppDbContext context) : IWorkoutHistoryQueries
 {
+    public Task<IReadOnlyList<WorkoutHistorySummary>> ListAsync(
+        int offset,
+        int limit,
+        CancellationToken cancellationToken = default) =>
+        ListAsync(range: null, offset, limit, cancellationToken);
+
     public async Task<IReadOnlyList<WorkoutHistorySummary>> ListAsync(
+        WorkoutHistoryRange? range,
         int offset,
         int limit,
         CancellationToken cancellationToken = default)
     {
-        if (offset < 0 || limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(limit, 100);
+        IQueryable<Workout> workouts = context.Workouts.AsNoTracking()
+            .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null);
+        if (range is not null)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(range.Through, range.From);
+            DateTime fromUtc = LocalDays.StartOfDayUtc(range.From, range.TimeZone);
+            DateTime beforeUtc = LocalDays.StartOfDayUtc(range.Through.AddDays(1), range.TimeZone);
+            workouts = workouts.Where(item => item.StartedAtUtc >= fromUtc && item.StartedAtUtc < beforeUtc);
+        }
+
         // Die Satzregel in der Zählung unten spiegelt TrainingStatistics.IsRecorded (Core): Wiederholungen >= 1,
         // Gewicht nur bei Kraft- und Assisted-Übungen nötig. Beide Stellen gemeinsam pflegen.
-        return await context.Workouts.AsNoTracking()
-            .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null)
+        return await workouts
             .OrderByDescending(item => item.EndedAtUtc)
             .ThenByDescending(item => item.Id)
             .Skip(offset).Take(limit)
@@ -32,7 +51,8 @@ public sealed class WorkoutHistoryQueries(AppDbContext context) : IWorkoutHistor
                         || (block.ExerciseTypeSnapshot != ExerciseType.Strength
                             && block.ExerciseTypeSnapshot != ExerciseType.Assisted))
                  select set.Id).Count(),
-                item.Version))
+                item.Version,
+                item.SourcePlanId))
             .ToListAsync(cancellationToken);
     }
 

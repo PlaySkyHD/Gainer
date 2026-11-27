@@ -1,12 +1,19 @@
 namespace Gainer.Core.Training;
 
+/// <summary>
+/// Catalog search. <see cref="OnlyWithoutMuscles"/> keeps only the user's own exercises without primary and
+/// secondary muscles.
+/// </summary>
 public sealed record ExerciseCatalogFilter(
     string? Search = null,
     string? TargetMuscle = null,
     string? MuscleGroup = null,
     string? Equipment = null,
     int Offset = 0,
-    int Limit = 50);
+    int Limit = 50,
+    Guid? CategoryId = null,
+    bool IncludeArchived = false,
+    bool OnlyWithoutMuscles = false);
 
 public sealed record ExerciseCatalogItem(
     Guid Id,

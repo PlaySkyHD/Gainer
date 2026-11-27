@@ -32,6 +32,15 @@ public sealed class CardioSessionTests
     }
 
     [TestMethod]
+    public void HeartRateFiguresSkipSamplesWithoutSignal()
+    {
+        Assert.AreEqual(121, CardioHeartRate.Average([0, 120, 0, 121, 122]));
+        Assert.AreEqual(122, CardioHeartRate.Maximum([0, 120, 0, 121, 122]));
+        Assert.IsNull(CardioHeartRate.Average([0, 0]));
+        Assert.IsNull(CardioHeartRate.Maximum([]));
+    }
+
+    [TestMethod]
     public void UnknownActivityAndTimeRangeAreRejected()
     {
         AssertInvalid(Valid() with { ActivityType = "Swimming" }, nameof(CardioSessionValues.ActivityType));

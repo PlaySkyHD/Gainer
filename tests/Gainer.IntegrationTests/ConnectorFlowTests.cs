@@ -36,11 +36,16 @@ public sealed class ConnectorFlowTests
     private static readonly DateTime Started = DateTime.UtcNow.Date.AddDays(-1).AddHours(7);
     private static readonly DateOnly Today = DateOnly.FromDateTime(
         TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Gainer.Core.Insights.LocalDays.Default));
+    private static readonly string[] ExpectedPlanNames = ["Plan Eigen", "Altplan Eigen"];
+    private static readonly int[] ExpectedHeartRate = [0, 120, 130, 140];
+    private static readonly int[] ExpectedRrIntervals = [500, 510];
+    private static readonly int[] ExpectedWater = [2000, 1500];
     private static readonly string[] ExpectedTools =
     [
         "get_overview", "list_workouts", "get_workout", "search_exercises", "get_exercise_progress",
         "get_body_goals", "list_check_ins", "get_nutrition_days", "get_nutrition_targets", "list_saved_meals",
-        "list_coach_notes", "get_strava_status",
+        "list_coach_notes", "get_strava_status", "list_training_plans", "get_training_plan", "get_workout_summary",
+        "list_cardio_sessions", "get_cardio_session", "get_water", "list_day_templates",
     ];
     private static PostgreSqlTestFixture? fixture;
     private readonly List<string> keyRingPaths = [];
@@ -252,6 +257,466 @@ public sealed class ConnectorFlowTests
         using HttpResponseMessage rejected = await afterRevoke.PostAsJsonAsync("/api/v1/mcp", new { }, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, rejected.StatusCode);
     }
+
+    [TestMethod]
+    public async Task AssistantReadsPlansCardioWaterTemplatesAndWorkoutSummariesOfItsOwnerOnly()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        Guid owner = await CreateUserAsync(app, "owner@example.test");
+        Guid other = await CreateUserAsync(app, "other@example.test");
+        (Guid baseExercise, string baseName) = await BaseStrengthExerciseAsync(owner);
+        StageTwoSeed own = await SeedStageTwoAsync(owner, "Eigen", baseExercise, 1500);
+        StageTwoSeed foreign = await SeedStageTwoAsync(other, "Fremd", baseExercise, 999);
+        DateTime yesterday = Gainer.Core.Insights.LocalDays.StartOfDayUtc(Today.AddDays(-1), Gainer.Core.Insights.LocalDays.Default);
+        Guid morning = await SeedStrengthWorkoutAsync(owner, "Früh", yesterday.AddHours(8), null,
+            (baseExercise, baseName, [("warmup", 60m, 5), ("normal", 100m, 5)]));
+        Guid evening = await SeedStrengthWorkoutAsync(owner, "Abend", yesterday.AddHours(18), own.PlanId,
+            (baseExercise, baseName, [("normal", 105m, 5), ("normal", 100m, 3)]),
+            (own.CustomExerciseId, "Eigene Übung Eigen", [("normal", 20m, 10)]));
+        Guid foreignWorkout = await SeedStrengthWorkoutAsync(other, "Fremd", yesterday.AddHours(9), foreign.PlanId,
+            (baseExercise, baseName, [("normal", 200m, 5)]));
+        using var authenticator = new SoftwarePasskeyAuthenticator();
+        using HttpClient appClient = CreateClient(app);
+        await appClient.AuthenticateAsync("owner@example.test", Password);
+        await RegisterPasskeyAsync(appClient, authenticator);
+        (_, OAuthTokens tokens) = await ConnectAsync(app, authenticator);
+
+        await using McpClient mcp = await ConnectMcpAsync(app, tokens.AccessToken);
+        await AssertPlansAsync(mcp, own, foreign, baseExercise, baseName);
+        await AssertWorkoutsAsync(mcp, morning, evening, foreignWorkout, own.PlanId, baseExercise, own.CustomExerciseId);
+        await AssertCardioAsync(mcp, own, foreign);
+        await AssertWaterAndTemplatesAsync(mcp);
+        await AssertExerciseFiltersAsync(mcp, own, foreign);
+    }
+
+    private async Task AssertPlansAsync(McpClient mcp, StageTwoSeed own, StageTwoSeed foreign, Guid baseExercise, string baseName)
+    {
+        using (JsonDocument active = await JsonAsync(mcp, "list_training_plans", []))
+        {
+            JsonElement plan = active.RootElement.GetProperty("plans").EnumerateArray().Single();
+            Assert.AreEqual(own.PlanId, plan.GetProperty("planId").GetGuid());
+            Assert.AreEqual("Plan Eigen", plan.GetProperty("name").GetString());
+            Assert.AreEqual("Notiz Eigen", plan.GetProperty("notes").GetString());
+            Assert.IsFalse(plan.GetProperty("archived").GetBoolean());
+            JsonElement[] entries = plan.GetProperty("entries").EnumerateArray().ToArray();
+            Assert.HasCount(2, entries);
+            Assert.AreEqual(own.CustomExerciseId, entries[0].GetProperty("exerciseId").GetGuid());
+            Assert.AreEqual("Eigene Übung Eigen", entries[0].GetProperty("exerciseName").GetString());
+            Assert.AreEqual(1, entries[0].GetProperty("warmupSets").GetInt32());
+            Assert.AreEqual(3, entries[0].GetProperty("workingSets").GetInt32());
+            Assert.AreEqual(baseName, entries[1].GetProperty("exerciseName").GetString());
+            Assert.AreEqual(baseExercise, entries[1].GetProperty("exerciseId").GetGuid());
+            Assert.AreEqual("Langsam", entries[1].GetProperty("notes").GetString());
+            Assert.AreEqual(
+                entries[0].GetProperty("supersetId").GetGuid(),
+                entries[1].GetProperty("supersetId").GetGuid());
+        }
+
+        using (JsonDocument all = await JsonAsync(mcp, "list_training_plans", new() { ["includeArchived"] = true }))
+        {
+            string[] names = all.RootElement.GetProperty("plans").EnumerateArray()
+                .Select(plan => plan.GetProperty("name").GetString()!).ToArray();
+            Assert.AreSequenceEqual(ExpectedPlanNames, names);
+        }
+
+        using (JsonDocument archived = await JsonAsync(mcp, "get_training_plan", new() { ["planId"] = own.ArchivedPlanId }))
+        {
+            Assert.IsTrue(archived.RootElement.GetProperty("archived").GetBoolean());
+        }
+
+        CallToolResult foreignPlan = await CallAsync(mcp, "get_training_plan", new() { ["planId"] = foreign.PlanId });
+        Assert.IsTrue(foreignPlan.IsError);
+        Assert.DoesNotContain("Fremd", Text(foreignPlan));
+        CallToolResult unknownPlan = await CallAsync(mcp, "get_training_plan", new() { ["planId"] = Guid.NewGuid() });
+        Assert.IsTrue(unknownPlan.IsError);
+    }
+
+    private async Task AssertWorkoutsAsync(
+        McpClient mcp, Guid morning, Guid evening, Guid foreignWorkout, Guid planId, Guid baseExercise, Guid customExercise)
+    {
+        using (JsonDocument listed = await JsonAsync(mcp, "list_workouts", new()
+        {
+            ["from"] = Today.AddDays(-1).ToString("yyyy-MM-dd"),
+            ["through"] = Today.ToString("yyyy-MM-dd"),
+        }))
+        {
+            JsonElement[] workouts = listed.RootElement.GetProperty("workouts").EnumerateArray().ToArray();
+            Assert.AreSequenceEqual(new[] { evening, morning }, workouts.Select(item => item.GetProperty("workoutId").GetGuid()).ToArray());
+            Assert.AreEqual(planId, workouts[0].GetProperty("sourcePlanId").GetGuid());
+            // Absent values are left out of tool results, not written as null.
+            Assert.IsFalse(workouts[1].TryGetProperty("sourcePlanId", out _));
+            Assert.AreEqual(3, workouts[0].GetProperty("completedSets").GetInt32());
+        }
+
+        using (JsonDocument earlier = await JsonAsync(mcp, "list_workouts", new()
+        {
+            ["from"] = Today.AddDays(-10).ToString("yyyy-MM-dd"),
+            ["through"] = Today.AddDays(-5).ToString("yyyy-MM-dd"),
+        }))
+        {
+            Assert.AreEqual(0, earlier.RootElement.GetProperty("workouts").GetArrayLength());
+        }
+
+        using (JsonDocument summary = await JsonAsync(mcp, "get_workout_summary", new() { ["workoutId"] = evening }))
+        {
+            JsonElement root = summary.RootElement;
+            Assert.AreEqual(60, root.GetProperty("durationMinutes").GetInt32());
+            Assert.AreEqual(3, root.GetProperty("countedSets").GetInt32());
+            Assert.AreEqual(18, root.GetProperty("totalRepetitions").GetInt32());
+            Assert.AreEqual(1025m, root.GetProperty("volumeKgRepetitions").GetDecimal());
+            Assert.AreEqual(2, root.GetProperty("workoutNumberOverall").GetInt32());
+            Assert.AreEqual(2, root.GetProperty("workoutNumberThisWeek").GetInt32());
+            JsonElement best = root.GetProperty("bestSets").EnumerateArray()
+                .Single(item => item.GetProperty("exerciseId").GetGuid() == baseExercise);
+            Assert.AreEqual(105m, best.GetProperty("weightKg").GetDecimal());
+            Assert.AreEqual(5, best.GetProperty("repetitions").GetInt32());
+            Assert.AreEqual(122.5m, best.GetProperty("estimatedOneRepMaxKg").GetDecimal());
+            (Guid ExerciseId, string Kind, decimal Value)[] records = root.GetProperty("newRecords").EnumerateArray()
+                .Select(item => (item.GetProperty("exerciseId").GetGuid(), item.GetProperty("kind").GetString()!,
+                    item.GetProperty("value").GetDecimal()))
+                .ToArray();
+            Assert.Contains((baseExercise, "MaxWeight", 105m), records);
+            Assert.Contains((baseExercise, "Volume", 825m), records);
+            Assert.DoesNotContain((baseExercise, "MaxRepetitions", 5m), records);
+            Assert.HasCount(4, records.Where(item => item.ExerciseId == customExercise).ToArray());
+        }
+
+        using (JsonDocument first = await JsonAsync(mcp, "get_workout_summary", new() { ["workoutId"] = morning }))
+        {
+            // Like the app's summary screen: all completed workouts count, also the later one.
+            Assert.AreEqual(2, first.RootElement.GetProperty("workoutNumberOverall").GetInt32());
+            Assert.AreEqual(2, first.RootElement.GetProperty("workoutNumberThisWeek").GetInt32());
+            Assert.AreEqual(1, first.RootElement.GetProperty("countedSets").GetInt32());
+        }
+
+        CallToolResult foreignSummary = await CallAsync(mcp, "get_workout_summary", new() { ["workoutId"] = foreignWorkout });
+        Assert.IsTrue(foreignSummary.IsError);
+        CallToolResult tooLong = await CallAsync(mcp, "list_workouts", new()
+        {
+            ["from"] = Today.AddDays(-400).ToString("yyyy-MM-dd"),
+            ["through"] = Today.ToString("yyyy-MM-dd"),
+        });
+        Assert.IsTrue(tooLong.IsError);
+    }
+
+    private async Task AssertCardioAsync(McpClient mcp, StageTwoSeed own, StageTwoSeed foreign)
+    {
+        using (JsonDocument recent = await JsonAsync(mcp, "list_cardio_sessions", []))
+        {
+            JsonElement session = recent.RootElement.GetProperty("sessions").EnumerateArray().Single();
+            Assert.AreEqual(own.CardioSessionId, session.GetProperty("sessionId").GetGuid());
+            Assert.AreEqual("IndoorCycling", session.GetProperty("activityType").GetString());
+            Assert.AreEqual("Intervalle Eigen", session.GetProperty("templateName").GetString());
+            Assert.AreEqual(30, session.GetProperty("durationMinutes").GetInt32());
+            Assert.AreEqual(130, session.GetProperty("averageHeartRateBpm").GetInt32());
+            Assert.AreEqual(140, session.GetProperty("maxHeartRateBpm").GetInt32());
+            Assert.AreEqual(12.5m, session.GetProperty("distanceKm").GetDecimal());
+            Assert.AreEqual(180m, session.GetProperty("averagePowerWatts").GetDecimal());
+            Assert.AreEqual(300m, session.GetProperty("energyKcal").GetDecimal());
+            Assert.AreEqual("Locker", session.GetProperty("notes").GetString());
+        }
+
+        using (JsonDocument longer = await JsonAsync(mcp, "list_cardio_sessions", new()
+        {
+            ["from"] = Today.AddDays(-45).ToString("yyyy-MM-dd"),
+        }))
+        {
+            Guid[] ids = longer.RootElement.GetProperty("sessions").EnumerateArray()
+                .Select(item => item.GetProperty("sessionId").GetGuid()).ToArray();
+            Assert.AreSequenceEqual(new[] { own.CardioSessionId, own.OldCardioSessionId }, ids);
+        }
+
+        using (JsonDocument detail = await JsonAsync(mcp, "get_cardio_session", new() { ["sessionId"] = own.CardioSessionId }))
+        {
+            JsonElement root = detail.RootElement;
+            Assert.AreSequenceEqual(ExpectedHeartRate, root.GetProperty("heartRateBpm").EnumerateArray().Select(item => item.GetInt32()).ToArray());
+            Assert.AreSequenceEqual(ExpectedRrIntervals, root.GetProperty("rrIntervalsMs").EnumerateArray().Select(item => item.GetInt32()).ToArray());
+            Assert.AreEqual(5, root.GetProperty("sampleIntervalSeconds").GetInt32());
+            Assert.AreEqual(110, root.GetProperty("targetZone").GetProperty("lowBpm").GetInt32());
+            Assert.AreEqual("Warm-up", root.GetProperty("phases")[0].GetProperty("name").GetString());
+            Assert.AreEqual(150, root.GetProperty("recoveryStartBpm").GetInt32());
+            Assert.AreEqual(120, root.GetProperty("recoveryEndBpm").GetInt32());
+        }
+
+        CallToolResult foreignSession = await CallAsync(mcp, "get_cardio_session", new() { ["sessionId"] = foreign.CardioSessionId });
+        Assert.IsTrue(foreignSession.IsError);
+        Assert.DoesNotContain("Fremd", Text(foreignSession));
+        CallToolResult tooLong = await CallAsync(mcp, "list_cardio_sessions", new()
+        {
+            ["from"] = Today.AddDays(-366).ToString("yyyy-MM-dd"),
+        });
+        Assert.IsTrue(tooLong.IsError);
+    }
+
+    private async Task AssertWaterAndTemplatesAsync(McpClient mcp)
+    {
+        using (JsonDocument water = await JsonAsync(mcp, "get_water", new()
+        {
+            ["from"] = Today.AddDays(-3).ToString("yyyy-MM-dd"),
+            ["through"] = Today.ToString("yyyy-MM-dd"),
+        }))
+        {
+            JsonElement[] days = water.RootElement.GetProperty("days").EnumerateArray().ToArray();
+            Assert.AreSequenceEqual(
+                new[] { Today.AddDays(-3).ToString("yyyy-MM-dd"), Today.ToString("yyyy-MM-dd") },
+                days.Select(item => item.GetProperty("date").GetString()!).ToArray());
+            Assert.AreSequenceEqual(ExpectedWater, days.Select(item => item.GetProperty("milliliters").GetInt32()).ToArray());
+        }
+
+        using (JsonDocument today = await JsonAsync(mcp, "get_water", []))
+        {
+            Assert.AreEqual(1500, today.RootElement.GetProperty("days").EnumerateArray().Single().GetProperty("milliliters").GetInt32());
+        }
+
+        CallToolResult tooLong = await CallAsync(mcp, "get_water", new() { ["from"] = Today.AddDays(-366).ToString("yyyy-MM-dd") });
+        Assert.IsTrue(tooLong.IsError);
+
+        using JsonDocument templates = await JsonAsync(mcp, "list_day_templates", []);
+        JsonElement template = templates.RootElement.GetProperty("templates").EnumerateArray().Single();
+        Assert.AreEqual("Trainingstag Eigen", template.GetProperty("name").GetString());
+        Assert.AreEqual("Training", template.GetProperty("dayKind").GetString());
+        JsonElement entry = template.GetProperty("entries").EnumerateArray().Single();
+        Assert.AreEqual("Reis Eigen", entry.GetProperty("product").GetString());
+        Assert.AreEqual("Lunch", entry.GetProperty("meal").GetString());
+        Assert.AreEqual(150m, entry.GetProperty("grams").GetDecimal());
+        Assert.AreEqual(195m, entry.GetProperty("nutrition").GetProperty("kilocalories").GetDecimal());
+        Assert.AreEqual(195m, template.GetProperty("totals").GetProperty("kilocalories").GetDecimal());
+    }
+
+    private async Task AssertExerciseFiltersAsync(McpClient mcp, StageTwoSeed own, StageTwoSeed foreign)
+    {
+        using (JsonDocument incomplete = await JsonAsync(mcp, "search_exercises", new() { ["onlyWithoutMuscles"] = true }))
+        {
+            JsonElement exercise = incomplete.RootElement.GetProperty("exercises").EnumerateArray().Single();
+            Assert.AreEqual(own.CustomExerciseId, exercise.GetProperty("exerciseId").GetGuid());
+            Assert.AreEqual(own.CategoryId, exercise.GetProperty("categoryIds")[0].GetGuid());
+            Guid[] categories = incomplete.RootElement.GetProperty("categories").EnumerateArray()
+                .Select(item => item.GetProperty("categoryId").GetGuid()).ToArray();
+            Assert.Contains(own.CategoryId, categories);
+            Assert.DoesNotContain(foreign.CategoryId, categories);
+            Assert.Contains(true, incomplete.RootElement.GetProperty("categories").EnumerateArray()
+                .Select(item => item.GetProperty("isBase").GetBoolean()));
+        }
+
+        using (JsonDocument inCategory = await JsonAsync(mcp, "search_exercises", new() { ["categoryId"] = own.CategoryId }))
+        {
+            Assert.AreEqual(own.CustomExerciseId,
+                inCategory.RootElement.GetProperty("exercises").EnumerateArray().Single().GetProperty("exerciseId").GetGuid());
+        }
+
+        using (JsonDocument archived = await JsonAsync(mcp, "search_exercises", new() { ["query"] = "Alte Übung" }))
+        {
+            Assert.AreEqual(0, archived.RootElement.GetProperty("exercises").GetArrayLength());
+        }
+
+        using (JsonDocument archived = await JsonAsync(mcp, "search_exercises", new()
+        {
+            ["query"] = "Alte Übung",
+            ["includeArchived"] = true,
+        }))
+        {
+            Assert.AreEqual(own.ArchivedExerciseId,
+                archived.RootElement.GetProperty("exercises").EnumerateArray().Single().GetProperty("exerciseId").GetGuid());
+        }
+
+        CallToolResult foreignCategory = await CallAsync(mcp, "search_exercises", new() { ["categoryId"] = foreign.CategoryId });
+        Assert.IsTrue(foreignCategory.IsError);
+    }
+
+    private async Task<(Guid Id, string Name)> BaseStrengthExerciseAsync(Guid userId)
+    {
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
+        var exercise = await context.Exercises.AsNoTracking()
+            .Where(item => item.OwnerUserId == null && item.ExerciseType == ExerciseType.Strength
+                && item.BodyweightFactor == null && item.WeightFactor == null)
+            .OrderBy(item => item.Name)
+            .Select(item => new { item.Id, item.Name })
+            .FirstAsync(TestContext.CancellationToken);
+        return (exercise.Id, exercise.Name);
+    }
+
+    /// <summary>Category, exercises, two plans, two cardio sessions, water and a day template of one user.</summary>
+    private async Task<StageTwoSeed> SeedStageTwoAsync(Guid userId, string label, Guid baseExercise, int waterTodayMl)
+    {
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
+        DateTime now = DateTime.UtcNow;
+        var seed = new StageTwoSeed(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            Guid.NewGuid(), Guid.NewGuid());
+        context.ExerciseCategories.Add(new ExerciseCategory
+        {
+            Id = seed.CategoryId,
+            OwnerUserId = userId,
+            Name = $"Fokus {label}",
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+            Version = 1,
+        });
+        context.Exercises.AddRange(
+            new Exercise
+            {
+                Id = seed.CustomExerciseId,
+                OwnerUserId = userId,
+                Name = $"Eigene Übung {label}",
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+                Version = 1,
+            },
+            new Exercise
+            {
+                Id = seed.ArchivedExerciseId,
+                OwnerUserId = userId,
+                Name = $"Alte Übung {label}",
+                PrimaryMuscles = ["chest"],
+                IsArchived = true,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+                Version = 1,
+            });
+        context.ExerciseCategoryAssignments.Add(new ExerciseCategoryAssignment
+        {
+            ExerciseId = seed.CustomExerciseId,
+            CategoryId = seed.CategoryId,
+        });
+        Guid superset = Guid.NewGuid();
+        context.TrainingPlans.AddRange(
+            Plan(seed.PlanId, $"Plan {label}", $"Notiz {label}", 0, archived: false, now),
+            Plan(seed.ArchivedPlanId, $"Altplan {label}", null, 1, archived: true, now));
+        context.TrainingPlanEntries.AddRange(
+            PlanEntry(seed.PlanId, 0, seed.CustomExerciseId, 1, 3, null, superset),
+            PlanEntry(seed.PlanId, 1, baseExercise, 0, 4, "Langsam", superset),
+            PlanEntry(seed.ArchivedPlanId, 0, baseExercise, 0, 2, null, null));
+        DateTime cardioStart = Gainer.Core.Insights.LocalDays.StartOfDayUtc(Today.AddDays(-1), Gainer.Core.Insights.LocalDays.Default).AddHours(17);
+        context.CardioSessions.AddRange(
+            Cardio(seed.CardioSessionId, cardioStart, $"Intervalle {label}", now),
+            Cardio(seed.OldCardioSessionId, cardioStart.AddDays(-40), null, now));
+        context.WaterIntakeDays.AddRange(
+            Water(Today, waterTodayMl, now),
+            Water(Today.AddDays(-3), 2000, now));
+        var template = new NutritionDayTemplate
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Trainingstag {label}",
+            DayKind = NutritionDayKind.Training,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+            Version = 1,
+        };
+        template.Entries.Add(new NutritionDayTemplateEntry
+        {
+            Id = Guid.NewGuid(),
+            NutritionDayTemplateId = template.Id,
+            Meal = MealType.Lunch,
+            Position = 0,
+            ProductName = $"Reis {label}",
+            AmountGrams = 150m,
+            Kilocalories = 195m,
+            ProteinGrams = 4m,
+            BasisGrams = 100m,
+            KilocaloriesPerBasis = 130m,
+            ProteinGramsPerBasis = 2.7m,
+        });
+        context.NutritionDayTemplates.Add(template);
+        await context.SaveChangesAsync(TestContext.CancellationToken);
+        return seed;
+    }
+
+    private static TrainingPlan Plan(Guid id, string name, string? notes, int sortOrder, bool archived, DateTime now) => new()
+    {
+        Id = id,
+        Name = name,
+        Notes = notes,
+        SortOrder = sortOrder,
+        IsArchived = archived,
+        CreatedAtUtc = now,
+        UpdatedAtUtc = now,
+        Version = 1,
+    };
+
+    private static TrainingPlanEntry PlanEntry(
+        Guid planId, int position, Guid exerciseId, int warmupSets, int workingSets, string? notes, Guid? supersetId) => new()
+        {
+            Id = Guid.NewGuid(),
+            PlanId = planId,
+            Position = position,
+            ExerciseId = exerciseId,
+            WarmupSets = warmupSets,
+            WorkingSets = workingSets,
+            Notes = notes,
+            SupersetId = supersetId,
+        };
+
+    private static CardioSession Cardio(Guid id, DateTime startedAtUtc, string? templateName, DateTime now) => new()
+    {
+        Id = id,
+        StartedAtUtc = startedAtUtc,
+        EndedAtUtc = startedAtUtc.AddMinutes(30),
+        TargetZoneLowBpm = 110,
+        TargetZoneHighBpm = 140,
+        SampleIntervalSeconds = 5,
+        HeartRateBpm = [0, 120, 130, 140],
+        RrIntervalsMs = [500, 510],
+        SensorName = "Gurt",
+        DistanceKm = 12.5m,
+        AveragePowerWatts = 180m,
+        EnergyKcal = 300m,
+        Notes = "Locker",
+        RecoveryStartBpm = 150,
+        RecoveryEndBpm = 120,
+        TemplateName = templateName,
+        Phases = templateName is null ? null : [new CardioPhaseValues(0, 600, "Warm-up", 100, 120)],
+        CreatedAtUtc = now,
+        UpdatedAtUtc = now,
+        Version = 1,
+    };
+
+    private static WaterIntakeDay Water(DateOnly date, int amountMl, DateTime now) => new()
+    {
+        Id = Guid.NewGuid(),
+        LocalDate = date,
+        AmountMl = amountMl,
+        CreatedAtUtc = now,
+        UpdatedAtUtc = now,
+        Version = 1,
+    };
+
+    private async Task<Guid> SeedStrengthWorkoutAsync(
+        Guid userId,
+        string title,
+        DateTime startedAtUtc,
+        Guid? planId,
+        params (Guid ExerciseId, string Name, (string Type, decimal Weight, int Repetitions)[] Sets)[] exercises)
+    {
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
+        var handler = new WorkoutMutationHandler(context, new CurrentUser(userId), TimeProvider.System, null);
+        Guid workoutId = Guid.NewGuid();
+        WorkoutExerciseValues[] blocks = exercises
+            .Select(exercise => new WorkoutExerciseValues(
+                Guid.NewGuid(),
+                exercise.ExerciseId,
+                exercise.Name,
+                "strength",
+                null,
+                null,
+                exercise.Sets
+                    .Select(set => new WorkoutSetValues(Guid.NewGuid(), set.Type, set.Weight, set.Repetitions, null, null))
+                    .ToList()))
+            .ToArray();
+        await handler.CreateAsync(
+            CreateWorkoutMutation.Create(
+                MutationMetadata.Create(Guid.NewGuid(), Guid.NewGuid(), 1),
+                new WorkoutValues(workoutId, title, null, startedAtUtc, startedAtUtc.AddHours(1), "exercise", planId, null, blocks)),
+            TestContext.CancellationToken);
+        return workoutId;
+    }
+
+    private sealed record StageTwoSeed(
+        Guid CategoryId,
+        Guid CustomExerciseId,
+        Guid ArchivedExerciseId,
+        Guid PlanId,
+        Guid ArchivedPlanId,
+        Guid CardioSessionId,
+        Guid OldCardioSessionId);
 
     [TestMethod]
     public async Task CodesAreSingleUseAndBoundToTheVerifier()

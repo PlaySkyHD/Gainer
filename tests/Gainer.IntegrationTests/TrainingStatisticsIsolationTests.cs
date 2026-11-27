@@ -365,6 +365,9 @@ public sealed class TrainingStatisticsIsolationTests
     {
         public Task<IReadOnlyList<WorkoutHistorySummary>> ListAsync(int offset, int limit, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<WorkoutHistorySummary>>([]);
+        public Task<IReadOnlyList<WorkoutHistorySummary>> ListAsync(
+            WorkoutHistoryRange? range, int offset, int limit, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<WorkoutHistorySummary>>([]);
 
         public Task<WorkoutSnapshot?> GetAsync(Guid workoutId, CancellationToken cancellationToken = default) =>
             Task.FromResult<WorkoutSnapshot?>(null);
