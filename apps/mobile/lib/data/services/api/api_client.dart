@@ -568,6 +568,30 @@ class ApiClient {
     await _mutate('DELETE', '/api/v1/auth/passkeys/$id');
   }
 
+  /// External assistants (e.g. ChatGPT) connected via OAuth, newest first.
+  Future<List<ApiConnectorSession>> listConnectors() async {
+    final response = await _request('GET', '/api/v1/auth/connectors');
+    final value = response.data;
+    if (value is! List ||
+        value.any((entry) => entry is! Map<String, dynamic>)) {
+      throw const FormatException('Invalid connector list response.');
+    }
+    return value
+        .cast<Map<String, dynamic>>()
+        .map(ApiConnectorSession.fromJson)
+        .toList(growable: false);
+  }
+
+  /// Revokes a connected assistant; 404 when it is already gone.
+  Future<void> deleteConnector(String id) async {
+    if (!RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    ).hasMatch(id)) {
+      throw ArgumentError.value(id, 'id', 'Expected a UUID.');
+    }
+    await _mutate('DELETE', '/api/v1/auth/connectors/$id');
+  }
+
   /// Revokes the device session on the server and forgets its tokens.
   Future<void> logout() async {
     try {

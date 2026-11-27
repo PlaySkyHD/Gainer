@@ -1019,6 +1019,29 @@ class ApiPasskey {
   );
 }
 
+/// External assistant connected to the account, e.g. ChatGPT.
+class ApiConnectorSession {
+  const ApiConnectorSession({
+    required this.id,
+    required this.name,
+    required this.createdAt,
+    required this.lastUsedAt,
+  });
+
+  final String id;
+  final String name;
+  final DateTime createdAt;
+  final DateTime lastUsedAt;
+
+  factory ApiConnectorSession.fromJson(Map<String, dynamic> json) =>
+      ApiConnectorSession(
+        id: _requiredString(json, 'id'),
+        name: _requiredString(json, 'name'),
+        createdAt: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
+        lastUsedAt: DateTime.parse(_requiredString(json, 'lastUsedAt')).toUtc(),
+      );
+}
+
 class ApiInvitation {
   const ApiInvitation({required this.activationPath, required this.expiresAt});
 
