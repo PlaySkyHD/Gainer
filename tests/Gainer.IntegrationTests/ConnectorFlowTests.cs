@@ -378,7 +378,9 @@ public sealed class ConnectorFlowTests
 
         using (JsonDocument first = await JsonAsync(mcp, "get_workout_summary", new() { ["workoutId"] = morning }))
         {
-            Assert.AreEqual(1, first.RootElement.GetProperty("workoutNumberOverall").GetInt32());
+            // Like the app's summary screen: all completed workouts count, also the later one.
+            Assert.AreEqual(2, first.RootElement.GetProperty("workoutNumberOverall").GetInt32());
+            Assert.AreEqual(2, first.RootElement.GetProperty("workoutNumberThisWeek").GetInt32());
             Assert.AreEqual(1, first.RootElement.GetProperty("countedSets").GetInt32());
         }
 

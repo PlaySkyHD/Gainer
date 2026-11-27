@@ -33,8 +33,9 @@ public sealed class GainerTrainingTools(ITrainingPlanQueries plans, IWorkoutSumm
     [Description("Summary of one completed workout as on the app's summary screen: duration, counted sets " +
         "(warm-ups and sets without repetitions, or without weight for weighted exercises, do not count), total " +
         "repetitions, volume in kg × repetitions, best set per exercise (highest estimated one-rep max, Epley), " +
-        "personal records first set in this workout, and which workout it was overall and in its Monday-to-Sunday " +
-        "week (local days, Europe/Berlin). Weights are effective weights in kg including the body weight share. " +
+        "personal records first set in this workout, and the counters the app shows: all completed workouts and those " +
+        "in this workout's Monday-to-Sunday week (local days, Europe/Berlin). Weights are effective weights in kg " +
+        "including the body weight share. " +
         "Record values: MaxWeight and EstimatedOneRepMax in kg, Volume in kg × repetitions, MaxRepetitions as count.")]
     public async Task<WorkoutSummaryToolResult> GetWorkoutSummary(
         [Description("ID of the workout from list_workouts.")] Guid workoutId,

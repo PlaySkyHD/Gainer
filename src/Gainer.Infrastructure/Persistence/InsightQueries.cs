@@ -162,10 +162,17 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             .Select(item => new { item.SourceExerciseId, item.ExerciseNameSnapshot })
             .ToListAsync(cancellationToken);
         Guid[] exerciseIds = blocks.Select(item => item.SourceExerciseId).Distinct().ToArray();
-        // Records need the whole history of the workout's exercises; the counters need every completed workout.
+        // Records need the history of the workout's exercises up to this workout; later ones change nothing.
         List<TrainingWorkoutInput> workouts = await FinishedWorkoutsAsync(
-            fromUtc: null, toUtc: null, exerciseIds, cancellationToken);
+            fromUtc: null, toUtc: workout.EndedAtUtc!.Value.AddTicks(1), exerciseIds, cancellationToken);
+        // The counters follow the app's summary screen: every completed workout, week of this workout's start.
+        List<DateTime> countedStarts = await context.Workouts.AsNoTracking()
+            .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null)
+            .Select(item => item.StartedAtUtc)
+            .ToListAsync(cancellationToken);
+        DateOnly startDay = LocalDays.DateOf(workout.StartedAtUtc, timeZone);
         List<DailyCheckIn> checkIns = await context.DailyCheckIns.AsNoTracking()
+            .Where(item => item.LocalDate <= startDay)
             .OrderBy(item => item.LocalDate)
             .ToListAsync(cancellationToken);
         Dictionary<Guid, ExerciseFactorInput> factors = await ExerciseFactorsAsync(workouts, userId, cancellationToken);
@@ -174,8 +181,7 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
         CheckInWeight[] bodyweights = ToCheckInWeights(checkIns);
         TrainingWorkoutInput current = workouts.Single(item => item.WorkoutId == workoutId);
         TrainingSummary summary = TrainingStatistics.Summarize(current, workouts, bodyweights, factors, timeZone);
-        WorkoutCounts counts = TrainingStatistics.Counts(
-            workouts.Where(item => item.StartedAtUtc <= current.StartedAtUtc), current.StartedAtUtc, timeZone);
+        WorkoutCounts counts = TrainingStatistics.CountsFromStarts(countedStarts, current.StartedAtUtc, timeZone);
         bool bodyweightMissing = TrainingStatistics.WorkoutBlocks(current, bodyweights, factors, timeZone)
             .Any(block => block.BodyweightMissing);
         return new WorkoutSummarySnapshot(

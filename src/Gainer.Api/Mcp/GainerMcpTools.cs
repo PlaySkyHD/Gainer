@@ -177,10 +177,13 @@ public sealed class GainerMcpTools(
             throw new McpException("The category was not found.");
         }
 
+        // Archived own categories are not listed, so their ids are left out here too, as in the app.
+        HashSet<Guid> listed = page.Categories.Select(category => category.Id).ToHashSet();
         return new ExerciseListResult(
             page.Items
                 .Select(item => new ExerciseResult(
-                    item.Id, item.Name, item.ExerciseType.ToString(), item.IsCustom, item.CategoryIds,
+                    item.Id, item.Name, item.ExerciseType.ToString(), item.IsCustom,
+                    item.CategoryIds.Where(listed.Contains).ToList(),
                     item.PrimaryMuscles, item.SecondaryMuscles))
                 .ToList(),
             page.Categories.Select(category => new ExerciseCategoryResult(category.Id, category.Name, category.IsBase)).ToList());
