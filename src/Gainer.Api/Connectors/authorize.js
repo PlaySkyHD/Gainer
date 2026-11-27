@@ -8,18 +8,20 @@
   const status = document.getElementById('status');
 
   const toBuffer = (value) => {
-    let base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    let base64 = value.replaceAll('-', '+').replaceAll('_', '/');
     while (base64.length % 4) base64 += '=';
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.codePointAt(i);
     return bytes.buffer;
   };
 
   const toBase64Url = (buffer) => {
     let binary = '';
-    for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    for (const byte of new Uint8Array(buffer)) binary += String.fromCodePoint(byte);
+    let base64 = btoa(binary).replaceAll('+', '-').replaceAll('/', '_');
+    while (base64.endsWith('=')) base64 = base64.slice(0, -1);
+    return base64;
   };
 
   // Ältere Browser kennen parseRequestOptionsFromJSON und toJSON noch nicht.
@@ -90,7 +92,7 @@
       const result = await approval.json();
       window.location.assign(result.redirectUri);
     } catch (error) {
-      fail(error && error.name === 'NotAllowedError'
+      fail(error?.name === 'NotAllowedError'
         ? 'Anmeldung abgebrochen.'
         : 'Die Anmeldung ist fehlgeschlagen. Bitte versuche es erneut.');
     }
