@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Gainer.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261127121325_AddDeviceSessionKind")]
+    [Migration("20261127123914_AddDeviceSessionKind")]
     partial class AddDeviceSessionKind
     {
         /// <inheritdoc />
@@ -4737,6 +4737,9 @@ namespace Gainer.Infrastructure.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
+
+                    b.Property<byte[]>("ConnectorClientHash")
+                        .HasColumnType("bytea");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");

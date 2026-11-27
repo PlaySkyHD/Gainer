@@ -14,6 +14,12 @@ public static class GainerConnectorExtensions
     /// <summary>Rate limit of the MCP endpoint, per account.</summary>
     public const string McpRateLimitPolicy = "mcp";
 
+    /// <summary>
+    /// Rate limit of the OAuth token endpoint. Assistants call it from a few shared egress
+    /// addresses for all their users, so the per-address window is wider than for app logins.
+    /// </summary>
+    public const string ConnectorTokenRateLimitPolicy = "connector-token";
+
     /// <summary>Adds OAuth helpers and the MCP server with its read-only tools.</summary>
     public static IServiceCollection AddGainerConnectors(this IServiceCollection services)
     {
@@ -32,8 +38,18 @@ public static class GainerConnectorExtensions
         return services;
     }
 
-    /// <summary>Limits MCP calls per account.</summary>
-    public static void AddMcpRateLimit(RateLimiterOptions options) =>
+    /// <summary>Limits MCP calls per account and token exchanges per address.</summary>
+    public static void AddMcpRateLimit(RateLimiterOptions options)
+    {
+        options.AddPolicy(ConnectorTokenRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+            $"{ConnectorTokenRateLimitPolicy}:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 600,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
         options.AddPolicy(McpRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
             $"{McpRateLimitPolicy}:{context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
             _ => new FixedWindowRateLimiterOptions
@@ -43,6 +59,7 @@ public static class GainerConnectorExtensions
                 QueueLimit = 0,
                 AutoReplenishment = true,
             }));
+    }
 
     /// <summary>Maps the MCP endpoint; only connector tokens reach it.</summary>
     public static void MapGainerMcp(this WebApplication app) =>

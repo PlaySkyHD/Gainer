@@ -38,6 +38,15 @@ public sealed class OAuthController(
 {
     private const string HtmlContentType = "text/html; charset=utf-8";
 
+    private static readonly Lazy<string> ConsentScript = new(() =>
+    {
+        using Stream stream = Assembly.GetExecutingAssembly()
+            .GetManifestResourceStream("Gainer.Api.Connectors.authorize.js")
+            ?? throw new InvalidOperationException("The consent script is not embedded.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    });
+
     /// <summary>Registers a public client (RFC 7591) without storing it.</summary>
     [AllowAnonymous]
     [EnableRateLimiting(ApiConstants.AuthenticationRateLimitPolicy)]
@@ -116,14 +125,7 @@ public sealed class OAuthController(
     [AllowAnonymous]
     [EnableRateLimiting(ApiConstants.SystemStatusRateLimitPolicy)]
     [HttpGet("authorize.js")]
-    public IActionResult Script()
-    {
-        using Stream stream = Assembly.GetExecutingAssembly()
-            .GetManifestResourceStream("Gainer.Api.Connectors.authorize.js")
-            ?? throw new InvalidOperationException("The consent script is not embedded.");
-        using var reader = new StreamReader(stream);
-        return Content(reader.ReadToEnd(), "text/javascript; charset=utf-8");
-    }
+    public IActionResult Script() => Content(ConsentScript.Value, "text/javascript; charset=utf-8");
 
     /// <summary>Verifies the passkey and returns the redirect URL with a one-time code.</summary>
     [AllowAnonymous]
@@ -180,7 +182,7 @@ public sealed class OAuthController(
 
     /// <summary>Exchanges an authorization code or a refresh token of a connector session.</summary>
     [AllowAnonymous]
-    [EnableRateLimiting(ApiConstants.TokenRefreshRateLimitPolicy)]
+    [EnableRateLimiting(GainerConnectorExtensions.ConnectorTokenRateLimitPolicy)]
     [HttpPost("token")]
     [Consumes("application/x-www-form-urlencoded")]
     public async Task<IActionResult> Token(
@@ -200,7 +202,7 @@ public sealed class OAuthController(
         return grantType switch
         {
             "authorization_code" => await ExchangeCodeAsync(clientId!, code, redirectUri, codeVerifier, cancellationToken),
-            "refresh_token" => await RefreshAsync(refreshToken, cancellationToken),
+            "refresh_token" => await RefreshAsync(clientId!, refreshToken, cancellationToken),
             _ => BadRequest(new OAuthError("unsupported_grant_type", "Use authorization_code or refresh_token.")),
         };
     }
@@ -227,15 +229,21 @@ public sealed class OAuthController(
             return InvalidGrant();
         }
 
-        IssuedDeviceSession session = await deviceSessions.CreateConnectorAsync(user.Id, grant.ClientName, cancellationToken);
+        IssuedDeviceSession session = await deviceSessions.CreateConnectorAsync(
+            user.Id,
+            grant.ClientName,
+            grant.ClientId,
+            cancellationToken);
         return Ok(OAuthTokens(await deviceSignIn.TokensAsync(user, session)));
     }
 
-    private async Task<IActionResult> RefreshAsync(string? refreshToken, CancellationToken cancellationToken)
+    private async Task<IActionResult> RefreshAsync(string clientId, string? refreshToken, CancellationToken cancellationToken)
     {
-        DeviceSessionRefreshResult result = await deviceSessions.RefreshAsync(refreshToken ?? string.Empty, cancellationToken);
-        if (result is not { Status: DeviceSessionRefreshStatus.Refreshed, Session: IssuedDeviceSession session }
-            || session.Kind != DeviceSessionKind.Connector)
+        DeviceSessionRefreshResult result = await deviceSessions.RefreshConnectorAsync(
+            refreshToken ?? string.Empty,
+            clientId,
+            cancellationToken);
+        if (result is not { Status: DeviceSessionRefreshStatus.Refreshed, Session: IssuedDeviceSession session })
         {
             return InvalidGrant();
         }
