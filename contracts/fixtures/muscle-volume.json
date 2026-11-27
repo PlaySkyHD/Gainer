@@ -1,0 +1,960 @@
+{
+  "rules": [
+    "planned: je Eintrag nicht archivierter Pläne zählen workingSets; Einträge mit 0 Sätzen fallen weg. Archivierte Pläne zählen nicht.",
+    "trained: beendete, nicht gelöschte Trainings mit startedAtUtc in [fromUtc, toUtc); je Block die erfassten Sätze außer Aufwärmsätzen (isSetRecorded wie training-statistics.json), geteilt durch weeks. Blöcke ohne solche Sätze fallen weg.",
+    "Sätze derselben Übung werden summiert. Name: Katalogname, sonst exerciseNameSnapshot des ersten Blocks, sonst \"Übung\".",
+    "Primärmuskel zählt die Sätze ganz, Hilfsmuskel zur Hälfte. Unbekannte Muskelschlüssel und Wiederholungen fallen weg.",
+    "Übungen, die nicht im Katalog stehen oder weder Primär- noch Hilfsmuskeln haben, stehen in exercisesWithoutMuscles, sortiert nach kleingeschriebenem Namen (ordinal).",
+    "Beiträge je Muskel absteigend nach gewichteten Sätzen, bei Gleichstand nach Name (ordinal). ranked: alle 17 Muskeln absteigend nach Sätzen, Gleichstand in der festen Reihenfolge der Muskelliste.",
+    "level: none bei 0, low unter 4, medium unter 10, high bis einschließlich 20, sonst veryHigh.",
+    "muscles enthält nur Muskeln mit Sätzen > 0, in der Reihenfolge von ranked. Zahlen werden auf 2 Nachkommastellen verglichen."
+  ],
+  "cases": [
+    {
+      "name": "geplant-alle-aktiven-plaene",
+      "description": "Zwei aktive Pläne summiert, archivierter Plan und 0 Sätze zählen nicht, unbekannte und muskellose Übung getrennt.",
+      "source": "planned",
+      "exercises": [
+        {
+          "id": "bench",
+          "name": "Bankdrücken",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "chest"
+          ],
+          "secondaryMuscles": [
+            "triceps",
+            "frontDelts"
+          ]
+        },
+        {
+          "id": "pushdown",
+          "name": "Trizepsdrücken",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "triceps"
+          ],
+          "secondaryMuscles": []
+        },
+        {
+          "id": "squat",
+          "name": "Kniebeuge",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "quads"
+          ],
+          "secondaryMuscles": [
+            "glutes",
+            "hamstrings",
+            "neck",
+            "glutes"
+          ]
+        },
+        {
+          "id": "curl",
+          "name": "Curls",
+          "exerciseType": "strength",
+          "primaryMuscles": [],
+          "secondaryMuscles": []
+        }
+      ],
+      "plans": [
+        {
+          "planId": "p1",
+          "archived": false,
+          "entries": [
+            {
+              "exerciseId": "bench",
+              "workingSets": 4
+            },
+            {
+              "exerciseId": "pushdown",
+              "workingSets": 3
+            },
+            {
+              "exerciseId": "curl",
+              "workingSets": 2
+            },
+            {
+              "exerciseId": "gone",
+              "workingSets": 1
+            },
+            {
+              "exerciseId": "squat",
+              "workingSets": 0
+            }
+          ]
+        },
+        {
+          "planId": "p2",
+          "archived": false,
+          "entries": [
+            {
+              "exerciseId": "bench",
+              "workingSets": 3
+            },
+            {
+              "exerciseId": "squat",
+              "workingSets": 5
+            }
+          ]
+        },
+        {
+          "planId": "p3",
+          "archived": true,
+          "entries": [
+            {
+              "exerciseId": "squat",
+              "workingSets": 10
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "ranked": [
+          "chest",
+          "triceps",
+          "quads",
+          "frontDelts",
+          "glutes",
+          "hamstrings",
+          "sideDelts",
+          "rearDelts",
+          "biceps",
+          "forearms",
+          "abs",
+          "obliques",
+          "lats",
+          "traps",
+          "lowerBack",
+          "adductors",
+          "calves"
+        ],
+        "muscles": [
+          {
+            "muscle": "chest",
+            "sets": 7,
+            "level": "medium",
+            "contributions": [
+              {
+                "exerciseId": "bench",
+                "exerciseName": "Bankdrücken",
+                "role": "primary",
+                "workingSets": 7,
+                "sets": 7
+              }
+            ]
+          },
+          {
+            "muscle": "triceps",
+            "sets": 6.5,
+            "level": "medium",
+            "contributions": [
+              {
+                "exerciseId": "bench",
+                "exerciseName": "Bankdrücken",
+                "role": "secondary",
+                "workingSets": 7,
+                "sets": 3.5
+              },
+              {
+                "exerciseId": "pushdown",
+                "exerciseName": "Trizepsdrücken",
+                "role": "primary",
+                "workingSets": 3,
+                "sets": 3
+              }
+            ]
+          },
+          {
+            "muscle": "quads",
+            "sets": 5,
+            "level": "medium",
+            "contributions": [
+              {
+                "exerciseId": "squat",
+                "exerciseName": "Kniebeuge",
+                "role": "primary",
+                "workingSets": 5,
+                "sets": 5
+              }
+            ]
+          },
+          {
+            "muscle": "frontDelts",
+            "sets": 3.5,
+            "level": "low",
+            "contributions": [
+              {
+                "exerciseId": "bench",
+                "exerciseName": "Bankdrücken",
+                "role": "secondary",
+                "workingSets": 7,
+                "sets": 3.5
+              }
+            ]
+          },
+          {
+            "muscle": "glutes",
+            "sets": 2.5,
+            "level": "low",
+            "contributions": [
+              {
+                "exerciseId": "squat",
+                "exerciseName": "Kniebeuge",
+                "role": "secondary",
+                "workingSets": 5,
+                "sets": 2.5
+              }
+            ]
+          },
+          {
+            "muscle": "hamstrings",
+            "sets": 2.5,
+            "level": "low",
+            "contributions": [
+              {
+                "exerciseId": "squat",
+                "exerciseName": "Kniebeuge",
+                "role": "secondary",
+                "workingSets": 5,
+                "sets": 2.5
+              }
+            ]
+          }
+        ],
+        "exercisesWithoutMuscles": [
+          {
+            "id": "curl",
+            "name": "Curls"
+          },
+          {
+            "id": "gone",
+            "name": "Übung"
+          }
+        ]
+      }
+    },
+    {
+      "name": "geplant-stufen",
+      "description": "Stufengrenzen 4, 10, 20 und über 20 sowie ein reiner Hilfsmuskel.",
+      "source": "planned",
+      "exercises": [
+        {
+          "id": "a",
+          "name": "A",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "chest"
+          ],
+          "secondaryMuscles": []
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "lats"
+          ],
+          "secondaryMuscles": []
+        },
+        {
+          "id": "c",
+          "name": "C",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "biceps"
+          ],
+          "secondaryMuscles": []
+        },
+        {
+          "id": "d",
+          "name": "D",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "calves"
+          ],
+          "secondaryMuscles": []
+        },
+        {
+          "id": "e",
+          "name": "E",
+          "exerciseType": "strength",
+          "primaryMuscles": [],
+          "secondaryMuscles": [
+            "abs"
+          ]
+        }
+      ],
+      "plans": [
+        {
+          "planId": "p",
+          "archived": false,
+          "entries": [
+            {
+              "exerciseId": "a",
+              "workingSets": 21
+            },
+            {
+              "exerciseId": "b",
+              "workingSets": 20
+            },
+            {
+              "exerciseId": "c",
+              "workingSets": 10
+            },
+            {
+              "exerciseId": "d",
+              "workingSets": 4
+            },
+            {
+              "exerciseId": "e",
+              "workingSets": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "ranked": [
+          "chest",
+          "lats",
+          "biceps",
+          "calves",
+          "abs",
+          "frontDelts",
+          "sideDelts",
+          "rearDelts",
+          "triceps",
+          "forearms",
+          "obliques",
+          "traps",
+          "lowerBack",
+          "glutes",
+          "quads",
+          "hamstrings",
+          "adductors"
+        ],
+        "muscles": [
+          {
+            "muscle": "chest",
+            "sets": 21,
+            "level": "veryHigh",
+            "contributions": [
+              {
+                "exerciseId": "a",
+                "exerciseName": "A",
+                "role": "primary",
+                "workingSets": 21,
+                "sets": 21
+              }
+            ]
+          },
+          {
+            "muscle": "lats",
+            "sets": 20,
+            "level": "high",
+            "contributions": [
+              {
+                "exerciseId": "b",
+                "exerciseName": "B",
+                "role": "primary",
+                "workingSets": 20,
+                "sets": 20
+              }
+            ]
+          },
+          {
+            "muscle": "biceps",
+            "sets": 10,
+            "level": "high",
+            "contributions": [
+              {
+                "exerciseId": "c",
+                "exerciseName": "C",
+                "role": "primary",
+                "workingSets": 10,
+                "sets": 10
+              }
+            ]
+          },
+          {
+            "muscle": "calves",
+            "sets": 4,
+            "level": "medium",
+            "contributions": [
+              {
+                "exerciseId": "d",
+                "exerciseName": "D",
+                "role": "primary",
+                "workingSets": 4,
+                "sets": 4
+              }
+            ]
+          },
+          {
+            "muscle": "abs",
+            "sets": 0.5,
+            "level": "low",
+            "contributions": [
+              {
+                "exerciseId": "e",
+                "exerciseName": "E",
+                "role": "secondary",
+                "workingSets": 1,
+                "sets": 0.5
+              }
+            ]
+          }
+        ],
+        "exercisesWithoutMuscles": []
+      }
+    },
+    {
+      "name": "trainiert-woche",
+      "description": "Start inklusive, Ende exklusiv; Aufwärmsätze, unvollständige Sätze, laufende und gelöschte Trainings zählen nicht; unbekannte Übung mit Namen aus dem Training.",
+      "source": "trained",
+      "fromUtc": "2026-11-19T10:00:00Z",
+      "toUtc": "2026-11-26T10:00:00Z",
+      "weeks": 1,
+      "exercises": [
+        {
+          "id": "bench",
+          "name": "Bankdrücken",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "chest"
+          ],
+          "secondaryMuscles": [
+            "triceps",
+            "frontDelts"
+          ]
+        },
+        {
+          "id": "pushdown",
+          "name": "Trizepsdrücken",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "triceps"
+          ],
+          "secondaryMuscles": []
+        },
+        {
+          "id": "squat",
+          "name": "Kniebeuge",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "quads"
+          ],
+          "secondaryMuscles": [
+            "glutes",
+            "hamstrings",
+            "neck",
+            "glutes"
+          ]
+        },
+        {
+          "id": "curl",
+          "name": "Curls",
+          "exerciseType": "strength",
+          "primaryMuscles": [],
+          "secondaryMuscles": []
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "t1",
+          "title": "t1",
+          "startedAtUtc": "2026-11-19T10:00:00Z",
+          "endedAtUtc": "2026-11-19T11:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "t1-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "t1-bench-0",
+                  "setType": "warmup",
+                  "weightKg": 40,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "t1-bench-1",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "t1-bench-2",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "t1-bench-3",
+                  "setType": "normal",
+                  "repetitions": 8
+                }
+              ]
+            },
+            {
+              "workoutExerciseId": "t1-curl",
+              "sourceExerciseId": "curl",
+              "exerciseNameSnapshot": "Curls",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "t1-curl-0",
+                  "setType": "normal",
+                  "weightKg": 10,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "t2",
+          "title": "t2",
+          "startedAtUtc": "2026-11-26T10:00:00Z",
+          "endedAtUtc": "2026-11-26T11:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "t2-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "t2-bench-0",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "t2-bench-1",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "t2-bench-2",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "t2-bench-3",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "t2-bench-4",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "t3",
+          "title": "t3",
+          "startedAtUtc": "2026-11-20T10:00:00Z",
+          "endedAtUtc": null,
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "t3-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "t3-bench-0",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "t4",
+          "title": "t4",
+          "startedAtUtc": "2026-11-21T10:00:00Z",
+          "endedAtUtc": "2026-11-21T11:00:00Z",
+          "deletedAtUtc": "2026-11-21T12:00:00Z",
+          "exercises": [
+            {
+              "workoutExerciseId": "t4-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "t4-bench-0",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "t5",
+          "title": "t5",
+          "startedAtUtc": "2026-11-22T08:00:00Z",
+          "endedAtUtc": "2026-11-22T09:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "t5-custom-gone",
+              "sourceExerciseId": "custom-gone",
+              "exerciseNameSnapshot": "Alte Übung",
+              "exerciseTypeSnapshot": "bodyweightOnly",
+              "sets": [
+                {
+                  "setId": "t5-custom-gone-0",
+                  "setType": "normal",
+                  "repetitions": 12
+                }
+              ]
+            },
+            {
+              "workoutExerciseId": "t5-pushdown",
+              "sourceExerciseId": "pushdown",
+              "exerciseNameSnapshot": "Trizepsdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "t5-pushdown-0",
+                  "setType": "normal",
+                  "weightKg": 20,
+                  "repetitions": 12
+                },
+                {
+                  "setId": "t5-pushdown-1",
+                  "setType": "dropset",
+                  "weightKg": 20,
+                  "repetitions": 10
+                }
+              ]
+            },
+            {
+              "workoutExerciseId": "t5-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "t5-bench-0",
+                  "setType": "warmup",
+                  "weightKg": 40,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "ranked": [
+          "triceps",
+          "chest",
+          "frontDelts",
+          "sideDelts",
+          "rearDelts",
+          "biceps",
+          "forearms",
+          "abs",
+          "obliques",
+          "lats",
+          "traps",
+          "lowerBack",
+          "glutes",
+          "quads",
+          "hamstrings",
+          "adductors",
+          "calves"
+        ],
+        "muscles": [
+          {
+            "muscle": "triceps",
+            "sets": 3,
+            "level": "low",
+            "contributions": [
+              {
+                "exerciseId": "pushdown",
+                "exerciseName": "Trizepsdrücken",
+                "role": "primary",
+                "workingSets": 2,
+                "sets": 2
+              },
+              {
+                "exerciseId": "bench",
+                "exerciseName": "Bankdrücken",
+                "role": "secondary",
+                "workingSets": 2,
+                "sets": 1
+              }
+            ]
+          },
+          {
+            "muscle": "chest",
+            "sets": 2,
+            "level": "low",
+            "contributions": [
+              {
+                "exerciseId": "bench",
+                "exerciseName": "Bankdrücken",
+                "role": "primary",
+                "workingSets": 2,
+                "sets": 2
+              }
+            ]
+          },
+          {
+            "muscle": "frontDelts",
+            "sets": 1,
+            "level": "low",
+            "contributions": [
+              {
+                "exerciseId": "bench",
+                "exerciseName": "Bankdrücken",
+                "role": "secondary",
+                "workingSets": 2,
+                "sets": 1
+              }
+            ]
+          }
+        ],
+        "exercisesWithoutMuscles": [
+          {
+            "id": "custom-gone",
+            "name": "Alte Übung"
+          },
+          {
+            "id": "curl",
+            "name": "Curls"
+          }
+        ]
+      }
+    },
+    {
+      "name": "trainiert-vier-wochen",
+      "description": "28 Tage, geteilt durch 4 Wochen; ein Training kurz vor dem Fenster zählt nicht.",
+      "source": "trained",
+      "fromUtc": "2026-10-29T10:00:00Z",
+      "toUtc": "2026-11-26T10:00:00Z",
+      "weeks": 4,
+      "exercises": [
+        {
+          "id": "bench",
+          "name": "Bankdrücken",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "chest"
+          ],
+          "secondaryMuscles": [
+            "triceps",
+            "frontDelts"
+          ]
+        },
+        {
+          "id": "pushdown",
+          "name": "Trizepsdrücken",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "triceps"
+          ],
+          "secondaryMuscles": []
+        },
+        {
+          "id": "squat",
+          "name": "Kniebeuge",
+          "exerciseType": "strength",
+          "primaryMuscles": [
+            "quads"
+          ],
+          "secondaryMuscles": [
+            "glutes",
+            "hamstrings",
+            "neck",
+            "glutes"
+          ]
+        },
+        {
+          "id": "curl",
+          "name": "Curls",
+          "exerciseType": "strength",
+          "primaryMuscles": [],
+          "secondaryMuscles": []
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "f0",
+          "title": "f0",
+          "startedAtUtc": "2026-10-29T09:59:59Z",
+          "endedAtUtc": "2026-10-29T11:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "f0-squat",
+              "sourceExerciseId": "squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "f0-squat-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "f0-squat-1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "f0-squat-2",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "f1",
+          "title": "f1",
+          "startedAtUtc": "2026-11-01T09:00:00Z",
+          "endedAtUtc": "2026-11-01T10:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "f1-squat",
+              "sourceExerciseId": "squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "f1-squat-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "f1-squat-1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "f1-squat-2",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "f1-squat-3",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "f1-squat-4",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "f1-squat-5",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "ranked": [
+          "quads",
+          "glutes",
+          "hamstrings",
+          "chest",
+          "frontDelts",
+          "sideDelts",
+          "rearDelts",
+          "biceps",
+          "triceps",
+          "forearms",
+          "abs",
+          "obliques",
+          "lats",
+          "traps",
+          "lowerBack",
+          "adductors",
+          "calves"
+        ],
+        "muscles": [
+          {
+            "muscle": "quads",
+            "sets": 1.5,
+            "level": "low",
+            "contributions": [
+              {
+                "exerciseId": "squat",
+                "exerciseName": "Kniebeuge",
+                "role": "primary",
+                "workingSets": 1.5,
+                "sets": 1.5
+              }
+            ]
+          },
+          {
+            "muscle": "glutes",
+            "sets": 0.75,
+            "level": "low",
+            "contributions": [
+              {
+                "exerciseId": "squat",
+                "exerciseName": "Kniebeuge",
+                "role": "secondary",
+                "workingSets": 1.5,
+                "sets": 0.75
+              }
+            ]
+          },
+          {
+            "muscle": "hamstrings",
+            "sets": 0.75,
+            "level": "low",
+            "contributions": [
+              {
+                "exerciseId": "squat",
+                "exerciseName": "Kniebeuge",
+                "role": "secondary",
+                "workingSets": 1.5,
+                "sets": 0.75
+              }
+            ]
+          }
+        ],
+        "exercisesWithoutMuscles": []
+      }
+    }
+  ]
+}

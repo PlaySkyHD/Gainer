@@ -1,0 +1,470 @@
+{
+  "rules": [
+    "Ein Tag ist erfasst, wenn er mindestens einen Eintrag hat (hier: totals vorhanden); totals sind die Tagessummen.",
+    "Das Fenster umfasst windowDays Kalendertage und endet today, wenn today erfasst ist, sonst am Vortag (includesToday).",
+    "Mittelwerte je erfasstem Tag; Eiweiß, Kohlenhydrate, Fett, Ballaststoffe und Salz nur über erfasste Tage mit einem Wert; null ohne solchen Tag.",
+    "Ziel eines Tages: die Version mit effectiveFrom <= Tag <= effectiveUntil (offen ohne effectiveUntil). Hat sie ein Ruhetag-Ziel und ist der Tag als rest festgelegt, gilt dessen kcal, sonst die kcal der Version.",
+    "Grenze: Für erfasste Tage ohne festgelegte Tagesart unter einer Version mit Ruhetag-Ziel leitet die App die Tagesart aus Training und Rhythmus ab; das ist nicht Teil dieser Fixture. targetKilocalories steht deshalb nur für erfasste Tage.",
+    "withinTarget: erfasster Tag mit Ziel und |kcal − Ziel| <= 10 % des Ziels (inklusive). daysWithTarget = erfasste Tage mit Ziel; averageTargetKilocalories = Mittel ihrer Ziele.",
+    "Zahlen werden auf 2 Nachkommastellen verglichen."
+  ],
+  "cases": [
+    {
+      "name": "woche-heute-leer",
+      "description": "Heute ohne Eintrag: Fenster endet gestern; Zielwechsel im Fenster, Ruhetag-Ziel per Tagesart, Grenze ±10 % inklusive.",
+      "today": "2026-10-19",
+      "windowDays": 7,
+      "targets": [
+        {
+          "effectiveFrom": "2026-09-01",
+          "effectiveUntil": "2026-10-14",
+          "kilocalories": 2300
+        },
+        {
+          "effectiveFrom": "2026-10-15",
+          "effectiveUntil": null,
+          "kilocalories": 2000,
+          "restDayKilocalories": 1800
+        }
+      ],
+      "days": [
+        {
+          "localDate": "2026-10-11",
+          "totals": {
+            "kilocalories": 3000,
+            "proteinGrams": 100,
+            "carbohydrateGrams": 300,
+            "fatGrams": 100
+          }
+        },
+        {
+          "localDate": "2026-10-12",
+          "totals": {
+            "kilocalories": 2000,
+            "proteinGrams": 120,
+            "carbohydrateGrams": 250,
+            "fatGrams": 70,
+            "fiberGrams": 20
+          }
+        },
+        {
+          "localDate": "2026-10-13",
+          "totals": {
+            "kilocalories": 2530,
+            "proteinGrams": 150,
+            "carbohydrateGrams": 260,
+            "fatGrams": 80,
+            "saltGrams": 5
+          }
+        },
+        {
+          "localDate": "2026-10-14",
+          "dayKind": "rest"
+        },
+        {
+          "localDate": "2026-10-15",
+          "dayKind": "rest",
+          "totals": {
+            "kilocalories": 1800,
+            "proteinGrams": 100,
+            "carbohydrateGrams": 200,
+            "fatGrams": 60,
+            "fiberGrams": 30,
+            "saltGrams": 7
+          }
+        },
+        {
+          "localDate": "2026-10-16",
+          "dayKind": "training",
+          "totals": {
+            "kilocalories": 2150,
+            "proteinGrams": 140,
+            "carbohydrateGrams": 230,
+            "fatGrams": 70
+          }
+        },
+        {
+          "localDate": "2026-10-18",
+          "dayKind": "training",
+          "totals": {
+            "kilocalories": 2210,
+            "proteinGrams": 130,
+            "carbohydrateGrams": 210,
+            "fatGrams": 65,
+            "saltGrams": 6
+          }
+        },
+        {
+          "localDate": "2026-10-19",
+          "dayKind": "training"
+        }
+      ],
+      "expected": {
+        "from": "2026-10-12",
+        "through": "2026-10-18",
+        "includesToday": false,
+        "loggedDays": 5,
+        "averageKilocalories": 2138,
+        "averageProteinGrams": 128,
+        "averageCarbohydrateGrams": 230,
+        "averageFatGrams": 69,
+        "averageFiberGrams": 25,
+        "averageSaltGrams": 6,
+        "averageTargetKilocalories": 2080,
+        "daysWithinTarget": 3,
+        "daysWithTarget": 5,
+        "days": [
+          {
+            "localDate": "2026-10-12",
+            "kilocalories": 2000,
+            "targetKilocalories": 2300,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-13",
+            "kilocalories": 2530,
+            "targetKilocalories": 2300,
+            "withinTarget": true
+          },
+          {
+            "localDate": "2026-10-14",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-15",
+            "kilocalories": 1800,
+            "targetKilocalories": 1800,
+            "withinTarget": true
+          },
+          {
+            "localDate": "2026-10-16",
+            "kilocalories": 2150,
+            "targetKilocalories": 2000,
+            "withinTarget": true
+          },
+          {
+            "localDate": "2026-10-17",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-18",
+            "kilocalories": 2210,
+            "targetKilocalories": 2000,
+            "withinTarget": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "monat-heute-erfasst",
+      "description": "Heute erfasst: 30 Tage bis heute; ohne Zielplan keine Zielwerte.",
+      "today": "2026-10-30",
+      "windowDays": 30,
+      "targets": [],
+      "days": [
+        {
+          "localDate": "2026-09-30",
+          "totals": {
+            "kilocalories": 5000,
+            "proteinGrams": 100,
+            "carbohydrateGrams": 100,
+            "fatGrams": 100
+          }
+        },
+        {
+          "localDate": "2026-10-01",
+          "totals": {
+            "kilocalories": 2000,
+            "proteinGrams": 100,
+            "carbohydrateGrams": 200,
+            "fatGrams": 50
+          }
+        },
+        {
+          "localDate": "2026-10-30",
+          "totals": {
+            "kilocalories": 2400,
+            "proteinGrams": 150,
+            "carbohydrateGrams": 250,
+            "fatGrams": 80,
+            "fiberGrams": 10
+          }
+        }
+      ],
+      "expected": {
+        "from": "2026-10-01",
+        "through": "2026-10-30",
+        "includesToday": true,
+        "loggedDays": 2,
+        "averageKilocalories": 2200,
+        "averageProteinGrams": 125,
+        "averageCarbohydrateGrams": 225,
+        "averageFatGrams": 65,
+        "averageFiberGrams": 10,
+        "averageSaltGrams": null,
+        "averageTargetKilocalories": null,
+        "daysWithinTarget": 0,
+        "daysWithTarget": 0,
+        "days": [
+          {
+            "localDate": "2026-10-01",
+            "kilocalories": 2000,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-02",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-03",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-04",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-05",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-06",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-07",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-08",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-09",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-10",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-11",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-12",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-13",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-14",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-15",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-16",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-17",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-18",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-19",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-20",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-21",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-22",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-23",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-24",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-25",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-26",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-27",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-28",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-29",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-30",
+            "kilocalories": 2400,
+            "targetKilocalories": null,
+            "withinTarget": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "ohne-eintraege",
+      "description": "Ohne erfasste Tage gibt es keine Durchschnitte.",
+      "today": "2026-10-19",
+      "windowDays": 7,
+      "targets": [
+        {
+          "effectiveFrom": "2026-09-01",
+          "effectiveUntil": null,
+          "kilocalories": 2300
+        }
+      ],
+      "days": [],
+      "expected": {
+        "from": "2026-10-12",
+        "through": "2026-10-18",
+        "includesToday": false,
+        "loggedDays": 0,
+        "averageKilocalories": null,
+        "averageProteinGrams": null,
+        "averageCarbohydrateGrams": null,
+        "averageFatGrams": null,
+        "averageFiberGrams": null,
+        "averageSaltGrams": null,
+        "averageTargetKilocalories": null,
+        "daysWithinTarget": 0,
+        "daysWithTarget": 0,
+        "days": [
+          {
+            "localDate": "2026-10-12",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-13",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-14",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-15",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-16",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-17",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          },
+          {
+            "localDate": "2026-10-18",
+            "kilocalories": null,
+            "targetKilocalories": null,
+            "withinTarget": false
+          }
+        ]
+      }
+    }
+  ]
+}
