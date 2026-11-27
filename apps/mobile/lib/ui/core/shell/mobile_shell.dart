@@ -7,6 +7,7 @@ import '../../../data/repositories/sync/data_export_service.dart';
 import '../../../data/repositories/sync/sync_status.dart';
 import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../features/access/account_operator_screen.dart';
+import '../../features/access/connected_apps_screen.dart';
 import '../../features/access/logout_everywhere.dart';
 import '../../features/access/passkeys_screen.dart';
 import '../../features/body/body_screen.dart';
@@ -309,6 +310,17 @@ class _MoreScreen extends StatelessWidget {
               onTap: () => Navigator.of(context).push(
                 CupertinoPageRoute<void>(
                   builder: (_) => PasskeysScreen(controller: controller),
+                ),
+              ),
+            ),
+            GainerListRow(
+              key: const ValueKey('account-connected-apps'),
+              title: 'Verbundene Apps',
+              leadingIcon: CupertinoIcons.sparkles,
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                CupertinoPageRoute<void>(
+                  builder: (_) => ConnectedAppsScreen(controller: controller),
                 ),
               ),
             ),

@@ -8,4 +8,8 @@ void main() {
       '06.10.2026, 04:03',
     );
   });
+
+  test('formats a local date German without time', () {
+    expect(formatGermanDate(DateTime(2026, 3, 7, 23, 59)), '07.03.2026');
+  });
 }

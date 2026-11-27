@@ -275,6 +275,12 @@ class MobileAuthController extends ChangeNotifier
 
   Future<void> removePasskey(String id) => _onlineScope().api.deletePasskey(id);
 
+  Future<List<ApiConnectorSession>> listConnectors() =>
+      _onlineScope().api.listConnectors();
+
+  Future<void> removeConnector(String id) =>
+      _onlineScope().api.deleteConnector(id);
+
   AccountScope _onlineScope() {
     final scope = account;
     if (scope == null) throw StateError('An active account is required.');
@@ -282,7 +288,7 @@ class MobileAuthController extends ChangeNotifier
       throw const ApiException(
         statusCode: null,
         code: 'network_error',
-        message: 'Passkeys lassen sich nur online verwalten.',
+        message: 'Das geht nur mit Verbindung.',
       );
     }
     return scope;

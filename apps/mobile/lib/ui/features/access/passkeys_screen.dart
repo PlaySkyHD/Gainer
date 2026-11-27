@@ -4,6 +4,7 @@ import '../../../data/models/api/api_models.dart';
 import '../../../data/services/api/api_client.dart';
 import '../../../data/services/auth/mobile_auth_controller.dart';
 import '../../core/components/components.dart';
+import '../../core/german_date_time.dart';
 import '../../core/theme.dart';
 
 /// Passkeys des Kontos: anlegen (Face ID) und per Wischen entfernen.
@@ -189,18 +190,11 @@ class _PasskeysScreenState extends State<PasskeysScreen> {
           onDeleted: () => _remove(passkey),
           child: GainerListRow(
             title: passkey.name,
-            subtitle: 'Erstellt am ${_date(passkey.createdAt)}',
+            subtitle: 'Erstellt am ${formatGermanDate(passkey.createdAt)}',
             leadingIcon: CupertinoIcons.lock_shield,
           ),
         ),
     ];
-  }
-
-  static String _date(DateTime value) {
-    final local = value.toLocal();
-    final day = local.day.toString().padLeft(2, '0');
-    final month = local.month.toString().padLeft(2, '0');
-    return '$day.$month.${local.year}';
   }
 }
 
