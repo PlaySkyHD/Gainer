@@ -793,6 +793,7 @@ public sealed class ConnectorFlowTests
         using JsonDocument heatmap = await JsonAsync(mcp, "get_training_heatmap", []);
         JsonElement heat = heatmap.RootElement;
         Assert.AreEqual(Today.AddYears(-1).AddDays(1).ToString("yyyy-MM-dd"), heat.GetProperty("from").GetString());
+        Assert.IsInRange(53, 54, heat.GetProperty("weeks").GetInt32());
         Assert.AreEqual(2, heat.GetProperty("trainingDays").GetInt32());
         Assert.AreEqual(150, heat.GetProperty("totalMinutes").GetInt32());
         Assert.AreSequenceEqual(
@@ -872,6 +873,8 @@ public sealed class ConnectorFlowTests
             ["planId"] = own.PlanId,
         });
         Assert.IsTrue(planForTrained.IsError);
+        CallToolResult periodForPlanned = await CallAsync(mcp, "get_muscle_volume", new() { ["period"] = "week" });
+        Assert.IsTrue(periodForPlanned.IsError);
     }
 
     private async Task AssertCardioMetricsAsync(McpClient mcp, StageThreeSeed own)

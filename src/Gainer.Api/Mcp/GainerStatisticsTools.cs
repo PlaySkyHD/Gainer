@@ -76,6 +76,7 @@ public sealed class GainerStatisticsTools(ITrainingAnalysisQueries analysis, Tim
         return new TrainingHeatmapResult(
             heatmap.Start,
             heatmap.Today,
+            heatmap.WeekCount,
             heatmap.Days.Count,
             heatmap.Days.Sum(day => day.Minutes),
             heatmap.Bounds.Select(bound => Math.Round((decimal)bound, 2, MidpointRounding.AwayFromZero)).ToList(),
@@ -88,26 +89,28 @@ public sealed class GainerStatisticsTools(ITrainingAnalysisQueries analysis, Tim
         "secondary muscle half. planned counts the working sets of the entries of one plan or of all plans that are " +
         "not archived (an archived plan counts nothing, as in the app). trained counts recorded sets without warm-ups " +
         "of completed workouts that started in the last 7 days (week) or 28 days (fourWeeks, as average per week). " +
-        "All 17 muscles are listed by sets, highest first, with level none (0), low (below 4), medium (below 10), " +
-        "high (up to 20) or veryHigh, and the contributing exercises. Exercises without any muscles are listed " +
-        "separately.")]
+        "All 17 muscles are listed by sets, highest first, with level None (0), Low (below 4), Medium (below 10), " +
+        "High (up to 20) or VeryHigh, and the contributing exercises. Exercises without any muscles are listed " +
+        "separately. Values in results are PascalCase; inputs accept any case.")]
     public async Task<MuscleVolumeResult> GetMuscleVolume(
         [Description("planned (from training plans) or trained (from completed workouts).")] string source = "planned",
         [Description("Only for planned: ID of one plan from list_training_plans; omit for all active plans.")]
         Guid? planId = null,
-        [Description("Only for trained: week (last 7 days) or fourWeeks (last 28 days, per week).")] string period = "week",
+        [Description("Only for trained: week (last 7 days, default) or fourWeeks (last 28 days, per week).")]
+        string? period = null,
         CancellationToken cancellationToken = default)
     {
         MuscleVolumeSnapshot volume;
         switch (source.Trim().ToLowerInvariant())
         {
             case "planned":
+                if (period is not null) throw new McpException("period applies only to source trained.");
                 volume = await analysis.PlannedMuscleVolumeAsync(planId, cancellationToken)
                     ?? throw new McpException("The training plan was not found.");
                 break;
             case "trained":
                 if (planId is not null) throw new McpException("planId applies only to source planned.");
-                (int days, int weeks) = period.Trim().ToLowerInvariant() switch
+                (int days, int weeks) = (period ?? "week").Trim().ToLowerInvariant() switch
                 {
                     "week" => (7, 1),
                     "fourweeks" => (28, 4),
@@ -172,6 +175,7 @@ public sealed record TrendBucketResult(
 public sealed record TrainingHeatmapResult(
     DateOnly From,
     DateOnly Through,
+    int Weeks,
     int TrainingDays,
     int TotalMinutes,
     IReadOnlyList<decimal> QuartileBoundsMinutes,

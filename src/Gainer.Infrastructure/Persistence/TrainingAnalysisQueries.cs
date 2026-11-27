@@ -1,4 +1,5 @@
 using System.Data;
+using Gainer.Core.BodyTracking;
 using Gainer.Core.Insights;
 using Gainer.Core.Security;
 using Gainer.Core.Training;
@@ -24,9 +25,21 @@ public sealed class TrainingAnalysisQueries(AppDbContext context, IUserContext u
         // A bounded period needs only workouts that ended from its first day; "all" starts at the earliest data.
         DateTime? fromUtc = TrainingTrends.FixedStart(period, today) is { } start ? LocalDays.StartOfDayUtc(start, timeZone) : null;
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
-        // Earlier check-ins give the body weight of the first workouts.
-        CheckInWeight[] checkIns = await context.DailyCheckIns.AsNoTracking()
-            .Where(item => item.LocalDate <= today)
+        // The period's check-ins plus the last one before it: that one gives the body weight of the first workouts.
+        DateOnly? firstDay = TrainingTrends.FixedStart(period, today);
+        IQueryable<DailyCheckIn> inPeriod = context.DailyCheckIns.AsNoTracking().Where(item => item.LocalDate <= today);
+        if (firstDay is { } first)
+        {
+            DateOnly? before = await context.DailyCheckIns.AsNoTracking()
+                .Where(item => item.LocalDate < first)
+                .OrderByDescending(item => item.LocalDate)
+                .Select(item => (DateOnly?)item.LocalDate)
+                .FirstOrDefaultAsync(cancellationToken);
+            DateOnly from = before ?? first;
+            inPeriod = inPeriod.Where(item => item.LocalDate >= from);
+        }
+
+        CheckInWeight[] checkIns = await inPeriod
             .OrderBy(item => item.LocalDate)
             .Select(item => new CheckInWeight(item.LocalDate, item.WeightKg))
             .ToArrayAsync(cancellationToken);
@@ -47,6 +60,7 @@ public sealed class TrainingAnalysisQueries(AppDbContext context, IUserContext u
         ArgumentNullException.ThrowIfNull(timeZone);
         DateTime fromUtc = LocalDays.StartOfDayUtc(TrainingHeatmap.StartFor(today), timeZone);
         DateTime beforeUtc = LocalDays.StartOfDayUtc(today.AddDays(1), timeZone);
+        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         List<TrainingInterval> workouts = await context.Workouts.AsNoTracking()
             .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null)
             .Where(item => item.StartedAtUtc >= fromUtc && item.StartedAtUtc < beforeUtc)
@@ -56,11 +70,13 @@ public sealed class TrainingAnalysisQueries(AppDbContext context, IUserContext u
             .Where(item => item.StartedAtUtc >= fromUtc && item.StartedAtUtc < beforeUtc)
             .Select(item => new TrainingInterval(item.StartedAtUtc, item.EndedAtUtc))
             .ToListAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return TrainingHeatmap.Build(workouts.Concat(cardio), today, timeZone);
     }
 
     public async Task<MuscleVolumeSnapshot?> PlannedMuscleVolumeAsync(Guid? planId, CancellationToken cancellationToken = default)
     {
+        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         List<TrainingPlan> plans = await context.TrainingPlans.AsNoTracking()
             .Where(item => planId == null ? !item.IsArchived : item.Id == planId)
             .ToListAsync(cancellationToken);
@@ -75,6 +91,7 @@ public sealed class TrainingAnalysisQueries(AppDbContext context, IUserContext u
             item => item.PlanId, item => new PlannedExerciseSets(item.ExerciseId, item.WorkingSets));
         Dictionary<Guid, MuscleExerciseInput> exercises = await ExercisesAsync(
             entries.Select(item => item.ExerciseId), cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return MuscleVolume.FromPlans(
             plans.OrderBy(item => item.SortOrder).ThenBy(item => item.Id)
                 .Select(plan => new PlannedSetsInput(plan.Id, plan.IsArchived, byPlan[plan.Id].ToArray())),
@@ -88,6 +105,7 @@ public sealed class TrainingAnalysisQueries(AppDbContext context, IUserContext u
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(weeks, 1);
+        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var workouts = await context.Workouts.AsNoTracking()
             .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null)
             .Where(item => item.StartedAtUtc >= fromUtc && item.StartedAtUtc < toUtc)
@@ -116,6 +134,7 @@ public sealed class TrainingAnalysisQueries(AppDbContext context, IUserContext u
                 setsByBlock[item.Id].ToArray()));
         Dictionary<Guid, MuscleExerciseInput> exercises = await ExercisesAsync(
             blocks.Select(item => item.SourceExerciseId), cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return MuscleVolume.FromWorkouts(
             workouts.Select(item => new MuscleWorkoutInput(item.StartedAtUtc, item.EndedAtUtc, null, blocksByWorkout[item.Id].ToArray())),
             exercises,
