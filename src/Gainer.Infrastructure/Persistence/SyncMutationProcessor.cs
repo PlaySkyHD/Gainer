@@ -120,7 +120,7 @@ public sealed class SyncMutationProcessor(
             NutritionDayConflictException or NutritionDayTemplateConflictException or ReusableMealConflictException or NutritionTargetScheduleConflictException or
             CardioSessionConflictException or WaterIntakeConflictException)
         {
-            throw new SyncMutationConflictException("stale_base_version", "The resource changed since the supplied base version.");
+            throw await StaleBaseVersionAsync(command, cancellationToken);
         }
         catch (Exception exception) when (exception is DailyCheckInNotFoundException or CustomExerciseNotFoundException or
             ExerciseCategoryNotFoundException or
@@ -243,6 +243,43 @@ public sealed class SyncMutationProcessor(
                 "Writes are paused while a device handover is in progress.");
         }
     }
+
+    /// <summary>
+    /// Reports the server's latest version of the single resource of a rejected mutation. A lost
+    /// response leaves the writing device one version behind its own change; with this version it
+    /// can rebase instead of staying in conflict. The change feed holds the latest version of every
+    /// resource; the user filter keeps foreign resources out.
+    /// </summary>
+    private async Task<SyncMutationConflictException> StaleBaseVersionAsync(
+        ProcessSyncMutationCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (command.Content.Resources is not [CanonicalResourceVersion resource])
+        {
+            return Stale();
+        }
+
+        context.ChangeTracker.Clear();
+        try
+        {
+            var latest = await context.ChangeItems.AsNoTracking()
+                .Where(item => item.ResourceType == resource.ResourceType && item.ResourceId == resource.ResourceId)
+                .OrderByDescending(item => item.ResourceVersion)
+                .Select(item => new { item.ResourceVersion, item.IsTombstone })
+                .FirstOrDefaultAsync(cancellationToken);
+            return latest is null
+                ? Stale()
+                : new SyncMutationConflictException(latest.ResourceVersion, latest.IsTombstone);
+        }
+        catch (System.Data.Common.DbException)
+        {
+            // An aborted transaction cannot answer; the conflict then stays without a version, as before.
+            return Stale();
+        }
+    }
+
+    private static SyncMutationConflictException Stale() =>
+        new("stale_base_version", "The resource changed since the supplied base version.");
 
     private void AddChangeItems(Guid batchId, IReadOnlyList<ExecutedSyncChange> changes)
     {

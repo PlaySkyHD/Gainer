@@ -93,7 +93,25 @@ public abstract class SyncMutationException(string code, string message, Excepti
 }
 
 public class SyncMutationConflictException(string code, string message)
-    : SyncMutationException(code, message);
+    : SyncMutationException(code, message)
+{
+    /// <summary>
+    /// A stale base version that names the server's current version of the single resource, so the
+    /// writing device can rebase its own state on it.
+    /// </summary>
+    public SyncMutationConflictException(long serverVersion, bool serverDeleted)
+        : this("stale_base_version", "The resource changed since the supplied base version.")
+    {
+        ServerVersion = serverVersion;
+        ServerDeleted = serverDeleted;
+    }
+
+    /// <summary>Current server version of the resource of a stale mutation; null when unknown.</summary>
+    public long? ServerVersion { get; }
+
+    /// <summary>The current server version is a deletion.</summary>
+    public bool ServerDeleted { get; }
+}
 
 /// <summary>A permanent rejection; <paramref name="innerException"/> keeps the server-side cause for logs only.</summary>
 public sealed class SyncMutationValidationException(string code, string message, Exception? innerException = null)

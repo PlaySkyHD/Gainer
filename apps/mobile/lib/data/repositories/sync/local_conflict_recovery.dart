@@ -178,12 +178,15 @@ extension LocalConflictRecovery on LocalSyncStore {
   }
 
   /// Wie [forceLocalState], aber ohne Konfliktdatensatz: Selbstheilung nach
-  /// einer Ablehnung, die der Push eindeutig auflösen kann.
+  /// einer Ablehnung, die der Push eindeutig auflösen kann. Mit
+  /// [rebaseOnServerVersion] gilt diese Version als bekannter Serverstand,
+  /// etwa nach einer verlorenen Antwort auf die eigene Änderung.
   Future<void> requeueLocalState({
     required String aggregateType,
     required String aggregateId,
     required String replacementMutationId,
     required DateTime createdAtUtc,
+    int? rebaseOnServerVersion,
   }) async {
     await ensureAccountBound();
     if (!RegExp(LocalDatabase.accountIdPattern)
@@ -196,6 +199,7 @@ extension LocalConflictRecovery on LocalSyncStore {
         aggregateId,
         replacementMutationId,
         createdAtUtc,
+        rebaseOnServerVersion: rebaseOnServerVersion,
       ),
     );
   }
@@ -400,8 +404,9 @@ extension LocalConflictRecovery on LocalSyncStore {
     String aggregateType,
     String aggregateId,
     String replacementMutationId,
-    DateTime createdAtUtc,
-  ) async {
+    DateTime createdAtUtc, {
+    int? rebaseOnServerVersion,
+  }) async {
     if (!forceableAggregateTypes.contains(aggregateType)) {
       throw StateError('This resource type cannot be forced.');
     }
@@ -439,7 +444,7 @@ extension LocalConflictRecovery on LocalSyncStore {
     final deleted =
         operations.lastOrNull == LocalMutationOperation.delete.name ||
         (workingCopy is Map && workingCopy['deletedAtUtc'] != null);
-    final serverVersion = envelope.serverVersion;
+    final serverVersion = rebaseOnServerVersion ?? envelope.serverVersion;
 
     await _deleteQueueAndConflicts(aggregateType, aggregateId);
 

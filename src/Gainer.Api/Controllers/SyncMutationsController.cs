@@ -47,7 +47,15 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         }
         catch (SyncMutationConflictException exception)
         {
-            return SyncProblem(StatusCodes.Status409Conflict, exception.Code, exception.Message);
+            ObjectResult result = SyncProblem(StatusCodes.Status409Conflict, exception.Code, exception.Message);
+            if (exception.ServerVersion is long serverVersion)
+            {
+                var problem = (ProblemDetails)result.Value!;
+                problem.Extensions["serverVersion"] = serverVersion;
+                problem.Extensions["serverDeleted"] = exception.ServerDeleted;
+            }
+
+            return result;
         }
         catch (SyncMutationValidationException exception)
         {

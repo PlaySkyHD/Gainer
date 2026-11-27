@@ -32,6 +32,23 @@ import 'mobile_tab_scaffold.dart';
 import 'sync_now_section.dart';
 import 'sync_status_banner.dart';
 
+/// „Sync & Gerät“ mit dem aktuellen Status, aus dem Mehr-Menü und aus dem
+/// Konflikthinweis über allen Tabs.
+Route<void> syncScreenRoute(AccountScope account) => CupertinoPageRoute<void>(
+  builder: (_) => ValueListenableBuilder<SyncStatus>(
+    valueListenable: account.syncStatus,
+    builder: (_, status, _) => SyncScreen(
+      sync: account.sync,
+      isOnline: account.online,
+      accountId: account.store.accountId,
+      apiOrigin: account.api.configuration.canonicalApiOrigin,
+      isWriter: status.writerKnown ? status.isWriter : null,
+      onBecameWriter: account.markThisDeviceWriter,
+      isScopeActive: account.isSessionActive,
+    ),
+  ),
+);
+
 class MobileShell extends StatelessWidget {
   const MobileShell({
     required this.controller,
@@ -59,6 +76,8 @@ class MobileShell extends StatelessWidget {
             contentWrapper: (context, content) => SyncStatusBanner(
               status: account.syncStatus,
               synchronize: account.synchronize,
+              onOpenConflicts: () =>
+                  Navigator.of(context).push(syncScreenRoute(account)),
               child: content,
             ),
             tabBuilder: (context, area) => CupertinoTabView(
@@ -271,22 +290,7 @@ class _MoreScreen extends StatelessWidget {
               title: 'Sync & Gerätewechsel',
               leadingIcon: CupertinoIcons.arrow_2_squarepath,
               showChevron: true,
-              onTap: () => Navigator.of(context).push(
-                CupertinoPageRoute<void>(
-                  builder: (_) => ValueListenableBuilder<SyncStatus>(
-                    valueListenable: account.syncStatus,
-                    builder: (_, status, _) => SyncScreen(
-                      sync: account.sync,
-                      isOnline: account.online,
-                      accountId: account.store.accountId,
-                      apiOrigin: account.api.configuration.canonicalApiOrigin,
-                      isWriter: status.writerKnown ? status.isWriter : null,
-                      onBecameWriter: account.markThisDeviceWriter,
-                      isScopeActive: account.isSessionActive,
-                    ),
-                  ),
-                ),
-              ),
+              onTap: () => Navigator.of(context).push(syncScreenRoute(account)),
             ),
             GainerListRow(
               key: const ValueKey('account-data-export'),

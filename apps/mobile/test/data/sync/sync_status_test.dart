@@ -82,6 +82,30 @@ void main() {
     expect(tracker.value.pendingCount, 0);
   });
 
+  test('counts resources whose change the server rejected', () async {
+    await commitPlan('c1234567-1234-4234-8234-123456789abc');
+    final mutation = (await store.readOutbox()).single;
+    await store.updateMutation(
+      LocalMutation(
+        mutationId: mutation.mutationId,
+        accountId: mutation.accountId,
+        aggregateType: mutation.aggregateType,
+        aggregateId: mutation.aggregateId,
+        sequence: mutation.sequence,
+        status: LocalMutationStatus.conflict,
+        createdAtUtc: mutation.createdAtUtc,
+        operation: mutation.operation,
+        baseVersion: mutation.baseVersion,
+        body: mutation.body,
+      ),
+    );
+
+    await tracker.refreshPending();
+
+    expect(tracker.value.conflictCount, 1);
+    expect(tracker.value.pendingCount, 1);
+  });
+
   test(
     'scheduled refreshes collapse into one count after a short delay',
     () async {

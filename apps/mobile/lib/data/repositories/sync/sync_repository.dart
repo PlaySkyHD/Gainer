@@ -1379,8 +1379,51 @@ class SyncRepository implements MobileSyncActions {
         return true;
       }
     }
-    if (error.code == 'stale_base_version') return false;
+    if (error.code == 'stale_base_version') {
+      return _rebaseOnServerVersion(mutation, error);
+    }
     return _requeueIfNewer(mutation, rows, working, error.code);
+  }
+
+  /// Nennt der Server bei `stale_base_version` seine aktuelle Version, ist
+  /// sie der eigene Stand dieses Geräts: Nur das Schreibgerät sendet, und ein
+  /// neues Schreibgerät zieht vor der Übernahme alles Fremde. Typisch ist eine
+  /// verlorene Antwort im Funkloch: Der Server hat die Änderung gespeichert,
+  /// die App kennt nur die alte Version und sendet erneut, etwa eine Anlage
+  /// als zweite Anlage. Der lokale Stand geht dann auf dieser Version neu
+  /// hinaus. Je Ressource und Serverversion nur ein Versuch (Schleifenschutz).
+  Future<bool> _rebaseOnServerVersion(
+    LocalMutation rejected,
+    ApiException error,
+  ) async {
+    final version = error.serverVersion;
+    if (version == null || error.serverDeleted) return false;
+    // Eine schon gezogene Version kann fremd sein; über sie entscheidet
+    // [_healStaleConflicts] mit der Kennzeichnung fremder Änderungen.
+    final known =
+        (await store.readAggregate(
+          rejected.aggregateType,
+          rejected.aggregateId,
+        ))?.serverVersion ??
+        0;
+    if (version <= known) return false;
+    final key = 'auto-rebase:${rejected.aggregateType}:${rejected.aggregateId}';
+    final tried = await store.readSyncMetadata(key);
+    final versions = tried is List ? tried.whereType<int>().toList() : <int>[];
+    if (versions.contains(version)) return false;
+    await store.writeSyncMetadata(key, [...versions, version]);
+    try {
+      await store.requeueLocalState(
+        aggregateType: rejected.aggregateType,
+        aggregateId: rejected.aggregateId,
+        replacementMutationId: newUuidV4(),
+        createdAtUtc: DateTime.now().toUtc(),
+        rebaseOnServerVersion: version,
+      );
+    } on StateError {
+      return false;
+    }
+    return true;
   }
 
   /// Reiht den aktuellen lokalen Stand einmal neu ein, wenn er neuer ist als

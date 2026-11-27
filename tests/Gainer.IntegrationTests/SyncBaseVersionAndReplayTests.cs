@@ -38,6 +38,29 @@ public sealed class SyncBaseVersionAndReplayTests
     }
 
     [TestMethod]
+    public async Task StaleConflictNamesTheServerVersionOfTheOwnResourceOnly()
+    {
+        (string connectionString, Guid user, Guid client) = await SetupAsync();
+        Guid workoutId = Guid.NewGuid();
+        await Apply(connectionString, user, client, 1,
+            Command("createWorkout", "Workout", workoutId, 0, new { workout = Workout(workoutId, "Pull 2") }));
+
+        // The response to the create was lost: the device sends its state again as a new create.
+        SyncMutationConflictException repeatedCreate = await ExpectStale(connectionString, user, client, 2,
+            Command("createWorkout", "Workout", workoutId, 0, new { workout = Workout(workoutId, "Pull 2 beendet") }));
+        Assert.AreEqual(1L, repeatedCreate.ServerVersion);
+        Assert.IsFalse(repeatedCreate.ServerDeleted);
+
+        // With that version the device rebases its own state and the save goes through.
+        await Apply(connectionString, user, client, 2,
+            Command("saveWorkout", "Workout", workoutId, 1, new { baseVersion = 1, workout = Workout(workoutId, "Pull 2 beendet") }));
+        SyncMutationConflictException staleSave = await ExpectStale(connectionString, user, client, 3,
+            Command("saveWorkout", "Workout", workoutId, 1, new { baseVersion = 1, workout = Workout(workoutId, "Alt") }));
+        Assert.AreEqual(2L, staleSave.ServerVersion);
+
+    }
+
+    [TestMethod]
     public async Task WorkoutSavedFromAStaleBaseVersionIsStaleBaseVersion()
     {
         (string connectionString, Guid user, Guid client) = await SetupAsync();
@@ -212,12 +235,14 @@ public sealed class SyncBaseVersionAndReplayTests
         _ = await Processor(context, user).ProcessAsync(For(command, client, sequence));
     }
 
-    private static async Task ExpectStale(string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
+    private static async Task<SyncMutationConflictException> ExpectStale(
+        string connectionString, Guid user, Guid client, long sequence, ProcessSyncMutationCommand command)
     {
         await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, user);
         SyncMutationConflictException conflict = await Assert.ThrowsExactlyAsync<SyncMutationConflictException>(() =>
             Processor(context, user).ProcessAsync(For(command, client, sequence)));
         Assert.AreEqual("stale_base_version", conflict.Code);
+        return conflict;
     }
 
     private static SyncMutationProcessor Processor(AppDbContext context, Guid userId)

@@ -14,6 +14,7 @@ class SyncStatus {
   const SyncStatus({
     this.lastSyncedAtUtc,
     this.pendingCount = 0,
+    this.conflictCount = 0,
     this.isWriter = true,
     this.writerKnown = false,
     this.upgradeRequired = false,
@@ -24,6 +25,10 @@ class SyncStatus {
 
   /// Lokale Änderungen, die der Server noch nicht bestätigt hat.
   final int pendingCount;
+
+  /// Ressourcen mit einer Ablehnung, die der Nutzer auflösen muss. Solange
+  /// sie bestehen, fehlen diese Änderungen auf dem Server.
+  final int conflictCount;
 
   /// `false`, sobald das letzte Sync-Ergebnis ein anderes Schreibgerät
   /// meldete. Vor dem ersten Sync gilt `true`, damit kein Banner blinkt.
@@ -41,6 +46,7 @@ class SyncStatus {
   SyncStatus copyWith({
     DateTime? lastSyncedAtUtc,
     int? pendingCount,
+    int? conflictCount,
     bool? isWriter,
     bool? writerKnown,
     bool? upgradeRequired,
@@ -48,6 +54,7 @@ class SyncStatus {
     writerKnown: writerKnown ?? this.writerKnown,
     lastSyncedAtUtc: lastSyncedAtUtc ?? this.lastSyncedAtUtc,
     pendingCount: pendingCount ?? this.pendingCount,
+    conflictCount: conflictCount ?? this.conflictCount,
     isWriter: isWriter ?? this.isWriter,
     upgradeRequired: upgradeRequired ?? this.upgradeRequired,
   );
@@ -57,6 +64,7 @@ class SyncStatus {
       other is SyncStatus &&
       other.lastSyncedAtUtc == lastSyncedAtUtc &&
       other.pendingCount == pendingCount &&
+      other.conflictCount == conflictCount &&
       other.isWriter == isWriter &&
       other.writerKnown == writerKnown &&
       other.upgradeRequired == upgradeRequired;
@@ -65,6 +73,7 @@ class SyncStatus {
   int get hashCode => Object.hash(
     lastSyncedAtUtc,
     pendingCount,
+    conflictCount,
     isWriter,
     writerKnown,
     upgradeRequired,
@@ -86,12 +95,7 @@ class SyncStatusTracker extends ValueNotifier<SyncStatus> {
     final lastSynced = stored is String
         ? DateTime.tryParse(stored)?.toUtc()
         : null;
-    _publish(
-      value.copyWith(
-        lastSyncedAtUtc: lastSynced,
-        pendingCount: await _pendingCount(),
-      ),
-    );
+    _publish(await _withCounts(value.copyWith(lastSyncedAtUtc: lastSynced)));
   });
 
   /// Zählt kurz verzögert neu, damit viele Änderungen in Folge (Eingaben im
@@ -106,7 +110,7 @@ class SyncStatusTracker extends ValueNotifier<SyncStatus> {
   }
 
   Future<void> refreshPending() => _guarded(() async {
-    _publish(value.copyWith(pendingCount: await _pendingCount()));
+    _publish(await _withCounts(value));
   });
 
   /// Übernimmt das Ergebnis eines Sync-Laufs.
@@ -151,12 +155,13 @@ class SyncStatusTracker extends ValueNotifier<SyncStatus> {
           upgradeRequired = value.upgradeRequired;
         }
         _publish(
-          value.copyWith(
-            lastSyncedAtUtc: reachedServer ? at : null,
-            pendingCount: await _pendingCount(),
-            isWriter: writer,
-            writerKnown: value.writerKnown || writerDecided,
-            upgradeRequired: upgradeRequired,
+          await _withCounts(
+            value.copyWith(
+              lastSyncedAtUtc: reachedServer ? at : null,
+              isWriter: writer,
+              writerKnown: value.writerKnown || writerDecided,
+              upgradeRequired: upgradeRequired,
+            ),
           ),
         );
       });
@@ -167,9 +172,20 @@ class SyncStatusTracker extends ValueNotifier<SyncStatus> {
     _publish(value.copyWith(isWriter: true, writerKnown: true));
   }
 
-  Future<int> _pendingCount() async => (await store.readOutbox())
-      .where((mutation) => mutation.status != LocalMutationStatus.clean)
-      .length;
+  /// Wartende Einträge und Ressourcen im Konflikt aus einer Outbox-Abfrage.
+  Future<SyncStatus> _withCounts(SyncStatus status) async {
+    final outbox = await store.readOutbox();
+    return status.copyWith(
+      pendingCount: outbox
+          .where((mutation) => mutation.status != LocalMutationStatus.clean)
+          .length,
+      conflictCount: {
+        for (final mutation in outbox)
+          if (mutation.status == LocalMutationStatus.conflict)
+            '${mutation.aggregateType}:${mutation.aggregateId}',
+      }.length,
+    );
+  }
 
   void _publish(SyncStatus next) {
     if (!_disposed) value = next;
