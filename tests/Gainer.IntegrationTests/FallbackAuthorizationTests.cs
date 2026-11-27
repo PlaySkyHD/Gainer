@@ -32,6 +32,15 @@ public sealed class FallbackAuthorizationTests
         "/api/v1/integrations/strava/callback",
         "/api/v1/auth/invitations/accept",
         "/api/v1/system/status",
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/api/v1/mcp",
+        "/api/v1/oauth/authorize",
+        "/api/v1/oauth/authorize.js",
+        "/api/v1/oauth/authorize/approve",
+        "/api/v1/oauth/authorize/deny",
+        "/api/v1/oauth/register",
+        "/api/v1/oauth/token",
     ];
 
     [TestMethod]

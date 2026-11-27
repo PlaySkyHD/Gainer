@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Gainer.Core.Access;
 using Gainer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.BearerToken;
@@ -14,11 +15,18 @@ public sealed class AccessTokenIssuer(
     TimeProvider timeProvider)
 {
     /// <summary>Issues a token for the user's current roles and the given device session.</summary>
-    public async Task<string> IssueAsync(AppUser user, Guid deviceSessionId)
+    public async Task<string> IssueAsync(
+        AppUser user,
+        Guid deviceSessionId,
+        DeviceSessionKind kind = DeviceSessionKind.App)
     {
         ClaimsPrincipal principal = await signInManager.CreateUserPrincipalAsync(user);
         var identity = (ClaimsIdentity)principal.Identity!;
         identity.AddClaim(new Claim(GainerIdentityOptions.DeviceSessionClaimType, deviceSessionId.ToString("D")));
+        if (kind == DeviceSessionKind.Connector)
+        {
+            identity.AddClaim(new Claim(ConnectorAuthorization.ScopeClaimType, ConnectorAuthorization.ScopeClaimValue));
+        }
 
         BearerTokenOptions options = bearerOptions.Get(GainerIdentityOptions.AuthenticationScheme);
         DateTimeOffset now = timeProvider.GetUtcNow();

@@ -8,6 +8,8 @@ namespace Gainer.Api.Security;
 /// Treats access tokens whose device session was revoked, expired, or belongs to a deactivated
 /// account as absent, so revocation takes effect on the next request rather than at token expiry.
 /// Protected endpoints then answer 401; anonymous ones such as sign-in keep working.
+/// Connector tokens count only on the MCP endpoint; elsewhere they are absent too, whatever
+/// policy an endpoint declares.
 /// </summary>
 internal sealed class DeviceSessionValidationMiddleware(RequestDelegate next)
 {
@@ -15,7 +17,8 @@ internal sealed class DeviceSessionValidationMiddleware(RequestDelegate next)
     {
         AuthenticateResult? authentication = context.Features.Get<IAuthenticateResultFeature>()?.AuthenticateResult;
         if (authentication?.Ticket?.AuthenticationScheme == GainerIdentityOptions.AuthenticationScheme
-            && !await HasActiveDeviceSessionAsync(context, authentication.Ticket.Principal))
+            && (IsConnectorOutsideMcp(context, authentication.Ticket.Principal)
+                || !await HasActiveDeviceSessionAsync(context, authentication.Ticket.Principal)))
         {
             context.User = new ClaimsPrincipal(new ClaimsIdentity());
             context.Features.Set<IAuthenticateResultFeature>(new RejectedAuthentication());
@@ -23,6 +26,10 @@ internal sealed class DeviceSessionValidationMiddleware(RequestDelegate next)
 
         await next(context);
     }
+
+    private static bool IsConnectorOutsideMcp(HttpContext context, ClaimsPrincipal principal) =>
+        ConnectorAuthorization.IsConnector(principal)
+        && !context.Request.Path.StartsWithSegments(Connectors.ConnectorEndpoints.McpPath);
 
     private static async Task<bool> HasActiveDeviceSessionAsync(HttpContext context, ClaimsPrincipal principal)
     {

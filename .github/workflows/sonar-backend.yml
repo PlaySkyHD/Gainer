@@ -96,7 +96,7 @@ jobs:
           /d:sonar.token="$SONAR_TOKEN"
           /d:sonar.exclusions="**/Migrations/**,apps/**"
           /d:sonar.test.exclusions="apps/**"
-          /d:sonar.coverage.exclusions="scripts/**"
+          /d:sonar.coverage.exclusions="scripts/**,src/Gainer.Api/Connectors/*.js"
           /d:sonar.cs.vscoveragexml.reportsPaths="coverage.xml"
           /d:sonar.issue.ignore.multicriteria=e1,e2,e3,e4,e5
           /d:sonar.issue.ignore.multicriteria.e1.ruleKey=csharpsquid:S6667

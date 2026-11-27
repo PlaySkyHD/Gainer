@@ -44,10 +44,56 @@ internal sealed class DeviceSessionService(
 
     private readonly DeviceSessionOptions settings = options.Value;
 
-    public async Task<IssuedDeviceSession> CreateAsync(
+    public Task<IssuedDeviceSession> CreateAsync(
         Guid userId,
         string deviceName,
+        CancellationToken cancellationToken = default) =>
+        CreateAsync(userId, deviceName, DeviceSessionKind.App, null, cancellationToken);
+
+    public async Task<IssuedDeviceSession> CreateConnectorAsync(
+        Guid userId,
+        string clientName,
+        string connectorClient,
         CancellationToken cancellationToken = default)
+    {
+        byte[] clientHash = HashToken(connectorClient);
+        await RevokeWhereAsync(
+            item => item.UserId == userId
+                && item.Kind == DeviceSessionKind.Connector
+                && item.ConnectorClientHash == clientHash,
+            cancellationToken);
+        return await CreateAsync(userId, clientName, DeviceSessionKind.Connector, clientHash, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ConnectorSessionSummary>> ListConnectorsAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        return await database.DeviceSessions
+            .Where(item => item.UserId == userId
+                && item.Kind == DeviceSessionKind.Connector
+                && item.RevokedAt == null
+                && item.ExpiresAt > now)
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => new ConnectorSessionSummary(item.Id, item.DeviceName, item.CreatedAt, item.LastUsedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<bool> RevokeConnectorAsync(
+        Guid sessionId,
+        Guid userId,
+        CancellationToken cancellationToken = default) =>
+        await RevokeWhereAsync(
+            item => item.Id == sessionId && item.UserId == userId && item.Kind == DeviceSessionKind.Connector,
+            cancellationToken) > 0;
+
+    private async Task<IssuedDeviceSession> CreateAsync(
+        Guid userId,
+        string deviceName,
+        DeviceSessionKind kind,
+        byte[]? connectorClientHash,
+        CancellationToken cancellationToken)
     {
         DateTimeOffset now = timeProvider.GetUtcNow();
         await database.DeviceSessions
@@ -60,6 +106,8 @@ internal sealed class DeviceSessionService(
             Id = Guid.NewGuid(),
             UserId = userId,
             DeviceName = NormalizeDeviceName(deviceName),
+            Kind = kind,
+            ConnectorClientHash = connectorClientHash,
             RefreshTokenHash = HashToken(token),
             CreatedAt = now,
             LastUsedAt = now,
@@ -68,12 +116,25 @@ internal sealed class DeviceSessionService(
         session.ExpiresAt = NextExpiry(session, now);
         database.DeviceSessions.Add(session);
         await database.SaveChangesAsync(cancellationToken);
-        return new IssuedDeviceSession(session.Id, userId, token, session.ExpiresAt);
+        return new IssuedDeviceSession(session.Id, userId, token, session.ExpiresAt, kind);
     }
 
-    public async Task<DeviceSessionRefreshResult> RefreshAsync(
+    public Task<DeviceSessionRefreshResult> RefreshAsync(
         string refreshToken,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        RefreshAsync(refreshToken, DeviceSessionKind.App, null, cancellationToken);
+
+    public Task<DeviceSessionRefreshResult> RefreshConnectorAsync(
+        string refreshToken,
+        string connectorClient,
+        CancellationToken cancellationToken = default) =>
+        RefreshAsync(refreshToken, DeviceSessionKind.Connector, HashToken(connectorClient), cancellationToken);
+
+    private async Task<DeviceSessionRefreshResult> RefreshAsync(
+        string refreshToken,
+        DeviceSessionKind kind,
+        byte[]? connectorClientHash,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(refreshToken))
         {
@@ -83,7 +144,13 @@ internal sealed class DeviceSessionService(
         byte[] presentedHash = HashToken(refreshToken.Trim());
         for (int attempt = 0; attempt < MaximumRefreshAttempts; attempt++)
         {
-            DeviceSessionRefreshResult? result = await TryRefreshAsync(presentedHash, attempt > 0, cancellationToken);
+            DeviceSessionRefreshResult? result = await TryRefreshAsync(
+                presentedHash,
+                attempt > 0,
+                session => session.Kind == kind
+                    && (connectorClientHash is null
+                        || (session.ConnectorClientHash is { } stored && stored.AsSpan().SequenceEqual(connectorClientHash))),
+                cancellationToken);
             if (result is not null)
             {
                 return result;
@@ -101,11 +168,15 @@ internal sealed class DeviceSessionService(
     private async Task<DeviceSessionRefreshResult?> TryRefreshAsync(
         byte[] presentedHash,
         bool afterConflict,
+        Func<DeviceSession, bool> presentedByOwner,
         CancellationToken cancellationToken)
     {
         DeviceSession? session = await FindSessionAsync(presentedHash, cancellationToken);
         DateTimeOffset now = timeProvider.GetUtcNow();
+        // A token of another session kind or client is rejected before anything changes, so it
+        // neither rotates nor revokes the session it belongs to.
         if (session is null
+            || !presentedByOwner(session)
             || session.RevokedAt is not null
             || session.ExpiresAt <= now
             || !session.User.IsActive
@@ -154,7 +225,7 @@ internal sealed class DeviceSessionService(
 
         return new DeviceSessionRefreshResult(
             DeviceSessionRefreshStatus.Refreshed,
-            new IssuedDeviceSession(session.Id, session.UserId, token, session.ExpiresAt));
+            new IssuedDeviceSession(session.Id, session.UserId, token, session.ExpiresAt, session.Kind));
     }
 
     public Task<bool> IsActiveAsync(
@@ -187,26 +258,24 @@ internal sealed class DeviceSessionService(
             .SingleOrDefaultAsync(cancellationToken);
     }
 
-    public async Task RevokeAsync(
+    public Task RevokeAsync(
         Guid sessionId,
         Guid userId,
-        CancellationToken cancellationToken = default)
-    {
-        DateTimeOffset now = timeProvider.GetUtcNow();
-        await database.DeviceSessions
-            .Where(item => item.Id == sessionId && item.UserId == userId && item.RevokedAt == null)
-            .ExecuteUpdateAsync(
-                update => update
-                    .SetProperty(item => item.RevokedAt, now)
-                    .SetProperty(item => item.Version, item => item.Version + 1),
-                cancellationToken);
-    }
+        CancellationToken cancellationToken = default) =>
+        RevokeWhereAsync(item => item.Id == sessionId && item.UserId == userId, cancellationToken);
 
-    public async Task RevokeAllAsync(Guid userId, CancellationToken cancellationToken = default)
+    public Task RevokeAllAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        RevokeWhereAsync(item => item.UserId == userId, cancellationToken);
+
+    /// <summary>Revokes the matching sessions that are not revoked yet; returns how many.</summary>
+    private Task<int> RevokeWhereAsync(
+        System.Linq.Expressions.Expression<Func<DeviceSession, bool>> filter,
+        CancellationToken cancellationToken)
     {
         DateTimeOffset now = timeProvider.GetUtcNow();
-        await database.DeviceSessions
-            .Where(item => item.UserId == userId && item.RevokedAt == null)
+        return database.DeviceSessions
+            .Where(filter)
+            .Where(item => item.RevokedAt == null)
             .ExecuteUpdateAsync(
                 update => update
                     .SetProperty(item => item.RevokedAt, now)

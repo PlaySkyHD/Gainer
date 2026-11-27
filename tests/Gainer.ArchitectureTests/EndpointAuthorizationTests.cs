@@ -20,6 +20,16 @@ public sealed class EndpointAuthorizationTests
         "StravaController.Callback",
         "InvitationAcceptanceController.Accept",
         "SystemController.GetStatus",
+        // OAuth for connected assistants: discovery, registration, consent and token exchange
+        // happen before the assistant has a token (RFC 7591, 8414, 9728, 6749).
+        "OAuthMetadataController.ProtectedResource",
+        "OAuthMetadataController.AuthorizationServer",
+        "OAuthController.Register",
+        "OAuthController.Authorize",
+        "OAuthController.Script",
+        "OAuthController.Approve",
+        "OAuthController.Deny",
+        "OAuthController.Token",
     ];
 
     [TestMethod]

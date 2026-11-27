@@ -64,11 +64,15 @@ public static class GainerIdentityExtensions
                 options.BearerTokenExpiration = GainerIdentityOptions.AccessTokenLifetime);
         // An endpoint without authorization metadata (Map* calls, minimal APIs, future additions) is
         // protected by default. Anonymous endpoints must opt out with [AllowAnonymous]/.AllowAnonymous().
+        // Every policy except the connector one rejects tokens of connected assistants.
+        AuthorizationPolicy appTokens = new AuthorizationPolicyBuilder().RequireAppToken().Build();
         builder.Services.AddAuthorizationBuilder()
-            .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
+            .SetDefaultPolicy(appTokens)
+            .SetFallbackPolicy(appTokens)
             .AddPolicy(
                 AccountOperatorAuthorization.PolicyName,
-                policy => policy.RequireRole(AccountOperatorAuthorization.RoleName));
+                policy => policy.RequireAppToken().RequireRole(AccountOperatorAuthorization.RoleName))
+            .AddPolicy(ConnectorAuthorization.PolicyName, policy => policy.RequireConnectorToken());
         builder.Services.AddScoped<AccessTokenIssuer>();
         builder.Services.AddScoped<DeviceSignIn>();
         builder.Services.AddScoped<IInitialAccountOperatorProvisioner, InitialAccountOperatorProvisioner>();
