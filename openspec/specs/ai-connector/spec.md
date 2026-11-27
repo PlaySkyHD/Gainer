@@ -21,7 +21,7 @@ Die API SHALL unter `/api/v1/mcp` einen MCP-Server über Streamable HTTP anbiete
 
 ### Requirement: Lesende Tools
 
-Der MCP-Server SHALL lesende Tools für Überblick, Trainings, Trainingszusammenfassung, Trainingspläne, Übungen, Cardio-Einheiten, Ziele, Check-ins, Ernährungstage, Wasser, Tagesvorlagen, Ernährungsziele, gespeicherte Gerichte, Coach-Notizen und Strava-Status anbieten, alle als nur lesend gekennzeichnet. Sie MUST ausschließlich Daten des Nutzers der verbundenen App liefern und MUST NOT Daten schreiben. Datumsbereiche MUST begrenzt sein; ein zu großer Bereich ergibt einen Tool-Fehler.
+Der MCP-Server SHALL lesende Tools für Überblick, Trainings mit Zusammenfassung, Verlauf, Trainingstagen und Muskelvolumen, Pläne, Übungen, Cardio mit Kennzahlen, Ziele, Check-ins, Ernährung mit Durchschnitt, Wasser, Vorlagen, Ernährungsziele, Gerichte, Coach-Notizen und Strava anbieten, alle nur lesend. Sie MUST ausschließlich Daten des Nutzers der verbundenen App liefern und MUST NOT Daten schreiben. Datumsbereiche MUST begrenzt sein; ein zu großer Bereich ergibt einen Tool-Fehler.
 
 #### Scenario: Fremdes Training
 - **GIVEN** Nutzer B besitzt ein Training
@@ -87,6 +87,37 @@ Der MCP-Server SHALL lesende Tools für Überblick, Trainings, Trainingszusammen
 #### Scenario: Trainings eines Zeitraums
 - **WHEN** die verbundene App `list_workouts` mit `from` und `through` aufruft
 - **THEN** enthält die Antwort nur Trainings, die an diesen lokalen Tagen begonnen haben, jeweils mit der ID des Ausgangsplans
+
+#### Scenario: Trainingsverlauf
+- **GIVEN** Nutzer A hat gestern und vor zehn Tagen trainiert, Nutzer B gestern
+- **WHEN** die verbundene App von Nutzer A `get_training_trends` mit `fourWeeks` aufruft
+- **THEN** enthält die Antwort zwei Trainings mit Sätzen, Wiederholungen, Volumen, Dauer und jüngstem Körpergewicht von A sowie vier Wochenabschnitte
+- **AND** Abschnitte ohne Training enthalten keine Durchschnitte, und mit `includeWarmups` zählen Aufwärmsätze mit
+- **AND** ein unbekannter Zeitraum ergibt einen Tool-Fehler
+
+#### Scenario: Trainingstage
+- **GIVEN** Nutzer A hat gestern 60 Minuten Kraft und 30 Minuten Cardio trainiert und vor zehn Tagen 60 Minuten Kraft
+- **WHEN** die verbundene App `get_training_heatmap` aufruft
+- **THEN** enthält die Antwort genau diese zwei Tage mit 90 und 60 Minuten, die Quartilsgrenzen und die Stufen 4 und 1
+
+#### Scenario: Muskelvolumen
+- **GIVEN** Nutzer A hat einen aktiven Plan mit 4 Arbeitssätzen einer Brustübung mit Trizeps als Hilfsmuskel und einen archivierten Plan
+- **WHEN** die verbundene App `get_muscle_volume` ohne Argumente aufruft
+- **THEN** enthält die Antwort alle 17 Muskeln, zuerst Brust mit 4 Sätzen (Stufe medium) und Trizeps mit 2, sowie die Übungen ohne Muskeln
+- **AND** `trained` zählt die erfassten Arbeitssätze der letzten 7 Tage oder je Woche der letzten 28 Tage
+- **AND** der Plan von Nutzer B, eine unbekannte Quelle oder ein Plan bei `trained` ergeben einen Tool-Fehler
+
+#### Scenario: Kennzahlen einer Cardio-Einheit
+- **GIVEN** eine Einheit von Nutzer A mit Zielbereich, Pulsreihe und Erholungspuls
+- **WHEN** die verbundene App `get_cardio_session` aufruft
+- **THEN** enthalten die Kennzahlen Dauer, Durchschnittspuls, Zeit und Anteil im Zielbereich und die Erholung wie in der App
+- **AND** die HRV fehlt bei weniger als 30 gültigen RR-Differenzen; Pulszonen, Wochenziel und Maximalpuls liegen nur auf dem Telefon
+
+#### Scenario: Ernährungsdurchschnitt
+- **GIVEN** Nutzer A hat heute nichts und an drei der letzten sieben Tage gegessen, einer davon als Ruhetag festgelegt
+- **WHEN** die verbundene App `get_nutrition_averages` mit 7 Tagen aufruft
+- **THEN** endet das Fenster gestern und enthält Durchschnitte je erfasstem Tag, „2 von 3 Tagen im Zielbereich“ mit dem Ruhetag-Ziel für den Ruhetag und die kcal je Tag
+- **AND** Daten von Nutzer B fehlen, und andere Fensterlängen als 7 oder 30 ergeben einen Tool-Fehler
 
 ### Requirement: OAuth-Discovery
 
