@@ -47,15 +47,7 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
         }
         catch (SyncMutationConflictException exception)
         {
-            ObjectResult result = SyncProblem(StatusCodes.Status409Conflict, exception.Code, exception.Message);
-            if (exception.ServerVersion is long serverVersion)
-            {
-                var problem = (ProblemDetails)result.Value!;
-                problem.Extensions["serverVersion"] = serverVersion;
-                problem.Extensions["serverDeleted"] = exception.ServerDeleted;
-            }
-
-            return result;
+            return ConflictProblem(exception);
         }
         catch (SyncMutationValidationException exception)
         {
@@ -132,6 +124,20 @@ public sealed class SyncMutationsController(ISyncMutationProcessor processor, IU
 
     private ObjectResult SyncProblem(int status, string code, string title) =>
         SyncProblemResults.Create(HttpContext, status, code, title);
+
+    /// <summary>A 409 that names the server version of a stale resource when it is known.</summary>
+    private ObjectResult ConflictProblem(SyncMutationConflictException exception)
+    {
+        ObjectResult result = SyncProblem(StatusCodes.Status409Conflict, exception.Code, exception.Message);
+        if (exception.ServerVersion is long serverVersion)
+        {
+            var problem = (ProblemDetails)result.Value!;
+            problem.Extensions["serverVersion"] = serverVersion;
+            problem.Extensions["serverDeleted"] = exception.ServerDeleted;
+        }
+
+        return result;
+    }
 
     private ObjectResult SyncValidationProblem(string title, IReadOnlyDictionary<string, string> errors)
     {

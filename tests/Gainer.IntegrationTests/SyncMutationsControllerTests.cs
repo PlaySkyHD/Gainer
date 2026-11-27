@@ -52,7 +52,7 @@ public sealed class SyncMutationsControllerTests
         ProblemDetails problem = (ProblemDetails)((ObjectResult)action.Result!).Value!;
         Assert.AreEqual("stale_base_version", problem.Extensions["code"]);
         Assert.AreEqual(3L, problem.Extensions["serverVersion"]);
-        Assert.AreEqual(false, problem.Extensions["serverDeleted"]);
+        Assert.IsFalse((bool)problem.Extensions["serverDeleted"]!);
 
         SyncMutationsController unknown = Controller(new StubProcessor(new SyncMutationConflictException("stale_base_version", "conflict")));
         ActionResult<PushMutationResponse> withoutVersion = await unknown.Push(
