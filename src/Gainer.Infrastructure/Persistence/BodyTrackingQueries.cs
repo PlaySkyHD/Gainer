@@ -51,10 +51,7 @@ public sealed class BodyTrackingQueries(AppDbContext context) : IBodyTrackingQue
         DateOnly through,
         CancellationToken cancellationToken = default)
     {
-        if (through < from)
-        {
-            throw new ArgumentOutOfRangeException(nameof(through));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(through, from);
 
         return await context.DailyCheckIns
             .AsNoTracking()

@@ -21,7 +21,7 @@ public sealed class NutritionQueries(AppDbContext context) : INutritionQueries
         DateOnly through,
         CancellationToken cancellationToken = default)
     {
-        if (through < from) throw new ArgumentOutOfRangeException(nameof(through));
+        ArgumentOutOfRangeException.ThrowIfLessThan(through, from);
         List<NutritionDay> days = await context.NutritionDays
             .AsNoTracking()
             .Include(item => item.Entries)
