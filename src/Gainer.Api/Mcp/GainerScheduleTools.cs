@@ -12,6 +12,7 @@ public sealed class GainerScheduleTools(ITrainingScheduleQueries schedules, Time
 {
     private const int DefaultScheduleDays = 15;
     private const int MaximumScheduleDays = 62;
+    private const int MaximumYearsFromToday = 10;
 
     [McpServerTool(Name = "get_training_schedule", Title = "Trainingsrhythmus", ReadOnly = true, Idempotent = true,
         OpenWorld = false, UseStructuredContent = true)]
@@ -19,17 +20,19 @@ public sealed class GainerScheduleTools(ITrainingScheduleQueries schedules, Time
         "calendar and \"Nächste 14 Tage\" list. The rhythm is a Cycle (ordered slots of plans and rest days repeating " +
         "from AnchorDate, shiftable) or Weekly (seven slots, position 0 = Monday); nothing is planned before ValidFrom; " +
         "TodayCycleSlot is the cycle slot that counts for today. A slot without plan is a rest day; PlanArchived marks " +
-        "a slot whose plan is archived, which also counts as rest day. " +
-        "Per day: BaseKind (None without rhythm or before ValidFrom, Rest also for a slot whose plan is archived, " +
+        "a slot whose plan is archived or no longer found (then PlanName is omitted); such a slot also counts as rest day. " +
+        "Per day: BaseKind (None without rhythm or before ValidFrom, Rest also for a slot whose plan is archived or not found, " +
         "Paused for days freed by shifting the cycle, Training), the slot index, the finished strength workouts started " +
         "that day, the AutomaticDayKind that selects the rest-day nutrition target (Training when a strength workout " +
         "was finished or a workout of the rhythm is due, done, missed or moved in; otherwise Rest) and the workouts: " +
         "the one the rhythm plans there plus those moved in from another day (MovedInFrom). Status: Planned (today or " +
         "later, not done), Done (a finished workout from this plan was started that day), Missed (past, no workout " +
         "finished), InsteadOf (past, a workout from another plan was finished instead), Moved (only this workout lies " +
-        "on MovedToDate) or Skipped. Defaults to today and the next 14 days; at most 62 days, past days allowed.")]
+        "on MovedToDate) or Skipped. The range is from and the days after it (days in total, not an end date); it " +
+        "defaults to today and the next 14 days, covers at most 62 days, and from may lie in the past, at most 10 years " +
+        "from today.")]
     public async Task<TrainingScheduleResult> GetTrainingSchedule(
-        [Description("First local day (YYYY-MM-DD); default today.")] DateOnly? from = null,
+        [Description("First local day (YYYY-MM-DD, Europe/Berlin), at most 10 years from today; default today.")] DateOnly? from = null,
         [Description("Number of days from the first day, 1 to 62; default 15 (today and the next 14 days).")] int days = DefaultScheduleDays,
         CancellationToken cancellationToken = default)
     {
@@ -40,6 +43,11 @@ public sealed class GainerScheduleTools(ITrainingScheduleQueries schedules, Time
 
         DateOnly today = McpDates.Today(timeProvider);
         DateOnly start = from ?? today;
+        if (start < today.AddYears(-MaximumYearsFromToday) || start > today.AddYears(MaximumYearsFromToday))
+        {
+            throw new McpException($"from must be within {MaximumYearsFromToday} years of today.");
+        }
+
         DateOnly through = start.AddDays(days - 1);
         TrainingScheduleProjection projection = await schedules.ProjectionAsync(
             start, through, today, McpDates.TimeZone, cancellationToken);
@@ -61,8 +69,9 @@ public sealed class GainerScheduleTools(ITrainingScheduleQueries schedules, Time
     public async Task<TrainingTodayResult> GetTrainingToday(CancellationToken cancellationToken = default)
     {
         DateOnly today = McpDates.Today(timeProvider);
+        // Future days are Planned unless a workout started on them, which cannot have happened yet: today's workouts suffice.
         TrainingScheduleProjection projection = await schedules.ProjectionAsync(
-            today, today.AddDays(TrainingScheduleProjection.DefaultHorizonDays), today, McpDates.TimeZone, cancellationToken);
+            today, today, today, McpDates.TimeZone, cancellationToken);
         ScheduledTraining? next = projection.NextPlannedAfter(today);
         return new TrainingTodayResult(
             today,
@@ -80,7 +89,7 @@ public sealed class GainerScheduleTools(ITrainingScheduleQueries schedules, Time
             .Select((planId, index) => new ScheduleSlotResult(
                 index,
                 planId,
-                planId is { } id ? projection.PlanName(id) : null,
+                planId is { } id ? projection.Plan(id)?.Name : null,
                 planId is not null && !projection.IsActivePlan(planId)))
             .ToList());
 
@@ -90,7 +99,7 @@ public sealed class GainerScheduleTools(ITrainingScheduleQueries schedules, Time
         day.SlotIndex,
         day.ArchivedPlanId,
         day.IsFree,
-        projection.AutomaticDayKind(day.Date),
+        projection.AutomaticDayKind(day),
         projection.FinishedOn(day.Date).Select(workout => workout.WorkoutId).ToList(),
         day.Trainings.Select(Training).ToList());
 

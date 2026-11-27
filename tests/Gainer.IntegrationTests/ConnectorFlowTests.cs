@@ -1092,6 +1092,9 @@ public sealed class ConnectorFlowTests
             CallToolResult outOfRange = await CallAsync(mcp, "get_training_schedule", new() { ["days"] = count });
             Assert.IsTrue(outOfRange.IsError, $"days={count}");
         }
+
+        CallToolResult farFuture = await CallAsync(mcp, "get_training_schedule", new() { ["from"] = "9999-12-31" });
+        Assert.IsTrue(farFuture.IsError);
     }
 
     private async Task AssertPastScheduleAsync(McpClient mcp, StageFourSeed own, Guid doneWorkout, Guid foreignWorkout)

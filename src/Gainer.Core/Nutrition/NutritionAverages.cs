@@ -32,9 +32,8 @@ public sealed record NutritionAveragesSnapshot(
 
 /// <summary>
 /// Port of the app's nutrition averages (<c>NutritionAverages.compute</c> in nutrition_averages.dart); the rules are in
-/// contracts/fixtures/nutrition-averages.json. A day without a chosen day kind takes the automatic kind of the training
-/// schedule projection (<see cref="Training.TrainingScheduleProjection.AutomaticDayKind"/>); without one it counts as
-/// rest day, as in the app without training data.
+/// contracts/fixtures/nutrition-averages.json. The target of a day follows <see cref="DayTarget"/>: a day without a
+/// chosen day kind takes the automatic kind of the training schedule projection.
 /// </summary>
 public static class NutritionAverages
 {
@@ -43,9 +42,10 @@ public static class NutritionAverages
         IReadOnlyCollection<NutritionAverageTargetInput> targets,
         DateOnly today,
         int windowDays,
-        Func<DateOnly, NutritionDayKind>? automaticDayKind = null)
+        Func<DateOnly, NutritionDayKind> automaticDayKind)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(windowDays, 1);
+        ArgumentNullException.ThrowIfNull(automaticDayKind);
         Dictionary<DateOnly, NutritionAverageDayInput> byDate = days
             .GroupBy(day => day.Date)
             .ToDictionary(group => group.Key, group => group.Last());
@@ -66,7 +66,7 @@ public static class NutritionAverages
             }
 
             logged.Add(totals);
-            decimal? target = TargetOn(targets, date, day.DayKind ?? automaticDayKind?.Invoke(date) ?? NutritionDayKind.Rest);
+            decimal? target = TargetOn(targets, date, day.DayKind, () => automaticDayKind(date));
             if (target is { } value) targetsOfLoggedDays.Add(value);
             window.Add(new NutritionAverageDay(date, totals.Kilocalories, target, IsWithin(totals.Kilocalories, target)));
         }
@@ -90,14 +90,19 @@ public static class NutritionAverages
     }
 
     /// <summary>The kcal target on a day: rest-day kcal when the version has one and the day counts as rest day.</summary>
-    public static decimal? TargetOn(IEnumerable<NutritionAverageTargetInput> targets, DateOnly date, NutritionDayKind? dayKind)
+    public static decimal? TargetOn(
+        IEnumerable<NutritionAverageTargetInput> targets,
+        DateOnly date,
+        NutritionDayKind? chosenKind,
+        Func<NutritionDayKind> automaticKind)
     {
         NutritionAverageTargetInput? version = targets
             .Where(item => item.EffectiveFrom <= date && (item.EffectiveUntil is null || item.EffectiveUntil >= date))
             .OrderBy(item => item.EffectiveFrom)
             .LastOrDefault();
         if (version is null) return null;
-        return dayKind == NutritionDayKind.Rest && version.RestDayKilocalories is { } rest ? rest : version.Kilocalories;
+        NutritionDayKind? kind = DayTarget.KindOn(version.RestDayKilocalories is not null, chosenKind, automaticKind);
+        return kind == NutritionDayKind.Rest && version.RestDayKilocalories is { } rest ? rest : version.Kilocalories;
     }
 
     /// <summary>Within ±10 % of the day's target, inclusive.</summary>

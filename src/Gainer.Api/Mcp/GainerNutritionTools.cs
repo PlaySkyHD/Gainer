@@ -26,7 +26,7 @@ public sealed class GainerNutritionTools(
         "the day totals, the day type the user chose (DayKind: Training or Rest, if set), the nutrition target version " +
         "in effect that day, the AutomaticDayKind from the training schedule (Training when a strength workout was " +
         "finished that day or a workout of the rhythm is due, done, missed or moved in there; otherwise Rest, also " +
-        "without rhythm) and AppliedTarget, the kcal and macros that apply as in the app: the rest-day target when the " +
+        "without rhythm; omitted when no target version has a rest-day target) and AppliedTarget, the kcal and macros that apply as in the app: the rest-day target when the " +
         "version has one and the day counts as rest day (chosen DayKind, else AutomaticDayKind), otherwise the " +
         "version's target; AppliedTarget.DayKind is omitted when the version has no rest-day target. " +
         "Days without entries have empty entries and zero totals. Defaults to today; at most 31 days.")]
@@ -40,14 +40,16 @@ public sealed class GainerNutritionTools(
             .ToDictionary(day => day.LocalDate);
         IReadOnlyList<NutritionTargetVersionDraft> versions =
             (await smartNutrition.GetNutritionTargetScheduleAsync(cancellationToken))?.Versions ?? [];
-        TrainingScheduleProjection projection = await schedules.ProjectionAsync(
-            start, end, McpDates.Today(timeProvider), McpDates.TimeZone, cancellationToken);
+        // The day kind only matters for versions with a rest-day target.
+        TrainingScheduleProjection? projection = versions.Any(version => version.RestDay is not null)
+            ? await schedules.ProjectionAsync(start, end, McpDates.Today(timeProvider), McpDates.TimeZone, cancellationToken)
+            : null;
         var days = new List<NutritionDayResult>();
         for (DateOnly day = start; day <= end; day = day.AddDays(1))
         {
             NutritionDaySnapshot? log = logged.GetValueOrDefault(day);
             NutritionTargetVersionDraft? target = EffectiveOn(versions, day);
-            NutritionDayKind automatic = projection.AutomaticDayKind(day);
+            NutritionDayKind? automatic = projection?.AutomaticDayKind(day);
             days.Add(new NutritionDayResult(
                 day,
                 log?.DayKind,
@@ -55,7 +57,7 @@ public sealed class GainerNutritionTools(
                 (log?.Entries ?? []).Select(Entry).ToList(),
                 target is null ? null : Target(target),
                 automatic,
-                target is null ? null : AppliedTarget(target, log?.DayKind, automatic)));
+                target is null ? null : AppliedTarget(DayTarget.On(target, log?.DayKind, () => automatic ?? NutritionDayKind.Training))));
         }
 
         return new NutritionDaysResult(days);
@@ -82,8 +84,6 @@ public sealed class GainerNutritionTools(
         }
 
         DateOnly today = McpDates.Today(timeProvider);
-        TrainingScheduleProjection projection = await schedules.ProjectionAsync(
-            today.AddDays(-days), today, today, McpDates.TimeZone, cancellationToken);
         NutritionAverageDayInput[] logged = (await nutrition.GetDaysAsync(today.AddDays(-days), today, cancellationToken))
             .Select(day => new NutritionAverageDayInput(day.LocalDate, day.Entries.Count > 0 ? day.Totals : null, day.DayKind))
             .ToArray();
@@ -92,7 +92,11 @@ public sealed class GainerNutritionTools(
             .Select(version => new NutritionAverageTargetInput(
                 version.EffectiveFrom, version.EffectiveUntil, version.Kilocalories, version.RestDay?.Kilocalories))
             .ToArray();
-        NutritionAveragesSnapshot averages = NutritionAverages.Compute(logged, targets, today, days, projection.AutomaticDayKind);
+        // Without a rest-day target the day kind is never asked for, so the projection is not loaded.
+        Func<DateOnly, NutritionDayKind> automaticDayKind = targets.Any(target => target.RestDayKilocalories is not null)
+            ? (await schedules.ProjectionAsync(today.AddDays(-days), today, today, McpDates.TimeZone, cancellationToken)).AutomaticDayKind
+            : _ => NutritionDayKind.Training;
+        NutritionAveragesSnapshot averages = NutritionAverages.Compute(logged, targets, today, days, automaticDayKind);
         return new NutritionAveragesResult(
             averages.WindowDays,
             averages.From,
@@ -180,22 +184,8 @@ public sealed class GainerNutritionTools(
             .OrderByDescending(version => version.EffectiveFrom)
             .FirstOrDefault();
 
-    /// <summary>The target of a day as in the app: rest-day values when the version has them and the day counts as rest day.</summary>
-    private static AppliedTargetResult AppliedTarget(
-        NutritionTargetVersionDraft target,
-        NutritionDayKind? chosen,
-        NutritionDayKind automatic)
-    {
-        if (target.RestDay is not { } rest)
-        {
-            return new AppliedTargetResult(null, false, target.Kilocalories, target.ProteinGrams, target.CarbohydrateGrams, target.FatGrams);
-        }
-
-        NutritionDayKind kind = chosen ?? automatic;
-        return kind == NutritionDayKind.Rest
-            ? new AppliedTargetResult(kind, chosen is not null, rest.Kilocalories, rest.ProteinGrams, rest.CarbohydrateGrams, rest.FatGrams)
-            : new AppliedTargetResult(kind, chosen is not null, target.Kilocalories, target.ProteinGrams, target.CarbohydrateGrams, target.FatGrams);
-    }
+    private static AppliedTargetResult AppliedTarget(DayTargetValues target) => new(
+        target.DayKind, target.DayKindChosen, target.Kilocalories, target.ProteinGrams, target.CarbohydrateGrams, target.FatGrams);
 
     private static decimal? Round(decimal? value) => TrainingStatistics.RoundForOutput(value);
 
@@ -231,7 +221,7 @@ public sealed record NutritionDayResult(
     NutritionTotals Totals,
     IReadOnlyList<NutritionEntryResult> Entries,
     NutritionTargetResult? Target,
-    NutritionDayKind AutomaticDayKind,
+    NutritionDayKind? AutomaticDayKind,
     AppliedTargetResult? AppliedTarget);
 
 /// <summary>Kcal and macros that apply on a day; <paramref name="DayKind"/> is null when the version has no rest-day target.</summary>

@@ -107,11 +107,13 @@ public sealed record ScheduleDay(
     IReadOnlyList<ScheduledTraining> Trainings)
 {
     /// <summary>Workouts that are actually due or done that day (not moved away or skipped).</summary>
-    public IReadOnlyList<ScheduledTraining> Effective =>
-        Trainings.Where(item => item.Status is not (ScheduledTrainingStatus.Moved or ScheduledTrainingStatus.Skipped)).ToList();
+    public ScheduledTraining[] EffectiveTrainings() => Trainings.Where(IsDue).ToArray();
+
+    private static bool IsDue(ScheduledTraining training) =>
+        training.Status is not (ScheduledTrainingStatus.Moved or ScheduledTrainingStatus.Skipped);
 
     /// <summary>No workout is due: rest day, paused, or everything moved away.</summary>
-    public bool IsFree => Effective.Count == 0;
+    public bool IsFree => !Trainings.Any(IsDue);
 }
 
 /// <summary>
@@ -123,9 +125,6 @@ public sealed class TrainingScheduleProjection
 {
     /// <summary>How far <see cref="NextPlannedAfter"/> looks ahead by default, as in the app.</summary>
     public const int DefaultHorizonDays = 60;
-
-    /// <summary>Longest single shift of the cycle (contract), used to find today's cycle slot on paused days.</summary>
-    private const int MaxShiftDays = 31;
 
     private readonly Dictionary<Guid, SchedulePlanInput> plans;
     private readonly Dictionary<DateOnly, List<ScheduleWorkoutInput>> finishedByDay;
@@ -164,6 +163,9 @@ public sealed class TrainingScheduleProjection
     public DateOnly Today { get; }
 
     public bool IsCycle => Schedule?.Mode == TrainingScheduleMode.Cycle;
+
+    /// <summary>The plan with this ID, archived or not; null when the user has no such plan.</summary>
+    public SchedulePlanInput? Plan(Guid planId) => plans.GetValueOrDefault(planId);
 
     /// <summary>Name of a plan; "Plan" for an unknown one, as in the app.</summary>
     public string PlanName(Guid planId) => plans.GetValueOrDefault(planId)?.Name ?? "Plan";
@@ -206,7 +208,7 @@ public sealed class TrainingScheduleProjection
     public int? EffectiveCycleIndex(DateOnly date)
     {
         if (Schedule is not { } active || !IsCycle || active.SlotPlanIds.Count == 0) return null;
-        for (int offset = 0; offset <= MaxShiftDays * 2; offset++)
+        for (int offset = 0; offset <= TrainingScheduleValidation.MaximumShiftDays * 2; offset++)
         {
             if (CycleSlotIndexOn(date.AddDays(offset)) is { } index) return Modulo(index - offset, active.SlotPlanIds.Count);
         }
@@ -270,8 +272,14 @@ public sealed class TrainingScheduleProjection
     /// Day kind without a choice of the user: training day when a strength workout was finished that day or the rhythm
     /// has a workout due or done there (also missed or moved in); otherwise rest day, also without rhythm.
     /// </summary>
-    public NutritionDayKind AutomaticDayKind(DateOnly date) =>
-        HasFinishedOn(date) || Day(date).Effective.Count > 0 ? NutritionDayKind.Training : NutritionDayKind.Rest;
+    public NutritionDayKind AutomaticDayKind(DateOnly date) => AutomaticDayKind(Day(date));
+
+    /// <summary><see cref="AutomaticDayKind(DateOnly)"/> of a day this projection already computed.</summary>
+    public NutritionDayKind AutomaticDayKind(ScheduleDay day)
+    {
+        ArgumentNullException.ThrowIfNull(day);
+        return HasFinishedOn(day.Date) || !day.IsFree ? NutritionDayKind.Training : NutritionDayKind.Rest;
+    }
 
     private ScheduledTraining Training(
         Entry entry,
@@ -337,7 +345,7 @@ public sealed class TrainingScheduleProjection
         if (active.Mode == TrainingScheduleMode.Weekly)
         {
             // Position 0 is Monday.
-            return count == 7 ? new RawSlot(RawSlotKind.Slot, ((int)date.DayOfWeek + 6) % 7) : RawSlot.None;
+            return count == TrainingScheduleValidation.WeeklySlots ? new RawSlot(RawSlotKind.Slot, ((int)date.DayOfWeek + 6) % 7) : RawSlot.None;
         }
 
         if (active.AnchorDate is not { } anchor) return RawSlot.None;

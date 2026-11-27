@@ -54,6 +54,7 @@ public sealed class TrainingScheduleFixtureTests
         for (int i = 0; i < wantDays.Length; i++)
         {
             Assert.AreEqual(Describe(wantDays[i]), Describe(days[i], projection, names), Iso(days[i].Date));
+            Assert.AreEqual(days[i].IsFree, days[i].EffectiveTrainings().Length == 0, Iso(days[i].Date));
         }
     }
 
@@ -84,6 +85,8 @@ public sealed class TrainingScheduleFixtureTests
         Assert.IsNull(withoutAnchor.EffectiveCycleIndex(Today));
         Assert.IsNull(withoutSlots.EffectiveCycleIndex(Today));
         Assert.AreEqual("Plan", withoutAnchor.PlanName(Guid.NewGuid()));
+        Assert.IsNull(withoutAnchor.Plan(Guid.NewGuid()));
+        Assert.AreEqual("Push", withoutAnchor.Plan(plan)?.Name);
         Assert.IsTrue(withoutAnchor.IsActivePlan(plan));
         Assert.IsFalse(withoutAnchor.IsActivePlan(null));
     }
@@ -157,7 +160,7 @@ public sealed class TrainingScheduleFixtureTests
         day.ArchivedPlanId is { } archived ? names.NameOf(archived) : "-",
         day.IsFree,
         projection.HasFinishedOn(day.Date),
-        Camel(projection.AutomaticDayKind(day.Date).ToString()),
+        Camel(projection.AutomaticDayKind(day).ToString()),
         string.Join("; ", day.Trainings.Select(training => string.Join(",",
             names.NameOf(training.PlanId),
             training.PlanName,

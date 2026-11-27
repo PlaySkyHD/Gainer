@@ -20,7 +20,7 @@ public sealed class TrainingScheduleQueries(AppDbContext context) : ITrainingSch
     {
         ArgumentNullException.ThrowIfNull(timeZone);
         DateTime fromUtc = LocalDays.StartOfDayUtc(from, timeZone);
-        DateTime beforeUtc = LocalDays.StartOfDayUtc(through.AddDays(1), timeZone);
+        DateTime beforeUtc = through == DateOnly.MaxValue ? DateTime.MaxValue : LocalDays.StartOfDayUtc(through.AddDays(1), timeZone);
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         ScheduleProjectionInput? schedule = await ScheduleAsync(cancellationToken);
         List<SchedulePlanInput> plans = await context.TrainingPlans.AsNoTracking()

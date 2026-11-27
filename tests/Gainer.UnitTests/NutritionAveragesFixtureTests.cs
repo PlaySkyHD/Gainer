@@ -37,7 +37,9 @@ public sealed class NutritionAveragesFixtureTests
                     OptionalDecimal(target, "restDayKilocalories")))
                 .ToArray(),
             Date(item.GetProperty("today")),
-            item.GetProperty("windowDays").GetInt32());
+            item.GetProperty("windowDays").GetInt32(),
+            // The fixture chooses the day kind wherever it matters; the app without training data counts rest days.
+            _ => NutritionDayKind.Rest);
 
         JsonElement expected = item.GetProperty("expected");
         Assert.AreEqual(Date(expected.GetProperty("from")), result.From);
@@ -71,7 +73,7 @@ public sealed class NutritionAveragesFixtureTests
 
     [TestMethod]
     public void WindowNeedsAtLeastOneDay() =>
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => NutritionAverages.Compute([], [], new DateOnly(2026, 10, 19), 0));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => NutritionAverages.Compute([], [], new DateOnly(2026, 10, 19), 0, _ => NutritionDayKind.Rest));
 
     [TestMethod]
     public void DayWithoutChosenKindTakesTheAutomaticKind()
@@ -88,7 +90,7 @@ public sealed class NutritionAveragesFixtureTests
 
         NutritionAveragesSnapshot automatic = NutritionAverages.Compute(
             days, targets, today, 3, date => date == today.AddDays(-1) ? NutritionDayKind.Training : NutritionDayKind.Rest);
-        NutritionAveragesSnapshot withoutSchedule = NutritionAverages.Compute(days, targets, today, 3);
+        NutritionAveragesSnapshot withoutSchedule = NutritionAverages.Compute(days, targets, today, 3, _ => NutritionDayKind.Rest);
 
         Assert.AreSequenceEqual(AutomaticTargets, automatic.Days.Select(day => day.TargetKilocalories).ToArray());
         Assert.AreSequenceEqual(RestWithoutScheduleTargets, withoutSchedule.Days.Select(day => day.TargetKilocalories).ToArray());
