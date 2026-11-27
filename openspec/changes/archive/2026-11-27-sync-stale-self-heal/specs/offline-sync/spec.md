@@ -14,6 +14,11 @@ Lehnt der Server einen veralteten Zwischenstand ab und ist die Lage eindeutig, S
 - **WHEN** die App das Training erneut sendet und `stale_base_version` mit Serverversion 1 erhält
 - **THEN** sendet sie ihren Stand als Speicherung auf Version 1 und es entsteht kein Konflikt
 
+#### Scenario: Direkt übernommen
+- **GIVEN** das Gerät hat gerade mit „Übernehmen“ das Schreibrecht erhalten und noch nicht gezogen
+- **WHEN** ein Eintrag mit `stale_base_version` und einer unbekannten Serverversion abgelehnt wird
+- **THEN** setzt die App nicht auf, sondern der Eintrag wird zum Konflikt, bis der Pull den Serverstand geliefert hat
+
 ### Requirement: Sichtbarer Sync-Zustand
 
 Ist das Gerät nicht Schreibgerät, SHALL die App das in allen Tabs mit einer Übernahme-Möglichkeit anzeigen. Bestehen Konflikte, SHALL sie in allen Tabs die Anzahl nicht gespeicherter Änderungen mit einem Weg zur Konfliktliste zeigen. Unter Mehr SHALL der Zeitpunkt des letzten Syncs und die Anzahl wartender Änderungen stehen.
