@@ -23,28 +23,10 @@ public sealed class ExerciseCatalogQueries(AppDbContext context, IUserContext us
 
         Guid userId = userContext.UserId
             ?? throw new InvalidOperationException("An authenticated user is required.");
-        IQueryable<Exercise> query = context.Exercises
+        IQueryable<Exercise> query = ApplyOptionalFilters(context.Exercises
             .AsNoTracking()
             .Where(item => item.OwnerUserId == null || item.OwnerUserId == userId)
-            .Where(item => !item.IsArchived);
-
-        if (!string.IsNullOrWhiteSpace(filter.Search))
-        {
-            string pattern = $"%{EscapeLikePattern(filter.Search.Trim())}%";
-            query = query.Where(item => EF.Functions.ILike(item.Name, pattern, "\\"));
-        }
-        if (!string.IsNullOrWhiteSpace(filter.TargetMuscle))
-        {
-            query = query.Where(item => item.TargetMuscle == filter.TargetMuscle.Trim());
-        }
-        if (!string.IsNullOrWhiteSpace(filter.MuscleGroup))
-        {
-            query = query.Where(item => item.MuscleGroup == filter.MuscleGroup.Trim());
-        }
-        if (!string.IsNullOrWhiteSpace(filter.Equipment))
-        {
-            query = query.Where(item => item.Equipment == filter.Equipment.Trim());
-        }
+            .Where(item => filter.IncludeArchived || !item.IsArchived), filter, userId);
 
         int total = await query.CountAsync(cancellationToken);
         List<ExerciseCatalogItem> items = await Project(query
@@ -116,6 +98,39 @@ public sealed class ExerciseCatalogQueries(AppDbContext context, IUserContext us
         {
             CategoryIds = categoryIds.TryGetValue(item.Id, out Guid[]? ids) ? ids : Array.Empty<Guid>(),
         }).ToList();
+    }
+
+    private IQueryable<Exercise> ApplyOptionalFilters(IQueryable<Exercise> query, ExerciseCatalogFilter filter, Guid userId)
+    {
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            string pattern = $"%{EscapeLikePattern(filter.Search.Trim())}%";
+            query = query.Where(item => EF.Functions.ILike(item.Name, pattern, "\\"));
+        }
+        if (!string.IsNullOrWhiteSpace(filter.TargetMuscle))
+        {
+            query = query.Where(item => item.TargetMuscle == filter.TargetMuscle.Trim());
+        }
+        if (!string.IsNullOrWhiteSpace(filter.MuscleGroup))
+        {
+            query = query.Where(item => item.MuscleGroup == filter.MuscleGroup.Trim());
+        }
+        if (!string.IsNullOrWhiteSpace(filter.Equipment))
+        {
+            query = query.Where(item => item.Equipment == filter.Equipment.Trim());
+        }
+        if (filter.CategoryId is { } categoryId)
+        {
+            query = query.Where(item => context.ExerciseCategoryAssignments
+                .Any(assignment => assignment.ExerciseId == item.Id && assignment.CategoryId == categoryId));
+        }
+        if (filter.OnlyWithoutMuscles)
+        {
+            // Only the user's own exercises can be edited, so only they are worth listing as incomplete.
+            query = query.Where(item =>
+                item.OwnerUserId == userId && item.PrimaryMuscles.Length == 0 && item.SecondaryMuscles.Length == 0);
+        }
+        return query;
     }
 
     private static void ValidateFilterLength(string? value, string name)

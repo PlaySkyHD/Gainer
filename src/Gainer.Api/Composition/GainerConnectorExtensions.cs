@@ -44,6 +44,8 @@ public static class GainerConnectorExtensions
             .AddMcpServer(options => options.ServerInfo = new Implementation { Name = "gainer", Version = "1.0.0" })
             .WithHttpTransport(options => options.Stateless = true)
             .WithTools<GainerMcpTools>(ToolJson)
+            .WithTools<GainerTrainingTools>(ToolJson)
+            .WithTools<GainerCardioTools>(ToolJson)
             .WithTools<GainerBodyTools>(ToolJson)
             .WithTools<GainerNutritionTools>(ToolJson)
             .WithTools<GainerAccountTools>(ToolJson);

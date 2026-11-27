@@ -50,14 +50,18 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<IReusableMealMutationHandler, ReusableMealMutationHandler>();
         builder.Services.AddScoped<INutritionDayTemplateMutationHandler, NutritionDayTemplateMutationHandler>();
         builder.Services.AddScoped<IWaterIntakeMutationHandler, WaterIntakeMutationHandler>();
+        builder.Services.AddScoped<IWaterIntakeQueries, WaterIntakeQueries>();
+        builder.Services.AddScoped<INutritionDayTemplateQueries, NutritionDayTemplateQueries>();
         builder.Services.AddScoped<INutritionTargetScheduleMutationHandler, NutritionTargetScheduleMutationHandler>();
         builder.Services.AddScoped<IExerciseCatalogQueries, ExerciseCatalogQueries>();
         builder.Services.AddScoped<IExerciseResolver, ExerciseCatalogQueries>();
         builder.Services.AddScoped<ICustomExerciseMutationHandler, CustomExerciseMutationHandler>();
         builder.Services.AddScoped<ITrainingPlanMutationHandler, TrainingPlanMutationHandler>();
+        builder.Services.AddScoped<ITrainingPlanQueries, TrainingPlanQueries>();
         builder.Services.AddScoped<ITrainingScheduleMutationHandler, TrainingScheduleMutationHandler>();
         builder.Services.AddScoped<IWorkoutMutationHandler, WorkoutMutationHandler>();
         builder.Services.AddScoped<ICardioSessionMutationHandler, CardioSessionMutationHandler>();
+        builder.Services.AddScoped<ICardioSessionQueries, CardioSessionQueries>();
         builder.Services.AddScoped<IWorkoutHistoryQueries, WorkoutHistoryQueries>();
         builder.Services.AddScoped<ISyncMutationExecutor, SyncMutationExecutor>();
         builder.Services.AddScoped<ISyncMutationProcessor, SyncMutationProcessor>();
@@ -66,6 +70,7 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<ISyncClientRegistry, SyncClientRegistry>();
         builder.Services.AddScoped<ISyncHandoverService, SyncHandoverService>();
         builder.Services.AddScoped<IInsightQueries, InsightQueries>();
+        builder.Services.AddScoped<IWorkoutSummaryQueries, InsightQueries>();
         builder.Services.Configure<OpenAiProviderOptions>(builder.Configuration.GetSection(OpenAiProviderOptions.SectionName));
         builder.Services.AddHttpClient<IOpenAiResponsesProvider, OpenAiResponsesProvider>(client =>
             client.BaseAddress = new Uri(OpenAiBaseAddress))

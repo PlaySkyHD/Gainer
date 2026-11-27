@@ -109,6 +109,27 @@ public static class TrainingStatistics
             newRecords);
     }
 
+    /// <summary>
+    /// Zähler „n. Training · m. diese Woche“ wie <c>workoutCounts</c> der App: alle gezählten Trainings und die,
+    /// deren lokaler Starttag in der Woche (Montag bis Sonntag) von <paramref name="nowUtc"/> liegt.
+    /// </summary>
+    public static WorkoutCounts Counts(IEnumerable<TrainingWorkoutInput> workouts, DateTime nowUtc, TimeZoneInfo timeZone)
+    {
+        TrainingWorkoutInput[] finished = workouts.Where(IsCounted).ToArray();
+        DateOnly today = LocalDay(nowUtc, timeZone);
+        DateOnly monday = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+        DateOnly sunday = monday.AddDays(6);
+        int thisWeek = finished.Count(workout =>
+        {
+            DateOnly day = LocalDay(workout.StartedAtUtc, timeZone);
+            return day >= monday && day <= sunday;
+        });
+        return new WorkoutCounts(finished.Length, thisWeek);
+    }
+
+    private static DateOnly LocalDay(DateTime utc, TimeZoneInfo timeZone) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utc, timeZone));
+
     /// <summary>Bestes Ergebnis über mehrere Kandidaten: höchstes 1RM, dann Gewicht, Wiederholungen, Zeitpunkt.</summary>
     public static BestSet? BestOf(IEnumerable<BestSet?> candidates) => candidates
         .OfType<BestSet>()
@@ -376,6 +397,9 @@ public sealed record ExerciseHistory(IReadOnlyList<ExerciseWorkoutTotals> Workou
 }
 
 public sealed record NewRecord(Guid ExerciseId, RecordKind Kind, decimal Value);
+
+/// <summary>Gezählte Trainings insgesamt und in der Kalenderwoche.</summary>
+public sealed record WorkoutCounts(int Total, int ThisWeek);
 
 public sealed record TrainingSummary(
     Guid WorkoutId,

@@ -129,20 +129,9 @@ public sealed class ExerciseMergeMutationHandler(
             plan.Version++;
             var values = entries
                 .Where(item => item.PlanId == plan.Id)
-                .Select(item => new TrainingPlanEntryValues(
-                    item.Id, item.ExerciseId, item.WarmupSets, item.WorkingSets, item.Notes, item.SupersetId))
+                .Select(TrainingSnapshots.PlanEntry)
                 .ToList();
-            changeCollector?.CaptureUpsert(new TrainingPlanSnapshot(
-                plan.Id,
-                plan.Name,
-                plan.Notes,
-                PreviousValueSources.ToStorageValue(plan.PreviousValueSource),
-                values,
-                plan.SortOrder,
-                plan.IsArchived,
-                plan.CreatedAtUtc,
-                plan.UpdatedAtUtc,
-                plan.Version));
+            changeCollector?.CaptureUpsert(TrainingSnapshots.Plan(plan, values));
         }
         return plans.Count;
     }

@@ -187,8 +187,7 @@ public sealed class TrainingPlanMutationHandler(
         await context.TrainingPlanEntries.AsNoTracking()
             .Where(item => item.PlanId == planId)
             .OrderBy(item => item.Position)
-            .Select(item => new TrainingPlanEntryValues(
-                item.Id, item.ExerciseId, item.WarmupSets, item.WorkingSets, item.Notes, item.SupersetId))
+            .Select(item => TrainingSnapshots.PlanEntry(item))
             .ToListAsync(cancellationToken);
 
     private static void Apply(TrainingPlan plan, TrainingPlanValues values)
@@ -200,17 +199,7 @@ public sealed class TrainingPlanMutationHandler(
 
     private TrainingPlanSnapshot Capture(TrainingPlan plan, IReadOnlyList<TrainingPlanEntryValues> entries)
     {
-        var snapshot = new TrainingPlanSnapshot(
-            plan.Id,
-            plan.Name,
-            plan.Notes,
-            PreviousValueSources.ToStorageValue(plan.PreviousValueSource),
-            entries,
-            plan.SortOrder,
-            plan.IsArchived,
-            plan.CreatedAtUtc,
-            plan.UpdatedAtUtc,
-            plan.Version);
+        TrainingPlanSnapshot snapshot = TrainingSnapshots.Plan(plan, entries);
         changeCollector?.CaptureUpsert(snapshot);
         return snapshot;
     }

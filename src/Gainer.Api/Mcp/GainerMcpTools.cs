@@ -20,7 +20,7 @@ public sealed class GainerMcpTools(
 {
     private const int MaximumWorkouts = 50;
     private const int MaximumExercises = 50;
-
+    private const int MaximumWorkoutDays = 366;
 
     /// <summary>Goal, body weight, nutrition and training of a period.</summary>
     [McpServerTool(Name = "get_overview", Title = "Überblick", ReadOnly = true, Idempotent = true, OpenWorld = false,
@@ -80,11 +80,16 @@ public sealed class GainerMcpTools(
     /// <summary>Completed workouts, newest first.</summary>
     [McpServerTool(Name = "list_workouts", Title = "Trainings", ReadOnly = true, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true)]
-    [Description("Completed strength workouts, newest first, with title, start, end and number of completed sets. " +
-        "Use get_workout for exercises and sets.")]
+    [Description("Completed strength workouts, newest first, with title, start, end, number of completed sets and " +
+        "the ID of the training plan the workout was started from (null without plan). Optionally limited to " +
+        "workouts that started on the local days from through through (YYYY-MM-DD, Europe/Berlin); with only one " +
+        "of them the range ends today or spans 30 days, at most 366 days. Use get_workout for exercises and sets " +
+        "and get_workout_summary for totals and records.")]
     public async Task<WorkoutListResult> ListWorkouts(
         [Description("Number of workouts to skip.")] int offset = 0,
         [Description("Number of workouts to return, 1 to 50.")] int limit = 10,
+        [Description("First local start day (YYYY-MM-DD); omit both dates for all workouts.")] DateOnly? from = null,
+        [Description("Last local start day (YYYY-MM-DD); default today when from is set.")] DateOnly? through = null,
         CancellationToken cancellationToken = default)
     {
         if (offset < 0 || limit is < 1 or > MaximumWorkouts)
@@ -92,10 +97,17 @@ public sealed class GainerMcpTools(
             throw new McpException("offset must be at least 0 and limit between 1 and 50.");
         }
 
-        IReadOnlyList<WorkoutHistorySummary> items = await workoutHistory.ListAsync(offset, limit, cancellationToken);
+        WorkoutHistoryRange? range = null;
+        if (from is not null || through is not null)
+        {
+            (DateOnly start, DateOnly end) = McpDates.Range(timeProvider, from, through, 30, MaximumWorkoutDays);
+            range = new WorkoutHistoryRange(start, end, McpDates.TimeZone);
+        }
+
+        IReadOnlyList<WorkoutHistorySummary> items = await workoutHistory.ListAsync(range, offset, limit, cancellationToken);
         return new WorkoutListResult(items
             .Select(item => new WorkoutSummaryResult(
-                item.WorkoutId, item.Title, item.StartedAtUtc, item.EndedAtUtc, item.CompletedSetCount))
+                item.WorkoutId, item.Title, item.StartedAtUtc, item.EndedAtUtc, item.CompletedSetCount, item.SourcePlanId))
             .ToList());
     }
 
@@ -135,10 +147,16 @@ public sealed class GainerMcpTools(
     [McpServerTool(Name = "search_exercises", Title = "Übungen suchen", ReadOnly = true, Idempotent = true,
         OpenWorld = false, UseStructuredContent = true)]
     [Description("Searches the user's exercise catalog by name and returns IDs for get_exercise_progress, " +
-        "with type and primary and secondary muscles.")]
+        "with type, category IDs and primary and secondary muscles. Filters: a category, archived exercises and " +
+        "only the user's own custom exercises without any muscles. The result lists all categories once " +
+        "(ID, name, whether it is a base category).")]
     public async Task<ExerciseListResult> SearchExercises(
         [Description("Part of the exercise name, e.g. \"Kniebeuge\"; empty lists all.")] string? query = null,
         [Description("Number of exercises to return, 1 to 50.")] int limit = 20,
+        [Description("Only exercises in this category (ID from the categories list).")] Guid? categoryId = null,
+        [Description("Include archived exercises.")] bool includeArchived = false,
+        [Description("Only the user's own custom exercises without primary and secondary muscles.")]
+        bool onlyWithoutMuscles = false,
         CancellationToken cancellationToken = default)
     {
         if (limit is < 1 or > MaximumExercises)
@@ -147,12 +165,25 @@ public sealed class GainerMcpTools(
         }
 
         ExerciseCatalogPage page = await catalog.SearchAsync(
-            new ExerciseCatalogFilter(Search: string.IsNullOrWhiteSpace(query) ? null : query.Trim(), Limit: limit),
+            new ExerciseCatalogFilter(
+                Search: string.IsNullOrWhiteSpace(query) ? null : query.Trim(),
+                Limit: limit,
+                CategoryId: categoryId,
+                IncludeArchived: includeArchived,
+                OnlyWithoutMuscles: onlyWithoutMuscles),
             cancellationToken);
-        return new ExerciseListResult(page.Items
-            .Select(item => new ExerciseResult(
-                item.Id, item.Name, item.ExerciseType.ToString(), item.IsCustom, item.PrimaryMuscles, item.SecondaryMuscles))
-            .ToList());
+        if (categoryId is { } id && page.Categories.All(category => category.Id != id))
+        {
+            throw new McpException("The category was not found.");
+        }
+
+        return new ExerciseListResult(
+            page.Items
+                .Select(item => new ExerciseResult(
+                    item.Id, item.Name, item.ExerciseType.ToString(), item.IsCustom, item.CategoryIds,
+                    item.PrimaryMuscles, item.SecondaryMuscles))
+                .ToList(),
+            page.Categories.Select(category => new ExerciseCategoryResult(category.Id, category.Name, category.IsBase)).ToList());
     }
 
     /// <summary>Development of one exercise over time.</summary>
@@ -245,7 +276,8 @@ public sealed record WorkoutSummaryResult(
     string Title,
     DateTime StartedAtUtc,
     DateTime EndedAtUtc,
-    int CompletedSets);
+    int CompletedSets,
+    Guid? SourcePlanId);
 
 public sealed record WorkoutResult(
     Guid WorkoutId,
@@ -264,13 +296,16 @@ public sealed record WorkoutExerciseResult(
 
 public sealed record WorkoutSetResult(string SetType, decimal? WeightKg, int? Repetitions, decimal? RepsInReserve, string? Notes);
 
-public sealed record ExerciseListResult(IReadOnlyList<ExerciseResult> Exercises);
+public sealed record ExerciseListResult(IReadOnlyList<ExerciseResult> Exercises, IReadOnlyList<ExerciseCategoryResult> Categories);
+
+public sealed record ExerciseCategoryResult(Guid CategoryId, string Name, bool IsBase);
 
 public sealed record ExerciseResult(
     Guid ExerciseId,
     string Name,
     string Type,
     bool IsCustom,
+    IReadOnlyList<Guid> CategoryIds,
     IReadOnlyList<string> PrimaryMuscles,
     IReadOnlyList<string> SecondaryMuscles);
 

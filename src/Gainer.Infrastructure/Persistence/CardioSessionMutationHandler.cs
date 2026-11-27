@@ -59,7 +59,7 @@ public sealed class CardioSessionMutationHandler(
         // The lookup already found the user's own session, so a key violation means the id belongs to another user.
         // No pull heals that; the sync processor reports it as a permanent invalid payload.
 
-        CardioSessionSnapshot snapshot = ToSnapshot(session);
+        CardioSessionSnapshot snapshot = TrainingSnapshots.Cardio(session);
         changeCollector?.CaptureUpsert(snapshot);
         return snapshot;
     }
@@ -115,28 +115,4 @@ public sealed class CardioSessionMutationHandler(
         session.TemplateName = values.TemplateName;
         session.Phases = values.Phases is { Count: > 0 } ? values.Phases.ToArray() : null;
     }
-
-    private static CardioSessionSnapshot ToSnapshot(CardioSession session) => new(
-        session.Id,
-        session.ActivityType,
-        session.StartedAtUtc,
-        session.EndedAtUtc,
-        session.TargetZoneLowBpm is { } low && session.TargetZoneHighBpm is { } high
-            ? new CardioTargetZone(low, high)
-            : null,
-        session.SampleIntervalSeconds,
-        session.HeartRateBpm.ToArray(),
-        session.RrIntervalsMs.ToArray(),
-        session.SensorName,
-        session.DistanceKm,
-        session.AveragePowerWatts,
-        session.EnergyKcal,
-        session.Notes,
-        session.CreatedAtUtc,
-        session.UpdatedAtUtc,
-        session.Version,
-        session.RecoveryStartBpm,
-        session.RecoveryEndBpm,
-        session.TemplateName,
-        session.Phases?.ToArray());
 }

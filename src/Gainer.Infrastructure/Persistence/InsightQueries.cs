@@ -8,7 +8,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Gainer.Infrastructure.Persistence;
 
-public sealed class InsightQueries(AppDbContext context, IUserContext userContext) : IInsightQueries
+public sealed class InsightQueries(AppDbContext context, IUserContext userContext)
+    : IInsightQueries, IWorkoutSummaryQueries
 {
     public async Task<DashboardInsightSnapshot> DashboardAsync(
         DateOnly through,
@@ -45,7 +46,7 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             .ThenByDescending(item => item.Id)
             .FirstOrDefaultAsync(cancellationToken);
         List<TrainingWorkoutInput> loadedWorkouts = await FinishedWorkoutsAsync(
-            loadFromUtc, workoutThroughUtc, exerciseId: null, cancellationToken);
+            loadFromUtc, workoutThroughUtc, exerciseIds: null, cancellationToken);
         Dictionary<Guid, ExerciseFactorInput> factors = await ExerciseFactorsAsync(loadedWorkouts, userId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -110,7 +111,7 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             .OrderBy(item => item.LocalDate)
             .ToListAsync(cancellationToken);
         List<TrainingWorkoutInput> workouts = await FinishedWorkoutsAsync(
-            fromUtc: null, endExclusiveUtc, exerciseId, cancellationToken);
+            fromUtc: null, endExclusiveUtc, [exerciseId], cancellationToken);
         Dictionary<Guid, ExerciseFactorInput> factors = await ExerciseFactorsAsync(workouts, userId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -142,6 +143,54 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             history.Records());
     }
 
+    public async Task<WorkoutSummarySnapshot?> WorkoutSummaryAsync(
+        Guid workoutId,
+        TimeZoneInfo timeZone,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(timeZone);
+        Guid userId = CurrentUser();
+        await using var transaction = await context.Database.BeginTransactionAsync(
+            IsolationLevel.RepeatableRead, cancellationToken);
+        Workout? workout = await context.Workouts.AsNoTracking().SingleOrDefaultAsync(
+            item => item.Id == workoutId && item.EndedAtUtc != null && item.DeletedAtUtc == null,
+            cancellationToken);
+        if (workout is null) return null;
+        var blocks = await context.WorkoutExercises.AsNoTracking()
+            .Where(item => item.WorkoutId == workoutId)
+            .OrderBy(item => item.Position)
+            .Select(item => new { item.SourceExerciseId, item.ExerciseNameSnapshot })
+            .ToListAsync(cancellationToken);
+        Guid[] exerciseIds = blocks.Select(item => item.SourceExerciseId).Distinct().ToArray();
+        // Records need the whole history of the workout's exercises; the counters need every completed workout.
+        List<TrainingWorkoutInput> workouts = await FinishedWorkoutsAsync(
+            fromUtc: null, toUtc: null, exerciseIds, cancellationToken);
+        List<DailyCheckIn> checkIns = await context.DailyCheckIns.AsNoTracking()
+            .OrderBy(item => item.LocalDate)
+            .ToListAsync(cancellationToken);
+        Dictionary<Guid, ExerciseFactorInput> factors = await ExerciseFactorsAsync(workouts, userId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        CheckInWeight[] bodyweights = ToCheckInWeights(checkIns);
+        TrainingWorkoutInput current = workouts.Single(item => item.WorkoutId == workoutId);
+        TrainingSummary summary = TrainingStatistics.Summarize(current, workouts, bodyweights, factors, timeZone);
+        WorkoutCounts counts = TrainingStatistics.Counts(
+            workouts.Where(item => item.StartedAtUtc <= current.StartedAtUtc), current.StartedAtUtc, timeZone);
+        bool bodyweightMissing = TrainingStatistics.WorkoutBlocks(current, bodyweights, factors, timeZone)
+            .Any(block => block.BodyweightMissing);
+        return new WorkoutSummarySnapshot(
+            workout.Id,
+            workout.Title,
+            workout.StartedAtUtc,
+            workout.EndedAtUtc!.Value,
+            summary,
+            counts,
+            blocks
+                .GroupBy(item => item.SourceExerciseId)
+                .ToDictionary(group => group.Key, group => group.First().ExerciseNameSnapshot),
+            bodyweightMissing);
+    }
+
     private Guid CurrentUser() =>
         userContext.UserId ?? throw new InvalidOperationException("An authenticated user is required.");
 
@@ -152,12 +201,13 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
     /// <summary>Beendete, nicht gelöschte Trainings mit Blöcken; Blöcke optional auf eine Übung begrenzt.</summary>
     private async Task<List<TrainingWorkoutInput>> FinishedWorkoutsAsync(
         DateTime? fromUtc,
-        DateTime toUtc,
-        Guid? exerciseId,
+        DateTime? toUtc,
+        IReadOnlyCollection<Guid>? exerciseIds,
         CancellationToken cancellationToken)
     {
         IQueryable<Workout> query = context.Workouts.AsNoTracking()
-            .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null && item.EndedAtUtc < toUtc);
+            .Where(item => item.EndedAtUtc != null && item.DeletedAtUtc == null);
+        if (toUtc is { } to) query = query.Where(item => item.EndedAtUtc < to);
         if (fromUtc is { } from) query = query.Where(item => item.EndedAtUtc >= from);
         var workouts = await query
             .Select(item => new { item.Id, item.StartedAtUtc, item.EndedAtUtc })
@@ -166,7 +216,7 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
         Guid[] workoutIds = workouts.Select(item => item.Id).ToArray();
         IQueryable<WorkoutExercise> blockQuery = context.WorkoutExercises.AsNoTracking()
             .Where(item => workoutIds.Contains(item.WorkoutId));
-        if (exerciseId is { } id) blockQuery = blockQuery.Where(item => item.SourceExerciseId == id);
+        if (exerciseIds is not null) blockQuery = blockQuery.Where(item => exerciseIds.Contains(item.SourceExerciseId));
         var blocks = await blockQuery
             .OrderBy(item => item.Position)
             .Select(item => new { item.Id, item.WorkoutId, item.SourceExerciseId, item.ExerciseTypeSnapshot })
