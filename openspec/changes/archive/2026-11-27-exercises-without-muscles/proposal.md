@@ -18,7 +18,7 @@ Keine.
 
 ### Modified Capabilities
 
-- `exercise-catalog`: neue Anforderung „Übungen ohne Muskeln finden“.
+- `exercise-catalog`: neue Anforderungen „Übungen ohne Muskeln finden“ und „Nur bearbeitbare Übungen ohne Muskeln“.
 
 ## Impact
 
