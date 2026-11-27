@@ -89,7 +89,7 @@ void main() {
     // Drei beendete Trainings à 60 min; gelöschte und laufende zählen nicht.
     expect(find.text('Ø 0,2 pro Woche'), findsOneWidget);
     expect(find.text('Ø 60 min'), findsOneWidget);
-    expect(find.text('3 h'), findsOneWidget);
+    expect(find.text('3:00 h'), findsOneWidget);
     expect(find.text('3.550 kg'), findsOneWidget);
     expect(find.text('6'), findsOneWidget);
     expect(find.text('38'), findsOneWidget);
@@ -103,6 +103,27 @@ void main() {
     // 21. September bis 17. Oktober: 27 Tage, 3 Trainings.
     expect(find.text('Ø 0,8 pro Woche'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Zeitraum ohne Daten zeigt einen Hinweis statt leerer Kacheln', (
+    tester,
+  ) async {
+    _phoneSize(tester);
+    await tester.runAsync(() => seedSingleSquatSet(harness));
+    // Das Training liegt mehr als drei Monate zurück.
+    harness.now = DateTime.utc(2027, 2, 1, 9);
+
+    await pumpSection(tester);
+
+    expect(find.byKey(const ValueKey('trend-empty')), findsOneWidget);
+    expect(find.byKey(const ValueKey('trend-volume')), findsNothing);
+
+    await tester.ensureVisible(find.text('Alle'));
+    await tester.tap(find.text('Alle'));
+    await settle(tester);
+
+    expect(find.byKey(const ValueKey('trend-empty')), findsNothing);
+    expect(find.text('800 kg'), findsOneWidget);
   });
 
   testWidgets('Ohne Training und Check-in fehlt der Verlauf', (tester) async {

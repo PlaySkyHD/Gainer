@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
+import '../../../domain/models/cardio/cardio_progress.dart'
+    show formatHoursMinutes;
 import '../../../domain/models/training/training_trends.dart';
 import '../../../domain/models/training/workout_input.dart';
 import '../../core/components/components.dart';
@@ -54,7 +56,9 @@ class TrainingTrendTiles extends StatelessWidget {
           onChanged: onPeriodChanged,
         ),
         const SizedBox(height: GainerSpacing.s),
-        if (stacked)
+        if (trends.isEmpty)
+          const _EmptyPeriod()
+        else if (stacked)
           for (final tile in tiles) ...[
             tile,
             const SizedBox(height: GainerSpacing.s),
@@ -84,13 +88,13 @@ class TrainingTrendTiles extends StatelessWidget {
   String _startLabel() {
     final start = trends.start;
     if (trends.period.weekly) {
-      return formatShortDate(DateTime(start.year, start.month, start.day));
+      return formatShortDate(start.toDateTime());
     }
     return '${formatMonthShort(start.month)} ${start.year}';
   }
 
   static String _titleOf(TrendMetric metric) => switch (metric) {
-    TrendMetric.workoutsPerWeek => 'Trainings',
+    TrendMetric.workoutsPerWeek => 'Krafttrainings',
     TrendMetric.averageDuration => 'Trainingsdauer',
     TrendMetric.totalDuration => 'Gesamtzeit',
     TrendMetric.volume => 'Volumen',
@@ -100,15 +104,16 @@ class TrainingTrendTiles extends StatelessWidget {
     TrendMetric.bodyweight => 'Körpergewicht',
   };
 
+  /// Summen zeigen 0, Durchschnitte ohne Training „–“.
   String _valueOf(TrendMetric metric) {
-    final trained = trends.workoutCount > 0;
-    if (!trained && metric != TrendMetric.bodyweight) return '–';
     return switch (metric) {
       TrendMetric.workoutsPerWeek =>
         'Ø ${formatCardioNumber(trends.workoutsPerWeek)} pro Woche',
-      TrendMetric.averageDuration =>
-        'Ø ${formatDurationMinutes(trends.averageDuration!)}',
-      TrendMetric.totalDuration => formatTotalDuration(trends.totalDuration),
+      TrendMetric.averageDuration => switch (trends.averageDuration) {
+        final value? => 'Ø ${formatDurationMinutes(value)}',
+        null => '–',
+      },
+      TrendMetric.totalDuration => formatHoursMinutes(trends.totalDuration),
       TrendMetric.volume => formatStatisticsVolume(trends.volumeKg, weightUnit),
       TrendMetric.sets => formatGermanNumber(trends.setCount.toDouble()),
       TrendMetric.repetitions => formatGermanNumber(
@@ -126,13 +131,22 @@ class TrainingTrendTiles extends StatelessWidget {
   }
 }
 
-/// Gesamtdauer auf ganze Minuten: „45 min“, ab einer Stunde „12 h 5 min“.
-String formatTotalDuration(Duration duration) {
-  final minutes = (duration.inSeconds + 30) ~/ 60;
-  if (minutes < 60) return '$minutes min';
-  final rest = minutes % 60;
-  final hours = formatGermanNumber((minutes ~/ 60).toDouble());
-  return rest == 0 ? '$hours h' : '$hours h $rest min';
+class _EmptyPeriod extends StatelessWidget {
+  const _EmptyPeriod();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = GainerDesign.colorsOf(context);
+    return GainerCard(
+      key: const ValueKey('trend-empty'),
+      padding: const EdgeInsets.all(GainerSpacing.l),
+      child: Text(
+        'Keine Trainings und kein Körpergewicht in diesem Zeitraum.',
+        textAlign: TextAlign.center,
+        style: GainerTypography.body.copyWith(color: colors.secondaryText),
+      ),
+    );
+  }
 }
 
 class _TrendTile extends StatelessWidget {
@@ -185,7 +199,14 @@ class _TrendTile extends StatelessWidget {
             const SizedBox(height: GainerSpacing.xs),
             CardioLineChart(
               height: 44,
-              series: [ChartSeries(points: chartPoints, color: colors.accent)],
+              series: [
+                ChartSeries(
+                  points: chartPoints,
+                  color: colors.accent,
+                  // Abschnitte ohne Daten bleiben offen, statt sie zu überbrücken.
+                  maxGap: last == 0 ? null : 1 / last,
+                ),
+              ],
               gridColor: const Color(0x00000000),
               labelStyle: labelStyle,
             ),

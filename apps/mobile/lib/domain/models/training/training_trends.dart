@@ -49,8 +49,8 @@ class WorkoutTrendEntry {
   final double volumeKg;
 }
 
-/// Summen je beendetem Training mit denselben Formeln wie Rekorde und
-/// Übungsstatistik. [workouts] sind die gezählten Trainings.
+/// Summen je gezähltem Training ([isCountedWorkout]) mit denselben Formeln
+/// wie Rekorde und Übungsstatistik.
 List<WorkoutTrendEntry> workoutTrendEntries(
   List<Workout> workouts, {
   required List<DailyCheckIn> checkIns,
@@ -60,13 +60,13 @@ List<WorkoutTrendEntry> workoutTrendEntries(
 }) {
   return [
     for (final workout in workouts)
-      if (workout.endedAtUtc case final ended?
-          when workout.deletedAtUtc == null)
+      if (workout.endedAtUtc case final ended? when isCountedWorkout(workout))
         () {
           final stats = workoutExerciseStats(
             workout,
             checkIns: checkIns,
             catalog: catalog,
+            localDayOf: (utc) => dayOf(utc).toIso(),
             includeWarmups: includeWarmups,
           );
           final duration = ended.difference(workout.startedAtUtc);

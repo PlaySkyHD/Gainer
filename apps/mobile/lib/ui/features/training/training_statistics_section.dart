@@ -73,6 +73,17 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
       builder: (context, _) {
         final colors = GainerDesign.colorsOf(context);
         final model = _viewModel;
+        // Krafttraining und Körpergewicht: nach Cardio, vor den Übungen.
+        final trendTiles = [
+          if (model.trends case final trends? when model.hasTrendData) ...[
+            TrainingTrendTiles(
+              trends: trends,
+              weightUnit: model.weightUnit,
+              onPeriodChanged: model.selectTrendPeriod,
+            ),
+            const SizedBox(height: GainerSpacing.l),
+          ],
+        ];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -86,16 +97,10 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
               ),
               const SizedBox(height: GainerSpacing.l),
             ],
-            if (model.trends case final trends? when model.hasTrendData) ...[
-              TrainingTrendTiles(
-                trends: trends,
-                weightUnit: model.weightUnit,
-                onPeriodChanged: model.selectTrendPeriod,
-              ),
-              const SizedBox(height: GainerSpacing.l),
-            ],
-            if (widget.cardio case final cardio?) ...[
+            if (widget.cardio case final cardio?)
               CardioStatisticsArea(repository: cardio),
+            ...trendTiles,
+            if (widget.cardio != null) ...[
               const GainerSectionHeader(title: 'Kraft'),
               const SizedBox(height: GainerSpacing.xs),
             ],

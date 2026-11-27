@@ -12,10 +12,14 @@ class ChartPoint {
 
 /// Eine Linie mit eigener y-Skala.
 class ChartSeries {
-  const ChartSeries({required this.points, required this.color});
+  const ChartSeries({required this.points, required this.color, this.maxGap});
 
   final List<ChartPoint> points;
   final Color color;
+
+  /// Liegen zwei Punkte weiter als [maxGap] auseinander, bleibt die Linie
+  /// dazwischen offen (Abschnitt ohne Daten). Ohne Wert durchgehend.
+  final double? maxGap;
 }
 
 /// Liniendiagramm mit einer oder mehreren Reihen. Jede Reihe nutzt ihre eigene
@@ -152,9 +156,14 @@ class CardioLinePainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
     final path = Path();
+    final maxGap = line.maxGap;
     for (var i = 0; i < line.points.length; i++) {
       final offset = at(line.points[i]);
-      if (i == 0) {
+      final gap =
+          i > 0 &&
+          maxGap != null &&
+          line.points[i].x - line.points[i - 1].x > maxGap + 1e-9;
+      if (i == 0 || gap) {
         path.moveTo(offset.dx, offset.dy);
       } else {
         path.lineTo(offset.dx, offset.dy);

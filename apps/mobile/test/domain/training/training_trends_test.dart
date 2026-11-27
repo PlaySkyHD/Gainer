@@ -98,7 +98,7 @@ void main() {
     expect(trends.repetitions, 280);
     expect(trends.repetitionsPerSet, 7);
     expect(trends.volumeKg, 12000);
-    // 3. bis 26. November: 25 Tage.
+    // Zeitraum 2. bis 26. November: 25 Tage.
     expect(trends.workoutsPerWeek, closeTo(3 / (25 / 7), 1e-9));
     expect(trends.series[TrendMetric.workoutsPerWeek], [2, 0, 0, 1]);
     expect(trends.series[TrendMetric.averageDuration], [60, null, null, 90]);
