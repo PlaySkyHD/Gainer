@@ -46,7 +46,8 @@ public sealed class ConnectorFlowTests
         "get_body_goals", "list_check_ins", "get_nutrition_days", "get_nutrition_targets", "list_saved_meals",
         "list_coach_notes", "get_strava_status", "list_training_plans", "get_training_plan", "get_workout_summary",
         "list_cardio_sessions", "get_cardio_session", "get_water", "list_day_templates", "get_training_trends",
-        "get_training_heatmap", "get_muscle_volume", "get_nutrition_averages",
+        "get_training_heatmap", "get_muscle_volume", "get_nutrition_averages", "get_training_schedule",
+        "get_training_today",
     ];
     private static readonly decimal[] ExpectedQuartiles = [67.5m, 75m, 82.5m];
     private static readonly decimal[] OwnKilocalories = [2100m, 1700m, 2500m];
@@ -900,7 +901,8 @@ public sealed class ConnectorFlowTests
             Assert.AreEqual(Today.AddDays(-1).ToString("yyyy-MM-dd"), root.GetProperty("through").GetString());
             Assert.AreEqual(3, root.GetProperty("loggedDays").GetInt32());
             Assert.AreEqual(2100m, root.GetProperty("averageKilocalories").GetDecimal());
-            Assert.AreEqual(1933.33m, root.GetProperty("averageTargetKilocalories").GetDecimal());
+            // Yesterday has a finished workout (training day), three days ago none (rest day by the schedule projection).
+            Assert.AreEqual(1866.67m, root.GetProperty("averageTargetKilocalories").GetDecimal());
             Assert.AreEqual(2, root.GetProperty("daysWithinTarget").GetInt32());
             Assert.AreEqual(3, root.GetProperty("daysWithTarget").GetInt32());
             JsonElement[] days = root.GetProperty("dailyKilocalories").EnumerateArray().ToArray();
@@ -1024,6 +1026,196 @@ public sealed class ConnectorFlowTests
         Guid PlanId,
         Guid ArchivedPlanId,
         Guid CardioSessionId);
+
+    [TestMethod]
+    public async Task AssistantReadsTrainingScheduleTodayAndDayTargetsOfItsOwnerOnly()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        Guid owner = await CreateUserAsync(app, "owner@example.test");
+        Guid other = await CreateUserAsync(app, "other@example.test");
+        StageFourSeed own = await SeedStageFourAsync(owner, "Eigen");
+        StageFourSeed foreign = await SeedStageFourAsync(other, "Fremd");
+        DateTime threeDaysAgo = Gainer.Core.Insights.LocalDays.StartOfDayUtc(Today.AddDays(-3), Gainer.Core.Insights.LocalDays.Default);
+        Guid doneWorkout = await SeedStrengthWorkoutAsync(owner, "Push", threeDaysAgo.AddHours(9), own.PushPlanId);
+        Guid foreignWorkout = await SeedStrengthWorkoutAsync(other, "Fremd", threeDaysAgo.AddHours(9), foreign.PushPlanId);
+        using var authenticator = new SoftwarePasskeyAuthenticator();
+        using HttpClient appClient = CreateClient(app);
+        await appClient.AuthenticateAsync("owner@example.test", Password);
+        await RegisterPasskeyAsync(appClient, authenticator);
+        (_, OAuthTokens tokens) = await ConnectAsync(app, authenticator);
+
+        await using McpClient mcp = await ConnectMcpAsync(app, tokens.AccessToken);
+        await AssertComingScheduleAsync(mcp, own);
+        await AssertPastScheduleAsync(mcp, own, doneWorkout, foreignWorkout);
+        await AssertTrainingTodayAsync(mcp, own);
+        await AssertDayTargetsAsync(mcp);
+    }
+
+    private async Task AssertComingScheduleAsync(McpClient mcp, StageFourSeed own)
+    {
+        using JsonDocument schedule = await JsonAsync(mcp, "get_training_schedule", []);
+        JsonElement root = schedule.RootElement;
+        Assert.AreEqual(Iso(Today), root.GetProperty("from").GetString());
+        Assert.AreEqual(Iso(Today.AddDays(14)), root.GetProperty("through").GetString());
+        JsonElement rhythm = root.GetProperty("rhythm");
+        Assert.AreEqual("Cycle", rhythm.GetProperty("mode").GetString());
+        Assert.AreEqual(3, rhythm.GetProperty("todayCycleSlot").GetInt32());
+        JsonElement[] slots = rhythm.GetProperty("slots").EnumerateArray().ToArray();
+        Assert.HasCount(6, slots);
+        Assert.AreEqual("Push Eigen", slots[0].GetProperty("planName").GetString());
+        Assert.IsFalse(slots[1].TryGetProperty("planId", out _));
+        Assert.IsTrue(slots[4].GetProperty("planArchived").GetBoolean());
+        Assert.IsFalse(slots[5].GetProperty("planArchived").GetBoolean());
+
+        JsonElement[] days = root.GetProperty("days").EnumerateArray().ToArray();
+        Assert.HasCount(15, days);
+        JsonElement today = days[0].GetProperty("trainings").EnumerateArray().Single();
+        Assert.AreEqual("Training", days[0].GetProperty("baseKind").GetString());
+        Assert.AreEqual(own.PushPlanId, today.GetProperty("planId").GetGuid());
+        Assert.AreEqual("Planned", today.GetProperty("status").GetString());
+        Assert.AreEqual("Rest", days[1].GetProperty("baseKind").GetString());
+        Assert.AreEqual(own.ArchivedPlanId, days[1].GetProperty("archivedPlanId").GetGuid());
+        Assert.IsTrue(days[1].GetProperty("isFree").GetBoolean());
+        Assert.AreEqual("Rest", days[1].GetProperty("automaticDayKind").GetString());
+        Assert.AreEqual(Iso(Today.AddDays(4)), days[2].GetProperty("trainings")[0].GetProperty("movedToDate").GetString());
+        Assert.AreEqual("Moved", days[2].GetProperty("trainings")[0].GetProperty("status").GetString());
+        Assert.IsTrue(days[2].GetProperty("isFree").GetBoolean());
+        JsonElement movedIn = days[4].GetProperty("trainings").EnumerateArray().Single();
+        Assert.AreEqual(own.PullPlanId, movedIn.GetProperty("planId").GetGuid());
+        Assert.AreEqual("Planned", movedIn.GetProperty("status").GetString());
+        Assert.AreEqual(Iso(Today.AddDays(2)), movedIn.GetProperty("movedInFrom").GetString());
+        Assert.AreEqual("Training", days[4].GetProperty("automaticDayKind").GetString());
+        Assert.DoesNotContain("Fremd", root.GetRawText());
+
+        foreach (int count in new[] { 0, 63 })
+        {
+            CallToolResult outOfRange = await CallAsync(mcp, "get_training_schedule", new() { ["days"] = count });
+            Assert.IsTrue(outOfRange.IsError, $"days={count}");
+        }
+    }
+
+    private async Task AssertPastScheduleAsync(McpClient mcp, StageFourSeed own, Guid doneWorkout, Guid foreignWorkout)
+    {
+        using JsonDocument past = await JsonAsync(mcp, "get_training_schedule", new()
+        {
+            ["from"] = Iso(Today.AddDays(-4)),
+            ["days"] = 4,
+        });
+        JsonElement[] days = past.RootElement.GetProperty("days").EnumerateArray().ToArray();
+        Assert.HasCount(4, days);
+        Assert.AreEqual("None", days[0].GetProperty("baseKind").GetString());
+        JsonElement done = days[1].GetProperty("trainings").EnumerateArray().Single();
+        Assert.AreEqual(own.PushPlanId, done.GetProperty("planId").GetGuid());
+        Assert.AreEqual("Done", done.GetProperty("status").GetString());
+        Assert.AreEqual(doneWorkout, done.GetProperty("completedByWorkoutIds").EnumerateArray().Single().GetGuid());
+        Assert.AreEqual(doneWorkout, days[1].GetProperty("finishedWorkoutIds").EnumerateArray().Single().GetGuid());
+        Assert.AreEqual("Missed", days[3].GetProperty("trainings")[0].GetProperty("status").GetString());
+        Assert.DoesNotContain(foreignWorkout.ToString(), past.RootElement.GetRawText());
+    }
+
+    private async Task AssertTrainingTodayAsync(McpClient mcp, StageFourSeed own)
+    {
+        using JsonDocument today = await JsonAsync(mcp, "get_training_today", []);
+        JsonElement root = today.RootElement;
+        Assert.AreEqual(Iso(Today), root.GetProperty("today").GetString());
+        Assert.IsTrue(root.GetProperty("hasSchedule").GetBoolean());
+        Assert.AreEqual("Planned", root.GetProperty("day").GetProperty("trainings")[0].GetProperty("status").GetString());
+        JsonElement next = root.GetProperty("nextPlanned");
+        Assert.AreEqual(own.PushPlanId, next.GetProperty("planId").GetGuid());
+        Assert.AreEqual(Iso(Today.AddDays(3)), next.GetProperty("date").GetString());
+        Assert.DoesNotContain("Fremd", root.GetRawText());
+    }
+
+    private async Task AssertDayTargetsAsync(McpClient mcp)
+    {
+        using JsonDocument nutrition = await JsonAsync(mcp, "get_nutrition_days", new()
+        {
+            ["from"] = Iso(Today.AddDays(-3)),
+            ["through"] = Iso(Today.AddDays(1)),
+        });
+        JsonElement[] days = nutrition.RootElement.GetProperty("days").EnumerateArray().ToArray();
+        Assert.HasCount(5, days);
+        // -3: Push done; -2: rest day chosen as training day; -1: Pull missed; today: Push planned; +1: rest day.
+        Assert.AreEqual("Training", days[0].GetProperty("automaticDayKind").GetString());
+        Assert.AreEqual(2000m, days[0].GetProperty("appliedTarget").GetProperty("kilocalories").GetDecimal());
+        JsonElement chosen = days[1].GetProperty("appliedTarget");
+        Assert.AreEqual("Rest", days[1].GetProperty("automaticDayKind").GetString());
+        Assert.AreEqual("Training", chosen.GetProperty("dayKind").GetString());
+        Assert.IsTrue(chosen.GetProperty("dayKindChosen").GetBoolean());
+        Assert.AreEqual(2000m, chosen.GetProperty("kilocalories").GetDecimal());
+        Assert.AreEqual("Training", days[2].GetProperty("automaticDayKind").GetString());
+        JsonElement rest = days[4].GetProperty("appliedTarget");
+        Assert.AreEqual("Rest", rest.GetProperty("dayKind").GetString());
+        Assert.IsFalse(rest.GetProperty("dayKindChosen").GetBoolean());
+        Assert.AreEqual(1800m, rest.GetProperty("kilocalories").GetDecimal());
+        Assert.AreEqual(140m, rest.GetProperty("proteinGrams").GetDecimal());
+    }
+
+    /// <summary>
+    /// Plans Push, Pull and an archived plan; from three days ago a cycle Push, rest, Pull, Push, archived plan, Pull
+    /// (today slot 3) with Pull moved from in two days to in four days; a nutrition target with rest-day values and a
+    /// nutrition day two days ago chosen as training day.
+    /// </summary>
+    private async Task<StageFourSeed> SeedStageFourAsync(Guid userId, string label)
+    {
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
+        DateTime now = DateTime.UtcNow;
+        var seed = new StageFourSeed(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        context.TrainingPlans.AddRange(
+            Plan(seed.PushPlanId, $"Push {label}", null, 0, archived: false, now),
+            Plan(seed.PullPlanId, $"Pull {label}", null, 1, archived: false, now),
+            Plan(seed.ArchivedPlanId, $"Alt {label}", null, 2, archived: true, now));
+        var schedule = new NutritionTargetSchedule { Id = Guid.NewGuid(), CreatedAtUtc = now, UpdatedAtUtc = now, Version = 1 };
+        schedule.Versions.Add(new NutritionTargetVersion
+        {
+            Id = Guid.NewGuid(),
+            NutritionTargetScheduleId = schedule.Id,
+            EffectiveFrom = Today.AddDays(-60),
+            Name = $"Ziel {label}",
+            Category = NutritionGoalCategory.Custom,
+            InputMode = NutritionTargetInputMode.Grams,
+            Kilocalories = 2000m,
+            ProteinGrams = 150m,
+            CarbohydrateGrams = 200m,
+            FatGrams = 70m,
+            RestInputMode = NutritionTargetInputMode.Grams,
+            RestKilocalories = 1800m,
+            RestProteinGrams = 140m,
+            RestCarbohydrateGrams = 150m,
+            RestFatGrams = 70m,
+            Origin = NutritionTargetOrigin.Manual,
+        });
+        context.NutritionTargetSchedules.Add(schedule);
+        context.NutritionDays.Add(NutritionDayWith(Today.AddDays(-2), 2100m, NutritionDayKind.Training, now));
+        await context.SaveChangesAsync(TestContext.CancellationToken);
+
+        var handler = new TrainingScheduleMutationHandler(context, new CurrentUser(userId), TimeProvider.System);
+        await handler.SaveAsync(
+            SaveTrainingScheduleMutation.Create(
+                MutationMetadata.Create(Guid.NewGuid(), Guid.NewGuid(), 1),
+                0,
+                new TrainingScheduleValues(
+                    Guid.NewGuid(),
+                    TrainingScheduleModes.Cycle,
+                    Today.AddDays(-3),
+                    Today.AddDays(-3),
+                    [
+                        new TrainingScheduleSlotValues(seed.PushPlanId),
+                        new TrainingScheduleSlotValues(null),
+                        new TrainingScheduleSlotValues(seed.PullPlanId),
+                        new TrainingScheduleSlotValues(seed.PushPlanId),
+                        new TrainingScheduleSlotValues(seed.ArchivedPlanId),
+                        new TrainingScheduleSlotValues(seed.PullPlanId),
+                    ],
+                    [],
+                    [new TrainingScheduleExceptionValues(Today.AddDays(2), seed.PullPlanId, Today.AddDays(4))])),
+            TestContext.CancellationToken);
+        return seed;
+    }
+
+    private static string Iso(DateOnly date) => date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+    private sealed record StageFourSeed(Guid PushPlanId, Guid PullPlanId, Guid ArchivedPlanId);
 
     [TestMethod]
     public async Task CodesAreSingleUseAndBoundToTheVerifier()

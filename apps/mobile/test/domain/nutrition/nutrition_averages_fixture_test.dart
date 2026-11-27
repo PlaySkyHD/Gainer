@@ -7,7 +7,7 @@ import '../../support/contract_fixture.dart';
 /// Die Ansicht „Durchschnitt“ rechnet wie der Server
 /// (`get_nutrition_averages`). Die Tagesart ist in der Fixture an jedem
 /// erfassten Tag unter einem Ruhetag-Ziel festgelegt; die automatische
-/// Tagesart aus dem Rhythmus gibt es nur in der App.
+/// Tagesart aus dem Rhythmus prüft `training_schedule_fixture_test.dart`.
 void main() {
   for (final testCase in loadFixtureCases('nutrition-averages.json')) {
     test('Fall ${testCase['name']}', () => _verify(testCase));

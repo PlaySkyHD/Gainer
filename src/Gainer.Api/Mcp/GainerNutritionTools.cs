@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Gainer.Core.Insights;
 using Gainer.Core.Nutrition;
+using Gainer.Core.Training;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -13,6 +14,7 @@ public sealed class GainerNutritionTools(
     ISmartNutritionQueries smartNutrition,
     IWaterIntakeQueries water,
     INutritionDayTemplateQueries dayTemplates,
+    ITrainingScheduleQueries schedules,
     TimeProvider timeProvider)
 {
     private const int MaximumNutritionDays = 31;
@@ -21,7 +23,12 @@ public sealed class GainerNutritionTools(
     [McpServerTool(Name = "get_nutrition_days", Title = "Ernährungstage", ReadOnly = true, Idempotent = true,
         OpenWorld = false, UseStructuredContent = true)]
     [Description("Logged nutrition per local day: every entry (meal, product, brand, grams, pieces, kcal and macros), " +
-        "the day totals, the day type (training or rest day, if set) and the nutrition target in effect that day. " +
+        "the day totals, the day type the user chose (DayKind: Training or Rest, if set), the nutrition target version " +
+        "in effect that day, the AutomaticDayKind from the training schedule (Training when a strength workout was " +
+        "finished that day or a workout of the rhythm is due, done, missed or moved in there; otherwise Rest, also " +
+        "without rhythm) and AppliedTarget, the kcal and macros that apply as in the app: the rest-day target when the " +
+        "version has one and the day counts as rest day (chosen DayKind, else AutomaticDayKind), otherwise the " +
+        "version's target; AppliedTarget.DayKind is omitted when the version has no rest-day target. " +
         "Days without entries have empty entries and zero totals. Defaults to today; at most 31 days.")]
     public async Task<NutritionDaysResult> GetNutritionDays(
         [Description("First local day (YYYY-MM-DD); default through.")] DateOnly? from = null,
@@ -33,17 +40,22 @@ public sealed class GainerNutritionTools(
             .ToDictionary(day => day.LocalDate);
         IReadOnlyList<NutritionTargetVersionDraft> versions =
             (await smartNutrition.GetNutritionTargetScheduleAsync(cancellationToken))?.Versions ?? [];
+        TrainingScheduleProjection projection = await schedules.ProjectionAsync(
+            start, end, McpDates.Today(timeProvider), McpDates.TimeZone, cancellationToken);
         var days = new List<NutritionDayResult>();
         for (DateOnly day = start; day <= end; day = day.AddDays(1))
         {
             NutritionDaySnapshot? log = logged.GetValueOrDefault(day);
             NutritionTargetVersionDraft? target = EffectiveOn(versions, day);
+            NutritionDayKind automatic = projection.AutomaticDayKind(day);
             days.Add(new NutritionDayResult(
                 day,
                 log?.DayKind,
                 log?.Totals ?? NutritionTotals.Empty,
                 (log?.Entries ?? []).Select(Entry).ToList(),
-                target is null ? null : Target(target)));
+                target is null ? null : Target(target),
+                automatic,
+                target is null ? null : AppliedTarget(target, log?.DayKind, automatic)));
         }
 
         return new NutritionDaysResult(days);
@@ -57,9 +69,9 @@ public sealed class GainerNutritionTools(
         "grams (each over the logged days that have a value), how many logged days were within ±10 % of that day's " +
         "kcal target (inclusive) out of the logged days with a target, the average target, and the kcal per day " +
         "(omitted for days without entries). The target of a day is the target version in effect; its rest-day " +
-        "target applies only when the day is explicitly set as rest day. Unlike the app, days without a chosen day " +
-        "type always use the training-day target, because the automatic day type from the training schedule is " +
-        "only computed on the phone.")]
+        "target applies when the day counts as rest day: the day type the user chose, otherwise the AutomaticDayKind " +
+        "of get_training_schedule (Training when a strength workout was finished that day or a workout of the rhythm " +
+        "is due, done, missed or moved in there; otherwise Rest), as in the app.")]
     public async Task<NutritionAveragesResult> GetNutritionAverages(
         [Description("Window length in days: 7 or 30.")] int days = 7,
         CancellationToken cancellationToken = default)
@@ -70,6 +82,8 @@ public sealed class GainerNutritionTools(
         }
 
         DateOnly today = McpDates.Today(timeProvider);
+        TrainingScheduleProjection projection = await schedules.ProjectionAsync(
+            today.AddDays(-days), today, today, McpDates.TimeZone, cancellationToken);
         NutritionAverageDayInput[] logged = (await nutrition.GetDaysAsync(today.AddDays(-days), today, cancellationToken))
             .Select(day => new NutritionAverageDayInput(day.LocalDate, day.Entries.Count > 0 ? day.Totals : null, day.DayKind))
             .ToArray();
@@ -78,7 +92,7 @@ public sealed class GainerNutritionTools(
             .Select(version => new NutritionAverageTargetInput(
                 version.EffectiveFrom, version.EffectiveUntil, version.Kilocalories, version.RestDay?.Kilocalories))
             .ToArray();
-        NutritionAveragesSnapshot averages = NutritionAverages.Compute(logged, targets, today, days);
+        NutritionAveragesSnapshot averages = NutritionAverages.Compute(logged, targets, today, days, projection.AutomaticDayKind);
         return new NutritionAveragesResult(
             averages.WindowDays,
             averages.From,
@@ -104,7 +118,7 @@ public sealed class GainerNutritionTools(
         OpenWorld = false, UseStructuredContent = true)]
     [Description("All versions of the nutrition target schedule, oldest first: kcal, protein, carbohydrates and fat " +
         "in grams (and percent when entered so), fiber, salt, the separate rest-day target and the dates each version " +
-        "applies.")]
+        "applies. Which of the two targets applies on a day is in get_nutrition_days (AppliedTarget).")]
     public async Task<NutritionTargetsResult> GetNutritionTargets(CancellationToken cancellationToken = default) =>
         new(((await smartNutrition.GetNutritionTargetScheduleAsync(cancellationToken))?.Versions ?? [])
             .OrderBy(version => version.EffectiveFrom)
@@ -166,6 +180,23 @@ public sealed class GainerNutritionTools(
             .OrderByDescending(version => version.EffectiveFrom)
             .FirstOrDefault();
 
+    /// <summary>The target of a day as in the app: rest-day values when the version has them and the day counts as rest day.</summary>
+    private static AppliedTargetResult AppliedTarget(
+        NutritionTargetVersionDraft target,
+        NutritionDayKind? chosen,
+        NutritionDayKind automatic)
+    {
+        if (target.RestDay is not { } rest)
+        {
+            return new AppliedTargetResult(null, false, target.Kilocalories, target.ProteinGrams, target.CarbohydrateGrams, target.FatGrams);
+        }
+
+        NutritionDayKind kind = chosen ?? automatic;
+        return kind == NutritionDayKind.Rest
+            ? new AppliedTargetResult(kind, chosen is not null, rest.Kilocalories, rest.ProteinGrams, rest.CarbohydrateGrams, rest.FatGrams)
+            : new AppliedTargetResult(kind, chosen is not null, target.Kilocalories, target.ProteinGrams, target.CarbohydrateGrams, target.FatGrams);
+    }
+
     private static decimal? Round(decimal? value) => TrainingStatistics.RoundForOutput(value);
 
     private static NutritionEntryResult Entry(NutritionEntrySnapshot entry) => new(
@@ -199,7 +230,18 @@ public sealed record NutritionDayResult(
     NutritionDayKind? DayKind,
     NutritionTotals Totals,
     IReadOnlyList<NutritionEntryResult> Entries,
-    NutritionTargetResult? Target);
+    NutritionTargetResult? Target,
+    NutritionDayKind AutomaticDayKind,
+    AppliedTargetResult? AppliedTarget);
+
+/// <summary>Kcal and macros that apply on a day; <paramref name="DayKind"/> is null when the version has no rest-day target.</summary>
+public sealed record AppliedTargetResult(
+    NutritionDayKind? DayKind,
+    bool DayKindChosen,
+    decimal Kilocalories,
+    decimal ProteinGrams,
+    decimal CarbohydrateGrams,
+    decimal FatGrams);
 
 public sealed record NutritionEntryResult(
     MealType Meal,

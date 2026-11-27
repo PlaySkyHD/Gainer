@@ -72,6 +72,7 @@ public static class GainerPersistenceExtensions
         builder.Services.AddScoped<IInsightQueries, InsightQueries>();
         builder.Services.AddScoped<IWorkoutSummaryQueries, InsightQueries>();
         builder.Services.AddScoped<ITrainingAnalysisQueries, TrainingAnalysisQueries>();
+        builder.Services.AddScoped<ITrainingScheduleQueries, TrainingScheduleQueries>();
         builder.Services.Configure<OpenAiProviderOptions>(builder.Configuration.GetSection(OpenAiProviderOptions.SectionName));
         builder.Services.AddHttpClient<IOpenAiResponsesProvider, OpenAiResponsesProvider>(client =>
             client.BaseAddress = new Uri(OpenAiBaseAddress))

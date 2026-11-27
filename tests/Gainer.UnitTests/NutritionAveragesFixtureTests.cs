@@ -15,6 +15,9 @@ public sealed class NutritionAveragesFixtureTests
         "averageFiberGrams", "averageSaltGrams", "averageTargetKilocalories",
     ];
 
+    private static readonly decimal?[] AutomaticTargets = [1800m, 2000m, 2000m];
+    private static readonly decimal?[] RestWithoutScheduleTargets = [1800m, 1800m, 2000m];
+
     public static IEnumerable<object[]> Names => CaseNames(FileName);
 
     [TestMethod]
@@ -69,6 +72,27 @@ public sealed class NutritionAveragesFixtureTests
     [TestMethod]
     public void WindowNeedsAtLeastOneDay() =>
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => NutritionAverages.Compute([], [], new DateOnly(2026, 10, 19), 0));
+
+    [TestMethod]
+    public void DayWithoutChosenKindTakesTheAutomaticKind()
+    {
+        var today = new DateOnly(2026, 10, 19);
+        var totals = new NutritionTotals(2000m, null, null, null, null, null);
+        NutritionAverageDayInput[] days =
+        [
+            new(today.AddDays(-2), totals, null),
+            new(today.AddDays(-1), totals, null),
+            new(today, totals, NutritionDayKind.Training),
+        ];
+        NutritionAverageTargetInput[] targets = [new(today.AddDays(-30), null, 2000m, 1800m)];
+
+        NutritionAveragesSnapshot automatic = NutritionAverages.Compute(
+            days, targets, today, 3, date => date == today.AddDays(-1) ? NutritionDayKind.Training : NutritionDayKind.Rest);
+        NutritionAveragesSnapshot withoutSchedule = NutritionAverages.Compute(days, targets, today, 3);
+
+        Assert.AreSequenceEqual(AutomaticTargets, automatic.Days.Select(day => day.TargetKilocalories).ToArray());
+        Assert.AreSequenceEqual(RestWithoutScheduleTargets, withoutSchedule.Days.Select(day => day.TargetKilocalories).ToArray());
+    }
 
     private static NutritionAverageDayInput ToDay(JsonElement day)
     {
