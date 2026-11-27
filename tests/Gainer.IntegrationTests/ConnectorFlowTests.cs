@@ -36,6 +36,10 @@ public sealed class ConnectorFlowTests
     private static readonly DateTime Started = DateTime.UtcNow.Date.AddDays(-1).AddHours(7);
     private static readonly DateOnly Today = DateOnly.FromDateTime(
         TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Gainer.Core.Insights.LocalDays.Default));
+    private static readonly string[] ExpectedPlanNames = ["Plan Eigen", "Altplan Eigen"];
+    private static readonly int[] ExpectedHeartRate = [0, 120, 130, 140];
+    private static readonly int[] ExpectedRrIntervals = [500, 510];
+    private static readonly int[] ExpectedWater = [2000, 1500];
     private static readonly string[] ExpectedTools =
     [
         "get_overview", "list_workouts", "get_workout", "search_exercises", "get_exercise_progress",
@@ -312,7 +316,7 @@ public sealed class ConnectorFlowTests
         {
             string[] names = all.RootElement.GetProperty("plans").EnumerateArray()
                 .Select(plan => plan.GetProperty("name").GetString()!).ToArray();
-            Assert.AreSequenceEqual(new[] { "Plan Eigen", "Altplan Eigen" }, names);
+            Assert.AreSequenceEqual(ExpectedPlanNames, names);
         }
 
         using (JsonDocument archived = await JsonAsync(mcp, "get_training_plan", new() { ["planId"] = own.ArchivedPlanId }))
@@ -371,9 +375,9 @@ public sealed class ConnectorFlowTests
                 .Select(item => (item.GetProperty("exerciseId").GetGuid(), item.GetProperty("kind").GetString()!,
                     item.GetProperty("value").GetDecimal()))
                 .ToArray();
-            CollectionAssert.Contains(records, (baseExercise, "MaxWeight", 105m));
-            CollectionAssert.Contains(records, (baseExercise, "Volume", 825m));
-            CollectionAssert.DoesNotContain(records, (baseExercise, "MaxRepetitions", 5m));
+            Assert.Contains((baseExercise, "MaxWeight", 105m), records);
+            Assert.Contains((baseExercise, "Volume", 825m), records);
+            Assert.DoesNotContain((baseExercise, "MaxRepetitions", 5m), records);
             Assert.HasCount(4, records.Where(item => item.ExerciseId == customExercise).ToArray());
         }
 
@@ -425,8 +429,8 @@ public sealed class ConnectorFlowTests
         using (JsonDocument detail = await JsonAsync(mcp, "get_cardio_session", new() { ["sessionId"] = own.CardioSessionId }))
         {
             JsonElement root = detail.RootElement;
-            Assert.AreSequenceEqual(new[] { 0, 120, 130, 140 }, root.GetProperty("heartRateBpm").EnumerateArray().Select(item => item.GetInt32()).ToArray());
-            Assert.AreSequenceEqual(new[] { 500, 510 }, root.GetProperty("rrIntervalsMs").EnumerateArray().Select(item => item.GetInt32()).ToArray());
+            Assert.AreSequenceEqual(ExpectedHeartRate, root.GetProperty("heartRateBpm").EnumerateArray().Select(item => item.GetInt32()).ToArray());
+            Assert.AreSequenceEqual(ExpectedRrIntervals, root.GetProperty("rrIntervalsMs").EnumerateArray().Select(item => item.GetInt32()).ToArray());
             Assert.AreEqual(5, root.GetProperty("sampleIntervalSeconds").GetInt32());
             Assert.AreEqual(110, root.GetProperty("targetZone").GetProperty("lowBpm").GetInt32());
             Assert.AreEqual("Warm-up", root.GetProperty("phases")[0].GetProperty("name").GetString());
@@ -456,7 +460,7 @@ public sealed class ConnectorFlowTests
             Assert.AreSequenceEqual(
                 new[] { Today.AddDays(-3).ToString("yyyy-MM-dd"), Today.ToString("yyyy-MM-dd") },
                 days.Select(item => item.GetProperty("date").GetString()!).ToArray());
-            Assert.AreSequenceEqual(new[] { 2000, 1500 }, days.Select(item => item.GetProperty("milliliters").GetInt32()).ToArray());
+            Assert.AreSequenceEqual(ExpectedWater, days.Select(item => item.GetProperty("milliliters").GetInt32()).ToArray());
         }
 
         using (JsonDocument today = await JsonAsync(mcp, "get_water", []))
@@ -488,10 +492,10 @@ public sealed class ConnectorFlowTests
             Assert.AreEqual(own.CategoryId, exercise.GetProperty("categoryIds")[0].GetGuid());
             Guid[] categories = incomplete.RootElement.GetProperty("categories").EnumerateArray()
                 .Select(item => item.GetProperty("categoryId").GetGuid()).ToArray();
-            CollectionAssert.Contains(categories, own.CategoryId);
-            CollectionAssert.DoesNotContain(categories, foreign.CategoryId);
-            Assert.IsTrue(incomplete.RootElement.GetProperty("categories").EnumerateArray()
-                .Any(item => item.GetProperty("isBase").GetBoolean()));
+            Assert.Contains(own.CategoryId, categories);
+            Assert.DoesNotContain(foreign.CategoryId, categories);
+            Assert.Contains(true, incomplete.RootElement.GetProperty("categories").EnumerateArray()
+                .Select(item => item.GetProperty("isBase").GetBoolean()));
         }
 
         using (JsonDocument inCategory = await JsonAsync(mcp, "search_exercises", new() { ["categoryId"] = own.CategoryId }))

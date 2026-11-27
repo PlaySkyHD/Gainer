@@ -189,7 +189,7 @@ public sealed class InsightQueries(AppDbContext context, IUserContext userContex
             workout.Id,
             workout.Title,
             workout.StartedAtUtc,
-            workout.EndedAtUtc!.Value,
+            workout.EndedAtUtc.Value,
             summary,
             counts,
             blocks
