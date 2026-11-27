@@ -21,6 +21,7 @@
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="11.0.1" />
     <PackageVersion Include="MessagePack" Version="2.5.307" />
     <PackageVersion Include="MSTest" Version="4.5.3" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.4.0" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.4" />
     <PackageVersion Include="Npgsql" Version="10.0.4" />
     <PackageVersion Include="OpenAI" Version="2.15.0" />

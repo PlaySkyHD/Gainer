@@ -22,7 +22,7 @@ public sealed class DeviceSignIn(IDeviceSessionService deviceSessions, AccessTok
     /// <summary>Issues the token pair for an existing, just rotated session.</summary>
     public async Task<TokenResponse> TokensAsync(AppUser user, IssuedDeviceSession session)
     {
-        string accessToken = await accessTokens.IssueAsync(user, session.SessionId);
+        string accessToken = await accessTokens.IssueAsync(user, session.SessionId, session.Kind);
         return new TokenResponse(accessToken, accessTokens.LifetimeSeconds, session.RefreshToken, session.ExpiresAt);
     }
 }

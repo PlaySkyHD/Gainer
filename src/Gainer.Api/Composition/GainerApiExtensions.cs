@@ -91,7 +91,9 @@ public static class GainerApiExtensions
             options.AddPolicy(
                 ApiConstants.TokenRefreshRateLimitPolicy,
                 context => PerClientWindow(context, ApiConstants.TokenRefreshRateLimitPolicy, permitLimit: 60));
+            GainerConnectorExtensions.AddMcpRateLimit(options);
         });
+        builder.Services.AddGainerConnectors();
         builder.Services.AddScoped<IUserContext, HttpUserContext>();
         // Also registered by the persistence module; the API needs them for the user context and the worker.
         builder.Services.TryAddScoped<BackgroundUserScope>();
@@ -126,12 +128,14 @@ public static class GainerApiExtensions
                     title: ProblemDetailsConfiguration.GetTitle(httpContext.Response.StatusCode))
                 .ExecuteAsync(httpContext);
         });
+        app.UseMcpChallenge();
         app.UseMiddleware<RequestSizeLimitMiddleware>();
         app.UseAuthentication();
         app.UseMiddleware<DeviceSessionValidationMiddleware>();
         app.UseRateLimiter();
         app.UseAuthorization();
         app.MapControllers();
+        app.MapGainerMcp();
 
         return app;
     }

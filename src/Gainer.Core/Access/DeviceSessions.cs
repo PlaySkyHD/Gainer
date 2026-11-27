@@ -1,7 +1,29 @@
 namespace Gainer.Core.Access;
 
+/// <summary>What a session belongs to: an installation of the app or an external AI assistant.</summary>
+public enum DeviceSessionKind
+{
+    /// <summary>A signed-in installation of the mobile app.</summary>
+    App = 0,
+
+    /// <summary>An external assistant connected through OAuth; its tokens open only the MCP endpoint.</summary>
+    Connector = 1,
+}
+
 /// <summary>A device session and the refresh token issued for it. The token is returned only once.</summary>
-public sealed record IssuedDeviceSession(Guid SessionId, Guid UserId, string RefreshToken, DateTimeOffset ExpiresAt);
+public sealed record IssuedDeviceSession(
+    Guid SessionId,
+    Guid UserId,
+    string RefreshToken,
+    DateTimeOffset ExpiresAt,
+    DeviceSessionKind Kind = DeviceSessionKind.App);
+
+/// <summary>An active connected assistant as shown in the account settings.</summary>
+public sealed record ConnectorSessionSummary(
+    Guid SessionId,
+    string Name,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset LastUsedAt);
 
 /// <summary>Possible outcomes of a refresh attempt.</summary>
 public enum DeviceSessionRefreshStatus
@@ -26,6 +48,23 @@ public interface IDeviceSessionService
     Task<IssuedDeviceSession> CreateAsync(
         Guid userId,
         string deviceName,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Starts a session for an external assistant the account owner just approved.</summary>
+    Task<IssuedDeviceSession> CreateConnectorAsync(
+        Guid userId,
+        string clientName,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Lists the active connector sessions of the account, newest first.</summary>
+    Task<IReadOnlyList<ConnectorSessionSummary>> ListConnectorsAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Revokes one connector session of the account; false when there is no such active session.</summary>
+    Task<bool> RevokeConnectorAsync(
+        Guid sessionId,
+        Guid userId,
         CancellationToken cancellationToken = default);
 
     /// <summary>Exchanges a refresh token for a new one and extends the session.</summary>

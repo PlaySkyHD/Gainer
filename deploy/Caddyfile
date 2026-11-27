@@ -16,13 +16,22 @@
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
         Referrer-Policy no-referrer
-        Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+        # Default only: the consent page sends its own, narrower policy for its script and style.
+        ?Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
     }
 
     # Lets iOS bind passkeys of the app to this domain (webcredentials).
     handle /.well-known/apple-app-site-association {
         header Content-Type application/json
         respond `{"webcredentials":{"apps":["{$GAINER_APPLE_APP_ID:Q7GTYQ282F.xyz.markfort.gainer}"]}}` 200
+    }
+
+    # OAuth discovery for connected assistants (RFC 8414, RFC 9728) lives at the root of the issuer.
+    handle /.well-known/oauth-* {
+        reverse_proxy api:8080 {
+            header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+            header_up X-Forwarded-Host {http.request.header.X-Forwarded-Host}
+        }
     }
 
     handle /api/v1/* {
