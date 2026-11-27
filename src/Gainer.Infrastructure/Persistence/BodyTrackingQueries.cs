@@ -45,6 +45,25 @@ public sealed class BodyTrackingQueries(AppDbContext context) : IBodyTrackingQue
             .Select(item => BodyTrackingSnapshots.CheckIn(item))
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<DailyCheckInSnapshot>> GetCheckInsBetweenAsync(
+        DateOnly from,
+        DateOnly through,
+        CancellationToken cancellationToken = default)
+    {
+        if (through < from)
+        {
+            throw new ArgumentOutOfRangeException(nameof(through));
+        }
+
+        return await context.DailyCheckIns
+            .AsNoTracking()
+            .Where(item => item.LocalDate >= from && item.LocalDate <= through)
+            .OrderBy(item => item.LocalDate)
+            .ThenBy(item => item.Id)
+            .Select(item => BodyTrackingSnapshots.CheckIn(item))
+            .ToListAsync(cancellationToken);
+    }
 }
 
 internal static class BodyTrackingSnapshots

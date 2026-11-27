@@ -31,7 +31,11 @@ public sealed class ConnectorFlowTests
     private const string Password = "Correct-horse-42!";
     private static readonly DateTime Started = new(2026, 11, 20, 17, 0, 0, DateTimeKind.Utc);
     private static readonly string[] ExpectedTools =
-        ["get_overview", "list_workouts", "get_workout", "search_exercises", "get_exercise_progress"];
+    [
+        "get_overview", "list_workouts", "get_workout", "search_exercises", "get_exercise_progress",
+        "get_body_goals", "list_check_ins", "get_nutrition_days", "get_nutrition_targets", "list_saved_meals",
+        "list_coach_notes", "get_strava_status",
+    ];
     private static PostgreSqlTestFixture? fixture;
     private readonly List<string> keyRingPaths = [];
     private string connectionString = string.Empty;
@@ -73,6 +77,8 @@ public sealed class ConnectorFlowTests
         Guid other = await CreateUserAsync(app, "other@example.test");
         Guid ownWorkout = await SeedWorkoutAsync(owner, "Push");
         Guid foreignWorkout = await SeedWorkoutAsync(other, "Fremd");
+        await SeedCheckInAsync(owner, new DateOnly(2026, 11, 19), 81.5m);
+        await SeedCheckInAsync(other, new DateOnly(2026, 11, 20), 99m);
         using var authenticator = new SoftwarePasskeyAuthenticator();
         using HttpClient appClient = CreateClient(app);
         await appClient.AuthenticateAsync("owner@example.test", Password);
@@ -112,6 +118,38 @@ public sealed class ConnectorFlowTests
             Assert.IsFalse(progress.IsError ?? false);
             CallToolResult unknownExercise = await CallAsync(mcp, "get_exercise_progress", new() { ["exerciseId"] = Guid.NewGuid() });
             Assert.IsTrue(unknownExercise.IsError);
+
+            // Body, nutrition and account data of the owner only.
+            CallToolResult checkIns = await CallAsync(mcp, "list_check_ins", new()
+            {
+                ["from"] = "2026-11-01",
+                ["through"] = "2026-11-30",
+            });
+            Assert.IsFalse(checkIns.IsError ?? false);
+            using (JsonDocument document = JsonDocument.Parse(Text(checkIns)))
+            {
+                JsonElement single = document.RootElement.GetProperty("checkIns").EnumerateArray().Single();
+                Assert.AreEqual("2026-11-19", single.GetProperty("date").GetString());
+                Assert.AreEqual(81.5m, single.GetProperty("weightKg").GetDecimal());
+                Assert.AreEqual(52, single.GetProperty("restingHrvMs").GetInt32());
+            }
+
+            foreach (string tool in new[]
+            {
+                "get_body_goals", "get_nutrition_days", "get_nutrition_targets", "list_saved_meals",
+                "list_coach_notes", "get_strava_status",
+            })
+            {
+                CallToolResult result = await CallAsync(mcp, tool, []);
+                Assert.IsFalse(result.IsError ?? false, tool);
+            }
+
+            CallToolResult tooLong = await CallAsync(mcp, "get_nutrition_days", new()
+            {
+                ["from"] = "2026-01-01",
+                ["through"] = "2026-03-01",
+            });
+            Assert.IsTrue(tooLong.IsError);
 
             // Out-of-range arguments are reported as tool errors.
             foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
@@ -346,6 +384,23 @@ public sealed class ConnectorFlowTests
                 new WorkoutValues(workoutId, title, null, Started, Started.AddHours(1), "exercise", null, null, [])),
             TestContext.CancellationToken);
         return workoutId;
+    }
+
+    private async Task SeedCheckInAsync(Guid userId, DateOnly date, decimal weightKg)
+    {
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
+        context.DailyCheckIns.Add(new Gainer.Core.BodyTracking.DailyCheckIn
+        {
+            Id = Guid.NewGuid(),
+            LocalDate = date,
+            WeightKg = weightKg,
+            Steps = 9000,
+            RestingHrvMs = 52,
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow,
+            Version = 1,
+        });
+        await context.SaveChangesAsync(TestContext.CancellationToken);
     }
 
     private async Task<WebApplication> CreateApplicationAsync()
