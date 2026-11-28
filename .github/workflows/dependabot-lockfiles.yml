@@ -1,0 +1,69 @@
+name: Dependabot lock files
+
+# Dependabot updates packages.lock.json only in projects that reference the bumped package
+# directly. Projects that get it transitively (Migrator, tests) keep stale lock files and CI
+# fails. This workflow regenerates all lock files on Dependabot's NuGet PRs and pushes them.
+#
+# It pushes with the Dependabot secret DEPENDABOT_LOCKFILE_TOKEN (fine-grained PAT, this repo
+# only, Contents: read and write). A push with GITHUB_TOKEN would not start CI and Sonar again.
+# The push comes from the token owner, so the follow-up run does not match the condition below.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-lockfiles-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  update:
+    name: Regenerate lock files
+    if: >-
+      github.actor == 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && startsWith(github.head_ref, 'dependabot/nuget/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Require push token
+        env:
+          LOCKFILE_TOKEN: ${{ secrets.DEPENDABOT_LOCKFILE_TOKEN }}
+        run: |
+          if [ -z "$LOCKFILE_TOKEN" ]; then
+            echo '::error::Dependabot secret DEPENDABOT_LOCKFILE_TOKEN is missing; see the header of this workflow.'
+            exit 1
+          fi
+
+      - name: Check out PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.DEPENDABOT_LOCKFILE_TOKEN }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - name: Install Aspire CLI
+        run: dotnet tool install --global Aspire.Cli --version 17.0.0
+
+      - name: Regenerate lock files
+        run: dotnet restore Gainer.slnx --force-evaluate
+
+      - name: Commit and push changed lock files
+        run: |
+          if [ -z "$(git status --porcelain -- '**/packages.lock.json')" ]; then
+            echo 'Lock files are current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '**/packages.lock.json'
+          git commit -m 'build(deps): Lock-Dateien nach Dependabot-Update aktualisiert'
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
