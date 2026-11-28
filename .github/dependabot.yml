@@ -14,11 +14,18 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "dotnet/aspnet"
         update-types: ["version-update:semver-major"]
+      # Ein Postgres-Major braucht eine Datenmigration (pg_upgrade oder Dump/Restore),
+      # und Backup-Image und Server müssen zusammen wechseln.
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker-compose
     directory: /deploy
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: nuget
     directory: /
