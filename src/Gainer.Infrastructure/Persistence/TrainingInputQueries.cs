@@ -29,23 +29,23 @@ internal static class TrainingInputQueries
         if (exerciseIds is not null) blockQuery = blockQuery.Where(item => exerciseIds.Contains(item.SourceExerciseId));
         var blocks = await blockQuery
             .OrderBy(item => item.Position)
-            .Select(item => new { item.Id, item.WorkoutId, item.SourceExerciseId, item.ExerciseTypeSnapshot })
+            .Select(item => new { item.Id, item.WorkoutId, item.SourceExerciseId, item.ExerciseNameSnapshot, item.ExerciseTypeSnapshot })
             .ToListAsync(cancellationToken);
 
         Guid[] blockIds = blocks.Select(item => item.Id).ToArray();
         var sets = await context.WorkoutSets.AsNoTracking()
             .Where(item => blockIds.Contains(item.WorkoutExerciseId))
             .OrderBy(item => item.Position)
-            .Select(item => new { item.WorkoutExerciseId, item.SetType, item.WeightKg, item.Repetitions })
+            .Select(item => new { item.WorkoutExerciseId, item.SetType, item.WeightKg, item.Repetitions, item.Rir })
             .ToListAsync(cancellationToken);
 
         ILookup<Guid, TrainingSetInput> setsByBlock = sets.ToLookup(
             item => item.WorkoutExerciseId,
-            item => new TrainingSetInput(item.SetType, item.WeightKg, item.Repetitions));
+            item => new TrainingSetInput(item.SetType, item.WeightKg, item.Repetitions, item.Rir));
         ILookup<Guid, TrainingBlockInput> blocksByWorkout = blocks.ToLookup(
             item => item.WorkoutId,
             item => new TrainingBlockInput(item.Id, item.SourceExerciseId, item.ExerciseTypeSnapshot,
-                setsByBlock[item.Id].ToArray()));
+                setsByBlock[item.Id].ToArray(), item.ExerciseNameSnapshot));
         return workouts.Select(item => new TrainingWorkoutInput(
             item.Id,
             item.StartedAtUtc,

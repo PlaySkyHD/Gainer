@@ -1,0 +1,2332 @@
+{
+  "rules": [
+    "Eingabe: beendete, nicht gelöschte Trainings, deren lokaler Starttag (startedAtUtc in timeZone) im Zeitraum liegt. Zeitraum wie training-trends.json: fourWeeks ab Montag der Woche von today minus 3 Wochen, threeMonths minus 12 Wochen, year ab dem Monatsersten 11 Monate vor dem Monat von today; bis today. all ist nicht erlaubt.",
+    "Arbeitssätze: alle Sätze außer Aufwärmsätzen, die nach training-statistics.json erfasst sind (Kraft und assistiert mit Gewicht und mindestens 1 Wdh., sonst mindestens 1 Wdh.). Effektives Gewicht, Körpergewicht aus Check-ins, Volumen = effektives Gewicht × Wdh. und 1RM nach Epley wie training-statistics.json.",
+    "Einheit (session): ein Training mit mindestens einem Arbeitssatz der Übung; mehrere Blöcke derselben Übung zählen zusammen. Chronologisch nach startedAtUtc, dann workoutId. Name und Typ aus dem letzten Block der Übung im Zeitraum. Übungen mit Blöcken, aber ohne Arbeitssatz erscheinen mit 0 Einheiten.",
+    "Je Einheit: estimatedOneRepMaxKg = höchstes 1RM eines Arbeitssatzes; topWeightKg = höchstes effektives Gewicht; Topsätze = Arbeitssätze mit diesem Gewicht (auf Cent gerundet verglichen); topSetMin/MaxRepetitions = kleinste/größte Wdh. der Topsätze; das eingetragene Gewicht der Topsätze (größtes) ist die Grundlage der Gewichtsvorschläge.",
+    "Trends: k = max(1, Einheiten / 3) ganzzahlig. First = Mittel der ersten k, Last = Mittel der letzten k Einheiten; ab 2 Einheiten, sonst null. Änderung in % = (Last − First) / First × 100, null bei First 0. topRepetitionsChange = Last − First der größten Topsatz-Wdh. volumePerWeekKg und workingSetsPerWeek = Summe / (Tage von start bis today inklusive / 7).",
+    "Status: insufficientData unter 3 Einheiten oder ohne 1RM-Änderung; regressing bei Änderung ≤ −2,5 %; progressing bei Änderung ≥ +2,5 % und weniger als 3 Einheiten seit dem Bestwert; sonst stagnating. sessionsSinceBest = Einheiten nach der ersten Einheit mit dem höchsten 1RM des Zeitraums.",
+    "Ermüdung: decliningRepetitions, wenn in den letzten 3 Einheiten das Topgewicht nicht steigt und die größte Topsatz-Wdh. zweimal sinkt; failureOnMostSets, wenn in den letzten 2 Einheiten je mindestens 2 Arbeitssätze ein RIR haben und mehr als die Hälfte davon RIR 0; volumeAndStrengthDrop ab 3 Einheiten, wenn die letzte gegenüber dem Mittel der bis zu 3 Einheiten davor mindestens 20 % Volumen und 5 % 1RM verliert.",
+    "Empfehlung (letzte Einheit): ohne Einheit noRecommendation. Ermüdungssignal oder regressing: deload mit 90 % des eingetragenen Gewichts, auf die Stufe abgerundet. stagnating mit mindestens 4 Einheiten seit dem Bestwert: changeStimulus. Sonst doppelte Progression im Bereich nach der größten Topsatz-Wdh.: bis 5 → 3–5, bis 12 → 6–12, darüber 13–20. Erreichen alle Topsätze das obere Ende: increaseWeight um die Stufe mit dem unteren Ende als Wdh. (Kraft, Körpergewicht mit Zusatzgewicht), bei Körpergewicht ohne Zusatz und assistiert changeStimulus mit Bereich. Liegt ein Topsatz unter dem unteren Ende: keepWeight mit dem unteren Ende. Sonst increaseReps auf kleinste Topsatz-Wdh. + 1.",
+    "Stufe (weightStepKg, nur Kraft und Körpergewicht mit Zusatzgewicht): kleinster positiver Abstand der eingetragenen Gewichte aller Arbeitssätze der Übung im Zeitraum, höchstens 2,5 kg; ohne Abstand 2,5 kg. Gewichte werden in Cent gerechnet.",
+    "Gesamt: 7-Tage-Abschnitte ab start (der letzte enthält today; complete, wenn er vor oder mit today endet) mit Volumen und Arbeitssätzen aller Übungen. weeklyVolumeChangePercent wie Trends über die vollständigen Abschnitte. eligibleExercises = Übungen mit mindestens 3 Einheiten; fatigued, wenn mindestens eine Übung ein Signal hat und diese mindestens ein Drittel der eligibleExercises sind.",
+    "Reihenfolge: letzte Einheit zuerst, Übungen ohne Einheit am Ende, dann Name (ordinal). Zahlen werden auf 2 Nachkommastellen (Hälfte aufrunden) verglichen; null muss null sein. text ist der deutsche Begründungstext der Empfehlung und muss exakt gleich sein."
+  ],
+  "cases": [
+    {
+      "name": "fortschritt-mehr-gewicht",
+      "description": "Bankdrücken steigt über sechs Trainings, alle Sätze am oberen Ende: Gewicht erhöhen. Aufwärmsätze, gelöschte, laufende und Trainings vor dem Zeitraum zählen nicht; Curls nur mit Aufwärm- und unvollständigem Satz.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-11-25",
+      "period": "threeMonths",
+      "exercises": [
+        {
+          "id": "bench",
+          "exerciseType": "strength"
+        },
+        {
+          "id": "curl",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "w0",
+          "title": "w0",
+          "startedAtUtc": "2026-08-24T17:00:00Z",
+          "endedAtUtc": "2026-08-24T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w0-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "w0-bench-0",
+                  "setType": "normal",
+                  "weightKg": 70,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "w0-bench-1",
+                  "setType": "normal",
+                  "weightKg": 70,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "w0-bench-2",
+                  "setType": "normal",
+                  "weightKg": 70,
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w1",
+          "title": "w1",
+          "startedAtUtc": "2026-09-01T17:00:00Z",
+          "endedAtUtc": "2026-09-01T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w1-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "w1-bench-0",
+                  "setType": "normal",
+                  "weightKg": 80,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "w1-bench-1",
+                  "setType": "normal",
+                  "weightKg": 80,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "w1-bench-2",
+                  "setType": "normal",
+                  "weightKg": 80,
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w2",
+          "title": "w2",
+          "startedAtUtc": "2026-09-15T17:00:00Z",
+          "endedAtUtc": "2026-09-15T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w2-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "w2-bench-0",
+                  "setType": "normal",
+                  "weightKg": 82.5,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "w2-bench-1",
+                  "setType": "normal",
+                  "weightKg": 82.5,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "w2-bench-2",
+                  "setType": "normal",
+                  "weightKg": 82.5,
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w3",
+          "title": "w3",
+          "startedAtUtc": "2026-10-05T17:00:00Z",
+          "endedAtUtc": "2026-10-05T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w3-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "w3-bench-0",
+                  "setType": "normal",
+                  "weightKg": 85,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "w3-bench-1",
+                  "setType": "normal",
+                  "weightKg": 85,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "w3-bench-2",
+                  "setType": "normal",
+                  "weightKg": 85,
+                  "repetitions": 7
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w4",
+          "title": "w4",
+          "startedAtUtc": "2026-10-19T17:00:00Z",
+          "endedAtUtc": "2026-10-19T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w4-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "w4-bench-0",
+                  "setType": "normal",
+                  "weightKg": 85,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "w4-bench-1",
+                  "setType": "normal",
+                  "weightKg": 85,
+                  "repetitions": 9
+                },
+                {
+                  "setId": "w4-bench-2",
+                  "setType": "normal",
+                  "weightKg": 85,
+                  "repetitions": 9
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w5",
+          "title": "w5",
+          "startedAtUtc": "2026-11-02T17:00:00Z",
+          "endedAtUtc": "2026-11-02T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w5-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "w5-bench-0",
+                  "setType": "normal",
+                  "weightKg": 87.5,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "w5-bench-1",
+                  "setType": "normal",
+                  "weightKg": 87.5,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "w5-bench-2",
+                  "setType": "normal",
+                  "weightKg": 87.5,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "w6",
+          "title": "w6",
+          "startedAtUtc": "2026-11-16T17:00:00Z",
+          "endedAtUtc": "2026-11-16T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "w6-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "w6-bench-0",
+                  "setType": "warmup",
+                  "weightKg": 120,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "w6-bench-1",
+                  "setType": "normal",
+                  "weightKg": 90,
+                  "repetitions": 12,
+                  "rir": 2
+                },
+                {
+                  "setId": "w6-bench-2",
+                  "setType": "normal",
+                  "weightKg": 90,
+                  "repetitions": 12,
+                  "rir": 2
+                },
+                {
+                  "setId": "w6-bench-3",
+                  "setType": "normal",
+                  "weightKg": 90,
+                  "repetitions": 12,
+                  "rir": 2
+                }
+              ]
+            },
+            {
+              "workoutExerciseId": "w6-curl",
+              "sourceExerciseId": "curl",
+              "exerciseNameSnapshot": "Bizepscurls",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "w6-curl-0",
+                  "setType": "warmup",
+                  "weightKg": 10,
+                  "repetitions": 15
+                },
+                {
+                  "setId": "w6-curl-1",
+                  "setType": "normal",
+                  "weightKg": 12,
+                  "repetitions": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "wDeleted",
+          "title": "wDeleted",
+          "startedAtUtc": "2026-11-20T17:00:00Z",
+          "endedAtUtc": "2026-11-20T18:00:00Z",
+          "deletedAtUtc": "2026-11-21T08:00:00Z",
+          "exercises": [
+            {
+              "workoutExerciseId": "wDeleted-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "wDeleted-bench-0",
+                  "setType": "normal",
+                  "weightKg": 200,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "wDeleted-bench-1",
+                  "setType": "normal",
+                  "weightKg": 200,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "wDeleted-bench-2",
+                  "setType": "normal",
+                  "weightKg": 200,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "wOpen",
+          "title": "wOpen",
+          "startedAtUtc": "2026-11-24T17:00:00Z",
+          "endedAtUtc": null,
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "wOpen-bench",
+              "sourceExerciseId": "bench",
+              "exerciseNameSnapshot": "Bankdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "wOpen-bench-0",
+                  "setType": "normal",
+                  "weightKg": 200,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "wOpen-bench-1",
+                  "setType": "normal",
+                  "weightKg": 200,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "wOpen-bench-2",
+                  "setType": "normal",
+                  "weightKg": 200,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "start": "2026-08-31",
+        "exercises": [
+          {
+            "exerciseId": "bench",
+            "name": "Bankdrücken",
+            "exerciseType": "strength",
+            "status": "progressing",
+            "sessions": [
+              {
+                "workoutId": "w1",
+                "day": "2026-09-01",
+                "workingSets": 3,
+                "volumeKg": 1920,
+                "estimatedOneRepMaxKg": 101.33,
+                "topWeightKg": 80,
+                "topSetMinRepetitions": 8,
+                "topSetMaxRepetitions": 8
+              },
+              {
+                "workoutId": "w2",
+                "day": "2026-09-15",
+                "workingSets": 3,
+                "volumeKg": 1980.0,
+                "estimatedOneRepMaxKg": 104.5,
+                "topWeightKg": 82.5,
+                "topSetMinRepetitions": 8,
+                "topSetMaxRepetitions": 8
+              },
+              {
+                "workoutId": "w3",
+                "day": "2026-10-05",
+                "workingSets": 3,
+                "volumeKg": 1955,
+                "estimatedOneRepMaxKg": 107.67,
+                "topWeightKg": 85,
+                "topSetMinRepetitions": 7,
+                "topSetMaxRepetitions": 8
+              },
+              {
+                "workoutId": "w4",
+                "day": "2026-10-19",
+                "workingSets": 3,
+                "volumeKg": 2380,
+                "estimatedOneRepMaxKg": 113.33,
+                "topWeightKg": 85,
+                "topSetMinRepetitions": 9,
+                "topSetMaxRepetitions": 10
+              },
+              {
+                "workoutId": "w5",
+                "day": "2026-11-02",
+                "workingSets": 3,
+                "volumeKg": 2625.0,
+                "estimatedOneRepMaxKg": 116.67,
+                "topWeightKg": 87.5,
+                "topSetMinRepetitions": 10,
+                "topSetMaxRepetitions": 10
+              },
+              {
+                "workoutId": "w6",
+                "day": "2026-11-16",
+                "workingSets": 3,
+                "volumeKg": 3240,
+                "estimatedOneRepMaxKg": 126.0,
+                "topWeightKg": 90,
+                "topSetMinRepetitions": 12,
+                "topSetMaxRepetitions": 12
+              }
+            ],
+            "bestEstimatedOneRepMaxKg": 126.0,
+            "sessionsSinceBest": 0,
+            "estimatedOneRepMaxFirstKg": 102.92,
+            "estimatedOneRepMaxLastKg": 121.33,
+            "estimatedOneRepMaxChangePercent": 17.89,
+            "topWeightChangePercent": 9.23,
+            "topRepetitionsChange": 3,
+            "volumeChangePercent": 50.38,
+            "volumePerWeekKg": 1134.48,
+            "workingSetsPerWeek": 1.45,
+            "fatigueSignals": [],
+            "recommendation": {
+              "kind": "increaseWeight",
+              "suggestedWeightKg": 92.5,
+              "suggestedRepetitions": 6,
+              "repetitionRangeLow": 6,
+              "repetitionRangeHigh": 12,
+              "weightStepKg": 2.5,
+              "text": "Oberes Ende von 6–12 Wdh. in allen Sätzen erreicht: nächstes Mal 92,5 kg mit 6 Wdh."
+            }
+          },
+          {
+            "exerciseId": "curl",
+            "name": "Bizepscurls",
+            "exerciseType": "strength",
+            "status": "insufficientData",
+            "sessions": [],
+            "bestEstimatedOneRepMaxKg": null,
+            "sessionsSinceBest": 0,
+            "estimatedOneRepMaxFirstKg": null,
+            "estimatedOneRepMaxLastKg": null,
+            "estimatedOneRepMaxChangePercent": null,
+            "topWeightChangePercent": null,
+            "topRepetitionsChange": null,
+            "volumeChangePercent": null,
+            "volumePerWeekKg": 0,
+            "workingSetsPerWeek": 0,
+            "fatigueSignals": [],
+            "recommendation": {
+              "kind": "noRecommendation",
+              "suggestedWeightKg": null,
+              "suggestedRepetitions": null,
+              "repetitionRangeLow": null,
+              "repetitionRangeHigh": null,
+              "weightStepKg": null,
+              "text": "Noch keine Arbeitssätze im Zeitraum: keine Empfehlung."
+            }
+          }
+        ],
+        "overall": {
+          "weeks": [
+            {
+              "start": "2026-08-31",
+              "complete": true,
+              "volumeKg": 1920,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-09-07",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-09-14",
+              "complete": true,
+              "volumeKg": 1980.0,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-09-21",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-09-28",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-10-05",
+              "complete": true,
+              "volumeKg": 1955,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-10-12",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-10-19",
+              "complete": true,
+              "volumeKg": 2380,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-10-26",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-11-02",
+              "complete": true,
+              "volumeKg": 2625.0,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-11-09",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-11-16",
+              "complete": true,
+              "volumeKg": 3240,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-11-23",
+              "complete": false,
+              "volumeKg": 0,
+              "workingSets": 0
+            }
+          ],
+          "weeklyVolumeChangePercent": 50.38,
+          "exercisesWithFatigue": 0,
+          "eligibleExercises": 1,
+          "fatigued": false
+        }
+      }
+    },
+    {
+      "name": "stagnation",
+      "description": "Kniebeuge seit sechs Trainings ohne neuen Bestwert: Reiz wechseln. Rudern stagniert erst kurz und hat Sätze unter dem oberen Ende: Wiederholungen steigern.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-11-25",
+      "period": "threeMonths",
+      "exercises": [
+        {
+          "id": "squat",
+          "exerciseType": "strength"
+        },
+        {
+          "id": "row",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "s0",
+          "title": "s0",
+          "startedAtUtc": "2026-10-05T17:00:00Z",
+          "endedAtUtc": "2026-10-05T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "s0-squat",
+              "sourceExerciseId": "squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s0-squat-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s0-squat-1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s0-squat-2",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "s1",
+          "title": "s1",
+          "startedAtUtc": "2026-10-12T17:00:00Z",
+          "endedAtUtc": "2026-10-12T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "s1-squat",
+              "sourceExerciseId": "squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s1-squat-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s1-squat-1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s1-squat-2",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "s2",
+          "title": "s2",
+          "startedAtUtc": "2026-10-19T17:00:00Z",
+          "endedAtUtc": "2026-10-19T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "s2-squat",
+              "sourceExerciseId": "squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s2-squat-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s2-squat-1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s2-squat-2",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "s3",
+          "title": "s3",
+          "startedAtUtc": "2026-10-26T17:00:00Z",
+          "endedAtUtc": "2026-10-26T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "s3-squat",
+              "sourceExerciseId": "squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s3-squat-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s3-squat-1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s3-squat-2",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "s4",
+          "title": "s4",
+          "startedAtUtc": "2026-11-02T17:00:00Z",
+          "endedAtUtc": "2026-11-02T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "s4-squat",
+              "sourceExerciseId": "squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s4-squat-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s4-squat-1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s4-squat-2",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "s5",
+          "title": "s5",
+          "startedAtUtc": "2026-11-09T17:00:00Z",
+          "endedAtUtc": "2026-11-09T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "s5-squat",
+              "sourceExerciseId": "squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s5-squat-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s5-squat-1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s5-squat-2",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "s6",
+          "title": "s6",
+          "startedAtUtc": "2026-11-16T17:00:00Z",
+          "endedAtUtc": "2026-11-16T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "s6-squat",
+              "sourceExerciseId": "squat",
+              "exerciseNameSnapshot": "Kniebeuge",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "s6-squat-0",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s6-squat-1",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                },
+                {
+                  "setId": "s6-squat-2",
+                  "setType": "normal",
+                  "weightKg": 100,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "r0",
+          "title": "r0",
+          "startedAtUtc": "2026-10-27T17:00:00Z",
+          "endedAtUtc": "2026-10-27T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "r0-row",
+              "sourceExerciseId": "row",
+              "exerciseNameSnapshot": "Rudern",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "r0-row-0",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "r0-row-1",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "r0-row-2",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "r1",
+          "title": "r1",
+          "startedAtUtc": "2026-11-03T17:00:00Z",
+          "endedAtUtc": "2026-11-03T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "r1-row",
+              "sourceExerciseId": "row",
+              "exerciseNameSnapshot": "Rudern",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "r1-row-0",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "r1-row-1",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "r1-row-2",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "r2",
+          "title": "r2",
+          "startedAtUtc": "2026-11-10T17:00:00Z",
+          "endedAtUtc": "2026-11-10T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "r2-row",
+              "sourceExerciseId": "row",
+              "exerciseNameSnapshot": "Rudern",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "r2-row-0",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 11
+                },
+                {
+                  "setId": "r2-row-1",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "r2-row-2",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "r3",
+          "title": "r3",
+          "startedAtUtc": "2026-11-18T17:00:00Z",
+          "endedAtUtc": "2026-11-18T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "r3-row",
+              "sourceExerciseId": "row",
+              "exerciseNameSnapshot": "Rudern",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "r3-row-0",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "r3-row-1",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "r3-row-2",
+                  "setType": "normal",
+                  "weightKg": 60,
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "start": "2026-08-31",
+        "exercises": [
+          {
+            "exerciseId": "row",
+            "name": "Rudern",
+            "exerciseType": "strength",
+            "status": "stagnating",
+            "sessions": [
+              {
+                "workoutId": "r0",
+                "day": "2026-10-27",
+                "workingSets": 3,
+                "volumeKg": 1800,
+                "estimatedOneRepMaxKg": 80.0,
+                "topWeightKg": 60,
+                "topSetMinRepetitions": 10,
+                "topSetMaxRepetitions": 10
+              },
+              {
+                "workoutId": "r1",
+                "day": "2026-11-03",
+                "workingSets": 3,
+                "volumeKg": 1800,
+                "estimatedOneRepMaxKg": 80.0,
+                "topWeightKg": 60,
+                "topSetMinRepetitions": 10,
+                "topSetMaxRepetitions": 10
+              },
+              {
+                "workoutId": "r2",
+                "day": "2026-11-10",
+                "workingSets": 3,
+                "volumeKg": 1860,
+                "estimatedOneRepMaxKg": 82.0,
+                "topWeightKg": 60,
+                "topSetMinRepetitions": 10,
+                "topSetMaxRepetitions": 11
+              },
+              {
+                "workoutId": "r3",
+                "day": "2026-11-18",
+                "workingSets": 3,
+                "volumeKg": 1680,
+                "estimatedOneRepMaxKg": 80.0,
+                "topWeightKg": 60,
+                "topSetMinRepetitions": 8,
+                "topSetMaxRepetitions": 10
+              }
+            ],
+            "bestEstimatedOneRepMaxKg": 82.0,
+            "sessionsSinceBest": 1,
+            "estimatedOneRepMaxFirstKg": 80.0,
+            "estimatedOneRepMaxLastKg": 80.0,
+            "estimatedOneRepMaxChangePercent": 0,
+            "topWeightChangePercent": 0,
+            "topRepetitionsChange": 0,
+            "volumeChangePercent": -6.67,
+            "volumePerWeekKg": 574.48,
+            "workingSetsPerWeek": 0.97,
+            "fatigueSignals": [],
+            "recommendation": {
+              "kind": "increaseReps",
+              "suggestedWeightKg": 60,
+              "suggestedRepetitions": 9,
+              "repetitionRangeLow": 6,
+              "repetitionRangeHigh": 12,
+              "weightStepKg": 2.5,
+              "text": "Im Bereich 6–12 Wdh.: 60 kg halten und auf 9 Wdh. je Satz steigern."
+            }
+          },
+          {
+            "exerciseId": "squat",
+            "name": "Kniebeuge",
+            "exerciseType": "strength",
+            "status": "stagnating",
+            "sessions": [
+              {
+                "workoutId": "s0",
+                "day": "2026-10-05",
+                "workingSets": 3,
+                "volumeKg": 1500,
+                "estimatedOneRepMaxKg": 116.67,
+                "topWeightKg": 100,
+                "topSetMinRepetitions": 5,
+                "topSetMaxRepetitions": 5
+              },
+              {
+                "workoutId": "s1",
+                "day": "2026-10-12",
+                "workingSets": 3,
+                "volumeKg": 1500,
+                "estimatedOneRepMaxKg": 116.67,
+                "topWeightKg": 100,
+                "topSetMinRepetitions": 5,
+                "topSetMaxRepetitions": 5
+              },
+              {
+                "workoutId": "s2",
+                "day": "2026-10-19",
+                "workingSets": 3,
+                "volumeKg": 1500,
+                "estimatedOneRepMaxKg": 116.67,
+                "topWeightKg": 100,
+                "topSetMinRepetitions": 5,
+                "topSetMaxRepetitions": 5
+              },
+              {
+                "workoutId": "s3",
+                "day": "2026-10-26",
+                "workingSets": 3,
+                "volumeKg": 1500,
+                "estimatedOneRepMaxKg": 116.67,
+                "topWeightKg": 100,
+                "topSetMinRepetitions": 5,
+                "topSetMaxRepetitions": 5
+              },
+              {
+                "workoutId": "s4",
+                "day": "2026-11-02",
+                "workingSets": 3,
+                "volumeKg": 1500,
+                "estimatedOneRepMaxKg": 116.67,
+                "topWeightKg": 100,
+                "topSetMinRepetitions": 5,
+                "topSetMaxRepetitions": 5
+              },
+              {
+                "workoutId": "s5",
+                "day": "2026-11-09",
+                "workingSets": 3,
+                "volumeKg": 1500,
+                "estimatedOneRepMaxKg": 116.67,
+                "topWeightKg": 100,
+                "topSetMinRepetitions": 5,
+                "topSetMaxRepetitions": 5
+              },
+              {
+                "workoutId": "s6",
+                "day": "2026-11-16",
+                "workingSets": 3,
+                "volumeKg": 1500,
+                "estimatedOneRepMaxKg": 116.67,
+                "topWeightKg": 100,
+                "topSetMinRepetitions": 5,
+                "topSetMaxRepetitions": 5
+              }
+            ],
+            "bestEstimatedOneRepMaxKg": 116.67,
+            "sessionsSinceBest": 6,
+            "estimatedOneRepMaxFirstKg": 116.67,
+            "estimatedOneRepMaxLastKg": 116.67,
+            "estimatedOneRepMaxChangePercent": 0,
+            "topWeightChangePercent": 0,
+            "topRepetitionsChange": 0,
+            "volumeChangePercent": 0,
+            "volumePerWeekKg": 844.83,
+            "workingSetsPerWeek": 1.69,
+            "fatigueSignals": [],
+            "recommendation": {
+              "kind": "changeStimulus",
+              "suggestedWeightKg": null,
+              "suggestedRepetitions": null,
+              "repetitionRangeLow": null,
+              "repetitionRangeHigh": null,
+              "weightStepKg": 2.5,
+              "text": "Seit 6 Trainings kein neuer Bestwert: Wiederholungsbereich oder Übungsvariante wechseln."
+            }
+          }
+        ],
+        "overall": {
+          "weeks": [
+            {
+              "start": "2026-08-31",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-09-07",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-09-14",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-09-21",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-09-28",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-10-05",
+              "complete": true,
+              "volumeKg": 1500,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-10-12",
+              "complete": true,
+              "volumeKg": 1500,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-10-19",
+              "complete": true,
+              "volumeKg": 1500,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-10-26",
+              "complete": true,
+              "volumeKg": 3300,
+              "workingSets": 6
+            },
+            {
+              "start": "2026-11-02",
+              "complete": true,
+              "volumeKg": 3300,
+              "workingSets": 6
+            },
+            {
+              "start": "2026-11-09",
+              "complete": true,
+              "volumeKg": 3360,
+              "workingSets": 6
+            },
+            {
+              "start": "2026-11-16",
+              "complete": true,
+              "volumeKg": 3180,
+              "workingSets": 6
+            },
+            {
+              "start": "2026-11-23",
+              "complete": false,
+              "volumeKg": 0,
+              "workingSets": 0
+            }
+          ],
+          "weeklyVolumeChangePercent": null,
+          "exercisesWithFatigue": 0,
+          "eligibleExercises": 2,
+          "fatigued": false
+        }
+      }
+    },
+    {
+      "name": "rueckschritt-und-ermuedung",
+      "description": "Kreuzheben verliert Wiederholungen bei gleichem und geringerem Gewicht, RIR 0 in allen Sätzen, Volumen und 1RM fallen: alle drei Signale und Deload auf 120 kg.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-11-25",
+      "period": "fourWeeks",
+      "exercises": [
+        {
+          "id": "deadlift",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [],
+      "workouts": [
+        {
+          "workoutId": "d0",
+          "title": "d0",
+          "startedAtUtc": "2026-11-03T17:00:00Z",
+          "endedAtUtc": "2026-11-03T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "d0-deadlift",
+              "sourceExerciseId": "deadlift",
+              "exerciseNameSnapshot": "Kreuzheben",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "d0-deadlift-0",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 6
+                },
+                {
+                  "setId": "d0-deadlift-1",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 6
+                },
+                {
+                  "setId": "d0-deadlift-2",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 6
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "d1",
+          "title": "d1",
+          "startedAtUtc": "2026-11-10T17:00:00Z",
+          "endedAtUtc": "2026-11-10T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "d1-deadlift",
+              "sourceExerciseId": "deadlift",
+              "exerciseNameSnapshot": "Kreuzheben",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "d1-deadlift-0",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 5,
+                  "rir": 1
+                },
+                {
+                  "setId": "d1-deadlift-1",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 5,
+                  "rir": 1
+                },
+                {
+                  "setId": "d1-deadlift-2",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 5,
+                  "rir": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "d2",
+          "title": "d2",
+          "startedAtUtc": "2026-11-17T17:00:00Z",
+          "endedAtUtc": "2026-11-17T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "d2-deadlift",
+              "sourceExerciseId": "deadlift",
+              "exerciseNameSnapshot": "Kreuzheben",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "d2-deadlift-0",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 4,
+                  "rir": 0
+                },
+                {
+                  "setId": "d2-deadlift-1",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 4,
+                  "rir": 0
+                },
+                {
+                  "setId": "d2-deadlift-2",
+                  "setType": "normal",
+                  "weightKg": 140,
+                  "repetitions": 4,
+                  "rir": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "d3",
+          "title": "d3",
+          "startedAtUtc": "2026-11-24T17:00:00Z",
+          "endedAtUtc": "2026-11-24T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "d3-deadlift",
+              "sourceExerciseId": "deadlift",
+              "exerciseNameSnapshot": "Kreuzheben",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "d3-deadlift-0",
+                  "setType": "normal",
+                  "weightKg": 135,
+                  "repetitions": 3,
+                  "rir": 0
+                },
+                {
+                  "setId": "d3-deadlift-1",
+                  "setType": "normal",
+                  "weightKg": 135,
+                  "repetitions": 3,
+                  "rir": 0
+                },
+                {
+                  "setId": "d3-deadlift-2",
+                  "setType": "normal",
+                  "weightKg": 135,
+                  "repetitions": 3,
+                  "rir": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "start": "2026-11-02",
+        "exercises": [
+          {
+            "exerciseId": "deadlift",
+            "name": "Kreuzheben",
+            "exerciseType": "strength",
+            "status": "regressing",
+            "sessions": [
+              {
+                "workoutId": "d0",
+                "day": "2026-11-03",
+                "workingSets": 3,
+                "volumeKg": 2520,
+                "estimatedOneRepMaxKg": 168.0,
+                "topWeightKg": 140,
+                "topSetMinRepetitions": 6,
+                "topSetMaxRepetitions": 6
+              },
+              {
+                "workoutId": "d1",
+                "day": "2026-11-10",
+                "workingSets": 3,
+                "volumeKg": 2100,
+                "estimatedOneRepMaxKg": 163.33,
+                "topWeightKg": 140,
+                "topSetMinRepetitions": 5,
+                "topSetMaxRepetitions": 5
+              },
+              {
+                "workoutId": "d2",
+                "day": "2026-11-17",
+                "workingSets": 3,
+                "volumeKg": 1680,
+                "estimatedOneRepMaxKg": 158.67,
+                "topWeightKg": 140,
+                "topSetMinRepetitions": 4,
+                "topSetMaxRepetitions": 4
+              },
+              {
+                "workoutId": "d3",
+                "day": "2026-11-24",
+                "workingSets": 3,
+                "volumeKg": 1215,
+                "estimatedOneRepMaxKg": 148.5,
+                "topWeightKg": 135,
+                "topSetMinRepetitions": 3,
+                "topSetMaxRepetitions": 3
+              }
+            ],
+            "bestEstimatedOneRepMaxKg": 168.0,
+            "sessionsSinceBest": 3,
+            "estimatedOneRepMaxFirstKg": 168.0,
+            "estimatedOneRepMaxLastKg": 148.5,
+            "estimatedOneRepMaxChangePercent": -11.61,
+            "topWeightChangePercent": -3.57,
+            "topRepetitionsChange": -3,
+            "volumeChangePercent": -51.79,
+            "volumePerWeekKg": 2191.88,
+            "workingSetsPerWeek": 3.5,
+            "fatigueSignals": [
+              {
+                "kind": "decliningRepetitions",
+                "sessions": 3,
+                "fromRepetitions": 5,
+                "toRepetitions": 3,
+                "weightKg": 135,
+                "zeroRirSets": null,
+                "ratedSets": null,
+                "volumeChangePercent": null,
+                "estimatedOneRepMaxChangePercent": null
+              },
+              {
+                "kind": "failureOnMostSets",
+                "sessions": 2,
+                "fromRepetitions": null,
+                "toRepetitions": null,
+                "weightKg": null,
+                "zeroRirSets": 3,
+                "ratedSets": 3,
+                "volumeChangePercent": null,
+                "estimatedOneRepMaxChangePercent": null
+              },
+              {
+                "kind": "volumeAndStrengthDrop",
+                "sessions": 4,
+                "fromRepetitions": null,
+                "toRepetitions": null,
+                "weightKg": null,
+                "zeroRirSets": null,
+                "ratedSets": null,
+                "volumeChangePercent": -42.14,
+                "estimatedOneRepMaxChangePercent": -9.08
+              }
+            ],
+            "recommendation": {
+              "kind": "deload",
+              "suggestedWeightKg": 120,
+              "suggestedRepetitions": null,
+              "repetitionRangeLow": null,
+              "repetitionRangeHigh": null,
+              "weightStepKg": 2.5,
+              "text": "Ermüdung oder Leistungsabfall: nächstes Mal 120 kg (−10 %) und nicht bis zum Muskelversagen."
+            }
+          }
+        ],
+        "overall": {
+          "weeks": [
+            {
+              "start": "2026-11-02",
+              "complete": true,
+              "volumeKg": 2520,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-11-09",
+              "complete": true,
+              "volumeKg": 2100,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-11-16",
+              "complete": true,
+              "volumeKg": 1680,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-11-23",
+              "complete": false,
+              "volumeKg": 1215,
+              "workingSets": 3
+            }
+          ],
+          "weeklyVolumeChangePercent": -33.33,
+          "exercisesWithFatigue": 1,
+          "eligibleExercises": 1,
+          "fatigued": true
+        }
+      }
+    },
+    {
+      "name": "koerpergewicht-und-wenige-daten",
+      "description": "Körpergewichtsübungen mit Check-in: Klimmzüge steigern Wiederholungen ohne Gewicht, Dips erhöhen um die kleinste genutzte Stufe (2 kg), assistierte Klimmzüge am oberen Ende wechseln den Reiz, Schulterdrücken unter dem Bereich hält das Gewicht.",
+      "timeZone": "Europe/Berlin",
+      "today": "2026-11-25",
+      "period": "year",
+      "exercises": [
+        {
+          "id": "pullup",
+          "exerciseType": "bodyweightOnly"
+        },
+        {
+          "id": "dips",
+          "exerciseType": "bodyweightLoaded"
+        },
+        {
+          "id": "assisted",
+          "exerciseType": "assisted"
+        },
+        {
+          "id": "press",
+          "exerciseType": "strength"
+        }
+      ],
+      "checkIns": [
+        {
+          "localDate": "2026-01-01",
+          "weightKg": 80
+        }
+      ],
+      "workouts": [
+        {
+          "workoutId": "p0",
+          "title": "p0",
+          "startedAtUtc": "2026-10-01T17:00:00Z",
+          "endedAtUtc": "2026-10-01T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "p0-pullup",
+              "sourceExerciseId": "pullup",
+              "exerciseNameSnapshot": "Klimmzüge",
+              "exerciseTypeSnapshot": "bodyweightOnly",
+              "sets": [
+                {
+                  "setId": "p0-pullup-0",
+                  "setType": "normal",
+                  "weightKg": null,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "p0-pullup-1",
+                  "setType": "normal",
+                  "weightKg": null,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "p0-pullup-2",
+                  "setType": "normal",
+                  "weightKg": null,
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "p1",
+          "title": "p1",
+          "startedAtUtc": "2026-10-08T17:00:00Z",
+          "endedAtUtc": "2026-10-08T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "p1-pullup",
+              "sourceExerciseId": "pullup",
+              "exerciseNameSnapshot": "Klimmzüge",
+              "exerciseTypeSnapshot": "bodyweightOnly",
+              "sets": [
+                {
+                  "setId": "p1-pullup-0",
+                  "setType": "normal",
+                  "weightKg": null,
+                  "repetitions": 9
+                },
+                {
+                  "setId": "p1-pullup-1",
+                  "setType": "normal",
+                  "weightKg": null,
+                  "repetitions": 9
+                },
+                {
+                  "setId": "p1-pullup-2",
+                  "setType": "normal",
+                  "weightKg": null,
+                  "repetitions": 8
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "p2",
+          "title": "p2",
+          "startedAtUtc": "2026-10-15T17:00:00Z",
+          "endedAtUtc": "2026-10-15T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "p2-pullup",
+              "sourceExerciseId": "pullup",
+              "exerciseNameSnapshot": "Klimmzüge",
+              "exerciseTypeSnapshot": "bodyweightOnly",
+              "sets": [
+                {
+                  "setId": "p2-pullup-0",
+                  "setType": "normal",
+                  "weightKg": null,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "p2-pullup-1",
+                  "setType": "normal",
+                  "weightKg": null,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "p2-pullup-2",
+                  "setType": "normal",
+                  "weightKg": null,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "x0",
+          "title": "x0",
+          "startedAtUtc": "2026-10-02T17:00:00Z",
+          "endedAtUtc": "2026-10-02T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "x0-dips",
+              "sourceExerciseId": "dips",
+              "exerciseNameSnapshot": "Dips mit Gewicht",
+              "exerciseTypeSnapshot": "bodyweightLoaded",
+              "sets": [
+                {
+                  "setId": "x0-dips-0",
+                  "setType": "normal",
+                  "weightKg": 10,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "x0-dips-1",
+                  "setType": "normal",
+                  "weightKg": 10,
+                  "repetitions": 10
+                },
+                {
+                  "setId": "x0-dips-2",
+                  "setType": "normal",
+                  "weightKg": 10,
+                  "repetitions": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "x1",
+          "title": "x1",
+          "startedAtUtc": "2026-10-09T17:00:00Z",
+          "endedAtUtc": "2026-10-09T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "x1-dips",
+              "sourceExerciseId": "dips",
+              "exerciseNameSnapshot": "Dips mit Gewicht",
+              "exerciseTypeSnapshot": "bodyweightLoaded",
+              "sets": [
+                {
+                  "setId": "x1-dips-0",
+                  "setType": "normal",
+                  "weightKg": 12,
+                  "repetitions": 12
+                },
+                {
+                  "setId": "x1-dips-1",
+                  "setType": "normal",
+                  "weightKg": 12,
+                  "repetitions": 12
+                },
+                {
+                  "setId": "x1-dips-2",
+                  "setType": "normal",
+                  "weightKg": 12,
+                  "repetitions": 12
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "a0",
+          "title": "a0",
+          "startedAtUtc": "2026-10-03T17:00:00Z",
+          "endedAtUtc": "2026-10-03T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "a0-assisted",
+              "sourceExerciseId": "assisted",
+              "exerciseNameSnapshot": "Klimmzüge assistiert",
+              "exerciseTypeSnapshot": "assisted",
+              "sets": [
+                {
+                  "setId": "a0-assisted-0",
+                  "setType": "normal",
+                  "weightKg": 30,
+                  "repetitions": 20
+                },
+                {
+                  "setId": "a0-assisted-1",
+                  "setType": "normal",
+                  "weightKg": 30,
+                  "repetitions": 20
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "workoutId": "o0",
+          "title": "o0",
+          "startedAtUtc": "2026-10-04T17:00:00Z",
+          "endedAtUtc": "2026-10-04T18:00:00Z",
+          "deletedAtUtc": null,
+          "exercises": [
+            {
+              "workoutExerciseId": "o0-press",
+              "sourceExerciseId": "press",
+              "exerciseNameSnapshot": "Schulterdrücken",
+              "exerciseTypeSnapshot": "strength",
+              "sets": [
+                {
+                  "setId": "o0-press-0",
+                  "setType": "normal",
+                  "weightKg": 40,
+                  "repetitions": 8
+                },
+                {
+                  "setId": "o0-press-1",
+                  "setType": "normal",
+                  "weightKg": 40,
+                  "repetitions": 6
+                },
+                {
+                  "setId": "o0-press-2",
+                  "setType": "normal",
+                  "weightKg": 40,
+                  "repetitions": 5
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "start": "2025-12-01",
+        "exercises": [
+          {
+            "exerciseId": "pullup",
+            "name": "Klimmzüge",
+            "exerciseType": "bodyweightOnly",
+            "status": "progressing",
+            "sessions": [
+              {
+                "workoutId": "p0",
+                "day": "2026-10-01",
+                "workingSets": 3,
+                "volumeKg": 1920,
+                "estimatedOneRepMaxKg": 101.33,
+                "topWeightKg": 80,
+                "topSetMinRepetitions": 8,
+                "topSetMaxRepetitions": 8
+              },
+              {
+                "workoutId": "p1",
+                "day": "2026-10-08",
+                "workingSets": 3,
+                "volumeKg": 2080,
+                "estimatedOneRepMaxKg": 104.0,
+                "topWeightKg": 80,
+                "topSetMinRepetitions": 8,
+                "topSetMaxRepetitions": 9
+              },
+              {
+                "workoutId": "p2",
+                "day": "2026-10-15",
+                "workingSets": 3,
+                "volumeKg": 2400,
+                "estimatedOneRepMaxKg": 106.67,
+                "topWeightKg": 80,
+                "topSetMinRepetitions": 10,
+                "topSetMaxRepetitions": 10
+              }
+            ],
+            "bestEstimatedOneRepMaxKg": 106.67,
+            "sessionsSinceBest": 0,
+            "estimatedOneRepMaxFirstKg": 101.33,
+            "estimatedOneRepMaxLastKg": 106.67,
+            "estimatedOneRepMaxChangePercent": 5.26,
+            "topWeightChangePercent": 0,
+            "topRepetitionsChange": 2,
+            "volumeChangePercent": 25.0,
+            "volumePerWeekKg": 124.44,
+            "workingSetsPerWeek": 0.18,
+            "fatigueSignals": [],
+            "recommendation": {
+              "kind": "increaseReps",
+              "suggestedWeightKg": null,
+              "suggestedRepetitions": 11,
+              "repetitionRangeLow": 6,
+              "repetitionRangeHigh": 12,
+              "weightStepKg": null,
+              "text": "Im Bereich 6–12 Wdh.: auf 11 Wdh. je Satz steigern."
+            }
+          },
+          {
+            "exerciseId": "dips",
+            "name": "Dips mit Gewicht",
+            "exerciseType": "bodyweightLoaded",
+            "status": "insufficientData",
+            "sessions": [
+              {
+                "workoutId": "x0",
+                "day": "2026-10-02",
+                "workingSets": 3,
+                "volumeKg": 2700,
+                "estimatedOneRepMaxKg": 120.0,
+                "topWeightKg": 90,
+                "topSetMinRepetitions": 10,
+                "topSetMaxRepetitions": 10
+              },
+              {
+                "workoutId": "x1",
+                "day": "2026-10-09",
+                "workingSets": 3,
+                "volumeKg": 3312,
+                "estimatedOneRepMaxKg": 128.8,
+                "topWeightKg": 92,
+                "topSetMinRepetitions": 12,
+                "topSetMaxRepetitions": 12
+              }
+            ],
+            "bestEstimatedOneRepMaxKg": 128.8,
+            "sessionsSinceBest": 0,
+            "estimatedOneRepMaxFirstKg": 120.0,
+            "estimatedOneRepMaxLastKg": 128.8,
+            "estimatedOneRepMaxChangePercent": 7.33,
+            "topWeightChangePercent": 2.22,
+            "topRepetitionsChange": 2,
+            "volumeChangePercent": 22.67,
+            "volumePerWeekKg": 116.9,
+            "workingSetsPerWeek": 0.12,
+            "fatigueSignals": [],
+            "recommendation": {
+              "kind": "increaseWeight",
+              "suggestedWeightKg": 14,
+              "suggestedRepetitions": 6,
+              "repetitionRangeLow": 6,
+              "repetitionRangeHigh": 12,
+              "weightStepKg": 2,
+              "text": "Oberes Ende von 6–12 Wdh. in allen Sätzen erreicht: nächstes Mal 14 kg mit 6 Wdh."
+            }
+          },
+          {
+            "exerciseId": "press",
+            "name": "Schulterdrücken",
+            "exerciseType": "strength",
+            "status": "insufficientData",
+            "sessions": [
+              {
+                "workoutId": "o0",
+                "day": "2026-10-04",
+                "workingSets": 3,
+                "volumeKg": 760,
+                "estimatedOneRepMaxKg": 50.67,
+                "topWeightKg": 40,
+                "topSetMinRepetitions": 5,
+                "topSetMaxRepetitions": 8
+              }
+            ],
+            "bestEstimatedOneRepMaxKg": 50.67,
+            "sessionsSinceBest": 0,
+            "estimatedOneRepMaxFirstKg": null,
+            "estimatedOneRepMaxLastKg": null,
+            "estimatedOneRepMaxChangePercent": null,
+            "topWeightChangePercent": null,
+            "topRepetitionsChange": null,
+            "volumeChangePercent": null,
+            "volumePerWeekKg": 14.78,
+            "workingSetsPerWeek": 0.06,
+            "fatigueSignals": [],
+            "recommendation": {
+              "kind": "keepWeight",
+              "suggestedWeightKg": 40,
+              "suggestedRepetitions": 6,
+              "repetitionRangeLow": 6,
+              "repetitionRangeHigh": 12,
+              "weightStepKg": 2.5,
+              "text": "Unter 6 Wdh. im Bereich 6–12 Wdh.: 40 kg halten, bis alle Sätze 6 Wdh. schaffen."
+            }
+          },
+          {
+            "exerciseId": "assisted",
+            "name": "Klimmzüge assistiert",
+            "exerciseType": "assisted",
+            "status": "insufficientData",
+            "sessions": [
+              {
+                "workoutId": "a0",
+                "day": "2026-10-03",
+                "workingSets": 2,
+                "volumeKg": 2000,
+                "estimatedOneRepMaxKg": 83.33,
+                "topWeightKg": 50,
+                "topSetMinRepetitions": 20,
+                "topSetMaxRepetitions": 20
+              }
+            ],
+            "bestEstimatedOneRepMaxKg": 83.33,
+            "sessionsSinceBest": 0,
+            "estimatedOneRepMaxFirstKg": null,
+            "estimatedOneRepMaxLastKg": null,
+            "estimatedOneRepMaxChangePercent": null,
+            "topWeightChangePercent": null,
+            "topRepetitionsChange": null,
+            "volumeChangePercent": null,
+            "volumePerWeekKg": 38.89,
+            "workingSetsPerWeek": 0.04,
+            "fatigueSignals": [],
+            "recommendation": {
+              "kind": "changeStimulus",
+              "suggestedWeightKg": null,
+              "suggestedRepetitions": null,
+              "repetitionRangeLow": 13,
+              "repetitionRangeHigh": 20,
+              "weightStepKg": null,
+              "text": "Oberes Ende von 13–20 Wdh. erreicht: schwerere Variante wählen oder Unterstützung verringern."
+            }
+          }
+        ],
+        "overall": {
+          "weeks": [
+            {
+              "start": "2025-12-01",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2025-12-08",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2025-12-15",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2025-12-22",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2025-12-29",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-01-05",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-01-12",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-01-19",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-01-26",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-02-02",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-02-09",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-02-16",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-02-23",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-03-02",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-03-09",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-03-16",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-03-23",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-03-30",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-04-06",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-04-13",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-04-20",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-04-27",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-05-04",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-05-11",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-05-18",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-05-25",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-06-01",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-06-08",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-06-15",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-06-22",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-06-29",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-07-06",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-07-13",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-07-20",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-07-27",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-08-03",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-08-10",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-08-17",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-08-24",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-08-31",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-09-07",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-09-14",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-09-21",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-09-28",
+              "complete": true,
+              "volumeKg": 7380,
+              "workingSets": 11
+            },
+            {
+              "start": "2026-10-05",
+              "complete": true,
+              "volumeKg": 5392,
+              "workingSets": 6
+            },
+            {
+              "start": "2026-10-12",
+              "complete": true,
+              "volumeKg": 2400,
+              "workingSets": 3
+            },
+            {
+              "start": "2026-10-19",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-10-26",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-11-02",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-11-09",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-11-16",
+              "complete": true,
+              "volumeKg": 0,
+              "workingSets": 0
+            },
+            {
+              "start": "2026-11-23",
+              "complete": false,
+              "volumeKg": 0,
+              "workingSets": 0
+            }
+          ],
+          "weeklyVolumeChangePercent": null,
+          "exercisesWithFatigue": 0,
+          "eligibleExercises": 1,
+          "fatigued": false
+        }
+      }
+    }
+  ]
+}

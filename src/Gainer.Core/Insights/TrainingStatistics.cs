@@ -181,7 +181,7 @@ public static class TrainingStatistics
             bodyweightKg is null && bodyweightFactor > 0 && sets.Count > 0);
     }
 
-    private static decimal EffectiveWeightKg(
+    internal static decimal EffectiveWeightKg(
         ExerciseType type,
         decimal? weightKg,
         decimal bodyweightFactor,
@@ -252,13 +252,15 @@ public sealed record CheckInWeight(DateOnly LocalDate, decimal WeightKg);
 /// <summary>Katalogfaktoren einer Übung; fehlende Werte nehmen die Typvorgabe bzw. 1 an.</summary>
 public sealed record ExerciseFactorInput(Guid ExerciseId, decimal? BodyweightFactor, decimal? WeightFactor);
 
-public sealed record TrainingSetInput(WorkoutSetType SetType, decimal? WeightKg, int? Repetitions);
+/// <summary>A logged set; <paramref name="Rir"/> (repetitions in reserve) is only read by <see cref="TrainingAnalysis"/>.</summary>
+public sealed record TrainingSetInput(WorkoutSetType SetType, decimal? WeightKg, int? Repetitions, decimal? Rir = null);
 
 public sealed record TrainingBlockInput(
     Guid WorkoutExerciseId,
     Guid SourceExerciseId,
     ExerciseType ExerciseType,
-    IReadOnlyList<TrainingSetInput> Sets);
+    IReadOnlyList<TrainingSetInput> Sets,
+    string? Name = null);
 
 public sealed record TrainingWorkoutInput(
     Guid WorkoutId,

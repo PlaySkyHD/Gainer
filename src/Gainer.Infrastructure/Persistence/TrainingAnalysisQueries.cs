@@ -25,24 +25,7 @@ public sealed class TrainingAnalysisQueries(AppDbContext context, IUserContext u
         // A bounded period needs only workouts that ended from its first day; "all" starts at the earliest data.
         DateTime? fromUtc = TrainingTrends.FixedStart(period, today) is { } start ? LocalDays.StartOfDayUtc(start, timeZone) : null;
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
-        // The period's check-ins plus the last one before it: that one gives the body weight of the first workouts.
-        DateOnly? firstDay = TrainingTrends.FixedStart(period, today);
-        IQueryable<DailyCheckIn> inPeriod = context.DailyCheckIns.AsNoTracking().Where(item => item.LocalDate <= today);
-        if (firstDay is { } first)
-        {
-            DateOnly? before = await context.DailyCheckIns.AsNoTracking()
-                .Where(item => item.LocalDate < first)
-                .OrderByDescending(item => item.LocalDate)
-                .Select(item => (DateOnly?)item.LocalDate)
-                .FirstOrDefaultAsync(cancellationToken);
-            DateOnly from = before ?? first;
-            inPeriod = inPeriod.Where(item => item.LocalDate >= from);
-        }
-
-        CheckInWeight[] checkIns = await inPeriod
-            .OrderBy(item => item.LocalDate)
-            .Select(item => new CheckInWeight(item.LocalDate, item.WeightKg))
-            .ToArrayAsync(cancellationToken);
+        CheckInWeight[] checkIns = await CheckInsAsync(TrainingTrends.FixedStart(period, today), today, cancellationToken);
         List<TrainingWorkoutInput> workouts = await context.FinishedWorkoutsAsync(fromUtc, null, null, cancellationToken);
         Dictionary<Guid, ExerciseFactorInput> factors = await context.ExerciseFactorsAsync(workouts, userId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -50,6 +33,26 @@ public sealed class TrainingAnalysisQueries(AppDbContext context, IUserContext u
         IReadOnlyList<WorkoutTrendEntry> entries = TrainingTrends.Entries(
             workouts.OrderBy(item => item.StartedAtUtc).ThenBy(item => item.WorkoutId), checkIns, factors, timeZone, includeWarmups);
         return TrainingTrends.Compute(entries.ToArray(), checkIns, period, today);
+    }
+
+    public async Task<TrainingAnalysisSnapshot> AnalysisAsync(
+        TrendPeriod period,
+        DateOnly today,
+        TimeZoneInfo timeZone,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(timeZone);
+        DateOnly start = TrainingTrends.FixedStart(period, today)
+            ?? throw new ArgumentOutOfRangeException(nameof(period), period, "The analysis needs a bounded period.");
+        Guid userId = CurrentUser();
+        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
+        CheckInWeight[] checkIns = await CheckInsAsync(start, today, cancellationToken);
+        // Workouts that started in the period end after its first day; the analysis filters by local start day.
+        List<TrainingWorkoutInput> workouts = await context.FinishedWorkoutsAsync(
+            LocalDays.StartOfDayUtc(start, timeZone), null, null, cancellationToken);
+        Dictionary<Guid, ExerciseFactorInput> factors = await context.ExerciseFactorsAsync(workouts, userId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return TrainingAnalysis.Compute(workouts, checkIns, factors, timeZone, period, today);
     }
 
     public async Task<TrainingHeatmapSnapshot> HeatmapAsync(
@@ -141,6 +144,30 @@ public sealed class TrainingAnalysisQueries(AppDbContext context, IUserContext u
             fromUtc,
             toUtc,
             weeks);
+    }
+
+    /// <summary>
+    /// Check-ins up to today: from <paramref name="firstDay"/> plus the last one before it, which gives the body weight
+    /// of the first workouts; all without a first day.
+    /// </summary>
+    private async Task<CheckInWeight[]> CheckInsAsync(DateOnly? firstDay, DateOnly today, CancellationToken cancellationToken)
+    {
+        IQueryable<DailyCheckIn> inPeriod = context.DailyCheckIns.AsNoTracking().Where(item => item.LocalDate <= today);
+        if (firstDay is { } first)
+        {
+            DateOnly? before = await context.DailyCheckIns.AsNoTracking()
+                .Where(item => item.LocalDate < first)
+                .OrderByDescending(item => item.LocalDate)
+                .Select(item => (DateOnly?)item.LocalDate)
+                .FirstOrDefaultAsync(cancellationToken);
+            DateOnly from = before ?? first;
+            inPeriod = inPeriod.Where(item => item.LocalDate >= from);
+        }
+
+        return await inPeriod
+            .OrderBy(item => item.LocalDate)
+            .Select(item => new CheckInWeight(item.LocalDate, item.WeightKg))
+            .ToArrayAsync(cancellationToken);
     }
 
     /// <summary>Names and muscles of the referenced exercises, archived ones included as in the app.</summary>

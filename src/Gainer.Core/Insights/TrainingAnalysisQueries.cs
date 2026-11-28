@@ -13,6 +13,16 @@ public interface ITrainingAnalysisQueries
         TimeZoneInfo timeZone,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Training analysis (progress status, fatigue signals and recommendation per exercise) of a bounded period
+    /// ending <paramref name="today"/> (local day in <paramref name="timeZone"/>).
+    /// </summary>
+    Task<TrainingAnalysisSnapshot> AnalysisAsync(
+        TrendPeriod period,
+        DateOnly today,
+        TimeZoneInfo timeZone,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Minutes trained per local day of the last twelve months, from strength workouts and cardio sessions.</summary>
     Task<TrainingHeatmapSnapshot> HeatmapAsync(
         DateOnly today,
