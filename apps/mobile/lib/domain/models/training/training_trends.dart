@@ -204,6 +204,16 @@ class TrainingTrends {
 
   static LocalDay _monday(LocalDay day) => day.addDays(1 - day.weekday);
 
+  /// Erster Tag eines Zeitraums, der nicht von den Daten abhängt; `null` für
+  /// [TrendPeriod.all].
+  static LocalDay? fixedStart(TrendPeriod period, LocalDay today) =>
+      switch (period) {
+        TrendPeriod.fourWeeks => _monday(today).addDays(-7 * 3),
+        TrendPeriod.threeMonths => _monday(today).addDays(-7 * 12),
+        TrendPeriod.year => LocalDay(today.year, today.month - 11, 1),
+        TrendPeriod.all => null,
+      };
+
   static LocalDay _periodStart(
     TrendPeriod period,
     LocalDay today,
@@ -212,11 +222,9 @@ class TrainingTrends {
   ) {
     switch (period) {
       case TrendPeriod.fourWeeks:
-        return _monday(today).addDays(-7 * 3);
       case TrendPeriod.threeMonths:
-        return _monday(today).addDays(-7 * 12);
       case TrendPeriod.year:
-        return LocalDay(today.year, today.month - 11, 1);
+        return fixedStart(period, today)!;
       case TrendPeriod.all:
         var first = today;
         for (final entry in entries) {

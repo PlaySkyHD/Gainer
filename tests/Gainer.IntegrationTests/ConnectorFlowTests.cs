@@ -47,7 +47,7 @@ public sealed class ConnectorFlowTests
         "list_coach_notes", "get_strava_status", "list_training_plans", "get_training_plan", "get_workout_summary",
         "list_cardio_sessions", "get_cardio_session", "get_water", "list_day_templates", "get_training_trends",
         "get_training_heatmap", "get_muscle_volume", "get_nutrition_averages", "get_training_schedule",
-        "get_training_today",
+        "get_training_today", "get_training_analysis",
     ];
     private static readonly decimal[] ExpectedQuartiles = [67.5m, 75m, 82.5m];
     private static readonly decimal[] OwnKilocalories = [2100m, 1700m, 2500m];
@@ -1214,6 +1214,93 @@ public sealed class ConnectorFlowTests
                     [new TrainingScheduleExceptionValues(Today.AddDays(2), seed.PullPlanId, Today.AddDays(4))])),
             TestContext.CancellationToken);
         return seed;
+    }
+
+    [TestMethod]
+    public async Task AssistantReadsTrainingAnalysisOfItsOwnerOnly()
+    {
+        await using WebApplication app = await CreateApplicationAsync();
+        Guid owner = await CreateUserAsync(app, "owner@example.test");
+        Guid other = await CreateUserAsync(app, "other@example.test");
+        Guid ownExercise = await SeedCustomExerciseAsync(owner, "Schrägbank Eigen");
+        Guid foreignExercise = await SeedCustomExerciseAsync(other, "Schrägbank Fremd");
+        TimeZoneInfo zone = Gainer.Core.Insights.LocalDays.Default;
+        (int DaysAgo, decimal Weight, int Repetitions)[] ownSessions = [(15, 60m, 10), (8, 62.5m, 10), (1, 65m, 12)];
+        foreach ((int daysAgo, decimal weight, int repetitions) in ownSessions)
+        {
+            DateTime start = Gainer.Core.Insights.LocalDays.StartOfDayUtc(Today.AddDays(-daysAgo), zone).AddHours(9);
+            await SeedStrengthWorkoutAsync(owner, "Eigen", start, null,
+                (ownExercise, "Schrägbank Eigen",
+                    [("warmup", 100m, 10), ("normal", weight, repetitions), ("normal", weight, repetitions), ("normal", weight, repetitions)]));
+            await SeedStrengthWorkoutAsync(other, "Fremd", start, null,
+                (foreignExercise, "Schrägbank Fremd", [("normal", 200m, 5)]));
+        }
+        using var authenticator = new SoftwarePasskeyAuthenticator();
+        using HttpClient appClient = CreateClient(app);
+        await appClient.AuthenticateAsync("owner@example.test", Password);
+        await RegisterPasskeyAsync(appClient, authenticator);
+        (_, OAuthTokens tokens) = await ConnectAsync(app, authenticator);
+
+        await using McpClient mcp = await ConnectMcpAsync(app, tokens.AccessToken);
+        await AssertOwnTrainingAnalysisAsync(mcp, ownExercise);
+
+        using (JsonDocument filtered = await JsonAsync(mcp, "get_training_analysis", new()
+        {
+            ["period"] = "fourWeeks",
+            ["exerciseId"] = ownExercise,
+        }))
+        {
+            Assert.AreEqual(1, filtered.RootElement.GetProperty("exercises").GetArrayLength());
+        }
+
+        CallToolResult foreign = await CallAsync(mcp, "get_training_analysis", new() { ["exerciseId"] = foreignExercise });
+        Assert.IsTrue(foreign.IsError);
+        CallToolResult unbounded = await CallAsync(mcp, "get_training_analysis", new() { ["period"] = "all" });
+        Assert.IsTrue(unbounded.IsError);
+    }
+
+    private async Task AssertOwnTrainingAnalysisAsync(McpClient mcp, Guid ownExercise)
+    {
+        using JsonDocument analysis = await JsonAsync(mcp, "get_training_analysis", []);
+        JsonElement root = analysis.RootElement;
+        Assert.AreEqual("ThreeMonths", root.GetProperty("period").GetString());
+        Assert.AreEqual(Iso(Today), root.GetProperty("through").GetString());
+        JsonElement exercise = root.GetProperty("exercises").EnumerateArray().Single();
+        Assert.AreEqual(ownExercise, exercise.GetProperty("exerciseId").GetGuid());
+        Assert.AreEqual(3, exercise.GetProperty("sessions").GetInt32());
+        Assert.AreEqual("Progressing", exercise.GetProperty("status").GetString());
+        // 65 kg × (1 + 12/30); the warm-up set at 100 kg does not count.
+        Assert.AreEqual(91m, exercise.GetProperty("bestEstimatedOneRepMaxKg").GetDecimal());
+        Assert.AreEqual(13.75m, exercise.GetProperty("trend").GetProperty("estimatedOneRepMaxChangePercent").GetDecimal());
+        Assert.AreEqual(0, exercise.GetProperty("fatigueSignals").GetArrayLength());
+        JsonElement recommendation = exercise.GetProperty("recommendation");
+        Assert.AreEqual("IncreaseWeight", recommendation.GetProperty("kind").GetString());
+        Assert.AreEqual(67.5m, recommendation.GetProperty("suggestedWeightKg").GetDecimal());
+        Assert.AreEqual(
+            "Oberes Ende von 6–12 Wdh. in allen Sätzen erreicht: nächstes Mal 67,5 kg mit 6 Wdh.",
+            recommendation.GetProperty("text").GetString());
+        JsonElement overall = root.GetProperty("overall");
+        Assert.AreEqual(13, overall.GetProperty("weeks").GetArrayLength());
+        Assert.IsFalse(overall.GetProperty("fatigued").GetBoolean());
+    }
+
+    private async Task<Guid> SeedCustomExerciseAsync(Guid userId, string name)
+    {
+        await using AppDbContext context = PostgreSqlTestFixture.CreateContext(connectionString, userId);
+        DateTime now = DateTime.UtcNow;
+        var exercise = new Exercise
+        {
+            Id = Guid.NewGuid(),
+            OwnerUserId = userId,
+            Name = name,
+            PrimaryMuscles = ["chest"],
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+            Version = 1,
+        };
+        context.Exercises.Add(exercise);
+        await context.SaveChangesAsync(TestContext.CancellationToken);
+        return exercise.Id;
     }
 
     private static string Iso(DateOnly date) => date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);

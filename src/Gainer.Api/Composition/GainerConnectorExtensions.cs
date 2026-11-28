@@ -46,6 +46,7 @@ public static class GainerConnectorExtensions
             .WithTools<GainerMcpTools>(ToolJson)
             .WithTools<GainerTrainingTools>(ToolJson)
             .WithTools<GainerStatisticsTools>(ToolJson)
+            .WithTools<GainerAnalysisTools>(ToolJson)
             .WithTools<GainerScheduleTools>(ToolJson)
             .WithTools<GainerCardioTools>(ToolJson)
             .WithTools<GainerBodyTools>(ToolJson)

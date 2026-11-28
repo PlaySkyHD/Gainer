@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../cardio/cardio_statistics_area.dart';
 import 'exercise_statistics_screen.dart';
 import 'muscle_map_screen.dart';
+import 'training_analysis_screen.dart';
 import 'training_format.dart';
 import 'training_heatmap_card.dart';
 import 'training_statistics_view_model.dart';
@@ -114,6 +115,17 @@ class _TrainingStatisticsSectionState extends State<TrainingStatisticsSection> {
                   showChevron: true,
                   onTap: () =>
                       openMuscleMap(context, repository: widget.repository),
+                ),
+                GainerListRow(
+                  key: const ValueKey('statistics-analysis'),
+                  title: 'Trainingsanalyse',
+                  subtitle: 'Fortschritt, Ermüdung und Empfehlung je Übung',
+                  leadingIcon: CupertinoIcons.chart_bar_alt_fill,
+                  showChevron: true,
+                  onTap: () => openTrainingAnalysis(
+                    context,
+                    repository: widget.repository,
+                  ),
                 ),
               ],
             ),
