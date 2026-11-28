@@ -12,7 +12,7 @@ public sealed class OpenFoodFactsCatalogState(IOptions<OpenFoodFactsOptions> opt
 {
     private readonly ConcurrentDictionary<string, CacheEntry> cache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SharedCall> inFlight = new(StringComparer.Ordinal);
-    private readonly object gate = new();
+    private readonly Lock gate = new();
 
     internal RequestBudget BarcodeBudget { get; } = new(options.Value.BarcodeRequestsPerMinute, timeProvider);
 
@@ -119,7 +119,7 @@ public sealed class OpenFoodFactsCatalogState(IOptions<OpenFoodFactsOptions> opt
     internal sealed class RequestBudget(int capacity, TimeProvider timeProvider)
     {
         private readonly Queue<DateTimeOffset> requests = new();
-        private readonly object gate = new();
+        private readonly Lock gate = new();
 
         public bool TryAcquire()
         {
